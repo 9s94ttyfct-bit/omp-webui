@@ -35,8 +35,8 @@ const SIZES: Win[] = [
 	{ name: "iPad", engine: "webkit", device: "iPad (gen 11)" },
 	{ name: "iPhone", engine: "webkit", device: "iPhone 15" },
 ];
-/** The macOS app is WebKit; zoomed in (⌘+), its window is this many CSS pixels high. */
-const ZOOMED_APP: Win = { name: "macOS app zoomed", engine: "webkit", viewport: { width: 1024, height: 400 } };
+/** Safari is WebKit; zoomed in (⌘+), its window is this many CSS pixels high. (The macOS app's page never zooms.) */
+const ZOOMED_SAFARI: Win = { name: "Safari zoomed", engine: "webkit", viewport: { width: 1024, height: 400 } };
 
 let sessions = 0;
 
@@ -525,13 +525,13 @@ test.describe("desktop 1400×900", () => {
 	});
 });
 
-test.describe(ZOOMED_APP.name, () => {
-	test("in a window this short (the macOS app zoomed in) the app's frame never scrolls, asking or answered", async ({
+test.describe(ZOOMED_SAFARI.name, () => {
+	test("in a window this short (Safari zoomed in) the app's frame never scrolls, asking or answered", async ({
 		browser,
 		e2eServer,
 		workerStorageState,
 	}) => {
-		const chat = await open({ browser, e2eServer, workerStorageState }, ZOOMED_APP);
+		const chat = await open({ browser, e2eServer, workerStorageState }, ZOOMED_SAFARI);
 		const { page } = chat;
 		try {
 			await expectStill(page, "before the request");
@@ -561,7 +561,7 @@ test.describe(ZOOMED_APP.name, () => {
 });
 
 /**
- * The app's frame does not scroll (#588), so a window too short for the whole sidebar (the macOS app zoomed in, a laptop
+ * The app's frame does not scroll (#588), so a window too short for the whole sidebar (a browser zoomed in, a laptop
  * with the dock open) gets a sidebar that scrolls inside itself: every item is reached by Tab, which brings it on to the
  * screen, and by the wheel, down to the foot.
  */
@@ -648,13 +648,13 @@ for (const win of SHORT_SIDEBAR) {
  * in the sizes that matter, light and dark, English and Chinese. Not an assertion: nothing runs without the variable.
  */
 const shots = process.env.OMPW_SHOTS;
-const SHOT_SIZES: Win[] = [SIZES[0], SIZES[3], ZOOMED_APP];
+const SHOT_SIZES: Win[] = [SIZES[0], SIZES[3], ZOOMED_SAFARI];
 test.describe("pictures", () => {
 	test.skip(!shots, "OMPW_SHOTS is not set");
 	for (const win of SHOT_SIZES) {
 		for (const theme of ["light", "dark"] as const) {
 			for (const lang of ["en", "zh-CN"] as const) {
-				if (win === ZOOMED_APP && (lang === "zh-CN" || theme === "dark")) continue;
+				if (win === ZOOMED_SAFARI && (lang === "zh-CN" || theme === "dark")) continue;
 				test(`${win.name} ${theme} ${lang}`, async ({ browser, e2eServer, workerStorageState }) => {
 					const chat = await open({ browser, e2eServer, workerStorageState }, win, { lang, theme });
 					const { page } = chat;

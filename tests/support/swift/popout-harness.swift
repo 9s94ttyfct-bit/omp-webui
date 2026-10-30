@@ -137,6 +137,8 @@ func pure(_ origin: URL) -> [String: Bool] {
 			popped["width"] = Int(popup.contentView?.frame.width ?? 0)
 			popped["height"] = Int(popup.contentView?.frame.height ?? 0)
 			popped["isOtherWindow"] = popup !== window
+			// The page is never zoomed in the app (macos/webview.swift): a pinch and a smart zoom do nothing.
+			popped["allowsMagnification"] = view.allowsMagnification
 			popped["hasHandler"] = await js(view, "return typeof window.webkit.messageHandlers.ompwWindow.postMessage")
 			// A page that has loaded is told its window is not in full screen (it would be, if it were reloaded there).
 			_ = await until { (await js(view, "return window.fsEvents.length")) as? Int == 1 }

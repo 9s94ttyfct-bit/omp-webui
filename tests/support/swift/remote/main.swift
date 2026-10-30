@@ -1588,6 +1588,8 @@ func windows(directory: URL, portsA: [String], portsB: [String]) -> [String: Any
 	let pop = session.windows.first { $0.isPopOut }
 	out["popOutTitle"] = pop?.window.title ?? ""
 	out["popOutMinWidth"] = pop?.window.minSize.width ?? 0
+	// The page is never zoomed in the app (macos/webview.swift), in the Mac's own window and in a pop-out.
+	out["allowsMagnification"] = [window.web.allowsMagnification, pop?.web.allowsMagnification ?? true]
 	if let popWeb {
 		popWeb.loadHTMLString("<!doctype html><title>pop</title><body></body>", baseURL: nil)
 		runLoop(until: { popWeb.url != nil && !popWeb.isLoading }, seconds: 10)
