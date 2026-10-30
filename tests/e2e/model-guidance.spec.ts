@@ -345,6 +345,52 @@ test("Create new template asks for a name it checks, makes the template and uses
 	expect((await request.post("/api/model-guidance", { headers: post, data: { remove: id } })).status()).toBe(200);
 });
 
+test("a template edited on another page reaches the open Guidance tab of a running conversation that uses it", async ({
+	page,
+	request,
+}) => {
+	const made = await request.post("/api/model-guidance", {
+		headers: post,
+		data: { template: { id: "follow-other-page", name: "Followed", text: "Text before the edit." } },
+	});
+	expect(made.ok()).toBe(true);
+	ownSession(0x7155, "Guidance follows the template");
+	const tap = await tapSocket(page);
+	await page.goto("/");
+	await openSidebar(page);
+	await startLive(page, tap, "Guidance follows the template", "guidance-follow-probe");
+	await page.getByTestId("toggle-panel").click();
+	await topTab(page, /Guidance/).click();
+	const editor = page.getByTestId("guidance-editor");
+	await editor.getByTestId("guidance-template").selectOption({ label: "Followed" }, { timeout: 30_000 });
+	const box = editor.getByTestId("guidance-text");
+	await expect(box).toHaveValue("Text before the edit.");
+
+	// Another page edits the template in Settings: its name and its text.
+	const other = await page.context().newPage();
+	await settings(other);
+	const card = other.getByTestId("guidance-settings");
+	await card.scrollIntoViewIfNeeded();
+	await template(card, "Followed").click();
+	const dialog = other.getByRole("dialog");
+	await dialog.getByTestId("guidance-name").fill("Followed, renamed");
+	await dialog.getByTestId("guidance-body").fill("Text after the edit.");
+	await dialog.getByTestId("guidance-save-template").click();
+	await expect(dialog).toHaveCount(0);
+	await other.close();
+
+	// This page shows it without a reload: the box, the menu's name, and Save to template has nothing to write back.
+	await expect(box).toHaveValue("Text after the edit.");
+	await expect(editor.getByTestId("guidance-template").locator("option:checked")).toHaveText("Followed, renamed");
+	await expect(editor.getByTestId("guidance-to-template")).toHaveAttribute(
+		"title",
+		en.toTemplateSame.replace("{name}", "Followed, renamed"),
+	);
+	expect(
+		(await request.post("/api/model-guidance", { headers: post, data: { remove: "follow-other-page" } })).ok(),
+	).toBe(true);
+});
+
 test("a conversation that is not running has the same editor; the change is carried when it is opened (#715)", async ({
 	page,
 }) => {

@@ -33,9 +33,9 @@ interface Draft {
  * an editor: its name and text, *Default for new chats*, *Duplicate*, *Delete*, and *Reset* for a shipped one that was
  * changed. Kept in the app's data folder (`model-guidance.json`), so they follow the person to another computer; a
  * conversation that picked one keeps the text it stood for, and a template edited here reaches the conversations that use
- * it when they are next opened (one running now keeps its text until then). Changing them is for the page on this
- * computer (see `isLocalOnlyRoute`): what a template says is put into the system prompt of every conversation that picks
- * it. A chunk of its own, with its strings.
+ * it at their next turn (a running one's file is rewritten; one not running carries it when opened). Changing them is
+ * for the page on this computer (see `isLocalOnlyRoute`): what a template says is put into the system prompt of every
+ * conversation that picks it. A chunk of its own, with its strings.
  */
 export function GuidanceSettings() {
 	const t = useT();

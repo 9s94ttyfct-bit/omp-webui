@@ -92,7 +92,7 @@ export const en = {
 	nameRepeated: "There is already a template with that name.",
 	confirmTitle: "Update the template “{name}”?",
 	confirmShared:
-		"Other conversations that use this template: {n}. Those not running now carry the new text when they are next opened, and so does a new chat that picks it; a conversation running now keeps the text it has until it is closed and opened again. This conversation carries the new text from its next turn.",
+		"Other conversations that use this template: {n}. Each of them carries the new text from its next turn (one that is not running, when it is next opened), and so does a new chat that picks it. Conversations that made the text their own are not changed.",
 	confirmUpdate: "Update template",
 	rename: "Rename template",
 	renameLabel: "New name of the template",

@@ -158,8 +158,9 @@ export const hasTemplate = (templates: readonly GuidanceTemplate[], id: string):
 	templates.some((t) => t.id === id);
 
 /**
- * The text a conversation carries: the template `id` names, as it stands now (a template edited since is what a process
- * started from now on carries), else the text the conversation was given directly. Empty: none.
+ * The text a conversation carries: the template `id` names, as it stands now (editing a template reaches the
+ * conversations that use it at their next turn: `LivePool.followGuidanceTemplates`), else the text the conversation was
+ * given directly. Empty: none.
  */
 export function guidanceTextOf(
 	templates: readonly GuidanceTemplate[],

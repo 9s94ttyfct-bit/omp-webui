@@ -80,7 +80,7 @@ export const zh: Record<keyof typeof en, string> = {
 	nameRepeated: "已经有同名的模板。",
 	confirmTitle: "更新模板“{name}”？",
 	confirmShared:
-		"还有 {n} 个其他对话使用这个模板。目前没在运行的对话下次打开时会带上新文字，之后选用它的新对话也是；正在运行的对话保留现有文字，直到关闭后再次打开。这个对话从下一轮起带上新文字。",
+		"还有 {n} 个其他对话使用这个模板。它们都从下一轮起带上新文字（没在运行的对话在下次打开时带上），之后选用它的新对话也是。已把文字改成自己的对话不受影响。",
 	confirmUpdate: "更新模板",
 	rename: "重命名模板",
 	renameLabel: "模板的新名称",

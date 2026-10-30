@@ -1487,9 +1487,15 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 					update?: unknown;
 				} | null;
 				try {
-					if (body?.remove !== undefined) return json(modelGuidance.remove(body.remove));
-					// `update`: a conversation's tab saves its edit into the template it came from (#715), which must still be there.
-					return json(modelGuidance.save(body?.template, body?.update === true));
+					const set =
+						body?.remove !== undefined
+							? modelGuidance.remove(body.remove)
+							: // `update`: a conversation's tab saves its edit into the template it came from (#715), which must still be there.
+								modelGuidance.save(body?.template, body?.update === true);
+					// Every running conversation that uses a template carries what it says now from its next turn, and the
+					// pages that show it are told (the text, and a new name) (v0.12.2).
+					pool.followGuidanceTemplates();
+					return json(set);
 				} catch (e) {
 					// The word as well as the text: the page says it in its own language.
 					if (e instanceof GuidanceStoreError)
@@ -1505,7 +1511,9 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			if (req.method !== "POST") return fail("POST required", 405);
 			if (!onThisComputer.has(req)) return fail("The model guidance is changed on the computer omp-webui runs on", 403);
 			try {
-				return json(modelGuidance.restoreDefaults());
+				const set = modelGuidance.restoreDefaults();
+				pool.followGuidanceTemplates();
+				return json(set);
 			} catch (e) {
 				return fail(`Could not restore the shipped guidance: ${(e as Error).message}`, 500);
 			}

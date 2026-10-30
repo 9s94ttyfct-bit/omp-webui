@@ -71,17 +71,19 @@ function ReasonButton({
  * - **Save for this conversation**: the text is this conversation's alone. Text that came from a template becomes its own
  *   (no template is changed).
  * - **Save to template**: the text goes into the template the conversation uses, and the conversation keeps using it. When
- *   other conversations use it too the person is asked first, told how far the change reaches: a conversation that is not
- *   running carries the template as it is when it is opened next (as a new chat that picks it does); one running now
- *   keeps the text it was given until it is opened again (`server/omp/guidance/session.ts`). With no template in use it
- *   is unavailable, and says to make one with Create new template.
+ *   other conversations use it too the person is asked first, told how far the change reaches: every conversation that
+ *   uses it carries the new text from its next turn (a running one's file is rewritten by the server; one not running
+ *   carries it when opened), as does a new chat that picks it. With no template in use it is unavailable, and says to
+ *   make one with Create new template.
  * - **Create new template**: a small dialog asks for the name (checked as the store checks it: trimmed, not empty, not
  *   another template's, at most `GUIDANCE_NAME_MAX`), makes a template of the text, and the conversation then uses it.
  * The pencil beside the template menu renames the template in place (Enter saves, Esc cancels), checked the same way.
  *
  * A running conversation is changed in its process, which reads its file at each turn. One with no process (`file` only)
- * has the change kept for when it is opened next. A page that is not on the computer omp-webui runs on reads only, as the
- * server allows template and guidance changes from this computer only: every control says so.
+ * has the change kept for when it is opened next. A template changed elsewhere (another page, Settings) reaches a running
+ * conversation's live frame, so the box (while not being edited) and the template menu follow it. A page that is not on
+ * the computer omp-webui runs on reads only, as the server allows template and guidance changes from this computer only:
+ * every control says so.
  */
 export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: string | null }) {
 	const t = useT();
@@ -139,6 +141,22 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 	useEffect(() => {
 		if (!touched) setText(carried);
 	}, [carried, touched]);
+	// The template it uses was changed elsewhere (its text or its name, which the conversation's live frame brings): the
+	// menu's names and Save to template's comparison read the templates again. A read that fails keeps the list it has.
+	const following = value?.template ? `${value.template}\n${value.templateName}\n${value.text}` : "";
+	useEffect(() => {
+		if (!following) return;
+		let live = true;
+		guidanceApi.templates().then(
+			(set) => {
+				if (live) setTemplates(set.templates);
+			},
+			() => {},
+		);
+		return () => {
+			live = false;
+		};
+	}, [following]);
 	// Renaming ended (saved or cancelled): the keyboard goes back to the pencil it started from.
 	useEffect(() => {
 		if (renaming === null && refocusPencil.current) {

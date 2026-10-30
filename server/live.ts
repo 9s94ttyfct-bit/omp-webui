@@ -2524,8 +2524,8 @@ export class Live {
 		return {
 			template: found ? found.id : null,
 			templateName: found ? found.name : null,
-			// What this process carries is its own copy (`kept`): a template edited since reaches it when the conversation
-			// changes its guidance, or when its next process starts (which reads the template as it is then).
+			// What this process carries is its own copy (`kept`), which the server rewrites whenever the template changes
+			// (`followTemplates`).
 			text: kept.text,
 			live: this.guided,
 			...(this.guidanceSkipped() ? { skipped: this.guidanceSkipped() } : {}),
@@ -2562,6 +2562,30 @@ export class Live {
 		this.syncGuidance();
 		this.pool.announce(this);
 		return this.info.guidance;
+	}
+
+	/**
+	 * The templates were changed (saved, renamed, deleted or restored): a conversation that uses one carries what it says now
+	 * from its next turn. Its file is rewritten (as `setGuidance` does) and the text kept for its next opening; one that made
+	 * the text its own (no template) is not touched, and one whose template was deleted keeps the text it had. True when what
+	 * the pages are told changed (the text, or the template's name), so that they are told.
+	 */
+	followTemplates(): boolean {
+		const kept = this.guidanceKept;
+		const found = kept?.template ? this.pool.guidance?.templates().find((t) => t.id === kept.template) : undefined;
+		if (kept && found && guidanceText(found.text) !== guidanceText(kept.text)) {
+			const next: KeptGuidance = { template: found.id, text: guidanceText(found.text) };
+			this.guidanceKept = next;
+			if (this.guidanceNamed && this.guidanceFile) {
+				try {
+					this.pool.guidance?.write(this.guidanceFile, next.text);
+				} catch (e) {
+					console.error(`omp-webui: could not write the guidance of ${this.info.liveId}: ${(e as Error).message}`);
+				}
+			}
+			this.pool.rememberGuidance(this, next);
+		}
+		return this.syncGuidance();
 	}
 
 	/** Whether unattended mode (#646) is on for this conversation. */
@@ -3898,6 +3922,14 @@ export class LivePool {
 	 */
 	rewriteUnattended(): void {
 		for (const live of this.lives.values()) if (live.unattendedChoice) live.writeUnattended();
+	}
+
+	/**
+	 * The model-guidance templates changed (#641; v0.12.2): every running conversation that uses a template carries its text
+	 * from its next turn, and the pages showing it are told the new text and name (`Live.followTemplates`).
+	 */
+	followGuidanceTemplates(): void {
+		for (const live of this.lives.values()) if (!live.info.exited && live.followTemplates()) this.announce(live);
 	}
 
 	/** The conversation this process holds chose `guard` (null: the global settings again): keep it for when it is opened again. */

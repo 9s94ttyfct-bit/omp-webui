@@ -15,15 +15,16 @@ import type { GuidanceStore } from "./store.ts";
  * Where the text reaches omp: the file named after the conversation's live id, beside the process's settings overlay
  * (`<overlay>.guidance.md`, in the same temp folder: `ApprovalStore`). The extension (`extension.ts`) is told its path in
  * `OMPW_GUIDANCE_FILE`, and reads it at every turn, so a change of the conversation's guidance (another template, its
- * own text, or none) reaches the next turn of the running process without a restart. A template edited elsewhere is not
- * written into the files of the processes running now: each carries the text it was given until its guidance is changed,
- * and its next process carries the template as it is then. A process that is not running has no file: when it starts
- * again the server writes the conversation's guidance fresh.
+ * own text, or none) reaches the next turn of the running process without a restart. So does an edit of the template it
+ * uses: when a template is saved, renamed, deleted or restored, the server rewrites the files of the running processes
+ * that use it (`LivePool.followGuidanceTemplates`); a conversation that made the text its own is not touched. A process
+ * that is not running has no file: when it starts again the server writes the conversation's guidance fresh, from the
+ * template as it is then.
  *
  * What a conversation keeps: the template it picked by id, and the text that template stood for when it was picked. The
  * id is what the session shows and what a page changes to another template; the text is what the extension reads, and it
- * keeps working when the template is edited (a conversation opened after the edit carries the edit), deleted, or the
- * whole store is restored to the shipped templates while the conversation is open.
+ * keeps working when the template is edited (the next turn carries the edit), deleted, or the whole store is restored to
+ * the shipped templates while the conversation is open.
  */
 
 /** One conversation's choice, as it is written down. */
