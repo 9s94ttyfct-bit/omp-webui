@@ -87,7 +87,8 @@ jobs:
   e2e:
     name: e2e (offline, shard ${{ matrix.shard }}/8)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The shard with chat-follow's WebKit phone and iPad cases runs about 43 minutes (they alone are 26).
+    timeout-minutes: 60
     # Each worker owns its server; a 4-vCPU runner has one (playwright.config.ts). Eight runners each take an eighth.
     strategy:
       fail-fast: false
