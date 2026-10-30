@@ -242,6 +242,26 @@ test("a process is recognised by its start and command line, not its pid alone",
 	expect(await identityOf(sleeper.pid)).toBeNull();
 });
 
+test("a Linux process caught inside execve (its new name, no command line yet) is recorded once it has its command line", async () => {
+	const stat = "4242 (sleep) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 98765 0 0";
+	let reads = 0;
+	const source: ProcessSource = {
+		platform: "linux",
+		proc: (path) => {
+			if (path === "/proc/4242/stat") return stat;
+			if (path === "/proc/sys/kernel/random/boot_id") return "boot-1";
+			// The first two reads come before the command line is in place.
+			if (path === "/proc/4242/cmdline") return ++reads > 2 ? "sleep\u000030\u0000" : "";
+			return null;
+		},
+		ps: async () => null,
+	};
+	expect(await referenceTo(4242, source)).toEqual({ pid: 4242, identity: "linux:boot-1:98765 sleep 30" });
+	// One that never gets a command line (a kernel thread) is named by its own name, after a few reads.
+	const thread: ProcessSource = { ...source, proc: (path) => (path === "/proc/4242/cmdline" ? "" : source.proc(path)) };
+	expect(await referenceTo(4242, thread)).toEqual({ pid: 4242, identity: "linux:boot-1:98765 [sleep]" });
+});
+
 /** A system as `identityOf` reads it: `/proc` files by path, `ps` by what it is asked for. */
 function system(
 	platform: NodeJS.Platform,

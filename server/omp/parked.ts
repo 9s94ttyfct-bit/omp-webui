@@ -239,13 +239,30 @@ export async function runsAs(ref: ProcessRef, source: ProcessSource = systemSour
 	return (await identityOf(ref.pid, source)) === ref.identity;
 }
 
-/** The process named `ref`, or null when it is not running. */
+/**
+ * How often, and how far apart, a Linux process without a command line is read again before it is named by its own
+ * name: one caught inside `execve` has its new name but not yet its command line, which it has a moment later.
+ */
+const EXEC_READS = 20;
+const EXEC_READ_MS = 5;
+
+/**
+ * The process named `ref`, or null when it is not running. One just started may still be inside `execve` (Linux: its
+ * new name, no command line yet): the name it is recorded by is the one it keeps, so it is read again until it has its
+ * command line, or is a process that has none (a kernel thread, one that is ending).
+ */
 export async function referenceTo(
 	pid: number | null,
 	source: ProcessSource = systemSource,
 ): Promise<ProcessRef | null> {
-	const identity = pid === null ? null : await identityOf(pid, source);
-	return pid !== null && identity !== null ? { pid, identity } : null;
+	if (pid === null) return null;
+	let identity = await identityOf(pid, source);
+	for (let read = 1; read < EXEC_READS && source.platform === "linux" && identity?.endsWith("]"); read++) {
+		if (!/^linux:\S* \[[^\]]*\]$/.test(identity)) break;
+		await Bun.sleep(EXEC_READ_MS);
+		identity = await identityOf(pid, source);
+	}
+	return identity !== null ? { pid, identity } : null;
 }
 
 function isRef(v: unknown): v is ProcessRef {
