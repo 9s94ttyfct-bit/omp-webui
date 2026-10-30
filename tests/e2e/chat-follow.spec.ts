@@ -424,18 +424,22 @@ const KINDS: Record<string, Kind> = {
 	},
 
 	"an approval that asks for a choice": ({ rig, tag }) => {
-		const details = Array.from({ length: 2 }, (_, i) => `  - file-${i}.txt`).join("\n");
 		const request = rig.page.getByTestId("ui-request");
 		return [
 			{
 				label: "the approval",
+				// omp's question before it runs a command: one line of what it is about, and three choices. On an iPhone that is
+				// most of the window, which a request gets first (see `approval-phone.spec.ts`), and the transcript keeps the
+				// rest. A request that also lists a folder's entries leaves it no line to follow where the fonts are wider than
+				// Apple's (Linux WebKit's DejaVu: the hint and the message box's placeholder take a line more each); what such a
+				// request leaves on the screen is the approval spec's to measure.
 				push: () =>
 					rig.frame({
 						type: "extension_ui_request",
 						id: `ap-${tag}`,
 						method: "select",
-						title: `Allow tool: read\nFolder: /tmp/project — 2 entries\n${details}`,
-						options: ["Approve", "Approve for this session", "Deny"],
+						title: "Allow tool: bash\nCommand: ls src",
+						options: ["Approve", "Approve bash for this session", "Deny"],
 					}),
 				shows: request,
 			},

@@ -578,7 +578,11 @@ describe("what this computer lets another page do", () => {
 
 describe("the log", () => {
 	test("is the person's alone: the mode of the file is 0600; it holds no token, no query string and no file's text", async () => {
-		await get(here, "README.md");
+		// The line is written once the answer has been sent: read the answer, then wait for its line, so that it is in what
+		// is checked here and does not land in the next test's part of the log.
+		const before = logged().length;
+		await (await get(here, "README.md")).arrayBuffer();
+		await pollUntil(() => logged().length > before, "the download's line in the log");
 		const text = readFileSync(logFile(), "utf8");
 		expect(statSync(logFile()).mode & 0o777).toBe(0o600);
 		expect(text).not.toContain(s.accessToken);

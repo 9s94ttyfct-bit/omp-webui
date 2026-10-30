@@ -14,6 +14,15 @@ import { expect, type Page, test } from "./fixtures.ts";
  * again. The omp is a stand-in that streams a script (tests/support/long-fake-omp.ts): no model is called.
  */
 
+declare global {
+	interface Window {
+		/** What `watchRun` saw of the run, frame by frame. */
+		__longRun?: { most: number; sawButton: boolean };
+		/** When the page got the press on Stop, and drew the first frame without it (`timeStop`), on its own clock. */
+		__stopTimes?: { pressed?: number; gone?: number };
+	}
+}
+
 let s: TestServer;
 let binDir: string;
 const TITLE = "Long turn probe";
@@ -45,6 +54,8 @@ async function open(page: Page, title: string): Promise<void> {
 	const row = page.locator('[data-testid="session-item"]', { hasText: title });
 	await expect(row).toHaveCount(1, { timeout: 30_000 });
 	await row.click();
+	// The conversation, not New chat's message box, which is on screen until the conversation's code has loaded.
+	await expect(page.getByTestId("chat-title")).toHaveText(title);
 	await expect(page.getByTestId("composer")).toBeVisible();
 }
 
@@ -55,23 +66,72 @@ async function run(page: Page, o: Record<string, unknown>): Promise<void> {
 	await expect(page.getByTestId("stop")).toBeVisible({ timeout: 60_000 });
 }
 
-/** What the live turn has on screen: its rows (and the button above them), not counting what it streams at the end. */
-const drawn = (page: Page) => page.locator('[data-testid="agent-turn"] > *').count();
+/**
+ * What the live turn had on screen while the run went on, taken in the page on every frame it draws: the most rows it
+ * had (and the button above them), not counting what it streams at the end, and whether the button for the earlier
+ * steps was up while Stop still was. A page busy with the stream answers each query from the test a second or two late
+ * on a slow machine: sampled from the test, a run of a few seconds was looked at twice, once before the button came and
+ * once after the turn had folded.
+ */
+async function watchRun(page: Page): Promise<() => Promise<{ most: number; sawButton: boolean }>> {
+	await page.evaluate(() => {
+		const seen = { most: 0, sawButton: false };
+		window.__longRun = seen;
+		const tick = () => {
+			if (document.querySelector('[data-testid="stop"]')) {
+				seen.most = Math.max(seen.most, document.querySelectorAll('[data-testid="agent-turn"] > *').length);
+				seen.sawButton ||= document.querySelector('[data-testid="show-earlier-steps"]') !== null;
+			}
+			requestAnimationFrame(tick);
+		};
+		requestAnimationFrame(tick);
+	});
+	return () => page.evaluate(() => window.__longRun ?? { most: 0, sawButton: false });
+}
+
+/**
+ * How long Stop took to go, from the press: both on the page's own clock, the press when the page got it and the end when
+ * the page drew a frame without the button. Playwright's click spends seconds of its own on a page that is busy (each of
+ * its checks waits its turn in the page), and that is not Stop's. Null until both have happened.
+ */
+async function timeStop(page: Page): Promise<() => Promise<number | null>> {
+	await page.evaluate(() => {
+		const times: { pressed?: number; gone?: number } = {};
+		window.__stopTimes = times;
+		document.addEventListener(
+			"click",
+			(e) => {
+				if (e.target instanceof Element && e.target.closest('[data-testid="stop"]'))
+					times.pressed ??= performance.now();
+			},
+			true,
+		);
+		const tick = () => {
+			if (times.pressed !== undefined && !document.querySelector('[data-testid="stop"]')) {
+				times.gone = performance.now();
+				return;
+			}
+			requestAnimationFrame(tick);
+		};
+		requestAnimationFrame(tick);
+	});
+	return () =>
+		page.evaluate(() => {
+			const times = window.__stopTimes;
+			return times?.pressed === undefined || times.gone === undefined ? null : times.gone - times.pressed;
+		});
+}
 
 test("a goal run of hundreds of steps draws a window of its rows, folds when it ends, and lets earlier steps be shown", async ({
 	page,
 }) => {
 	await open(page, TITLE);
+	const seen = await watchRun(page);
 	await run(page, { steps: 200, stepMs: 25 });
 	// While it runs: the rows on screen stay a few dozen however many steps there are (a step is two rows).
-	let most = 0;
-	let sawButton = false;
-	await expect(async () => {
-		most = Math.max(most, await drawn(page));
-		sawButton ||= (await page.getByTestId("show-earlier-steps").count()) > 0;
-		expect(await page.getByTestId("stop").count()).toBe(0);
-	}).toPass({ timeout: 90_000, intervals: [100] });
-	expect(sawButton).toBe(true);
+	await expect(page.getByTestId("stop")).toHaveCount(0, { timeout: 90_000 });
+	const { most, sawButton } = await seen();
+	expect(sawButton, "the button for the earlier steps, while the run went on").toBe(true);
 	// Rows (< 120), the button, the typing dots and the stats line: nowhere near the 400 rows the run wrote.
 	expect(most).toBeLessThan(130);
 
@@ -107,15 +167,19 @@ test("a goal run of hundreds of steps draws a window of its rows, folds when it 
 
 test("Stop answers at once in the middle of a long run, and the next message goes through", async ({ page }) => {
 	await open(page, TITLE);
-	await run(page, { steps: 600, stepMs: 30 });
+	// Paced at a rate the page keeps up with on a slow machine: a CI runner's page drew about 19 steps a second of this
+	// script, and at 30 ms a step (33 a second) it was 7 s behind the run by the time Stop was pressed, so that what Stop
+	// was timed against was a backlog of frames the run had sent long before, not the run.
+	await run(page, { steps: 600, stepMs: 150 });
 	// Well into it.
 	await expect
 		.poll(() => page.locator('[data-testid="msg-assistant"]').count(), { timeout: 60_000 })
 		.toBeGreaterThan(40);
-	const stopped = Date.now();
+	const took = await timeStop(page);
 	await page.getByTestId("stop").click();
-	await expect(page.getByTestId("stop")).toHaveCount(0, { timeout: 5000 });
-	expect(Date.now() - stopped).toBeLessThan(5000);
+	await expect(page.getByTestId("stop")).toHaveCount(0, { timeout: 15_000 });
+	await expect.poll(took, { message: "the time from the press to Stop's end" }).not.toBeNull();
+	expect(await took()).toBeLessThan(5000);
 	// Sending is possible again, and the page waits for nothing.
 	const composer = page.getByTestId("composer");
 	await composer.fill(script({ steps: 1 }));

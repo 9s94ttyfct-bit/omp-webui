@@ -43,6 +43,10 @@ export function ownSession(n: number, title: string): void {
 export async function startLive(page: Page, tap: SocketTap, title: string, probe: string): Promise<string> {
 	await expect(sessionRow(page, title)).toHaveCount(1, { timeout: 15_000 });
 	await sessionRow(page, title).click();
+	// The conversation is on screen before anything is typed. A click on its row changes the view at once, but the
+	// conversation's code may still be on its way (the first one a page opens): until it is drawn, the message box on
+	// screen is New chat's, which takes the command and keeps it as its draft (it has no omp of its own yet).
+	await expect(page.getByTestId("chat-title")).toHaveText(title);
 	const composer = page.getByTestId("composer");
 	await composer.fill(`!echo ${probe}`);
 	await composer.press("Enter");

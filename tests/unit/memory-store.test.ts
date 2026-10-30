@@ -967,7 +967,13 @@ describe("omp writing to the same database", () => {
 		const lines = omp.stdout.getReader();
 		const decoder = new TextDecoder();
 		expect(decoder.decode((await lines.read()).value)).toContain("started");
-		const writer = new MemoryWriter(fx.dataDir, { backupGapMs: 600_000, busyMs: 8000, keepBackups: 200 });
+		// Every copy the run makes is kept: how many it makes is how many changes fit in omp's run, which a slow machine
+		// makes several hundred (the pruning of the oldest ones has a test of its own).
+		const writer = new MemoryWriter(fx.dataDir, {
+			backupGapMs: 600_000,
+			busyMs: 8000,
+			keepBackups: Number.POSITIVE_INFINITY,
+		});
 		const mine: string[] = [];
 		// Until omp is done, and at least a dozen changes: the loop gives the process's pipes a turn between changes (every
 		// change settles in microtasks, and a loop of those alone would never let the exit of omp's process be heard).
@@ -1012,21 +1018,17 @@ describe("omp writing to the same database", () => {
 		expect(rowsOf(file.path, "SELECT COUNT(*) AS n FROM fts_working WHERE fts_working MATCH 'flamingo'")[0].n).toBe(
 			mine.length - deleted.length,
 		);
-		// A copy before each delete; each copy is a whole database. (More than the newest 10 are kept here, so that the
-		// assertion below can look at every copy the run made: the pruning of the oldest ones has a test of its own.)
+		// A copy before each delete; each copy is a whole database. Each is opened once: there may be hundreds of them.
 		const copies = readdirSync(writer.backupDir("app-abc123")).sort();
 		expect(copies.length).toBeGreaterThan(1);
+		const copied = new Set<unknown>();
 		for (const name of copies) {
 			const copy = join(writer.backupDir("app-abc123"), name);
 			expect(rowsOf(copy, "PRAGMA integrity_check")).toEqual([{ integrity_check: "ok" }]);
+			for (const row of rowsOf(copy, "SELECT id FROM working_memory")) copied.add(row.id);
 		}
 		// The first memory the run deleted is in a copy, and so is every later one: a copy is taken before each delete.
-		for (const id of deleted) {
-			const holds = copies.filter((name) =>
-				count(join(writer.backupDir("app-abc123"), name), "working_memory", `id = '${id}'`),
-			);
-			expect(holds.length, id).toBeGreaterThan(0);
-		}
+		for (const id of deleted) expect(copied.has(id), id).toBe(true);
 	}, 60_000);
 
 	test("two changes of ours on one memory at once: one lands, the other is told it changed", async () => {
