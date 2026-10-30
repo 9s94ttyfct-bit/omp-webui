@@ -80,9 +80,11 @@ interface Logged {
 	in?: Record<string, unknown>;
 }
 
+/** The lines the fake omp has finished writing: the last part, without its newline yet, is still being written. */
 const logged = (): Logged[] =>
 	readFileSync(log, "utf8")
 		.split("\n")
+		.slice(0, -1)
 		.filter(Boolean)
 		.map((l) => JSON.parse(l) as Logged);
 const received = (type: string) => logged().flatMap((l) => (l.in?.type === type ? [l.in] : []));
