@@ -133,13 +133,33 @@ export function guidanceProblem(text: string): "tooLong" | null {
 	return guidanceText(text).length > GUIDANCE_MAX ? "tooLong" : null;
 }
 
+/** Why a template's name is refused (a subset of `GuidanceProblem`). */
+export type GuidanceNameProblem = "nameEmpty" | "nameTooLong" | "nameRepeated";
+
+/**
+ * Why `name` cannot be the name of the template `id` (null: it can): empty once trimmed, longer than `GUIDANCE_NAME_MAX`, or
+ * the trimmed name of another template of `templates` (the person picks a template by its name). The store refuses the same
+ * (`server/omp/guidance/store.ts`); the Guidance tab's *Create new template* and rename say it before asking.
+ */
+export function guidanceNameProblem(
+	name: string,
+	templates: readonly Pick<GuidanceTemplate, "id" | "name">[],
+	id?: string,
+): GuidanceNameProblem | null {
+	const trimmed = name.trim();
+	if (!trimmed) return "nameEmpty";
+	if (trimmed.length > GUIDANCE_NAME_MAX) return "nameTooLong";
+	if (templates.some((t) => t.id !== id && t.name.trim() === trimmed)) return "nameRepeated";
+	return null;
+}
+
 /** Whether `id` names a template of `templates`. */
 export const hasTemplate = (templates: readonly GuidanceTemplate[], id: string): boolean =>
 	templates.some((t) => t.id === id);
 
 /**
- * The text a conversation carries: the template `id` names, as it stands now (editing a template reaches the
- * conversations that use it at their next turn), else the text the conversation was given directly. Empty: none.
+ * The text a conversation carries: the template `id` names, as it stands now (a template edited since is what a process
+ * started from now on carries), else the text the conversation was given directly. Empty: none.
  */
 export function guidanceTextOf(
 	templates: readonly GuidanceTemplate[],

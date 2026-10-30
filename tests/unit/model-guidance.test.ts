@@ -8,13 +8,15 @@ import extension, {
 	GUIDANCE_READ_MAX,
 } from "../../server/omp/guidance/extension.ts";
 import { guidancePaths, installGuidanceExtension } from "../../server/omp/guidance/install.ts";
-import { guidanceFileFor, writeGuidanceFile } from "../../server/omp/guidance/session.ts";
+import { GuidanceSessions, guidanceFileFor, writeGuidanceFile } from "../../server/omp/guidance/session.ts";
 import { GuidanceStore, GuidanceStoreError } from "../../server/omp/guidance/store.ts";
 import {
 	BUILTIN_GUIDANCE,
 	GUIDANCE_ID_MAX,
 	GUIDANCE_MAX,
+	GUIDANCE_NAME_MAX,
 	GUIDANCE_TEMPLATES_MAX,
+	guidanceNameProblem,
 	guidanceSummary,
 	guidanceTextOf,
 	parseSessionGuidance,
@@ -340,5 +342,77 @@ describe("a template's line in a list", () => {
 		const lines = BUILTIN_GUIDANCE.map((b) => guidanceSummary(b.text));
 		expect(new Set(lines).size).toBe(BUILTIN_GUIDANCE.length);
 		for (const line of lines) expect(line).not.toBe("Model guidance");
+	});
+});
+
+describe("a template's name, as the Guidance tab's Create new template and rename check it (v0.12.2)", () => {
+	const templates = [
+		{ id: "a", name: "Sonnet sparingly" },
+		{ id: "b", name: "  Padded  " },
+	];
+	test("trimmed, not empty, at most the limit, and not another template's", () => {
+		expect(guidanceNameProblem("", templates)).toBe("nameEmpty");
+		expect(guidanceNameProblem("   \t", templates)).toBe("nameEmpty");
+		expect(guidanceNameProblem("x".repeat(GUIDANCE_NAME_MAX), templates)).toBeNull();
+		expect(guidanceNameProblem(`  ${"x".repeat(GUIDANCE_NAME_MAX)}  `, templates)).toBeNull();
+		expect(guidanceNameProblem("x".repeat(GUIDANCE_NAME_MAX + 1), templates)).toBe("nameTooLong");
+		expect(guidanceNameProblem(" Sonnet sparingly ", templates)).toBe("nameRepeated");
+		expect(guidanceNameProblem("Padded", templates)).toBe("nameRepeated");
+		expect(guidanceNameProblem("Something new", templates)).toBeNull();
+	});
+	test("a template keeps its own name: renaming it to what it is called is no repeat", () => {
+		expect(guidanceNameProblem("Sonnet sparingly", templates, "a")).toBeNull();
+		expect(guidanceNameProblem("Sonnet sparingly", templates, "b")).toBe("nameRepeated");
+	});
+	test("the store refuses what the tab refuses, and keeps the name trimmed", () => {
+		const store = new GuidanceStore(dir());
+		const why = (input: unknown, update = false): string => {
+			try {
+				store.save(input, update);
+				return "saved";
+			} catch (e) {
+				return (e as GuidanceStoreError).problem;
+			}
+		};
+		expect(why({ id: "mine", name: "  Mine  ", text: "One." })).toBe("saved");
+		expect(store.snapshot().templates.find((t) => t.id === "mine")?.name).toBe("Mine");
+		expect(why({ id: "other", name: "Mine ", text: "Two." })).toBe("nameRepeated");
+		expect(why({ id: "other", name: "x".repeat(GUIDANCE_NAME_MAX + 1), text: "Two." })).toBe("nameTooLong");
+		// A rename of the template itself (the pencil's update) keeps its text, and may keep its name.
+		expect(why({ id: "mine", name: "Mine", text: "One." }, true)).toBe("saved");
+		expect(why({ id: "mine", name: "Renamed", text: "One." }, true)).toBe("saved");
+		expect(store.snapshot().templates.find((t) => t.id === "mine")).toEqual({
+			id: "mine",
+			name: "Renamed",
+			text: "One.",
+		});
+	});
+});
+
+describe("who else uses a template (the Guidance tab asks before Save to template, v0.12.2)", () => {
+	test("other conversations that still exist are counted by template; this one and the deleted ones are not", () => {
+		const data = dir();
+		const store = new GuidanceStore(data);
+		const sessions = new GuidanceSessions(data, store);
+		const folder = dir();
+		const conversation = (name: string): string => {
+			const file = join(folder, `${name}.jsonl`);
+			writeFileSync(file, "");
+			return file;
+		};
+		const mine = conversation("mine");
+		const other = conversation("other");
+		const third = conversation("third");
+		const gone = join(folder, "gone.jsonl");
+		sessions.remember(mine, { template: "builtin-one-of-each", text: "x" });
+		sessions.remember(other, { template: "builtin-one-of-each", text: "x" });
+		sessions.remember(third, { template: "builtin-simple-complex", text: "y" });
+		sessions.remember(gone, { template: "builtin-one-of-each", text: "x" });
+		sessions.remember(conversation("own-text"), { text: "Text of its own." });
+		expect(sessions.usersByTemplate(mine)).toEqual({ "builtin-one-of-each": 1, "builtin-simple-complex": 1 });
+		expect(sessions.usersByTemplate(null)).toEqual({ "builtin-one-of-each": 2, "builtin-simple-complex": 1 });
+		// A conversation that changed to its own text (Save for this conversation) no longer uses the template.
+		sessions.remember(other, { text: "Changed here only." });
+		expect(sessions.usersByTemplate(mine)).toEqual({ "builtin-simple-complex": 1 });
 	});
 });

@@ -29,10 +29,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 const WRITE_HEADERS = { "content-type": "application/json", "x-omp-webui": "1" };
 
-/** What a conversation carries, and the templates it may pick from. */
+/** What a conversation carries, the templates it may pick from, and how many other conversations use each (by id). */
 export interface SessionGuidanceAnswer {
 	guidance: LiveGuidance | null;
 	templates: GuidanceTemplates;
+	others: Record<string, number>;
 }
 
 export const guidanceApi = {

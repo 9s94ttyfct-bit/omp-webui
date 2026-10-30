@@ -1512,12 +1512,18 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		}
 		case "/api/model-guidance/session": {
 			// What one conversation carries, by its live id (`live`), or what would be carried for a session file that has
-			// no process now (`file`: the choice kept for it when it was last open), with the templates it may pick from.
+			// no process now (`file`: the choice kept for it when it was last open), with the templates it may pick from, and
+			// how many other conversations use each template (`others`: the tab asks before it saves into one that is shared).
 			const liveId = q.get("live");
 			if (liveId !== null) {
 				const live = pool.get(liveId);
 				if (!live || live.info.exited) return fail("Live session not found", 404);
-				return json({ guidance: live.info.guidance ?? null, templates: modelGuidance.snapshot() });
+				const own = live.info.sessionFile ? sessionKey(live.info.sessionFile) : null;
+				return json({
+					guidance: live.info.guidance ?? null,
+					templates: modelGuidance.snapshot(),
+					others: modelGuidance.sessions.usersByTemplate(own),
+				});
 			}
 			const file = store.resolveSessionPath(q.get("file") ?? "");
 			if (!file) return fail("Unknown session file", 404);
@@ -1526,6 +1532,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			return json({
 				guidance: liveGuidanceOf(pool.keptGuidance(file), modelGuidance.templates(), false),
 				templates: modelGuidance.snapshot(),
+				others: modelGuidance.sessions.usersByTemplate(sessionKey(file)),
 			});
 		}
 		case "/api/model-guidance/live": {

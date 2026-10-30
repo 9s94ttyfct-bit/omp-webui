@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { isRecord } from "../../../shared/guards.ts";
 import { GUIDANCE_SUFFIX, guidanceTextOf, type SessionGuidance } from "../../../shared/model-guidance.ts";
@@ -14,14 +14,16 @@ import type { GuidanceStore } from "./store.ts";
  *
  * Where the text reaches omp: the file named after the conversation's live id, beside the process's settings overlay
  * (`<overlay>.guidance.md`, in the same temp folder: `ApprovalStore`). The extension (`extension.ts`) is told its path in
- * `OMPW_GUIDANCE_FILE`, and reads it at every turn, so a changed template, or guidance turned off, reaches the next turn
- * of the running process without a restart. A process that is not running has no file: when it starts again the server
- * writes the conversation's guidance fresh.
+ * `OMPW_GUIDANCE_FILE`, and reads it at every turn, so a change of the conversation's guidance (another template, its
+ * own text, or none) reaches the next turn of the running process without a restart. A template edited elsewhere is not
+ * written into the files of the processes running now: each carries the text it was given until its guidance is changed,
+ * and its next process carries the template as it is then. A process that is not running has no file: when it starts
+ * again the server writes the conversation's guidance fresh.
  *
  * What a conversation keeps: the template it picked by id, and the text that template stood for when it was picked. The
  * id is what the session shows and what a page changes to another template; the text is what the extension reads, and it
- * keeps working when the template is edited (the next turn shows the edit), deleted, or the whole store is restored to
- * the shipped templates while the conversation is open.
+ * keeps working when the template is edited (a conversation opened after the edit carries the edit), deleted, or the
+ * whole store is restored to the shipped templates while the conversation is open.
  */
 
 /** One conversation's choice, as it is written down. */
@@ -145,6 +147,21 @@ export class GuidanceSessions {
 		if (!choice || this.choices.has(to)) return;
 		this.choices.set(to, choice);
 		this.save();
+	}
+
+	/**
+	 * How many conversations other than `except` (a session key; null leaves none out) use each template, by template id:
+	 * the Guidance tab asks before it saves into a template others use. A conversation whose session file is gone (deleted,
+	 * or moved and carried to its new key) is not counted: it is a choice nobody can open again.
+	 */
+	usersByTemplate(except: string | null): Record<string, number> {
+		this.refresh();
+		const users: Record<string, number> = {};
+		for (const [key, choice] of this.choices) {
+			if (!choice.template || key === except || !existsSync(key)) continue;
+			users[choice.template] = (users[choice.template] ?? 0) + 1;
+		}
+		return users;
 	}
 
 	/** The text a conversation carries, from a template id or text a page gave, as the store has them now. */

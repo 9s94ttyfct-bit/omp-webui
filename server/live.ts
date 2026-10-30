@@ -2524,8 +2524,8 @@ export class Live {
 		return {
 			template: found ? found.id : null,
 			templateName: found ? found.name : null,
-			// A template edited since shows the text it stands for now: what this process carries is its own copy (`kept`),
-			// which the server rewrites at each change of the template.
+			// What this process carries is its own copy (`kept`): a template edited since reaches it when the conversation
+			// changes its guidance, or when its next process starts (which reads the template as it is then).
 			text: kept.text,
 			live: this.guided,
 			...(this.guidanceSkipped() ? { skipped: this.guidanceSkipped() } : {}),
