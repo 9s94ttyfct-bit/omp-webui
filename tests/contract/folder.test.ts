@@ -359,19 +359,27 @@ describe("open and reveal", () => {
 			headers: { ...headers(), "content-type": "application/json", ...init.headers },
 			body: JSON.stringify({ file, ...body }),
 		});
+	/**
+	 * What this computer's page is told when it asks for what it may not have. Opening is the macOS `open`: elsewhere the
+	 * server says so first, whatever the request names (the walls it would meet are tests/unit/folder.test.ts).
+	 */
+	const refused = async (res: Response, status: number, error: string, label: string, dir = false) => {
+		const told =
+			process.platform === "darwin"
+				? { status, error }
+				: { status: 501, error: `Opening ${dir ? "folders" : "files"} from the page is only available on macOS` };
+		expect(res.status, label).toBe(told.status);
+		expect(await res.json(), label).toEqual({ error: told.error });
+	};
 
 	test("a page of this computer may ask, but nothing is executed: an executable is refused even here", async () => {
-		const res = await open({ path: "run.sh" });
-		expect(res.status).toBe(403);
-		expect(await res.json()).toEqual({ error: "An executable file is never opened" });
+		await refused(await open({ path: "run.sh" }), 403, "An executable file is never opened", "run.sh");
 	});
 
 	test("a path outside the folder is refused as everywhere else", async () => {
 		for (const path of ["../outside.txt", "/etc/hosts", "link-file", "link-dir"]) {
 			for (const reveal of [false, true]) {
-				const res = await open({ path, reveal });
-				expect(res.status, `${path} ${reveal}`).toBe(403);
-				expect(await res.json()).toEqual({ error: "Outside the folder" });
+				await refused(await open({ path, reveal }), 403, "Outside the folder", `${path} ${reveal}`);
 			}
 		}
 	});
@@ -464,20 +472,18 @@ describe("open and reveal", () => {
 
 	test("the folder action: this computer's page is refused a folder outside the conversation's, by `..`, a path or a link", async () => {
 		for (const path of ["..", "../secret", "/", "/etc", "link-dir", "link-dir/key.txt", "link-evil", "link-file"]) {
-			const res = await open({ path, dir: true });
-			expect(res.status, path).toBe(403);
-			expect(await res.json(), path).toEqual({ error: "Outside the folder" });
+			await refused(await open({ path, dir: true }), 403, "Outside the folder", path, true);
 		}
 	});
 
 	test("the folder action: a file is not a folder, whatever it is, and a folder that is not there is not found", async () => {
 		for (const path of ["README.md", "src/app.ts", "run.sh", "pic.png", "data.bin"]) {
-			const res = await open({ path, dir: true });
-			expect(res.status, path).toBe(400);
-			expect(await res.json(), path).toEqual({ error: "Only folders are opened" });
+			await refused(await open({ path, dir: true }), 400, "Only folders are opened", path, true);
 		}
-		expect((await open({ path: "no-such-folder", dir: true })).status).toBe(404);
-		expect((await open({ path: 5, dir: true })).status).toBe(400);
+		const mac = process.platform === "darwin";
+		expect((await open({ path: "no-such-folder", dir: true })).status).toBe(mac ? 404 : 501);
+		expect((await open({ path: 5, dir: true })).status).toBe(mac ? 400 : 501);
+		// The conversation is looked up before the system is asked anything: one the server does not know is not found anywhere.
 		expect((await open({ file: "no-such-conversation.jsonl", path: "", dir: true })).status).toBe(404);
 	});
 

@@ -281,12 +281,15 @@ test("GitHub out of reach is a warning that says so", async ({ page }) => {
 // ------------------------------------------------------------------ a copy that is an app: installs
 
 test.describe("installing", () => {
+	// The installers are signed disk images, and installing is the macOS app replacing itself (`codesign`, `hdiutil`,
+	// `security`): there is nothing of it to build or run elsewhere.
+	test.skip(process.platform !== "darwin", "macOS only");
 	let installers: Installers;
 	test.beforeAll(() => {
 		test.setTimeout(240_000);
 		installers = buildInstallers("good", "tampered", "otherSigner", "wrongVersion");
 	});
-	test.afterAll(() => installers.dispose());
+	test.afterAll(() => installers?.dispose());
 
 	const dmgOf = (variant: "good" | "tampered" | "otherSigner" | "wrongVersion"): string => {
 		const installer = installers.manifest.installers[variant];

@@ -8,6 +8,7 @@ import {
 	listFolder,
 	openFolderDir,
 	openFolderFile,
+	type PackageProbe,
 	type Runner,
 	readFolderDocument,
 	readFolderFile,
@@ -49,6 +50,8 @@ export interface FolderContext {
 	/** Opens or reveals the file (tests replace the system's `open`). */
 	runner?: Runner;
 	platform?: string;
+	/** Whether macOS takes a folder for a package (tests replace LaunchServices' answer, which only a Mac gives). */
+	isPackage?: PackageProbe;
 	/**
 	 * The file transfer (`download`, `archive`, `upload`: see `folder-transfer.ts`), answered for this request. Absent: there is
 	 * none (a server that does not give one answers 404). The code is loaded by the first request for one, not before.
@@ -98,7 +101,7 @@ export async function handleFolder(req: Request, url: URL, ctx: FolderContext): 
 			if (!cwd) return fail("Unknown conversation", 404);
 			const root = await rootOf(cwd);
 			// `dir`: open the folder itself in Finder (the conversation's own when `path` is empty); otherwise one file.
-			if (body.dir === true) await openFolderDir(root, body.path, ctx.platform, ctx.runner);
+			if (body.dir === true) await openFolderDir(root, body.path, ctx.platform, ctx.runner, {}, ctx.isPackage);
 			else await openFolderFile(root, body.path, body.reveal === true, ctx.platform, ctx.runner);
 			return json({ ok: true });
 		}

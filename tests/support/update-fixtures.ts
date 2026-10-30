@@ -209,8 +209,10 @@ async function makeFixtures(
  */
 export function disposeFixtures(f: Pick<Fixtures, "dir" | "keychains"> | undefined | null): void {
 	if (!f) return;
-	for (const keychain of f.keychains ?? [])
-		Bun.spawnSync(["security", "delete-keychain", keychain], { stderr: "ignore" });
+	// Without `security` (not a Mac) no keychain was made, and spawning it would throw over the failure being reported.
+	if (Bun.which("security") !== null)
+		for (const keychain of f.keychains ?? [])
+			Bun.spawnSync(["security", "delete-keychain", keychain], { stderr: "ignore" });
 	if (f.dir) rmSync(f.dir, { recursive: true, force: true });
 }
 

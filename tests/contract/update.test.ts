@@ -26,6 +26,11 @@ import { connect, request } from "../support/ws.ts";
  */
 
 const mac = process.platform === "darwin" && Bun.which("hdiutil") !== null && Bun.which("codesign") !== null;
+/**
+ * The installer a release lists. A look for releases never opens it, so where the signed disk images cannot be made (not a
+ * Mac) any file stands in for it, and a server there is no app (it has no signed bundle to be).
+ */
+const releaseDmg = () => (mac ? fixtures.installers.good?.dmg : join(import.meta.dirname, "../../package.json"));
 const root = mkdtempSync(join(tmpdir(), "ompw-update-contract-"));
 let env: Record<string, string>;
 let fixtures: Fixtures;
@@ -97,7 +102,7 @@ interface Boot {
 let counter = 0;
 
 /** A server like the app's, with the fake GitHub, a copy of the signed running app to replace, and the test as its parent. */
-async function boot(dataDir: string, extra: Record<string, string> = {}, bundled = true): Promise<Boot> {
+async function boot(dataDir: string, extra: Record<string, string> = {}, bundled = mac): Promise<Boot> {
 	mkdirSync(dataDir, { recursive: true });
 	if (!dataDirs.includes(dataDir)) dataDirs.push(dataDir);
 	const installDir = join(root, `Applications-${++counter}`);
@@ -158,7 +163,7 @@ function phases(states: AppUpdateState[]): string[] {
 }
 
 test("the server looks for a release soon after it starts, with no one asking, and a page that connects is told", async () => {
-	fake.publish({ tag: `v${NEWER}`, dmg: fixtures.installers.good?.dmg });
+	fake.publish({ tag: `v${NEWER}`, dmg: releaseDmg() });
 	const b = await boot(join(root, "data-start"));
 	await pollUntil(async () => (await b.state()).newer, "the release to be found by itself");
 	const state = await b.state();
@@ -182,7 +187,7 @@ test("the server looks for a release soon after it starts, with no one asking, a
 }, 90_000);
 
 test("a restarted server knows the release before it asks, and asks with the ETag it was given: a 304 changes nothing", async () => {
-	fake.publish({ tag: `v${NEWER}`, dmg: fixtures.installers.good?.dmg });
+	fake.publish({ tag: `v${NEWER}`, dmg: releaseDmg() });
 	const dataDir = join(root, "data-etag");
 	const a = await boot(dataDir);
 	await pollUntil(async () => (await a.state()).newer, "the first look");
@@ -196,7 +201,7 @@ test("a restarted server knows the release before it asks, and asks with the ETa
 });
 
 test("a server that is no app cannot install, and every route is for a page of this origin only", async () => {
-	fake.publish({ tag: `v${NEWER}`, dmg: fixtures.installers.good?.dmg });
+	fake.publish({ tag: `v${NEWER}`, dmg: releaseDmg() });
 	const b = await boot(join(root, "data-web"), {}, false);
 	await pollUntil(async () => (await b.state()).newer, "the release to be found");
 	expect((await b.state()).install).toEqual({ allowed: false, reason: "notApp" });

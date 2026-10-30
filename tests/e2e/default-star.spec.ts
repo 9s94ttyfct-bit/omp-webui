@@ -172,6 +172,9 @@ test("fast mode is the default by the tier the configuration has for the model's
 		{ model: GOOGLE, family: "google", tier: "flex", shown: false, filled: true },
 		{ model: GOOGLE, family: "google", tier: "priority", shown: true, filled: true },
 	];
+	// Each case starts a conversation's omp and waits for its star: about 9 s on a CI runner (4 s of it the start), so the
+	// fourteen of them took longer than the default 120 s and the last one was cut off mid-wait, not wrong.
+	test.setTimeout(cases.length * 20_000);
 	let n = 0xd30;
 	for (const c of cases) {
 		const what = `${c.family} ${c.tier ?? "no tier"}, ${c.shown ? "On" : "Off"}`;

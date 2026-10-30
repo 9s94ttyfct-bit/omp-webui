@@ -76,7 +76,9 @@ beforeAll(async () => {
 	argvLog = join(scratch, "argv.log");
 	const wrapper = join(scratch, "omp");
 	// Every omp is noted. A process that answers a side question (`--mode rpc`) is not replaced by omp (`exec`): once omp has
-	// ended, the modes of everything in the folder of its copy are written down, before the server removes it.
+	// ended, the modes of everything in the folder of its copy are written down, before the server removes it. `stat`
+	// spells "octal permission bits and name" differently on BSD (macOS) and GNU (Linux).
+	const modeAndName = process.platform === "darwin" ? "stat -f '%Lp %N'" : "stat -c '%a %n'";
 	writeFileSync(
 		wrapper,
 		String.raw`#!/bin/sh
@@ -91,7 +93,7 @@ for a in "$@"; do
   prev=$a
 done
 if [ -n "$dir" ]; then
-  { echo "scan $dir"; find "$dir" ! -type l -exec stat -f '%Lp %N' {} \; ; } >> "${argvLog}.modes"
+  { echo "scan $dir"; find "$dir" ! -type l -exec ${modeAndName} {} \; ; } >> "${argvLog}.modes"
 fi
 exit $code
 `,
@@ -318,6 +320,7 @@ test("the process that answers is the conversation's own command line on a copy,
 		expect(found.length).toBeGreaterThan(5);
 		for (const line of found) {
 			const [mode, ...path] = line.split(" ");
+			expect(mode, line).toMatch(/^[0-7]{3,4}$/);
 			expect(Number.parseInt(mode as string, 8) & 0o077, path.join(" ")).toBe(0);
 		}
 	} finally {

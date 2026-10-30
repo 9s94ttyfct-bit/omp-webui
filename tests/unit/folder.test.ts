@@ -913,6 +913,8 @@ describe("the page on this computer", () => {
 		diff: async () => null,
 		local,
 		platform: "darwin",
+		// LaunchServices answers on a Mac only; what it says is "the system's own answer" above. Here nothing is a package.
+		isPackage: async () => false,
 		runner: async (argv: string[]) => {
 			opened.push(argv);
 			return 0;

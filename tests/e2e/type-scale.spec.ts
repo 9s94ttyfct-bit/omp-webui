@@ -144,6 +144,9 @@ test("the Usage table's headers are the caption, like the cells under them", asy
 test("the key caps of the shortcuts page are the caption, and their modifier glyphs are not in the code face", async ({
 	page,
 }) => {
+	// The symbols are what an Apple platform writes (⌘⇧O; elsewhere Ctrl+Shift+O, with none to look at), so the page is
+	// told it is on a Mac, as `shortcut-hints.spec.ts` does: the faces are then those of the machine the test runs on.
+	await page.addInitScript(() => Object.defineProperty(navigator, "platform", { get: () => "MacIntel" }));
 	await page.goto("/");
 	await page.locator("body").click({ position: { x: 600, y: 10 } });
 	await page.keyboard.press("?");

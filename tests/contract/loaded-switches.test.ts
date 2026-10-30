@@ -201,8 +201,14 @@ test("turning on a skill that only the folder's own settings turn off says so at
 		expect(waited.ms).toBeGreaterThanOrEqual(3500);
 		const switched = await timed("user-skill");
 		expect(switched.body).toEqual({ ok: true, overridden: "project" });
-		// `skillSettled` would have waited its 4 s for the process to list a skill that the folder keeps off.
-		expect(switched.ms).toBeLessThan(waited.ms - 2000);
+		// What the switch does more than the control is two more of omp's `config` commands (the write, and a read of what
+		// this folder then reads), and no wait. What two such commands take is measured here too, under the same load: a
+		// switch that had waited `skillSettled`'s 4 s would take about that more than the control, one that did not about 4 s
+		// less than that. The bound is halfway: an omp that is slow to start (a CI runner's, over a second each) moves both.
+		const before = Date.now();
+		for (let i = 0; i < 2; i++) omp(["config", "get", "disabledExtensions", "--json"], project);
+		const twoCommands = Date.now() - before;
+		expect(switched.ms).toBeLessThan(waited.ms + twoCommands - 2000);
 		// The global list never had it: nothing to change there.
 		expect(readFileSync(join(s.agentDir, "config.yml"), "utf8")).not.toContain("skill:user-skill");
 		expect(skillsOf(await loaded(`live=${chat.info.liveId}`)).find((k) => k.name === "user-skill")?.enabled).toBe(

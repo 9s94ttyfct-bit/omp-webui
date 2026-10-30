@@ -292,8 +292,13 @@ describe("what a save refuses", () => {
 			["protected/file.txt", "p\n", "protected"],
 		];
 		for (const [path, text] of files) write(join(w.proj, path), text);
+		// Where names differ by case alone (Linux; not a Mac's APFS) `.GitHub` is a folder of its own, not `.github`: a hidden
+		// folder, which a page that is not on this computer is refused before anything else. This computer's page is refused it
+		// as what CI runs, by its name, as on a Mac.
+		const oneGithub = existsSync(join(w.proj, ".github", "Actions", "run.yml"));
 		for (const local of [true, false]) {
-			for (const [path, text, code] of files) {
+			for (const [path, text, protectedCode] of files) {
+				const code = !local && !oneGithub && path.startsWith(".GitHub/") ? "hidden" : protectedCode;
 				const { status, json } = await w.save({ path, text: "changed", etag: sha(text) }, w.env({ local }));
 				expect([status, json.code], `${path} ${local ? "local" : "remote"}`).toEqual([403, code]);
 				expect(readFileSync(join(w.proj, path), "utf8"), path).toBe(text);

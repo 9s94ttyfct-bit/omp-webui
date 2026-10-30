@@ -3,8 +3,8 @@ import { expect, type Page, test } from "./fixtures.ts";
 
 /**
  * The GitHub star prompt: after five days with a sent message, only while the repository is public. The clock is
- * fixed and GitHub's answer is mocked on the server's `/api/repo`; the repository is private today, so the real
- * answer never shows the card.
+ * fixed and GitHub's answer is mocked on the server's `/api/repo`, except in one test, which asks GitHub for real and
+ * holds the card to whatever it says (the repository was private when these were written; it is public now).
  */
 
 const REPO = "https://github.com/9s94ttyfct-bit/omp-webui";
@@ -92,13 +92,17 @@ test("a private repository never shows it, however long it has been used; neithe
 	}
 });
 
-test("with the real, private repository the card does not show", async ({ page }) => {
+test("with the real repository the card follows GitHub's answer: shown when it is public, never on a failed lookup", async ({
+	page,
+}) => {
 	await page.clock.setFixedTime(NOW);
 	await page.addInitScript((days) => localStorage.setItem("ompw.usageDays", JSON.stringify(days)), FIVE_DAYS);
 	await page.goto("/");
 	await expect(page.getByTestId("nav-settings")).toBeVisible();
-	await expect.poll(async () => (await (await page.request.get("/api/repo")).json()).public).toBe(false);
-	await expect(card(page)).toHaveCount(0);
+	// The server keeps its answer for a while, so this is the one the page was given: true, false, or null (no answer).
+	const isPublic = (await (await page.request.get("/api/repo")).json()).public as boolean | null;
+	if (isPublic === true) await expect(card(page)).toBeVisible();
+	else await expect(card(page)).toHaveCount(0);
 });
 
 test("a sent message counts today once; the fifth day brings the card, a rejected send counts nothing", async ({

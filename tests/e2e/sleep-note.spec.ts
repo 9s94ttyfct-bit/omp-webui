@@ -87,6 +87,15 @@ test("Settings finds the Sleep card by its name, its sentence and the words peop
 	await field.press("Enter");
 	await expect(page.locator('[data-marked="true"]')).toHaveCount(1);
 	await expect(page.getByTestId("sleep-settings")).toBeVisible();
+	if (process.platform !== "darwin") {
+		// A server that is not on a Mac has no `caffeinate` (`keepAwakeAvailable`): the card says so, with no switch to turn.
+		await expect(page.getByTestId("keep-awake")).toBeDisabled();
+		await expect(page.getByTestId("keep-awake")).not.toBeChecked();
+		await expect(page.getByTestId("keep-awake-hint")).toHaveText(
+			"This server cannot hold sleep off: it runs on a machine that is not a Mac (macOS's caffeinate is what does it).",
+		);
+		return;
+	}
 	await expect(page.getByTestId("keep-awake")).toBeChecked();
 
 	// Its switch is the preference, and turning it off is what the server reads (`ompw.keepAwake`).

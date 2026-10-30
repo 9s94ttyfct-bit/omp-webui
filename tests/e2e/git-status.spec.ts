@@ -329,10 +329,20 @@ test.describe("phone", () => {
 				return promise;
 			});
 
-		// 390 px: "main" would be "m…" beside the whole model's name (before, the model's was "Claude Opus…" too). The
-		// model's name is whole; the branch is its icon and its counts, its name in the chip's title and read out.
+		// "main" would be "m…" beside the whole model's name (before, the model's was "Claude Opus…" too). The model's name is
+		// whole; the branch is its icon and its counts, its name in the chip's title and read out. Where that starts depends
+		// on the face the system gives `ui-sans-serif`: 390 px with a Mac's, narrower with Linux's (whose letters are
+		// narrower). `narrow` is the first width from 390 down at which the name no longer fits, and the widths below are
+		// counted from it (on a Mac they are the ones this test was written with).
 		await expect.poll(async () => (await shown()).modelCut).toBe(false);
+		let narrow = 390;
+		while ((await page.getByTestId("chat-status").getAttribute("data-no-branch-name")) === null && narrow > 300) {
+			narrow -= 2;
+			await page.setViewportSize({ width: narrow, height: 844 });
+			await settled();
+		}
 		await expect(page.getByTestId("chat-status")).toHaveAttribute("data-no-branch-name", "");
+		expect((await shown()).modelCut, `the model's name is whole at ${narrow} px`).toBe(false);
 		expect((await shown()).branchPx, "the branch's name is not on the line").toBeLessThanOrEqual(1);
 		expect((await shown()).oneRow).toBe(true);
 		await expect(chip).toHaveAttribute("title", /^Branch main · /);
@@ -350,8 +360,8 @@ test.describe("phone", () => {
 		// Pixel by pixel across the width where both just fit: "main" is whole or its icon, never "ma…" (the line full to a
 		// fraction of a pixel cut it, and the whole pixels `scrollWidth` reports did not say so).
 		for (const width of [
-			...Array.from({ length: 16 }, (_, i) => 412 - i),
-			...Array.from({ length: 16 }, (_, i) => 397 + i),
+			...Array.from({ length: 16 }, (_, i) => narrow + 22 - i),
+			...Array.from({ length: 16 }, (_, i) => narrow + 7 + i),
 		]) {
 			await page.setViewportSize({ width, height: 844 });
 			await settled();
@@ -366,7 +376,8 @@ test.describe("phone", () => {
 		await page.evaluate(() => window.dispatchEvent(new Event("focus")));
 		await expect(chip).toHaveAttribute("data-branch", "feature/a-rather-long-branch-name");
 		const states: { width: number; modelCut: boolean; branchCut: boolean; branchPx: number; oneRow: boolean }[] = [];
-		for (const width of [520, 500, 480, 460, 440, 420, 400, 390, 400, 420, 440, 460, 480, 500, 520]) {
+		for (const step of [520, 500, 480, 460, 440, 420, 400, 390, 400, 420, 440, 460, 480, 500, 520]) {
+			const width = step - 390 + narrow;
 			await page.setViewportSize({ width, height: 844 });
 			await settled();
 			states.push({ width, ...(await shown()) });

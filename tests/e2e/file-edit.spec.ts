@@ -107,10 +107,12 @@ test.describe("editing and saving", () => {
 		await page.getByTestId("big-edit-save").click();
 		await expect(status(page)).toHaveText("Saved");
 		expect(onDisk("edit-me.txt")).toBe("alpha\nbeta\n");
-		// The button has the focus now: redo is the editor's.
+		// The button has the focus now: redo is the editor's. `Z`, not `z`: with Shift held a keyboard sends the capital,
+		// and Playwright sends what it is given; Ctrl with a small `z` is undo to CodeMirror on Linux (Shift+Ctrl+Z is
+		// redo there), so a small one undid the first redo instead of making the second.
 		await area(page).focus();
-		await page.keyboard.press("ControlOrMeta+Shift+z");
-		await page.keyboard.press("ControlOrMeta+Shift+z");
+		await page.keyboard.press("ControlOrMeta+Shift+Z");
+		await page.keyboard.press("ControlOrMeta+Shift+Z");
 		await page.keyboard.press("ControlOrMeta+s");
 		await expect.poll(() => onDisk("edit-me.txt")).toBe("alpha\nbeta\ngamma\n");
 
