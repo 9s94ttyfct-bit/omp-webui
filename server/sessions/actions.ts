@@ -29,6 +29,9 @@ const DELETE_SETTLE_MS = 3000;
 /** An omp started for a rename or a delete says it is ready within this, or is killed (#319). */
 const START_MS = 60_000;
 
+/** How long a short-lived omp gets to end (drain, or die of SIGKILL) before the request it served answers. */
+const END_MS = 4_000;
+
 /**
  * Session management done by omp itself: renames and deletes go through an
  * omp process (the session's live one, or a short-lived one), never by
@@ -113,6 +116,13 @@ export class SessionActions {
 		} finally {
 			if (after === "kill") client.proc.kill("SIGKILL");
 			else client.close();
+			// The conversation's write lease goes with the process, not with the answer: what is asked of the conversation
+			// next (a delete right after a rename) must not find it held by this omp, which is no process of the pool's and
+			// would count as a terminal's. One that does not drain in time is killed.
+			if (!(await Promise.race([client.whenExited.then(() => true), Bun.sleep(END_MS).then(() => false)]))) {
+				client.kill("SIGKILL");
+				await Promise.race([client.whenExited, Bun.sleep(END_MS)]);
+			}
 		}
 	}
 
