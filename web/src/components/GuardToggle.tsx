@@ -8,9 +8,9 @@ import { MODE_TEXT } from "../lib/guard-format.ts";
 import { useGuardStrings } from "../lib/guard-strings.ts";
 import {
 	GUARD_OFF,
-	guardIsOn,
 	guardOnPatch,
 	guardToggleBlock,
+	guardToggleState,
 	onChoiceOf,
 	rememberedChoice,
 	withRemembered,
@@ -27,7 +27,8 @@ export const GUARD_TOGGLE_BAR = "h-8 w-8 shrink-0 rounded-lg";
  * The guard's switch in a conversation's header, beside This session (v0.12.2): Off for this conversation alone, and back
  * on to what it was under before (`lib/guard-toggle.ts`). It is the conversation's own guard as This session shows it
  * (`LiveInfo.guard`, which every page is told), so a change made in either is shown by both, on every page. Red while the
- * guard is off. A page that may not change the guard (not this computer's) has the switch shown and not usable, and says
+ * guard is off for this conversation alone; muted, struck through, while it is off because it follows Settings › Safety,
+ * which say Off. A page that may not change the guard (not this computer's) has the switch shown and not usable, and says
  * why. Drawn for a conversation whose omp runs (`ChatView`). A chunk of its own, with the guard's strings.
  */
 export default function GuardToggle({ liveId }: { liveId: string }) {
@@ -56,18 +57,26 @@ export default function GuardToggle({ liveId }: { liveId: string }) {
 	}, [local, settings]);
 
 	if (!ready || !guard) return <span aria-hidden className={GUARD_TOGGLE_BAR} />;
-	const on = guardIsOn(guard);
+	const shown = guardToggleState(guard);
+	const on = shown === "on";
 	const block = guardToggleBlock({ local });
 	const modeName = t(MODE_TEXT[guard.config.mode].label);
 	const back = guardOnPatch(rememberedChoice(localStorage.getItem(PREF.guardBefore), key), settings);
-	const state = on ? t("guard.toggleStateOn", { mode: modeName }) : t("guard.toggleStateOff");
+	const state =
+		shown === "on"
+			? t("guard.toggleStateOn", { mode: modeName })
+			: shown === "offHere"
+				? t("guard.toggleStateOff")
+				: t("guard.toggleStateOffSettings");
 	const action =
 		block === "remote"
 			? t("guard.toggleRemote")
 			: on
 				? t("guard.toggleTurnOff")
 				: back.mode
-					? t("guard.toggleTurnOnPrevious", { mode: t(MODE_TEXT[back.mode].label) })
+					? t(shown === "offBySettings" ? "guard.toggleTurnOnHere" : "guard.toggleTurnOnPrevious", {
+							mode: t(MODE_TEXT[back.mode].label),
+						})
 					: t("guard.toggleTurnOnSettings", { mode: t(MODE_TEXT[settings ?? DEFAULT_GUARD_CONFIG.mode].label) });
 	const tip = t("guard.toggleTip", { state, action });
 
@@ -109,15 +118,19 @@ export default function GuardToggle({ liveId }: { liveId: string }) {
 				aria-busy={busy || undefined}
 				data-testid="guard-toggle"
 				data-state={on ? "on" : "off"}
+				data-off={on ? undefined : shown === "offHere" ? "here" : "settings"}
 				data-mode={guard.config.mode}
 				data-block={block ?? undefined}
 				className={cx(
 					"inline-flex items-center justify-center transition-colors",
 					GUARD_TOGGLE_BAR,
 					// Off is a shape as well as a tint (the eye struck through, a ring): a tint alone is lost on someone who cannot tell red apart.
-					on
+					// Red only for an Off chosen for this conversation; one that follows Settings' Off is muted, struck through.
+					shown === "on"
 						? "text-muted hover:bg-hover hover:text-fg"
-						: "bg-danger/15 text-danger ring-1 ring-danger/40 hover:ring-danger/70",
+						: shown === "offHere"
+							? "bg-danger/15 text-danger ring-1 ring-danger/40 hover:ring-danger/70"
+							: "text-muted ring-1 ring-border hover:bg-hover hover:text-fg",
 					block !== null && "cursor-not-allowed opacity-60",
 				)}
 				onClick={() => void toggle()}

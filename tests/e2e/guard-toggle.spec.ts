@@ -92,6 +92,7 @@ test("the switch turns the guard off for this conversation alone and back on to 
 	// Off: red, says so, kept for this conversation alone, and the gate looks at nothing.
 	await toggle.click();
 	await expect(toggle).toHaveAttribute("data-state", "off");
+	await expect(toggle).toHaveAttribute("data-off", "here");
 	await expect(toggle).toHaveAttribute("aria-checked", "false");
 	await expect(toggle).toHaveAttribute("aria-label", en.toggleStateOff);
 	await expect.poll(() => toggle.evaluate((el) => getComputedStyle(el).color)).toBe(danger);
@@ -157,21 +158,40 @@ test("the switch turns the guard off for this conversation alone and back on to 
 	await expect(toggle).toHaveAttribute("data-mode", "ask");
 });
 
-test("with nothing remembered and Settings at Off, the switch turns the guard on as the shipped default", async ({
+test("Off by following Settings is muted, Off chosen here is red; with nothing remembered, on is the shipped default", async ({
 	page,
 	e2eServer,
 }) => {
 	await setConfig(page, { mode: "off" });
 	const { liveId } = await openChat(page, 0x6b11, "Guard toggle default");
 	const toggle = page.getByTestId("guard-toggle");
-	// Off by Settings is off for this conversation too: red, and a click turns it on.
+	const danger = await dangerColor(page);
+	// Off because it follows Settings' Off: muted, not red, and it says so; a click turns it on for this conversation.
 	await expect(toggle).toHaveAttribute("data-state", "off");
+	await expect(toggle).toHaveAttribute("data-off", "settings");
+	await expect(toggle).toHaveAttribute("aria-checked", "false");
+	await expect(toggle).toHaveAttribute("aria-label", en.toggleStateOffSettings);
+	expect(await toggle.evaluate((el) => getComputedStyle(el).color)).not.toBe(danger);
 	await toggle.hover();
-	await expect(page.getByRole("tooltip")).toContainText(fill(en.toggleTurnOnPrevious, { mode: en.modeReviewer }));
+	await expect(page.getByRole("tooltip")).toContainText(en.toggleStateOffSettings);
+	await expect(page.getByRole("tooltip")).toContainText(fill(en.toggleTurnOnHere, { mode: en.modeReviewer }));
 	await toggle.click();
 	await expect(toggle).toHaveAttribute("data-state", "on");
 	await expect.poll(async () => (await guardOf(page, liveId))?.own).toEqual({ mode: "reviewer" });
 	await expect.poll(() => gateMode(e2eServer, liveId)).toBe("reviewer");
+
+	// Off for this conversation, with Settings at Off too: its own choice, so red.
+	await toggle.click();
+	await expect(toggle).toHaveAttribute("data-off", "here");
+	await expect(toggle).toHaveAttribute("aria-label", en.toggleStateOff);
+	await expect.poll(() => toggle.evaluate((el) => getComputedStyle(el).color)).toBe(danger);
+	await expect.poll(async () => (await guardOf(page, liveId))?.own).toEqual({ mode: "off" });
+
+	// Given back to Settings in This session: muted again.
+	await page.getByTestId("session-controls").click();
+	await page.getByTestId("session-guard-mode-follow").check();
+	await expect(toggle).toHaveAttribute("data-off", "settings");
+	await expect.poll(() => toggle.evaluate((el) => getComputedStyle(el).color)).not.toBe(danger);
 });
 
 test("a page that is not this computer's has the switch shown and not usable, says why, and sends nothing", async ({

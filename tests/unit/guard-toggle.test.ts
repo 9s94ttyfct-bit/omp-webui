@@ -4,9 +4,9 @@ import { DEFAULT_GUARD_CONFIG, type GuardConfig, type LiveGuard, resolveGuard } 
 import { isValidPref, MAX_PREF_LENGTH, PREF } from "../../shared/prefs.ts";
 import {
 	GUARD_OFF,
-	guardIsOn,
 	guardOnPatch,
 	guardToggleBlock,
+	guardToggleState,
 	MAX_REMEMBERED,
 	onChoiceOf,
 	readRemembered,
@@ -28,12 +28,21 @@ const under = (
 
 describe("what the switch says the conversation is under", () => {
 	test("on is any mode but Off, whether it is the conversation's own or Settings'", () => {
-		expect(guardIsOn(under(null))).toBe(true);
-		expect(guardIsOn(under({ mode: "ask" }))).toBe(true);
-		expect(guardIsOn(under({ mode: "off" }))).toBe(false);
-		expect(guardIsOn(under(null, { mode: "off" }))).toBe(false);
+		expect(guardToggleState(under(null))).toBe("on");
+		expect(guardToggleState(under({ mode: "ask" }))).toBe("on");
+		expect(guardToggleState(under({ mode: "reviewer" }, { mode: "off" }))).toBe("on");
 		// A damaged record is never off: the stricter of Settings and the default.
-		expect(guardIsOn(under(null, { mode: "off" }, true))).toBe(true);
+		expect(guardToggleState(under(null, { mode: "off" }, true))).toBe("on");
+	});
+
+	test("Off chosen for this conversation (red) is told apart from Off by following Settings (muted)", () => {
+		expect(guardToggleState(under({ mode: "off" }))).toBe("offHere");
+		expect(guardToggleState(under({ mode: "off" }, { mode: "off" }))).toBe("offHere");
+		expect(guardToggleState(under(null, { mode: "off" }))).toBe("offBySettings");
+		// Its own reviewer or switches do not make Settings' Off its own.
+		expect(guardToggleState(under({ reviewer: "a/b", askWhenUnavailable: false }, { mode: "off" }))).toBe(
+			"offBySettings",
+		);
 	});
 
 	test("what it gives back later: its own mode, following Settings, or nothing while it is off", () => {
@@ -86,7 +95,7 @@ describe("turning it off and on", () => {
 				const patch = guardOnPatch(previous, settings);
 				const own = patch.mode === null || patch.mode === undefined ? null : { mode: patch.mode };
 				const now = resolveGuard({ ...SETTINGS, mode: settings ?? "off" }, own);
-				expect(guardIsOn(now)).toBe(true);
+				expect(guardToggleState(now)).toBe("on");
 			}
 		}
 	});

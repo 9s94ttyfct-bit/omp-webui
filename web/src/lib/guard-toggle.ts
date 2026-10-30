@@ -17,7 +17,17 @@ const CHOICES: readonly GuardOnChoice[] = ["reviewer", "ask", "follow"];
 /** Conversations remembered; the least recently changed go first, so that the preference stays far below its size limit. */
 export const MAX_REMEMBERED = 40;
 
-export const guardIsOn = (guard: LiveGuard): boolean => guard.config.mode !== "off";
+/**
+ * What the switch shows: `on` (any mode but Off), `offHere` (Off chosen for this conversation alone: red), or
+ * `offBySettings` (Off because the conversation follows Settings › Safety, which say Off: muted, as nothing was chosen
+ * for it). A damaged record is never off (`resolveGuard`).
+ */
+export type GuardToggleState = "on" | "offHere" | "offBySettings";
+
+export function guardToggleState(guard: LiveGuard): GuardToggleState {
+	if (guard.config.mode !== "off") return "on";
+	return guard.own?.mode === "off" ? "offHere" : "offBySettings";
+}
 
 /**
  * What the switch gives back to a conversation whose guard is on now; null while it is off. A conversation whose kept record

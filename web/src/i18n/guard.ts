@@ -93,8 +93,10 @@ export const en = {
 	// ---- The guard's switch in a conversation's header
 	toggleStateOn: "Guard is on for this conversation: {mode}.",
 	toggleStateOff: "Guard is off for this conversation.",
+	toggleStateOffSettings: "Guard is off (following the global setting).",
 	toggleTurnOff: "Turn it off for this conversation alone.",
 	toggleTurnOnPrevious: "Turn it back on: {mode}.",
+	toggleTurnOnHere: "Turn it on for this conversation alone: {mode}.",
 	toggleTurnOnSettings: "Turn it back on: follow Settings ({mode}).",
 	toggleRemote: "It is switched on the computer omp-webui runs on.",
 	toggleTip: "{state} {action}",
