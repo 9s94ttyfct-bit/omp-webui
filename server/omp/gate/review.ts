@@ -211,16 +211,29 @@ const textOfContent = (content: unknown): string => {
 };
 
 /**
+ * Whether an entry is what omp's advisor said: the second model omp can run beside the agent, whose notes it writes as
+ * entries of their own (`custom_message`, `customType: "advisor"`, attributed to the agent), however each is delivered
+ * (steered in, queued for the turn's end, folded into the context). The reviewer is given none of it, and none of it is the
+ * person speaking: an advisor reads the conversation and writes about it, and its words ("the person approved this") are
+ * neither the person's nor the agent's. omp's own marker says so, in whatever role the entry carries its note.
+ */
+const fromAdvisor = (entry: Record<string, unknown>): boolean =>
+	entry.customType === "advisor" || bag(entry.message).customType === "advisor";
+
+/**
  * The last words of the conversation as turns, from a branch of session entries (`ctx.sessionManager.getBranch()`): what
- * the person and the agent said, not what tools answered (a tool's output is the likeliest place for an injection). A user
- * message is the person's only when omp says so (`attribution: "user"`): in a subagent, the main agent's assignment and
- * what it relays are user messages attributed to the agent, and the rules that trust "a message of their own" must not
- * read them as the person's.
+ * the person and the agent said, not what tools answered (a tool's output is the likeliest place for an injection) nor what
+ * omp's advisor noted (`fromAdvisor`). A user message is the person's only when omp says so (`attribution: "user"`): in a
+ * subagent, the main agent's assignment and what it relays are user messages attributed to the agent, and the rules that
+ * trust "a message of their own" must not read them as the person's.
  */
 export function recentTurns(branch: readonly unknown[]): Turn[] {
 	const turns: Turn[] = [];
 	for (let i = branch.length - 1; i >= 0 && turns.length < TURNS; i--) {
-		const { role, content, attribution } = bag(bag(branch[i]).message);
+		const entry = bag(branch[i]);
+		// Never the advisor's notes: the reviewer judges what the person and the agent said, not a third model's view of it.
+		if (fromAdvisor(entry)) continue;
+		const { role, content, attribution } = bag(entry.message);
 		if (role !== "user" && role !== "assistant") continue;
 		const text = textOfContent(content);
 		if (text === "") continue;
@@ -238,7 +251,8 @@ export function personSpokeAt(branch: readonly unknown[]): number {
 	for (let i = branch.length - 1; i >= 0; i--) {
 		const entry = bag(branch[i]);
 		const message = bag(entry.message);
-		if (message.role !== "user" || message.attribution !== "user") continue;
+		// An advisor's note is never the person speaking, whatever attribution it carries (see `fromAdvisor`).
+		if (fromAdvisor(entry) || message.role !== "user" || message.attribution !== "user") continue;
 		const at =
 			typeof message.timestamp === "number"
 				? message.timestamp
