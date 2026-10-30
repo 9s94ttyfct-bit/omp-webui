@@ -16,10 +16,18 @@ test("Settings says where omp put an unreadable config.yml while it shows omp's 
 	const backups = () => readdirSync(agentDir).filter((f) => f.startsWith("config.yml.broken-"));
 	try {
 		writeFileSync(config, "modelRoles:\n  default: a/b\n bad: [\n  x: y: z\n");
-		const failed = await page.request.get("/api/model-config");
-		expect(failed.status()).toBe(500);
-		const refusal: { error: string } = await failed.json();
-		expect(refusal.error).toContain("YAML Parse error");
+		// The server's own reads of omp's settings (an update check, a conversation's roles) run on timers, and the first
+		// of them to read the file is the one omp refuses and moves it aside for: this read, or one just before it. Either
+		// way the server knows where the file went.
+		const read = await page.request.get("/api/model-config");
+		if (read.status() === 200) {
+			const told: { movedAside?: string } = await read.json();
+			expect(told.movedAside).toContain("config.yml.broken-");
+		} else {
+			expect(read.status()).toBe(500);
+			const refusal: { error: string } = await read.json();
+			expect(refusal.error).toContain("YAML Parse error");
+		}
 		expect(backups()).toHaveLength(1);
 
 		await page.goto("/#/settings/models");

@@ -1,5 +1,5 @@
 import { boxOf } from "../support/geometry.ts";
-import { expect, type Locator, test } from "./fixtures.ts";
+import { expect, type Locator, type Page, test } from "./fixtures.ts";
 
 /**
  * The Usage page's title row (no model call). On a phone the title is one line, the provenance caption ("from omp
@@ -19,6 +19,10 @@ for (const [lang, title, refresh] of [
 	["en", "Usage & cost", "Refresh"],
 	["zh-CN", "用量与费用", "刷新"],
 ] as const) {
+	// The page's own Refresh, "Loading Refresh" while it loads; not a conversation in the list whose title has the word
+	// (the server of a worker keeps the conversations of the specs that ran before, "Quota probe: idle refresh" among them).
+	const refreshButton = (page: Page) =>
+		page.getByTestId("usage-page").getByRole("button", { name: new RegExp(`^(\\S+ )?${refresh}$`) });
 	test.describe(`the Usage page header in ${lang}`, () => {
 		test.beforeEach(async ({ page }) => {
 			await page.addInitScript((l) => localStorage.setItem("ompw.lang", l), lang);
@@ -31,7 +35,7 @@ for (const [lang, title, refresh] of [
 			await expect(heading).toBeVisible();
 			expect(await linesOf(heading), "the title is set on one line").toBe(1);
 			await expect(page.getByTestId("usage-page").locator("code", { hasText: "omp stats" })).toBeHidden();
-			const button = page.getByTestId("usage-page").getByRole("button", { name: refresh });
+			const button = refreshButton(page);
 			const box = await boxOf(button);
 			expect([box.width, box.height], "an icon button").toEqual([32, 32]);
 			const head = await boxOf(heading);
@@ -43,7 +47,7 @@ for (const [lang, title, refresh] of [
 			await page.goto("/#/usage");
 			await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
 			await expect(page.getByTestId("usage-page").locator("code", { hasText: "omp stats" })).toBeVisible();
-			const button = page.getByTestId("usage-page").getByRole("button", { name: refresh });
+			const button = refreshButton(page);
 			await expect(button).toBeVisible();
 			expect((await boxOf(button)).width, "a labelled button").toBeGreaterThan(60);
 		});
