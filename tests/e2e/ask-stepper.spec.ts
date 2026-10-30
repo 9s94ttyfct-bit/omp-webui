@@ -608,7 +608,10 @@ for (const win of SHORT_SIDEBAR) {
 					await sidebar.getByTestId("new-chat").focus();
 					const walked: string[] = [];
 					const hidden: string[] = [];
-					for (let i = 0; i < 150; i++) {
+					// Tab stops on each conversation of the list twice (its row, then its menu), and the list holds whatever the
+					// specs before this one left on the worker's server: the walk is bounded by that, with room for the rest.
+					const listed: unknown[] = await (await page.request.get("/api/sessions")).json();
+					for (let i = 0; i < 2 * listed.length + 100; i++) {
 						const now = await focused();
 						if (!now) break;
 						walked.push(now.name);

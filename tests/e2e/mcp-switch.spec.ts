@@ -150,22 +150,31 @@ test("while the conversation is busy the change waits for the next start; once i
 	await openDialog(page, 0xf9, "busy");
 	await waitForServers(page, ["mcp-beta"]);
 	await page.keyboard.press("Escape");
-	// A command that takes a while: omp is working, and ending it would cut it off.
-	const composer = page.getByTestId("composer");
-	await composer.fill("!sleep 6 && echo done-busy");
-	await composer.press("Enter");
-	await expect(page.getByTestId("pending-command")).toHaveCount(1);
-	await page.getByTestId("open-loaded").click();
-	await flip(page, "mcp-beta").click();
-	await expect(server(page, "mcp-beta")).toHaveAttribute("data-enabled", "false");
-	await expect(note(page)).toHaveAttribute("data-working", "true");
-	await expect(note(page)).toContainText("This conversation is busy");
-	await expect(page.getByTestId("loaded-mcp-restart-now")).toHaveCount(0);
+	// A command that runs until this test lets it end: omp is working, and ending it would cut it off. It is not a timed
+	// one: what the switch takes (omp's `/mcp disable`, then the dialog asking omp and its CLI again) has no bound on a
+	// slow machine, and a command that ended first would leave nothing busy to see.
+	const gate = join(process.env.OMPW_E2E_ROOT as string, "mcp-switch-busy-gate");
+	rmSync(gate, { force: true });
+	try {
+		const composer = page.getByTestId("composer");
+		await composer.fill(`!while [ ! -e "${gate}" ]; do sleep 0.2; done; echo done-busy`);
+		await composer.press("Enter");
+		await expect(page.getByTestId("pending-command")).toHaveCount(1);
+		await page.getByTestId("open-loaded").click();
+		await flip(page, "mcp-beta").click();
+		await expect(server(page, "mcp-beta")).toHaveAttribute("data-enabled", "false");
+		await expect(note(page)).toHaveAttribute("data-working", "true");
+		await expect(note(page)).toContainText("This conversation is busy");
+		await expect(page.getByTestId("loaded-mcp-restart-now")).toHaveCount(0);
 
-	// The command ends; nothing needs to be refreshed for the dialog to offer the restart.
-	await expect(page.getByTestId("pending-command")).toHaveCount(0, { timeout: 30_000 });
-	await expect(note(page)).toHaveAttribute("data-working", "false");
-	await expect(page.getByTestId("loaded-mcp-restart-now")).toBeVisible();
+		// The command ends; nothing needs to be refreshed for the dialog to offer the restart.
+		writeFileSync(gate, "");
+		await expect(page.getByTestId("pending-command")).toHaveCount(0, { timeout: 30_000 });
+		await expect(note(page)).toHaveAttribute("data-working", "false");
+		await expect(page.getByTestId("loaded-mcp-restart-now")).toBeVisible();
+	} finally {
+		writeFileSync(gate, "");
+	}
 	// Put it back, as the next spec expects.
 	await flip(page, "mcp-beta").click();
 	await expect(note(page)).toHaveCount(0);
