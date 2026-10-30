@@ -12,7 +12,7 @@ import { socket } from "../../web/src/lib/ws.ts";
 import { attachLive, openLive, refreshState, setPaused, useApp } from "../../web/src/store/app.ts";
 import type { LiveState } from "../../web/src/store/live.ts";
 import { type PageStore, pageStore, viewLive } from "../support/page-store.ts";
-import { pollUntil } from "../support/poll.ts";
+import { pollUntil, processExists } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type ScriptedTurn, type StubScripted, startScriptedStub } from "../support/stub-scripted.ts";
 import { connect, request } from "../support/ws.ts";
@@ -151,8 +151,20 @@ async function conversation(): Promise<Conversation> {
 
 afterEach(async () => {
 	stopWatching();
+	const pid = useApp.getState().lives[liveId]?.info.pid;
 	if (liveId) await request(ws, { t: "close", liveId }).catch(() => {});
 	liveId = "";
+	// Close leaves a working omp to finish its turn, and a goal's turn goes on to the next: its requests would be counted as
+	// the next test's (`modelRequests`), whose plan then starts at its second step. It is ended here, and is gone before the
+	// next test starts counting.
+	if (typeof pid === "number" && processExists(pid)) {
+		try {
+			process.kill(pid, "SIGKILL");
+		} catch {
+			// gone in between
+		}
+		await pollUntil(() => !processExists(pid), "the closed conversation's omp to end");
+	}
 });
 
 test("a goal whose budget is spent: omp keeps it (and refuses another), and the page keeps showing it", async () => {
