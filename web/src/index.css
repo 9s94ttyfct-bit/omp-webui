@@ -467,6 +467,14 @@ body {
 	line-height: 1.7;
 	font-size: 15px;
 	overflow-wrap: anywhere;
+	/*
+	 * Room for the end of a line of inline code that wraps (below: its cloned padding and border). Chromium breaks the line
+	 * as if that line's fragment had no end padding or border, so where the break falls at the very end of the line the
+	 * box sticks out by them (0.35 × 0.88em and 1px; 2px absorbs the rounding): into this padding, not past the column,
+	 * where the transcript cut its right border off. Which widths do it depends on the face, so it showed on Linux at
+	 * 760px and on a Mac at others.
+	 */
+	padding-inline-end: calc(0.35 * 0.88em + 2px);
 }
 .prose-omp > * + * {
 	margin-top: 0.75em;

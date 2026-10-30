@@ -53,6 +53,25 @@ test("inline code that wraps is boxed on every line", async ({ page }) => {
 			const where = `${i % 2 === 0 ? "left" : "right"} end of line ${Math.floor(i / 2) + 1}`;
 			expect(near, `the border is painted at the ${where}`).toBeLessThanOrEqual(6);
 		});
+
+		// Wherever the line breaks, a line of the span stays inside its paragraph's box: Chromium leaves the cloned end
+		// padding and border out of where it breaks, and the box stuck out by them past the column, where its right border
+		// was cut off (Linux's face did it at 760px, a Mac's at other widths). Every width from 300 to 760 px, set on the
+		// Markdown block itself.
+		const sticksOut = await code.evaluate((el) => {
+			const prose = el.closest<HTMLElement>(".prose-omp");
+			if (!prose) return ["no .prose-omp"];
+			const found: string[] = [];
+			for (let width = 300; width <= 760; width++) {
+				prose.style.width = `${width}px`;
+				const edge = prose.getBoundingClientRect().right;
+				const right = Math.max(...[...el.getClientRects()].map((r) => r.right));
+				if (right > edge + 0.05) found.push(`${width}px: ${(right - edge).toFixed(2)}px`);
+			}
+			prose.style.width = "";
+			return found;
+		});
+		expect(sticksOut).toEqual([]);
 	} finally {
 		rmSync(file, { force: true });
 	}
