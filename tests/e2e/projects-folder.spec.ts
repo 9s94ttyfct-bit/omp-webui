@@ -106,7 +106,9 @@ test("Back closes the form, and the existing folders can still be picked", async
 	mkdirSync(join(home(), "existing"), { recursive: true });
 	const dialog = await openPicker(page);
 	await dialog.getByLabel("Path").fill(home());
-	await dialog.getByRole("button", { name: "Go" }).click();
+	// Exactly: the button up to the parent folder is named after it ("Up to …"), and a temporary folder's random name can
+	// hold "go".
+	await dialog.getByRole("button", { name: "Go", exact: true }).click();
 	await dialog.getByTestId("new-project").click();
 	await dialog.getByTestId("new-project-name").fill("never");
 	await dialog.getByRole("button", { name: "Back", exact: true }).click();
