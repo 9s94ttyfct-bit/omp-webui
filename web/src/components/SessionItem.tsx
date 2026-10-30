@@ -77,7 +77,31 @@ const DOT = {
 	open: ["shell.sessionOpen", "h-1.5 w-1.5 bg-success"],
 } as const;
 
-/** One sidebar row: open on click, plus a menu with omp-backed session actions. */
+/**
+ * The row's tint is a variable (`--row-bg`): the actions are laid over the end of the name, on a backdrop of the
+ * sidebar's colour with that tint over it, which is the colour of the row under them whatever state the row is in.
+ */
+const TINT = {
+	selected: "text-fg [--row-bg:var(--color-accent-soft)]",
+	active: "text-fg [--row-bg:var(--color-hover)]",
+	rest: "text-muted [--row-bg:transparent] hover:text-fg hover:[--row-bg:color-mix(in_oklab,var(--color-hover)_70%,transparent)]",
+} as const;
+
+/** The actions at rest: not seen until the row is hovered or has focus, and always seen on a touch screen. */
+const HIDDEN = "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 touch:opacity-100";
+/** And out of the pointer's way while they are not seen: a click there is a click on the name under them. */
+const UNREACHABLE =
+	"pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto touch:pointer-events-auto";
+
+/**
+ * One sidebar row: open on click, plus a menu with omp-backed session actions.
+ *
+ * The name has the whole width of the row: the menu button takes none of it. With a mouse the button is shown over the
+ * end of the name (on a backdrop that fades in, so that the two do not run into each other) while the row is hovered,
+ * has keyboard focus, or is the open conversation, and the name stays where it is. The marks before the name (pinned,
+ * branch) are never covered, and neither are the live state's after it: the button stops where they start. On a touch
+ * screen, where nothing is hovered, the button is always shown at the end of the row, after the name, as it always was.
+ */
 export const SessionItem = memo(function SessionItem({
 	session: s,
 	mark,
@@ -108,15 +132,34 @@ export const SessionItem = memo(function SessionItem({
 	);
 	const stateLabel = (state: keyof typeof DOT) =>
 		light ? t("mode.liveState", { state: t(DOT[state][0]) }) : t(DOT[state][0]);
+	// What the live process is doing, after the name.
+	const trail =
+		liveState === "paused" ? (
+			<Pause
+				size={11}
+				className="shrink-0 text-accent"
+				fill="currentColor"
+				role="img"
+				aria-label={t("shell.sessionPaused")}
+			/>
+		) : liveState !== undefined ? (
+			<>
+				{light ? <Feather size={11} className="shrink-0 text-faint" aria-hidden /> : null}
+				<span
+					className={cx("shrink-0 rounded-full", DOT[liveState][1])}
+					role="img"
+					aria-label={stateLabel(liveState)}
+					title={stateLabel(liveState)}
+				/>
+			</>
+		) : null;
+	// The open conversation's actions are always shown, and so are those of a row whose menu is open.
+	const shown = active || menuOpen;
 	return (
 		<div
 			className={cx(
-				"group relative flex items-center rounded-lg",
-				selecting && selected
-					? "bg-accent-soft text-fg"
-					: active && !selecting
-						? "bg-hover text-fg"
-						: "text-muted hover:bg-hover/70 hover:text-fg",
+				"group relative flex items-center rounded-lg bg-(--row-bg)",
+				selecting && selected ? TINT.selected : active && !selecting ? TINT.active : TINT.rest,
 			)}
 		>
 			<button
@@ -133,7 +176,8 @@ export const SessionItem = memo(function SessionItem({
 				})}
 				onClick={(e) => (selecting ? onSelect?.(s.file, e) : onOpen(s.file))}
 				className={cx(
-					"flex min-w-0 flex-1 items-center gap-2 rounded-l-lg py-1.5 pr-1 pl-2.5 text-left text-sm focus-visible:-outline-offset-2",
+					"flex min-w-0 flex-1 items-center gap-2 rounded-lg py-1.5 pr-2.5 pl-2.5 text-left text-sm focus-visible:-outline-offset-2",
+					!selecting && "touch:rounded-r-none touch:pr-1",
 					snippet !== undefined && "flex-wrap gap-y-0.5",
 				)}
 			>
@@ -148,28 +192,10 @@ export const SessionItem = memo(function SessionItem({
 				{s.parentSession ? (
 					<GitBranch size={13} className="shrink-0 text-faint" aria-label={t("shell.sessionBranchMark")} />
 				) : null}
-				<span className="min-w-0 flex-1 truncate">
+				<span data-testid="session-title" className="min-w-0 flex-1 truncate">
 					<Mark text={sessionLabel(s)} positions={mark ?? []} />
 				</span>
-				{liveState === "paused" ? (
-					<Pause
-						size={11}
-						className="shrink-0 text-accent"
-						fill="currentColor"
-						role="img"
-						aria-label={t("shell.sessionPaused")}
-					/>
-				) : liveState !== undefined ? (
-					<>
-						{light ? <Feather size={11} className="shrink-0 text-faint" aria-hidden /> : null}
-						<span
-							className={cx("shrink-0 rounded-full", DOT[liveState][1])}
-							role="img"
-							aria-label={stateLabel(liveState)}
-							title={stateLabel(liveState)}
-						/>
-					</>
-				) : null}
+				{trail}
 				{snippet === undefined ? null : (
 					// The whole width under the name: a line of the message is what says why the row is listed.
 					<span data-testid="session-item-snippet" className="w-full truncate text-xs text-faint">
@@ -178,49 +204,70 @@ export const SessionItem = memo(function SessionItem({
 				)}
 			</button>
 			{selecting ? null : (
-				<Menu.Root open={menuOpen} onOpenChange={setMenuOpen}>
-					<Menu.Trigger asChild>
-						<button
-							ref={menuTrigger}
-							type="button"
-							aria-label={t("shell.sessionActionsFor", { label: sessionLabel(s) })}
-							data-testid="session-menu"
-							className="mr-1 rounded-md p-1.5 text-faint opacity-0 hover:bg-surface hover:text-fg group-hover:opacity-100 pointer-coarse:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
-						>
-							<MoreHorizontal size={15} />
-						</button>
-					</Menu.Trigger>
-					{/*
-						A chunk that is gone is a toast, not the Reload screen: the rest of the sidebar stays, the menu is closed, and
-						the next time it is opened the chunk is asked for again (the boundary is cleared by the menu closing).
-						The boundary is outside the portal, not inside it: Radix hands the portal's child a ref to read its animation
-						off the element (`Presence`), which a class component answers with its instance, and `getComputedStyle` on
-						that throws, so that the menu would crash the whole app the moment it opens.
-					*/}
-					<ErrorBoundary
-						resetKey={menuOpen}
-						fallback={() => null}
-						onError={() => {
-							retrySessionMenu();
-							setMenuOpen(false);
-							useApp.getState().toast("error", t("shell.errorSessionMenuLoad"));
-						}}
+				// Over the end of the row, clear of the focus ring at its top and bottom; on a touch screen, after the name.
+				<div className="pointer-events-none absolute inset-y-0.5 right-0 flex pr-2.5 touch:static touch:pr-1">
+					<div
+						data-testid="session-actions"
+						className={cx(
+							"flex items-center bg-bg-soft bg-[linear-gradient(var(--row-bg),var(--row-bg))] pl-6 [mask-image:linear-gradient(to_right,transparent,black_1.5rem)]",
+							"touch:bg-transparent touch:bg-none touch:pl-0 touch:[mask-image:none]",
+							shown ? "opacity-100" : HIDDEN,
+						)}
 					>
-						<Menu.Portal>
-							<Suspense fallback={null}>
-								<SessionMenu
-									session={s}
-									pinned={pinned}
-									archived={archived}
-									trigger={menuTrigger}
-									onAction={onAction}
-									onTogglePin={onTogglePin}
-									onToggleArchive={onToggleArchive}
-								/>
-							</Suspense>
-						</Menu.Portal>
-					</ErrorBoundary>
-				</Menu.Root>
+						<Menu.Root open={menuOpen} onOpenChange={setMenuOpen}>
+							<Menu.Trigger asChild>
+								<button
+									ref={menuTrigger}
+									type="button"
+									aria-label={t("shell.sessionActionsFor", { label: sessionLabel(s) })}
+									data-testid="session-menu"
+									className={cx(
+										"rounded-md p-1.5 text-faint hover:bg-surface hover:text-fg",
+										shown ? "pointer-events-auto opacity-100" : [HIDDEN, UNREACHABLE],
+									)}
+								>
+									<MoreHorizontal size={15} />
+								</button>
+							</Menu.Trigger>
+							{/*
+								A chunk that is gone is a toast, not the Reload screen: the rest of the sidebar stays, the menu is closed, and
+								the next time it is opened the chunk is asked for again (the boundary is cleared by the menu closing).
+								The boundary is outside the portal, not inside it: Radix hands the portal's child a ref to read its animation
+								off the element (`Presence`), which a class component answers with its instance, and `getComputedStyle` on
+								that throws, so that the menu would crash the whole app the moment it opens.
+							*/}
+							<ErrorBoundary
+								resetKey={menuOpen}
+								fallback={() => null}
+								onError={() => {
+									retrySessionMenu();
+									setMenuOpen(false);
+									useApp.getState().toast("error", t("shell.errorSessionMenuLoad"));
+								}}
+							>
+								<Menu.Portal>
+									<Suspense fallback={null}>
+										<SessionMenu
+											session={s}
+											pinned={pinned}
+											archived={archived}
+											trigger={menuTrigger}
+											onAction={onAction}
+											onTogglePin={onTogglePin}
+											onToggleArchive={onToggleArchive}
+										/>
+									</Suspense>
+								</Menu.Portal>
+							</ErrorBoundary>
+						</Menu.Root>
+					</div>
+					{/* A stand-in for the live state's marks, as wide as they are: the backdrop stops where they start. */}
+					{trail ? (
+						<span aria-hidden className="invisible flex items-center gap-2 pl-2 touch:hidden">
+							{trail}
+						</span>
+					) : null}
+				</div>
 			)}
 		</div>
 	);

@@ -9,6 +9,12 @@
 @custom-variant composer-narrow (&:where([data-composer-narrow] *):not(:where([data-composer-more] *)));
 /* The other way round: only inside that "More" panel while the footer is narrow, where a control says its name. */
 @custom-variant composer-more (&:where([data-composer-narrow] [data-composer-more] *));
+/* A screen without a hover (a phone, a tablet), or a finger for a pointer: what shows on hover elsewhere is always shown. */
+@custom-variant touch {
+	@media (hover: none), (pointer: coarse) {
+		@slot;
+	}
+}
 
 @theme inline {
 	--color-bg: var(--bg);
