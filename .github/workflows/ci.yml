@@ -72,6 +72,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      # On Linux the temp folder is /tmp, which the guard's classifier counts as scratch space: nothing written there is
+      # "outside the project". The tests' own folders (and the home folders they give omp) stand for places outside it, as
+      # they are under macOS's per-user TMPDIR; here they go under the runner's temp folder, which is not /tmp.
+      - run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - name: Install latest omp
@@ -91,6 +95,7 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
+      - run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v4
         with:
@@ -100,7 +105,8 @@ jobs:
         run: |
           bun install -g @oh-my-pi/pi-coding-agent@latest
           echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
-      - run: bunx playwright install --with-deps chromium
+      # Chromium for most specs; WebKit for the iPhone, iPad and macOS-app ones, which launch it themselves.
+      - run: bunx playwright install --with-deps chromium webkit
       - run: bun run test:e2e --shard=${{ matrix.shard }}/8
         env:
           PLAYWRIGHT_CHANNEL: chromium
