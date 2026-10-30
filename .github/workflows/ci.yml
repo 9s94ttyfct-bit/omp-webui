@@ -2,9 +2,12 @@ name: CI
 
 # Every push to main and every pull request runs every gate that needs no model login: type check, lint (with the commit
 # author check, scripts/check-authors.ts), the build with its first-load size budget, the parity report, unit + contract
-# (`test:release`) and the offline end-to-end suite in eight shards. The tests that call a real model skip themselves here;
-# `bun scripts/release-local.ts vX.Y.Z` runs them (`test:live`) on the maintainer's Mac, and only for a commit this
-# workflow passed on. A newer push to the same branch or pull request cancels the run it supersedes.
+# and the offline end-to-end suite, each split between runners by how long its parts take (scripts/test-shard.ts,
+# scripts/e2e-shard.ts). A change to nothing but documentation runs the checks only. The tests that call a real model skip
+# themselves here; `bun scripts/release-local.ts vX.Y.Z` runs them (`test:live`) on the maintainer's Mac, and only for a
+# commit this workflow passed on. A newer push to the same branch or pull request cancels the run it supersedes.
+#
+# The test jobs take an `os` from their matrix, so another system is one more entry there.
 on:
   push:
     branches: [main]
@@ -22,7 +25,48 @@ env:
   # No model login in CI: the live-model tests skip themselves, and nothing asks omp for a token.
   OMPW_E2E_OFFLINE: "1"
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
+  changes:
+    name: what changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # The tests run unless every file the push or pull request changes is documentation: a README, a release note, or
+      # a page of docs/ other than TECHNICAL.md (the unit tests read its table of omp's interfaces). A run by hand, a new
+      # branch or a force push runs them.
+      - id: diff
+        env:
+          BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ -n "$BASE" ]; then
+            range="$BASE...$HEAD"
+          elif [ "$GITHUB_EVENT_NAME" = push ] && [ -n "$BEFORE" ] && ! echo "$BEFORE" | grep -q '^0*$' && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            range="$BEFORE..$GITHUB_SHA"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          code=false
+          while IFS= read -r file; do
+            case "$file" in
+              docs/TECHNICAL.md) code=true ;;
+              README*.md | release-notes/* | docs/*) ;;
+              *) code=true ;;
+            esac
+          done < <(git diff --name-only "$range")
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+
   checks:
     name: typecheck, lint, privacy, build, parity
     runs-on: ubuntu-latest
@@ -67,9 +111,16 @@ jobs:
       - run: bun run parity
 
   tests:
-    name: unit + contract
-    runs-on: ubuntu-latest
+    name: unit + contract ${{ matrix.shard }}/3 (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       # On Linux the temp folder is /tmp, which the guard's classifier counts as scratch space: nothing written there is
@@ -82,21 +133,31 @@ jobs:
         run: |
           bun install -g @oh-my-pi/pi-coding-agent@latest
           echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
-      - run: bun run test:release
+      # What the runner has: the timings and the shard counts are only as good as it is like the last one.
+      - run: nproc && free -m
+      # `bun run test:release`'s files, a third of them by the time each took (.bun-test-timings.json).
+      - run: |
+          mapfile -t files < <(bun scripts/test-shard.ts --shard ${{ matrix.shard }}/3)
+          bun scripts/with-model-login.ts bun test --parallel --timeout 30000 --timings=.bun-test-timings.json "${files[@]}"
 
   e2e:
-    name: e2e (offline, shard ${{ matrix.shard }}/8)
-    runs-on: ubuntu-latest
-    # The shard with chat-follow's WebKit phone and iPad cases runs about 43 minutes (they alone are 26).
-    timeout-minutes: 60
-    # Each worker owns its server; a 4-vCPU runner has one (playwright.config.ts). Eight runners each take an eighth.
+    name: e2e ${{ matrix.shard }}/16 (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    # Each worker owns its server; a 4-vCPU runner has one (playwright.config.ts). Sixteen runners each take a sixteenth of
+    # the suite's time (tests/e2e/timings.json, refreshed by scripts/e2e-timings.ts from the reports uploaded below).
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        os: [ubuntu-latest]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@v4
-      - run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - run: |
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TOOL_CACHE/ms-playwright" >> "$GITHUB_ENV"
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v4
         with:
@@ -106,18 +167,51 @@ jobs:
         run: |
           bun install -g @oh-my-pi/pi-coding-agent@latest
           echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
-      # Chromium for most specs; WebKit for the iPhone, iPad and macOS-app ones, which launch it themselves.
-      - run: bunx playwright install --with-deps chromium webkit
-      - run: bun run test:e2e --shard=${{ matrix.shard }}/8
+      # Chromium for most specs; WebKit for the iPhone, iPad and macOS-app ones, which launch it themselves. The browsers
+      # are kept between runs (their versions are bun.lock's Playwright's); the system libraries they need are not.
+      - id: browsers
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.tool_cache }}/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - if: steps.browsers.outputs.cache-hit != 'true'
+        run: bunx playwright install --with-deps chromium webkit
+      - if: steps.browsers.outputs.cache-hit == 'true'
+        run: bunx playwright install-deps chromium webkit
+      - run: bun scripts/e2e-shard.ts --shard ${{ matrix.shard }}/16 --out "$RUNNER_TEMP/e2e-tests.txt"
+      - run: bun run test:e2e --test-list "$RUNNER_TEMP/e2e-tests.txt"
         env:
           PLAYWRIGHT_CHANNEL: chromium
+          OMPW_E2E_JSON: ${{ runner.temp }}/e2e-report.json
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: e2e-shard-${{ matrix.shard }}
+          name: e2e-shard-${{ matrix.os }}-${{ matrix.shard }}
           # `test:e2e` writes each run's traces and report to `.tmp/e2e/<run>/results` and `/report` (scripts/e2e.ts).
           path: |
             .tmp/e2e/*/results
             .tmp/e2e/*/report
           include-hidden-files: true
           retention-days: 14
+      # What each test took, for the next refresh of tests/e2e/timings.json.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-report-${{ matrix.os }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/e2e-report.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # One check that says whether the run passed: every job did, or was not needed (documentation only).
+  ci-ok:
+    name: CI ok
+    if: always()
+    needs: [changes, checks, tests, e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          case " $RESULTS " in *" failure "* | *" cancelled "*) exit 1 ;; esac

@@ -14,7 +14,12 @@ export default defineConfig({
 	// `bun run test:e2e` gives each run folders of its own (`.tmp/e2e/<run>/`, set by `scripts/e2e.ts`, #769): a second run
 	// in this checkout never removes the first one's traces or report. Unset (a run started by hand), the usual ones.
 	outputDir: process.env.OMPW_E2E_OUTPUT ?? "test-results",
-	reporter: [["list"], ["html", { open: "never", outputFolder: process.env.OMPW_E2E_REPORT ?? "playwright-report" }]],
+	reporter: [
+		["list"],
+		["html", { open: "never", outputFolder: process.env.OMPW_E2E_REPORT ?? "playwright-report" }],
+		// What each test took (CI keeps it: `scripts/e2e-timings.ts` makes the timings CI's runners are split by from it).
+		...(process.env.OMPW_E2E_JSON ? [["json", { outputFile: process.env.OMPW_E2E_JSON }] as const] : []),
+	],
 	use: {
 		channel: process.env.PLAYWRIGHT_CHANNEL ?? "chrome",
 		viewport: { width: 1400, height: 900 },
