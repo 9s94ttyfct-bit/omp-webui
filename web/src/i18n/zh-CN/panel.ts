@@ -86,6 +86,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	agentTokens: "token",
 	agentCost: "费用",
 	agentTime: "耗时",
+	agentContextPercent: "上下文 {percent}%",
 	agentAssignment: "任务说明",
 	agentAssignments: "子代理的任务说明",
 	agentTask: "任务",

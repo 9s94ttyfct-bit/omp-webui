@@ -30,13 +30,14 @@ import { fmtClock, fmtCost, fmtTokens } from "../lib/format.ts";
 import { useMediaQuery, useNarrowerThan } from "../lib/media.ts";
 import { useNow } from "../lib/now.ts";
 import { serverOffsetMs } from "../lib/server-clock.ts";
-import { type AgentRow, ENDED, elapsedMs, isOver, rowTotals } from "../lib/subagents.ts";
+import { type AgentRow, ENDED, elapsedMs, isOver, rowContext, rowTotals } from "../lib/subagents.ts";
 import { useAgentRows } from "../store/agents.ts";
 import { useApp } from "../store/app.ts";
 import type { LiveState } from "../store/live.ts";
 import { GraphControls } from "./AgentGraphControls.tsx";
 import { Minimap } from "./AgentGraphMinimap.tsx";
 import { AgentDetail, StatusIcon, statusLabel } from "./Agents.tsx";
+import { ContextPercent } from "./ContextPercent.tsx";
 import type { LiveDot } from "./SessionItem.tsx";
 import { liveDotsOf } from "./Sidebar.tsx";
 import { argSummary } from "./ToolCard.tsx";
@@ -902,6 +903,7 @@ function Node({
 					? t("pages.agentsMainWorking")
 					: t("pages.agentsMainIdle");
 	const name = row ? row.name : t("pages.agentsMain");
+	const ctx = row ? rowContext(row) : undefined;
 	return (
 		<button
 			type="button"
@@ -943,6 +945,13 @@ function Node({
 						// biome-ignore lint/suspicious/noArrayIndexKey: a card's lines are in a fixed order
 						<span key={i} className={cx("truncate", i === 0 ? "text-muted" : "text-faint tabular-nums")}>
 							{line}
+							{/* How full its context is, after its model and time. */}
+							{i === 1 && ctx ? (
+								<>
+									{line ? " · " : null}
+									<ContextPercent ctx={ctx} />
+								</>
+							) : null}
 						</span>
 					))}
 				</>

@@ -2,6 +2,7 @@ import { finite } from "@shared/guards.ts";
 import type { SessionEntry, SubagentFile } from "@shared/protocol.ts";
 import { isOverStatus, isWorkingStatus } from "@shared/subagent-status.ts";
 import type { SubagentState } from "../store/live.ts";
+import { type ContextUsage, progressContext } from "./context-usage.ts";
 import { blocks, messageOf } from "./messages.ts";
 import { taskItemsOf } from "./subagent-assignment.ts";
 import type { UsageParts } from "./totals.ts";
@@ -186,6 +187,14 @@ export function rowSpend(row: AgentRow): RowSpend {
 export function rowTotals(row: AgentRow): { tokens: number; cost: number } {
 	const { parts, pending } = rowSpend(row);
 	return { tokens: parts.input + parts.output + parts.cacheRead + parts.cacheWrite + pending, cost: parts.cost };
+}
+
+/**
+ * How full a subagent's context window is, from omp's progress record of it (frames or `get_subagents`), or undefined
+ * when nothing says: a subagent known only from its transcript, or one that has not made a request yet.
+ */
+export function rowContext(row: AgentRow): ContextUsage | undefined {
+	return progressContext(row.live?.progress);
 }
 
 /** The arguments of the tool call `toolCallId` in a transcript, or undefined when it has no such call. */

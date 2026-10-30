@@ -94,6 +94,7 @@ export const en = {
 	agentTokens: "tokens",
 	agentCost: "cost",
 	agentTime: "time",
+	agentContextPercent: "ctx {percent}%",
 	agentAssignment: "Assignment",
 	agentAssignments: "Assignments of the subagents",
 	agentTask: "Task",

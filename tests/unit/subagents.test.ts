@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { OmpFrame, SessionEntry, SubagentFile, UsageTotals } from "../../shared/protocol.ts";
+import { contextLevel } from "../../web/src/lib/context-usage.ts";
 import { startedByMainAgent } from "../../web/src/lib/subagent-continue.ts";
 import {
 	type AgentRow,
@@ -9,6 +10,7 @@ import {
 	isRunning,
 	jobRows,
 	parentId,
+	rowContext,
 	rowSpend,
 	subagentsForToolCall,
 	toolCallArguments,
@@ -176,6 +178,67 @@ describe("what a row has spent", () => {
 		// The transcript has caught up (and passed the frames): nothing is added to it.
 		expect(rowSpend(fresh).parts.cost).toBe(0.04);
 		expect(rowSpend(fresh).pending).toBe(0);
+	});
+});
+
+describe("how full a subagent's context is", () => {
+	const ctxFrame = (id: string, p: Record<string, unknown>): OmpFrame => ({
+		type: "subagent_progress",
+		payload: { progress: { id, status: "running", ...p } },
+	});
+
+	test("is omp's contextTokens of contextWindow from a progress frame, as a percentage", () => {
+		const subs = applySubagentFrame({}, ctxFrame("Scout", { contextTokens: 41_000, contextWindow: 100_000 }), NOW);
+		const [row] = agentRows(undefined, subs);
+		expect(rowContext(row)).toEqual({ tokens: 41_000, contextWindow: 100_000, percent: 41 });
+	});
+
+	test("follows the latest frame, and a frame that leaves it out keeps the last one", () => {
+		let subs = applySubagentFrame({}, ctxFrame("Scout", { contextTokens: 10_000, contextWindow: 200_000 }), NOW);
+		subs = applySubagentFrame(subs, ctxFrame("Scout", { contextTokens: 170_000, contextWindow: 200_000 }), NOW + 1);
+		expect(rowContext(agentRows(undefined, subs)[0])?.percent).toBe(85);
+		subs = applySubagentFrame(subs, ctxFrame("Scout", { toolCount: 3 }), NOW + 2);
+		expect(rowContext(agentRows(undefined, subs)[0])?.percent).toBe(85);
+	});
+
+	test("comes from omp's registry (get_subagents) for a tab that attached late, and stays once it has finished", () => {
+		const subs = mergeSnapshot(
+			{},
+			[{ id: "Late", status: "completed", progress: { id: "Late", contextTokens: 50_000, contextWindow: 400_000 } }],
+			NOW,
+		);
+		const [row] = agentRows(undefined, subs);
+		expect(row.running).toBe(false);
+		expect(rowContext(row)).toEqual({ tokens: 50_000, contextWindow: 400_000, percent: 12.5 });
+	});
+
+	test("is unknown, not 0%, without both figures: no frame, only a transcript, nothing measured yet, or junk", () => {
+		expect(rowContext(agentRows([file("Disk", 1000)], undefined)[0])).toBeUndefined();
+		expect(rowContext(agentRows(undefined, { A: live("A", "running") })[0])).toBeUndefined();
+		for (const p of [
+			{ contextTokens: 0, contextWindow: 200_000 },
+			{ contextTokens: 5000 },
+			{ contextWindow: 200_000 },
+			{ contextTokens: 5000, contextWindow: 0 },
+			{ contextTokens: Number.NaN, contextWindow: 200_000 },
+			{ contextTokens: "5000", contextWindow: 200_000 },
+		]) {
+			const [row] = agentRows(undefined, { A: live("A", "running", { progress: { id: "A", ...(p as object) } }) });
+			expect([p, rowContext(row)]).toEqual([p, undefined]);
+		}
+	});
+
+	test("is coloured as the status line's meter: past 60% a warning, past 80% high", () => {
+		expect([0.5, 41, 60, 60.1, 80, 80.1, 100, 120].map(contextLevel)).toEqual([
+			"ok",
+			"ok",
+			"ok",
+			"warn",
+			"warn",
+			"high",
+			"high",
+			"high",
+		]);
 	});
 });
 
