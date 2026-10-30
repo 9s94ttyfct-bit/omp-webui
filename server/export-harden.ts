@@ -9,10 +9,16 @@ import { exportGuard } from "./export-guard.ts";
  *
  * `hardenExport` puts two things first in the file's `<head>`, right after its charset declaration (which has to stay
  * within the first 1024 bytes):
- *  - a Content-Security-Policy `<meta>` that allows only the file's own inline scripts (by hash), inline styles and
- *    `data:` images, and no connection, frame, form, base or anything else;
+ *  - a Content-Security-Policy `<meta>` that allows only the file's own inline scripts (by hash), the external scripts it
+ *    pins with Subresource Integrity (by their exact address and that hash), inline styles and `data:` images, and no
+ *    connection, frame, form, base or anything else;
  *  - the script of `export-guard.ts`, which makes the HTML the page builds inert even where a policy cannot (it shows
  *    raw HTML as text, refuses unsafe link and image addresses, and sanitises what is parsed into the document).
+ *
+ * A released omp (18.14 and later) does not inline its viewer: the file loads it, `marked` and `highlight.js` from
+ * `build.stencil.so` and `stencil.so` when it is opened, each `<script src>` pinned by an `integrity` hash. Those, and only
+ * those, are allowed: an external script without such a pin, or whose address is not a plain `https:` one the policy can
+ * name exactly, stays refused, and so does any other request.
  */
 
 const GUARD = `(${exportGuard.toString()})();`;
@@ -27,10 +33,26 @@ function sourceOf(text: string): string {
 
 /** What the page contains that the policy and the placement depend on. */
 interface Scan {
-	/** CSP sources of every inline script that runs (data blocks such as the session's JSON do not). */
+	/**
+	 * CSP sources of every script that runs: inline ones by hash (data blocks such as the session's JSON do not run),
+	 * external ones pinned by Subresource Integrity by their exact address and their pinned hash.
+	 */
 	scripts: string[];
 	charset: boolean;
 	head: boolean;
+}
+
+/** An address the policy can allow exactly: `https:`, a host, a path, no query or fragment (CSP ignores those). */
+const EXACT_URL = /^https:\/\/[a-z0-9.-]+(?::\d+)?\/[\w.~%/-]*$/i;
+/** One Subresource Integrity hash, as a CSP hash source spells it. */
+const PIN = /^sha(?:256|384|512)-[A-Za-z0-9+/]+={0,2}$/;
+
+/** The CSP sources of an external script: its exact address and its pin, or none when it is not pinned exactly. */
+function pinnedSources(src: string | null, integrity: string | null): string[] {
+	const url = src?.trim() ?? "";
+	const pin = integrity?.trim() ?? "";
+	if (!EXACT_URL.test(url) || !PIN.test(pin)) return [];
+	return [url, `'${pin}'`];
 }
 
 /** Read the document as a browser tokenises it, so that each script's text is what the browser will hash. */
@@ -41,10 +63,13 @@ async function scan(html: string): Promise<Scan> {
 		.on("script", {
 			element(el) {
 				const type = el.getAttribute("type");
-				script = {
-					text: "",
-					runs: !el.hasAttribute("src") && (type === null || type.trim() === "" || RUNS.test(type.trim())),
-				};
+				const runs = type === null || type.trim() === "" || RUNS.test(type.trim());
+				if (el.hasAttribute("src")) {
+					if (runs) found.scripts.push(...pinnedSources(el.getAttribute("src"), el.getAttribute("integrity")));
+					script = null;
+					return;
+				}
+				script = { text: "", runs };
 				el.onEndTag(() => {
 					if (script?.runs) found.scripts.push(sourceOf(script.text));
 					script = null;
@@ -69,7 +94,10 @@ async function scan(html: string): Promise<Scan> {
 	return found;
 }
 
-/** The policy of an export: the page's own inline scripts (`scripts`, by hash) and styles, inline images, nothing else. */
+/**
+ * The policy of an export: the page's own scripts (`scripts`: inline ones by hash, pinned external ones by address and
+ * hash) and styles, inline images, nothing else.
+ */
 export function exportPolicy(scripts: readonly string[]): string {
 	return [
 		"default-src 'none'",
@@ -82,7 +110,7 @@ export function exportPolicy(scripts: readonly string[]): string {
 	].join("; ");
 }
 
-/** `html` with the policy and the guard script put first in its head; the page's own scripts are allowed by hash. */
+/** `html` with the policy and the guard script put first in its head; the page's own scripts are allowed as `scan` found them. */
 export async function hardenExport(html: string): Promise<string> {
 	const { scripts, charset, head } = await scan(html);
 	const policy = exportPolicy([...scripts, sourceOf(GUARD)]);

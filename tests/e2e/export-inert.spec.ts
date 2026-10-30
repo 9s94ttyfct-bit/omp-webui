@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { FIXTURE_BUCKET, FIXTURE_CWD } from "../support/fixtures.ts";
 import { expect, test } from "./fixtures.ts";
@@ -7,8 +7,20 @@ import { expect, test } from "./fixtures.ts";
  * An exported conversation is a file opened from disk, and it holds the whole transcript. `omp --export` leaves raw HTML
  * in the model's Markdown and carries no policy: a reply with `<img onerror>` ran script when the file was opened,
  * `![x](https://…)` fetched, `<meta refresh>` navigated away. The export the web UI hands out must be inert: this opens
- * one of a hostile transcript from disk in a browser that has no cookie, and nothing may run, load or leave.
+ * one of a hostile transcript from disk in a browser that has no cookie, and nothing may run, load or leave. The one
+ * exception is what a released omp (18.14 and later) puts in the file instead of inlining it: its viewer, `marked` and
+ * `highlight.js`, each a `<script src>` pinned by an `integrity` hash, which the file loads when it is opened (with an omp
+ * that inlines them there are none).
  */
+
+/** The external scripts the export pins by Subresource Integrity: the only addresses it may load. */
+function pinnedScripts(file: string): string[] {
+	return [...readFileSync(file, "utf8").matchAll(/<script\b[^>]*>/g)]
+		.map((tag) => tag[0])
+		.filter((tag) => / integrity="sha(?:256|384|512)-[A-Za-z0-9+/]+={0,2}"/.test(tag))
+		.map((tag) => / src="(https:\/\/[^"]+)"/.exec(tag)?.[1])
+		.filter((src): src is string => src !== undefined);
+}
 
 const ts = (min: number) => new Date(Date.UTC(2026, 0, 12, 10, min)).toISOString();
 const usage = {
@@ -140,13 +152,21 @@ test("an exported hostile conversation opened from disk runs nothing, loads noth
 	const saved = testInfo.outputPath("export.html");
 	await download.saveAs(saved);
 
-	// Opened as a user does: from disk, in a browser with no cookie, where anything but the file itself is a failure.
+	// Opened as a user does: from disk, in a browser with no cookie, where anything but the file itself and the scripts it
+	// pins is a failure.
+	const pinned = pinnedScripts(saved);
 	const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
 	const outside: string[] = [];
+	const fetched: string[] = [];
 	await context.route(
 		(url) => url.protocol !== "file:",
 		(route) => {
-			outside.push(route.request().url());
+			const url = route.request().url();
+			if (pinned.includes(url)) {
+				fetched.push(url);
+				return route.continue();
+			}
+			outside.push(url);
 			return route.abort();
 		},
 	);
@@ -185,6 +205,7 @@ test("an exported hostile conversation opened from disk runs nothing, loads noth
 
 	expect(state.ran).toEqual([]);
 	expect(outside).toEqual([]);
+	expect([...fetched].sort()).toEqual([...pinned].sort());
 	expect(navigations.every((u) => u.startsWith("file://"))).toBe(true);
 	expect(errors).toEqual([]);
 	expect(state.frames).toBe(0);

@@ -60,6 +60,30 @@ test("scripts are allowed by hash, as the browser hashes them; data blocks and e
 	expect(policy).not.toContain("cdn.example");
 });
 
+test("an external script pinned by Subresource Integrity is allowed by its exact address and its hash, and nothing else", async () => {
+	const viewer = "https://build.stencil.so/web/omp/18.14.0/export-viewer-abc.js";
+	const pin = "sha256-2I0BKXBhXGvAEU/C/tME6P0LEj+hsrC+LeuOqXM111k=";
+	const out = await hardenExport(
+		[
+			'<html><head><meta charset="UTF-8">',
+			`<script defer src="${viewer}" integrity="${pin}" crossorigin="anonymous"></script>`,
+			// Not pinned, pinned by something that is not a hash, with a query the policy cannot name, or not https:.
+			'<script src="https://cdn.example/unpinned.js"></script>',
+			'<script src="https://cdn.example/odd.js" integrity="md5-abc"></script>',
+			`<script src="https://cdn.example/q.js?v=1" integrity="${pin}"></script>`,
+			`<script src="http://cdn.example/plain.js" integrity="${pin}"></script>`,
+			// A data block is not a script, wherever it points.
+			`<script type="application/json" src="https://cdn.example/data.json" integrity="${pin}"></script>`,
+			"</head></html>",
+		].join("\n"),
+	);
+	const sources = directive(policyOf(out), "script-src")?.split(" ").slice(1) ?? [];
+	expect(sources.filter((s) => !s.startsWith("'sha256-") || s === `'${pin}'`)).toEqual([viewer, `'${pin}'`]);
+	expect(policyOf(out)).not.toContain("cdn.example");
+	// Still no host, scheme or keyword that would allow more than that one file.
+	expect(sources.filter((s) => s !== viewer)).toEqual(sources.filter((s) => /^'sha256-[A-Za-z0-9+/]+={0,2}'$/.test(s)));
+});
+
 test("everything but the page's own inline scripts and styles and inline images is refused", async () => {
 	const policy = policyOf(await hardenExport(EXPORT));
 	expect(directive(policy, "default-src")).toBe("default-src 'none'");

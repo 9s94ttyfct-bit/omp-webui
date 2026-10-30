@@ -6,7 +6,9 @@
  * link and image address but the safe ones; everything the page parses into its document (`innerHTML`,
  * `insertAdjacentHTML`, `outerHTML`, `createContextualFragment`) goes through an allow-list sanitiser that adopts the
  * clean nodes instead of serialising them again; and the page's own inline `onclick` toggles become a data attribute
- * handled by one listener, because the file's policy allows no inline handlers.
+ * handled by one listener, because the file's policy allows no inline handlers. A released omp (18.14 and later) loads
+ * its viewer from outside the file and the viewer parses its own shell into the page and renders Markdown with its own
+ * fork of `marked` (`ompMarkdown`): the shell's tags are allowed, and the fork is hardened as `marked` is.
  *
  * `exportGuard` is sent to the page as its source text (`Function.prototype.toString`), so it must stay one
  * self-contained function: it may name only its own locals and the browser's globals.
@@ -15,15 +17,19 @@ export function exportGuard(): void {
 	/** A lookup table of the names in `words`. */
 	const table = (words: string): Record<string, true> =>
 		Object.fromEntries(words.split(" ").map((word) => [word, true] as const));
-	/** Tags that may stay. Anything else is unwrapped (its children stay) unless it is in `DROP`. */
+	/**
+	 * Tags that may stay. Anything else is unwrapped (its children stay) unless it is in `DROP`. The landmarks, the theme
+	 * `select` and `omp-session-trace` are the shell a released omp's viewer (18.14 and later) parses into the page itself.
+	 */
 	const TAGS = table(
-		"a abbr b blockquote br button caption code col colgroup dd del details div dl dt em h1 h2 h3 h4 h5 h6 hr i img input " +
-			"kbd li mark ol omp-tool-view p pre q s samp small span strong sub summary sup table tbody td tfoot th thead tr u ul",
+		"a abbr aside b blockquote br button caption code col colgroup dd del details div dl dt em footer h1 h2 h3 h4 h5 h6 " +
+			"header hr i img input kbd label li main mark nav ol omp-session-trace omp-tool-view option p pre q s samp " +
+			"section select small span strong sub summary sup table tbody td tfoot th thead tr u ul",
 	);
 	/** Tags removed with everything inside them. */
 	const DROP = table(
-		"script style iframe frame frameset object embed applet noscript noembed noframes template title textarea select " +
-			"option optgroup math xmp plaintext head meta link base form audio video source track canvas dialog portal " +
+		"script style iframe frame frameset object embed applet noscript noembed noframes template title textarea " +
+			"optgroup math xmp plaintext head meta link base form audio video source track canvas dialog portal " +
 			"fencedframe slot",
 	);
 	/** The only SVG the page draws itself: its icons. */
@@ -35,7 +41,7 @@ export function exportGuard(): void {
 	const HTML_NS = "http://www.w3.org/1999/xhtml";
 	const SVG_NS = "http://www.w3.org/2000/svg";
 	/** Attributes any kept HTML element may have (`data-*` and `aria-*` too). */
-	const COMMON_ATTRS = table("class id title role lang dir tabindex");
+	const COMMON_ATTRS = table("class id title role lang dir tabindex hidden");
 	const TAG_ATTRS: Record<string, string[]> = {
 		a: ["href"],
 		img: ["src", "alt", "width", "height"],
@@ -44,12 +50,17 @@ export function exportGuard(): void {
 		th: ["colspan", "rowspan", "align", "scope"],
 		col: ["span"],
 		colgroup: ["span"],
-		input: ["type", "checked", "disabled"],
+		input: ["type", "checked", "disabled", "placeholder", "autocomplete", "spellcheck"],
 		button: ["type", "disabled"],
+		select: ["disabled"],
+		option: ["value", "selected"],
 		details: ["open"],
 		// The file's own tool card: React renders it from the data its `data-key` names, so a `payload` attribute is not kept.
 		"omp-tool-view": ["open"],
+		"omp-session-trace": ["view"],
 	};
+	/** The inputs that may stay: the transcript's task boxes and the viewer's search field. */
+	const INPUT_TYPES = table("checkbox search");
 	const STRIP_URL_CHARS = /[\p{Cc}\p{Cf}\s]/gu;
 	const DATA_IMAGE = /^data:image\/(?:png|jpe?g|gif|webp|bmp|avif|svg\+xml)[;,]/i;
 	const SAFE_STYLE = /^\s*color\s*:\s*var\(\s*--[a-z0-9-]+\s*\)\s*;?\s*$/i;
@@ -103,7 +114,8 @@ export function exportGuard(): void {
 				const src = safeSrc(attr.value);
 				if (src === null) keep = false;
 			}
-			if (keep && !svg && tag === "input" && name === "type") keep = attr.value.toLowerCase() === "checkbox";
+			if (keep && !svg && tag === "input" && name === "type")
+				keep = Object.hasOwn(INPUT_TYPES, attr.value.toLowerCase());
 			if (!keep) {
 				// The file's own toggles (`onclick="this.classList.toggle('expanded')"`) survive as data the listener below reads.
 				const toggle = name === "onclick" ? TOGGLE.exec(attr.value.trim()) : null;
@@ -117,7 +129,8 @@ export function exportGuard(): void {
 				el.setAttribute("rel", "noopener noreferrer");
 			}
 		}
-		if (!svg && tag === "input" && el.getAttribute("type") !== "checkbox") el.remove();
+		if (!svg && tag === "input" && !Object.hasOwn(INPUT_TYPES, (el.getAttribute("type") ?? "").toLowerCase()))
+			el.remove();
 	}
 
 	/** Make the children of `parent` safe, in place. */
@@ -145,8 +158,11 @@ export function exportGuard(): void {
 				continue;
 			}
 			if (ns === HTML_NS && tag === "img") {
-				const src = safeSrc(el.getAttribute("src") ?? "");
-				if (src === null) {
+				const given = el.getAttribute("src") ?? "";
+				if (given.trim() === "") {
+					// An image with no address yet (the viewer's enlarged-image box) loads nothing: it stays, without one.
+					el.removeAttribute("src");
+				} else if (safeSrc(given) === null) {
 					// Never loaded: what it would have shown is named instead.
 					const shown = el.ownerDocument.createElement("span");
 					shown.setAttribute("class", "omp-blocked-image");
@@ -236,7 +252,9 @@ export function exportGuard(): void {
 	});
 
 	// `marked` turns the model's Markdown into HTML. Raw HTML in it is shown as text, a link keeps only a safe address, an
-	// image only an inline one, and the first parse installs that on top of what the page configured for itself.
+	// image only an inline one, and the first parse installs that on top of what the page configured for itself. A released
+	// omp's viewer (18.14 and later) has its own fork instead, `ompMarkdown.Marked`, of which it makes instances: each one
+	// gets the same on its first parse.
 	let marked: unknown;
 	type Token = { text?: string; raw?: string; href?: string; title?: string | null; tokens?: unknown[] };
 	type Parser = { parseInline(tokens: unknown[]): string };
@@ -269,24 +287,43 @@ export function exportGuard(): void {
 			// The sanitiser and the page's policy still hold.
 		}
 	}
+	/** `lib` with `harden` run on it before its first parse. */
+	function guarded<T extends object>(lib: T): T {
+		return new Proxy(lib, {
+			get(target, key, receiver) {
+				const value = Reflect.get(target, key, receiver);
+				if ((key !== "parse" && key !== "parseInline") || typeof value !== "function") return value;
+				return function (this: unknown, ...args: unknown[]) {
+					harden(target);
+					return value.apply(this, args);
+				};
+			},
+		});
+	}
 	Object.defineProperty(window, "marked", {
 		configurable: true,
 		enumerable: true,
 		get: () => marked,
 		set(lib: unknown) {
-			if (typeof lib !== "object" || lib === null) {
-				marked = lib;
+			marked = typeof lib === "object" && lib !== null ? guarded(lib) : lib;
+		},
+	});
+	let markdown: unknown;
+	Object.defineProperty(window, "ompMarkdown", {
+		configurable: true,
+		enumerable: true,
+		get: () => markdown,
+		set(lib: unknown) {
+			const Marked = typeof lib === "object" && lib !== null ? Reflect.get(lib, "Marked") : undefined;
+			if (typeof Marked !== "function") {
+				markdown = lib;
 				return;
 			}
-			marked = new Proxy(lib, {
-				get(target, key, receiver) {
-					const value = Reflect.get(target, key, receiver);
-					if (key !== "parse" || typeof value !== "function") return value;
-					return function (this: unknown, ...args: unknown[]) {
-						harden(target);
-						return value.apply(this, args);
-					};
-				},
+			const Hardened = new Proxy(Marked, {
+				construct: (target, args, newTarget) => guarded(Reflect.construct(target, args, newTarget)),
+			});
+			markdown = new Proxy(lib as object, {
+				get: (target, key, receiver) => (key === "Marked" ? Hardened : Reflect.get(target, key, receiver)),
 			});
 		},
 	});
