@@ -46,6 +46,11 @@ export interface FakeOmpOptions {
 	 * `deny`, an allow otherwise. It never runs anything.
 	 */
 	review?: { log?: string; delayMs?: number; deny?: string[]; reason?: string };
+	/**
+	 * `cancel_subagent` parks the subagent (`get_subagents` no longer lists it) and these frames follow it `afterMs` later, as omp
+	 * (18.14) continues the turn that waited for it; `marker`: a file created once they are written.
+	 */
+	onCancelSubagent?: { frames: Record<string, unknown>[]; afterMs: number; marker?: string };
 }
 
 /** Write the fake into `dir` and return its path (usable as `OMP_BIN`). */
@@ -133,6 +138,14 @@ for await (const chunk of Bun.stdin.stream()) {
       const { subagents: listed, ...rest } = cmd.state;
       if (listed) subagents = listed;
       Object.assign(reported, rest);
+    }
+    if (cmd.type === "cancel_subagent" && options.onCancelSubagent) {
+      const follow = options.onCancelSubagent;
+      subagents = subagents.filter((s) => s.id !== cmd.subagentId);
+      setTimeout(() => {
+        for (const f of follow.frames) out(f);
+        if (follow.marker) require("node:fs").writeFileSync(follow.marker, "");
+      }, follow.afterMs);
     }
     // set_model switches the model get_state reports from then on, and is answered with the model, as omp does.
     if (cmd.type === "set_model") reported.model = { id: cmd.modelId, name: cmd.modelId, provider: cmd.provider, api: "anthropic-messages", reasoning: true, contextWindow: 200000 };

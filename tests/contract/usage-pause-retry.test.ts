@@ -62,10 +62,9 @@ test("a user's action on a paused conversation whose retry wait is over does not
 
 test("closing a paused conversation whose retry wait is over does not start the retried turn: not through Close, not through Quit and end paused", async () => {
 	// omp's wait is a sleep to a monotonic deadline, which runs on while the process is stopped, so the retry is due the
-	// moment SIGCONT lets omp run. Closing resumes it (it must run to read the closed stdin); the stdin closes within a
-	// fraction of a millisecond, long before the retried turn could send its request. Measured against omp 18.12.2:
-	// 0 of 84 closes sent one (24 one at a time, 60 six at a time with every core busy); a stub that answers every
-	// request records the one that would have been billed. This guards what the server does and what omp does with it.
+	// moment SIGCONT lets omp run, before it reads a closed stdin or handles a SIGTERM: a slow machine (CI) let the retried
+	// turn's request out between the SIGCONT and the SIGTERM. So the server never lets it run: it is killed frozen. A stub
+	// that answers every request records the one that would have been billed.
 	await api("/api/usage-reset-wait", { enabled: true });
 	const closed = await conversation();
 	const ended = await conversation();

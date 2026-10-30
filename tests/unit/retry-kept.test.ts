@@ -6,7 +6,7 @@ import { type Live, LivePool } from "../../server/live.ts";
 import type { LiveInfo, LiveRetry } from "../../shared/protocol.ts";
 import { USAGE_LIMIT_FLAG } from "../../shared/retry.ts";
 import { fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
-import { pollUntil } from "../support/poll.ts";
+import { pollUntil, processExists } from "../support/poll.ts";
 
 /**
  * A conversation whose omp sleeps through a provider's usage limit outlives the server: the timer that retries the turn
@@ -145,6 +145,33 @@ test("pausing a waiting conversation and resuming it keeps the wait; closing it 
 
 	await live.end();
 	expect(live.kept).toBe(false);
+	expect(first.parked.list()).toEqual([]);
+});
+
+test("closing a conversation paused in a usage-limit wait ends its omp frozen: it is never let run, so a wait that is over cannot start the retried turn", async () => {
+	const { first, live } = await start();
+	await emit(live, { type: "agent_start" }, usageLimitWait);
+	await pollUntil(() => first.parked.list().length === 1, "the wait to be written down");
+	await live.pause();
+	const pid = live.info.pid as number;
+	expect(stopped(pid)).toBe(true);
+	// omp's sleep runs on while it is frozen: whatever lets it run (a SIGCONT, then a closed stdin and a SIGTERM it has
+	// yet to handle) lets the retried turn start first. What the server sends it is what says it never ran.
+	const sent: (string | number | undefined)[] = [];
+	const kill = process.kill;
+	process.kill = ((target: number, signal?: string | number) => {
+		if (Math.abs(target) === pid) sent.push(signal);
+		return kill.call(process, target, signal);
+	}) as typeof process.kill;
+	try {
+		await live.end();
+		await pollUntil(() => live.info.exited, "the paused omp to end");
+	} finally {
+		process.kill = kill;
+	}
+	expect(sent).not.toContain("SIGCONT");
+	expect(sent).toContain("SIGKILL");
+	expect(processExists(pid)).toBe(false);
 	expect(first.parked.list()).toEqual([]);
 });
 

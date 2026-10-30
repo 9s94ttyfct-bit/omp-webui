@@ -152,7 +152,8 @@ interface Stopped {
 /** What a page heard of one process's frames, and a way to wait for one (see `watchFrames`). */
 interface Watched {
 	seen: Frame[];
-	next(match: (f: Frame) => boolean): Promise<Frame>;
+	/** The first frame that satisfies `match`, seen already or still to come; `from`: from that index of `seen` on. */
+	next(match: (f: Frame) => boolean, from?: number): Promise<Frame>;
 	after(type: string): Promise<Frame>;
 }
 
@@ -222,18 +223,24 @@ async function conversation(): Promise<Chat> {
 	};
 }
 
-/** A conversation with one turn behind it (so that it has a file), and a second one that is stuck as `how` says. */
-async function stuck(how: Mode, ready: (f: Frame) => boolean): Promise<{ chat: Chat; file: string }> {
+/**
+ * A conversation with one turn behind it (so that it has a file), and a second one that is stuck as `how` says. `turn`: where
+ * the stuck turn's frames begin in `chat.frames.seen`; the first turn's `agent_end` is before it (it comes a moment after the
+ * reply `say` waits for, and is waited for too).
+ */
+async function stuck(how: Mode, ready: (f: Frame) => boolean): Promise<{ chat: Chat; file: string; turn: number }> {
 	mode = "ok";
 	const chat = await conversation();
 	await chat.say("FIRST-TURN MARK-FIRST");
+	await chat.frames.next((f) => f.type === "agent_end");
 	const file = (await chat.listing())?.sessionFile;
 	if (!file) throw new Error("the first turn left no session file");
 	mode = how;
-	const waiting = chat.frames.next(ready);
+	const turn = chat.frames.seen.length;
+	const waiting = chat.frames.next(ready, turn);
 	await chat.rpc({ type: "prompt", message: "STUCK-TURN MARK-STUCK" });
 	await waiting;
-	return { chat, file };
+	return { chat, file, turn };
 }
 
 /**
@@ -307,10 +314,11 @@ test("(b2) the provider holds the request open forever: Stop ends the turn itsel
 }, 90_000);
 
 test("(c) a subagent waits out a usage limit for hours after the turn that started it is over: Stop ends it, and the conversation is idle", async () => {
-	const { chat } = await stuck("sub-limit", subagentRetry);
+	const { chat, turn } = await stuck("sub-limit", subagentRetry);
 	try {
-		// The incident: nothing streams, and the conversation is busy for as long as the subagent waits (hours).
-		await chat.frames.next((f) => f.type === "agent_end");
+		// The incident: nothing streams, and the conversation is busy for as long as the subagent waits (hours). The turn's
+		// own end: the subagent's wait may be announced before or after it, and the first turn ended before it began.
+		await chat.frames.next((f) => f.type === "agent_end", turn);
 		const waiting = await chat.listing();
 		expect(waiting).toMatchObject({ streaming: false, busy: true });
 		const { ms } = await chat.stop(5);
@@ -326,9 +334,10 @@ test("(c) a subagent waits out a usage limit for hours after the turn that start
 }, 90_000);
 
 test("(c) a paused conversation whose subagent waits for a usage limit is stopped too: it runs again for it, and is idle after", async () => {
-	const { chat } = await stuck("sub-limit", subagentRetry);
+	const { chat, turn } = await stuck("sub-limit", subagentRetry);
 	try {
-		await chat.frames.next((f) => f.type === "agent_end");
+		// Paused once the turn that started the subagent is over (as above), not while the turn still runs.
+		await chat.frames.next((f) => f.type === "agent_end", turn);
 		await request(chat.ws, { t: "pause", liveId: chat.info.liveId });
 		expect((await chat.listing())?.pausedAt).not.toBeNull();
 		const { ms } = await chat.stop(2, true);
@@ -365,9 +374,19 @@ test("(d) a tool that ignores TERM, INT and HUP: Stop ends the turn within the b
 		expect(processExists(tool)).toBe(true);
 		const { ms } = await chat.stop(3);
 		expect(ms).toBeLessThan(ENDED_BY_SERVER_MS);
+		// omp ended the turn, or the server ended omp: no stream and no retry at the answer.
 		const left = await chat.listing();
-		// omp ended the turn, or the server ended omp: either way nothing holds the conversation busy.
-		expect(left === undefined || (left.busy === false && left.streaming === false)).toBe(true);
+		expect(left === undefined || (left.streaming === false && left.retry === undefined)).toBe(true);
+		// Nothing holds it busy a moment after: omp says the session is settled with a frame of its own, behind the answer (on a
+		// slow machine well behind it), as `expectIdleAndUsable` waits for too.
+		await pollUntil(
+			async () => {
+				const now = await chat.listing();
+				return now === undefined || now.busy === false;
+			},
+			"the conversation to be idle",
+			ENDS_BY_ITSELF_MS,
+		);
 		await pollUntil(() => !processExists(tool), "omp to end the stuck tool", 10_000);
 	} finally {
 		// The tool is this test's own process: it does not outlive the test, whatever happened to it.

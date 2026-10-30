@@ -249,6 +249,12 @@ const STOP_ANSWER_MS = 500;
 const STOP_LOST_MS = 2000;
 /** How long omp gets to answer the `get_subagents` and each `cancel_subagent` that Stop sends. */
 const STOP_ASK_MS = 2000;
+/**
+ * A turn that waits for its subagents (`agent_end` with `isTerminal: false`) is taken up again by omp once Stop has cancelled
+ * one: omp (18.14) continues it with what the subagent left, or settles. Stop waits this long at most for omp to do either,
+ * so that it does not answer in between and leave a turn that starts again behind it.
+ */
+const STOP_FOLLOW_MS = 2000;
 /** How long a builtin command's printout is waited for after omp has answered it (`Live.command`); `/rename` asks a model. */
 const OUTPUT_MS = 300;
 const TITLE_OUTPUT_MS = 45_000;
@@ -895,10 +901,14 @@ export class Live {
 	/**
 	 * End this conversation's omp (a user's Close, "Quit and end"). A paused omp runs again to read its closed stdin
 	 * and exit, which is all an idle one needs. One that was working when it was paused (a turn, a command, a question it
-	 * is waiting on, a retry it sleeps before) ignores a closed stdin until it is done, and would carry on, unattended,
-	 * from where the user stopped it: it is stopped (`LivePool.shutdown` does the same for what is working). A
-	 * conversation that was not paused closes as it always did, and is left to finish its turn; opening its file again
-	 * waits for that and is refused if it takes too long (`LivePool.ended`): never a second omp on a file one still writes.
+	 * is waiting on) ignores a closed stdin until it is done, and would carry on, unattended, from where the user stopped
+	 * it: it is stopped (`LivePool.shutdown` does the same for what is working). One that waits to retry a failed turn is
+	 * not let run at all: its sleep runs to a deadline that goes on while it is frozen, so a wait that is over (or ends
+	 * while omp handles its SIGTERM) starts the retried turn the moment omp runs, before a closed stdin or a SIGTERM is
+	 * heard of. It is killed frozen, and what it left frozen is ended with it (`endRemnants`, as for an omp killed while
+	 * paused). A conversation that was not paused closes as it always did, and is left to finish its turn; opening its
+	 * file again waits for that and is refused if it takes too long (`LivePool.ended`): never a second omp on a file one
+	 * still writes.
 	 *
 	 * `why` says why the server ended it, and the page is told (#472): an end the user asked for and one the server
 	 * decided on are not the same as an omp that ended on its own.
@@ -909,6 +919,12 @@ export class Live {
 			// Said before anything is waited for: the process may end while the pause is lifted, and the reason for
 			// the end must be the one that was asked for, not omp's own.
 			this.endedBy = why;
+			if (wasPaused && this.info.retry && !this.info.retry.resumed) {
+				this.client.close();
+				this.client.kill("SIGKILL");
+				this.persist();
+				return;
+			}
 			await this.unfreeze();
 			this.client.close();
 			if (wasPaused && this.busy) this.client.kill();
@@ -1841,16 +1857,26 @@ export class Live {
 			},
 			() => {},
 		);
-		// The turn is over when omp has answered the abort and nothing of it is left; ended, nothing is.
+		// The turn is over when omp has answered the abort and nothing of it is left; ended, nothing is. A turn that waits for a
+		// subagent this Stop cancelled (`partial`) is taken up again by omp a moment later: that is waited for (`STOP_FOLLOW_MS`).
 		const over = () =>
 			this.info.exited ||
 			(kind === "bash"
 				? !this.held.bashRunning
-				: got.answer !== null && !this.info.streaming && this.info.retry === undefined && !this.subagentsLeft);
+				: got.answer !== null &&
+					!this.info.streaming &&
+					this.info.retry === undefined &&
+					!this.subagentsLeft &&
+					!(
+						this.partial &&
+						this.subagentsCancelledAt !== null &&
+						Date.now() - this.subagentsCancelledAt < STOP_FOLLOW_MS
+					));
 		// The first abort does not touch subagents (they are jobs of the session): they are cancelled at once, and a subagent is
 		// taken to work until a sweep has found none.
 		if (kind === "turn") {
 			this.subagentsLeft = true;
+			this.subagentsCancelledAt = null;
 			void this.sweepSubagents();
 		}
 		let nudged = began;
@@ -1907,6 +1933,8 @@ export class Live {
 
 	/** Whether a subagent that works was left by the last round of `cancelSubagents`; true while Stop has not heard of one. */
 	private subagentsLeft = false;
+	/** When the Stop under way last cancelled a subagent (`cancelSubagents`); null while it has cancelled none. */
+	private subagentsCancelledAt: number | null = null;
 	private sweeping: Promise<void> | null = null;
 
 	/** `cancelSubagents`, one at a time: a round that is under way is not started again. */
@@ -1941,6 +1969,7 @@ export class Live {
 				}
 			}),
 		);
+		this.subagentsCancelledAt = Date.now();
 		return working(await this.listSubagents()).length > 0;
 	}
 

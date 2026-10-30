@@ -31,7 +31,8 @@ export function watchFrames(ws: WebSocket, liveId: string) {
 	};
 	return {
 		seen,
-		next: (match: (f: Frame) => boolean) => next(match),
+		/** The first frame that satisfies `match`, seen already or still to come; `from`: among those from that index of `seen` on. */
+		next: (match: (f: Frame) => boolean, from = 0) => next(match, from),
 		/** The first frame of this type that comes after this call. */
 		after: (type: string) => next((f) => f.type === type, seen.length),
 	};
