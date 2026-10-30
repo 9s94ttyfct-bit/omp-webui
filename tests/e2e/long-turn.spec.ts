@@ -54,8 +54,9 @@ async function open(page: Page, title: string): Promise<void> {
 	const row = page.locator('[data-testid="session-item"]', { hasText: title });
 	await expect(row).toHaveCount(1, { timeout: 30_000 });
 	await row.click();
-	// The conversation, not New chat's message box, which is on screen until the conversation's code has loaded.
-	await expect(page.getByTestId("chat-title")).toHaveText(title);
+	// The conversation, not New chat's message box, which is on screen until the conversation's code has loaded. The page
+	// opens on New chat, so a conversation's header is this one's.
+	await expect(page.getByTestId("chat-title")).toBeVisible();
 	await expect(page.getByTestId("composer")).toBeVisible();
 }
 
@@ -68,7 +69,7 @@ async function run(page: Page, o: Record<string, unknown>): Promise<void> {
 
 /**
  * What the live turn had on screen while the run went on, taken in the page on every frame it draws: the most rows it
- * had (and the button above them), not counting what it streams at the end, and whether the button for the earlier
+ * had (what it streams at the end included, and the button above them), and whether the button for the earlier
  * steps was up while Stop still was. A page busy with the stream answers each query from the test a second or two late
  * on a slow machine: sampled from the test, a run of a few seconds was looked at twice, once before the button came and
  * once after the turn had folded.

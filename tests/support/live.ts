@@ -41,12 +41,20 @@ export function ownSession(n: number, title: string): void {
  * can tell its own output apart; the id comes from the page's own command, not from `/api/lives`.
  */
 export async function startLive(page: Page, tap: SocketTap, title: string, probe: string): Promise<string> {
-	await expect(sessionRow(page, title)).toHaveCount(1, { timeout: 15_000 });
-	await sessionRow(page, title).click();
+	const row = sessionRow(page, title);
+	await expect(row).toHaveCount(1, { timeout: 15_000 });
+	await row.click();
 	// The conversation is on screen before anything is typed. A click on its row changes the view at once, but the
 	// conversation's code may still be on its way (the first one a page opens): until it is drawn, the message box on
-	// screen is New chat's, which takes the command and keeps it as its draft (it has no omp of its own yet).
-	await expect(page.getByTestId("chat-title")).toHaveText(title);
+	// screen is New chat's, which takes the command and keeps it as its draft (it has no omp of its own yet). Its header is
+	// what shows it is drawn (New chat has none). Not its text: a spec that writes its file again under another title
+	// (one per language) finds the title the conversation's omp still has. A tap on a phone can be lost (the drawer still
+	// settling, the list sorted again under it): the drawer is then still open, and the row is tapped again.
+	const header = page.getByTestId("chat-title");
+	await expect(async () => {
+		if (!(await header.isVisible())) await row.click({ timeout: 5_000 });
+		await expect(header).toBeVisible({ timeout: 5_000 });
+	}).toPass({ timeout: 30_000 });
 	const composer = page.getByTestId("composer");
 	await composer.fill(`!echo ${probe}`);
 	await composer.press("Enter");
