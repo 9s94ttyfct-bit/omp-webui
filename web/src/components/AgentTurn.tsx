@@ -112,6 +112,23 @@ export function windowStart(total: number, shown: number): number {
 	return shown >= total ? 0 : Math.floor((total - shown) / ROWS_STEP) * ROWS_STEP;
 }
 
+/**
+ * The window of a turn that is drawn to its end: its `saved` rows, then the `streamed` messages omp has sent and the page
+ * has not read back as entries yet, as one list. What streams is windowed with the rest: on a page that is behind a fast
+ * run, the read of the entries waits behind the frames, and the messages it has not saved pile up at the end (dozens),
+ * each drawn on every frame, so the more behind the page is, the slower it gets. A message that is saved leaves the end
+ * and joins the rows: the total, and so the window, stays where it was. `savedFrom`, `streamedFrom`: the first of each
+ * to draw.
+ */
+export function windowOf(
+	saved: number,
+	streamed: number,
+	shown: number,
+): { start: number; savedFrom: number; streamedFrom: number } {
+	const start = windowStart(saved + streamed, shown);
+	return { start, savedFrom: Math.min(start, saved), streamedFrom: Math.max(0, start - saved) };
+}
+
 /** A window a reader asked for: the rows from `from` through `to` (by id, so that it stays where it is as the turn grows); `to` null: through the last. */
 export interface PinnedRows {
 	from: string;
@@ -347,7 +364,11 @@ export function AgentTurnBlock({
 	}
 
 	const range = pin ? pinnedRange(visibleRows, pin) : null;
-	const start = range ? range.start : windowStart(visibleRows.length, shown);
+	// A window the reader pinned is theirs: what streams is drawn whole after it, when it reaches the end.
+	const drawn = range
+		? { start: range.start, savedFrom: range.start, streamedFrom: 0 }
+		: windowOf(visibleRows.length, overlay.length, shown);
+	const { start } = drawn;
 	const end = range ? range.end : visibleRows.length;
 	const reachesEnd = end >= visibleRows.length;
 	const reported = useRef(onEnd);
@@ -363,7 +384,7 @@ export function AgentTurnBlock({
 		if (range) {
 			const from = Math.max(0, range.start - ROWS_STEP);
 			setPin({ from: visibleRows[from].id, to: pin?.to ?? null });
-		} else setShown(visibleRows.length - start + ROWS_STEP);
+		} else setShown(visibleRows.length + overlay.length - start + ROWS_STEP);
 	};
 	// Later rows are added below the reader, which moves nothing. A window that reaches the last row is the ordinary one
 	// again: it goes on from where it stood, a block at a time, as the turn grows.
@@ -371,7 +392,7 @@ export function AgentTurnBlock({
 		if (!range || !pin) return;
 		const to = Math.min(visibleRows.length, range.end + ROWS_STEP);
 		if (to >= visibleRows.length) {
-			setShown(visibleRows.length - range.start);
+			setShown(visibleRows.length + overlay.length - range.start);
 			setPin(null);
 		} else setPin({ from: pin.from, to: visibleRows[to - 1].id });
 	};
@@ -440,7 +461,7 @@ export function AgentTurnBlock({
 				</button>
 			) : null}
 			{[
-				...visibleRows.slice(start, end).map((e) => {
+				...visibleRows.slice(drawn.savedFrom, end).map((e) => {
 					const m = messageOf(e);
 					if (!m) return <EntryNote key={e.id} entry={e} />;
 					return (
@@ -458,19 +479,21 @@ export function AgentTurnBlock({
 				// In the same list as the saved rows, under the key the saved row will have: when omp saves the message, its row
 				// is the one that was streaming, not a new one.
 				...(reachesEnd
-					? overlay.map((o) => (
-							<MessageRow
-								key={keys.overlay(o)}
-								entry={null}
-								message={o.message}
-								toolResults={toolResults}
-								tools={tools}
-								actions={actions}
-								streaming={!o.ended}
-								idle={!live}
-								readOnly
-							/>
-						))
+					? overlay
+							.slice(drawn.streamedFrom)
+							.map((o) => (
+								<MessageRow
+									key={keys.overlay(o)}
+									entry={null}
+									message={o.message}
+									toolResults={toolResults}
+									tools={tools}
+									actions={actions}
+									streaming={!o.ended}
+									idle={!live}
+									readOnly
+								/>
+							))
 					: []),
 			]}
 			{!reachesEnd ? (

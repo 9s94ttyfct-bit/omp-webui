@@ -1,7 +1,7 @@
 import "./browser-globals.ts";
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import type { SessionEntry } from "../../shared/protocol.ts";
-import { pinnedRange, sameTurn, windowAround, windowStart } from "../../web/src/components/AgentTurn.tsx";
+import { pinnedRange, sameTurn, windowAround, windowOf, windowStart } from "../../web/src/components/AgentTurn.tsx";
 import { sameRow } from "../../web/src/components/Message.tsx";
 import type { AgentMessage } from "../../web/src/lib/messages.ts";
 import { indexTree } from "../../web/src/lib/tree.ts";
@@ -70,6 +70,25 @@ test("a turn of thousands of rows draws a few dozen, and its window moves a bloc
 	for (const total of [500, 3448, 10_000]) expect(total - windowStart(total, 60)).toBeLessThan(120);
 	// "Show earlier steps" asks for a block more, and gets it.
 	expect(windowStart(3448, 60 + 60)).toBe(windowStart(3448, 60) - 60);
+});
+
+test("what streams at the end of a turn is windowed with its rows: a page behind the run draws no more for it", () => {
+	// A page behind a fast run reads the entries back late, and the messages it has not saved pile up at the end. A CI
+	// runner's page drew 151 rows of a turn for a moment: a window of the saved ones, and about thirty streamed after it.
+	for (const saved of [0, 59, 119, 120, 600, 3448])
+		for (const streamed of [0, 1, 2, 30, 61, 200]) {
+			const w = windowOf(saved, streamed, 60);
+			const drawn = saved - w.savedFrom + streamed - w.streamedFrom;
+			expect(drawn, `${saved} saved, ${streamed} streaming`).toBeLessThan(120);
+			expect(w.start).toBe(windowStart(saved + streamed, 60));
+		}
+	// A message that is saved leaves the end and joins the rows: the window stays where it was.
+	expect(windowOf(179, 1, 60)).toEqual(windowOf(180 - 30, 30, 60));
+	expect(windowOf(179, 1, 60).start).toBe(windowOf(180, 0, 60).start);
+	// A few streamed messages after a short turn: everything is drawn.
+	expect(windowOf(40, 2, 60)).toEqual({ start: 0, savedFrom: 0, streamedFrom: 0 });
+	// More streamed than the window holds: the saved rows are not drawn, and only the last of what streams is.
+	expect(windowOf(10, 200, 60)).toEqual({ start: 120, savedFrom: 10, streamedFrom: 110 });
 });
 
 test("a search hit among the rows that are not drawn gets a block of rows of its own, not everything from there to the end", () => {
