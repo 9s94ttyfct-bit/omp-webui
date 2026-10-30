@@ -87,20 +87,22 @@ const TINT = {
 	rest: "text-muted [--row-bg:transparent] hover:text-fg hover:[--row-bg:color-mix(in_oklab,var(--color-hover)_70%,transparent)]",
 } as const;
 
-/** The actions at rest: not seen until the row is hovered or has focus, and always seen on a touch screen. */
-const HIDDEN = "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 touch:opacity-100";
+/**
+ * The actions at rest: not seen until the row is hovered or has focus. A touch screen has no hover (`group-hover` asks
+ * for one), so there only the open conversation's are seen, and every other name keeps the whole row.
+ */
+const HIDDEN = "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100";
 /** And out of the pointer's way while they are not seen: a click there is a click on the name under them. */
-const UNREACHABLE =
-	"pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto touch:pointer-events-auto";
+const UNREACHABLE = "pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto";
 
 /**
  * One sidebar row: open on click, plus a menu with omp-backed session actions.
  *
- * The name has the whole width of the row: the menu button takes none of it. With a mouse the button is shown over the
- * end of the name (on a backdrop that fades in, so that the two do not run into each other) while the row is hovered,
- * has keyboard focus, or is the open conversation, and the name stays where it is. The marks before the name (pinned,
- * branch) are never covered, and neither are the live state's after it: the button stops where they start. On a touch
- * screen, where nothing is hovered, the button is always shown at the end of the row, after the name, as it always was.
+ * The name has the whole width of the row: the menu button takes none of it. The button is shown over the end of the
+ * name (on a backdrop that fades in, so that the two do not run into each other) while the row is hovered, has keyboard
+ * focus, or is the open conversation, and the name stays where it is; on a touch screen, only on the open conversation.
+ * The marks before the name (pinned, branch) are never covered, and neither are the live state's after it: the button
+ * stops where they start.
  */
 export const SessionItem = memo(function SessionItem({
 	session: s,
@@ -177,7 +179,6 @@ export const SessionItem = memo(function SessionItem({
 				onClick={(e) => (selecting ? onSelect?.(s.file, e) : onOpen(s.file))}
 				className={cx(
 					"flex min-w-0 flex-1 items-center gap-2 rounded-lg py-1.5 pr-2.5 pl-2.5 text-left text-sm focus-visible:-outline-offset-2",
-					!selecting && "touch:rounded-r-none touch:pr-1",
 					snippet !== undefined && "flex-wrap gap-y-0.5",
 				)}
 			>
@@ -204,13 +205,12 @@ export const SessionItem = memo(function SessionItem({
 				)}
 			</button>
 			{selecting ? null : (
-				// Over the end of the row, clear of the focus ring at its top and bottom; on a touch screen, after the name.
-				<div className="pointer-events-none absolute inset-y-0.5 right-0 flex pr-2.5 touch:static touch:pr-1">
+				// Over the end of the row, clear of the focus ring at its top and bottom.
+				<div className="pointer-events-none absolute inset-y-0.5 right-0 flex pr-2.5">
 					<div
 						data-testid="session-actions"
 						className={cx(
 							"flex items-center bg-bg-soft bg-[linear-gradient(var(--row-bg),var(--row-bg))] pl-6 [mask-image:linear-gradient(to_right,transparent,black_1.5rem)]",
-							"touch:bg-transparent touch:bg-none touch:pl-0 touch:[mask-image:none]",
 							shown ? "opacity-100" : HIDDEN,
 						)}
 					>
@@ -263,7 +263,7 @@ export const SessionItem = memo(function SessionItem({
 					</div>
 					{/* A stand-in for the live state's marks, as wide as they are: the backdrop stops where they start. */}
 					{trail ? (
-						<span aria-hidden className="invisible flex items-center gap-2 pl-2 touch:hidden">
+						<span aria-hidden className="invisible flex items-center gap-2 pl-2">
 							{trail}
 						</span>
 					) : null}

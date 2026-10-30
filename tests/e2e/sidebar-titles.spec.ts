@@ -7,7 +7,7 @@ import { devices, expect, type Page, test } from "./fixtures.ts";
  * A conversation's name in the sidebar has the whole width of its row (no model call): its menu button takes none of
  * it. With a mouse the button shows over the end of the name while the row is hovered, has keyboard focus or is the open
  * conversation, and the name does not move; the live state after the name stays in sight. On a touch screen, where
- * nothing is hovered, every row's button is shown, after the name, and opens its menu.
+ * nothing is hovered, only the open conversation shows its button (over the end of its name), and a tap opens its menu.
  */
 
 const LONG = "Heron ledger: a conversation whose name runs far past the end of any sidebar row it is drawn in";
@@ -122,7 +122,9 @@ const { defaultBrowserType: _browser, ...pixel } = devices["Pixel 5"];
 test.describe("touch screen", () => {
 	test.use(pixel);
 
-	test("every row's actions are in reach without a hover, after the name", async ({ page }) => {
+	test("names have the whole row; only the open conversation shows its actions, and they open on a tap", async ({
+		page,
+	}) => {
 		ownSession(0x47, LONG);
 		await page.goto("/");
 		expect(await page.evaluate(() => matchMedia("(hover: none)").matches)).toBe(true);
@@ -130,11 +132,28 @@ test.describe("touch screen", () => {
 		const long = parts(page, LONG);
 		await expect(long.item).toHaveCount(1, { timeout: 15_000 });
 		await expect(long.item).not.toHaveAttribute("aria-current", "page");
-		await expect(long.menu).toHaveCSS("opacity", "1");
-		const name = await boxOf(long.name);
-		const menu = await boxOf(long.menu);
-		expect(name.x + name.width).toBeLessThanOrEqual(menu.x);
 
+		// A row that is not open: the name runs to the end of the row, and no button is seen over it.
+		const row = await boxOf(long.row);
+		const name = await boxOf(long.name);
+		expect(row.x + row.width - (name.x + name.width)).toBeLessThanOrEqual(12);
+		await expect(long.menu).toHaveCSS("opacity", "0");
+		await expect(long.actions).toHaveCSS("opacity", "0");
+		// Still in the page, named, for a screen reader.
+		await expect(long.menu).toHaveAccessibleName(`Actions for ${LONG}`);
+
+		// Open it: its button shows over the end of its name, which keeps its place, and a tap opens the menu.
+		// On a phone the sidebar is a drawer that the tap closes; it is shown again to look at the row.
+		await long.item.tap();
+		await expect(page.getByTestId("chat-title")).toBeVisible();
+		await openSidebar(page);
+		await expect(long.item).toHaveAttribute("aria-current", "page");
+		await expect(long.menu).toHaveCSS("opacity", "1");
+		await expect(long.actions).toHaveCSS("opacity", "1");
+		const open = await boxOf(long.name);
+		expect(open.width).toBe(name.width);
+		const over = await boxOf(long.actions);
+		expect(over.x).toBeLessThan(open.x + open.width);
 		await long.menu.tap();
 		await expect(page.getByRole("menuitem", { name: "Rename", exact: true })).toBeVisible();
 		await page.keyboard.press("Escape");
