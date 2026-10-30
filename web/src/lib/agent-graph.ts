@@ -1,3 +1,4 @@
+import type { GraphFilter } from "@shared/graph-filter.ts";
 import type { ToolExec } from "../store/live.ts";
 import { type AgentRow, ENDED, isOver, parentId, rowTotals } from "./subagents.ts";
 
@@ -130,14 +131,6 @@ export interface AgentGraph {
 	/** The height of a card in this layout: `NODE_H`, or `NODE_H_COMPACT` in a compact one. */
 	nodeH: number;
 }
-
-export type StatusFilter = "all" | "running" | "failed";
-export type TimeFilter = "all" | "hour" | "today";
-export interface GraphFilter {
-	status: StatusFilter;
-	time: TimeFilter;
-}
-export const NO_FILTER: GraphFilter = { status: "all", time: "all" };
 
 /** How the graph is drawn: what it leaves out and how close it packs what it keeps. */
 export interface GraphView {

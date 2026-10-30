@@ -1,8 +1,8 @@
+import type { GraphFilter, StatusFilter, TimeFilter } from "@shared/graph-filter.ts";
 import { ChevronDown, Focus, LayoutGrid, Search, SlidersHorizontal } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
-import type { GraphFilter, StatusFilter, TimeFilter } from "../lib/agent-graph.ts";
 import { cx } from "./ui.tsx";
 
 /**
