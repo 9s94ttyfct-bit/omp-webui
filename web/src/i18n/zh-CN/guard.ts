@@ -81,6 +81,14 @@ export const zh: Record<keyof typeof en, string> = {
 	sessionDeniedOff: "审查模型拒绝调用时，调用会被拒绝",
 	pickerLabel: "防护：{mode}",
 	pickerTitle: "这个对话的危险命令防护",
+	toggleStateOn: "这个对话的防护已开启：{mode}。",
+	toggleStateOff: "这个对话的防护已关闭。",
+	toggleTurnOff: "只对这个对话关闭防护。",
+	toggleTurnOnPrevious: "重新开启：{mode}。",
+	toggleTurnOnSettings: "重新开启：跟随设置（{mode}）。",
+	toggleRemote: "要在运行 omp-webui 的电脑上切换。",
+	toggleTip: "{state}{action}",
+	toggleFailed: "无法切换这个对话的防护：{error}",
 	perConversation:
 		"这些设置是默认值。每个对话可以为自己和它的子代理另选：在“当前对话”里，或在“新对话”发出第一条消息之前。没有另选的部分跟随这里。“防护”页面里的规则和各类调用的设置对每个对话都生效。",
 	sessionDamaged:

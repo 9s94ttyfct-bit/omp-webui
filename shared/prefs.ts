@@ -80,6 +80,11 @@ export const PREF = {
 	usageRange: "ompw.usageRange",
 	/** Whether the session panel's Advanced settings are unfolded (#716): `on` or `off` (the default). */
 	controlsAdvanced: "ompw.controlsAdvanced",
+	/**
+	 * What each conversation's guard was under before the header's guard switch turned it off (v0.12.2): a JSON object of the
+	 * conversation's session file (or process id) to `reviewer`, `ask` or `follow`, the most recent last; see `web/src/lib/guard-toggle.ts`.
+	 */
+	guardBefore: "ompw.guardBefore",
 } as const;
 
 export type PrefKey = (typeof PREF)[keyof typeof PREF];
@@ -146,6 +151,8 @@ const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 	[PREF.pinnedFolded]: switchValue,
 	[PREF.usageRange]: oneOf(USAGE_RANGES),
 	[PREF.controlsAdvanced]: switchValue,
+	// What each entry says is read by `readRemembered`, which leaves out what it does not know: here only the shape.
+	[PREF.guardBefore]: json(isRecord),
 	// A template's id, as the store bounds it (`GUIDANCE_ID_MAX`).
 	[PREF.guidanceDefault]: (v) => /^[^\s]{1,80}$/.test(v),
 };

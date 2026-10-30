@@ -124,6 +124,8 @@ import { Button, cx, IconButton, Modal, Spinner, Tip } from "./ui.tsx";
 const GuardNotice = lazy(() => import("./GuardNotice.tsx"));
 // Its omp runs without the gate, so the guard does not look at its risky calls: the strip that says so, and opens it again, is another.
 const GuardUngated = lazy(() => import("./GuardUngated.tsx"));
+// The guard's switch beside This session (v0.12.2): Off for this conversation alone and back; a chunk of its own, with the guard's strings.
+const GuardToggle = lazy(() => import("./GuardToggle.tsx"));
 // A file, or a file's change, opened large over the conversation's column (#635): the Files tab's own chunk, loaded when
 // something is opened large and not before.
 const BigView = lazy(() => import("./BigView.tsx"));
@@ -1280,6 +1282,14 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 			})}
 		</div>
 	) : null;
+	// The guard's switch, beside This session (in a narrow header, beside the menu that holds it). Only a conversation whose
+	// process has a guard (`LiveInfo.guard`) has one; its place is held while its chunk loads.
+	const guardToggle =
+		liveId && live?.info.guard ? (
+			<Suspense fallback={<span aria-hidden className="h-8 w-8 shrink-0" />}>
+				<GuardToggle liveId={liveId} />
+			</Suspense>
+		) : null;
 
 	// Until the transcript is here there is a spinner, or the reason it failed with a Retry. The cost, Export, Goal
 	// and the composer would only act on a conversation that is not on screen yet, so they wait too.
@@ -1313,6 +1323,7 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 							<>
 								{quota}
 								{panelToggle}
+								{guardToggle}
 								<HeaderMenu
 									usage={usage}
 									controls={canAct ? { live, start: startLive } : undefined}
@@ -1333,6 +1344,7 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 										<Download size={16} />
 									</IconButton>
 								) : null}
+								{guardToggle}
 								{canAct ? <SessionControls live={live} start={startLive} /> : null}
 								<IconButton
 									label={t(goalOpenNow ? "chat.showGoal" : "chat.setGoal")}
