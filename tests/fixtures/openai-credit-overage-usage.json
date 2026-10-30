@@ -1,0 +1,45 @@
+[
+	{
+		"provider": "openai-codex",
+		"fetchedAt": 1792000000000,
+		"limits": [
+			{
+				"id": "openai-codex:primary",
+				"label": "5 hours",
+				"scope": { "provider": "openai-codex", "windowId": "5h", "shared": true },
+				"window": { "id": "5h", "label": "5 hours", "durationMs": 18000000, "resetsAt": 1792007200000 },
+				"amount": {
+					"used": 100,
+					"limit": 100,
+					"remaining": 0,
+					"usedFraction": 1,
+					"remainingFraction": 0,
+					"unit": "percent"
+				},
+				"status": "warning"
+			},
+			{
+				"id": "openai-codex:secondary",
+				"label": "7 days",
+				"scope": { "provider": "openai-codex", "windowId": "7d", "shared": true },
+				"window": { "id": "7d", "label": "7 days", "durationMs": 604800000, "resetsAt": 1792259200000 },
+				"amount": {
+					"used": 100,
+					"limit": 100,
+					"remaining": 0,
+					"usedFraction": 1,
+					"remainingFraction": 0,
+					"unit": "percent"
+				},
+				"status": "warning"
+			}
+		],
+		"metadata": {
+			"planType": "pro",
+			"allowed": true,
+			"limitReached": false,
+			"email": "o@x.org",
+			"meterStates": { "chat": { "allowed": true, "limitReached": false } }
+		}
+	}
+]

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en" class="dark" data-palette="claude">
+	<head>
+		<meta charset="UTF-8" />
+		<link rel="icon" type="image/png" href="/favicon.png" />
+		<!-- Installable (an iPhone or iPad home-screen app, an Android or desktop install): `use-credentials` because a page that is
+		     behind Cloudflare Access only gets this file with its cookie, and a manifest is fetched without one by default. -->
+		<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<meta name="apple-mobile-web-app-title" content="omp" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+		<meta name="description" content="Web UI for the omp coding agent" />
+		<meta name="theme-color" content="#1a1918" />
+		<title>omp</title>
+		<script>
+			(() => {
+				const root = document.documentElement;
+				// The server's copy of the preferences (shared/prefs.ts) is in the page; apply it before anything reads
+				// localStorage, as `reconcile` there says (a test holds the two to the same answers).
+				try {
+					const el = document.getElementById("ompw-prefs");
+					if (el) {
+						const snap = JSON.parse(el.textContent);
+						const mark = localStorage.getItem("ompw.prefsSync") || "";
+						const at = mark.lastIndexOf(":");
+						const rev = mark.slice(at + 1);
+						const known = at > 0 && /^\d+$/.test(rev) && mark.slice(0, at) === snap.id;
+						const behind = known && Number(rev) < snap.rev;
+						for (const key in snap.values) {
+							const value = snap.values[key];
+							if (value === null) {
+								if (behind) localStorage.removeItem(key);
+							} else if (behind || (!known && localStorage.getItem(key) === null)) {
+								localStorage.setItem(key, value);
+							}
+						}
+					}
+				} catch {
+					// No storage, or a page that was not given the preferences: the browser's own copy is all there is.
+				}
+				// Anything but light and system (a value no build wrote) is the default, dark: the same answer as the app's own.
+				const t = localStorage.getItem("ompw.theme");
+				const dark = t === "light" ? false : t === "system" ? matchMedia("(prefers-color-scheme: dark)").matches : true;
+				root.classList.toggle("dark", dark);
+				// A palette name nothing in palettes.css knows shows the default look.
+				root.dataset.palette = localStorage.getItem("ompw.palette") || "claude";
+				// Launched from an iPhone or iPad home screen (`navigator.standalone` is Safari's own flag, and no other browser has it):
+				// the page keeps a strip across its top edge then (`.ios-top-edge` in index.css).
+				if (navigator.standalone === true) root.dataset.standalone = "";
+			})();
+			// A page opened on a conversation's address (a link, a reload) asks for the end of it now, while the application is
+			// still loading: its code takes the response when it asks for the same thing (`prefetchTail` in lib/api.ts). The
+			// address of a subagent shown full screen has more after the file, and is not the conversation's end.
+			(() => {
+				try {
+					const at = /^#\/s\/([^/]+)$/.exec(location.hash);
+					if (!at) return;
+					const url = `/api/family?${new URLSearchParams({ file: decodeURIComponent(at[1]), view: "tail" })}`;
+					window.__ompwEarly = { url, res: fetch(url).catch(() => null), at: Date.now() };
+				} catch {
+					// An address that is not one: the application finds out for itself.
+				}
+			})();
+		</script>
+	</head>
+	<body>
+		<div id="root"></div>
+		<div class="ios-top-edge" data-testid="ios-top-edge" aria-hidden="true"></div>
+		<script type="module" src="/src/main.tsx"></script>
+	</body>
+</html>

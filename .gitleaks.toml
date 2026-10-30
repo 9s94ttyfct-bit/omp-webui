@@ -1,0 +1,44 @@
+# gitleaks configuration (CI runs `gitleaks git` over the commits of each push and pull request): gitleaks' own rules,
+# with the made-up secret-shaped values that the redaction and leak tests hold allowed one by one, only in tests/. A new
+# value of that shape, or any secret elsewhere, is still reported.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "made-up fixtures of the redaction and leak tests, value by value"
+condition = "AND"
+paths = ['''^tests/''']
+regexes = [
+	'''^'admin:hun ter2'$''',
+	'''^ABCDEF0123456789ABCDEF$''',
+	'''^ABCDEF0123456789ABCDEF0123456789$''',
+	'''^AKIAABCDEFGHIJKLMNOP$''',
+	'''^BTBZMqHH6r4Tts7J_aSIgg$''',
+	'''^Zm9vYmFy\+abc/def==$''',
+	'''^abc123456789$''',
+	'''^abc123def456ghi789$''',
+	'''^abcdef123456$''',
+	'''^admin:hunter2$''',
+	'''^alice:s3cr3tpass$''',
+	'''^cs_live_abcdef123456$''',
+	'''^eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIn0\.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk$''',
+	'''^eyJhbGciOiJub25lIn0\.eyJzdWIiOiIxMjM0NTY3ODkwIn0\.$''',
+	'''^https://hooks\.slack\.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX$''',
+	'''^https://hooks\.slack\.com/services/T01234567/B01234567/abcdefghijklmnopqrstuvwx$''',
+	'''^https://hooks\.slack\.com/services/T01ABCDEF/B02GHIJKL/abcdefghijklmnopqrstuvwx$''',
+	'''^https://hooks\.slack\.com/workflows/T01ABCDEF/A02GHIJKL/123456789012345678/abcdefghijklmnopq$''',
+	'''^qwerty123456$''',
+	'''^sk-0123456789abcdefghijklmnop$''',
+	'''^sk-test-0123456789abcdefghijklmnop$''',
+	'''^sk_live_abcdefghijklmnop1234$''',
+	'''^sk_test_abcdefghijklmnop1234$''',
+	'''^tok_0123456789$''',
+	'''^tok_0123456789abcdef$''',
+	'''^tunnelsecret0123456789$''',
+	'''^xoxb-1234567890-abcdefghij$''',
+]
+
+[[allowlists]]
+description = "the truncated private-key markers the key-detection tests are made of"
+targetRules = ["private-key"]
+paths = ['''^tests/unit/(feedback|folder)\.test\.ts$''']

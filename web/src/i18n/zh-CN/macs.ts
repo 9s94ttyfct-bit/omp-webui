@@ -1,0 +1,52 @@
+import type { en } from "../macs.ts";
+
+export const zh: Record<keyof typeof en, string> = {
+	thisMac: "这台 Mac",
+	rowAria: "电脑：这台 Mac，或者要打开的另一台 Mac",
+	rowTitle: "打开另一台 Mac 上的 omp-webui",
+	menuLabel: "选择一台电脑",
+
+	hereConnected: "已连接",
+	hereNotConnected: "未连接",
+	lastConnected: "上次打开：{when}",
+	neverConnected: "还没打开过",
+	stateRunning: "运行中",
+	stateAttention: "需要处理",
+	stateUnreachable: "连不上",
+	stateUnknown: "状态未知",
+
+	openTitle: "打开 {name}（{host}）",
+	openFailed: "无法打开 {name}：{error}",
+	openRefused: "应用没有打开那台 Mac",
+
+	add: "添加 Mac…",
+	addTitle: "添加一台 Mac",
+	addDetail:
+		"另一台 Mac 上 omp-webui 的地址，就是它在“设置 › 远程访问”里设置的那个（https://omp.example.com）。它会在那里打开，并通过 Cloudflare Access 登录。",
+	nameLabel: "名称",
+	namePlaceholder: "工作室 Mac",
+	addressLabel: "地址",
+	addressPlaceholder: "omp.example.com",
+	addSubmit: "添加",
+	adding: "正在添加…",
+	added: "已添加 {name}",
+	addFailed: "无法添加这台 Mac：{error}",
+
+	problemFull: "最多只能保存 {n} 台 Mac",
+	problemHostTaken: "这个地址已经保存过了，名称是“{name}”",
+	problemNameEmpty: "给这台 Mac 起个名字",
+	problemNameTooLong: "名称最多 {n} 个字符",
+	problemNameCharacters: "名称里不能有控制字符或不可见字符",
+	problemNameTaken: "已经有另一台 Mac 叫“{name}”了",
+	addressEmpty: "填上这台 Mac 的地址，例如 omp.example.com",
+	addressNotHttps: "地址必须是 https（或者不写协议）",
+	addressUserInfo: "地址里不能带用户名或密码",
+	addressPort: "地址里不能有端口：隧道在 443 上应答",
+	addressPath: "地址只写主机名，不要路径",
+	addressIpAddress: "IP 地址不是 Mac 的地址：请用它的公网主机名",
+	addressTrailingDot: "地址不能以点结尾",
+	addressNotAscii: "国际化域名请写成 xn-- 形式",
+	addressLocalName: "只有私有网络认识的名字（localhost、.local、.lan…）无法通过隧道访问",
+	addressAccessDomain: "这是 Cloudflare Access 自己的登录地址，不是 Mac 的地址：请填这台 Mac 的主机名",
+	addressNotDomainName: "这不是 omp.example.com 这样的主机名",
+};

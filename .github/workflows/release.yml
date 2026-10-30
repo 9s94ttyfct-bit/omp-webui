@@ -1,0 +1,76 @@
+name: Release
+
+# Run by hand for a pushed tag `vX.Y.Z` (`gh workflow run Release -f tag=vX.Y.Z`); a tag push does not start it. Releases
+# are made with `bun scripts/release-local.ts vX.Y.Z` on the maintainer's Mac, which makes the tag only after CI passed on
+# its commit and the live-model tests, the signed app and the dmg passed there, and publishes the release with the
+# installer; nothing is published to npm. This workflow is the by-hand fallback for the notes of an existing tag. The tag must
+# match package.json's version, with release-notes/vX.Y.Z.md written as an `## English` and a `## 中文` section
+# (scripts/check-release-notes.ts fails the release without them). The app updates itself from this repository's releases
+# without a login (#571), so they must be on a public repository; the last step of the job says whether it is.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)publish, e.g. v0.1.0
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: bun install --frozen-lockfile
+      - name: Tag matches package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          test "v$version" = "$TAG" || { echo "tag $TAG != package.json v$version"; exit 1; }
+      - name: Release notes have an English and a Chinese section
+        run: bun scripts/check-release-notes.ts "$TAG"
+      - run: bun run typecheck
+      - run: bun run test
+      # No installer (.dmg) is built or published here. The app is signed with a self-signed certificate that lives in the
+      # keychain of one Mac (scripts/signing-identity.ts), so this runner has no signing identity: its app would be signed
+      # ad hoc, its designated requirement would be the build's cdhash, and an update from it would lose the macOS
+      # permissions (#456). The installer is built and published by `bun scripts/release-local.ts vX.Y.Z` on that Mac;
+      # this job never uploads one, and never with --clobber over a signed one (#483).
+      - name: Build the macOS app (also builds dist/web; ad hoc here, only to prove that the build works)
+        run: bun run app
+      - name: Create the release (notes only, no installer)
+        run: |
+          # shellcheck disable=SC2016 # the backticks are literal Markdown
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # It may hold an installer that `bun scripts/release-local.ts` signed with the identity: leave it as it is.
+            echo "release $TAG exists: nothing uploaded"
+          else
+            notes="release-notes/${TAG}.md"
+            {
+              if [ -f "$notes" ]; then cat "$notes"; fi
+              printf '\n---\n\nThis release has no installer yet: the macOS app is signed with a certificate that lives on the maintainer'"'"'s Mac, so the installer is published from there (`bun scripts/release-local.ts %s`), not by this workflow. An installer built without that certificate would lose the app'"'"'s macOS permissions at every update.\n' "$TAG"
+            } > body.md
+            gh release create "$TAG" --title "omp-webui ${TAG}" --notes-file body.md --verify-tag
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # The visibility is reported and never required, and never changed here: the app updates itself from this
+      # repository's releases without a login (#571), so a release can be seen by installed apps only while the
+      # repository is public (made so on GitHub, not by this workflow).
+      - name: Say whether the repo is public
+        run: |
+          repo=$(gh api "repos/$GITHUB_REPOSITORY" -q .visibility)
+          echo "repository visibility: $repo"
+          if [ "$repo" != public ]; then
+            echo "::warning::The repository is $repo: no installed app can see this release until it is public."
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

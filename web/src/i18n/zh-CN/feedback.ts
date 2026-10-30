@@ -1,0 +1,56 @@
+import type { en } from "../feedback.ts";
+import type { en as later } from "../feedback-later.ts";
+
+export const zh: Record<keyof typeof en | keyof typeof later, string> = {
+	settingsSendHint:
+		"报告问题或提出功能建议。这会在 GitHub 上打开一个已填好内容的 issue；在那里提交之前不会发送任何内容。",
+	navFeedback: "发送反馈",
+	title: "发送反馈",
+	intro:
+		"告诉我们哪里出了问题，或你想要什么功能。这会在 GitHub 上打开一个已填好内容的 issue；在那里提交之前不会发送任何内容（需要 GitHub 账号）。",
+	helpPrompt: "遇到问题，或缺少功能？",
+	kind: "反馈的类型是？",
+	kindBug: "出了问题",
+	kindFeature: "我想要一个功能",
+	summary: "简短概述",
+	summaryBugHint: "例如：归档后侧边栏丢失了我的选择",
+	summaryFeatureHint: "例如：把对话导出为 PDF",
+	required: "必填",
+	optional: "选填",
+	happened: "发生了什么？",
+	happenedHint: "描述你看到的情况。",
+	steps: "复现步骤",
+	stepsHint: "1. 打开 … 2. 点击 … 3. …",
+	expected: "你期望发生什么？",
+	actual: "实际发生了什么？",
+	problem: "你想解决什么问题？",
+	problemHint: "你在做什么，又是什么阻碍了你？",
+	solution: "你希望它是什么样？",
+	solutionHint: "它可以怎么工作？也欢迎写下你考虑过的其他办法。",
+	cleaned:
+		"你在这里写的所有内容都会先去掉令牌、密钥（含私钥）、密码、Cookie、Webhook 链接、链接和命令中的登录信息、电子邮件地址和你的用户名，并把用户主目录换成 ~。",
+	diagnostics: "附上诊断信息",
+	diagnosticsHint: "此网页界面和 omp 的版本、操作系统、模式和浏览器。不含对话、路径或凭据。",
+	preview: "预览",
+	back: "返回",
+	previewIntro: "这就是 GitHub issue 里的内容，你在那里仍可修改。",
+	previewTitle: "标题",
+	previewLabels: "标签",
+	previewBody: "描述",
+	truncatedDiagnostics: "链接会过长，因此诊断信息被截短了。",
+	truncatedText:
+		"文字对链接来说太长，会在链接里被截断。点「在 GitHub 上打开」时会先把完整文字复制到剪贴板，请粘贴到 issue 里。",
+	open: "在 GitHub 上打开",
+	copy: "复制文字",
+	copied: "已复制",
+	copyFailed: "无法复制",
+	settingsTitle: "反馈",
+	settingsStar: "提示我给项目点个 GitHub 星标",
+	settingsStarHint:
+		"连续使用多天后，侧边栏可能提醒一次，且仅在仓库公开时。关闭后，应用既不会提醒，也不会去 GitHub 查询仓库是否公开。",
+	starTitle: "觉得 omp 网页界面好用吗？",
+	starBody: "如果它对你有帮助，在 GitHub 上点个星标能让更多人发现它。",
+	starAction: "在 GitHub 上加星标",
+	starLater: "以后再说",
+	starNever: "不再提醒",
+};

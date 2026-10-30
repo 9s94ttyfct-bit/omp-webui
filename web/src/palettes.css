@@ -1,0 +1,706 @@
+/*
+ * Palettes. A palette is a brand's look in two modes: sixteen colours, a link and a focus-ring colour, the code colours
+ * (`--shiki-*`, see lib/highlighter.ts), the usage chart's eight series (`--chart-*`), the built-in terminal's sixteen
+ * ANSI colours (`--ansi-*`), a UI font and the corner radii. It is chosen apart from light / dark / system:
+ * <html data-palette="…"> picks the palette and <html class="dark"> the mode (index.html sets both before the first
+ * paint, lib/theme.ts keeps them). The blocks are scoped by attribute, not by :root, so any element can carry its own
+ * palette (the Settings previews do). Claude is the default: its light block is also :root, its dark one is also .dark.
+ * Every block restates every token, so a palette never inherits from another, and tests/unit/palettes.test.ts holds
+ * each one alone to WCAG AA (text ≥ 4.5:1 on the surfaces and tints it sits on, the accent label on the accent fill).
+ * Add a palette by adding its two blocks here, its id to lib/theme.ts and its names to the i18n files.
+ */
+
+/*
+ * Claude: Anthropic's own look. Warm paper and charcoal with the rust accent the app has always had.
+ */
+:root,
+[data-palette="claude"] {
+	--bg: #faf9f5;
+	--bg-soft: #f3f1ea;
+	--surface: #ffffff;
+	--hover: #ecebe4;
+	--border: #e3e1d7;
+	--fg: #1f1e1b;
+	--muted: #58574f;
+	--faint: #62615e;
+	--accent: #a14529;
+	--accent-soft: #ad4b2c1f;
+	--accent-fg: #ffffff;
+	--success: #206437;
+	--warning: #7b4f0e;
+	--danger: #a02e20;
+	--code-bg: #f3f1ea;
+	--user-bubble: #efede4;
+	--link: var(--accent);
+	--ring: var(--accent);
+	--font-ui:
+		ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+		sans-serif;
+	--font-display: "Iowan Old Style", "Palatino Linotype", Georgia, "Songti SC", serif;
+	--radius-xs: 0.125rem;
+	--radius-sm: 0.25rem;
+	--radius-md: 0.375rem;
+	--radius-lg: 0.5rem;
+	--radius-xl: 0.75rem;
+	--radius-2xl: 1rem;
+	--radius-3xl: 1.5rem;
+	--radius-4xl: 2rem;
+	--radius-pill: 999px;
+	/* code */
+	--shiki-foreground: #1f1e1b;
+	--shiki-token-comment: #666d77;
+	--shiki-token-keyword: #ce2a39;
+	--shiki-token-string: #032f62;
+	--shiki-token-string-expression: #032f62;
+	--shiki-token-constant: #005cc5;
+	--shiki-token-function: #6f42c1;
+	--shiki-token-parameter: #1f1e1b;
+	--shiki-token-punctuation: #1f1e1b;
+	--shiki-token-link: #005cc5;
+	--shiki-token-inserted: #1f7a34;
+	--shiki-token-deleted: #b31d28;
+	--shiki-token-changed: #b14e09;
+	/* chart: the series of the usage chart; each 3:1 or more on every surface it sits on */
+	--chart-1: #c6572f;
+	--chart-2: #307acf;
+	--chart-3: #208a47;
+	--chart-4: #a156d7;
+	--chart-5: #9b7324;
+	--chart-6: #208588;
+	--chart-7: #d34569;
+	--chart-8: #7e796f;
+	/* terminal (ANSI): every one 4.5:1 or more on code-bg, which the built-in terminal draws on */
+	--ansi-black: #1e1c19;
+	--ansi-red: #912f24;
+	--ansi-green: #175d2c;
+	--ansi-yellow: #674d1a;
+	--ansi-blue: #23518d;
+	--ansi-magenta: #822595;
+	--ansi-cyan: #17595e;
+	--ansi-white: #605b52;
+	--ansi-bright-black: #48443d;
+	--ansi-bright-red: #b73b2e;
+	--ansi-bright-green: #1e7638;
+	--ansi-bright-yellow: #826120;
+	--ansi-bright-blue: #2d67b4;
+	--ansi-bright-magenta: #a42fbc;
+	--ansi-bright-cyan: #1e7177;
+	--ansi-bright-white: #706a5f;
+	color-scheme: light;
+}
+.dark,
+[data-palette="claude"].dark {
+	--bg: #1a1918;
+	--bg-soft: #201f1d;
+	--surface: #262522;
+	--hover: #2f2e2b;
+	--border: #363531;
+	--fg: #ecebe6;
+	--muted: #b4b2aa;
+	--faint: #a09e98;
+	--accent: #e48665;
+	--accent-soft: #e07a5524;
+	--accent-fg: #1a1918;
+	--success: #5bbf7c;
+	--warning: #e0b04f;
+	--danger: #f18b83;
+	--code-bg: #141413;
+	--user-bubble: #2c2b28;
+	/* code */
+	--shiki-foreground: #e1e4e8;
+	--shiki-token-comment: #74828c;
+	--shiki-token-keyword: #f97583;
+	--shiki-token-string: #9ecbff;
+	--shiki-token-string-expression: #9ecbff;
+	--shiki-token-constant: #79b8ff;
+	--shiki-token-function: #b392f0;
+	--shiki-token-parameter: #e1e4e8;
+	--shiki-token-punctuation: #e1e4e8;
+	--shiki-token-link: #79b8ff;
+	--shiki-token-inserted: #85e89d;
+	--shiki-token-deleted: #fdaeb7;
+	--shiki-token-changed: #ffab70;
+	/* chart */
+	--chart-1: #db8464;
+	--chart-2: #689edc;
+	--chart-3: #29b05a;
+	--chart-4: #ba83e2;
+	--chart-5: #c4922e;
+	--chart-6: #29abb0;
+	--chart-7: #e07b94;
+	--chart-8: #9e9a92;
+	/* terminal (ANSI) */
+	--ansi-black: #898274;
+	--ansi-red: #d87064;
+	--ansi-green: #29a34e;
+	--ansi-yellow: #b4872d;
+	--ansi-blue: #5a90d6;
+	--ansi-magenta: #c668d9;
+	--ansi-cyan: #299ca4;
+	--ansi-white: #cbc8c2;
+	--ansi-bright-black: #a39e93;
+	--ansi-bright-red: #e5a098;
+	--ansi-bright-green: #33cb61;
+	--ansi-bright-yellow: #d5ac59;
+	--ansi-bright-blue: #8fb4e3;
+	--ansi-bright-magenta: #da9be6;
+	--ansi-bright-cyan: #35c3cd;
+	--ansi-bright-white: #e9e8e5;
+	color-scheme: dark;
+}
+
+/*
+ * ChatGPT: chatgpt.com's neutral greys with an ink-black (light) or white (dark) accent, the way its Send button and
+ * selected rows read; blue links, OpenAI green for success; rounder corners.
+ */
+[data-palette="chatgpt"] {
+	--bg: #ffffff;
+	--bg-soft: #f9f9f9;
+	--surface: #ffffff;
+	--hover: #ececec;
+	--border: #e0e0e0;
+	--fg: #0d0d0d;
+	--muted: #525252;
+	--faint: #666666;
+	--accent: #0d0d0d;
+	--accent-soft: #0d0d0d0f;
+	--accent-fg: #ffffff;
+	--success: #0a694f;
+	--warning: #864f00;
+	--danger: #ab2016;
+	--code-bg: #f4f4f4;
+	--user-bubble: #f4f4f4;
+	--link: #0b62c7;
+	--ring: var(--accent);
+	--font-ui:
+		ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+		sans-serif;
+	--font-display: var(--font-ui);
+	--radius-xs: 0.125rem;
+	--radius-sm: 0.25rem;
+	--radius-md: 0.375rem;
+	--radius-lg: 0.625rem;
+	--radius-xl: 1rem;
+	--radius-2xl: 1.5rem;
+	--radius-3xl: 1.5rem;
+	--radius-4xl: 2rem;
+	--radius-pill: 999px;
+	/* code */
+	--shiki-foreground: #0d0d0d;
+	--shiki-token-comment: #686e78;
+	--shiki-token-keyword: #8250df;
+	--shiki-token-string: #0a6a4a;
+	--shiki-token-string-expression: #0a6a4a;
+	--shiki-token-constant: #ae5600;
+	--shiki-token-function: #0b62c7;
+	--shiki-token-parameter: #0d0d0d;
+	--shiki-token-punctuation: #5d5d5d;
+	--shiki-token-link: #0b62c7;
+	--shiki-token-inserted: #0a7d5c;
+	--shiki-token-deleted: #cf222e;
+	--shiki-token-changed: #9a5b00;
+	/* chart */
+	--chart-1: #208a67;
+	--chart-2: #3b79d1;
+	--chart-3: #b6652b;
+	--chart-4: #975ed9;
+	--chart-5: #977423;
+	--chart-6: #248599;
+	--chart-7: #d34575;
+	--chart-8: #867777;
+	/* terminal (ANSI) */
+	--ansi-black: #221d1d;
+	--ansi-red: #952f28;
+	--ansi-green: #195e43;
+	--ansi-yellow: #664f1b;
+	--ansi-blue: #275293;
+	--ansi-magenta: #702fb0;
+	--ansi-cyan: #1b5a66;
+	--ansi-white: #6a5a5a;
+	--ansi-bright-black: #4f4444;
+	--ansi-bright-red: #bc3b32;
+	--ansi-bright-green: #1f7654;
+	--ansi-bright-yellow: #816522;
+	--ansi-bright-blue: #3168b9;
+	--ansi-bright-magenta: #8945ce;
+	--ansi-bright-cyan: #227282;
+	--ansi-bright-white: #7a6868;
+	color-scheme: light;
+}
+[data-palette="chatgpt"].dark {
+	--bg: #212121;
+	--bg-soft: #171717;
+	--surface: #2f2f2f;
+	--hover: #383838;
+	--border: #424242;
+	--fg: #ececec;
+	--muted: #c8c8c8;
+	--faint: #b4b4b4;
+	--accent: #ffffff;
+	--accent-soft: #ffffff1a;
+	--accent-fg: #0d0d0d;
+	--success: #1ac880;
+	--warning: #f5b83d;
+	--danger: #ff9389;
+	--code-bg: #171717;
+	--user-bubble: #303030;
+	--link: #7ab7ff;
+	/* code */
+	--shiki-foreground: #ececec;
+	--shiki-token-comment: #8e9399;
+	--shiki-token-keyword: #c792ea;
+	--shiki-token-string: #8fe0a8;
+	--shiki-token-string-expression: #8fe0a8;
+	--shiki-token-constant: #f2a65a;
+	--shiki-token-function: #7ab7ff;
+	--shiki-token-parameter: #ececec;
+	--shiki-token-punctuation: #b4b4b4;
+	--shiki-token-link: #7ab7ff;
+	--shiki-token-inserted: #19c37d;
+	--shiki-token-deleted: #ff6b61;
+	--shiki-token-changed: #f5b83d;
+	/* chart */
+	--chart-1: #2cbc8c;
+	--chart-2: #81a9e1;
+	--chart-3: #db9766;
+	--chart-4: #bb96e6;
+	--chart-5: #cf9f30;
+	--chart-6: #33b5cf;
+	--chart-7: #e48daa;
+	--chart-8: #afa4a4;
+	/* terminal (ANSI) */
+	--ansi-black: #938080;
+	--ansi-red: #d8736c;
+	--ansi-green: #2ba373;
+	--ansi-yellow: #b28b2f;
+	--ansi-blue: #6492d6;
+	--ansi-magenta: #ab7bdc;
+	--ansi-cyan: #309db3;
+	--ansi-white: #d1c9c9;
+	--ansi-bright-black: #ac9e9e;
+	--ansi-bright-red: #e6a49f;
+	--ansi-bright-green: #3acb91;
+	--ansi-bright-yellow: #d4af5b;
+	--ansi-bright-blue: #97b6e3;
+	--ansi-bright-magenta: #c7a7e8;
+	--ansi-bright-cyan: #5fc1d5;
+	--ansi-bright-white: #eeebeb;
+	color-scheme: dark;
+}
+
+/*
+ * Terminal: a green phosphor screen. Black and green with a bright prompt-green accent in the dark, black ink on
+ * pale paper in the light; ANSI colours for code; the whole UI in the monospace face with square corners.
+ */
+[data-palette="terminal"] {
+	--bg: #fbfcf8;
+	--bg-soft: #f0f2ea;
+	--surface: #ffffff;
+	--hover: #e2e6d9;
+	--border: #b4bca8;
+	--fg: #0e1a0e;
+	--muted: #3f4f3f;
+	--faint: #55655a;
+	--accent: #0a701c;
+	--accent-soft: #0a7a1e1a;
+	--accent-fg: #ffffff;
+	--success: #0a661a;
+	--warning: #7b5100;
+	--danger: #a7231b;
+	--code-bg: #f0f2ea;
+	--user-bubble: #e8ecdf;
+	--link: #005f87;
+	--ring: var(--accent);
+	--font-ui:
+		ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+		monospace;
+	--font-display: var(--font-ui);
+	--radius-xs: 0;
+	--radius-sm: 0;
+	--radius-md: 0;
+	--radius-lg: 0;
+	--radius-xl: 0;
+	--radius-2xl: 0;
+	--radius-3xl: 0;
+	--radius-4xl: 0;
+	--radius-pill: 0;
+	/* code */
+	--shiki-foreground: #0e1a0e;
+	--shiki-token-comment: #5a6b5a;
+	--shiki-token-keyword: #a3198a;
+	--shiki-token-string: #7a5200;
+	--shiki-token-string-expression: #7a5200;
+	--shiki-token-constant: #a53c00;
+	--shiki-token-function: #005f87;
+	--shiki-token-parameter: #0e1a0e;
+	--shiki-token-punctuation: #3f4f3f;
+	--shiki-token-link: #005f87;
+	--shiki-token-inserted: #0a7a1e;
+	--shiki-token-deleted: #b3261e;
+	--shiki-token-changed: #8a5a00;
+	/* chart */
+	--chart-1: #1f8631;
+	--chart-2: #228093;
+	--chart-3: #956f23;
+	--chart-4: #ca2fb1;
+	--chart-5: #cf4630;
+	--chart-6: #3374cf;
+	--chart-7: #7e60da;
+	--chart-8: #6b786b;
+	/* terminal (ANSI) */
+	--ansi-black: #191d19;
+	--ansi-red: #9e1d14;
+	--ansi-green: #0c5e0e;
+	--ansi-yellow: #634f0c;
+	--ansi-blue: #135097;
+	--ansi-magenta: #921285;
+	--ansi-cyan: #0c5a5f;
+	--ansi-white: #515f51;
+	--ansi-bright-black: #3d473d;
+	--ansi-bright-red: #c72419;
+	--ansi-bright-green: #0f7812;
+	--ansi-bright-yellow: #7e6410;
+	--ansi-bright-blue: #1866c0;
+	--ansi-bright-magenta: #b717a7;
+	--ansi-bright-cyan: #0f7279;
+	--ansi-bright-white: #5f6f5f;
+	color-scheme: light;
+}
+[data-palette="terminal"].dark {
+	--bg: #050805;
+	--bg-soft: #0a100a;
+	--surface: #0f160f;
+	--hover: #1b281b;
+	--border: #2f4f2f;
+	--fg: #c5f2bf;
+	--muted: #86b57f;
+	--faint: #7aa874;
+	--accent: #39ff5a;
+	--accent-soft: #39ff5a1f;
+	--accent-fg: #031003;
+	--success: #7dd87d;
+	--warning: #ffb000;
+	--danger: #ff6159;
+	--code-bg: #000000;
+	--user-bubble: #142014;
+	--link: #5ce1e6;
+	/* code */
+	--shiki-foreground: #c5f2bf;
+	--shiki-token-comment: #6f9a6a;
+	--shiki-token-keyword: #ff79c6;
+	--shiki-token-string: #f1fa8c;
+	--shiki-token-string-expression: #f1fa8c;
+	--shiki-token-constant: #ffb86c;
+	--shiki-token-function: #5ce1e6;
+	--shiki-token-parameter: #c5f2bf;
+	--shiki-token-punctuation: #86b57f;
+	--shiki-token-link: #5ce1e6;
+	--shiki-token-inserted: #7dd87d;
+	--shiki-token-deleted: #ff6159;
+	--shiki-token-changed: #ffb000;
+	/* chart */
+	--chart-1: #27a73d;
+	--chart-2: #2a9db4;
+	--chart-3: #b8892b;
+	--chart-4: #db64c7;
+	--chart-5: #da7262;
+	--chart-6: #6093da;
+	--chart-7: #9981e1;
+	--chart-8: #879487;
+	/* terminal (ANSI) */
+	--ansi-black: #6b7e6b;
+	--ansi-red: #e84e43;
+	--ansi-green: #139a18;
+	--ansi-yellow: #a18014;
+	--ansi-blue: #3085e5;
+	--ansi-magenta: #e52bd2;
+	--ansi-cyan: #13929b;
+	--ansi-white: #b4bfb4;
+	--ansi-bright-black: #879987;
+	--ansi-bright-red: #f08982;
+	--ansi-bright-green: #18c11e;
+	--ansi-bright-yellow: #caa119;
+	--ansi-bright-blue: #6faaed;
+	--ansi-bright-magenta: #ef7be3;
+	--ansi-bright-cyan: #18b8c3;
+	--ansi-bright-white: #d6dcd6;
+	color-scheme: dark;
+}
+
+/*
+ * OMP: oh-my-pi's own palette (omp's HTML export, web-palette.ts): violet-black with the magenta accent and cyan
+ * links, a light twin with the same hues; monospace headings, tighter corners.
+ */
+[data-palette="omp"] {
+	--bg: #fbf9fc;
+	--bg-soft: #f4f2f7;
+	--surface: #ffffff;
+	--hover: #ebe8ef;
+	--border: #ddd8e3;
+	--fg: #28202f;
+	--muted: #5c5465;
+	--faint: #635d6e;
+	--accent: #ab2186;
+	--accent-soft: #b3238c24;
+	--accent-fg: #ffffff;
+	--success: #1a6633;
+	--warning: #765100;
+	--danger: #a82427;
+	--code-bg: #efedf2;
+	--user-bubble: #f1eef5;
+	--link: #0c666f;
+	--ring: var(--accent);
+	--font-ui:
+		ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+		sans-serif;
+	--font-display: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+	--radius-xs: 0.125rem;
+	--radius-sm: 0.25rem;
+	--radius-md: 0.25rem;
+	--radius-lg: 0.375rem;
+	--radius-xl: 0.5rem;
+	--radius-2xl: 0.75rem;
+	--radius-3xl: 1.5rem;
+	--radius-4xl: 2rem;
+	--radius-pill: 999px;
+	/* code */
+	--shiki-foreground: #28202f;
+	--shiki-token-comment: #6f6978;
+	--shiki-token-keyword: #6d35c7;
+	--shiki-token-string: #247a3d;
+	--shiki-token-string-expression: #247a3d;
+	--shiki-token-constant: #b51f88;
+	--shiki-token-function: #8a6000;
+	--shiki-token-parameter: #08737d;
+	--shiki-token-punctuation: #5c5465;
+	--shiki-token-link: #0e7683;
+	--shiki-token-inserted: #247a3d;
+	--shiki-token-deleted: #c02a2d;
+	--shiki-token-changed: #8a6000;
+	/* chart */
+	--chart-1: #d039a3;
+	--chart-2: #228493;
+	--chart-3: #8b5ed9;
+	--chart-4: #957323;
+	--chart-5: #208a4d;
+	--chart-6: #3978d0;
+	--chart-7: #d1493d;
+	--chart-8: #7f7584;
+	/* terminal (ANSI) */
+	--ansi-black: #1c181d;
+	--ansi-red: #922a22;
+	--ansi-green: #155b2f;
+	--ansi-yellow: #634c17;
+	--ansi-blue: #234d96;
+	--ansi-magenta: #8c2170;
+	--ansi-cyan: #175761;
+	--ansi-white: #625665;
+	--ansi-bright-black: #49404b;
+	--ansi-bright-red: #b9352b;
+	--ansi-bright-green: #1b743c;
+	--ansi-bright-yellow: #7d601d;
+	--ansi-bright-blue: #2d62bf;
+	--ansi-bright-magenta: #b22a8d;
+	--ansi-bright-cyan: #1d6f7b;
+	--ansi-bright-white: #726576;
+	color-scheme: light;
+}
+[data-palette="omp"].dark {
+	--bg: #0f0b14;
+	--bg-soft: #130e19;
+	--surface: #16111c;
+	--hover: #241d2c;
+	--border: #2e2638;
+	--fg: #e6e3ea;
+	--muted: #a49faa;
+	--faint: #958f9a;
+	--accent: #ed4fc1;
+	--accent-soft: #ed4abf2e;
+	--accent-fg: #0f0b14;
+	--success: #68ca80;
+	--warning: #e4b33f;
+	--danger: #f06f6c;
+	--code-bg: #09060c;
+	--user-bubble: #211b28;
+	--link: #5ad8e5;
+	/* code */
+	--shiki-foreground: #e6e3ea;
+	--shiki-token-comment: #8a8491;
+	--shiki-token-keyword: #a77bfa;
+	--shiki-token-string: #68ca80;
+	--shiki-token-string-expression: #68ca80;
+	--shiki-token-constant: #f26bc7;
+	--shiki-token-function: #e4b33f;
+	--shiki-token-parameter: #5ad8e5;
+	--shiki-token-punctuation: #a49faa;
+	--shiki-token-link: #5ad8e5;
+	--shiki-token-inserted: #68ca80;
+	--shiki-token-deleted: #f05653;
+	--shiki-token-changed: #e4b33f;
+	/* chart */
+	--chart-1: #d95eb4;
+	--chart-2: #289aab;
+	--chart-3: #9e79e0;
+	--chart-4: #ae8629;
+	--chart-5: #259f58;
+	--chart-6: #588dd8;
+	--chart-7: #da6a60;
+	--chart-8: #928997;
+	/* terminal (ANSI) */
+	--ansi-black: #86778b;
+	--ansi-red: #d8635b;
+	--ansi-green: #249b50;
+	--ansi-yellow: #a98228;
+	--ansi-blue: #5887d8;
+	--ansi-magenta: #d755b4;
+	--ansi-cyan: #2794a4;
+	--ansi-white: #c5bdc7;
+	--ansi-bright-black: #a094a4;
+	--ansi-bright-red: #e5958f;
+	--ansi-bright-green: #2ec264;
+	--ansi-bright-yellow: #d0a338;
+	--ansi-bright-blue: #8aabe3;
+	--ansi-bright-magenta: #e48dcd;
+	--ansi-bright-cyan: #31bacf;
+	--ansi-bright-white: #e2dee3;
+	color-scheme: dark;
+}
+
+/*
+ * Hermes: Nous Research's Hermes Agent dashboard ("Hermes Teal"): deep teal ground, cream ink, amber glow; the light
+ * mode is a warm parchment with teal ink and a bronze accent.
+ */
+[data-palette="hermes"] {
+	--bg: #fbf4e8;
+	--bg-soft: #f3e9d7;
+	--surface: #fffaf1;
+	--hover: #eadfc9;
+	--border: #dccdb0;
+	--fg: #0d2e2e;
+	--muted: #3f524d;
+	--faint: #535d56;
+	--accent: #805100;
+	--accent-soft: #8a570024;
+	--accent-fg: #fffaf1;
+	--success: #1a633f;
+	--warning: #8b4400;
+	--danger: #9f2d1a;
+	--code-bg: #f3e9d7;
+	--user-bubble: #efe3cc;
+	--link: #0b6662;
+	--ring: var(--accent);
+	--font-ui:
+		ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+		sans-serif;
+	--font-display: "Iowan Old Style", "Palatino Linotype", Georgia, "Songti SC", serif;
+	--radius-xs: 0.125rem;
+	--radius-sm: 0.25rem;
+	--radius-md: 0.375rem;
+	--radius-lg: 0.5rem;
+	--radius-xl: 0.75rem;
+	--radius-2xl: 1rem;
+	--radius-3xl: 1.5rem;
+	--radius-4xl: 2rem;
+	--radius-pill: 999px;
+	/* code */
+	--shiki-foreground: #0d2e2e;
+	--shiki-token-comment: #576e67;
+	--shiki-token-keyword: #8a5700;
+	--shiki-token-string: #1c6b45;
+	--shiki-token-string-expression: #1c6b45;
+	--shiki-token-constant: #a2431f;
+	--shiki-token-function: #0b6b66;
+	--shiki-token-parameter: #0d2e2e;
+	--shiki-token-punctuation: #4a5f5a;
+	--shiki-token-link: #0b6b66;
+	--shiki-token-inserted: #1c6b45;
+	--shiki-token-deleted: #b3321f;
+	--shiki-token-changed: #9a4a00;
+	/* chart */
+	--chart-1: #956b23;
+	--chart-2: #1e7e7b;
+	--chart-3: #c04f2d;
+	--chart-4: #1f8248;
+	--chart-5: #2d75be;
+	--chart-6: #9c4bd5;
+	--chart-7: #d0375d;
+	--chart-8: #677473;
+	/* terminal (ANSI) */
+	--ansi-black: #131716;
+	--ansi-red: #823526;
+	--ansi-green: #195837;
+	--ansi-yellow: #62491c;
+	--ansi-blue: #235078;
+	--ansi-magenta: #7b2788;
+	--ansi-cyan: #195551;
+	--ansi-white: #4d5a59;
+	--ansi-bright-black: #384241;
+	--ansi-bright-red: #a54430;
+	--ansi-bright-green: #217046;
+	--ansi-bright-yellow: #7e5d24;
+	--ansi-bright-blue: #2c6699;
+	--ansi-bright-magenta: #9c32ac;
+	--ansi-bright-cyan: #206d68;
+	--ansi-bright-white: #5b6a69;
+	color-scheme: light;
+}
+[data-palette="hermes"].dark {
+	--bg: #041c1c;
+	--bg-soft: #062424;
+	--surface: #0a2c2c;
+	--hover: #123b3a;
+	--border: #1f4d4a;
+	--fg: #ffe6cb;
+	--muted: #cdb9a2;
+	--faint: #b8aa98;
+	--accent: #ffbd38;
+	--accent-soft: #ffbd382b;
+	--accent-fg: #041c1c;
+	--success: #6fe0a8;
+	--warning: #ff9f43;
+	--danger: #ff7b6b;
+	--code-bg: #031414;
+	--user-bubble: #0d3232;
+	--link: #7fe0d0;
+	/* code */
+	--shiki-foreground: #ffe6cb;
+	--shiki-token-comment: #8fb3ab;
+	--shiki-token-keyword: #ffbd38;
+	--shiki-token-string: #9fe3c0;
+	--shiki-token-string-expression: #9fe3c0;
+	--shiki-token-constant: #ff9f7a;
+	--shiki-token-function: #ffd9a8;
+	--shiki-token-parameter: #ffe6cb;
+	--shiki-token-punctuation: #cdb9a2;
+	--shiki-token-link: #7fe0d0;
+	--shiki-token-inserted: #6fe0a8;
+	--shiki-token-deleted: #ff7b6b;
+	--shiki-token-changed: #ff9f43;
+	/* chart */
+	--chart-1: #d09837;
+	--chart-2: #2ab4af;
+	--chart-3: #df8f77;
+	--chart-4: #2cba67;
+	--chart-5: #70a7de;
+	--chart-6: #c18fe5;
+	--chart-7: #e3879e;
+	--chart-8: #9aa5a4;
+	/* terminal (ANSI) */
+	--ansi-black: #718583;
+	--ansi-red: #d0725f;
+	--ansi-green: #2e9f63;
+	--ansi-yellow: #b28434;
+	--ansi-blue: #4e91cc;
+	--ansi-magenta: #c567d3;
+	--ansi-cyan: #2d9c94;
+	--ansi-white: #bec8c7;
+	--ansi-bright-black: #8fa09e;
+	--ansi-bright-red: #e0a093;
+	--ansi-bright-green: #3dc77d;
+	--ansi-bright-yellow: #d2a962;
+	--ansi-bright-blue: #87b4dc;
+	--ansi-bright-magenta: #d89ae2;
+	--ansi-bright-cyan: #38c2b9;
+	--ansi-bright-white: #e2e7e6;
+	color-scheme: dark;
+}

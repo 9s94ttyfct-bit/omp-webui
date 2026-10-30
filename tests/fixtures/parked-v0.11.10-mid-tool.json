@@ -1,0 +1,45 @@
+{
+	"version": 1,
+	"liveId": "L1-mvkyclq6",
+	"omp": {
+		"pid": 9357,
+		"identity": "Fri Oct 23 12:34:41 2026     /opt/homebrew/bin/omp --mode rpc-ui --config /tmp/world/data/omp-overlay.yml --config /tmp/world/tmp/data-593c47415c/ompw-live-9323-9RDD29/L1-mvkyclq6.yml"
+	},
+	"relay": {
+		"pid": 9354,
+		"identity": "Fri Oct 23 12:34:41 2026     /tmp/world/Apps/omp-webui.app/Contents/Resources/omp-webui-server --ompw-relay /tmp/world/data/relay/L1-mvkyclq6.sock /opt/homebrew/bin/omp --mode rpc-ui --config /tmp/world/data/omp-overlay.yml --config /tmp/world/tmp/data-593c47415c/ompw-live-9323-9RDD29/L1-mvkyclq6.yml"
+	},
+	"socket": "/tmp/world/data/relay/L1-mvkyclq6.sock",
+	"owner": null,
+	"cwd": "/tmp/world/work",
+	"args": ["--config", "/tmp/world/data/omp-overlay.yml"],
+	"ownArgs": [],
+	"env": {},
+	"mode": "online",
+	"startedAt": 1792758881107,
+	"pausedAt": 1792758886304,
+	"sessionFile": "/tmp/world/home/.omp/agent/sessions/--tmp-world-work--/2026-10-23T12-34-41-277Z_01a168c1-9bfd-75b0-9d49-356c70e900a2.jsonl",
+	"sessionId": "01a168c1-9bfd-75b0-9d49-356c70e900a2",
+	"streaming": true,
+	"overlay": {
+		"file": "/tmp/world/tmp/data-593c47415c/ompw-live-9323-9RDD29/L1-mvkyclq6.yml",
+		"mode": "yolo",
+		"wait": null,
+		"models": null,
+		"absent": [],
+		"pins": {}
+	},
+	"descendants": [
+		{
+			"pid": 9555,
+			"identity": "Fri Oct 23 12:34:45 2026     /bin/sleep 1"
+		}
+	],
+	"interviewing": false,
+	"pendingUI": [],
+	"sessionSettings": {
+		"autoRetry": "off",
+		"cacheWarming": "streaming"
+	},
+	"subagents": []
+}

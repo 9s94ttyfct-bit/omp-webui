@@ -1,0 +1,116 @@
+name: CI
+
+# Every push to main and every pull request runs every gate that needs no model login: type check, lint (with the commit
+# author check, scripts/check-authors.ts), the build with its first-load size budget, the parity report, unit + contract
+# (`test:release`) and the offline end-to-end suite in eight shards. The tests that call a real model skip themselves here;
+# `bun scripts/release-local.ts vX.Y.Z` runs them (`test:live`) on the maintainer's Mac, and only for a commit this
+# workflow passed on. A newer push to the same branch or pull request cancels the run it supersedes.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # No model login in CI: the live-model tests skip themselves, and nothing asks omp for a token.
+  OMPW_E2E_OFFLINE: "1"
+
+jobs:
+  checks:
+    name: typecheck, lint, privacy, build, parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The author and privacy checks read every commit of the push or pull request.
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Install latest omp
+        run: |
+          bun install -g @oh-my-pi/pi-coding-agent@latest
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+      - run: omp --version
+      - run: bun run typecheck
+      - run: bun run lint
+      # Lint read the tree as it is now; this reads what the push or pull request publishes: every file its commits add
+      # or change, and their names and messages (scripts/check-personal.ts --range; the commits: scripts/lib/push-range.ts).
+      - run: bun scripts/check-personal.ts --range
+      - name: gitleaks over the commits of the push or pull request
+        env:
+          BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/gitleaks.tgz" https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $RUNNER_TEMP/gitleaks.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP" gitleaks
+          if [ -n "$BASE" ]; then
+            range="$BASE..$HEAD"
+          elif [ -n "$BEFORE" ] && ! echo "$BEFORE" | grep -q '^0*$' && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            range="$BEFORE..$GITHUB_SHA"
+          else
+            # A new branch, a force push, or a run by hand: all of the commit's history.
+            range="$GITHUB_SHA"
+          fi
+          "$RUNNER_TEMP/gitleaks" git --no-banner --redact --config .gitleaks.toml --log-opts="$range" .
+      # Builds, then fails when the first page load's JS is over its budget (scripts/check-entry-size.ts).
+      - run: bun run build
+      - run: bun run parity
+
+  tests:
+    name: unit + contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Install latest omp
+        run: |
+          bun install -g @oh-my-pi/pi-coding-agent@latest
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+      - run: bun run test:release
+
+  e2e:
+    name: e2e (offline, shard ${{ matrix.shard }}/8)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Each worker owns its server; a 4-vCPU runner has one (playwright.config.ts). Eight runners each take an eighth.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: bun install --frozen-lockfile
+      - name: Install latest omp
+        run: |
+          bun install -g @oh-my-pi/pi-coding-agent@latest
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+      - run: bunx playwright install --with-deps chromium
+      - run: bun run test:e2e --shard=${{ matrix.shard }}/8
+        env:
+          PLAYWRIGHT_CHANNEL: chromium
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-shard-${{ matrix.shard }}
+          # `test:e2e` writes each run's traces and report to `.tmp/e2e/<run>/results` and `/report` (scripts/e2e.ts).
+          path: |
+            .tmp/e2e/*/results
+            .tmp/e2e/*/report
+          include-hidden-files: true
+          retention-days: 14

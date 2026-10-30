@@ -1,0 +1,26 @@
+import type { en } from "../common.ts";
+
+export const zh: Record<keyof typeof en, string> = {
+	cancel: "取消",
+	save: "保存",
+	close: "关闭",
+	delete: "删除",
+	rename: "重命名",
+	copy: "复制",
+	copied: "已复制",
+	retry: "重试",
+	loading: "加载中…",
+	language: "语言",
+	scrollLeft: "向左滚动",
+	scrollRight: "向右滚动",
+	showMore: "展开",
+	showLess: "收起",
+	connectionLost: "连接已断开",
+	noAnswer: "服务器 {s} 秒内没有响应",
+	badReply: "无法读取服务器的回复",
+	durMs: "{n}毫秒",
+	durSec: "{s}秒",
+	durMinSec: "{m}分{s}秒",
+	durHourMin: "{h}小时{m}分",
+	durDayHour: "{d}天{h}小时",
+};

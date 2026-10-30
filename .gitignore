@@ -1,0 +1,11 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+.tmp/
+*.log
+.env
+.env.*
+.DS_Store
+*.tsbuildinfo
+.personal-words

@@ -1,0 +1,811 @@
+@import "tailwindcss";
+/* The palettes: every colour the app uses, in light and dark, per brand look. */
+@import "./palettes.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Inside a composer footer too narrow for words (`data-composer-narrow`, set by Composer), controls keep only their icons;
+ * except those in its "More" panel (`data-composer-more`), which has the room to say what each one is. */
+@custom-variant composer-narrow (&:where([data-composer-narrow] *):not(:where([data-composer-more] *)));
+/* The other way round: only inside that "More" panel while the footer is narrow, where a control says its name. */
+@custom-variant composer-more (&:where([data-composer-narrow] [data-composer-more] *));
+
+@theme inline {
+	--color-bg: var(--bg);
+	--color-bg-soft: var(--bg-soft);
+	--color-surface: var(--surface);
+	--color-hover: var(--hover);
+	--color-border: var(--border);
+	--color-fg: var(--fg);
+	--color-muted: var(--muted);
+	--color-faint: var(--faint);
+	--color-accent: var(--accent);
+	--color-accent-soft: var(--accent-soft);
+	--color-accent-fg: var(--accent-fg);
+	--color-success: var(--success);
+	--color-warning: var(--warning);
+	--color-danger: var(--danger);
+	--color-code: var(--code-bg);
+	--color-bubble: var(--user-bubble);
+	--color-link: var(--link);
+	/*
+	 * The type scale, in three steps and no others: caption 12px (the floor: the smallest type the app draws),
+	 * body 14px and title 15px. The first two are Tailwind's own steps, so `text-xs` and `text-sm` are the
+	 * caption and the body; the title is the app's own, because there is one title size. A size that is not
+	 * one of the three is written as a one-off `text-[…px]`, and the lint step (scripts/check-type-scale.ts)
+	 * fails for one that is under the floor.
+	 */
+	--text-xs: 12px;
+	--text-xs--line-height: calc(1 / 0.75);
+	--text-sm: 14px;
+	--text-sm--line-height: calc(1.25 / 0.875);
+	--text-title: 15px;
+	--text-title--line-height: 1.4;
+	/* The palette picks the UI and headline faces (palettes.css); the code face is the same in every palette. */
+	--font-sans: var(--font-ui);
+	--font-serif: var(--font-display);
+	--font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+html,
+body,
+#root {
+	height: 100%;
+}
+
+/*
+ * The app is the window. Everything that scrolls does so inside the app (the transcript, a card, a list), and the frame
+ * around it never does: not by a wheel, and not for a focus or a script that wants something in it seen, which a box that
+ * merely hides its overflow still allows, with no scroll bar to bring it back. `clip` is no scroll container, so there is
+ * nothing to scroll; the page itself has no more than the window to show. (A browser without `clip` keeps the shell's
+ * `overflow-hidden`, and `resetShellScroll` puts it back when a request that moved it is over.)
+ */
+html,
+body {
+	overflow: hidden;
+}
+@supports (overflow: clip) {
+	#root,
+	.app-shell {
+		overflow: clip;
+	}
+}
+
+/*
+ * viewport-fit=cover lets the page run under the notch, the status bar and the home indicator, so the app
+ * insets itself on the sides it would otherwise be covered. The bottom is left to what sits there: the composer
+ * and the phone drawer pad it themselves (a page-wide bottom pad would double up with the composer's own).
+ */
+#root {
+	padding-top: env(safe-area-inset-top);
+	padding-right: env(safe-area-inset-right);
+	padding-left: env(safe-area-inset-left);
+}
+
+/*
+ * In an iPhone or iPad home-screen app (`data-standalone`, set in index.html), iOS 26 and later draw a progressive blur
+ * of their own over the top of the page, and the chat header sits right under it: it looked out of focus, and sharp only
+ * while the sidebar was open. The blur is not the page's, and no tag or property turns it off; WebKit shows it only while
+ * nothing fixed stands across the top edge, and a drawer's scrim is such a thing. So the page keeps one there. WebKit finds
+ * it by looking at one point, 4px under the edge in the middle, and takes the colour from the element's style, not from
+ * what it paints; it wants more than 90% of the window's width, more than 10px of height, and a colour that is not
+ * transparent (over 0.75 alpha counts as solid). Hence a full-width strip 11px high with the page's colour, above every
+ * other layer (so that nothing else is what that point finds), which paints nothing (`background-clip: text` on an
+ * element with no text) and takes no touch. The colour also fills the status bar's band, in the palette in use.
+ */
+.ios-top-edge {
+	display: none;
+}
+html[data-standalone] .ios-top-edge {
+	display: block;
+	position: fixed;
+	top: 0;
+	right: 0;
+	left: 0;
+	height: 11px;
+	z-index: 2147483647;
+	pointer-events: none;
+	background-color: var(--bg);
+	-webkit-background-clip: text;
+	background-clip: text;
+}
+
+/*
+ * A request waits (`data-asking`) in a window too short for everything the chat's bottom block holds (`data-short`, kept
+ * by `useChatBottom`: a phone on its side, a tablet with the keyboard up): the block keeps the request and the message
+ * box (`data-keep`) and puts the rest away until the request is answered (the todo strip, the jobs, the status line, the
+ * notes under the box). The request's choices are what the person came to, and they are on the screen. Unlayered, to beat
+ * the utilities that lay the rows out.
+ */
+[data-chat-bottom][data-short][data-asking] > * > :not([data-keep]) {
+	display: none;
+}
+
+/* A field of the request has had the keyboard (`data-typing`) in a short window: the field is what is on the screen, and the message box waits until the request is answered. */
+[data-chat-bottom][data-short]:has([data-typing]) [data-composer] {
+	display: none;
+}
+
+/*
+ * iOS Safari zooms the page when a text field under 16px takes focus, and does not zoom back out. Touch screens
+ * get 16px fields. Unlayered on purpose: it has to beat the text-sm / text-xs utilities that size each field.
+ * The composer gives its ghost-text layer the same size by class, so the overlaid words stay aligned.
+ */
+@media (pointer: coarse) {
+	input:not(
+		[type="checkbox"],
+		[type="radio"],
+		[type="range"],
+		[type="file"],
+		[type="color"],
+		[type="button"],
+		[type="submit"],
+		[type="reset"],
+		[type="image"],
+		[type="hidden"]
+	),
+	textarea,
+	select {
+		font-size: 16px;
+	}
+	/*
+	 * A chip-sized select (`Select` in ui.tsx) sits among the composer's 12px chips, so its 16px words would stand out. The
+	 * field stays 16px (what iOS looks at) but draws nothing; the words the reader sees are the sizer's, at the size of the
+	 * chips beside it, in the cell the select covers. Taps still reach the select, which sits over them.
+	 */
+	[data-select-sizer] {
+		visibility: visible;
+	}
+	[data-select-sizer] ~ select {
+		color: transparent;
+	}
+}
+
+body {
+	background: var(--bg);
+	color: var(--fg);
+	font-family: var(--font-ui);
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+}
+
+/*
+ * Scrollbars: thin, rounded, in the palette's own ink, brighter under the pointer and in the accent while held. WebKit
+ * and Blink (every Chromium browser and the macOS app) draw the bar from the parts below, which is what allows the
+ * rounded thumb and the hover states (Blink styles a part's own :hover, not the scroll area's); Firefox only knows the
+ * two standard properties, and setting them where ::-webkit-scrollbar works would switch the parts off, hence the
+ * @supports. Layered like the focus ring below: unlayered, it beat every utility, so `[scrollbar-width:none]` never hid
+ * a strip's bar.
+ */
+@layer base {
+	:root {
+		--scroll-idle: color-mix(in srgb, var(--fg) 18%, transparent);
+		--scroll-near: color-mix(in srgb, var(--fg) 30%, transparent);
+		--scroll-grab: color-mix(in srgb, var(--fg) 46%, transparent);
+	}
+
+	@supports selector(::-webkit-scrollbar) {
+		::-webkit-scrollbar {
+			width: 14px;
+			height: 14px;
+		}
+		::-webkit-scrollbar-track,
+		::-webkit-scrollbar-corner {
+			background: transparent;
+		}
+		/* The 4px transparent border is the gutter around a 6px thumb. */
+		::-webkit-scrollbar-thumb {
+			min-width: 40px;
+			min-height: 40px;
+			border: 4px solid transparent;
+			border-radius: var(--radius-pill);
+			background-color: var(--scroll-idle);
+			background-clip: padding-box;
+		}
+		::-webkit-scrollbar-thumb:hover {
+			background-color: var(--scroll-grab);
+		}
+		::-webkit-scrollbar-thumb:active {
+			background-color: var(--accent);
+		}
+	}
+
+	@supports not selector(::-webkit-scrollbar) {
+		* {
+			scrollbar-width: thin;
+			scrollbar-color: var(--scroll-near) transparent;
+		}
+	}
+}
+
+/*
+ * A box whose whole content matters (the details of a tool approval). The bar is styled, so that it is drawn and stays
+ * drawn where the system's own hides until the box is scrolled (WebKit, Blink); the thumb and its track are in the
+ * palette's ink, strong enough to read as "there is more". Firefox has no such parts and keeps the layer's thin bar.
+ */
+@supports selector(::-webkit-scrollbar) {
+	.approval-scroll::-webkit-scrollbar {
+		width: 12px;
+		height: 12px;
+	}
+	.approval-scroll::-webkit-scrollbar-track {
+		background: color-mix(in srgb, var(--fg) 10%, transparent);
+		border-radius: var(--radius-pill);
+	}
+	.approval-scroll::-webkit-scrollbar-thumb {
+		background-color: color-mix(in srgb, var(--fg) 50%, transparent);
+		background-clip: padding-box;
+		border: 2px solid transparent;
+		border-radius: var(--radius-pill);
+	}
+	.approval-scroll::-webkit-scrollbar-thumb:hover {
+		background-color: color-mix(in srgb, var(--fg) 70%, transparent);
+	}
+}
+
+/*
+ * The one focus ring: `--ring` (the palette's accent) in a 2px outline, offset 2px, following the control's corners.
+ * Layered, so a component can still opt out with `outline-none` or keep its own shape (the round Send button):
+ * unlayered, this rule beat every utility, squared round buttons to 6px and drew a box around fields that sit inside
+ * their own card. A control that opts out must show focus another way (a border, a ring, or its container like the
+ * composer card). The forced-colors rule below restores the outline for all.
+ */
+@layer base {
+	:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+	}
+
+	/* Tailwind's default (half the text color) is 3.2:1 on white; --faint is 4.5:1 or better on every surface. */
+	::placeholder {
+		color: var(--faint);
+		opacity: 1;
+	}
+
+	/* Selected text, the caret and native checkboxes, radios and progress bars take the palette's accent. */
+	::selection {
+		background: color-mix(in srgb, var(--accent) 30%, transparent);
+	}
+	:root {
+		accent-color: var(--accent);
+		caret-color: var(--accent);
+	}
+}
+
+/* Windows High Contrast draws outlines but not the borders and shadows some fields use as their focus cue. */
+@media (forced-colors: active) {
+	:focus-visible {
+		outline: 2px solid Highlight;
+		outline-offset: 2px;
+	}
+}
+
+/*
+ * A current or highlighted row sits on the --hover tint, which is 1.06:1 against the sidebar: not a visible state.
+ * The accent bar on its leading edge is (4.6:1 or better). Each such row already tells assistive tech, which is
+ * what this keys on: aria-current (sidebar rows, the command list), aria-selected (cmdk results, the composer's
+ * slash menu) and Radix's data-highlighted (menus). New rows only have to set the right attribute.
+ */
+@layer components {
+	[aria-current="page"],
+	[role="option"][aria-selected="true"],
+	[role="menuitem"][data-highlighted] {
+		box-shadow: inset 3px 0 0 var(--accent);
+	}
+}
+
+/*
+ * Range sliders: a slim rounded groove filled with the accent up to the value, and a round thumb in the surface colour
+ * with an accent rim that grows under the pointer, fills while it is pressed and wears the focus ring when the keyboard
+ * is on it. `lib/range-fill.ts` keeps `--range-fill` (the filled share of the groove) current on every range input;
+ * Firefox fills the groove itself (::-moz-range-progress). Layered, so a utility (`w-full`, `max-w-xs`) still sizes one.
+ */
+@layer components {
+	input[type="range"] {
+		--range-groove: 0.25rem;
+		--range-thumb: 1.125rem;
+		--range-track-bg: color-mix(in srgb, var(--fg) 18%, transparent);
+		appearance: none;
+		height: var(--range-thumb);
+		background: transparent;
+		cursor: pointer;
+	}
+	input[type="range"]:disabled {
+		cursor: not-allowed;
+		opacity: 0.5;
+	}
+	/* The thumb shows the focus; an outline around the whole (mostly empty) box would not. */
+	input[type="range"]:focus-visible {
+		outline: none;
+	}
+
+	input[type="range"]::-webkit-slider-runnable-track {
+		height: var(--range-groove);
+		border-radius: var(--radius-pill);
+		background:
+			linear-gradient(var(--accent), var(--accent)) 0 0 / var(--range-fill, 0%) 100% no-repeat,
+			var(--range-track-bg);
+	}
+	input[type="range"]::-webkit-slider-thumb {
+		appearance: none;
+		box-sizing: border-box;
+		width: var(--range-thumb);
+		height: var(--range-thumb);
+		margin-top: calc((var(--range-groove) - var(--range-thumb)) / 2);
+		border: 2px solid var(--accent);
+		border-radius: var(--radius-pill);
+		background: var(--surface);
+		box-shadow: 0 1px 3px rgb(0 0 0 / 0.28);
+		transition:
+			transform 0.12s,
+			box-shadow 0.12s,
+			background-color 0.12s;
+	}
+	input[type="range"]:hover::-webkit-slider-thumb {
+		transform: scale(1.12);
+	}
+	input[type="range"]:active::-webkit-slider-thumb {
+		background: var(--accent);
+		transform: scale(1.2);
+	}
+	input[type="range"]:focus-visible::-webkit-slider-thumb {
+		box-shadow:
+			0 0 0 4px color-mix(in srgb, var(--ring) 35%, transparent),
+			0 1px 3px rgb(0 0 0 / 0.28);
+	}
+
+	input[type="range"]::-moz-range-track {
+		height: var(--range-groove);
+		border-radius: var(--radius-pill);
+		background: var(--range-track-bg);
+	}
+	input[type="range"]::-moz-range-progress {
+		height: var(--range-groove);
+		border-radius: var(--radius-pill);
+		background: var(--accent);
+	}
+	input[type="range"]::-moz-range-thumb {
+		box-sizing: border-box;
+		width: var(--range-thumb);
+		height: var(--range-thumb);
+		border: 2px solid var(--accent);
+		border-radius: var(--radius-pill);
+		background: var(--surface);
+		box-shadow: 0 1px 3px rgb(0 0 0 / 0.28);
+	}
+	input[type="range"]:active::-moz-range-thumb {
+		background: var(--accent);
+	}
+	input[type="range"]:focus-visible::-moz-range-thumb {
+		box-shadow:
+			0 0 0 4px color-mix(in srgb, var(--ring) 35%, transparent),
+			0 1px 3px rgb(0 0 0 / 0.28);
+	}
+}
+
+/*
+ * Resize handles. A draggable divider (the sidebar and the side panel) is an element with the `resize-handle` class
+ * positioned over the seam it moves, 6px wide for a vertical seam (`aria-orientation="horizontal"` for a row: 6px high),
+ * and `data-dragging="true"` while it is held. This draws everything else: nothing at rest, a hairline in the accent
+ * and a short grip in the middle under the pointer or the keyboard, both firmer while it is dragged. Utilities on the
+ * element or on its ::before (their layer is after this one) still win.
+ */
+@layer components {
+	.resize-handle::before,
+	.resize-handle::after {
+		content: "";
+		position: absolute;
+		pointer-events: none;
+		border-radius: var(--radius-pill);
+		transition:
+			background-color 0.15s,
+			opacity 0.15s;
+	}
+	/* The hairline. */
+	.resize-handle::before {
+		inset-block: 0;
+		inset-inline-start: 50%;
+		width: 2px;
+		translate: -50% 0;
+		background: transparent;
+	}
+	/* The grip. */
+	.resize-handle::after {
+		inset-block-start: 50%;
+		inset-inline-start: 50%;
+		width: 4px;
+		height: 2.5rem;
+		translate: -50% -50%;
+		background: var(--faint);
+		opacity: 0;
+	}
+	.resize-handle[aria-orientation="horizontal"]::before {
+		inset-block: 50% auto;
+		inset-inline: 0;
+		width: auto;
+		height: 2px;
+		translate: 0 -50%;
+	}
+	.resize-handle[aria-orientation="horizontal"]::after {
+		width: 2.5rem;
+		height: 4px;
+	}
+	.resize-handle:hover::before {
+		background: color-mix(in srgb, var(--accent) 55%, transparent);
+	}
+	.resize-handle:is(:focus-visible, [data-dragging="true"])::before {
+		background: var(--accent);
+	}
+	.resize-handle:is(:hover, :focus-visible, [data-dragging="true"])::after {
+		opacity: 0.85;
+	}
+	.resize-handle[data-dragging="true"]::after {
+		background: var(--accent);
+		opacity: 1;
+	}
+}
+
+/* The grip of a resizable text area (WebKit, Blink): two slanted strokes in the palette's muted ink instead of the OS's. */
+@layer base {
+	@supports selector(::-webkit-resizer) {
+		textarea::-webkit-resizer {
+			background: linear-gradient(
+					135deg,
+					transparent 0 50%,
+					var(--faint) 50% 58%,
+					transparent 58% 70%,
+					var(--faint) 70% 78%,
+					transparent 78%
+				)
+				no-repeat;
+		}
+	}
+}
+
+/* ---- markdown ---- */
+.prose-omp {
+	line-height: 1.7;
+	font-size: 15px;
+	overflow-wrap: anywhere;
+}
+.prose-omp > * + * {
+	margin-top: 0.75em;
+}
+/* Markdown inside a box (the release notes of an update): its first heading sits at the box's padding, not a heading's gap lower. */
+.prose-flush .prose-omp > :first-child {
+	margin-top: 0;
+}
+.prose-omp h1,
+.prose-omp h2,
+.prose-omp h3,
+.prose-omp h4 {
+	font-weight: 600;
+	line-height: 1.3;
+	margin-top: 1.2em;
+}
+.prose-omp h1 {
+	font-size: 1.45em;
+}
+.prose-omp h2 {
+	font-size: 1.25em;
+}
+.prose-omp h3 {
+	font-size: 1.1em;
+}
+.prose-omp ul {
+	list-style: disc;
+	padding-left: 1.4em;
+}
+.prose-omp ol {
+	list-style: decimal;
+	padding-left: 1.4em;
+}
+.prose-omp li + li {
+	margin-top: 0.25em;
+}
+.prose-omp a {
+	color: var(--link);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+/* A footnote reference stays on the page: a button that reads as a link. A path the text points at is not a link: it is dotted. */
+.prose-omp .md-anchor {
+	color: var(--link);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	cursor: pointer;
+	font: inherit;
+	/* A footnote reference sits in a <sup>, which has no line height: a button of none has no size to click. */
+	line-height: 1.2;
+}
+.prose-omp .md-ref {
+	text-decoration: underline dotted var(--faint);
+	text-underline-offset: 2px;
+}
+.prose-omp blockquote {
+	border-left: 3px solid var(--border);
+	padding-left: 1em;
+	color: var(--muted);
+}
+.prose-omp :not(pre) > code {
+	background: var(--code-bg);
+	border: 1px solid var(--border);
+	border-radius: 5px;
+	padding: 0.1em 0.35em;
+	font-size: 0.88em;
+	font-family: var(--font-mono);
+	/* Each line of a span that wraps gets its own border and padding: sliced, the break tore the box open. */
+	-webkit-box-decoration-break: clone;
+	box-decoration-break: clone;
+}
+.prose-omp table {
+	border-collapse: collapse;
+	display: block;
+	overflow-x: auto;
+	font-size: 0.92em;
+}
+.prose-omp th,
+.prose-omp td {
+	border: 1px solid var(--border);
+	padding: 0.35em 0.7em;
+	text-align: left;
+	/* The prose breaks anywhere (long URLs); a cell keeps its words whole and the table scrolls instead. */
+	overflow-wrap: normal;
+}
+.prose-omp th {
+	background: var(--bg-soft);
+	font-weight: 600;
+	white-space: nowrap;
+}
+.prose-omp hr {
+	border-color: var(--border);
+}
+
+/* Markdown in the side panel and on cards (what a subagent was told): the conversation's text size is too large there. */
+.prose-compact .prose-omp {
+	font-size: 12px;
+	line-height: 1.55;
+}
+.prose-compact .prose-omp h1 {
+	font-size: 1.2em;
+}
+.prose-compact .prose-omp h2 {
+	font-size: 1.1em;
+}
+.prose-compact .prose-omp h3 {
+	font-size: 1em;
+}
+/*
+ * The inline code and the tables of the compact prose keep the base size: the ones above are relative to it, so on a
+ * 12px base they came out at 10.56px and 11.04px — under the floor of the type scale, where the code of a task (its
+ * paths and its commands) is read.
+ */
+.prose-compact .prose-omp :not(pre) > code,
+.prose-compact .prose-omp table {
+	font-size: 1em;
+}
+
+/*
+ * Highlighted code carries no colours of its own: shiki's CSS-variables theme writes `color: var(--shiki-token-…)` on
+ * each token and the palette (palettes.css) defines them, so a palette or mode change recolours code already on the
+ * page. The block's own background (`bg-code`) shows through.
+ */
+.shiki,
+.shiki span {
+	/* biome-ignore lint/complexity/noImportantStyles: shiki writes inline background styles */
+	background-color: transparent !important;
+}
+
+/*
+ * A file in the Files tab: each line of its code (shiki's, or the plain text's) is numbered by CSS, so that copying the
+ * text takes the code and not the numbers. The code is a block as wide as its longest line (`min-w-fit`), scrolled
+ * sideways by the box around it.
+ */
+.file-code {
+	counter-reset: line;
+}
+.file-code pre {
+	margin: 0;
+	background: transparent;
+	white-space: pre;
+}
+.file-code .line::before {
+	counter-increment: line;
+	content: counter(line);
+	display: inline-block;
+	width: 4ch;
+	margin-right: 1.5ch;
+	text-align: right;
+	color: var(--faint);
+	user-select: none;
+}
+
+@keyframes pulse-dot {
+	0%,
+	100% {
+		opacity: 0.35;
+	}
+	50% {
+		opacity: 1;
+	}
+}
+.typing-dot {
+	animation: pulse-dot 1.2s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) {
+	animation-delay: 0.15s;
+}
+.typing-dot:nth-child(3) {
+	animation-delay: 0.3s;
+}
+
+@keyframes fade-in {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+.fade-in {
+	animation: fade-in 0.18s ease-out;
+}
+
+/*
+ * A subagent's full screen (SubagentFull.tsx) covers the window and the page under it stays mounted, so that it comes back
+ * exactly as it was: hidden, not unmounted. `visibility` keeps every box and scroll offset, takes the page out of the tab
+ * order and the accessibility tree, and costs no painting while the full screen is up.
+ */
+html[data-agent-full] .app-shell {
+	visibility: hidden;
+}
+
+/* A setting brought to by the search at the top of Settings: the same reveal a search hit gets, for a moment. */
+[data-marked="true"] {
+	border-radius: 12px;
+	box-shadow: 0 0 0 2px var(--accent);
+	background: var(--accent-soft);
+	transition:
+		box-shadow 0.4s,
+		background 0.4s;
+}
+
+/* A search result being revealed. */
+[data-focused="true"] {
+	border-radius: 12px;
+	box-shadow: 0 0 0 2px var(--accent);
+	background: var(--accent-soft);
+	transition:
+		box-shadow 0.4s,
+		background 0.4s;
+}
+
+/*
+ * A page of the transcript (see Transcript.tsx) keeps the height it was last drawn with (`auto` below: the browser
+ * remembers it while the page is drawn), and once it has been drawn it may be skipped while it is off screen: what a
+ * streamed token or a scroll costs does not grow with the messages that were opened. The text stays searchable, and a
+ * search hit or a measurement draws the page again.
+ */
+[data-page] {
+	contain-intrinsic-block-size: auto 600px;
+}
+[data-page][data-drawn] {
+	content-visibility: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		/* biome-ignore lint/complexity/noImportantStyles: reduced-motion must override every component animation */
+		animation-duration: 0.01ms !important;
+		/* biome-ignore lint/complexity/noImportantStyles: reduced-motion must override every component transition */
+		transition-duration: 0.01ms !important;
+	}
+}
+
+/*
+ * The width of each control in the composer's footer, for the placeholder that holds their row while the pickers' chunk is
+ * fetched (`PickersSkeleton` in NewChat.tsx): the labels decide them, so one set per language. Measured with the menu
+ * closed; a row wrong by a few pixels wraps at the wrong width, which is what these keep within a few pixels of the
+ * controls'. The narrow footer keeps its `w-8` icons whatever these say: its rule comes last, under the same footer.
+ */
+[data-testid="pickers-skeleton"] > [data-sk="preset"] {
+	width: 97px;
+}
+[data-testid="pickers-skeleton"] > [data-sk="model"] {
+	width: 150px;
+}
+[data-testid="pickers-skeleton"] > [data-sk="thinking"] {
+	width: 73px;
+}
+[data-testid="pickers-skeleton"] > [data-sk="guard"] {
+	width: 95px;
+}
+[data-testid="pickers-skeleton"] > [data-sk="guidance"],
+[data-testid="guidance-skeleton"] {
+	width: 88px;
+}
+/* Full / Light: one width in every language and for both modes */
+[data-testid="pickers-skeleton"] > [data-sk="mode"] {
+	width: 80px;
+}
+[data-testid="pickers-skeleton"] > [data-sk="goal"] {
+	width: 62px;
+}
+[data-testid="pickers-skeleton"] > [data-sk="approval"] {
+	width: 131px;
+}
+/* The same rule again, one step more specific (`:root[lang]`: the pack that chose the language is on the document). */
+:root[lang="zh-CN"] [data-testid="pickers-skeleton"] > [data-sk="preset"] {
+	width: 79px;
+}
+:root[lang="zh-CN"] [data-testid="pickers-skeleton"] > [data-sk="thinking"] {
+	width: 62px;
+}
+:root[lang="zh-CN"] [data-testid="pickers-skeleton"] > [data-sk="guard"] {
+	width: 97px;
+}
+:root[lang="zh-CN"] [data-testid="pickers-skeleton"] > [data-sk="guidance"],
+:root[lang="zh-CN"] [data-testid="guidance-skeleton"] {
+	width: 83px;
+}
+:root[lang="zh-CN"] [data-testid="pickers-skeleton"] > [data-sk="goal"] {
+	width: 62px;
+}
+:root[lang="zh-CN"] [data-testid="pickers-skeleton"] > [data-sk="approval"] {
+	width: 103px;
+}
+/* As specific as the per-language rules above (`:root`, `:nth-child(n)`), and after them, so the narrow footer's icon
+ * squares win in every language. */
+:root [data-composer-narrow] [data-testid="pickers-skeleton"] > span:nth-child(n),
+:root [data-composer-narrow] [data-testid="guidance-skeleton"] {
+	width: 2rem;
+}
+/* Dragging an item of the sidebar or the rail (#654): the drag (a chunk of its own) only sets attributes, and these draw
+ * them: the dragged item dimmed, a line where it would land, and, while something is dragged, a place to drop on in a
+ * group that has nothing in it and the zone that hides an item (both are `display: none` otherwise). */
+[data-nav-item][data-dragging] {
+	opacity: 0.4;
+}
+[data-nav-item][data-drop="before"] {
+	box-shadow: inset 0 2px 0 var(--accent);
+}
+[data-nav-item][data-drop="after"] {
+	box-shadow: inset 0 -2px 0 var(--accent);
+}
+[data-nav-group-box]:empty,
+[data-nav-group-box="hidden"] {
+	display: none;
+}
+[data-nav-group-box]:empty::before,
+[data-nav-group-box="hidden"]::before {
+	content: attr(data-hint);
+}
+html[data-nav-dragging] [data-nav-group-box]:empty,
+html[data-nav-dragging] [data-nav-group-box="hidden"] {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 2.25rem;
+	min-height: 2.25rem;
+	border: 1px dashed var(--border);
+	border-radius: 0.5rem;
+	@apply text-xs text-faint;
+}
+[data-nav-group-box][data-over] {
+	border-color: var(--accent);
+	background: var(--accent-soft);
+}
+/*
+ * A tab of the side panel on its way to another place (`lib/pane-drag.ts`): the grabbing cursor wherever the pointer is, and no
+ * text selected on the way. Not in a layer, so that it wins over the utilities' own cursors without `!important`.
+ */
+html[data-pane-drag],
+html[data-pane-drag] * {
+	cursor: grabbing;
+	user-select: none;
+	-webkit-user-select: none;
+}

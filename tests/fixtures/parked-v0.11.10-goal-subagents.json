@@ -1,0 +1,90 @@
+{
+	"version": 1,
+	"liveId": "L3-mvkycnld",
+	"omp": {
+		"pid": 9464,
+		"identity": "Fri Oct 23 12:34:43 2026     /opt/homebrew/bin/omp --mode rpc-ui --config /tmp/world/data/omp-overlay.yml --config /tmp/world/tmp/data-593c47415c/ompw-live-9323-9RDD29/L3-mvkycnld.yml"
+	},
+	"relay": {
+		"pid": 9462,
+		"identity": "Fri Oct 23 12:34:43 2026     /tmp/world/Apps/omp-webui.app/Contents/Resources/omp-webui-server --ompw-relay /tmp/world/data/relay/L3-mvkycnld.sock /opt/homebrew/bin/omp --mode rpc-ui --config /tmp/world/data/omp-overlay.yml --config /tmp/world/tmp/data-593c47415c/ompw-live-9323-9RDD29/L3-mvkycnld.yml"
+	},
+	"socket": "/tmp/world/data/relay/L3-mvkycnld.sock",
+	"owner": null,
+	"cwd": "/tmp/world/work",
+	"args": ["--config", "/tmp/world/data/omp-overlay.yml"],
+	"ownArgs": [],
+	"env": {},
+	"mode": "online",
+	"startedAt": 1792758883578,
+	"pausedAt": 1792758887604,
+	"sessionFile": "/tmp/world/home/.omp/agent/sessions/--tmp-world-work--/2026-10-23T12-34-43-804Z_01a168c1-a5dc-76cb-a778-29d41e2d74ff.jsonl",
+	"sessionId": "01a168c1-a5dc-76cb-a778-29d41e2d74ff",
+	"streaming": false,
+	"overlay": {
+		"file": "/tmp/world/tmp/data-593c47415c/ompw-live-9323-9RDD29/L3-mvkycnld.yml",
+		"mode": "yolo",
+		"wait": null,
+		"models": null,
+		"absent": [],
+		"pins": {}
+	},
+	"descendants": [
+		{
+			"pid": 9598,
+			"identity": "Fri Oct 23 12:34:47 2026     /bin/sleep 1"
+		}
+	],
+	"interviewing": false,
+	"pendingUI": [],
+	"goal": {
+		"id": "15b17dbdae55a409",
+		"objective": "[c2:start] drive one subagent",
+		"status": "active",
+		"tokensUsed": 24,
+		"timeUsedSeconds": 0,
+		"createdAt": 1792758884025,
+		"updatedAt": 1792758884079
+	},
+	"subagents": [
+		{
+			"id": "Sub",
+			"index": 0,
+			"agent": "task",
+			"agentSource": "bundled",
+			"description": "A title",
+			"status": "running",
+			"task": "Complete assignment thoroughly:\n\nSUB-TASK: run the tick loop.",
+			"assignment": "SUB-TASK: run the tick loop.",
+			"sessionFile": "/tmp/world/home/.omp/agent/sessions/--tmp-world-work--/2026-10-23T12-34-43-804Z_01a168c1-a5dc-76cb-a778-29d41e2d74ff/Sub.jsonl",
+			"lastUpdate": 1792758887213,
+			"parentToolCallId": "call_3",
+			"progress": {
+				"index": 0,
+				"id": "Sub",
+				"agent": "task",
+				"agentSource": "bundled",
+				"status": "running",
+				"task": "Complete assignment thoroughly:\n\nSUB-TASK: run the tick loop.",
+				"assignment": "SUB-TASK: run the tick loop.",
+				"description": "A title",
+				"recentTools": [],
+				"recentOutput": [],
+				"toolCount": 1,
+				"requests": 1,
+				"tokens": 12,
+				"cost": 0,
+				"durationMs": 3129,
+				"modelOverride": ["omlx/stub-model"],
+				"contextWindow": 128000,
+				"resolvedModelIdentity": "omlx/stub-model",
+				"resolvedModel": "omlx/stub-model",
+				"contextTokens": 12,
+				"currentTool": "bash",
+				"currentToolArgs": "i=0; while [ $i -lt 25 ]; do i=$((i+1)); echo tick-$i; echo tick-$i >> '/privat…",
+				"currentToolArgsKey": "command",
+				"currentToolStartMs": 1792758884134
+			}
+		}
+	]
+}
