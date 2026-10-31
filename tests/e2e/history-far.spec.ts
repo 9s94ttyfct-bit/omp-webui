@@ -242,9 +242,13 @@ test("the long turn a reader is going up through is not let go when the page abo
 	for (let round = 0; round < 600; round++) {
 		await page.mouse.wheel(0, -500);
 		await page.waitForTimeout(250);
-		const hasPrompt = (await page.locator('[data-entry-id="u3"]').count()) > 0;
-		const hasSteps = (await page.locator('[data-segment^="s3_"]').count()) > 0;
-		const hasOlder = (await page.locator('[data-entry-id="u2"]').count()) > 0;
+		// One look at the page, not three: pages keep joining while the reader goes up, and three counts made one after another
+		// can see the turn's prompt before the page above came and the turn before it after, a turn that never went.
+		const { hasPrompt, hasSteps, hasOlder } = await page.evaluate(() => ({
+			hasPrompt: document.querySelector('[data-entry-id="u3"]') !== null,
+			hasSteps: document.querySelector('[data-segment^="s3_"]') !== null,
+			hasOlder: document.querySelector('[data-entry-id="u2"]') !== null,
+		}));
 		if (hasPrompt || hasSteps) insideTurn = true;
 		if (hasOlder && !hasPrompt && insideTurn && vanishedAt < 0) vanishedAt = before.count;
 		if (hasOlder && round > 20 && before.count > 0) break;
