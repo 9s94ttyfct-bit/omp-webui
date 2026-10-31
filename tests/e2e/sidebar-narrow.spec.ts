@@ -12,7 +12,11 @@ import { expect, type Page, test } from "./fixtures.ts";
 const sidebar = (page: Page) => page.locator("aside", { has: page.getByTestId("session-list") });
 
 /** The first date group's name: the first heading of the rows, under the list's toolbar. */
-const listHeading = (page: Page) => page.getByTestId("session-scroll").getByText(/^(Today|今天)$/).first();
+const listHeading = (page: Page) =>
+	page
+		.getByTestId("session-scroll")
+		.getByText(/^(Today|今天)$/)
+		.first();
 
 /** Put the sidebar at its narrowest, the way a user does: the handle, then Home. */
 async function narrowest(page: Page) {
