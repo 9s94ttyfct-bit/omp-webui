@@ -358,3 +358,47 @@ test("the preset belongs to the conversation: it holds when the conversation is 
 		restarted.close();
 	}
 }, 240_000);
+
+test("an edit of a conversation's preset reaches it while it runs; one moved off its preset keeps its copy (#4, audit A-009)", async () => {
+	const a = await conversation();
+	const b = await conversation();
+	const before = configYml();
+	const mixed = `  mixed:\n    modelRoles:\n      default: omlx/${ALPHA}\n      task: omlx/${BRAVO}\n`;
+	expect(before).toContain(mixed);
+	try {
+		await a.switchTo("mixed");
+		await b.switchTo("mixed");
+		expect(await dispatchedOn(a, BRAVO)).toEqual({ main: ALPHA, subagent: BRAVO });
+		// B's model is moved off the preset's default with the model picker: it is on no preset ("Custom").
+		await b.rpc({ type: "set_model", provider: "omlx", modelId: GLOBAL });
+		expect(await dispatchedOn(b, BRAVO)).toEqual({ main: GLOBAL, subagent: BRAVO });
+
+		// The preset is edited in config.yml (as Settings, a terminal or `omp config set` would).
+		writeFileSync(
+			join(server.agentDir, "config.yml"),
+			before.replace(mixed, `  mixed:\n    modelRoles:\n      default: omlx/${BRAVO}\n      task: omlx/${GLOBAL}\n`),
+		);
+		// A follows: the server takes the preset's new definition (its overlay, then its own model), as a switch would.
+		await pollUntil(
+			async () => (await a.listing())?.models?.roles.default === `omlx/${BRAVO}`,
+			"the conversation to follow its preset",
+			40_000,
+		);
+		expect((await a.listing())?.models).toEqual({
+			preset: "mixed",
+			roles: { default: `omlx/${BRAVO}`, task: `omlx/${GLOBAL}` },
+		});
+		// Its subagents get the new task model, and its own model is the new default.
+		expect(await dispatchedOn(a, GLOBAL, "task", 40)).toEqual({ main: BRAVO, subagent: GLOBAL });
+		// B, worked out in the same pass, kept the copy it had.
+		expect((await b.listing())?.models).toEqual({
+			preset: "mixed",
+			roles: { default: `omlx/${ALPHA}`, task: `omlx/${BRAVO}` },
+		});
+		expect(await b.dispatch()).toEqual({ main: GLOBAL, subagent: BRAVO });
+	} finally {
+		writeFileSync(join(server.agentDir, "config.yml"), before);
+		a.close();
+		b.close();
+	}
+}, 300_000);

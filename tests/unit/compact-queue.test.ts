@@ -639,3 +639,26 @@ test("a record keeps the place a compact waits for, and the messages that wait f
 	await until(() => following.queue.info === undefined);
 	expect(following.types()).toEqual(["prompt"]);
 });
+
+test("a compaction omp was asked for elsewhere (a typed /compact, an extension) holds the queued compact until its end (audit A-003)", async () => {
+	const w = world();
+	await w.queue.queue(undefined);
+	w.state.working = false;
+	// omp 18.13.3 announces a /compact typed in the message box; its turn was aborted for it, so the turn's end comes first.
+	w.queue.frame({ type: "manual_compaction_start" });
+	w.queue.frame({ type: "agent_end", isTerminal: true });
+	await quiet();
+	expect(w.types()).toEqual(["get_state"]);
+
+	// Its end: now the queued compact goes. omp announces that one as well, inside the command, which changes nothing.
+	w.answers.set("compact", (command) => {
+		w.queue.frame({ type: "manual_compaction_start" });
+		w.queue.frame({ type: "manual_compaction_end", aborted: false, result: { tokensBefore: 1 } });
+		return { type: "response", command: String(command.type), success: true, data: {} };
+	});
+	w.queue.frame({ type: "manual_compaction_end", aborted: false, result: { tokensBefore: 1 } });
+	await until(() => w.ended.length === 1);
+	expect(w.types()).toEqual(["get_state", "compact"]);
+	expect(w.ended).toEqual([{ ok: true }]);
+	expect(w.queue.active).toBe(false);
+});

@@ -104,3 +104,21 @@ test("an omp that reports nothing of this (an older one) is idle after its turn,
 	expect(live.busy).toBe(false);
 	expect(reapableAfter(live, DAY)).toBe(true);
 });
+
+test("a compaction omp was asked for (a typed /compact, an extension's ctx.compact()) is busy from its first frame to its last (audit A-003)", async () => {
+	// omp 18.13.3 answers the `prompt` that carried `/compact` before it compacts: only these frames say that work goes on.
+	const { live } = await conversation();
+	await turnEnds(live);
+	await caughtUp(live);
+	expect(live.busy).toBe(false);
+
+	await frames(live, { type: "manual_compaction_start" });
+	expect(live.busy).toBe(true);
+	expect(live.holding).toBe("working");
+	expect(reapableAfter(live, DAY)).toBe(false);
+
+	await frames(live, { type: "manual_compaction_end", aborted: false, result: { tokensBefore: 1000 } });
+	await caughtUp(live);
+	expect(live.busy).toBe(false);
+	expect(reapableAfter(live, DAY)).toBe(true);
+});

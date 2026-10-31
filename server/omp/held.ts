@@ -26,10 +26,13 @@ export class HeldState {
 	/** Take one frame omp sent. Nothing is changed in `frame`: the tabs hold the same object. */
 	note(frame: OmpFrame): void {
 		switch (frame.type) {
+			// omp's own, and one it was asked for (omp 18.13.3: the RPC `compact`, a typed `/compact`, an extension's `ctx.compact()`).
 			case "auto_compaction_start":
+			case "manual_compaction_start":
 				this.compaction = frame;
 				return;
 			case "auto_compaction_end":
+			case "manual_compaction_end":
 			// The page ends a compaction whose end it never heard at the settled session, and so does this.
 			case "session_settled":
 				this.compaction = null;

@@ -82,7 +82,12 @@ export function PresetPicker({
 	const session = sessionOf(live, saved, mine);
 	// Presets that differ only in their subagent models match the same roles: the one this conversation was switched to is shown.
 	const active = mine ? activePreset(mine, session, own?.preset) : null;
-	const label = !mine || mine.presets.length === 0 ? t("presets.trigger") : (active ?? t("presets.custom"));
+	// The preset it was switched to is gone: it keeps that preset's models, and the chip says whose they were (#4).
+	const gone = own?.preset && mine && !mine.presets.some((p) => p.name === own.preset) ? own.preset : null;
+	const label =
+		!mine || (mine.presets.length === 0 && !gone)
+			? t("presets.trigger")
+			: (active ?? (gone ? t("presets.gone", { name: gone }) : t("presets.custom")));
 	// The models' settings could not be read: the chip says so (C8), not only the menu behind it. Its menu has Retry.
 	const failed = !config && error ? t("presets.loadFailed", { error }) : null;
 

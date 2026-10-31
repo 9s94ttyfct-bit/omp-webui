@@ -440,5 +440,7 @@ export const en = {
 	compactionCompletedTokens: "{action} complete · the context was {tokens} tokens",
 	compactionFailed: "{action} failed; continuing without it",
 	compactionFailedWith: "{action} failed: {message}",
+	compactionSkipped: "{action} skipped: nothing to compact",
+	compactionSkippedWith: "{action} skipped: {message}",
 	compactionDismiss: "Dismiss",
 };

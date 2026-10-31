@@ -160,3 +160,18 @@ test("the turn's start is stamped when it begins, kept through a turn omp carrie
 	await until(() => !live.info.streaming);
 	expect(live.info.turnStartedAt).toBeUndefined();
 });
+
+test("a compaction omp was asked for is told to a tab that attaches too, until its end (audit A-003)", async () => {
+	const live = await start();
+	const first = tab(live);
+	await say(live, { type: "manual_compaction_start", mode: "remote" });
+	await first.seen("manual_compaction_start");
+
+	const during = attach(live);
+	expect(during.frames).toEqual([{ type: "manual_compaction_start", mode: "remote" }]);
+	expect(during.held).toMatchObject({ compacting: true });
+
+	await say(live, { type: "manual_compaction_end", aborted: false, result: { tokensBefore: 1 } });
+	await first.seen("manual_compaction_end");
+	expect(attach(live)).toMatchObject({ frames: [], held: { compacting: false } });
+});

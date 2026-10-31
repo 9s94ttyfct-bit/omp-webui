@@ -121,3 +121,47 @@ test("a dialog the user is in keeps the keyboard when a request arrives behind i
 	await expect(announcement(page)).toHaveText("omp is waiting for you: Allow tool: bash");
 	await expect(rough).toBeFocused();
 });
+
+test("an extension's secret input hides what is typed, and the value goes to omp only (audit A-006)", async ({
+	page,
+}) => {
+	const { tap, liveId } = await chat(page, "Request secret probe", 0xc5);
+	const input = (id: string, secret?: boolean) =>
+		tap.push({
+			t: "frame",
+			liveId,
+			frame: {
+				type: "extension_ui_request",
+				id,
+				method: "input",
+				title: "API token for the probe",
+				...(secret === undefined ? {} : { secret }),
+			},
+		});
+	// A password field has no textbox role: it is found by its label either way.
+	const field = card(page).getByLabel("Response");
+
+	// An ordinary input shows what is typed.
+	input("plain-1");
+	await expect(field).toBeVisible();
+	await expect(field).not.toHaveAttribute("type", "password");
+	await card(page).getByRole("button", { name: "Cancel" }).click();
+	await expect(card(page)).toHaveCount(0);
+
+	// omp 18.13.2 marks one that asks for a token or a password: it is masked, and the browser neither offers nor keeps it.
+	input("secret-1", true);
+	await expect(field).toHaveAttribute("type", "password");
+	await expect(field).toHaveAttribute("autocomplete", "off");
+	await expect(field).toHaveAttribute("spellcheck", "false");
+	const secret = "probe-secret-4711";
+	await field.fill(secret);
+	await field.press("Enter");
+	await expect(card(page)).toHaveCount(0);
+	// The answer went to omp, and nothing on the page shows it.
+	await expect
+		.poll(() =>
+			tap.sent.some((m) => m.t === "ui_response" && (m.response as Record<string, unknown>)?.value === secret),
+		)
+		.toBe(true);
+	await expect(page.locator("body")).not.toContainText(secret);
+});

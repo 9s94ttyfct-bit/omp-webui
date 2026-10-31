@@ -726,7 +726,7 @@ void pins
 	);
 watchOmpConfig(cfg.agentDir, () => {
 	broadcastAll({ t: "model_config_changed" });
-	// A role added or removed there must not reach a conversation that was switched to a preset.
+	// A role added or removed there must not reach a conversation that was switched to a preset; an edit of its preset does (#4).
 	void pool.refreshModelRoles();
 });
 
@@ -2598,7 +2598,11 @@ const listen = (hostname: string, port: number) =>
 if (cfg.autoPort) await stopStaleServer(cfg.dataDir);
 // Conversations a former server left paused are paused here again, before anything is served.
 const adopted = await pool.adopt();
-if (adopted > 0) console.log(`omp-webui: took over ${adopted} paused conversation(s) from an earlier run`);
+if (adopted > 0) {
+	console.log(`omp-webui: took over ${adopted} paused conversation(s) from an earlier run`);
+	// Their presets may have been edited while no server ran (#4).
+	void pool.refreshModelRoles();
+}
 /**
  * Bind the preferred port; in app mode, when it is taken (the web version, another program),
  * the next free one of the following 20 — the same port on every launch while the occupant

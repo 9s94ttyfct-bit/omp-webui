@@ -10,6 +10,8 @@ settings: compact-at, compact-where
 
 Compaction is omp's own: it summarizes the older part of a conversation so that it fits the model's context window again. omp-webui shows and changes two things about it.
 
+A compaction omp was asked for — *Compact* in the panel, `/compact` typed in the message box, an extension's `ctx.compact()` — shows *Compacting context…* above the message box while it runs and a line saying how it ended afterwards, as an automatic one does (omp 18.13.3 and later announce it with `manual_compaction_start` / `manual_compaction_end`). While it runs the conversation counts as working: it is not closed as idle.
+
 **When omp compacts by itself ("Compact at").** omp compacts on its own once the context passes a point, which is one of omp's settings:
 
 - `compaction.thresholdPercent`: a share of the model's window.

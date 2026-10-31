@@ -270,6 +270,26 @@ export function switchedModels(
 	return { ...next, agentModelOverrides: previous.agentModelOverrides };
 }
 
+/** Two records of selectors hold the same keys with the same selectors, in whatever order. */
+function sameSelectors(a: Record<string, string> | undefined, b: Record<string, string> | undefined): boolean {
+	const left = a ?? {};
+	const right = b ?? {};
+	const keys = Object.keys(left);
+	return (
+		keys.length === Object.keys(right).length && keys.every((k) => Object.hasOwn(right, k) && right[k] === left[k])
+	);
+}
+
+/** `a` and `b` give a conversation the same models: preset, roles, thinking level and subagent models. */
+export function sameConversationModels(a: ConversationModels, b: ConversationModels): boolean {
+	return (
+		a.preset === b.preset &&
+		a.defaultThinkingLevel === b.defaultThinkingLevel &&
+		sameSelectors(a.roles, b.roles) &&
+		sameSelectors(a.agentModelOverrides, b.agentModelOverrides)
+	);
+}
+
 /** What a conversation actually runs: `provider/id` of its model and its thinking level. */
 export interface SessionModel {
 	model?: string;

@@ -50,9 +50,13 @@ function OutcomeRow({ outcome }: { outcome: CompactionOutcome }) {
 				? outcome.tokensBefore
 					? t("chat.compactionCompletedTokens", { action, tokens: fmtTokens(outcome.tokensBefore) })
 					: t("chat.compactionCompleted", { action })
-				: outcome.message
-					? t("chat.compactionFailedWith", { action, message: outcome.message })
-					: t("chat.compactionFailed", { action });
+				: outcome.kind === "skipped"
+					? outcome.message
+						? t("chat.compactionSkippedWith", { action, message: outcome.message })
+						: t("chat.compactionSkipped", { action })
+					: outcome.message
+						? t("chat.compactionFailedWith", { action, message: outcome.message })
+						: t("chat.compactionFailed", { action });
 	const Icon = failed ? CircleAlert : outcome.kind === "completed" ? CircleCheck : Info;
 	return (
 		<div
@@ -297,9 +301,10 @@ function SoftStopLine({ live }: { live: LiveState }) {
 }
 
 /**
- * What omp is doing by itself between turns: backing off before it retries a failed one (see `RetryWaiting`), or
- * compacting a full context, with the reason and what it does about it as the TUI words them. A retry that gave up
- * stays until the next turn starts; a compaction leaves a line saying how it ended.
+ * What omp is doing between turns: backing off before it retries a failed one (see `RetryWaiting`), or compacting the
+ * context, by itself (with the reason and what it does about it as the TUI words them) or because it was asked to (Compact,
+ * a typed `/compact`, an extension). A retry that gave up stays until the next turn starts; a compaction leaves a line
+ * saying how it ended.
  */
 export function RetryStatus({ live }: { live: LiveState }) {
 	const t = useT();
@@ -329,7 +334,8 @@ export function RetryStatus({ live }: { live: LiveState }) {
 							</span>
 						</div>
 					) : null}
-					{compacting ? (
+					{/* A queued compact that runs has its own line (`QueuedCompactLine`): omp's announcement of it is not a second one. */}
+					{compacting && queued?.phase !== "running" ? (
 						<div className="flex items-center gap-2" role="status" data-testid="compaction-line">
 							<Spinner size={13} className="text-accent" />
 							<span>

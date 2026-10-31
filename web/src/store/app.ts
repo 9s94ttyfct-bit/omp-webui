@@ -1300,6 +1300,8 @@ const ENTRY_REFRESH_EVENTS: Record<string, true> = {
 	agent_end: true,
 	turn_end: true,
 	auto_compaction_end: true,
+	// A compaction omp was asked for (omp 18.13.3): Compact, a typed `/compact`, an extension's `ctx.compact()`.
+	manual_compaction_end: true,
 	session_info_update: true,
 };
 
@@ -1312,6 +1314,7 @@ const STATE_REFRESH_EVENTS: Record<string, true> = {
 	session_info_update: true,
 	config_update: true,
 	auto_compaction_end: true,
+	manual_compaction_end: true,
 	// omp reports the usage-limit stage and the fast mode with its state only: a slash command (`/fast`, `/slow`) changes them.
 	command_output: true,
 	// The todo list is cleared when it is finished: the state no longer has it.

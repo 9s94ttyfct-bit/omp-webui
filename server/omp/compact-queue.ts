@@ -92,8 +92,12 @@ function imagesOf(v: unknown): Record<string, unknown>[] {
 
 export class CompactQueue {
 	private state: Queue | null = null;
-	/** omp compacts by itself (`auto_compaction_start` … `auto_compaction_end`). */
-	private autoCompacting = false;
+	/**
+	 * omp compacts: by itself (`auto_compaction_start` … `auto_compaction_end`), or because it was asked to by someone other than
+	 * this queue (`manual_compaction_start` … `manual_compaction_end`, omp 18.13.3: a typed `/compact`, an extension's
+	 * `ctx.compact()`; the queue's own compact sends the pair too, while it runs). omp refuses a second compact meanwhile.
+	 */
+	private compacting = false;
 	/** The follow-ups are being taken out of omp's queue: the compact is not sent before they are held. */
 	private taking: Promise<Error | null> | null = null;
 	/** A send of the compact is being decided or made: one at a time. */
@@ -369,11 +373,13 @@ export class CompactQueue {
 				this.onStart?.();
 				return false;
 			case "auto_compaction_start":
-				this.autoCompacting = true;
+			case "manual_compaction_start":
+				this.compacting = true;
 				return false;
 			case "auto_compaction_end":
+			case "manual_compaction_end":
 			case "session_settled":
-				this.autoCompacting = false;
+				this.compacting = false;
 				break;
 			case "agent_end":
 				// A turn omp carries on (`isTerminal: false`) is not over.
@@ -395,7 +401,7 @@ export class CompactQueue {
 			this.dialogs.add(id);
 			const s = this.state;
 			// Not the time, or no compact to make: the conversation goes on (a compact running, or a turn end already sending it, is neither).
-			if (s?.phase === "queued" && s.where === "step" && !this.host.paused() && !this.autoCompacting) void this.run(id);
+			if (s?.phase === "queued" && s.where === "step" && !this.host.paused() && !this.compacting) void this.run(id);
 			else this.passed(id);
 			return true;
 		}
@@ -465,12 +471,12 @@ export class CompactQueue {
 		if (this.taking) await this.taking;
 		if (this.state !== s || s.phase !== "queued") return this.passed(hold);
 		if (hold === undefined) {
-			// A frozen omp ends no turn; one that compacts by itself would refuse; a turn that began again (a goal's next one) is not over.
-			if (this.host.paused() || this.autoCompacting || this.host.working()) return;
+			// A frozen omp ends no turn; one that compacts already would refuse; a turn that began again (a goal's next one) is not over.
+			if (this.host.paused() || this.compacting || this.host.working()) return;
 			// The turn is over: no boundary is waited for any more, and it is the end of the turn that compacts.
 			s.where = "turn";
 			this.setArmed(null);
-		} else if (this.host.paused() || this.autoCompacting) return this.passed(hold);
+		} else if (this.host.paused() || this.compacting) return this.passed(hold);
 		s.phase = "running";
 		this.host.changed();
 		const startsBefore = this.starts;

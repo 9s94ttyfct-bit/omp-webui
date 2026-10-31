@@ -184,6 +184,8 @@ export interface UIRequest {
 	prefill?: string;
 	questions?: AskQuestion[];
 	timeout?: number;
+	/** `input`: an extension asks for a token or a password (omp 18.13.2), and what is typed is not shown. */
+	secret?: boolean;
 	/** When omp stops waiting and answers by itself, on this page's clock; only for a dialog that has a `timeout`. */
 	deadline?: number;
 	/** `propose_goal`: the goal the model proposes at the end of a guided interview. */
@@ -228,12 +230,15 @@ export interface TodoReminder {
 	resumed: boolean;
 }
 
-/** How an automatic compaction ended (`auto_compaction_end`), in the TUI's own terms. */
+/**
+ * How a compaction ended (`auto_compaction_end`, `manual_compaction_end`), in the TUI's own terms. `skipped`: one omp was asked
+ * for found nothing to compact.
+ */
 export interface CompactionOutcome {
-	kind: "cancelled" | "completed" | "failed";
-	/** What omp did: `context-full`, `remote`, `handoff`, `shake` or `snapcompact`. */
+	kind: "cancelled" | "completed" | "failed" | "skipped";
+	/** What omp did: `context-full`, `remote`, `handoff`, `shake` or `snapcompact`, or the `/compact <mode>` asked for. */
 	action?: string;
-	/** omp's own words for a failure. */
+	/** omp's own words for a failure, or for why there was nothing to compact. */
 	message?: string;
 	/** The context's size before it was compacted, when omp says. */
 	tokensBefore?: number;
@@ -274,13 +279,17 @@ export interface LiveState {
 	lastError: string | null;
 	/** The retry omp is waiting to make, or has given up on (until the next turn starts); null when there is none. */
 	retry: RetryState | null;
-	/** omp is compacting the context by itself (`auto_compaction_start` … `auto_compaction_end`). */
+	/**
+	 * omp is compacting the context: by itself (`auto_compaction_start` … `auto_compaction_end`), or because it was asked to
+	 * (`manual_compaction_start` … `manual_compaction_end`, omp 18.13.3: Compact, a typed `/compact`, an extension's
+	 * `ctx.compact()`; `action` is then the `/compact <mode>` given, if any).
+	 */
 	compacting: { reason?: string; action?: string } | null;
 	/** What omp announced while it worked (rules applied, model fallbacks, IRC messages), in the order it did. */
 	notices: LiveNotice[];
 	/** The reminder to finish the todo list, shown until the turn it started ends. */
 	todoReminder: TodoReminder | null;
-	/** How the last automatic compaction ended; null while one runs and before the first. */
+	/** How the last compaction ended; null while one runs and before the first. */
 	compactionOutcome: CompactionOutcome | null;
 	streaming: boolean;
 	/**
@@ -578,11 +587,29 @@ function upsertOverlay(list: OverlayMessage[], id: string, message: AgentMessage
 }
 
 /**
- * Apply one `assistantMessageEvent` delta (text/thinking/toolcall start·delta·end)
- * to a streaming message's content blocks. `*_end` events carry the finished block.
+ * The block at an index as it stands, when it is of `type` (its other fields, a signature or the `narration` flag, are kept
+ * as text streams into it), or a bare one of `type`.
+ */
+function blockOf(cur: ContentBlock | undefined, type: string): ContentBlock {
+	return cur?.type === type ? cur : { type };
+}
+
+/** The block a `*_start` or `*_end` frame carries (omp 18.13.2, `block`) when it is of `type`, without its streamed field. */
+function carried(ev: Record<string, unknown>, type: string): Record<string, unknown> {
+	const block = rec(ev.block);
+	return block.type === type ? block : {};
+}
+
+/**
+ * Apply one `assistantMessageEvent` delta (`set_event_filter … messageUpdates: "delta"`) to a streaming message. Since omp
+ * 18.13.2 `start` carries the whole message (it began again within the turn: what the abandoned attempt wrote goes), a
+ * text or thinking `*_start` and `*_end` carry the block without its text (its signature, the `narration` flag of a
+ * thinking block meant as the answer), and `image_end` the image. An older omp sends none of these, and a block is
+ * built from the text alone.
  */
 export function applyDelta(msg: AgentMessage, ev: Record<string, unknown>): AgentMessage {
 	const type = str(ev.type) ?? "";
+	if (type === "start") return isAgentMessage(ev.message) ? ev.message : msg;
 	const i = typeof ev.contentIndex === "number" ? ev.contentIndex : -1;
 	if (i < 0) return msg;
 	// A copy to write into by the event's index: a block of the message that is not readable keeps its place (see `blocks`).
@@ -591,23 +618,42 @@ export function applyDelta(msg: AgentMessage, ev: Record<string, unknown>): Agen
 	const delta = str(ev.delta) ?? "";
 	switch (type) {
 		case "text_start":
-			content[i] = { type: "text", text: "" };
+			content[i] = { ...carried(ev, "text"), type: "text", text: "" };
 			break;
-		case "text_delta":
-			content[i] = { type: "text", text: (cur?.text ?? "") + delta };
+		case "text_delta": {
+			const block = blockOf(cur, "text");
+			content[i] = { ...block, text: (block.text ?? "") + delta };
 			break;
-		case "text_end":
-			content[i] = { type: "text", text: str(ev.content) ?? cur?.text ?? "" };
+		}
+		case "text_end": {
+			const block = blockOf(cur, "text");
+			content[i] = { ...block, ...carried(ev, "text"), type: "text", text: str(ev.content) ?? block.text ?? "" };
 			break;
+		}
 		case "thinking_start":
-			content[i] = { type: "thinking", thinking: "" };
+			content[i] = { ...carried(ev, "thinking"), type: "thinking", thinking: "" };
 			break;
-		case "thinking_delta":
-			content[i] = { type: "thinking", thinking: (cur?.thinking ?? "") + delta };
+		case "thinking_delta": {
+			const block = blockOf(cur, "thinking");
+			content[i] = { ...block, thinking: (block.thinking ?? "") + delta };
 			break;
-		case "thinking_end":
-			content[i] = { type: "thinking", thinking: str(ev.content) ?? cur?.thinking ?? "" };
+		}
+		case "thinking_end": {
+			const block = blockOf(cur, "thinking");
+			content[i] = {
+				...block,
+				...carried(ev, "thinking"),
+				type: "thinking",
+				thinking: str(ev.content) ?? block.thinking ?? "",
+			};
 			break;
+		}
+		case "image_end": {
+			const image = rec(ev.content);
+			if (image.type !== "image") return msg;
+			content[i] = { ...image, type: "image" };
+			break;
+		}
 		case "toolcall_start":
 			// Arguments stream as partial JSON; the card shows a pending call until `toolcall_end`.
 			content[i] = { type: "toolCall", id: `pending-${i}`, name: "tool", arguments: {} };
@@ -708,6 +754,22 @@ function compactionOutcome(f: OmpFrame): CompactionOutcome | null {
 	if (message) return { kind: "failed", action, message, at };
 	if (action === "handoff") return { kind: "completed", action, at };
 	return f.skipped === true ? null : { kind: "failed", action, at };
+}
+
+/**
+ * How a compaction omp was asked for ended (`manual_compaction_end`), named by the mode it began with (`action`): cancelled;
+ * a result (the compaction itself, which the transcript shows); nothing to compact, with omp's reason; omp's error.
+ */
+function manualCompactionOutcome(f: OmpFrame, action: string | undefined): CompactionOutcome {
+	const at = Date.now();
+	const message = str(f.errorMessage);
+	if (f.aborted === true) return { kind: "cancelled", action, at };
+	if (f.result && typeof f.result === "object") {
+		const tokensBefore = rec(f.result).tokensBefore;
+		return { kind: "completed", action, tokensBefore: typeof tokensBefore === "number" ? tokensBefore : undefined, at };
+	}
+	if (f.skipped === true) return { kind: "skipped", action, message, at };
+	return { kind: "failed", action, message, at };
 }
 
 /** Fold one frame into live state. Side effects (refetching entries) are the caller's job. */
@@ -993,6 +1055,10 @@ export function applyFrame(s: LiveState, f: OmpFrame): LiveState {
 			return { ...s, compacting: { reason: str(f.reason), action: str(f.action) }, compactionOutcome: null };
 		case "auto_compaction_end":
 			return { ...s, compacting: null, compactionOutcome: compactionOutcome(f) };
+		case "manual_compaction_start":
+			return { ...s, compacting: { action: str(f.mode) }, compactionOutcome: null };
+		case "manual_compaction_end":
+			return { ...s, compacting: null, compactionOutcome: manualCompactionOutcome(f, s.compacting?.action) };
 		case "ttsr_triggered": {
 			const rules = rulesOf(f.rules);
 			if (rules.length === 0) return s;

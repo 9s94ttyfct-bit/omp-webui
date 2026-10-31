@@ -399,12 +399,17 @@ function TextBody({
 					onChange={(e) => setValue(e.target.value)}
 				/>
 			) : (
+				// An extension asking for a token or a password (`secret`, omp 18.13.2): what is typed is hidden, and the browser
+				// neither offers nor keeps it. omp's multiline `editor` has no masked form, so the flag is not read there.
 				<input
 					aria-label={t("panel.reqResponse")}
 					className={cls}
 					value={value}
 					placeholder={req.placeholder}
 					onChange={(e) => setValue(e.target.value)}
+					{...(req.secret === true
+						? { type: "password", autoComplete: "off", spellCheck: false, "data-secret": "" }
+						: {})}
 				/>
 			)}
 			<div className="mt-2 flex justify-end gap-2 [[data-short]_&]:mt-1">

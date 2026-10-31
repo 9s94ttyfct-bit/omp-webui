@@ -8,6 +8,7 @@ export const en = {
 	// Composer menu
 	trigger: "Presets",
 	custom: "Custom",
+	gone: "{name} (deleted)",
 	menuTitle: "Model presets",
 	empty: "No presets yet. Save the models you use now to get back to them in one click.",
 	loadFailed: "Could not load presets: {error}",

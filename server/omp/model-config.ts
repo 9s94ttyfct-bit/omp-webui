@@ -519,6 +519,24 @@ export async function conversationPreset(
 	};
 }
 
+/**
+ * The preset a conversation was switched to (`models.preset`), as it is defined now, with what the conversation runs on now
+ * (`models`) as the `previous` of `conversationPreset`; null when it is gone or can no longer be applied, which leaves the
+ * conversation on the copy it has (#4). A configuration that cannot be read is an error, as for a switch.
+ */
+export async function presetAsDefined(
+	cfg: Config,
+	cwd: string,
+	models: ConversationModels,
+): Promise<ConversationPreset | null> {
+	try {
+		return await conversationPreset(cfg, cwd, models.preset, models);
+	} catch (e) {
+		if (e instanceof ConfigError) return null;
+		throw e;
+	}
+}
+
 // ------------------------------------------------------------------ actions
 
 type Action = (cfg: Config, body: Record<string, unknown>) => Promise<ModelConfig>;

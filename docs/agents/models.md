@@ -10,6 +10,8 @@ settings: accounts, model-roles, model-presets
 
 All of this is omp's own configuration, read and written through omp (`omp config get|set`, omp's RPC login), so the terminal UI sees the same values.
 
+A conversation switched to a preset follows later edits of that preset (Settings › *Edit*, `config.yml`, `omp config set`): its subagents get the new models and its own model moves with the preset's default role. A conversation whose model was changed with the model picker (shown as *Custom*) keeps the models it had, and so does one whose preset was deleted (its chip reads *<name> (deleted)*).
+
 ### Accounts
 
 Logs in to model providers through omp; omp stores the credentials exactly as `omp login` would. The list is loaded only on **Show accounts**: it starts a small session-less omp process (shown under Running processes as the accounts helper), which stops when the list is hidden or Settings is left. Per provider: **Log in** (opens the provider's sign-in page; **Cancel sign-in**), **Manage**, **Add account**, **Log out** (asks for confirmation). If credentials also come from the environment or config, logging out says "still authenticated via …".

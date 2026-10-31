@@ -263,3 +263,42 @@ test("compaction shows its action from its first frame to its last", async ({ pa
 	});
 	await expect(status).toHaveCount(0);
 });
+
+test("a compaction omp was asked for (a typed /compact, an extension) shows Compacting… and how it ended (audit A-003)", async ({
+	page,
+}) => {
+	ownSession(0xd4, "Manual compaction probe");
+	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
+	const tap = await tapSocket(page);
+	await page.goto("/");
+	const liveId = await startLive(page, tap, "Manual compaction probe", "manual-compaction-probe");
+	const frame = (f: Record<string, unknown>) => tap.push({ t: "frame", liveId, frame: f });
+
+	const status = page.getByTestId("retry-status");
+	await expect(status).toHaveCount(0);
+	// omp 18.13.3 announces a compaction it was asked for; before, the page showed nothing while it ran.
+	frame({ type: "manual_compaction_start" });
+	await expect(page.getByTestId("compaction-line")).toHaveText("Compacting context…");
+	frame({
+		type: "manual_compaction_end",
+		aborted: false,
+		result: { summary: "s", firstKeptEntryId: "e1", tokensBefore: 1000 },
+	});
+	await expect(status).toHaveCount(0);
+	const outcome = page.getByTestId("compaction-outcome");
+	await expect(outcome).toHaveAttribute("data-kind", "completed");
+	await expect(outcome).toContainText("Compaction complete");
+
+	// `/compact remote` names what runs; nothing to compact is said as such, not as a failure.
+	frame({ type: "manual_compaction_start", mode: "remote" });
+	await expect(page.getByTestId("compaction-line")).toContainText("Compacting the conversation on the server");
+	await expect(outcome).toHaveCount(0);
+	frame({
+		type: "manual_compaction_end",
+		aborted: false,
+		skipped: true,
+		errorMessage: "Nothing to compact (session too small)",
+	});
+	await expect(outcome).toHaveAttribute("data-kind", "skipped");
+	await expect(outcome).toHaveText("Server compaction skipped: Nothing to compact (session too small)");
+});

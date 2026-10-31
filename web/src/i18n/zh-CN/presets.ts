@@ -4,6 +4,7 @@ import type { en as later } from "../presets-later.ts";
 export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	trigger: "预设",
 	custom: "自定义",
+	gone: "{name}（已删除）",
 	menuTitle: "模型预设",
 	empty: "还没有预设。把现在用的模型存下来，以后一键切换回来。",
 	loadFailed: "无法加载预设：{error}",

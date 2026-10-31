@@ -495,5 +495,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	compactionCompletedTokens: "{action}已完成 · 压缩前上下文为 {tokens} 个 token",
 	compactionFailed: "{action}失败，对话照常继续",
 	compactionFailedWith: "{action}失败：{message}",
+	compactionSkipped: "{action}已跳过：没有可压缩的内容",
+	compactionSkippedWith: "{action}已跳过：{message}",
 	compactionDismiss: "关闭",
 };

@@ -11,7 +11,10 @@ import type { OmpFrame } from "./protocol.ts";
 
 /** What the server says it holds, by the names the page keeps each under (see `ServerMessage` `attached`). */
 export interface AttachedHold {
-	/** omp is compacting the context by itself (`auto_compaction_start` without its end). */
+	/**
+	 * omp is compacting the context: `auto_compaction_start` (by itself) or `manual_compaction_start` (asked to, omp 18.13.3)
+	 * without its end.
+	 */
 	compacting: boolean;
 	/** The keys of the extension status lines that are set (`setStatus`). */
 	statuses: string[];

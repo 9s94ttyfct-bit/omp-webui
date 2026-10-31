@@ -172,3 +172,42 @@ test("a failure that left no message, or says something else, still gets its box
 	const fine: OmpFrame = { ...failedReply, message: { role: "assistant", content: [], stopReason: "stop" } };
 	expect(fold([fine, promptFailed("401 bad key")]).lastError).toBe("401 bad key");
 });
+
+test("a compaction omp was asked for shows while it runs and says how it ended, as an automatic one (audit A-003)", () => {
+	const started = fold([{ type: "manual_compaction_start" }]);
+	expect(started.compacting).toEqual({ action: undefined });
+	expect(started.compactionOutcome).toBeNull();
+	const done = fold([{ type: "manual_compaction_end", aborted: false, result: { tokensBefore: 120_000 } }], started);
+	expect(done.compacting).toBeNull();
+	expect(done.compactionOutcome).toMatchObject({ kind: "completed", tokensBefore: 120_000 });
+
+	// `/compact remote`: the mode names what runs, and what ended.
+	const remote = fold([{ type: "manual_compaction_start", mode: "remote" }]);
+	expect(remote.compacting).toEqual({ action: "remote" });
+	expect(
+		fold([{ type: "manual_compaction_end", aborted: true, errorMessage: "Compaction cancelled" }], remote)
+			.compactionOutcome,
+	).toMatchObject({ kind: "cancelled", action: "remote" });
+
+	// Nothing to compact is no failure; an error is.
+	expect(
+		fold(
+			[{ type: "manual_compaction_end", aborted: false, skipped: true, errorMessage: "Nothing to compact" }],
+			started,
+		).compactionOutcome,
+	).toMatchObject({ kind: "skipped", message: "Nothing to compact" });
+	expect(
+		fold([{ type: "manual_compaction_end", aborted: false, errorMessage: "No model selected" }], started)
+			.compactionOutcome,
+	).toMatchObject({ kind: "failed", message: "No model selected" });
+});
+
+test("an extension's input that asks for a secret keeps the flag, which the dialog masks by (audit A-006)", () => {
+	const s = fold([{ type: "extension_ui_request", id: "tok", method: "input", title: "API token", secret: true }]);
+	expect(s.uiRequests).toHaveLength(1);
+	expect(s.uiRequests[0]).toMatchObject({ id: "tok", method: "input", secret: true });
+	// One without it is an ordinary input.
+	expect(fold([{ type: "extension_ui_request", id: "n", method: "input", title: "Name" }]).uiRequests[0].secret).toBe(
+		undefined,
+	);
+});

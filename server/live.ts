@@ -29,7 +29,12 @@ import {
 } from "../shared/guard.ts";
 import { isRecord } from "../shared/guards.ts";
 import { type HostToolDefinition, PROPOSE_GOAL_TOOL, proposeGoalTool } from "../shared/guided-goal.ts";
-import { type ConversationModels, parseConversationModels, parseSelector } from "../shared/model-config.ts";
+import {
+	type ConversationModels,
+	parseConversationModels,
+	parseSelector,
+	sameConversationModels,
+} from "../shared/model-config.ts";
 import { GUIDANCE_ID_MAX, guidanceText, type LiveGuidance, type SessionGuidance } from "../shared/model-guidance.ts";
 import { isMode, type Mode, runsLocal } from "../shared/offline.ts";
 import { panelStateOf } from "../shared/panel-state.ts";
@@ -86,7 +91,7 @@ import type { HostToolResult, HostToolServer } from "./omp/host-tools.ts";
 import { InFlightMessage, mayRewriteEntries } from "./omp/in-flight.ts";
 import { InterviewStore } from "./omp/interviews.ts";
 import { hasCommand } from "./omp/loaded.ts";
-import { type Absent, absentModels, conversationPreset } from "./omp/model-config.ts";
+import { type Absent, absentModels, conversationPreset, presetAsDefined } from "./omp/model-config.ts";
 import {
 	identitiesOf,
 	identityOf,
@@ -764,7 +769,26 @@ export class Live {
 
 	/** Run omp and everything it started again: the conversation is not paused any more. */
 	resume(): Promise<void> {
-		return this.shift(() => this.unfreeze()).then(() => this.compactQueue.resumed());
+		return this.shift(() => this.unfreeze()).then(() => {
+			this.compactQueue.resumed();
+			// What became of its preset while it was paused (or while no server ran) is taken now (#4).
+			void this.followPresetAtResume().catch((e: unknown) =>
+				console.error(`omp-webui: could not update the model settings of ${this.info.liveId}: ${(e as Error).message}`),
+			);
+		});
+	}
+
+	/** The conversation runs again: its model moves with an edit of its preset made while it was frozen, and an edit since is followed. */
+	private followPresetAtResume(): Promise<void> {
+		const run = this.presetQueue.then(async () => {
+			const level = this.presetMovePending;
+			this.presetMovePending = null;
+			const models = this.overlay?.models;
+			if (level !== null && models) await this.runOn(models, level, {});
+			await this.runRefreshModelRoles();
+		});
+		this.presetQueue = run.catch(() => {});
+		return run;
 	}
 
 	/**
@@ -2080,8 +2104,10 @@ export class Live {
 				if (this.info.softStop) this.finishSoftStop();
 			}
 		}
-		if (frame.type === "auto_compaction_start") this.unsettled = true;
-		else if (frame.type === "auto_compaction_end") {
+		// omp compacts by itself, or because it was asked to (omp 18.13.3: a typed `/compact`, an extension's `ctx.compact()`,
+		// the RPC `compact`): the `prompt` that started it is answered already, and closing omp now would end the compaction.
+		if (frame.type === "auto_compaction_start" || frame.type === "manual_compaction_start") this.unsettled = true;
+		else if (frame.type === "auto_compaction_end" || frame.type === "manual_compaction_end") {
 			this.unsettled = false;
 			void this.refreshState().catch(() => {});
 		}
@@ -3001,9 +3027,16 @@ export class Live {
 
 	/**
 	 * The configuration's model settings changed (a role or a subagent's model was added or removed in the global config or
-	 * the folder's project): one the preset does not set must not reach this conversation, so the overlay's `null`s (for
-	 * roles and for agents) are worked out again from the configuration as it is now. Serialized with preset switches; a
-	 * paused conversation's overlay is rewritten too, which omp reads when it runs, and its record follows.
+	 * the folder's project, a preset was edited): asked again when it changes, and when a conversation is resumed.
+	 *
+	 * The conversation's models are a copy of its preset's definition, made when it was switched to it. A preset edited since
+	 * (Settings, `config.yml`, `omp config set`) is followed (#4): its roles, level and subagent models are taken again, and
+	 * the conversation's own model moves with the preset's default role, as a switch to it would. A conversation whose model
+	 * was moved off the preset's default (the model picker: it is on no preset, "Custom") keeps the copy, and so does one whose
+	 * preset is gone or can no longer be applied. Either way the roles and agents the configuration sets and the models leave
+	 * out are worked out again: one the preset does not set must not reach this conversation (the overlay's `null`s).
+	 * Serialized with preset switches; a paused conversation's overlay is rewritten too, which omp reads when it runs, and
+	 * its record follows; its model moves when it is resumed (`resume`).
 	 */
 	refreshModelRoles(): Promise<void> {
 		const run = this.presetQueue.then(() => this.runRefreshModelRoles());
@@ -3011,18 +3044,62 @@ export class Live {
 		return run;
 	}
 
+	/**
+	 * The preset's default model or level changed while the conversation was paused (a frozen omp takes no `set_model`): the
+	 * fallback level to move it with when it is resumed, null when there is nothing to move.
+	 */
+	private presetMovePending: string | null = null;
+
 	private async runRefreshModelRoles(): Promise<void> {
 		const overlay = this.overlay;
-		const models = overlay?.models;
-		if (!overlay || !models || this.info.exited || this.client.closing) return;
-		const absent = await absentModels(this.cfg, this.info.cwd, models);
+		const held = overlay?.models;
+		if (!overlay || !held || this.info.exited || this.client.closing) return;
+		// The model it runs now, which no page may have asked omp for since it last changed (a frozen omp answers nothing).
+		if (this.info.pausedAt === null) await this.refreshState().catch(() => {});
+		const defined = this.onPreset(held) ? await presetAsDefined(this.cfg, this.info.cwd, held) : null;
+		if (defined && !sameConversationModels(defined.models, held)) {
+			const { models, absent, fallbackLevel } = defined;
+			const before = { absent: overlay.absent, absentAgents: overlay.absentAgents };
+			await overlay.setModels(models, absent.roles, absent.agents);
+			// The conversation's own model follows the default role, as a switch to the preset moves it; a frozen omp is moved
+			// when it is resumed. One that cannot be moved keeps everything it had, as a switch that fails does.
+			const moved =
+				models.roles.default !== held.roles.default || models.defaultThinkingLevel !== held.defaultThinkingLevel;
+			if (moved && this.info.pausedAt !== null) this.presetMovePending = fallbackLevel;
+			else if (moved) {
+				try {
+					await this.runOn(models, fallbackLevel, {});
+				} catch (e) {
+					await overlay.setModels(held, before.absent, before.absentAgents);
+					throw e;
+				}
+			}
+			this.info.models = models;
+			this.pool.rememberModels(this, models);
+			this.persist();
+			this.pool.announce(this);
+			return;
+		}
+		const absent = defined?.absent ?? (await absentModels(this.cfg, this.info.cwd, held));
 		const unchanged = [
 			[absent.roles, overlay.absent],
 			[absent.agents, overlay.absentAgents],
-		].every(([now, held]) => now.length === held.length && now.every((x) => held.includes(x)));
+		].every(([now, kept]) => now.length === kept.length && now.every((x) => kept.includes(x)));
 		if (unchanged) return;
-		await overlay.setModels(models, absent.roles, absent.agents);
+		await overlay.setModels(held, absent.roles, absent.agents);
 		this.persist();
+	}
+
+	/**
+	 * The conversation is on the preset its models were copied from: it runs the model the preset's default role names. One
+	 * moved off it by the model picker is not; a default that is no single model (an alias, a list), or a model omp has not
+	 * said yet, cannot be compared, and the conversation is taken to be on it.
+	 */
+	private onPreset(models: ConversationModels): boolean {
+		const wanted = models.roles.default ? parseSelector(models.roles.default) : null;
+		const running = isRecord(this.lastState) && isRecord(this.lastState.model) ? this.lastState.model : null;
+		if (!wanted || typeof running?.provider !== "string" || typeof running.id !== "string") return true;
+		return running.provider === wanted.provider && running.id === wanted.id;
 	}
 
 	/**
@@ -3642,8 +3719,8 @@ export class LivePool {
 	}
 
 	/**
-	 * The global or a project config changed: every switched conversation, running or paused, has its overlay worked out
-	 * again (see `Live.refreshModelRoles`). One that cannot be read now keeps what it has.
+	 * The global or a project config changed: every switched conversation, running or paused, follows an edit of its preset
+	 * and has its overlay worked out again (see `Live.refreshModelRoles`). One that cannot be read now keeps what it has.
 	 */
 	async refreshModelRoles(): Promise<void> {
 		await Promise.all(
@@ -4440,6 +4517,15 @@ export class LivePool {
 		await live.untilGuidanceSaid();
 		await live.untilUnattendedSaid();
 		this.announce(live);
+		// It started on the copy of its preset it was remembered with: an edit of the preset made since is followed (#4).
+		if (models)
+			void live
+				.refreshModelRoles()
+				.catch((e: unknown) =>
+					console.error(
+						`omp-webui: could not update the model settings of ${live.info.liveId}: ${(e as Error).message}`,
+					),
+				);
 		return live;
 	}
 
