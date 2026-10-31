@@ -515,7 +515,7 @@ async function scenarioLoad(ctx: Ctx): Promise<Samples> {
 		// The sidebar's list scrolled through.
 		const scroll = await page.evaluate(
 			([sel, speed]) => window.__bench.scroll(sel as string, speed as number, 1e9, 30_000),
-			['[data-testid="session-list"]', SCROLL_SPEED],
+			['[data-testid="session-scroll"]', SCROLL_SPEED],
 		);
 		const frames = frameStats(scroll.gaps);
 		const lt = await page.evaluate(() => window.__bench.lt);
