@@ -6,10 +6,12 @@
  * suite. This script releases only a commit CI passed on: it asks GitHub for the CI workflow's runs of that exact commit
  * and stops, before anything is built, unless one of them (a push or a by-hand run, not a pull request's, which tests a
  * merge commit) succeeded; a commit CI has not run on, is still running on, or failed on is refused with the run's link.
- * Then it does what only this Mac can: the tests that call a real model (`test:live`: they need this machine's Anthropic
- * login, which CI never has, and refuse to run without it), the app signed with the identity in its keychain
- * (scripts/signing-identity.ts) and the dmg. It works from a clean checkout of the commit it releases in a temporary
- * worktree, so nothing uncommitted here goes in. Any failure stops it before anything is tagged or published.
+ * Then it does what only this Mac can: the unit and contract tests that only macOS runs (`test:mac`, scripts/mac-tests.ts:
+ * the app's Swift shell, signing, the disk image and the updater's install steps, which CI's Linux skips), the tests that
+ * call a real model (`test:live`: they need this machine's Anthropic login, which CI never has, and refuse to run without
+ * it), the app signed with the identity in its keychain (scripts/signing-identity.ts) and the dmg. It works from a clean
+ * checkout of the commit it releases in a temporary worktree, so nothing uncommitted here goes in. Any failure stops it
+ * before anything is tagged or published.
  *
  * The tests that open real windows on this Mac (Run in Background's menu bar icon, pop-outs, the pending-quit question:
  * `OMPW_GUI_TESTS=1`, tests/support/gui-tests.ts) are not part of it: they take the focus of whoever is using the Mac, and
@@ -18,12 +20,12 @@
  *
  * The tag is made by this script, after everything else passed, never by hand. With no tag `vX.Y.Z` here or on origin,
  * the release is of the commit `main` is at on origin: this checkout must be at that commit with nothing uncommitted
- * (else it stops and says so), CI must have passed on it, the live tests, the app and the dmg run on it, and only then
- * is the annotated tag made on that exact commit and pushed; the publishing follows. A step that fails leaves no tag to
- * delete: fix, push, wait for CI, run it again (#782). A tag that already exists (re-publishing it) must point at the
- * same commit here and on origin (the build is of the local one, the release is created against the remote one); it is
- * released as it is, wherever this checkout is, once CI passed on its commit. A tag on one side only, or on two
- * different commits, stops it: nothing is moved or deleted.
+ * (else it stops and says so), CI must have passed on it, the macOS tests, the live tests, the app and the dmg run on it,
+ * and only then is the annotated tag made on that exact commit and pushed; the publishing follows. A step that fails
+ * leaves no tag to delete: fix, push, wait for CI, run it again (#782). A tag that already exists (re-publishing it) must
+ * point at the same commit here and on origin (the build is of the local one, the release is created against the remote
+ * one); it is released as it is, wherever this checkout is, once CI passed on its commit. A tag on one side only, or on
+ * two different commits, stops it: nothing is moved or deleted.
  *
  * Before anything is built, the script also says whether the repository is public, which the app's own updater needs in
  * order to see the release.
@@ -32,9 +34,9 @@
  * a logged-in desktop session with Finder automation for the dmg, the signing identity, and for publishing a signed-in
  * `gh` with the `repo` scope. Anything missing is named at once.
  *
- * `--skip-tests` skips the live tests (only for re-publishing a tag whose tests already passed; a tag is never made
- * without them). `--dry-run` does everything but the tag and the publishing (the CI check, the live tests, the app and
- * the dmg) and then stops, saying the commit a new tag would be made on.
+ * `--skip-tests` skips the macOS and the live tests (only for re-publishing a tag whose tests already passed; a tag is
+ * never made without them). `--dry-run` does everything but the tag and the publishing (the CI check, the macOS and the
+ * live tests, the app and the dmg) and then stops, saying the commit a new tag would be made on.
  *
  * A release is the signed dmg on a GitHub Release with the notes and the install steps, nothing else: no package is
  * published anywhere. SIGINT, SIGTERM and SIGHUP stop the running command and everything it started, then
@@ -272,8 +274,11 @@ async function release(): Promise<void> {
 	const version = JSON.parse(await Bun.file(join(tree, "package.json")).text()).version as string;
 	if (`v${version}` !== tag) throw new Error(`tag ${tag} != package.json v${version}`);
 	await run(["bun", "scripts/check-release-notes.ts", tag], { cwd: tree });
-	// The tests CI cannot run: they call a real model with this machine's login.
-	if (!skipTests) await run(["bun", "run", "test:live"], { cwd: tree });
+	// The tests CI cannot run: the cases only macOS has, then the ones that call a real model with this machine's login.
+	if (!skipTests) {
+		await run(["bun", "run", "test:mac"], { cwd: tree });
+		await run(["bun", "run", "test:live"], { cwd: tree });
+	}
 
 	await run(["bun", "run", "app"], { cwd: tree });
 	await run(["bun", "run", "dmg"], { cwd: tree });
@@ -283,8 +288,8 @@ async function release(): Promise<void> {
 	if (dryRun) {
 		console.log(
 			fresh
-				? `Dry run: CI, the live tests, the app and the dmg passed on ${commit} (origin/main), the commit ${tag} would be made on; no tag was made, and nothing was published.`
-				: `Dry run: ${tag} is ready (CI, the live tests, the app and the dmg passed); nothing was published.`,
+				? `Dry run: CI, the macOS tests, the live tests, the app and the dmg passed on ${commit} (origin/main), the commit ${tag} would be made on; no tag was made, and nothing was published.`
+				: `Dry run: ${tag} is ready (CI, the macOS tests, the live tests, the app and the dmg passed); nothing was published.`,
 		);
 		return;
 	}

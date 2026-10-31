@@ -92,6 +92,7 @@ esac`,
 		"bun",
 		`echo "bun $*" >> "${log}"
 if [ "$1 $2" = "run dmg" ] && [ -z "$STUB_DMG_FAIL" ]; then mkdir -p dist; : > "dist/omp-webui-${TAG}.dmg"; fi
+if [ "$1 $2" = "run test:mac" ] && [ -n "$STUB_MAC_FAIL" ]; then exit 1; fi
 if [ "$1 $2" = "run test:live" ] && [ -n "$STUB_LIVE_FAIL" ]; then exit 1; fi
 if [ "$1 $2" = "run dmg" ] && [ -n "$STUB_DMG_FAIL" ]; then exit 1; fi
 if [ "$1 $2" = "run app" ]; then echo "tag at app: here=$(git tag -l ${TAG}) origin=$(git ls-remote --tags origin refs/tags/${TAG} | cut -f1)" >> "${log}"; fi
@@ -279,7 +280,7 @@ test("an existing tag is re-published only once CI passed on its commit, --skip-
 
 // ------------------------------------------------------------------ the tag is made after everything passed (#782)
 
-test("with no tag, CI's success on origin/main is required, then the live tests, the app and the dmg, then the tag, then publishing", async () => {
+test("with no tag, CI's success on origin/main is required, then the macOS and the live tests, the app and the dmg, then the tag, then publishing", async () => {
 	untag();
 	const main = git("rev-parse", "HEAD");
 	const r = await finish(release([], {}, true));
@@ -291,6 +292,7 @@ test("with no tag, CI's success on origin/main is required, then the live tests,
 	const order = [
 		`gh api repos/9s94ttyfct-bit/omp-webui/actions/workflows/ci.yml/runs?head_sha=${main}`,
 		"bun install",
+		"bun run test:mac",
 		"bun run test:live",
 		"bun run app",
 		"bun run dmg",
@@ -313,6 +315,7 @@ test("CI's gates are not run again here: no type check, lint, build, parity, uni
 	for (const never of ["typecheck", "run lint", "run build", "run parity", "run test\n", "test:release", "test:e2e"]) {
 		expect(seen).not.toContain(never);
 	}
+	expect(seen).toContain("bun run test:mac");
 	expect(seen).toContain("bun run test:live");
 });
 
@@ -323,6 +326,17 @@ test("with no tag, live tests that fail make no tag here or on origin, and build
 	expect(localTag()).toBe("");
 	expect(originTag()).toBe("");
 	for (const never of ["bun run app", "npm publish", "gh release"]) expect(calls()).not.toContain(never);
+	expect(leftovers()).toEqual([]);
+	expect(worktrees()).toHaveLength(1);
+});
+
+test("with no tag, macOS tests that fail stop it before the live tests: no tag, nothing built", async () => {
+	untag();
+	const r = await finish(release([], { STUB_MAC_FAIL: "1" }, true));
+	expect(r.code).toBe(1);
+	expect(localTag()).toBe("");
+	expect(originTag()).toBe("");
+	for (const never of ["bun run test:live", "bun run app", "gh release"]) expect(calls()).not.toContain(never);
 	expect(leftovers()).toEqual([]);
 	expect(worktrees()).toHaveLength(1);
 });
@@ -372,16 +386,17 @@ test("with no tag, --skip-tests is refused: a tag is only made after the live te
 	expect(localTag()).toBe("");
 });
 
-test("--dry-run with no tag runs the live tests, the app and the dmg on origin/main, says the commit it would tag, and makes no tag", async () => {
+test("--dry-run with no tag runs the macOS and the live tests, the app and the dmg on origin/main, says the commit it would tag, and makes no tag", async () => {
 	untag();
 	const main = git("rev-parse", "HEAD");
 	const r = await finish(release(["--dry-run"], {}, true));
 	expect(r.code).toBe(0);
 	expect(r.out).toContain(
-		`Dry run: CI, the live tests, the app and the dmg passed on ${main} (origin/main), the commit ${TAG} would be made on`,
+		`Dry run: CI, the macOS tests, the live tests, the app and the dmg passed on ${main} (origin/main), the commit ${TAG} would be made on`,
 	);
 	const seen = calls();
-	for (const step of ["bun run test:live", "bun run app", "bun run dmg"]) expect(seen).toContain(step);
+	for (const step of ["bun run test:mac", "bun run test:live", "bun run app", "bun run dmg"])
+		expect(seen).toContain(step);
 	for (const never of ["npm ", "gh auth token", "gh release"]) expect(seen).not.toContain(never);
 	expect(localTag()).toBe("");
 	expect(originTag()).toBe("");

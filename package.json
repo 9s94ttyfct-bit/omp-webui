@@ -29,6 +29,7 @@
 		"test:contract": "bun scripts/with-model-login.ts sh -c \"bun test --parallel --timeout 30000 --timings=.bun-test-timings.json tests/contract && bun test tests/performance\"",
 		"test:all": "bun scripts/with-model-login.ts sh -c \"bun test --parallel --timeout 30000 --timings=.bun-test-timings.json tests/unit tests/contract && bun test tests/performance\"",
 		"test:release": "bun scripts/with-model-login.ts bun test --parallel --timeout 30000 --timings=.bun-test-timings.json tests/unit tests/contract",
+		"test:mac": "bun scripts/with-model-login.ts bun scripts/mac-tests.ts",
 		"test:live": "bun scripts/with-model-login.ts --require-login bun test --parallel --timeout 30000 tests/contract/approval.test.ts tests/contract/guided-goal.test.ts tests/contract/guided-goal-approval.test.ts tests/contract/migrate-resume.test.ts tests/contract/remote-ai-live.test.ts",
 		"test:gui": "OMPW_GUI_TESTS=1 bun test --timeout 120000 tests/unit/macos-background.test.ts tests/unit/macos-popout.test.ts tests/unit/macos-quit.test.ts",
 		"test:timings": "bun scripts/with-model-login.ts sh -c \"bun test --parallel --timeout 30000 --timings=.bun-test-timings.json --update-timings tests/unit tests/contract && bun test tests/performance\"",
