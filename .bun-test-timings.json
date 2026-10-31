@@ -296,6 +296,7 @@
     "tests/unit/paused-banner.test.ts": 76,
     "tests/unit/update-release.test.ts": 69,
     "tests/unit/entry-size.test.ts": 68,
+    "tests/unit/store-memory.test.ts": 66,
     "tests/unit/password-generate.test.ts": 65,
     "tests/unit/kbd.test.ts": 64,
     "tests/unit/guard-bench.test.ts": 62,

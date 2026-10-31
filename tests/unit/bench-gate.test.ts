@@ -4,10 +4,13 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
 	busiestFromTop,
+	FOOTPRINT_BASELINE_MB,
+	FOOTPRINT_HEADROOM,
 	GATE_EXIT,
 	gateExitCode,
 	harnessFiles,
 	labelsWithoutFootprint,
+	overFootprintBudget,
 	waitForQuiet,
 } from "../../scripts/lib/bench-gate.ts";
 import { summarize } from "../../tests/support/bench-stats.ts";
@@ -101,7 +104,7 @@ describe("busiestFromTop", () => {
 
 describe("gateExitCode", () => {
 	const ok = { ab: 0, aa2: 0, a2b: 0 };
-	const clean = { provisionalRuns: false, memoryGated: true };
+	const clean = { provisionalRuns: false, memoryGated: true, overBudget: false };
 
 	test("all clean and memory gated: pass", () => {
 		expect(gateExitCode(ok, clean)).toBe(GATE_EXIT.pass);
@@ -113,12 +116,21 @@ describe("gateExitCode", () => {
 
 	test("memory not gated (a report without footprint): provisional, never a pass (the blind spot of #599)", () => {
 		expect(gateExitCode(ok, { ...clean, memoryGated: false })).toBe(GATE_EXIT.provisionalPass);
-		expect(gateExitCode(ok, { provisionalRuns: true, memoryGated: false })).toBe(GATE_EXIT.provisionalPass);
+		expect(gateExitCode(ok, { ...clean, provisionalRuns: true, memoryGated: false })).toBe(GATE_EXIT.provisionalPass);
 	});
 
 	test("B worse than A or than A′ is a regression, provisional or not", () => {
 		expect(gateExitCode({ ...ok, ab: 1 }, clean)).toBe(GATE_EXIT.regression);
-		expect(gateExitCode({ ...ok, a2b: 1 }, { provisionalRuns: true, memoryGated: false })).toBe(GATE_EXIT.regression);
+		expect(gateExitCode({ ...ok, a2b: 1 }, { ...clean, provisionalRuns: true, memoryGated: false })).toBe(
+			GATE_EXIT.regression,
+		);
+	});
+
+	test("B's footprint over its budget is a regression even when it is no worse than A (a creep, release by release: #9)", () => {
+		expect(gateExitCode(ok, { ...clean, overBudget: true })).toBe(GATE_EXIT.regression);
+		expect(gateExitCode({ ...ok, aa2: 1 }, { ...clean, provisionalRuns: true, overBudget: true })).toBe(
+			GATE_EXIT.regression,
+		);
 	});
 
 	test("A worse than A′ alone is a drifting baseline", () => {
@@ -152,6 +164,61 @@ describe("labelsWithoutFootprint", () => {
 		];
 		expect(labelsWithoutFootprint(reports)).toEqual(["A", "A2"]);
 		expect(labelsWithoutFootprint([reports[1]])).toEqual([]);
+	});
+});
+
+describe("overFootprintBudget", () => {
+	const def = { unit: "MB", better: "lower", floor: 2 } as const;
+	const ALL = "server,load,list,switch,long,stream";
+	const base = FOOTPRINT_BASELINE_MB["server,list"];
+	const idle = base["server.idle.footprint_mb"];
+	const list = base["server.list.footprint_mb"];
+	const report = (idleMb: number, listMb: number, scenarios: string | null = "server,list") => ({
+		conditions: scenarios === null ? {} : { scenarios },
+		metrics: {
+			"server.idle.footprint_mb": summarize(def, [idleMb]),
+			"server.list.footprint_mb": summarize(def, [listMb]),
+		},
+	});
+
+	test("the idle and listing footprints are budgeted at 5 % over v0.13.0's, for `server,list` and for every scenario", () => {
+		expect(Object.keys(FOOTPRINT_BASELINE_MB).sort()).toEqual(["server,list", ALL]);
+		for (const b of Object.values(FOOTPRINT_BASELINE_MB))
+			expect(Object.keys(b).sort()).toEqual(["server.idle.footprint_mb", "server.list.footprint_mb"]);
+		expect(FOOTPRINT_HEADROOM).toBe(1.05);
+	});
+
+	test("within budget: nothing; over it: the metric, its median and the budget", () => {
+		expect(overFootprintBudget(report(idle * 1.04, list), "darwin")).toEqual({ over: [] });
+		expect(overFootprintBudget(report(idle, list * 1.06), "darwin")).toEqual({
+			over: [{ metric: "server.list.footprint_mb", medianMb: list * 1.06, budgetMb: list * 1.05 }],
+		});
+	});
+
+	test("each scenario set has its own baseline: an idle server after every scenario holds more", () => {
+		const all = FOOTPRINT_BASELINE_MB[ALL];
+		const [idleAll, listAll] = [all["server.idle.footprint_mb"], all["server.list.footprint_mb"]];
+		expect(idleAll).toBeGreaterThan(idle * FOOTPRINT_HEADROOM);
+		expect(overFootprintBudget(report(idleAll, listAll, ALL), "darwin")).toEqual({ over: [] });
+		expect(overFootprintBudget(report(idleAll, list), "darwin")).toMatchObject({
+			over: [{ metric: "server.idle.footprint_mb" }],
+		});
+	});
+
+	test("a report without the metrics is not over (labelsWithoutFootprint says memory was not gated)", () => {
+		expect(overFootprintBudget({ conditions: { scenarios: "server,list" }, metrics: {} }, "darwin")).toEqual({
+			over: [],
+		});
+	});
+
+	test("not applied to scenarios v0.13.0 was not measured with, nor to Linux Pss (another measure)", () => {
+		expect(overFootprintBudget(report(idle * 2, list * 2, "server,long"), "darwin")).toEqual({
+			notApplied: `v0.13.0 was measured with the scenarios \`server,list\` and \`${ALL}\`, not with \`server,long\``,
+		});
+		expect(overFootprintBudget(report(idle * 2, list * 2, null), "darwin")).toHaveProperty("notApplied");
+		expect(overFootprintBudget(report(idle * 2, list * 2), "linux")).toEqual({
+			notApplied: "the budgets are macOS `footprint` numbers (this is linux)",
+		});
 	});
 });
 

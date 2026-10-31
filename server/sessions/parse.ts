@@ -330,7 +330,11 @@ export function foldEntry(acc: SummaryAcc, e: SessionEntry): void {
 			const text = contentText(m.content).trim();
 			// A guided goal's first message is the web UI's instructions: the conversation is named by what the user said.
 			const interview = parseInterviewPrompt(text);
-			acc.preview = (interview ? interview.rough || interviewLabel(interview.language) : text).slice(0, 240);
+			const preview = (interview ? interview.rough || interviewLabel(interview.language) : text).slice(0, 240);
+			// An own copy (JSON keeps every code unit, a half of a pair cut at 240 too): a slice shares the text it was cut
+			// from, and the store keeps every summary for as long as the server runs, so 240 characters of a pasted log
+			// would hold all of its megabytes (A-029).
+			acc.preview = JSON.parse(JSON.stringify(preview));
 		}
 	}
 	if (m.role === "assistant") {

@@ -15,10 +15,12 @@
  * PROVISIONAL. There is no `--allow-load` otherwise. It writes, in --out: `bench-<label>.json` and `run-<label>.log` per
  * run, `cmp-AB.md`, `cmp-AA2.md`, `cmp-A2B.md` (made by B's `bench.ts --compare`) and `gate-summary.md`.
  *
- * Exit: 0 pass; 1 B is worse than A or A′ on a gated metric (server footprint, not `ps` RSS: see bench.ts); 2 refused or a
- * build or run failed; 3 a report is invalid or the reports are not comparable; 5 A differs from A′ (the baseline
- * drifted: A against B proves nothing); 6 nothing worse, but a run was provisional or a report has no footprint, so memory
- * was not gated (not evidence; never a pass).
+ * Exit: 0 pass; 1 B is worse than A or A′ on a gated metric (server footprint, not `ps` RSS: see bench.ts), or B's
+ * server footprint is over its budget (`FOOTPRINT_BASELINE_MB` in scripts/lib/bench-gate.ts: v0.13.0 + 5 %, macOS, for
+ * every scenario or `--only server,list`);
+ * 2 refused or a build or run failed; 3 a report is invalid or the reports are not comparable; 5 A differs from A′ (the
+ * baseline drifted: A against B proves nothing); 6 nothing worse, but a run was provisional or a report has no
+ * footprint, so memory was not gated (not evidence; never a pass).
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -32,6 +34,7 @@ import {
 	gateExitCode,
 	harnessFiles,
 	labelsWithoutFootprint,
+	overFootprintBudget,
 	waitForQuiet,
 } from "./lib/bench-gate.ts";
 
@@ -50,7 +53,7 @@ if (args.includes("--help") || args.includes("-h") || !args.includes("--a") || !
 			"Copies A to a temporary directory and lays B's measuring harness (bench.ts and what it imports from scripts/ and tests/, not app code) over the copy, so both sides record the footprint; builds both; then measures A, B, A' in turn, each only once the 1-minute load average is at or below --max-load.",
 			"If the machine does not get quiet within --max-wait: refuses (exit 2) by default; --on-timeout provisional measures anyway and marks everything PROVISIONAL.",
 			"Writes bench-<label>.json, run-<label>.log, cmp-AB.md, cmp-AA2.md, cmp-A2B.md and gate-summary.md to --out.",
-			"Exit: 0 pass; 1 B worse than A or A'; 2 refused / build or run failed; 3 invalid or not comparable; 5 A differs from A' (baseline drifted); 6 no regression but PROVISIONAL (a run on a busy machine, or a report without footprint: memory not gated).",
+			"Exit: 0 pass; 1 B worse than A or A', or B's server footprint over its budget (v0.13.0 + 5 %, macOS); 2 refused / build or run failed; 3 invalid or not comparable; 5 A differs from A' (baseline drifted); 6 no regression but PROVISIONAL (a run on a busy machine, or a report without footprint: memory not gated).",
 		].join("\n"),
 	);
 	process.exit(args.includes("--help") || args.includes("-h") ? 0 : 2);
@@ -294,9 +297,17 @@ for (const [name, x, y] of pairs) {
 const provisional = measured.some((m) => m.provisional);
 const noFootprint = labelsWithoutFootprint(measured.map((m) => m.report));
 if (noFootprint.length) say(`\nNo footprint metrics in ${noFootprint.join(", ")}: memory was not gated.`);
+// B's footprint against v0.13.0's (measured[1] is B: the plan is A, B, A′ and every run got here).
+const budget = overFootprintBudget(measured[1].report, process.platform);
+const overBudget = "over" in budget ? budget.over : [];
+if ("notApplied" in budget) say(`\nFootprint budgets not applied: ${budget.notApplied}.`);
+for (const o of overBudget)
+	say(
+		`\n**${o.metric} over budget**: B's median ${o.medianMb.toFixed(1)} MB > ${o.budgetMb.toFixed(1)} MB (v0.13.0 + 5 %)`,
+	);
 const code = gateExitCode(
 	{ ab: codes.AB, aa2: codes.AA2, a2b: codes.A2B },
-	{ provisionalRuns: provisional, memoryGated: noFootprint.length === 0 },
+	{ provisionalRuns: provisional, memoryGated: noFootprint.length === 0, overBudget: overBudget.length > 0 },
 );
 const reasons = [
 	provisional ? "a run was made on a machine that was not quiet (or otherwise off)" : "",
@@ -305,7 +316,8 @@ const reasons = [
 const text: Record<number, string> = {
 	[GATE_EXIT.pass]:
 		"PASS: B is not worse than A or A′ on any gated metric (memory included: footprint), and A matches A′",
-	[GATE_EXIT.regression]: "REGRESSION: B is worse than A or A′ on a gated metric (see cmp-AB.md, cmp-A2B.md)",
+	[GATE_EXIT.regression]:
+		"REGRESSION: B is worse than A or A′ on a gated metric (see cmp-AB.md, cmp-A2B.md), or its server footprint is over budget",
 	[GATE_EXIT.unusable]: "UNUSABLE: a report is invalid or the reports are not comparable (see the cmp files)",
 	[GATE_EXIT.drift]:
 		"DRIFT: A differs from A′ on a gated metric (cmp-AA2.md): the machine moved between the runs, A against B proves nothing; measure again",

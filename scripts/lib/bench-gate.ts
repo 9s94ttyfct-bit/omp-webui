@@ -121,16 +121,74 @@ export function labelsWithoutFootprint(reports: readonly Pick<Report, "label" | 
 }
 
 /**
- * Unusable reports first (no verdict at all), then a regression, then a drifting baseline. Else a pass only when the
- * runs were not provisional and every report carries the footprint (`memoryGated`): a comparison that did not gate on
- * memory, or a run made on a machine that was not quiet, is `provisionalPass`, not evidence.
+ * The server's memory, held to where v0.13.0 left it. The A / B comparison fails a step of more than its threshold
+ * between two trees; a creep of less than that at each release passes it every time (#9: +22 % idle, +43 % listing
+ * over five releases). So B's footprint has a budget of its own: v0.13.0's median plus 5 % (`FOOTPRINT_HEADROOM`).
+ *
+ * A baseline holds for the scenarios it was measured with (the report's `conditions.scenarios`): what ran before is part
+ * of what a footprint reads (the idle server after a round of every scenario holds 7–13 MB more than after `server` and
+ * `list` alone). Each is the highest median of the runs of v0.13.0 named, on an Apple M4 Pro, macOS 27.2, Bun 1.4.4,
+ * 2026-10-31 (A-029). That machine was busy (load 3.7–12 at the starts, so every run is provisional) and A and A′ of
+ * one gate differ by up to 5 %: the highest median keeps that noise from failing B. Measured again on a quiet machine,
+ * they can be tightened. The numbers are macOS `footprint`: Linux Pss is another measure, and is not held to them.
+ */
+export const FOOTPRINT_BASELINE_MB: Readonly<Record<string, Readonly<Record<string, number>>>> = {
+	// Three runs of `bench.ts --only server,list` (5 rounds) and A and A′ of `bench-gate.ts --only server,list` (12 rounds,
+	// 6 shards): idle 48.6, 49.5, 48.5, 48.3, 48.1; listing 74.2, 67.9, 66.6, 74.2, 66.7.
+	"server,list": { "server.idle.footprint_mb": 49.52, "server.list.footprint_mb": 74.21 },
+	// A and A′ of `bench-gate.ts` with its defaults (every scenario, 12 rounds, 6 shards): idle 58.6, 61.1; listing 76.5, 73.0.
+	"server,load,list,switch,long,stream": { "server.idle.footprint_mb": 61.06, "server.list.footprint_mb": 76.52 },
+};
+/** How far over its baseline a footprint may go. */
+export const FOOTPRINT_HEADROOM = 1.05;
+
+export interface OverBudget {
+	metric: string;
+	medianMb: number;
+	budgetMb: number;
+}
+
+/**
+ * The footprint metrics of `report` whose median is over its budget (its scenarios' `FOOTPRINT_BASELINE_MB` ×
+ * `FOOTPRINT_HEADROOM`), or why the budgets do not apply: not macOS, or no baseline for those scenarios. A metric the
+ * report does not have is not over: `labelsWithoutFootprint` says so.
+ */
+export function overFootprintBudget(
+	report: Pick<Report, "metrics" | "conditions">,
+	platform: string,
+): { over: OverBudget[] } | { notApplied: string } {
+	if (platform !== "darwin") return { notApplied: `the budgets are macOS \`footprint\` numbers (this is ${platform})` };
+	const scenarios = String(report.conditions.scenarios ?? "");
+	const baseline = FOOTPRINT_BASELINE_MB[scenarios];
+	if (!baseline) {
+		const known = Object.keys(FOOTPRINT_BASELINE_MB).map((s) => `\`${s}\``);
+		return {
+			notApplied: `v0.13.0 was measured with the scenarios ${known.join(" and ")}, not with \`${scenarios || "(not recorded)"}\``,
+		};
+	}
+	return {
+		over: Object.entries(baseline)
+			.map(([metric, mb]) => ({
+				metric,
+				medianMb: report.metrics[metric]?.median ?? 0,
+				budgetMb: mb * FOOTPRINT_HEADROOM,
+			}))
+			.filter((o) => o.medianMb > o.budgetMb),
+	};
+}
+
+/**
+ * Unusable reports first (no verdict at all), then a regression (B worse than A or A′, or over its footprint budget),
+ * then a drifting baseline. Else a pass only when the runs were not provisional and every report carries the footprint
+ * (`memoryGated`): a comparison that did not gate on memory, or a run made on a machine that was not quiet, is
+ * `provisionalPass`, not evidence.
  */
 export function gateExitCode(
 	c: GateComparisons,
-	{ provisionalRuns, memoryGated }: { provisionalRuns: boolean; memoryGated: boolean },
+	{ provisionalRuns, memoryGated, overBudget }: { provisionalRuns: boolean; memoryGated: boolean; overBudget: boolean },
 ): number {
 	if ([c.ab, c.aa2, c.a2b].some((x) => x >= 3)) return GATE_EXIT.unusable;
-	if (c.ab === 1 || c.a2b === 1) return GATE_EXIT.regression;
+	if (c.ab === 1 || c.a2b === 1 || overBudget) return GATE_EXIT.regression;
 	if (c.aa2 === 1) return GATE_EXIT.drift;
 	return provisionalRuns || !memoryGated ? GATE_EXIT.provisionalPass : GATE_EXIT.pass;
 }

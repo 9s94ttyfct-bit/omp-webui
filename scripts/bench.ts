@@ -512,10 +512,12 @@ async function scenarioLoad(ctx: Ctx): Promise<Samples> {
 		out["server.idleConnected.cpu_pct"] = cpuPct(s0, s1);
 		out["idle.page.busy_pct"] = ((p1.TaskDuration - p0.TaskDuration) / (p1.Timestamp - p0.Timestamp)) * 100;
 
-		// The sidebar's list scrolled through.
+		// The sidebar's list scrolled through: its own scroller since v0.14.0, the whole list before (bench-gate.ts measures
+		// an older release with this harness).
 		const scroll = await page.evaluate(
-			([sel, speed]) => window.__bench.scroll(sel as string, speed as number, 1e9, 30_000),
-			['[data-testid="session-scroll"]', SCROLL_SPEED],
+			({ scrollers, speed }) =>
+				window.__bench.scroll(scrollers.find((s) => document.querySelector(s)) ?? scrollers[0], speed, 1e9, 30_000),
+			{ scrollers: ['[data-testid="session-scroll"]', '[data-testid="session-list"]'], speed: SCROLL_SPEED },
 		);
 		const frames = frameStats(scroll.gaps);
 		const lt = await page.evaluate(() => window.__bench.lt);
@@ -1012,6 +1014,8 @@ async function runBench(): Promise<void> {
 			calibrationSpreadPct,
 			conditions: {
 				shards: 1,
+				/** The scenarios of each round, in order (`--only`): what ran before a metric is part of what it measures. */
+				scenarios: only.join(","),
 				viewport: `${VIEWPORT.width}x${VIEWPORT.height}`,
 				browser: "Playwright Chromium, headless, new context per scenario, timezone UTC, dark",
 				scrollPxPerSecond: SCROLL_SPEED,
