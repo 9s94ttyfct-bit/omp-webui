@@ -107,7 +107,12 @@ for (const { id, mode } of COMBOS) {
 		const current = page.getByRole("button", { name: "Settings", exact: true });
 		await expect(current).toHaveAttribute("aria-current", "page");
 		await page.mouse.move(700, 880); // off every control
-		const card = await settings.locator("section").first().boundingBox();
+		// The card is Ask agent for help, the first one on the page. It is a chunk of its own, drawn once the page knows it is
+		// on this computer and its strings have loaded: measured before that, the first card was Appearance, which the help
+		// card then pushed down, and the point sampled at its foot landed on Appearance's controls (A-035).
+		const help = settings.getByTestId("settings-help");
+		await expect(help).toBeVisible();
+		const card = await help.boundingBox();
 		const bar = await current.boundingBox();
 		const list = await page.getByTestId("session-list").boundingBox();
 		if (!card || !bar || !list) throw new Error("no layout");
