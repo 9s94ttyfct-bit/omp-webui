@@ -10,6 +10,8 @@ import {
 	type GuidanceProblem,
 	type GuidanceTemplate,
 	type GuidanceTemplates,
+	guidanceNameProblem,
+	guidanceProblemText,
 	guidanceText,
 } from "../../../shared/model-guidance.ts";
 
@@ -196,14 +198,14 @@ export class GuidanceStore {
 		if (!t) throw new GuidanceStoreError("unknown", "Not a guidance template");
 		const text = guidanceText(t.text);
 		const name = t.name.trim();
-		if (!name) throw new GuidanceStoreError("nameEmpty", "The template needs a name");
-		if (name.length > GUIDANCE_NAME_MAX)
-			throw new GuidanceStoreError("nameTooLong", `A name is at most ${GUIDANCE_NAME_MAX} characters`);
+		// Empty or too long is the name alone; repeating another's is read against the file as it is now, below.
+		const unnamed = guidanceNameProblem(name, []);
+		if (unnamed) throw new GuidanceStoreError(unnamed, guidanceProblemText(unnamed));
 		if (!text) throw new GuidanceStoreError("textEmpty", "The template needs some text");
 		if (text.length > GUIDANCE_MAX)
 			throw new GuidanceStoreError("textTooLong", `The text is at most ${GUIDANCE_MAX} characters`);
 		this.snapshot();
-		if (this.templates.some((x) => x.id !== t.id && x.name.trim() === name))
+		if (guidanceNameProblem(name, this.templates, t.id) === "nameRepeated")
 			throw new GuidanceStoreError("nameRepeated", `There is already a template named “${name}”`);
 		const at = this.templates.findIndex((x) => x.id === t.id);
 		if (at < 0 && update) throw new GuidanceStoreError("gone", "That template does not exist any more");

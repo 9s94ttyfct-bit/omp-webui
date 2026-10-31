@@ -275,6 +275,73 @@ test("the guidance file is in the conversation's own folder under the data dir, 
 	ws.close();
 }, 120_000);
 
+test("a template saved or renamed reaches the running conversations that use it at their next turn; own text is left alone", async () => {
+	const OLD = "GUIDANCE-FOLLOW-OLD: one subagent at a time.";
+	const NEW = "GUIDANCE-FOLLOW-NEW: two subagents at a time.";
+	const headers = { "x-omp-webui-token": server.accessToken, "x-omp-webui": "1", "content-type": "application/json" };
+	const saveTemplate = (name: string, text: string) =>
+		fetch(`${server.url}/api/model-guidance`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ template: { id: "follow-template", name, text }, update: true }),
+		});
+	const made = await fetch(`${server.url}/api/model-guidance`, {
+		method: "POST",
+		headers,
+		body: JSON.stringify({ template: { id: "follow-template", name: "Follow", text: OLD } }),
+	});
+	expect(made.status).toBe(200);
+	const ws = await connect(server);
+	const uses = await request<LiveInfo>(ws, {
+		t: "open",
+		target: { kind: "new", cwd: server.work, guidance: { template: "follow-template" } },
+	});
+	const own = await request<LiveInfo>(ws, {
+		t: "open",
+		target: { kind: "new", cwd: server.work, guidance: { text: OLD } },
+	});
+	const fileOf = (liveId: string): string => {
+		const found = readdirSync(server.tmpDir, { recursive: true, encoding: "utf8" }).filter((f) =>
+			f.endsWith(`${liveId}.yml.guidance.md`),
+		);
+		expect(found).toHaveLength(1);
+		return join(server.tmpDir, found[0] as string);
+	};
+	const sessionOf = async (liveId: string) => {
+		const res = await fetch(`${server.url}/api/model-guidance/session?live=${liveId}`, { headers });
+		const answer: { guidance: { text: string; templateName: string | null } | null } = await res.json();
+		return answer.guidance;
+	};
+	expect(readFileSync(fileOf(uses.liveId), "utf8")).toBe(`${OLD}\n`);
+
+	// Saved: the file the running omp reads holds the new text, and the pages are told it; the conversation that made the
+	// text its own keeps it.
+	expect((await saveTemplate("Follow", NEW)).status).toBe(200);
+	expect(readFileSync(fileOf(uses.liveId), "utf8")).toBe(`${NEW}\n`);
+	expect((await sessionOf(uses.liveId))?.text).toBe(NEW);
+	expect(readFileSync(fileOf(own.liveId), "utf8")).toBe(`${OLD}\n`);
+	expect((await sessionOf(own.liveId))?.text).toBe(OLD);
+	// Its next turn carries it.
+	const next = prompt("follow");
+	await request(ws, { t: "rpc", liveId: uses.liveId, command: { type: "prompt", message: next } });
+	const sent = (await mainRequestFor(next)).text;
+	expect(sent).toContain(NEW);
+	expect(sent).not.toContain(OLD);
+	await mainRequestFor(next, REPORT);
+	await idle(ws, uses.liveId);
+
+	// Renamed: the pages are told the new name (the text is as it was).
+	expect((await saveTemplate("Follow renamed", NEW)).status).toBe(200);
+	expect((await sessionOf(uses.liveId))?.templateName).toBe("Follow renamed");
+	expect(readFileSync(fileOf(uses.liveId), "utf8")).toBe(`${NEW}\n`);
+	await fetch(`${server.url}/api/model-guidance`, {
+		method: "POST",
+		headers,
+		body: JSON.stringify({ remove: "follow-template" }),
+	});
+	ws.close();
+}, 240_000);
+
 const LAN = lanAddress();
 if (LAN === undefined)
 	console.warn("model-guidance: no IPv4 address on a network, so the case of a page on the network is skipped");

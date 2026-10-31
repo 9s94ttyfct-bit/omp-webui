@@ -73,9 +73,31 @@ export const en = {
 	writeOwn: "Write your own…",
 	listLabel: "Guidance templates",
 	revert: "Revert",
-	saveWhere: "This text came from the template “{name}”. Save it for this conversation only, or into the template too?",
-	saveThis: "This conversation only",
-	saveTemplate: "Also update “{name}”",
+	// The Guidance tab's three ways of saving (v0.12.2): this conversation only, into the template it uses, as a new template.
+	saveHere: "Save for this conversation",
+	saveHereHint:
+		"Saves this text for this conversation only. No template is changed: text that came from a template becomes this conversation's own.",
+	nothingToSave: "Nothing has changed.",
+	toTemplate: "Save to template",
+	toTemplateHint: "Writes this text into the template “{name}”.",
+	toTemplateNone: "This conversation does not use a template. Use “Create new template” to make one from this text.",
+	toTemplateSame: "“{name}” already has this text.",
+	textNeeded: "Write some text first.",
+	newFromText: "Create new template",
+	newFromTextHint: "Makes a new template from this text; this conversation then uses it.",
+	tooManyTemplates: "Keep at most {max} templates: delete one in Settings › Model guidance first.",
+	createIntro:
+		"A new template is made from this conversation's text, and this conversation uses it from then on. New chats can pick it too.",
+	create: "Create",
+	nameRepeated: "There is already a template with that name.",
+	confirmTitle: "Update the template “{name}”?",
+	confirmShared:
+		"Other conversations that use this template: {n}. Each of them carries the new text from its next turn (one that is not running, when it is next opened), and so does a new chat that picks it. Conversations that made the text their own are not changed.",
+	confirmUpdate: "Update template",
+	rename: "Rename template",
+	renameLabel: "New name of the template",
+	renameSave: "Save name",
+	renameHint: "Enter saves, Esc cancels.",
 	appliesNext: "This conversation is not running: the change applies when it is opened again.",
 	// The shipped templates' names and summary lines, shown in the page's language while the person has not changed them.
 	// What the model reads is the template's text, which stays as shipped.

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { BUILTIN_GUIDANCE } from "../../shared/model-guidance.ts";
 import { en } from "../../web/src/i18n/guidance.ts";
 import { zh } from "../../web/src/i18n/zh-CN/guidance.ts";
+import { writeSimpleSession } from "../support/fixtures.ts";
 import { openSidebar, ownSession, sessionRow, startLive } from "../support/live.ts";
 import { topTab } from "../support/panel.ts";
 import { type SocketTap, tapSocket } from "../support/socket-tap.ts";
@@ -153,18 +154,20 @@ test("the Guidance tab of a conversation that runs is its editor: text written t
 	await expect(editor.getByTestId("guidance-template")).toHaveValue("", { timeout: 30_000 });
 	await expect(editor.getByTestId("guidance-applies-next")).toHaveCount(0);
 
-	// Text of its own, written in the box: Save appears once it differs, and what is saved is what the process carries.
+	// Text of its own, written in the box: Save for this conversation is usable once it differs, and what is saved is what
+	// the process carries.
 	await editor.getByTestId("guidance-template").selectOption("custom");
 	const box = editor.getByTestId("guidance-text");
+	await expect(editor.getByTestId("guidance-save")).toHaveAttribute("aria-disabled", "true");
 	await box.fill("At most 2 subagents at a time, and say which you started.");
 	await editor.getByTestId("guidance-save").click();
-	await expect(editor.getByTestId("guidance-save")).toHaveCount(0);
+	await expect(editor.getByTestId("guidance-save")).toHaveAttribute("aria-disabled", "true");
 	await expect(editor.getByTestId("guidance-template")).toHaveValue("custom");
 	// Edited again in place: no question, the text is the conversation's own.
 	await box.fill("At most 3 subagents at a time.");
 	await editor.getByTestId("guidance-save").click();
-	await expect(editor.getByTestId("guidance-save-choice")).toHaveCount(0);
-	await expect(editor.getByTestId("guidance-save")).toHaveCount(0);
+	await expect(page.getByRole("dialog")).toHaveCount(0);
+	await expect(editor.getByTestId("guidance-save")).toHaveAttribute("aria-disabled", "true");
 	await expect(box).toHaveValue("At most 3 subagents at a time.");
 	// Revert puts back what is carried.
 	await box.fill("Something else");
@@ -182,16 +185,23 @@ test("the Guidance tab of a conversation that runs is its editor: text written t
 	await expect(box).toHaveValue("");
 });
 
-test("a template's text edited in a conversation asks: this conversation only, or the template too (#715)", async ({
+test("Save for this conversation leaves the template alone; Save to template asks first when another conversation uses it", async ({
 	page,
 	request,
 }) => {
-	const name = "Edit here 715";
+	const name = "Shared from the tab";
 	const made = await request.post("/api/model-guidance", {
 		headers: post,
-		data: { template: { id: "edit-here-715", name, text: "Original template text." } },
+		data: { template: { id: "shared-from-tab", name, text: "Original template text." } },
 	});
 	expect(made.ok()).toBe(true);
+	// Another conversation, not running, uses the template too.
+	const other = writeSimpleSession(process.env.OMPW_E2E_AGENT_DIR as string, 0x7153, "Guidance shared other");
+	const given = await request.post("/api/model-guidance/live", {
+		headers: post,
+		data: { file: other, guidance: { template: "shared-from-tab" } },
+	});
+	expect(given.ok()).toBe(true);
 	ownSession(0x7151, "Guidance template edit 715");
 	const tap = await tapSocket(page);
 	await page.goto("/");
@@ -203,39 +213,182 @@ test("a template's text edited in a conversation asks: this conversation only, o
 	await editor.getByTestId("guidance-template").selectOption({ label: name }, { timeout: 30_000 });
 	const box = editor.getByTestId("guidance-text");
 	await expect(box).toHaveValue("Original template text.");
+	const toTemplate = editor.getByTestId("guidance-to-template");
+	// The three ways of saving are all there; with nothing edited, none of the saves has anything to do.
+	await expect(toTemplate).toHaveAttribute("title", en.toTemplateSame.replace("{name}", name));
+	await expect(toTemplate).toHaveAttribute("aria-disabled", "true");
+	await expect(editor.getByTestId("guidance-new-template")).not.toHaveAttribute("aria-disabled", "true");
 
-	// This conversation only: it carries the text as its own, and the template is as it was.
+	// Save for this conversation: it carries the text as its own, and the template is as it was.
 	await box.fill("Changed for this conversation.");
+	await expect(editor.getByTestId("guidance-save")).toHaveAttribute("title", en.saveHereHint);
 	await editor.getByTestId("guidance-save").click();
-	await editor.getByTestId("guidance-save-this").click();
 	await expect(editor.getByTestId("guidance-template")).toHaveValue("custom");
-	expect(stored().templates.find((t) => t.id === "edit-here-715")?.text).toBe("Original template text.");
+	expect(stored().templates.find((t) => t.id === "shared-from-tab")?.text).toBe("Original template text.");
+	// It uses no template now: Save to template says why it cannot, and to make one instead.
+	await expect(toTemplate).toHaveAttribute("aria-disabled", "true");
+	await expect(toTemplate).toHaveAttribute("title", en.toTemplateNone);
+	await toTemplate.click({ force: true });
+	await expect(page.getByRole("dialog")).toHaveCount(0);
 
-	// Picked again and edited into the template too: the template has the new text, and the conversation still names it.
+	// Picked again and saved into the template: the other conversation uses it, so the person is asked first.
 	await editor.getByTestId("guidance-template").selectOption({ label: name });
 	await expect(box).toHaveValue("Original template text.");
 	await box.fill("Changed in the template.");
-	await editor.getByTestId("guidance-save").click();
-	await editor.getByTestId("guidance-save-template").click();
-	await expect(editor.getByTestId("guidance-template")).toHaveValue("edit-here-715");
+	await toTemplate.click();
+	const ask = page.getByRole("dialog");
+	await expect(ask).toContainText(en.confirmTitle.replace("{name}", name));
+	await expect(ask).toContainText(en.confirmShared.replace("{n}", "1"));
+	await ask.getByTestId("guidance-confirm-cancel").click();
+	await expect(ask).toHaveCount(0);
+	expect(stored().templates.find((t) => t.id === "shared-from-tab")?.text).toBe("Original template text.");
+	await toTemplate.click();
+	await page.getByRole("dialog").getByTestId("guidance-confirm-update").click();
+	await expect(editor.getByTestId("guidance-template")).toHaveValue("shared-from-tab");
 	await expect
-		.poll(() => stored().templates.find((t) => t.id === "edit-here-715")?.text)
+		.poll(() => stored().templates.find((t) => t.id === "shared-from-tab")?.text)
 		.toBe("Changed in the template.");
+	await expect(box).toHaveValue("Changed in the template.");
+	// The conversation that is not running carries the template as it is now when it is opened next.
+	const otherNow: { guidance: { text: string } | null } = await (
+		await request.get(`/api/model-guidance/session?file=${encodeURIComponent(other)}`)
+	).json();
+	expect(otherNow.guidance?.text).toBe("Changed in the template.");
 
 	// Deleted by another page between the question and the answer: saving into it fails visibly and does not bring it back.
 	await box.fill("Too late.");
-	await editor.getByTestId("guidance-save").click();
-	await expect(editor.getByTestId("guidance-save-template")).toBeVisible();
 	await page.route("**/api/model-guidance", async (route) => {
 		if (route.request().method() === "POST" && route.request().postDataJSON()?.update === true)
-			await request.post("/api/model-guidance", { headers: post, data: { remove: "edit-here-715" } });
+			await request.post("/api/model-guidance", { headers: post, data: { remove: "shared-from-tab" } });
 		await route.continue();
 	});
-	await editor.getByTestId("guidance-save-template").click();
-	await expect(editor.getByTestId("guidance-error")).toBeVisible();
-	expect(stored().templates.some((t) => t.id === "edit-here-715")).toBe(false);
+	await toTemplate.click();
+	await page.getByRole("dialog").getByTestId("guidance-confirm-update").click();
+	await expect(editor.getByTestId("guidance-error")).toContainText(en.templateGone);
+	expect(stored().templates.some((t) => t.id === "shared-from-tab")).toBe(false);
 	// The conversation keeps what it carried: the edit was not applied to it either.
 	await expect(editor.getByTestId("guidance-revert")).toBeVisible();
+});
+
+test("Create new template asks for a name it checks, makes the template and uses it; the pencil renames it in place", async ({
+	page,
+	request,
+}) => {
+	ownSession(0x7154, "Guidance new template");
+	const tap = await tapSocket(page);
+	await page.goto("/");
+	await openSidebar(page);
+	await startLive(page, tap, "Guidance new template", "guidance-create-probe");
+	await page.getByTestId("toggle-panel").click();
+	await topTab(page, /Guidance/).click();
+	const editor = page.getByTestId("guidance-editor");
+	await expect(editor.getByTestId("guidance-template")).toHaveValue("", { timeout: 30_000 });
+	// No text yet: nothing to make a template of, and no template to rename.
+	await expect(editor.getByTestId("guidance-new-template")).toHaveAttribute("title", en.textNeeded);
+	await expect(editor.getByTestId("guidance-rename")).toHaveCount(0);
+	await editor.getByTestId("guidance-template").selectOption("custom");
+	await editor.getByTestId("guidance-text").fill("Text for a new template.");
+
+	// The dialog, by keyboard: its field has the focus, and Enter is Create.
+	await editor.getByTestId("guidance-new-template").click();
+	const dialog = page.getByRole("dialog");
+	const field = dialog.getByTestId("guidance-new-name");
+	await expect(field).toBeFocused();
+	await field.press("Enter");
+	await expect(dialog.getByTestId("guidance-new-problem")).toHaveText(en.nameEmpty);
+	await field.fill("   ");
+	await dialog.getByTestId("guidance-new-create").click();
+	await expect(dialog.getByTestId("guidance-new-problem")).toHaveText(en.nameEmpty);
+	await field.fill(" One of each kind at a time ");
+	await expect(dialog.getByTestId("guidance-new-problem")).toHaveText(en.nameRepeated);
+	await field.fill("x".repeat(61));
+	await expect(dialog.getByTestId("guidance-new-problem")).toHaveText(en.nameTooLong.replace("{max}", "60"));
+	await field.press("Enter");
+	await expect(dialog).toBeVisible();
+	const before = stored().templates.length;
+	expect(before).toBeGreaterThan(0);
+	await field.fill("  Made in the tab  ");
+	await field.press("Enter");
+	await expect(dialog).toHaveCount(0);
+	const made = () => stored().templates.find((t) => t.name === "Made in the tab");
+	await expect.poll(() => made()?.text).toBe("Text for a new template.");
+	// The conversation uses it now.
+	await expect(editor.getByTestId("guidance-template")).toHaveValue(made()?.id as string);
+
+	// Renamed with the pencil: Esc puts the name back and the focus on the pencil.
+	const pencil = editor.getByTestId("guidance-rename");
+	await expect(pencil).toHaveAccessibleName(en.rename);
+	await pencil.click();
+	const input = editor.getByTestId("guidance-rename-input");
+	await expect(input).toBeFocused();
+	await expect(input).toHaveValue("Made in the tab");
+	await input.fill("Not kept");
+	await input.press("Escape");
+	await expect(input).toHaveCount(0);
+	await expect(pencil).toBeFocused();
+	expect(made()).toBeDefined();
+	// The same checks as Create: another template's name is refused and Enter does nothing.
+	await pencil.press("Enter");
+	await input.fill("One of each kind at a time");
+	await expect(editor.getByTestId("guidance-rename-note")).toHaveText(en.nameRepeated);
+	await input.press("Enter");
+	await expect(input).toBeVisible();
+	await input.fill("  Renamed in the tab ");
+	await input.press("Enter");
+	await expect(input).toHaveCount(0);
+	await expect
+		.poll(() => stored().templates.find((t) => t.text === "Text for a new template.")?.name)
+		.toBe("Renamed in the tab");
+	await expect(editor.getByTestId("guidance-template").locator("option:checked")).toHaveText("Renamed in the tab");
+	// What the person made is theirs, which Restore defaults leaves alone: it goes, so the worker's next spec starts clean.
+	const id = stored().templates.find((t) => t.name === "Renamed in the tab")?.id;
+	expect((await request.post("/api/model-guidance", { headers: post, data: { remove: id } })).status()).toBe(200);
+});
+
+test("a template edited on another page reaches the open Guidance tab of a running conversation that uses it", async ({
+	page,
+	request,
+}) => {
+	const made = await request.post("/api/model-guidance", {
+		headers: post,
+		data: { template: { id: "follow-other-page", name: "Followed", text: "Text before the edit." } },
+	});
+	expect(made.ok()).toBe(true);
+	ownSession(0x7155, "Guidance follows the template");
+	const tap = await tapSocket(page);
+	await page.goto("/");
+	await openSidebar(page);
+	await startLive(page, tap, "Guidance follows the template", "guidance-follow-probe");
+	await page.getByTestId("toggle-panel").click();
+	await topTab(page, /Guidance/).click();
+	const editor = page.getByTestId("guidance-editor");
+	await editor.getByTestId("guidance-template").selectOption({ label: "Followed" }, { timeout: 30_000 });
+	const box = editor.getByTestId("guidance-text");
+	await expect(box).toHaveValue("Text before the edit.");
+
+	// Another page edits the template in Settings: its name and its text.
+	const other = await page.context().newPage();
+	await settings(other);
+	const card = other.getByTestId("guidance-settings");
+	await card.scrollIntoViewIfNeeded();
+	await template(card, "Followed").click();
+	const dialog = other.getByRole("dialog");
+	await dialog.getByTestId("guidance-name").fill("Followed, renamed");
+	await dialog.getByTestId("guidance-body").fill("Text after the edit.");
+	await dialog.getByTestId("guidance-save-template").click();
+	await expect(dialog).toHaveCount(0);
+	await other.close();
+
+	// This page shows it without a reload: the box, the menu's name, and Save to template has nothing to write back.
+	await expect(box).toHaveValue("Text after the edit.");
+	await expect(editor.getByTestId("guidance-template").locator("option:checked")).toHaveText("Followed, renamed");
+	await expect(editor.getByTestId("guidance-to-template")).toHaveAttribute(
+		"title",
+		en.toTemplateSame.replace("{name}", "Followed, renamed"),
+	);
+	expect(
+		(await request.post("/api/model-guidance", { headers: post, data: { remove: "follow-other-page" } })).ok(),
+	).toBe(true);
 });
 
 test("a conversation that is not running has the same editor; the change is carried when it is opened (#715)", async ({
@@ -252,7 +405,7 @@ test("a conversation that is not running has the same editor; the change is carr
 	await editor.getByTestId("guidance-template").selectOption("custom");
 	await editor.getByTestId("guidance-text").fill("Kept for the next opening.");
 	await editor.getByTestId("guidance-save").click();
-	await expect(editor.getByTestId("guidance-save")).toHaveCount(0);
+	await expect(editor.getByTestId("guidance-save")).toHaveAttribute("aria-disabled", "true");
 	// Read again from the server: it is what was kept for the file.
 	await page.reload();
 	await openSidebar(page);
