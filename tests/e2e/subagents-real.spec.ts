@@ -34,12 +34,14 @@ test("a real subagent is listed while it runs, can be watched, and is counted in
 	await expect(detail).toBeVisible();
 	await expect(detail).toContainText("subagent-live-ok", { timeout: 90_000 });
 
-	// Once the parent is done there is nothing left to wait for, and the total counts the subagent. The parent's reply is
-	// the main transcript's last: the subagent's live view, open in the panel, has replies of its own, later on the page.
-	await expect(page.getByTestId("transcript").getByTestId("msg-assistant").last()).toContainText("DONE", {
-		timeout: 180_000,
-	});
+	// Once the parent is done there is nothing left to wait for, and the total counts the subagent. The parent's turn has
+	// ended when Stop is gone: its closing words are the model's to choose (asked for DONE, it has also answered with the
+	// subagent's output, #11).
+	await expect(page.getByTestId("stop")).toHaveCount(0, { timeout: 180_000 });
 	await expect(block).toHaveCount(0, { timeout: 30_000 });
+	// The live view stays open on the subagent, now over; the list it came from shows it ended too.
+	await expect(detail.getByText("subagent-live-ok").first()).toBeVisible();
+	await page.getByRole("button", { name: "Back to agents", exact: true }).click();
 	await expect(page.getByTestId("subagent-item").first()).toHaveAttribute("data-running", "false");
 	await page.getByTestId("session-cost").hover();
 	const split = page.getByTestId("usage-split");

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeChatSession } from "../support/chat-session.ts";
@@ -60,6 +60,10 @@ test("a new chat asks for no file omp has not written: no 404, no console error,
 	// The turn takes about a second; the file is written with its first assistant message, after the page switched to the
 	// conversation, and the answer's stats line (`took …`) says it is over.
 	await expect(page.getByText(/took \d/).first()).toBeVisible({ timeout: 60_000 });
+	// The address is the conversation's file, which omp has written (#11, A-028): not the process's `#/live/…`, which
+	// a reload after the process has ended, or a restart, would not find.
+	await expect(page).toHaveURL(/#\/s\/[^/]+\.jsonl$/);
+	expect(existsSync(decodeURIComponent(new URL(page.url()).hash.slice("#/s/".length)))).toBe(true);
 
 	// Once the file is written the session list gets it and the page asks for the family and the subagents: both
 	// answered, for a file that exists.
