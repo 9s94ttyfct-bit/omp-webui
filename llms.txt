@@ -1,0 +1,33 @@
+# omp-webui
+
+> A web UI and macOS app for the omp coding agent: browse and search every conversation, branch from any message, watch subagents live, see token usage and cost, guard dangerous commands, reach it remotely through a Cloudflare tunnel, and run every omp command from the browser. The agent-facing docs below describe each feature, where it is in the UI, every setting (key, values, default, effect) and the server's API routes with which are local-only.
+
+The docs are English only, by choice. Agents running inside omp-webui read the same files through the read-only `webui_docs` tool (`xd://webui_docs`). Setting keys are fully qualified: `ompw.*` web UI preferences, `guard.json:*`, `remote.json:*` and `mode.json:*` files of the data folder (`~/.omp-webui`), `session:*` session defaults, `omp:*` omp settings.
+
+## Docs
+
+- [Index](docs/agents/index.md): what omp-webui is, how the app is laid out, conventions of these docs
+- [Appearance and layout](docs/agents/appearance.md): theme, palette, language, widths, side panel panes, sidebar pages
+- [Keyboard shortcuts](docs/agents/shortcuts.md): every key binding and how to change one
+- [Conversations, sidebar and history](docs/agents/conversations.md): the conversation list, search, pins, archive, branches, export, titles
+- [The message box](docs/agents/composer.md): sending, steering, attachments, quick prompts, side questions, goals
+- [Session controls and permission mode](docs/agents/session-controls.md): the This session panel, defaults, permission modes, the Loaded dialog
+- [Compaction](docs/agents/compaction.md): when a conversation compacts, and where a queued compact runs
+- [Agent graph and subagents](docs/agents/agent-graph.md): the agent graph page and the Agents tab
+- [Notifications](docs/agents/notifications.md): page notifications and Web Push
+- [Unattended mode and questions](docs/agents/unattended.md): working while the person is away, and their questions
+- [Quota and usage](docs/agents/quota-and-usage.md): provider quota, the quota floor, waiting for a reset, Usage & cost
+- [Projects, folders and git](docs/agents/projects-and-git.md): the projects folder, project groups, git status and worktrees
+- [Feedback](docs/agents/feedback.md): sending feedback and the star prompt
+- [Guard dangerous commands](docs/agents/guard.md): the reviewer gate for risky tool calls
+- [Remote access](docs/agents/remote-access.md): Cloudflare tunnel and Access, what a remote page may do
+- [Files tab and file transfer](docs/agents/file-transfer.md): browsing, editing, downloading and uploading a conversation's files
+- [Models, roles, presets and accounts](docs/agents/models.md): provider logins, model roles, presets, favourites
+- [Model guidance](docs/agents/model-guidance.md): standing instructions on which models subagents use
+- [Memory](docs/agents/memory.md): what omp remembers, and the Memory page
+- [Full / Light mode](docs/agents/light-mode.md): lighter conversations and local model servers
+- [Updates of the app and of omp](docs/agents/updates.md): checking, installing and dismissing updates
+- [The macOS app](docs/agents/macos-app.md): quitting, the menu bar icon, keeping the Mac awake, windows onto other Macs
+- [Move to another computer](docs/agents/migration.md): export and import of conversations and settings
+- [The server and its security](docs/agents/server-and-security.md): data folder, access token, network address, local-only routes, environment variables
+- [The webui_docs tool](docs/agents/webui-docs-tool.md): the read-only lookup tool agents use to read these docs

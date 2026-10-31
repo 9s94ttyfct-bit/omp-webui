@@ -41,7 +41,8 @@ jobs:
         with:
           fetch-depth: 0
       # The tests run unless every file the push or pull request changes is documentation: a README, a release note, or
-      # a page of docs/ other than TECHNICAL.md (the unit tests read its table of omp's interfaces). A run by hand, a new
+      # a page of docs/ other than TECHNICAL.md (the unit tests read its table of omp's interfaces) and docs/agents/ (the
+      # agent-facing docs: a unit test holds them to the code, and the server compiles them in). A run by hand, a new
       # branch or a force push runs them.
       - id: diff
         env:
@@ -60,7 +61,7 @@ jobs:
           code=false
           while IFS= read -r file; do
             case "$file" in
-              docs/TECHNICAL.md) code=true ;;
+              docs/TECHNICAL.md | docs/agents/*) code=true ;;
               README*.md | release-notes/* | docs/*) ;;
               *) code=true ;;
             esac

@@ -67,6 +67,7 @@ import { configureCompactAt, readCompactDefaults } from "./omp/compact-at.ts";
 import { CompactStepService } from "./omp/compact-step/service.ts";
 import { ConfigRead } from "./omp/config-read.ts";
 import { watchOmpConfig } from "./omp/config-watch.ts";
+import { DocsToolService } from "./omp/docs-tool/install.ts";
 import { gatePaths, installGate } from "./omp/gate/install.ts";
 import { GATE_HANDLER_MS } from "./omp/gate/state.ts";
 import { liveGuidanceOf } from "./omp/guidance/hooks.ts";
@@ -358,6 +359,10 @@ pool.quotaFloor = quotaFloor;
 // Compact between two steps (#651): the extension that holds a step boundary while a queued compact waits for one
 // (`server/omp/compact-step/`), a sibling of the quota floor's. Nothing of it is the person's to set but the place a compact runs.
 pool.compactStep = new CompactStepService(cfg.dataDir);
+// The `webui_docs` tool: a read-only extension of the server's own (`server/omp/docs-tool/`) that lets an agent list, search
+// and read omp-webui's agent-facing documentation (`docs/agents/`, compiled into the server), so that a question about the app
+// is answered from its docs. Nothing of it is the person's to set.
+pool.docsTool = new DocsToolService(cfg.dataDir);
 /** The questions being answered now: an answer is sent once, whichever page sent it (two pages cannot both answer one). */
 const answering = new Set<string>();
 const actions = new SessionActions(cfg, pool, undefined, (file) => sessionRoots.flagsFor(file));

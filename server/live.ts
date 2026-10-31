@@ -76,6 +76,7 @@ import type { SideLaunch } from "./omp/btw-fork.ts";
 import { CompactQueue } from "./omp/compact-queue.ts";
 import type { CompactStepHooks } from "./omp/compact-step/service.ts";
 import { watchOmpConfig } from "./omp/config-watch.ts";
+import type { DocsToolHooks } from "./omp/docs-tool/install.ts";
 import { type RiskGate, RiskState } from "./omp/gate/state.ts";
 import { GUIDANCE_FILE_ENV, GUIDANCE_LOADED_SUFFIX } from "./omp/guidance/extension.ts";
 import type { GuidanceHooks } from "./omp/guidance/hooks.ts";
@@ -3567,6 +3568,12 @@ export class LivePool {
 	 */
 	compactStep: CompactStepHooks | null = null;
 
+	/**
+	 * The `webui_docs` tool (`server/omp/docs-tool/`): the extension omp is started with, which lets an agent read omp-webui's
+	 * own documentation. Null: no conversation has the tool.
+	 */
+	docsTool: DocsToolHooks | null = null;
+
 	/** A floor was set, changed or taken away: every conversation that works looks at its provider again. */
 	quotaFloorChanged(): void {
 		for (const live of this.lives.values()) if (!live.info.exited) live.quotaFloorChanged();
@@ -4322,6 +4329,8 @@ export class LivePool {
 		if (this.guidance && !trusted && this.guidance.ensure()) extensions.push(this.guidance.extension);
 		// So is the unattended-mode one (#646): it does nothing for a conversation that is not unattended.
 		if (this.unattended && !trusted && this.unattended.ensure()) extensions.push(this.unattended.extension);
+		// And the docs tool, read-only, for every conversation: an agent asked about omp-webui looks it up instead of guessing.
+		if (this.docsTool && !trusted && this.docsTool.ensure()) extensions.push(this.docsTool.extension);
 		const flags = extensions.flatMap((extension) => ["--extension", extension]);
 		return [...(this.overlay ? ["--config", this.overlay] : []), ...flags, ...launch.args, ...home, ...args];
 	}
