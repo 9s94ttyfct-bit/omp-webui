@@ -281,10 +281,22 @@ test("the card sets the tunnel up against the real routes; then the page and its
 		await expect(remotePage.getByText(FIXTURE.alphaReply).first()).toBeVisible();
 		expect(socketClosed).toBe(false);
 
-		// the same browser, the same cookies, but no Access token any more: the page and the socket are refused
+		// the same browser, the same cookies, but no Access token any more: the page and the socket are refused. The app
+		// meets the refusal too (its socket comes back, a look of its own) and leaves for the sign-in by itself: what is
+		// asked in the page is asked again in the page it went to, the same origin and cookies (A-034).
 		tunnel.jwt = null;
-		expect(await remotePage.evaluate(() => fetch("/api/meta").then((r) => r.status))).toBe(403);
-		const opened = await remotePage.evaluate(
+		const inPage = async <T>(fn: () => Promise<T>): Promise<T> => {
+			for (;;) {
+				try {
+					return await remotePage.evaluate(fn);
+				} catch (error) {
+					if (!/Execution context was destroyed/.test(String(error))) throw error;
+					await remotePage.waitForLoadState();
+				}
+			}
+		};
+		expect(await inPage(() => fetch("/api/meta").then((r) => r.status))).toBe(403);
+		const opened = await inPage(
 			() =>
 				new Promise<string>((resolve) => {
 					const ws = new WebSocket(`ws://${location.host}/ws`);

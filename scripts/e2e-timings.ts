@@ -5,11 +5,13 @@
  *   gh run download <run id> -p 'e2e-report-*' -D <dir>
  *   bun scripts/e2e-timings.ts <dir>/*\/e2e-report.json
  *
- * A test in no report (one that did not run) keeps the time it had. Take the reports of a whole run (every shard), on
- * the runners CI uses: the split is only as good as the times are like the next run's.
+ * A test in no report (one that did not run) keeps the time it had; a time whose test is gone (renamed, removed) is
+ * dropped, and a test that has no time yet is named, to be timed by a run of its own (`OMPW_E2E_JSON=<file>`). Take the
+ * reports of a whole run (every shard), on the runners CI uses: the split is only as good as the times are like the next
+ * run's. `tests/unit/timings-coverage.test.ts` fails while a test has no time or a time has no test.
  */
 import { readFileSync, writeFileSync } from "node:fs";
-import { listedTests, readReport, readTimings, TIMINGS } from "./e2e-shard.ts";
+import { listedTests, listSuite, readReport, readTimings, TIMINGS } from "./e2e-shard.ts";
 
 /** The seconds each test of a report took, to a tenth. */
 export function reportTimings(text: string): Record<string, number> {
@@ -29,7 +31,13 @@ if (import.meta.main) {
 		// No timings yet: every test is timed afresh.
 	}
 	for (const report of reports) Object.assign(kept, reportTimings(readFileSync(report, "utf8")));
+	const now = new Set(listedTests(listSuite().suites).map((t) => t.key));
+	const stale = Object.keys(kept).filter((key) => !now.has(key));
+	for (const key of stale) delete kept[key];
 	const tests = Object.fromEntries(Object.entries(kept).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 	writeFileSync(TIMINGS, `${JSON.stringify({ version: 1, tests }, null, "\t")}\n`);
-	console.log(`${Object.keys(tests).length} tests timed, from ${reports.length} report(s)`);
+	console.log(
+		`${Object.keys(tests).length} tests timed, from ${reports.length} report(s); ${stale.length} gone dropped`,
+	);
+	for (const key of now) if (!(key in tests)) console.log(`no time yet: ${key}`);
 }

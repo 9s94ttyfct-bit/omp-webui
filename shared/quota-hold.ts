@@ -41,6 +41,13 @@ export const QUOTA_POLL_MS = 1_000;
  */
 export const QUOTA_SELF_RELEASE_MS = 5 * 60_000;
 
+/**
+ * How long the extension waits, at most, for the server's look at the quota when a turn begins with nothing known yet (A-033):
+ * the look is `omp usage`, which the server ends after 20 s (`server/omp/usage.ts`); past this, the server is gone or stuck, and
+ * the step goes on.
+ */
+export const QUOTA_LOOK_RELEASE_MS = 60_000;
+
 /** The hold, as the server writes it for the extension. A file that is absent, unreadable or says anything else is no hold. */
 export interface QuotaHoldFile {
 	v: 1;
@@ -54,6 +61,11 @@ export interface QuotaHoldFile {
 	expiresAt: number | null;
 	/** When the floor was reached. */
 	since: number;
+	/**
+	 * The server is still reading the quota at the start of a turn (A-033): the step waits as for a hold, but nothing is known to
+	 * be held yet, so the prompt cache is not decided for and a request is not taken for a refresh. Absent otherwise.
+	 */
+	looking?: true;
 }
 
 /** What the server decides of the hold: the file without its constant fields. */
@@ -87,6 +99,7 @@ export function parseHoldFile(text: string): QuotaHoldFile | null {
 		resumeAt: finiteOrNull(v.resumeAt),
 		expiresAt: finiteOrNull(v.expiresAt),
 		since,
+		...(v.looking === true ? { looking: true as const } : {}),
 	};
 }
 

@@ -10,6 +10,7 @@ import type { QuotaHoldReason } from "../../shared/quota-floor.ts";
 import {
 	type HoldFields,
 	QUOTA_DIALOG_TITLE,
+	QUOTA_LOOK_RELEASE_MS,
 	QUOTA_SELF_RELEASE_MS,
 	QUOTA_STATUS_KEY,
 	warmVerdictText,
@@ -45,6 +46,8 @@ interface World {
 	changes: number;
 	lookups: { provider: string; force: boolean }[];
 	failWrite: boolean;
+	/** `omp usage` answers once this has settled (a cold cache: the run takes as long as the test says). */
+	slow: Promise<void> | null;
 }
 
 function world(over: Partial<World> = {}): World {
@@ -66,6 +69,7 @@ function world(over: Partial<World> = {}): World {
 		changes: 0,
 		lookups: [],
 		failWrite: false,
+		slow: null,
 		...over,
 	};
 }
@@ -86,6 +90,7 @@ function make(w: World, restored?: QuotaRecord): QuotaTracker {
 		floorOf: () => w.floor,
 		reports: async (provider, force) => {
 			w.lookups.push({ provider, force });
+			if (w.slow) await w.slow;
 			if (w.failing) throw new Error("omp usage exited 1");
 			const report: UsageReport = {
 				provider,
@@ -229,6 +234,91 @@ describe("the floor is reached: a hold", () => {
 		expect(t.info()).toMatchObject({ state: "unavailable", reason: "trustedExtension" });
 		expect(w.file).toBeNull();
 		expect(t.held).toBe(false);
+	});
+});
+
+describe("a turn begins with nothing known of the quota yet (A-033)", () => {
+	test("the file says to wait until the look answers; at the floor the step that came meanwhile is held", async () => {
+		const answer = Promise.withResolvers<void>();
+		const w = world({ left: 0.1, slow: answer.promise });
+		const t = make(w);
+		t.onWork();
+		// Written before `omp usage` answers: the turn's first tool step reads it.
+		expect(w.file).toEqual({
+			provider: "anthropic",
+			resetsAt: null,
+			resumeAt: null,
+			expiresAt: T0 + QUOTA_LOOK_RELEASE_MS,
+			since: T0,
+			looking: true,
+		});
+		// Nothing to tell a page yet, and the step's wait is not answered: it waits for the look.
+		expect(t.info()).toBeUndefined();
+		expect(t.onFrame(dialog("first-step"))).toBe(true);
+		expect(w.answered).toEqual([]);
+		answer.resolve();
+		await Bun.sleep(0);
+		expect(t.state()).toBe("held");
+		expect(w.file).toMatchObject({ provider: "anthropic", resetsAt: T0 + HOUR, since: T0 });
+		expect(w.answered).toEqual([]);
+	});
+
+	test("above the floor the wait ends with the look: the file goes, and the step that waited is let go", async () => {
+		const answer = Promise.withResolvers<void>();
+		const w = world({ left: 0.5, slow: answer.promise });
+		const t = make(w);
+		t.onWork();
+		expect(w.file).not.toBeNull();
+		t.onFrame(dialog("first-step"));
+		answer.resolve();
+		await Bun.sleep(0);
+		expect(w.file).toBeNull();
+		expect(w.answered).toEqual(["first-step"]);
+		expect(t.state()).toBeNull();
+	});
+
+	test("a look that fails, or a turn that ends meanwhile, does not leave the wait behind", async () => {
+		const failing = Promise.withResolvers<void>();
+		const w = world({ left: 0.1, failing: true, slow: failing.promise });
+		const t = make(w);
+		t.onWork();
+		expect(w.file).not.toBeNull();
+		failing.resolve();
+		await Bun.sleep(0);
+		expect(w.file).toBeNull();
+
+		const ending = Promise.withResolvers<void>();
+		const v = world({ left: 0.1, slow: ending.promise });
+		const u = make(v);
+		u.onWork();
+		expect(v.file).not.toBeNull();
+		v.active = false;
+		u.onWork();
+		expect(v.file).toBeNull();
+		ending.resolve();
+		await Bun.sleep(0);
+		expect(v.file).toBeNull();
+		expect(u.state()).toBeNull();
+	});
+
+	test("no wait where nothing could hold: no floor, a process that cannot be held, the person's Continue anyway", async () => {
+		for (const over of [{ floor: null }, { cannotHold: "trustedExtension" as const }]) {
+			const w = world({ left: 0.1, slow: new Promise<void>(() => {}), ...over });
+			make(w).onWork();
+			expect(w.file).toBeNull();
+		}
+		// Held, the person goes on; the turn ends, and the next one begins while the provider is still low.
+		const w = world({ left: 0.1 });
+		const t = make(w);
+		t.onWork();
+		await Bun.sleep(0);
+		t.setOverride(true);
+		w.active = false;
+		t.onWork();
+		w.active = true;
+		w.slow = new Promise<void>(() => {});
+		t.onWork();
+		expect(w.file).toBeNull();
 	});
 });
 

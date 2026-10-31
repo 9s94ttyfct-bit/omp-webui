@@ -169,6 +169,12 @@ describe("the words the server and the extension share", () => {
 			resetsAt: null,
 			expiresAt: null,
 		});
+		// The wait for a look at the start of a turn (A-033) says so; only `true` is that, anything else is a hold.
+		const looking = { provider: "p", resetsAt: null, resumeAt: null, expiresAt: 9, since: 1 };
+		expect(parseHoldFile(holdFileText({ ...looking, looking: true }))?.looking).toBe(true);
+		expect(parseHoldFile(JSON.stringify({ v: 1, hold: true, ...looking, looking: "yes" }))).not.toHaveProperty(
+			"looking",
+		);
 		for (const bad of [
 			"",
 			"{",

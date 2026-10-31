@@ -5,15 +5,20 @@ import { PREFS_SYNC_KEY, type PrefsSnapshot } from "../../shared/prefs.ts";
 import { endAllLives } from "../support/lives.ts";
 import { rawKeysIn } from "../support/raw-keys.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
+import { pruneSessions, sessionEntries } from "../support/session-prune.ts";
 
 export * from "@playwright/test";
 
 /** The spec file this worker ran a test of last (module state: every worker is a process of its own). */
 let lastFile: string | undefined;
+/** What the worker's agent folder held under `sessions` when its server had started: the fixtures (`session-prune.ts`). */
+let seeded = new Set<string>();
 
 /**
  * Files stay sequential within a worker; no server, HOME, config, sessions or auth state crosses worker boundaries, and no
- * omp process crosses a file boundary: the first test of a file finds no process the file before it left running.
+ * omp process or conversation crosses a file boundary: the first test of a file finds no process the file before it left
+ * running, and the conversations the server started with and no others (#7: a list past 200 is windowed, and the fixture
+ * rows would not be in the page).
  */
 export const test = base.extend<
 	{ freshFile: undefined; noRawKeys: undefined; serverErrors: undefined },
@@ -21,7 +26,10 @@ export const test = base.extend<
 >({
 	freshFile: [
 		async ({ e2eServer }, use, testInfo) => {
-			if (lastFile !== undefined && lastFile !== testInfo.file) await endAllLives(e2eServer);
+			if (lastFile !== undefined && lastFile !== testInfo.file) {
+				await endAllLives(e2eServer);
+				pruneSessions(e2eServer.agentDir, seeded);
+			}
 			lastFile = testInfo.file;
 			await use(undefined);
 		},
@@ -91,6 +99,7 @@ export const test = base.extend<
 			const configured = process.env.OMPW_E2E_PORT;
 			const port = configured && configured !== "0" ? Number(configured) + workerInfo.parallelIndex : 0;
 			const server = await startTestServer(port, {}, { login: !process.env.OMPW_E2E_OFFLINE });
+			seeded = sessionEntries(server.agentDir);
 			process.env.OMPW_E2E_ROOT = server.root;
 			process.env.OMPW_E2E_AGENT_DIR = server.agentDir;
 			process.env.OMPW_E2E_HOME = server.home;

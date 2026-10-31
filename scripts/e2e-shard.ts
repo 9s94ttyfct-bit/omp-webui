@@ -94,6 +94,16 @@ export function units(
 	return out;
 }
 
+/** The suite as `playwright test --list` finds it now: every test of every spec file, none of them run. */
+export function listSuite(): { rootDir: string; suites: ListSuite[] } {
+	const listed = Bun.spawnSync(["bunx", "playwright", "test", "--list", "--reporter=json"], {
+		cwd: root,
+		stderr: "inherit",
+	});
+	if (listed.exitCode !== 0) throw new Error(`playwright test --list exited with ${listed.exitCode}`);
+	return readReport(listed.stdout.toString());
+}
+
 if (import.meta.main) {
 	const arg = (name: string) => {
 		const at = process.argv.indexOf(`--${name}`);
@@ -102,12 +112,7 @@ if (import.meta.main) {
 	const { index, total } = parseShard(arg("shard"));
 	const out = arg("out");
 	if (!out) throw new Error("--out <file> names the test list to write");
-	const listed = Bun.spawnSync(["bunx", "playwright", "test", "--list", "--reporter=json"], {
-		cwd: root,
-		stderr: "inherit",
-	});
-	if (listed.exitCode !== 0) throw new Error(`playwright test --list exited with ${listed.exitCode}`);
-	const { rootDir, suites } = readReport(listed.stdout.toString());
+	const { rootDir, suites } = listSuite();
 	const sources = new Map<string, boolean>();
 	const apart = (file: string) => {
 		let known = sources.get(file);
@@ -117,10 +122,15 @@ if (import.meta.main) {
 		}
 		return known;
 	};
-	const all = units(listedTests(suites), apart, readTimings(readFileSync(TIMINGS, "utf8")));
+	const tests = listedTests(suites);
+	const timings = readTimings(readFileSync(TIMINGS, "utf8"));
+	const all = units(tests, apart, timings);
 	const mine = assignShards(all, total)[index - 1];
 	writeFileSync(out, `${mine.join("\n")}\n`);
 	const weight = new Map(all.map((u) => [u.key, u.weight]));
 	const seconds = mine.reduce((sum, key) => sum + (weight.get(key) ?? 0), 0);
 	console.log(`shard ${index}/${total}: ${mine.length} of ${all.length} units, about ${Math.round(seconds / 60)} min`);
+	// Weighed as a usual test, which the split is only as good as: `bun scripts/e2e-timings.ts` times them.
+	const untimed = tests.filter((t) => timings[t.key] === undefined).length;
+	if (untimed) console.log(`${untimed} test(s) have no time in ${TIMINGS}`);
 }

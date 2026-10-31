@@ -34,7 +34,10 @@ import {
  *   reset, else let it lapse. The verdict is told to the server with a status (`ctx.ui.setStatus`), which it consumes.
  *
  * What a new turn does first is not held: omp gives a `before_agent_start` handler no more time than its 30 s, and no dialog
- * pauses it. The first request of a prompt sent to a held conversation goes through, and its tool calls wait.
+ * pauses it. The first request of a prompt sent to a held conversation goes through, and its tool calls wait. When a turn
+ * begins and the server does not know the quota yet (`omp usage` takes seconds on a cold cache), it writes the file at once,
+ * with no reset, while it asks: the turn's first tool step waits for the answer as for a hold (A-033), and the file is then
+ * the hold or gone. A server that never answers is not waited for past the file's `expiresAt`.
  *
  * It is copied into the app's data folder (`install.ts`) with `shared/quota-hold.ts`, because omp reads an extension from a
  * file; it runs in omp's own process and imports nothing else of the app. The server's file is the one source of what is held:
@@ -120,13 +123,14 @@ export default function quotaFloor(pi: Pi): void {
 	pi.on("before_provider_request", (_event, ctx) => {
 		if (!file || ctx?.agent?.kind !== "main") return undefined;
 		touched = Date.now();
-		if (!standing(file)) began = touched;
+		const hold = standing(file);
+		if (!hold || hold.looking) began = touched;
 		return undefined;
 	});
 	pi.on("cache_warming_decision", (event, ctx) => {
 		if (!file) return undefined;
 		const hold = standing(file);
-		if (!hold) return undefined;
+		if (!hold || hold.looking) return undefined;
 		const now = Date.now();
 		const warmCost = event?.warmCost;
 		const missCost = event?.missCost;

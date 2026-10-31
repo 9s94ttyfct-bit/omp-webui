@@ -118,6 +118,12 @@ export interface FakeBrewOptions {
 	failFlag?: string;
 	/** How long `brew install` takes before it installs (0.4 by default). */
 	seconds?: number;
+	/**
+	 * When given, `brew install` waits after fetching until this file exists, instead of `seconds`: a test that must look at
+	 * the job while it runs holds it there for as long as it needs, however slow the machine (#13). A test that never says
+	 * (it was killed) leaves a job that goes on by itself after ten minutes rather than one that waits for ever.
+	 */
+	holdUntil?: string;
 }
 
 /**
@@ -134,7 +140,7 @@ case "$1" in
   --prefix) echo "${o.prefix}"; exit 0 ;;
   install)
     say "==> Fetching can1357/tap/omp"
-    sleep ${o.seconds ?? 0.4}
+    ${o.holdUntil ? `waited=0; while [ ! -e "${o.holdUntil}" ] && [ $waited -lt 12000 ]; do sleep 0.05; waited=$((waited + 1)); done` : `sleep ${o.seconds ?? 0.4}`}
     if [ -e "${fail}" ]; then echo "Error: omp: simulated install failure" >&2; exit 1; fi
     say "==> Installing omp"
     # As long as the fetch: the server reads the job's output every 120 ms, and a page may look for this line while

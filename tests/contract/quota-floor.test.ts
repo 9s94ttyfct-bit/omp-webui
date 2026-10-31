@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { QUOTA_DIALOG_TITLE } from "../../shared/quota-hold.ts";
 import { type Frame, messageWhere, watchFrames } from "../support/frames.ts";
+import { pollUntil } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import {
 	type ScriptedRequest,
@@ -45,6 +46,7 @@ const PROVIDERS = [
 	"qf-storm",
 	"qf-restart",
 	"qf-api",
+	"qf-cold",
 ] as const;
 type Provider = (typeof PROVIDERS)[number];
 
@@ -53,6 +55,8 @@ let agent: StubScripted;
 const root = mkdtempSync(join(tmpdir(), "ompw-quota-floor-"));
 const usageFile = join(root, "usage.json");
 const callsFile = join(root, "calls");
+/** `omp usage` for `qf-cold` answers only once this file exists: a look at a cold cache that takes as long as the test says. */
+const coldGate = join(root, "cold-gate");
 /** When each main-agent request reached the stub. */
 const stamps: number[] = [];
 /** How many tool steps the scripted main agent takes before it answers. */
@@ -144,7 +148,7 @@ beforeAll(async () => {
 	const launcher = join(root, "omp");
 	writeFileSync(
 		launcher,
-		`#!/bin/sh\necho "$*" >> "${callsFile}"\nif [ "$1" = "usage" ]; then cat "${usageFile}"; exit 0; fi\nexec "${real}" "$@"\n`,
+		`#!/bin/sh\necho "$*" >> "${callsFile}"\nif [ "$1" = "usage" ]; then\n  case "$*" in *--provider=qf-cold*) while [ ! -e "${coldGate}" ]; do sleep 0.05; done;; esac\n  cat "${usageFile}"; exit 0\nfi\nexec "${real}" "$@"\n`,
 	);
 	chmodSync(launcher, 0o755);
 	say("qf-hold", 0.9, Date.now() + HOUR);
@@ -441,6 +445,34 @@ test("a conversation held when the server ends is found held by the next one, an
 		void request(ws, { t: "close", liveId: c.live.liveId }).catch(() => {});
 		ws.close();
 	}
+}, 120_000);
+
+test("with nothing known of the quota yet, the turn's first tool step waits for the look, and is held at the floor (A-033)", async () => {
+	await setFloor("qf-cold", FLOOR);
+	steps = 1;
+	say("qf-cold", 0.05, Date.now() + HOUR);
+	const c = await conversation("qf-cold");
+	const m = mark("cold");
+	// Nothing was asked of `qf-cold` yet, and its `omp usage` does not answer until the test says, as a cold cache takes seconds.
+	// The stub answers the turn's first request as soon as the server has begun that look (no `armed`: nothing is announced
+	// yet), as a fast model may: the step it asks for then reaches the extension long before `omp usage` answers.
+	answerAfter.set(
+		m,
+		pollUntil(() => readFileSync(callsFile, "utf8").includes("--provider=qf-cold"), "the look at qf-cold", 60_000),
+	);
+	const firstAsked = asked(m);
+	await prompt(c, m);
+	await firstAsked;
+	// Going through, the step would ask the stub again; held, the conversation is announced so once the look answers.
+	const again = asked(m);
+	const held = announced(c.ws, c.live.liveId, isHeld);
+	writeFileSync(coldGate, "");
+	const first = await Promise.race([held.then(() => "held"), again.then(() => "asked again")]);
+	expect(first).toBe("held");
+	expect(mainRequests(m).length).toBe(1);
+	expect(c.frames.seen.some((f) => f.type === "tool_execution_start")).toBe(false);
+	void request(c.ws, { t: "close", liveId: c.live.liveId }).catch(() => {});
+	c.ws.close();
 }, 120_000);
 
 test("the floors are the person's own: kept in the data dir, read back, refused when they are not a share, and removed", async () => {

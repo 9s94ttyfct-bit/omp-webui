@@ -6,6 +6,7 @@ import {
 	type HoldFields,
 	parseWarmVerdict,
 	QUOTA_DIALOG_TITLE,
+	QUOTA_LOOK_RELEASE_MS,
 	QUOTA_SELF_RELEASE_MS,
 	QUOTA_STATUS_KEY,
 	type WarmVerdict,
@@ -98,8 +99,17 @@ export class QuotaTracker {
 	private lastLook = 0;
 	private looking = false;
 	private cancelNext: (() => void) | null = null;
-	/** What the hold file says now, as text (so that a repeat is not written). */
-	private written = "";
+	/**
+	 * The provider a look at the start of a turn is reading the quota of, while nothing is held (A-033): until it answers, the hold
+	 * file says to wait, so that the turn's first tool step does not go through on a cold cache before the figure that would have
+	 * held it is known. Null when no such look is under way.
+	 */
+	private pending: string | null = null;
+	/**
+	 * What the hold file says now, as text (so that a repeat is not written). Null until it is first written: whatever the file
+	 * says then (a look's wait that an earlier server left behind) is not taken for what this tracker means it to say.
+	 */
+	private written: string | null = null;
 	private ended = false;
 
 	constructor(
@@ -194,7 +204,7 @@ export class QuotaTracker {
 		if (frame.method === "select" && frame.title === QUOTA_DIALOG_TITLE) {
 			const id = String(frame.id);
 			// Nothing holds the conversation now (the hold ended, or the person went on): its wait ends as it begins.
-			if (!this.hold || this.override) {
+			if ((!this.hold && this.pending === null) || this.override) {
 				this.host.answer(id);
 				return true;
 			}
@@ -242,7 +252,9 @@ export class QuotaTracker {
 		if (this.ended) return;
 		if (!this.host.active()) {
 			this.cancelTimer();
+			this.pending = null;
 			if (this.hold) this.settle(null);
+			else this.sync();
 			return;
 		}
 		// Paused, or waiting out a usage limit: the turn is open and a hold stands, but nothing spends and nothing is looked at.
@@ -250,7 +262,8 @@ export class QuotaTracker {
 			this.cancelTimer();
 			return;
 		}
-		if (this.hold === null || !this.looking) void this.look(false);
+		// A turn that begins with nothing held: its first step waits for this look (`arm`).
+		if (this.hold === null || !this.looking) void this.look(false, this.hold === null);
 	}
 
 	/** A floor was set or changed: a conversation that works looks again. */
@@ -269,9 +282,14 @@ export class QuotaTracker {
 		this.schedule();
 	}
 
-	/** Look at the provider's quota now. */
-	async look(force: boolean): Promise<void> {
-		if (this.ended || this.looking || !this.host.working()) return;
+	/**
+	 * Look at the provider's quota now. With `arm` (a turn begins and nothing holds it), the hold file says to wait until the look
+	 * has answered, written before anything is awaited: omp's first request is under way when the server hears the turn begin, and
+	 * a model that asks for a tool step before `omp usage` answers (a cold cache takes seconds) would otherwise take that step past
+	 * the floor (A-033). The wait is the extension's usual one, and ends when the look writes the hold or takes the file away.
+	 */
+	async look(force: boolean, arm = false): Promise<void> {
+		if (this.ended || !this.host.working()) return;
 		const provider = this.host.provider();
 		const floor = provider ? this.deps.floorOf(provider) : null;
 		if (!provider || floor === null) {
@@ -283,6 +301,12 @@ export class QuotaTracker {
 			this.cancelTimer();
 			return;
 		}
+		if (arm && this.hold === null && !this.override && this.pending === null) {
+			this.pending = provider;
+			this.sync();
+		}
+		// One look at a time: an armed wait that came while one is under way ends with it.
+		if (this.looking) return;
 		this.looking = true;
 		let reading: FloorReading | null = null;
 		try {
@@ -291,11 +315,13 @@ export class QuotaTracker {
 			// `omp usage` did not answer: what is known stays, and the next look is the usual interval away.
 		} finally {
 			this.looking = false;
+			this.pending = null;
 		}
 		this.lastLook = this.deps.now();
 		// Whatever happened while the quota was read: the turn may be over, or the conversation on another model.
 		if (this.ended || !this.host.working() || this.host.provider() !== provider) {
 			if (this.hold && !this.host.active()) this.settle(null);
+			else this.sync();
 			this.schedule();
 			return;
 		}
@@ -323,7 +349,7 @@ export class QuotaTracker {
 	/** Bring the hold file, and the extension's open dialogs, in line with the hold. */
 	private sync(): void {
 		const hold = this.hold;
-		const holds = hold !== null && !this.override && this.host.cannotHold() === null;
+		const holds = !this.override && this.host.cannotHold() === null;
 		let fields: HoldFields | null = null;
 		if (hold && holds) {
 			const resumeAt = resumeAtOf(hold, this.deps.timings);
@@ -333,6 +359,17 @@ export class QuotaTracker {
 				resumeAt,
 				expiresAt: resumeAt === null ? null : resumeAt + QUOTA_SELF_RELEASE_MS,
 				since: hold.since,
+			};
+		} else if (this.pending !== null && holds) {
+			// Wait for the look: no reset is known, and a server that never answers is not waited for past `QUOTA_LOOK_RELEASE_MS`.
+			const now = this.deps.now();
+			fields = {
+				provider: this.pending,
+				resetsAt: null,
+				resumeAt: null,
+				expiresAt: now + QUOTA_LOOK_RELEASE_MS,
+				since: now,
+				looking: true,
 			};
 		}
 		const text = fields ? JSON.stringify(fields) : "";

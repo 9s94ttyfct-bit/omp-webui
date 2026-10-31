@@ -437,10 +437,12 @@ test("the record of a running job is written at once, not after a `ps` that cann
 		seconds: 20,
 	});
 	// A `ps` that takes longer than the limit of one, as one on a machine whose process table cannot be read: the
-	// record of the job must be there all the same, or a server that goes away leaves the job to nobody.
+	// record of the job must be there all the same, or a server that goes away leaves the job to nobody. It notes when it
+	// has answered, so that "at once" is "before any `ps` answered", not a number of seconds (#13).
 	const bin = join(f.dir, "slow-bin");
+	const answered = join(f.dir, "ps-answered");
 	mkdirSync(bin);
-	writeFileSync(join(bin, "ps"), `#!/bin/sh\n/bin/sleep 11\n`);
+	writeFileSync(join(bin, "ps"), `#!/bin/sh\n/bin/sleep 11\n: > "${answered}"\n`);
 	chmodSync(join(bin, "ps"), 0o755);
 	const path = process.env.PATH;
 	process.env.PATH = `${bin}:${path}`;
@@ -448,24 +450,31 @@ test("the record of a running job is written at once, not after a `ps` that cann
 		const first = f.make();
 		await first.init();
 		first.startInstall("homebrew");
+		const written = () => {
+			try {
+				const record = JSON.parse(readFileSync(join(f.dir, "data", "omp-job", "job.json"), "utf8"));
+				return typeof record.process?.pid === "number" && record.process.pid > 0;
+			} catch {
+				return false;
+			}
+		};
 		// The record is there while the `ps` is still being waited for: it is written before it is asked.
+		let before = false;
 		await pollUntil(
 			() => {
-				try {
-					const record = JSON.parse(readFileSync(join(f.dir, "data", "omp-job", "job.json"), "utf8"));
-					return typeof record.process?.pid === "number" && record.process.pid > 0;
-				} catch {
-					return false;
-				}
+				before = !existsSync(answered);
+				return written() || !before;
 			},
-			"the job's record to be written with its process",
-			5_000,
+			"the job's record to be written with its process, or a `ps` to answer",
+			30_000,
 		);
+		expect(written()).toBe(true);
+		expect(before).toBe(true);
 		first.stop();
 	} finally {
 		process.env.PATH = path;
 	}
-});
+}, 60_000);
 
 test("a record whose process cannot be told from a stranger settles, and the stranger is left alone (#543)", async () => {
 	const f = fixture();
@@ -487,6 +496,8 @@ test("a record whose process cannot be told from a stranger settles, and the str
 			process: { pid: stranger.pid, started: "", marker: join(jobDir, "exit") },
 		}),
 	);
+	// Every signal the server sends: the stranger must get none, which a wait for it to die could only show by waiting.
+	const kill = spyOn(process, "kill");
 	try {
 		const omp = f.make();
 		await omp.init();
@@ -496,13 +507,45 @@ test("a record whose process cannot be told from a stranger settles, and the str
 		expect(omp.state().job?.state).toBe("failed");
 		// The stranger is left alone: it is not the job's process, and the job's group is not signalled.
 		omp.cancel();
-		await Bun.sleep(200);
-		expect(stranger.signalCode).toBeNull();
-		expect(stranger.exitCode).toBeNull();
+		expect(f.last().job).toBeNull();
+		const signalled = kill.mock.calls.filter(([pid, signal]) => Math.abs(pid) === stranger.pid && signal !== 0);
+		expect(signalled).toEqual([]);
+		expect(processExists(stranger.pid)).toBe(true);
 	} finally {
+		kill.mockRestore();
 		stranger.kill("SIGKILL");
 	}
 });
+
+/**
+ * Each look the server takes at a job (whether it has ended, `ended`), in order: its answer, null while the job runs.
+ * `ended` is private; how many looks a job got is not otherwise observable, and waiting for a number of looks is what
+ * lets a test say "the server has looked again" without waiting for a while (#13).
+ */
+function looks(omp: OmpLifecycle): ({ code: number | null } | null)[] {
+	const seen: ({ code: number | null } | null)[] = [];
+	const inner = omp as unknown as { ended: (run: unknown) => Promise<{ code: number | null } | null> };
+	const ended = inner.ended.bind(omp);
+	inner.ended = async (run) => {
+		const outcome = await ended(run);
+		seen.push(outcome);
+		return outcome;
+	};
+	return seen;
+}
+
+/**
+ * Until the server has looked at the job twice more than `before` looks (the first of them may have begun before, and the
+ * second begins only once what the server made of the first, the minute without a start time, is done), or has settled it
+ * meanwhile: the caller's look at its state then says what went wrong.
+ */
+async function twoMoreLooks(omp: OmpLifecycle, seen: unknown[], before: number): Promise<void> {
+	await pollUntil(
+		() => seen.length >= before + 2 || omp.state().job?.state !== "running",
+		"the server to look at the job again",
+		30_000,
+	);
+}
 
 test("an install that ended while no server ran is settled by the next one, as if it had been watched", async () => {
 	const f = fixture();
@@ -752,42 +795,49 @@ function skewedClock(): { skew: (ms: number) => void; restore: () => void } {
 
 test("a job this server started is not settled as unconfirmed while its process runs, however long `ps` is silent (#559)", async () => {
 	const f = fixture();
+	const hold = join(f.dir, "go-on");
 	writeFakeBrew(join(f.toolbin, "brew"), {
 		prefix: f.prefix,
 		template: f.template,
 		version: "18.12.0",
 		log: join(f.dir, "brew.log"),
-		seconds: 3,
+		holdUntil: hold,
 	});
 	const clock = skewedClock();
 	try {
 		await withPs(f, BLIND_START, async () => {
 			const omp = f.make();
+			const seen = looks(omp);
 			await omp.init();
 			omp.startInstall("homebrew");
 			await pollUntil(() => omp.snapshot().log.includes("==> Fetching"), "the install to be under way");
+			// The first look has noted its time, before the minute passes: the install waits for `hold` meanwhile.
+			await pollUntil(() => seen.length >= 1, "the server to look at the job");
 			clock.skew(61_000);
-			await Bun.sleep(600);
+			await twoMoreLooks(omp, seen, seen.length);
 			// Its process is the server's own child: it is running, and the page says so.
 			expect(omp.state().job?.state).toBe("running");
 			expect(existsSync(join(f.dir, "data", "omp-job"))).toBe(true);
+			writeFileSync(hold, "");
 			await pollUntil(() => f.last().job?.state === "done", "the install to end", 20_000);
 			expect(f.last()).toMatchObject({ status: "ready", version: "18.12.0" });
 			omp.stop();
 		});
 	} finally {
+		writeFileSync(hold, "");
 		clock.restore();
 	}
 }, 60_000);
 
 test("a job taken over, whose process carries its marker, is waited for however long its start time is not learned (#559)", async () => {
 	const f = fixture();
+	const hold = join(f.dir, "go-on");
 	writeFakeBrew(join(f.toolbin, "brew"), {
 		prefix: f.prefix,
 		template: f.template,
 		version: "18.12.0",
 		log: join(f.dir, "brew.log"),
-		seconds: 3,
+		holdUntil: hold,
 	});
 	const clock = skewedClock();
 	try {
@@ -801,17 +851,21 @@ test("a job taken over, whose process carries its marker, is waited for however 
 			expect(record.process.started).toBe("");
 
 			const second = f.make();
+			const seen = looks(second);
 			await second.init();
 			second.start();
-			// The first looks at the job are made, and the time they began is noted, before the minute passes.
-			await Bun.sleep(400);
+			// The first looks at the job are made, and the time they began is noted, before the minute passes: the one
+			// `init` takes, and one of those `start` goes on with.
+			await pollUntil(() => seen.length >= 2, "the server to look at the job it took over");
 			clock.skew(61_000);
-			await Bun.sleep(600);
+			await twoMoreLooks(second, seen, seen.length);
 			expect(second.state().job?.state).toBe("running");
+			writeFileSync(hold, "");
 			await pollUntil(() => f.last().job?.state === "done", "the install to end", 20_000);
 			second.stop();
 		});
 	} finally {
+		writeFileSync(hold, "");
 		clock.restore();
 	}
 }, 60_000);
@@ -841,8 +895,11 @@ test("a record without a start time whose process is gone is settled at once, no
 	await finished.exited;
 	writeRecord(f, finished.pid);
 	const omp = f.make();
+	const seen = looks(omp);
 	await omp.init();
-	await pollUntil(() => omp.state().job?.state === "failed", "the job to be settled", 3_000);
+	await pollUntil(() => omp.state().job?.state === "failed", "the job to be settled");
+	// At once: on the first look, which is the one `init` takes, not on one of those a minute of looking would add.
+	expect(seen[0]).toEqual({ code: null });
 	expect(omp.state().job?.error).toContain("was stopped before it finished");
 	expect(existsSync(join(f.dir, "data", "omp-job"))).toBe(false);
 });
@@ -855,9 +912,14 @@ test("a `ps` that gives no answer does not say the process is gone: the job keep
 	// A `ps` that fails as one does when it cannot read the process table: not "no such process".
 	await withPs(f, "exit 3", async () => {
 		const omp = f.make();
+		const seen = looks(omp);
 		await omp.init();
-		await Bun.sleep(400);
+		omp.start();
+		// The look `init` takes and those the job's loop goes on with: none says the job is gone.
+		await pollUntil(() => seen.length >= 3, "the server to look at the job again and again");
+		expect(seen.slice(0, 3)).toEqual([null, null, null]);
 		expect(omp.state().job?.state).toBe("running");
+		omp.stop();
 	});
 });
 
@@ -897,9 +959,18 @@ test("cancelling a job taken over does not stop the server while `ps` is slow, a
 			script,
 			`import { OmpLifecycle } from ${JSON.stringify(join(import.meta.dir, "../../server/omp/lifecycle.ts"))};
 const [dataDir, home, path] = process.argv.slice(2);
+// Until the job is announced settled: no deadline here, which would count from this process's start and so include the
+// time it took to start on a loaded machine; the test's own limit bounds a run that never settles (#13).
+const over = Promise.withResolvers<void>();
 const omp = new OmpLifecycle(
 	{ ompBin: "omp", agentDir: dataDir, sessionsDir: dataDir, dataDir, host: "127.0.0.1", port: 0, distDir: dataDir, autoPort: false, parentPid: null },
-	{ busy: () => ({ working: 0, asking: 0, paused: 0 }), activate: async () => "unused", broadcast: () => {} },
+	{
+		busy: () => ({ working: 0, asking: 0, paused: 0 }),
+		activate: async () => "unused",
+		broadcast: (m) => {
+			if (m.t === "omp" && m.state.job && m.state.job.state !== "running") over.resolve();
+		},
+	},
 	{ env: { PATH: path, HOME: home }, home, checkEnabled: false, tickMs: 15 },
 );
 await omp.init();
@@ -913,8 +984,7 @@ const timer = setInterval(() => {
 	last = now;
 }, 10);
 omp.cancel();
-const deadline = Date.now() + 10000;
-while (omp.state().job?.state === "running" && Date.now() < deadline) await Bun.sleep(20);
+await over.promise;
 clearInterval(timer);
 const job = omp.state().job;
 omp.stop();
@@ -926,18 +996,22 @@ console.log(JSON.stringify({ gap, state: job?.state, error: job?.error }));
 			stdout: "pipe",
 			stderr: "pipe",
 		});
-		const [out, err] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
-		expect(await child.exited, err).toBe(0);
-		const ran: { gap: number; state?: string; error?: string | null } = JSON.parse(out);
-		// A cancel that waited for `ps` leaves a gap as long as `ps` took.
-		expect(ran.gap).toBeLessThan(300);
-		expect(ran).toMatchObject({ state: "failed", error: "Cancelled" });
+		try {
+			const [out, err] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
+			expect(await child.exited, err).toBe(0);
+			const ran: { gap: number; state?: string; error?: string | null } = JSON.parse(out);
+			// A cancel that waited for `ps` leaves a gap as long as `ps` took.
+			expect(ran.gap).toBeLessThan(300);
+			expect(ran).toMatchObject({ state: "failed", error: "Cancelled" });
+		} finally {
+			child.kill("SIGKILL");
+		}
 		// Its command line carried the job's marker: its group was signalled.
 		await pollUntil(() => !processExists(job.pid), "the job's process to be gone");
 	} finally {
 		reap(job);
 	}
-});
+}, 60_000);
 
 test("cancelling a job taken over whose process `ps` cannot be asked in time settles it and signals nothing (#560)", async () => {
 	const f = fixture();

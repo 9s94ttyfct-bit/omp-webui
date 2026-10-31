@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import type { Page } from "@playwright/test";
 import { writeSimpleSession } from "../support/fixtures.ts";
 import { ownSession, sessionRow, startLive } from "../support/live.ts";
+import { endAllLives } from "../support/lives.ts";
 import { COUNT_RENDERS, countRendersOf, painted, rendersCounted } from "../support/render-count.ts";
 import { assistant } from "../support/session-entries.ts";
 import { tapSocket } from "../support/socket-tap.ts";
@@ -146,14 +147,22 @@ for (const screen of ["New chat", "Settings"] as const) {
  * that runs one spec after another, the conversations an earlier spec left behind are still doing it while this one
  * runs. The list of conversations changes, and Settings, which only names the processes it lists by their titles, must
  * not render for a conversation it does not show (#520).
+ *
+ * What Settings does show must hold still meanwhile, or its renders are not this test's (#6): the processes the tests
+ * above left are ended first (one that ends is a row Settings takes away), and the page opens on Settings itself: on
+ * New chat it would start a warm-up process, which on a loaded machine came up while the list was measured, a row that
+ * Settings lists, three renders that were right.
  */
-test("Settings does not render when the list of conversations changes for another conversation", async ({ page }) => {
+test("Settings does not render when the list of conversations changes for another conversation", async ({
+	page,
+	e2eServer,
+}) => {
+	await endAllLives(e2eServer);
 	ownSession(0xe8, "Render isolation Settings list");
 	const other = writeSimpleSession(process.env.OMPW_E2E_AGENT_DIR as string, 0xe9, "Render isolation other");
 	await page.addInitScript(COUNT_RENDERS);
-	await page.goto("/");
+	await page.goto("/#/settings/look");
 	await expect(sessionRow(page, "Render isolation other")).toHaveCount(1, { timeout: 15_000 });
-	await page.getByRole("button", { name: "Settings", exact: true }).click();
 	await expect(page.getByTestId("settings-page")).toBeVisible();
 	await settingsLoaded(page);
 	await countRenders(page, "Settings");

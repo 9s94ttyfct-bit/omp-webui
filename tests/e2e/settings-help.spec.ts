@@ -82,10 +82,15 @@ test("the button opens the dedicated conversation with its badge, countdown and 
 		await expect(bar.getByTestId("settings-help-countdown")).toContainText(
 			/Can change settings · (30:00|29:\d\d) left/,
 		);
-		// Named, and told where it was opened from.
-		const sent = run.sent().map((l) => l.in);
-		expect(sent.some((f) => f?.type === "set_session_name" && f.name === "Settings help")).toBe(true);
-		expect(sent.some((f) => f?.type === "prompt" && String(f.message).includes("Settings › Look & layout"))).toBe(true);
+		// Named, and told where it was opened from. Read until the scripted omp has logged both: the page shows the
+		// conversation as soon as it is open, and the server may write to omp after that (A-026).
+		const sent = () => run.sent().map((l) => l.in);
+		await expect
+			.poll(() => sent().some((f) => f?.type === "set_session_name" && f.name === "Settings help"))
+			.toBe(true);
+		await expect
+			.poll(() => sent().some((f) => f?.type === "prompt" && String(f.message).includes("Settings › Look & layout")))
+			.toBe(true);
 		await shot(page, "conversation-countdown-desktop");
 
 		await bar.getByTestId("settings-help-revoke").click();
@@ -102,8 +107,15 @@ test("a security change shows its card and waits for Allow; Settings lists it wi
 		await openSettings(page, run);
 		await page.getByTestId("settings-help-start").click();
 		await expect(page.getByTestId("settings-help-bar")).toBeVisible();
-		const { grants } = (await api(run, "/api/settings-help")) as SettingsHelpState;
-		const liveId = grants[0]?.liveId as string;
+		// The grant is read until the server lists it: the bar may show before the server's list answers with it (A-026).
+		let liveId = "";
+		await expect
+			.poll(async () => {
+				const { grants } = (await api(run, "/api/settings-help")) as SettingsHelpState;
+				liveId = grants[0]?.liveId ?? "";
+				return liveId;
+			})
+			.not.toBe("");
 
 		await agentCalls(run, liveId, { action: "set", changes: [{ key: "ompw.unattended", value: "on" }] });
 		const card = page.getByTestId("settings-help-bar").getByTestId("settings-request");

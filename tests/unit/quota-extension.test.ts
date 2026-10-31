@@ -194,6 +194,19 @@ describe("tool_call: the wait between two model requests", () => {
 		}
 		expect(omp.dialogs).toEqual([]);
 	});
+
+	test("the server still looking at the quota when a turn begins (A-033): the step waits as for a hold, until the file says", async () => {
+		const omp = fakeOmp();
+		quotaFloor(omp.pi as never);
+		writeFileSync(file, hold({ resetsAt: null, resumeAt: null, expiresAt: Date.now() + 60_000, looking: true }));
+		// The dialog is opened as the handler is called: nothing is awaited before it.
+		const waiting = callTool(omp, omp.ctx());
+		expect(omp.dialogs).toEqual([{ title: QUOTA_DIALOG_TITLE, options: [QUOTA_DIALOG_CONTINUE], aborted: false }]);
+		// Not at the floor: the server takes the file away.
+		rmSync(file);
+		await waiting;
+		expect(omp.dialogs[0]?.aborted).toBe(true);
+	});
 });
 
 describe("cache_warming_decision: the cost check is the one that decides while a conversation is held", () => {
@@ -215,6 +228,14 @@ describe("cache_warming_decision: the cost check is the one that decides while a
 	test("no hold: omp's own decision stands", () => {
 		const omp = fakeOmp();
 		quotaFloor(omp.pi as never);
+		expect(decide(omp, event())).toBeUndefined();
+		expect(omp.statuses).toEqual([]);
+	});
+
+	test("the server still looking at the quota (A-033) is no hold for the cache: omp's own decision stands", () => {
+		const omp = fakeOmp();
+		quotaFloor(omp.pi as never);
+		writeFileSync(file, hold({ resetsAt: null, resumeAt: null, expiresAt: Date.now() + 60_000, looking: true }));
 		expect(decide(omp, event())).toBeUndefined();
 		expect(omp.statuses).toEqual([]);
 	});
