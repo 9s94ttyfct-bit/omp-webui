@@ -120,6 +120,9 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 		"对话用到模型上下文窗口的多少时，omp 会自行压缩；也可以按 token 数指定。这就是 omp 自己的 `compaction.thresholdPercent` / `compaction.thresholdTokens`，与终端共用；每个对话都能在自己的对话设置里单独设置。",
 	settingsCompactWhere: "你排队的压缩在何时执行",
 	settingsCompactWhereIndex: "排队的压缩",
+	settingsConcurrency: "并行子代理",
+	settingsConcurrencyHint:
+		"一个对话同时运行多少个子代理；其余的排队等待，正在运行的结束后再依次启动。这就是 omp 自己的 `task.maxConcurrency`，与终端共用；每个对话都能在自己的对话设置里单独设置。",
 	settingsCompactWhereHint:
 		"在代理工作时请求的压缩，在这两个时机都不会丢失工作。本轮结束时总是可行的；在两个步骤之间则会在正在运行的工具一结束就执行，本轮随后继续，这需要应用的扩展在对话中运行并且 omp 的 `compaction.autoContinue` 处于开启，否则会等到本轮结束并说明原因。每个对话在自己的对话设置里的选择，就以这里为起点。",
 	settingsCompactWhereTurn: "本轮结束时",
@@ -368,11 +371,13 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	agentsTotalCount: "{n} 个子代理",
 	agentsTotalCountOne: "1 个子代理",
 	agentsStalledCount: "{n} 个停滞",
+	agentsQueuedCount: "{n} 个排队中",
 	agentsLegend: "图例",
 	agentsLegendRunning: "运行中",
 	agentsLegendStalled: "2 分钟无活动",
 	agentsLegendDone: "已完成",
 	agentsLegendFailed: "失败或已停止",
+	agentsLegendQueued: "排队中",
 	agentsLegendSpawn: "启动",
 	agentsLegendMessage: "消息",
 	agentsLegendBatch: "同一次 task 调用",

@@ -27,6 +27,7 @@ import type { RemoteStatus } from "./remote.ts";
 import type { SessionSettings } from "./session-defaults.ts";
 import type { SettingsHelpState } from "./settings-help.ts";
 import type { SleepNote } from "./sleep.ts";
+import type { QueuedSubagent } from "./subagent-concurrency.ts";
 import type { LiveUnattended, QuestionCounts, QuestionDropNote } from "./unattended.ts";
 import type { AppUpdateState } from "./update.ts";
 
@@ -191,6 +192,18 @@ export interface LiveInfo {
 	 * window or a count of tokens, held by this process's overlay. Absent while omp's own configuration decides (Default).
 	 */
 	compactAt?: CompactAt;
+	/**
+	 * How many subagents this conversation runs at once (omp's `task.maxConcurrency`, `0`: no limit; see
+	 * `shared/subagent-concurrency.ts`), where that is its own limit, held by this process's overlay. Absent while omp's own
+	 * configuration decides (Default).
+	 */
+	subagentConcurrency?: number;
+	/**
+	 * The subagents omp has queued under that limit: spawned by a `task` call, waiting for a running one to end (see
+	 * `QueuedSubagent`). Kept by the server from omp's own progress records, so a page that attaches while they wait shows
+	 * them too. Absent when none waits.
+	 */
+	queuedSubagents?: QueuedSubagent[];
 	/**
 	 * A compact asked for while the agent worked (#651), and the follow-ups held back behind it (see `shared/compact-queue.ts`):
 	 * held by the server, so every page shows it, a reload keeps it and a handoff does not end it. Absent when none waits.

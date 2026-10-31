@@ -9,6 +9,7 @@ import {
 	type SessionSettings,
 	UNREPORTED,
 } from "../../shared/session-defaults.ts";
+import { CONCURRENCY_KEY } from "../../shared/subagent-concurrency.ts";
 import type { Config } from "../config.ts";
 import type { Live } from "../live.ts";
 import { type ConfigScope, queued, readKeys } from "./model-config.ts";
@@ -53,6 +54,8 @@ const PANEL_KEYS: readonly string[] = [
 		COMPACT_KEYS.modelThresholdsEnabled,
 		// Whether omp goes on with a turn after a compaction (a compact between two steps needs it: see `Live.compactStepUnavailable`).
 		COMPACT_KEYS.autoContinue,
+		// How many subagents run at once, which a conversation's "Default" follows (see `shared/subagent-concurrency.ts`).
+		CONCURRENCY_KEY,
 	]),
 ];
 

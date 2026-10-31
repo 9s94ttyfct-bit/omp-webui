@@ -125,6 +125,13 @@ export const en = {
 	compactAtAdvice:
 		"Keep Default unless the model's window is smaller than omp thinks, or a task needs a longer history: then a share just under the point where the provider starts refusing, or a token count where a proxy or gateway limits you below the model's window.",
 
+	concurrencyWhat:
+		"How many subagents this conversation runs at once (omp's task.maxConcurrency). A task call that starts more waits: omp queues the rest, shows them as Queued, and starts each one when a running subagent ends. Default follows omp's setting (32 unless you changed it); Unlimited starts every subagent at once. A change applies to the next subagent that starts — running ones go on, and a queued one starts when the next slot frees up.",
+	concurrencyCost:
+		"More at once finishes a wide task sooner but spends more at the same time: each subagent makes its own model requests, so a burst can reach a provider's rate or usage limit (some providers have their own limit too, such as Ollama Cloud's). Fewer at once is slower but easier on limits, and the main agent waits longer for the batch.",
+	concurrencyAdvice:
+		"Keep Default for most work. Pick 1–4 when a provider limits requests per minute or you want subagents to run one after another (for example edits to the same files); Unlimited only for many small, independent lookups.",
+
 	compactWhat:
 		"Summarizes the older part of the conversation now (omp's /compact) to free context. The instructions say what the summary must keep.",
 	compactCost:

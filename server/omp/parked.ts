@@ -17,6 +17,7 @@ import {
 	type SessionSettings,
 	sessionSettingsOf,
 } from "../../shared/session-defaults.ts";
+import { concurrencyOf } from "../../shared/subagent-concurrency.ts";
 import type { QuotaHold } from "./quota-floor/decide.ts";
 import type { QuotaRecord } from "./quota-floor/tracker.ts";
 import { PS_MS, run } from "./run.ts";
@@ -83,6 +84,8 @@ export interface ParkedRecord {
 		pins?: Record<string, ConfigValue>;
 		/** Where the conversation compacts (`ProcessOverlay.compact`): absent in a record an older server wrote, and while omp's default decides. */
 		compact?: CompactAt | null;
+		/** How many subagents the conversation runs at once (`ProcessOverlay.concurrency`): absent in a record an older server wrote, and while omp's configuration decides. */
+		concurrency?: number | null;
 	} | null;
 	/**
 	 * What the process was told of the controls omp cannot report (`LiveInfo.sessionSettings`): it keeps them while it is
@@ -383,7 +386,12 @@ function parse(text: string): ParkedRecord | "other" | null {
 		mode: modeOf(v)?.mode,
 		lightModels: modeOf(v)?.lightModels,
 		overlay: isRecord(overlay)
-			? { ...overlay, pins: pinsOf(overlay.pins), compact: compactAtOf(overlay.compact) }
+			? {
+					...overlay,
+					pins: pinsOf(overlay.pins),
+					compact: compactAtOf(overlay.compact),
+					concurrency: concurrencyOf(overlay.concurrency),
+				}
 			: null,
 		descendants: v.descendants ?? [],
 		retry: retryOf(v.retry),

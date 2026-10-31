@@ -6,6 +6,7 @@ import {
 	type ConfigValue,
 	SESSION_DEFAULT_KEYS,
 } from "../../shared/session-defaults.ts";
+import { CONCURRENCY_KEY, ompConcurrencyOf } from "../../shared/subagent-concurrency.ts";
 import type { Config } from "../config.ts";
 import type { Live } from "../live.ts";
 import { decidingModelThreshold } from "./compact-at.ts";
@@ -63,6 +64,12 @@ export interface PanelConfig {
 	 * directory of its own, which is no default of omp's).
 	 */
 	defaults: Record<string, ConfigValue> | null;
+	/**
+	 * How many subagents run at once as the conversation's configuration has it (`task.maxConcurrency`, `0`: no limit),
+	 * without its overlay: what its "Default" is. Null where it could not be read, and for a Light conversation (see
+	 * `defaults`).
+	 */
+	concurrency: number | null;
 }
 
 /** Where omp compacts as a conversation's configuration has it, and what omp's per-model record says over it. */
@@ -74,7 +81,7 @@ export interface CompactPanel {
 
 /** What the panel shows from omp's configuration for `live`'s process (see `PanelConfig`). */
 export async function readPanelConfig(cfg: Config, live: Live, timeoutMs = QUICK_MS): Promise<PanelConfig> {
-	if (live.info.mode === "light") return { claudeSlow: null, defaults: null, compact: null };
+	if (live.info.mode === "light") return { claudeSlow: null, defaults: null, compact: null, concurrency: null };
 	const cwd = existsSync(live.info.cwd) ? live.info.cwd : cfg.dataDir;
 	try {
 		const listed = await listPanelKeys(cfg, cwd, defaultsScope(live), timeoutMs);
@@ -91,10 +98,11 @@ export async function readPanelConfig(cfg: Config, live: Live, timeoutMs = QUICK
 				settings: compactSettingsOf(listed),
 				modelThreshold: decidingModelThreshold(listed, live.currentModel()),
 			},
+			concurrency: ompConcurrencyOf(listed[CONCURRENCY_KEY]),
 		};
 	} catch (e) {
 		console.error(`omp-webui: could not read the panel's settings for ${live.info.liveId}: ${(e as Error).message}`);
-		return { claudeSlow: null, defaults: null, compact: null };
+		return { claudeSlow: null, defaults: null, compact: null, concurrency: null };
 	}
 }
 

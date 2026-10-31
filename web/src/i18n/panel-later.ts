@@ -88,6 +88,7 @@ export const en = {
 	statusRunning: "running",
 	statusStarted: "started",
 	statusPending: "pending",
+	statusQueued: "queued",
 	iconCompleted: "Completed",
 
 	// Todos
@@ -113,6 +114,8 @@ export const en = {
 	agentTextLess: "Show less",
 	agentUnnamed: "Subagent {n}",
 	agentNoTranscript: "Transcript not available yet.",
+	agentQueuedNote:
+		"Queued: this conversation runs as many subagents at once as Parallel subagents in its session settings allows. omp starts this one when a running subagent ends.",
 	agentMessageAria: "Message subagent",
 	agentSteerPlaceholder: "Steer this agent…",
 	agentSend: "Send to subagent",
@@ -247,6 +250,23 @@ export const en = {
 	controlsCompactAtSaved: "Compact at: {value}",
 	controlsCompactAtSavedDefault: "Compact at: omp's default",
 	controlsCompactAtFailed: "Could not set where this conversation compacts: {error}",
+	controlsConcurrency: "Parallel subagents",
+	controlsConcurrencyDefault: "Default ({n})",
+	controlsConcurrencyDefaultUnknown: "Default",
+	controlsConcurrencyUnlimited: "Unlimited",
+	controlsConcurrencyUnlimitedWord: "unlimited",
+	controlsConcurrencyCount: "up to {n} at once",
+	controlsConcurrencyOne: "one at a time",
+	controlsConcurrencyNoLimit: "no limit",
+	controlsConcurrencyEffective:
+		"Subagents run {value}; more wait in a queue. A change applies to the next one that starts.",
+	controlsConcurrencyEffectiveDefault: "New conversations run subagents {value} (omp's default).",
+	controlsConcurrencyEffectiveConfig: "New conversations run subagents {value} (omp's setting).",
+	controlsConcurrencyLoading: "Reading omp's setting…",
+	controlsConcurrencyUnknown: "omp's configuration could not be read, so what Default means is not known.",
+	controlsConcurrencySaved: "Parallel subagents: {value}",
+	controlsConcurrencySavedDefault: "Parallel subagents: omp's default",
+	controlsConcurrencyFailed: "Could not set how many subagents run at once: {error}",
 
 	// Goal
 	goalPaused: "Paused",

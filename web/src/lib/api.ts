@@ -238,12 +238,24 @@ export interface CompactAtState {
 	session: CompactAt | null;
 }
 
+/**
+ * How many subagents run at once (see `shared/subagent-concurrency.ts`): `omp` is omp's own `task.maxConcurrency` as its
+ * global configuration resolves it (`0`: no limit; null when omp could not be asked), `session` the limit the conversation
+ * chose for itself (null: it follows omp's).
+ */
+export interface ConcurrencyState {
+	omp: number | null;
+	session: number | null;
+}
+
 /** What omp's configuration says for one conversation's session panel (see `controls.panelConfig`). */
 export interface PanelConfigState {
 	claudeSlow: ClaudeSlowMode | null;
 	defaults: Record<string, ConfigValue> | null;
 	/** Where omp compacts as the conversation's configuration has it, and what of its own decides over it; null where unread. */
 	compact: { settings: CompactSettings; modelThreshold: string | null } | null;
+	/** How many subagents run at once as the conversation's configuration has it (its "Default"); null where unread or in Light. */
+	concurrency: number | null;
 }
 
 /** What the server knows about the machine, for a bug report. */
@@ -407,6 +419,14 @@ export const sessionActions = {
 	/** `at` null: the conversation follows omp's configuration again. */
 	setSessionCompactAt: (file: string, at: CompactAt | null) =>
 		post<CompactAtState>("/api/compact-at/session", { file, at }),
+	/** omp's own limit of subagents that run at once, and with `file` the limit that conversation chose. */
+	concurrency: (file: string | null) =>
+		get<ConcurrencyState>(`/api/subagent-concurrency${file === null ? "" : `?file=${encodeURIComponent(file)}`}`),
+	/** omp's own limit, as `omp config set` changes it (`0`: no limit); `limit` null: omp's default again. */
+	setConcurrency: (limit: number | null) => post<ConcurrencyState>("/api/subagent-concurrency", { limit }),
+	/** `limit` null: the conversation follows omp's configuration again. */
+	setSessionConcurrency: (file: string, limit: number | null) =>
+		post<ConcurrencyState>("/api/subagent-concurrency/session", { file, limit }),
 	rename: (file: string, title: string) => post<{ ok: true }>("/api/session/rename", { file, title }),
 	remove: (file: string) => post<{ ok: true }>("/api/session/delete", { file }),
 	removeMany: (files: string[]) =>

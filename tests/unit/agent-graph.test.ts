@@ -221,6 +221,7 @@ describe("stalled and totals", () => {
 		];
 		expect(graphTotals(rows, NOW)).toEqual({
 			running: 1,
+			queued: 0,
 			total: 2,
 			stalled: 1,
 			tokens: 150,

@@ -28,6 +28,7 @@ import {
 	elapsedMs,
 	isOver,
 	parentId,
+	QUEUED,
 	rowContext,
 	rowTotals,
 	subagentsForToolCall,
@@ -74,6 +75,8 @@ export function statusLabel(t: Translate, status: string): string {
 			return t("panel.statusStarted");
 		case "pending":
 			return t("panel.statusPending");
+		case QUEUED:
+			return t("panel.statusQueued");
 		default:
 			return status;
 	}
@@ -178,6 +181,7 @@ export function Agents({ file, live }: { file: string | null; live: LiveState | 
 							data-testid="subagent-item"
 							data-agent-id={r.id}
 							data-running={r.running}
+							data-status={r.status}
 						>
 							<div className="flex items-center gap-2">
 								<StatusIcon status={r.status} />
@@ -185,6 +189,11 @@ export function Agents({ file, live }: { file: string | null; live: LiveState | 
 									{r.name}
 								</span>
 								{r.agent ? <Badge>{r.agent}</Badge> : null}
+								{r.status === QUEUED ? (
+									<span data-testid="subagent-queued">
+										<Badge>{t("panel.statusQueued")}</Badge>
+									</span>
+								) : null}
 								<span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-faint tabular-nums">
 									<ContextPercent ctx={rowContext(r)} />
 									{elapsed !== undefined ? (
@@ -436,6 +445,11 @@ export function AgentDetail({
 							{t("chat.agentRetryNestedHint")}
 						</div>
 					) : null}
+				</div>
+			) : null}
+			{row.status === QUEUED ? (
+				<div className="border-b border-border px-3 py-1.5 text-xs text-muted" data-testid="subagent-detail-queued">
+					{t("panel.agentQueuedNote")}
 				</div>
 			) : null}
 			{/* The assignment is pinned above the transcript, not in it: it says what the subagent was asked to do, and

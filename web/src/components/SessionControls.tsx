@@ -39,7 +39,9 @@ import { socket } from "../lib/ws.ts";
 import { continueConversation, refreshState, useApp } from "../store/app.ts";
 import { setConversationCompactAt } from "../store/compact-at.ts";
 import type { LiveState } from "../store/live.ts";
+import { setConversationConcurrency } from "../store/subagent-concurrency.ts";
 import { COMPACT_AT_HELP, CompactAtRow, compactAtText } from "./CompactAtRow.tsx";
+import { CONCURRENCY_HELP, ConcurrencyRow, concurrencyText } from "./ConcurrencyRow.tsx";
 import { INFO_BOX, InfoButton } from "./InfoButton.tsx";
 import { Select } from "./Select.tsx";
 import { Button, cx, IconButton, Spinner } from "./ui.tsx";
@@ -150,6 +152,13 @@ const HELP = {
 		choices: {},
 		cost: COMPACT_AT_HELP.cost,
 		advice: COMPACT_AT_HELP.advice,
+	},
+	// How many subagents run at once ("Parallel subagents"): omp's `task.maxConcurrency`, held by the overlay.
+	concurrency: {
+		what: CONCURRENCY_HELP.what,
+		choices: {},
+		cost: CONCURRENCY_HELP.cost,
+		advice: CONCURRENCY_HELP.advice,
 	},
 } satisfies Record<string, Help>;
 
@@ -417,6 +426,8 @@ export function SessionControls({
 		defaults: Record<string, ConfigValue> | null;
 		/** Where omp compacts as this conversation's configuration has it, and the per-model entry that decides over it. */
 		compact: PanelConfigState["compact"];
+		/** How many subagents run at once as this conversation's configuration has it: what its "Default" is. */
+		concurrency: PanelConfigState["concurrency"];
 	} | null>(null);
 	const reading = useRef(0);
 	const [instructions, setInstructions] = useState("");
@@ -456,6 +467,7 @@ export function SessionControls({
 				claudeSlow: config?.claudeSlow ?? null,
 				defaults: config?.defaults ?? null,
 				compact: config?.compact ?? null,
+				concurrency: config?.concurrency ?? null,
 			});
 	}, [id]);
 	// A panel that opens shows what omp says and what the files say now, not what they said when it was last open.
@@ -514,6 +526,24 @@ export function SessionControls({
 			void reload();
 		} catch (e) {
 			toast("error", t("panel.controlsCompactAtFailed", { error: (e as Error).message }));
+		}
+	};
+	/**
+	 * How many subagents this conversation runs at once: omp's own setting, held by the process's overlay (which omp reloads by
+	 * itself, so it applies to the next subagent that starts), and kept for when the conversation is opened again.
+	 */
+	const setConcurrency = async (limit: number | null) => {
+		if (!compactFile) return;
+		try {
+			await setConversationConcurrency(compactFile, limit);
+			toast(
+				"success",
+				limit === null
+					? t("panel.controlsConcurrencySavedDefault")
+					: t("panel.controlsConcurrencySaved", { value: concurrencyText(t, limit) }),
+			);
+		} catch (e) {
+			toast("error", t("panel.controlsConcurrencyFailed", { error: (e as Error).message }));
 		}
 	};
 	const send = async (command: Record<string, unknown>, label: string) => {
@@ -579,6 +609,7 @@ export function SessionControls({
 	};
 	const compactHelpId = useId();
 	const compactAtHelpId = useId();
+	const concurrencyHelpId = useId();
 	// Fast mode is the service tier of one provider, the one the model runs on (omp's `/fast` acts on that family only).
 	const family = serviceTierFamily(st?.model);
 	const local = runsLocal(live?.info);
@@ -652,17 +683,19 @@ export function SessionControls({
 	const interruptDefault = asDefault("interruptMode", { shown: st?.interruptMode });
 	const cacheWarmingDefault = asUnreportedDefault("cacheWarming");
 	const advancedChanged =
-		!local &&
-		defaults !== null &&
-		(
-			[
-				[autoRetryDefault, used("autoRetry")],
-				[steeringDefault, st?.steeringMode],
-				[followUpDefault, st?.followUpMode],
-				[interruptDefault, st?.interruptMode],
-				[cacheWarmingDefault, used("cacheWarming")],
-			] as const
-		).some(([d, shown]) => shown !== undefined && d.defaultBlocked === undefined && !d.isDefault);
+		// A conversation with its own subagent limit is not on omp's default either.
+		live?.info.subagentConcurrency !== undefined ||
+		(!local &&
+			defaults !== null &&
+			(
+				[
+					[autoRetryDefault, used("autoRetry")],
+					[steeringDefault, st?.steeringMode],
+					[followUpDefault, st?.followUpMode],
+					[interruptDefault, st?.interruptMode],
+					[cacheWarmingDefault, used("cacheWarming")],
+				] as const
+			).some(([d, shown]) => shown !== undefined && d.defaultBlocked === undefined && !d.isDefault));
 	return (
 		<Popover.Root open={open} onOpenChange={request}>
 			{anchor ? (
@@ -839,6 +872,33 @@ export function SessionControls({
 					</button>
 					{advancedOpen ? (
 						<div id={advancedId} className="divide-y divide-border">
+							{/* How many subagents run at once: omp's own setting, which the conversation's overlay carries. */}
+							<ConcurrencyRow
+								file={compactFile}
+								configured={read?.liveId === id ? read.concurrency : null}
+								disabled={!compactFile}
+								onChange={(limit) => void setConcurrency(limit)}
+								help={{
+									button: (
+										<InfoButton
+											label={t("panel.controlsConcurrency")}
+											testid="subagent-concurrency"
+											open={help.open === "concurrency"}
+											controls={concurrencyHelpId}
+											onToggle={() => help.toggle("concurrency")}
+										/>
+									),
+									text:
+										help.open === "concurrency" ? (
+											<HelpText
+												id={concurrencyHelpId}
+												testid="subagent-concurrency"
+												help={HELP.concurrency}
+												choices={[]}
+											/>
+										) : null,
+								}}
+							/>
 							<Segmented
 								label={t("panel.controlsAutoRetry")}
 								testid="auto-retry"

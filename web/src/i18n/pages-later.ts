@@ -105,6 +105,9 @@ export const en = {
 		"The share of the model's context window a conversation may use before omp compacts it on its own, or a count of tokens. This is omp's own `compaction.thresholdPercent` / `compaction.thresholdTokens`, shared with the terminal; each conversation can set its own from its session settings.",
 	settingsCompactWhere: "Where a compact you queue runs",
 	settingsCompactWhereIndex: "Queued compaction",
+	settingsConcurrency: "Parallel subagents",
+	settingsConcurrencyHint:
+		"How many subagents one conversation runs at once; the others wait in a queue and start as running ones end. This is omp's own `task.maxConcurrency`, shared with the terminal; each conversation can set its own from its session settings.",
 	settingsCompactWhereHint:
 		"A compact you ask for while the agent works loses no work in either place. At the end of the turn is always possible. Between two steps it runs as soon as the tools that are running have finished, and the turn goes on after it; it needs the app's extension running in the conversation and omp's `compaction.autoContinue` on, and otherwise waits for the end of the turn and says so. This is where each conversation's own choice, in its session settings, starts from.",
 	settingsCompactWhereTurn: "When the turn ends",
@@ -359,11 +362,13 @@ export const en = {
 	agentsTotalCount: "{n} subagents",
 	agentsTotalCountOne: "1 subagent",
 	agentsStalledCount: "{n} stalled",
+	agentsQueuedCount: "{n} queued",
 	agentsLegend: "Legend",
 	agentsLegendRunning: "Running",
 	agentsLegendStalled: "No activity for 2 min",
 	agentsLegendDone: "Done",
 	agentsLegendFailed: "Failed or stopped",
+	agentsLegendQueued: "Queued",
 	agentsLegendSpawn: "Started",
 	agentsLegendMessage: "Message",
 	agentsLegendBatch: "One task call",

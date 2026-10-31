@@ -102,6 +102,7 @@ import {
 	runsAs,
 } from "./omp/parked.ts";
 import { exists, processTree, processTrees, signalAll } from "./omp/process-tree.ts";
+import { QueuedSubagents } from "./omp/queued-subagents.ts";
 import type { QuotaFloorHooks } from "./omp/quota-floor/service.ts";
 import { QuotaTracker } from "./omp/quota-floor/tracker.ts";
 import { pruneRelayDir, relaySocket, runningRelays, sweepRelayDir } from "./omp/relay-client.ts";
@@ -377,6 +378,16 @@ export class Live {
 				this.client.send({ type: "extension_ui_response", id, value: COMPACT_STEP_DIALOG_CONTINUE });
 		},
 		refresh: () => this.refreshState(),
+	});
+	/**
+	 * The subagents omp has queued under `task.maxConcurrency` (see `QueuedSubagents`): every page is told them in the
+	 * process's info, as they change.
+	 */
+	private readonly queuedSubagents = new QueuedSubagents((list) => {
+		if (this.info.exited) return;
+		if (list.length > 0) this.info.queuedSubagents = list;
+		else delete this.info.queuedSubagents;
+		this.pool.announce(this);
 	});
 	/** RPC commands awaiting omp's reply (a user `!command` replies only when it exits). */
 	private inFlight = 0;
@@ -1036,6 +1047,7 @@ export class Live {
 						absentAgents: [...this.overlay.absentAgents],
 						pins: { ...this.overlay.pins },
 						compact: this.overlay.compact,
+						concurrency: this.overlay.concurrency,
 					}
 				: null,
 			descendants: this.descendants,
@@ -1329,6 +1341,7 @@ export class Live {
 			...(overlay && overlay.wait !== null ? { usageResetWait: overlay.wait } : {}),
 			...(overlay?.models ? { models: overlay.models } : {}),
 			...(overlay?.compact ? { compactAt: overlay.compact } : {}),
+			...(overlay && overlay.concurrency !== null ? { subagentConcurrency: overlay.concurrency } : {}),
 			// What it was told before it was frozen: omp reports neither of these controls, and a record is all there is.
 			...(restored?.sessionSettings && Object.keys(restored.sessionSettings).length > 0
 				? { sessionSettings: restored.sessionSettings }
@@ -1465,6 +1478,9 @@ export class Live {
 				this.held.clear();
 				this.compactQueue.gone();
 				delete this.info.compactQueued;
+				// Nothing waits for a slot in a process that ended.
+				this.queuedSubagents.end();
+				delete this.info.queuedSubagents;
 				delete this.info.softStop;
 				clearTimeout(this.softStopRemind ?? undefined);
 				this.softStopRemind = null;
@@ -1551,6 +1567,7 @@ export class Live {
 			if (from && to) this.pool.carryUsageWait(from, to);
 			if (from && to) this.pool.carryModels(from, to);
 			if (from && to) this.pool.carryCompact(from, to);
+			if (from && to) this.pool.carryConcurrency(from, to);
 			if (from && to) this.pool.carryGuidance(from, to);
 			if (from && to) this.pool.carryUnattended(from, to);
 			if (from && to) this.pool.carryLaunchMode(from, to);
@@ -2113,6 +2130,7 @@ export class Live {
 		}
 		this.compactQueue.frame(frame);
 		this.trackRetry(frame);
+		this.queuedSubagents.frame(frame);
 		// A turn that begins or ends, a usage-limit wait or its end: what the quota floor holds, and looks at, follows (#652).
 		if (
 			frame.type === "agent_start" ||
@@ -2895,6 +2913,22 @@ export class Live {
 		await this.overlay.setCompact(at);
 		if (at) this.info.compactAt = at;
 		else delete this.info.compactAt;
+		this.pool.announce(this);
+		this.persist();
+	}
+
+	/**
+	 * How many subagents this conversation runs at once becomes `limit` (`0`: no limit; null: omp's own configuration again).
+	 * The process's overlay says it, which omp reloads by itself and reads whenever a subagent asks for a slot or gives one
+	 * back, so it applies to the next subagent that starts; nothing is restarted. The conversation keeps it for when it is
+	 * opened again (`ApprovalStore.rememberConcurrency`, by the caller).
+	 */
+	async setConcurrency(limit: number | null): Promise<void> {
+		if (!this.overlay) throw new Error("This process does not take settings");
+		if (this.info.exited || this.client.closing) throw new Error("This conversation is not running");
+		await this.overlay.setConcurrency(limit);
+		if (limit !== null) this.info.subagentConcurrency = limit;
+		else delete this.info.subagentConcurrency;
 		this.pool.announce(this);
 		this.persist();
 	}
@@ -3861,6 +3895,15 @@ export class LivePool {
 		if (picked && !approval.sessionCompact(sessionKey(to))) approval.rememberCompact(sessionKey(to), picked);
 	}
 
+	/** The conversation moved from one session file to another: how many subagents it runs at once goes along. */
+	carryConcurrency(from: string, to: string): void {
+		const approval = this.approval;
+		if (!approval) return;
+		const picked = approval.sessionConcurrency(sessionKey(from));
+		if (picked !== null && approval.sessionConcurrency(sessionKey(to)) === null)
+			approval.rememberConcurrency(sessionKey(to), picked);
+	}
+
 	/** The conversation moved from one session file to another: the choice made for it about waiting out usage limits goes along. */
 	carryUsageWait(from: string, to: string): void {
 		const approval = this.approval;
@@ -4064,6 +4107,21 @@ export class LivePool {
 			(l) => !l.info.exited && l.info.sessionFile !== null && sessionKey(l.info.sessionFile) === key,
 		);
 		await Promise.all(holders.map((l) => l.setCompact(at)));
+	}
+
+	/**
+	 * How many subagents the conversation in `file` runs at once becomes `limit` (null: omp's own configuration again). The
+	 * choice is kept for when the conversation is opened again, and a process that holds it now is told (its overlay, which
+	 * omp reloads: it applies to the next subagent that starts, nothing is restarted).
+	 */
+	async setConcurrency(file: string, limit: number | null): Promise<void> {
+		const key = sessionKey(file);
+		this.approval?.rememberConcurrency(key, limit);
+		// A process names its file as omp said it, which is not its real path until the file is written.
+		const holders = [...this.lives.values()].filter(
+			(l) => !l.info.exited && l.info.sessionFile !== null && sessionKey(l.info.sessionFile) === key,
+		);
+		await Promise.all(holders.map((l) => l.setConcurrency(limit)));
 	}
 
 	/**
@@ -4470,6 +4528,7 @@ export class LivePool {
 						policies,
 						absent.agents,
 						sessionFile ? this.approval.sessionCompact(sessionKey(sessionFile)) : null,
+						sessionFile ? this.approval.sessionConcurrency(sessionKey(sessionFile)) : null,
 					)
 				: null;
 		const live = new Live(
@@ -4635,6 +4694,7 @@ export class LivePool {
 						record.overlay.pins ?? {},
 						record.overlay.absentAgents ?? [],
 						record.overlay.compact ?? null,
+						record.overlay.concurrency ?? null,
 					)
 				: null;
 		const live = new Live(

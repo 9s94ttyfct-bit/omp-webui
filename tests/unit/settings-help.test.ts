@@ -28,6 +28,7 @@ import {
 	SETTINGS_TOOL,
 	type SettingsHelpState,
 } from "../../shared/settings-help.ts";
+import { CONCURRENCY_KEY } from "../../shared/subagent-concurrency.ts";
 
 /**
  * Ask agent for help's server half (`server/settings-help/`) against the real setters of the preferences, the guard,
@@ -49,6 +50,7 @@ const MODULE_KEYS = [
 	...Object.keys(DEFAULT_OFFLINE).map((k) => `mode.json:offline.${k}`),
 	...Object.keys(SESSION_DEFAULTS).map((k) => `session:${k}`),
 	...Object.values(COMPACT_KEYS).map((k) => `omp:${k}`),
+	`omp:${CONCURRENCY_KEY}`,
 	"approval.json:default",
 	"unattended.json:instruction",
 ];

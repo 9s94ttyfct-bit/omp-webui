@@ -1,6 +1,6 @@
 import type { GraphFilter } from "@shared/graph-filter.ts";
 import type { ToolExec } from "../store/live.ts";
-import { type AgentRow, ENDED, isOver, parentId, rowTotals } from "./subagents.ts";
+import { type AgentRow, ENDED, isOver, parentId, QUEUED, rowTotals } from "./subagents.ts";
 
 /**
  * The agent graph of one conversation (#719): the main agent and its subagents laid out left to right by who started
@@ -99,6 +99,8 @@ export interface GraphEdge {
 
 export interface GraphTotals {
 	running: number;
+	/** Spawned and waiting for a slot under the conversation's limit of subagents that run at once (`QUEUED`). */
+	queued: number;
 	total: number;
 	stalled: number;
 	tokens: number;
@@ -340,9 +342,10 @@ export function callsFor(rows: readonly AgentRow[], ids: readonly string[]): Set
 }
 
 export function graphTotals(rows: readonly AgentRow[], now: number, paused = false): GraphTotals {
-	const totals: GraphTotals = { running: 0, total: rows.length, stalled: 0, tokens: 0, cost: 0 };
+	const totals: GraphTotals = { running: 0, queued: 0, total: rows.length, stalled: 0, tokens: 0, cost: 0 };
 	for (const r of rows) {
 		if (r.running) totals.running++;
+		if (r.status === QUEUED) totals.queued++;
 		if (isStalled(r, now, paused)) totals.stalled++;
 		const { tokens, cost } = rowTotals(r);
 		totals.tokens += tokens;

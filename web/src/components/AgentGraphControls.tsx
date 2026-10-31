@@ -98,6 +98,7 @@ function Legend({ className = "ml-auto" }: { className?: string }) {
 		["border-dashed border-warning", t("pages.agentsLegendStalled")],
 		["border-success/50", t("pages.agentsLegendDone")],
 		["border-danger/60", t("pages.agentsLegendFailed")],
+		["border-dashed border-border", t("pages.agentsLegendQueued")],
 	];
 	return (
 		<ul

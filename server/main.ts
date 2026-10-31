@@ -35,6 +35,7 @@ import { PUSH_API } from "../shared/push.ts";
 import { REMOTE_SHELL_OFF } from "../shared/remote.ts";
 import { replyMessages } from "../shared/reply-parts.ts";
 import { slimAnswer } from "../shared/slim.ts";
+import { concurrencyOf } from "../shared/subagent-concurrency.ts";
 import { answerMessage, cleanAnswer, instructionProblemText } from "../shared/unattended.ts";
 import type { UploadFailure } from "../shared/upload.ts";
 import { DEFAULT_USAGE_RANGE, isUsageRange } from "../shared/usage-range.ts";
@@ -92,6 +93,7 @@ import { writeOverlay } from "./omp/overlay.ts";
 import { QuotaFloorService } from "./omp/quota-floor/service.ts";
 import { FloorError } from "./omp/quota-floor/store.ts";
 import { resumedSessions } from "./omp/resumed.ts";
+import { configureConcurrency, readConcurrencyDefault } from "./omp/subagent-concurrency.ts";
 import { QuestionError } from "./omp/unattended/questions.ts";
 import { UnattendedService } from "./omp/unattended/service.ts";
 import { InstructionError } from "./omp/unattended/store.ts";
@@ -249,6 +251,8 @@ const approval = new ApprovalStore(cfg.ompBin, cfg.dataDir);
 const ownUsageWait = new ConfigRead(join(cfg.agentDir, "config.yml"), () => approval.configuredUsageWait());
 // Likewise omp's own compaction point, which the session panel and Settings show as what "Default" means (#643).
 const ownCompactAt = new ConfigRead(join(cfg.agentDir, "config.yml"), () => readCompactDefaults(cfg));
+// And omp's own limit of subagents that run at once, which the session panel and Settings show as what "Default" means.
+const ownConcurrency = new ConfigRead(join(cfg.agentDir, "config.yml"), () => readConcurrencyDefault(cfg));
 // A migration's uploads and finished exports are for the server that made them: what a crash left is removed.
 sweepMigrateDir(cfg.dataDir);
 // The copies of conversations a server that was killed left for the side questions it was answering are of no use any more.
@@ -1591,6 +1595,46 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				return fail((e as Error).message, 409);
 			}
 			return json({ omp: await ownCompactAt.get(), session: at });
+		}
+		case "/api/subagent-concurrency": {
+			// How many subagents run at once: omp's `task.maxConcurrency` (see `shared/subagent-concurrency.ts`). POST changes
+			// omp's own value, as `omp config set` does in the terminal (`limit` null: omp's default again), and answers with
+			// what omp's configuration says now. `?file=` adds the limit the conversation chose for itself (`session`), which its
+			// own overlay holds.
+			if (req.method === "POST") {
+				const body: unknown = await req.json().catch(() => null);
+				if (!isRecord(body) || !("limit" in body)) return fail("Bad value");
+				// `limit` null is omp's default again; anything else must be a count this page offers, never a guess.
+				if (body.limit !== null && concurrencyOf(body.limit) === null) return fail("Bad value");
+				try {
+					await configureConcurrency(cfg, concurrencyOf(body.limit));
+				} catch (e) {
+					return fail((e as Error).message, 500);
+				}
+			}
+			const file = q.get("file");
+			const key = file === null ? null : conversationKey(file);
+			if (file !== null && !key) return fail("Unknown session file", 404);
+			return json({
+				omp: await ownConcurrency.get(),
+				session: key ? approval.sessionConcurrency(key) : null,
+			});
+		}
+		case "/api/subagent-concurrency/session": {
+			// One conversation's own limit (`limit` null: omp's configuration again). Its file need not be written yet.
+			if (req.method !== "POST") return fail("POST required", 405);
+			const body: unknown = await req.json().catch(() => null);
+			const key = isRecord(body) && typeof body.file === "string" ? conversationKey(body.file) : null;
+			if (!key) return fail("Unknown session file", 404);
+			if (!isRecord(body) || !("limit" in body)) return fail("Bad value", 400);
+			if (body.limit !== null && concurrencyOf(body.limit) === null) return fail("Bad value", 400);
+			const limit = concurrencyOf(body.limit);
+			try {
+				await pool.setConcurrency(key, limit);
+			} catch (e) {
+				return fail((e as Error).message, 409);
+			}
+			return json({ omp: await ownConcurrency.get(), session: limit });
 		}
 		case "/api/usage-reset-wait": {
 			// Whether a failed turn waits out its provider's usage limit is omp's own retry (`retry.waitForUsageReset`):

@@ -30,6 +30,7 @@ import { Select } from "./Select.tsx";
 import { SettingsIndex } from "./SettingsIndex.tsx";
 import { SettingsSearch } from "./SettingsSearch.tsx";
 import { StarPromptSetting } from "./StarPromptSetting.tsx";
+import { SubagentConcurrencySettings } from "./SubagentConcurrencySettings.tsx";
 import { ToolTimerSetting } from "./ToolTimerSetting.tsx";
 import { UpdateSettings } from "./UpdateSettings.tsx";
 import { UsageWaitSetting } from "./UsageWaitSetting.tsx";
@@ -394,6 +395,8 @@ export function SettingsPage() {
 						<Suspense fallback={null}>
 							<GuidanceSettings />
 						</Suspense>
+						{/* How many subagents a conversation runs at once: omp's own `task.maxConcurrency`, as `omp config` shows it. */}
+						<SubagentConcurrencySettings />
 						{/* The share of a provider's usage window that may be left before a working conversation is held (#652). */}
 						<Suspense fallback={null}>
 							<QuotaFloorSettings />

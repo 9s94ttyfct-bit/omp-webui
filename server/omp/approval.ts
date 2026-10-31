@@ -30,6 +30,7 @@ import { isMode, type Mode } from "../../shared/offline.ts";
 import { QUOTA_LOADED_SUFFIX, QUOTA_SUFFIX } from "../../shared/quota-hold.ts";
 import { RISK_LOADED_SUFFIX, RISK_SUFFIX } from "../../shared/risk-confirm.ts";
 import type { ConfigValue } from "../../shared/session-defaults.ts";
+import { CONCURRENCY_KEY, concurrencyOf } from "../../shared/subagent-concurrency.ts";
 import { UNATTENDED_SUFFIX } from "../../shared/unattended.ts";
 import { GUIDANCE_LOADED_SUFFIX } from "./guidance/extension.ts";
 import { identitiesOf, ParkedStore } from "./parked.ts";
@@ -287,21 +288,28 @@ export class ProcessOverlay {
 		 * applies from the conversation's next turn.
 		 */
 		public compact: CompactAt | null = null,
+		/**
+		 * How many subagents this conversation runs at once (`task.maxConcurrency`, `0`: no limit; see
+		 * `shared/subagent-concurrency.ts`): held by this process's own overlay, over omp's configuration; null while omp's
+		 * configuration decides. omp reads it whenever a subagent asks for a slot, so a change applies to the next one that starts.
+		 */
+		public concurrency: number | null = null,
 	) {
 		this.write();
 	}
 
 	/**
 	 * The settings this overlay holds the process at, by omp's dotted key: what `pin` holds, what `retry.waitForUsageReset`
-	 * says where the conversation chose it, and the compaction point where the conversation has one. The file says exactly
-	 * this, and the server holds it in memory, so what the process is held at never has to be read back from a file that
-	 * may have been taken away.
+	 * says where the conversation chose it, the compaction point and the subagent limit where the conversation has its own.
+	 * The file says exactly this, and the server holds it in memory, so what the process is held at never has to be read
+	 * back from a file that may have been taken away.
 	 */
 	get settings(): Readonly<Record<string, ConfigValue>> {
 		return {
 			...this.pins,
 			...(this.wait === null ? {} : { "retry.waitForUsageReset": this.wait }),
 			...(this.compact === null ? {} : compactAtWrites(this.compact)),
+			...(this.concurrency === null ? {} : { [CONCURRENCY_KEY]: this.concurrency }),
 		};
 	}
 
@@ -377,6 +385,13 @@ export class ProcessOverlay {
 	/** Where this conversation compacts becomes `at` (null: omp's own configuration again); resolves as `set` does. */
 	setCompact(at: CompactAt | null): Promise<void> {
 		this.compact = at;
+		this.write();
+		return Bun.sleep(this.reloadMs);
+	}
+
+	/** How many subagents this conversation runs at once becomes `limit` (null: omp's configuration again); resolves as `set` does. */
+	setConcurrency(limit: number | null): Promise<void> {
+		this.concurrency = limit;
 		this.write();
 		return Bun.sleep(this.reloadMs);
 	}
@@ -504,6 +519,8 @@ interface Prefs {
 	models: Record<string, ConversationModels>;
 	/** Where a conversation compacts, where that is its own point (see `shared/compact-at.ts`); by session file. */
 	compact: Record<string, CompactAt>;
+	/** How many subagents a conversation runs at once, where that is its own limit (see `shared/subagent-concurrency.ts`); by session file. */
+	concurrency: Record<string, number>;
 	/** The mode (Full or Light) a conversation last ran in, by session file: what it is reopened in (see `LivePool.resume`). */
 	launch: Record<string, Mode>;
 	/** What a conversation chose of "Guard dangerous commands" over the global settings is the server's own (see `ApprovalStore.guardMap`). */
@@ -608,11 +625,24 @@ export class ApprovalStore {
 				const parsed = compactAtOf(raw);
 				if (parsed) compact[file] = parsed;
 			}
+			const concurrency: Record<string, number> = {};
+			for (const [file, raw] of Object.entries(v.concurrency ?? {})) {
+				const parsed = concurrencyOf(raw);
+				if (parsed !== null) concurrency[file] = parsed;
+			}
 			const launch: Record<string, Mode> = {};
 			for (const [file, mode] of Object.entries(v.launch ?? {})) if (isMode(mode)) launch[file] = mode;
-			return { default: isApprovalMode(v.default) ? v.default : null, sessions, usageWait, models, compact, launch };
+			return {
+				default: isApprovalMode(v.default) ? v.default : null,
+				sessions,
+				usageWait,
+				models,
+				compact,
+				concurrency,
+				launch,
+			};
 		} catch {
-			return { default: null, sessions: {}, usageWait: {}, models: {}, compact: {}, launch: {} };
+			return { default: null, sessions: {}, usageWait: {}, models: {}, compact: {}, concurrency: {}, launch: {} };
 		}
 	}
 
@@ -688,6 +718,22 @@ export class ApprovalStore {
 		if (at !== null) {
 			prefs.compact[file] = at;
 			for (const old of Object.keys(prefs.compact).slice(0, -MAX_REMEMBERED)) delete prefs.compact[old];
+		}
+		this.save(prefs);
+	}
+
+	/** How many subagents the conversation in `file` runs at once, if that is its own limit; null: it follows omp's configuration. */
+	sessionConcurrency(file: string): number | null {
+		return this.read().concurrency[file] ?? null;
+	}
+
+	/** `limit` null: the conversation follows omp's configuration again. */
+	rememberConcurrency(file: string, limit: number | null): void {
+		const prefs = this.read();
+		delete prefs.concurrency[file];
+		if (limit !== null) {
+			prefs.concurrency[file] = limit;
+			for (const old of Object.keys(prefs.concurrency).slice(0, -MAX_REMEMBERED)) delete prefs.concurrency[old];
 		}
 		this.save(prefs);
 	}
@@ -859,6 +905,8 @@ export class ApprovalStore {
 		absentAgents: readonly string[] = [],
 		/** Where the conversation compacts, as it chose before (see `sessionCompact`). */
 		compact: CompactAt | null = null,
+		/** How many subagents the conversation runs at once, as it chose before (see `sessionConcurrency`). */
+		concurrency: number | null = null,
 	): Promise<ProcessOverlay> {
 		this.dir ??= overlayDir(this.dataDir).catch((e: unknown) => {
 			// The next overlay tries again.
@@ -877,6 +925,7 @@ export class ApprovalStore {
 			this.handlerMs,
 			absentAgents,
 			compact,
+			concurrency,
 		);
 	}
 
@@ -893,6 +942,7 @@ export class ApprovalStore {
 		pins: Readonly<Record<string, ConfigValue>> = {},
 		absentAgents: readonly string[] = [],
 		compact: CompactAt | null = null,
+		concurrency: number | null = null,
 	): ProcessOverlay {
 		const overlay = new ProcessOverlay(
 			file,
@@ -906,6 +956,7 @@ export class ApprovalStore {
 			this.handlerMs,
 			absentAgents,
 			compact,
+			concurrency,
 		);
 		overlay.park();
 		overlay.adopt();

@@ -1,5 +1,6 @@
 import { finite } from "@shared/guards.ts";
 import type { SessionEntry, SubagentFile } from "@shared/protocol.ts";
+import type { QueuedSubagent } from "@shared/subagent-concurrency.ts";
 import { isOverStatus, isWorkingStatus } from "@shared/subagent-status.ts";
 import type { SubagentState } from "../store/live.ts";
 import { type ContextUsage, progressContext } from "./context-usage.ts";
@@ -19,6 +20,13 @@ import type { UsageParts } from "./totals.ts";
  */
 export const ENDED = "ended";
 
+/**
+ * What this page calls a subagent omp has queued under the conversation's limit of subagents that run at once
+ * (`LiveInfo.queuedSubagents`, see `shared/subagent-concurrency.ts`): spawned, not started. Not over, and not running: it has
+ * no transcript, nothing to stop and nothing to steer until omp starts it. Not one of omp's words.
+ */
+export const QUEUED = "queued";
+
 /** omp's words for a subagent that is over (and `ENDED`); anything else (started, running, pending…) is still going. */
 export function isOver(status: string): boolean {
 	return status === ENDED || isOverStatus(status);
@@ -28,9 +36,9 @@ export function isRunning(status: string): boolean {
 	return !isOver(status);
 }
 
-/** The subagent is doing something now (not over, not waiting between runs): what Stop ends. */
+/** The subagent is doing something now (not over, not waiting between runs, not queued): what Stop ends. */
 export function isWorking(status: string): boolean {
-	return status !== ENDED && isWorkingStatus(status);
+	return status !== ENDED && status !== QUEUED && isWorkingStatus(status);
 }
 
 export interface AgentRow {
@@ -54,17 +62,25 @@ export interface AgentRow {
 
 function row(id: string, from: Partial<AgentRow> & { status: string }): AgentRow {
 	const parts = id.split(".");
-	return { ...from, id, name: parts[parts.length - 1], depth: parts.length - 1, running: isRunning(from.status) };
+	return {
+		...from,
+		id,
+		name: parts[parts.length - 1],
+		depth: parts.length - 1,
+		running: from.status !== QUEUED && isRunning(from.status),
+	};
 }
 
 /**
  * Every subagent a conversation has: its transcripts (all finished, as far as the disk can tell) overlaid with
- * what the live process says, running ones first with the newest start at the top. The rest keep the order they
- * always had: transcripts by modification time, then subagents only the process knows.
+ * what the live process says, running ones first with the newest start at the top, then the ones omp has queued (`queued`,
+ * in the order they wait), which it has said nothing else of yet. The rest keep the order they always had: transcripts by
+ * modification time, then subagents only the process knows.
  */
 export function agentRows(
 	files: SubagentFile[] | undefined,
 	live: Record<string, SubagentState> | undefined,
+	queued: readonly QueuedSubagent[] = [],
 ): AgentRow[] {
 	const rows = new Map<string, AgentRow>();
 	for (const f of files ?? []) {
@@ -85,12 +101,34 @@ export function agentRows(
 			}),
 		);
 	}
+	// A queued subagent omp has started meanwhile is the live one: the server's list follows a moment later.
+	const waiting = queued.filter((q) => !live?.[q.id]);
+	for (const q of waiting) {
+		rows.set(
+			q.id,
+			row(q.id, {
+				agent: q.agent,
+				status: QUEUED,
+				// What its row, its card and its view read of a subagent: the call that spawned it and what it was asked to do.
+				live: {
+					id: q.id,
+					status: QUEUED,
+					agent: q.agent,
+					index: q.index,
+					assignment: q.assignment,
+					parentToolCallId: q.parentToolCallId,
+					updatedAt: 0,
+				},
+			}),
+		);
+	}
 	const all = [...rows.values()];
 	// Ties by id: a row's place must not depend on the order frames, the registry and transcripts arrived in (#640).
 	const running = all
 		.filter((r) => r.running)
 		.sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0) || (a.id > b.id ? 1 : -1));
-	return [...running, ...all.filter((r) => !r.running)];
+	const inQueue = waiting.flatMap((q) => rows.get(q.id) ?? []);
+	return [...running, ...inQueue, ...all.filter((r) => !r.running && r.status !== QUEUED)];
 }
 
 /**

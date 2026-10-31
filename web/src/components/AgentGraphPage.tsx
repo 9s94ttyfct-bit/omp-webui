@@ -29,7 +29,7 @@ import { setGraphFilter, setGraphFocus, setGraphGrid, useGraphView } from "../li
 import { useMediaQuery, useNarrowerThan } from "../lib/media.ts";
 import { useNow } from "../lib/now.ts";
 import { serverOffsetMs } from "../lib/server-clock.ts";
-import { type AgentRow, ENDED, elapsedMs, isOver, rowContext, rowTotals } from "../lib/subagents.ts";
+import { type AgentRow, ENDED, elapsedMs, isOver, QUEUED, rowContext, rowTotals } from "../lib/subagents.ts";
 import { useAgentRows } from "../store/agents.ts";
 import { useApp } from "../store/app.ts";
 import type { LiveState } from "../store/live.ts";
@@ -87,7 +87,7 @@ const DOT_CLASS: Record<LiveDot, string> = {
 	open: "bg-success",
 };
 
-type Look = "running" | "stalled" | "done" | "failed" | "ended" | "pending";
+type Look = "running" | "stalled" | "done" | "failed" | "ended" | "queued" | "pending";
 
 /** How a node is drawn: its status, unless it has been silent too long while running. */
 function lookOf(node: GraphNode, mainWorking: boolean, now: number, paused: boolean): Look {
@@ -95,6 +95,8 @@ function lookOf(node: GraphNode, mainWorking: boolean, now: number, paused: bool
 	if (!row) return mainWorking ? "running" : "ended";
 	if (isStalled(row, now, paused)) return "stalled";
 	if (row.running) return "running";
+	// omp has queued it under the conversation's limit of subagents that run at once: it starts when one of them ends.
+	if (row.status === QUEUED) return "queued";
 	if (row.status === "completed" || row.status === "done") return "done";
 	if (row.status === ENDED) return "ended";
 	if (isOver(row.status)) return "failed";
@@ -107,6 +109,7 @@ const LOOK_CLASS: Record<Look, string> = {
 	done: "border-success/50",
 	failed: "border-danger/60",
 	ended: "border-border",
+	queued: "border-border border-dashed",
 	pending: "border-border border-dashed",
 };
 
@@ -117,6 +120,7 @@ const LOOK_DOT: Record<Look, string> = {
 	done: "bg-success",
 	failed: "bg-danger",
 	ended: "bg-faint",
+	queued: "bg-faint",
 	pending: "bg-faint",
 };
 
@@ -127,6 +131,7 @@ const MAP_FILL: Record<Look, string> = {
 	done: "fill-success",
 	failed: "fill-danger",
 	ended: "fill-faint",
+	queued: "fill-faint",
 	pending: "fill-faint",
 };
 
@@ -403,6 +408,9 @@ function Summary({ totals, children }: { totals: GraphTotals; children?: ReactNo
 				</span>
 				{totals.stalled ? (
 					<span className="text-warning">{t("pages.agentsStalledCount", { n: totals.stalled })}</span>
+				) : null}
+				{totals.queued ? (
+					<span data-testid="agents-queued-count">{t("pages.agentsQueuedCount", { n: totals.queued })}</span>
 				) : null}
 				<span>{t("pages.agentsTokens", { n: fmtTokens(totals.tokens) })}</span>
 				<span>{fmtCost(totals.cost)}</span>

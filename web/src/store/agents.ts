@@ -106,10 +106,11 @@ function useUnwritten(file: string | null, live: LiveState | undefined): boolean
 
 // ------------------------------------------------------------------ rows and totals
 
-/** Every subagent of the conversation, running ones first (see `agentRows`). */
+/** Every subagent of the conversation, running ones first, then the ones omp has queued (see `agentRows`). */
 export function useAgentRows(file: string | null, live: LiveState | undefined): AgentRow[] {
 	const files = useSubagentFiles(file, live);
-	return useMemo(() => agentRows(files, live?.subagents), [files, live?.subagents]);
+	const queued = live?.info.exited ? undefined : live?.info.queuedSubagents;
+	return useMemo(() => agentRows(files, live?.subagents, queued), [files, live?.subagents, queued]);
 }
 
 /**
@@ -175,7 +176,11 @@ export function selectAgent(id: string | null): void {
  */
 export function openAgentForToolCall(toolCallId: string, entries: SessionEntry[], owner = ""): void {
 	const { file, live } = viewedConversation(useApp.getState());
-	const rows = agentRows(file ? useFiles.getState().byFile[file] : undefined, live?.subagents);
+	const rows = agentRows(
+		file ? useFiles.getState().byFile[file] : undefined,
+		live?.subagents,
+		live?.info.exited ? undefined : live?.info.queuedSubagents,
+	);
 	const found = subagentsForToolCall(rows, toolCallId, toolCallArguments(entries, toolCallId), owner);
 	const view = useApp.getState().view;
 	if (view.kind === "chat" && view.agent) {
