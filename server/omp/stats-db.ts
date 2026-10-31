@@ -44,12 +44,14 @@ const COLUMNS = [
 
 /**
  * Where omp keeps the database, as omp 18.13.3 decides it (measured by `tests/contract/stats-db.test.ts`): under its config
- * root (`PI_CONFIG_DIR`, else `~/.omp`), whatever agent folder `PI_CODING_AGENT_DIR` names; `XDG_DATA_HOME/omp` takes
- * over when that folder exists and the agent folder is the default one. omp profiles are not followed: the server's own
- * omp runs without one. A wrong guess is caught by `holdsLatest`, never shown as figures.
+ * root, whatever agent folder `PI_CODING_AGENT_DIR` names; `XDG_DATA_HOME/omp` takes over when that folder exists and the
+ * agent folder is the default one. The config root is a folder of the home: omp joins `PI_CONFIG_DIR` (else `.omp`) to
+ * the home folder, so an absolute value lands under the home as well (omp 18.14.1, `packages/utils/src/dirs.ts`). omp
+ * profiles are not followed: the server's own omp runs without one. A wrong guess is caught by `holdsLatest`, never shown
+ * as figures.
  */
 export function statsDbPath(agentDir: string, env: Record<string, string | undefined>, home: string): string {
-	const configRoot = env.PI_CONFIG_DIR || join(home, ".omp");
+	const configRoot = join(home, env.PI_CONFIG_DIR || ".omp");
 	const xdg = env.XDG_DATA_HOME ? join(env.XDG_DATA_HOME, "omp") : null;
 	if (xdg && resolve(agentDir) === resolve(configRoot, "agent") && existsSync(xdg)) return join(xdg, "stats.db");
 	return join(configRoot, "stats.db");

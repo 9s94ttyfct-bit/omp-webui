@@ -164,3 +164,25 @@ test.skipIf(!omp)(
 	},
 	120_000,
 );
+
+test.skipIf(!omp)(
+	"PI_CONFIG_DIR names a folder of the home: the database omp keeps there is the one read (audit A-031)",
+	async () => {
+		const home = join(root, "config-dir");
+		const agentDir = join(home, ".omp-alt", "agent");
+		await compare(home, agentDir, { HOME: home, PI_CONFIG_DIR: ".omp-alt" });
+	},
+	120_000,
+);
+
+test.skipIf(!omp)(
+	"an absolute PI_CONFIG_DIR is still taken under the home, as omp joins it (audit A-031)",
+	async () => {
+		const home = join(root, "config-dir-abs");
+		const configDir = join(root, "abs-config");
+		const agentDir = join(root, "abs-agent");
+		await compare(home, agentDir, { HOME: home, PI_CONFIG_DIR: configDir, PI_CODING_AGENT_DIR: agentDir });
+		expect(statsDbPath(agentDir, { PI_CONFIG_DIR: configDir }, home)).toBe(join(home, configDir, "stats.db"));
+	},
+	120_000,
+);
