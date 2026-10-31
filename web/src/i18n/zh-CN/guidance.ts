@@ -6,6 +6,7 @@ export const zh: Record<keyof typeof en, string> = {
 		"主代理的长期指令里会写明如何把工作交给子代理，以及给它们用哪些模型。不在这里选择、也没有在设置里设为默认的模板时，就完全不生效。",
 	pick: "模型指引",
 	pickNone: "无",
+	pickPreviewHint: "把指针移到模板上，可以看到它告诉主代理的内容。",
 	pickCustom: "自定义…",
 	pickTemplateHint: "只随这个对话发送。之后可以在它的「模型指引」标签里修改。",
 	empty: "没有指引：主代理自己决定。",

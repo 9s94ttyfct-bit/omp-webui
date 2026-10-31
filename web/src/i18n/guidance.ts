@@ -11,6 +11,7 @@ export const en = {
 		"The main agent is told, in its standing instructions, how to hand work to subagents and which models to use for them. It is off unless you pick one, or make a template the default in Settings.",
 	pick: "Guidance",
 	pickNone: "None",
+	pickPreviewHint: "Point at a template to read what it tells the main agent.",
 	pickCustom: "Custom…",
 	pickTemplateHint: "Sent with this conversation only. You can change it later in its Guidance tab.",
 	empty: "No guidance: the main agent decides by itself.",

@@ -104,20 +104,27 @@ export function GuidancePicker({
 					</button>
 				</Popover.Trigger>
 				<Popover.Portal>
+					{/*
+					 * The list keeps one size while it is open: the text of the template under the pointer has a place of its own,
+					 * there from the start. A list that grew by that text turned to the other side of the chip when it no longer
+					 * fitted (or, above the chip, grew upwards), moved another row under the pointer, shrank, and turned back: it
+					 * jumped up and down as the pointer moved and a click picked whichever row was there. It is no taller than the
+					 * room on its side; the rows scroll within it.
+					 */}
 					<Popover.Content
 						align="start"
 						sideOffset={6}
 						aria-label={t("guidance.listLabel")}
-						className="z-50 w-80 max-w-[calc(100vw-1rem)] rounded-xl border border-border bg-surface p-1 shadow-2xl"
+						className="z-50 flex max-h-[var(--radix-popover-content-available-height)] w-80 max-w-[calc(100vw-1rem)] flex-col rounded-xl border border-border bg-surface p-1 shadow-2xl"
 						data-testid="guidance-list"
 					>
-						<p className="px-2 pt-1 pb-1.5 text-xs text-muted">{t("guidance.intro")}</p>
+						<p className="shrink-0 px-2 pt-1 pb-1.5 text-xs text-muted">{t("guidance.intro")}</p>
 						{error ? (
-							<p className="px-2 pb-1 text-xs text-danger" data-testid="guidance-error">
+							<p className="shrink-0 px-2 pb-1 text-xs text-danger" data-testid="guidance-error">
 								{t("guidance.loadFailed", { error })}
 							</p>
 						) : null}
-						<ul className="max-h-72 overflow-y-auto">
+						<ul className="max-h-72 min-h-0 overflow-y-auto">
 							<li>
 								<button
 									type="button"
@@ -184,12 +191,16 @@ export function GuidancePicker({
 						</ul>
 						{shown ? (
 							<pre
-								className="mx-1 mt-1 mb-0.5 max-h-40 overflow-auto rounded-lg border border-border bg-bg-soft p-2 font-mono text-xs whitespace-pre-wrap"
+								className="mx-1 mt-1 mb-0.5 h-28 shrink-0 overflow-auto rounded-lg border border-border bg-bg-soft p-2 font-mono text-xs whitespace-pre-wrap"
 								data-testid="guidance-preview"
 							>
 								{shown.text}
 							</pre>
-						) : null}
+						) : (
+							<p className="mx-1 mt-1 mb-0.5 flex h-28 shrink-0 items-center justify-center rounded-lg border border-dashed border-border p-2 text-center text-xs text-faint">
+								{t("guidance.pickPreviewHint")}
+							</p>
+						)}
 					</Popover.Content>
 				</Popover.Portal>
 			</Popover.Root>

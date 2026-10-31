@@ -105,6 +105,50 @@ test("New chat's Guidance chip is off until something is picked, and the pick is
 	expect(opens(tap)[2]?.target?.guidance).toBeUndefined();
 });
 
+test("the Guidance list stays where it opened while the pointer moves over it, so a template can be clicked", async ({
+	page,
+}) => {
+	await newChat(page, process.env.OMPW_E2E_WORK as string);
+	const control = page.getByTestId("guidance-picker");
+	// Window heights where the list fits on one side of the chip without a template's text and not with it: the list used to
+	// grow by the text under the pointer, turn to the other side of the chip, put another row under the pointer, shrink, and
+	// turn back, so it jumped up and down as the pointer moved and a click landed on whichever row was there.
+	for (const height of [560, 640, 720, 800, 900]) {
+		await page.setViewportSize({ width: 1280, height });
+		await control.click();
+		const list = page.getByTestId("guidance-list");
+		await expect(list).toBeVisible();
+		const options = list.getByTestId("guidance-option");
+		await expect(options.first()).toBeVisible();
+		const opened = await list.boundingBox();
+		if (!opened) throw new Error("no list");
+		expect(opened.y, `${height}px: the list starts inside the window`).toBeGreaterThanOrEqual(0);
+		expect(opened.y + opened.height, `${height}px: and ends inside it`).toBeLessThanOrEqual(height);
+		const count = await options.count();
+		for (let i = 0; i < count; i++) {
+			const option = options.nth(i);
+			// In a short window the rows scroll inside the list (the list itself stays put).
+			await option.scrollIntoViewIfNeeded();
+			const box = await option.boundingBox();
+			if (!box) throw new Error("no option");
+			await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 4 });
+			// Two frames for the popper to place the list after what the hover changed.
+			await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+			expect(await list.boundingBox(), `${height}px: the list did not move under option ${i}`).toEqual(opened);
+			const under = await option.evaluate(
+				(el, [x, y]) => el.contains(document.elementFromPoint(x as number, y as number)),
+				[box.x + box.width / 2, box.y + box.height / 2],
+			);
+			expect(under, `${height}px: option ${i} is still under the pointer`).toBe(true);
+		}
+		const last = options.nth(count - 1);
+		const name = (await last.locator("span.font-medium").textContent()) ?? "";
+		await last.click();
+		await expect(control).toHaveText(en.chip.replace("{name}", name));
+		await page.keyboard.press("Escape");
+	}
+});
+
 test("a template made the default in Settings is what New chat starts with, until another (or none) is picked there", async ({
 	page,
 }) => {
