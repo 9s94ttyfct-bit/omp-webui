@@ -41,6 +41,12 @@ const composerCard = (page: Page) =>
 /** Text as it reads, on one line. */
 const words = (text: string) => text.replace(/\s+/g, " ").trim();
 
+// New chat's own folder: left to itself it takes the most recent conversation's, which an earlier spec of the worker may
+// have removed (git-status's, resume-folder's), and New chat then shows that error instead of the model picker.
+test.beforeEach(async ({ page }) => {
+	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
+});
+
 test("on a desktop the fields keep their size", async ({ page }) => {
 	await page.goto("/");
 	expect(await page.getByTestId("composer").evaluate((el) => getComputedStyle(el).fontSize)).toBe("15px");
