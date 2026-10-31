@@ -13,7 +13,6 @@ import {
 	findRows,
 	focusRect,
 	type GraphEdge,
-	type GraphFilter,
 	type GraphNode,
 	type GraphSummary,
 	type GraphTotals,
@@ -21,12 +20,12 @@ import {
 	isStalled,
 	MAIN,
 	MESSAGE_BULGE,
-	NO_FILTER,
 	NODE_W,
 	type Rect,
 } from "../lib/agent-graph.ts";
 import { fmtElapsed } from "../lib/clock.ts";
 import { fmtClock, fmtCost, fmtTokens } from "../lib/format.ts";
+import { setGraphFilter, setGraphFocus, setGraphGrid, useGraphView } from "../lib/graph-view.ts";
 import { useMediaQuery, useNarrowerThan } from "../lib/media.ts";
 import { useNow } from "../lib/now.ts";
 import { serverOffsetMs } from "../lib/server-clock.ts";
@@ -68,9 +67,6 @@ const COMPACT_BELOW = 0.6;
  * on screen at a zoom of 1.
  */
 const COMPACT_FONT = Math.ceil(11 / COMPACT_BELOW);
-/** The two switches are kept on this device (they are how this person likes to look at a graph, not a setting of omp's). */
-const GRID_KEY = "ompw.agentGraph.grid";
-const FOCUS_KEY = "ompw.agentGraph.focus";
 /** Narrower than this, the graph's column folds its filters, switches and legend behind one button (a phone). */
 const FOLD_BELOW_PX = 640;
 /**
@@ -80,33 +76,6 @@ const FOLD_BELOW_PX = 640;
 const COLLAPSE_PX = 24;
 const COLLAPSE_TOUCH_PX = 44;
 const COLLAPSE_GAP_PX = 4;
-
-function readFlag(key: string): boolean {
-	try {
-		return localStorage.getItem(key) === "on";
-	} catch {
-		// A browser that refuses storage (some private modes): the switch lasts until the page closes.
-		return false;
-	}
-}
-
-/** A switch kept on this device: its state, and a way to change it that remembers the choice. */
-function useStoredFlag(key: string): [boolean, (on: boolean) => void] {
-	const [on, setOn] = useState(() => readFlag(key));
-	const set = useCallback(
-		(next: boolean) => {
-			setOn(next);
-			try {
-				if (next) localStorage.setItem(key, "on");
-				else localStorage.removeItem(key);
-			} catch {
-				// See `readFlag`.
-			}
-		},
-		[key],
-	);
-	return [on, set];
-}
 
 /** The list's order: what is working first, then what waits for someone, then the rest. */
 const DOT_ORDER: Record<LiveDot, number> = { running: 0, needsInput: 1, quotaHeld: 2, paused: 3, open: 4 };
@@ -273,12 +242,11 @@ function Conversation({ file, title }: { file: string; title: string }) {
 	const summary = useApp((s) => s.sessions.find((x) => x.file === file));
 	const rows = useAgentRows(file, live);
 	const mainWorking = Boolean(live?.streaming || live?.info.continuing);
-	const [filter, setFilter] = useState<GraphFilter>(NO_FILTER);
+	// How the graph is looked at (the switches and the filters) is one choice for every conversation's graph, remembered.
+	const { grid, focus, filter } = useGraphView();
 	const [query, setQuery] = useState("");
 	/** The finished batches (`task` call ids) the person opened: this conversation's, kept in memory only. */
 	const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
-	const [grid, setGrid] = useStoredFlag(GRID_KEY);
-	const [focus, setFocus] = useStoredFlag(FOCUS_KEY);
 	/** Counts up each time a switch asks the view to frame what runs again (Focus turned on, Grid changed in focus). */
 	const [reframe, setReframe] = useState(0);
 	/** Which match of the search the graph is at, and how often it was asked to go to one. */
@@ -323,7 +291,7 @@ function Conversation({ file, title }: { file: string; title: string }) {
 				<Summary totals={totals}>
 					<GraphControls
 						filter={filter}
-						onFilter={setFilter}
+						onFilter={setGraphFilter}
 						query={query}
 						onQuery={(q) => {
 							setQuery(q);
@@ -339,14 +307,14 @@ function Conversation({ file, title }: { file: string; title: string }) {
 						}}
 						grid={grid}
 						onGrid={(on) => {
-							setGrid(on);
+							setGraphGrid(on);
 							// The cards are laid out anew: where the person had put the view is no longer where anything is.
 							if (focus) setReframe((n) => n + 1);
 						}}
 						focus={focus}
 						folded={folded}
 						onFocus={(on) => {
-							setFocus(on);
+							setGraphFocus(on);
 							if (on) setReframe((n) => n + 1);
 						}}
 					/>

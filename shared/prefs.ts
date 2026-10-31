@@ -9,6 +9,7 @@
  * (`ompw.chunkReloadAt`, sessionStorage), the sync marker below, and unsent composer drafts (memory only).
  */
 
+import { STATUS_FILTERS, TIME_FILTERS } from "./graph-filter.ts";
 import { parsePanes } from "./panes.ts";
 import { USAGE_RANGES } from "./usage-range.ts";
 
@@ -80,6 +81,15 @@ export const PREF = {
 	usageRange: "ompw.usageRange",
 	/** Whether the session panel's Advanced settings are unfolded (#716): `on` or `off` (the default). */
 	controlsAdvanced: "ompw.controlsAdvanced",
+	/**
+	 * How the agent graph is looked at, one choice for every conversation's graph (v0.12.2): siblings in a grid and the focus
+	 * view with its minimap, each `on` or `off` (the default); the status filter (`all`, the default, `running` or `failed`)
+	 * and the time filter (`all`, the default, `hour` or `today`), see `shared/graph-filter.ts`.
+	 */
+	graphGrid: "ompw.agentGraph.grid",
+	graphFocus: "ompw.agentGraph.focus",
+	graphStatus: "ompw.agentGraph.status",
+	graphTime: "ompw.agentGraph.time",
 } as const;
 
 export type PrefKey = (typeof PREF)[keyof typeof PREF];
@@ -146,6 +156,10 @@ const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 	[PREF.pinnedFolded]: switchValue,
 	[PREF.usageRange]: oneOf(USAGE_RANGES),
 	[PREF.controlsAdvanced]: switchValue,
+	[PREF.graphGrid]: switchValue,
+	[PREF.graphFocus]: switchValue,
+	[PREF.graphStatus]: oneOf(STATUS_FILTERS),
+	[PREF.graphTime]: oneOf(TIME_FILTERS),
 	// A template's id, as the store bounds it (`GUIDANCE_ID_MAX`).
 	[PREF.guidanceDefault]: (v) => /^[^\s]{1,80}$/.test(v),
 };
