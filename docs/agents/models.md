@@ -59,7 +59,7 @@ Other stored values:
 | `/api/models` | GET | token | The models omp can use (`omp`'s list); `force=1` re-reads it (after a sign-in); `scope=local` lists the models of the Light mode's local server instead. |
 | `/api/favorite-models` | GET, POST | token | GET: the starred models. POST `{ model: "provider/id", on: true\|false }` stars or unstars one (max 200 chars). |
 | `/api/model-preset/session` | GET | token | Query `file`: the models remembered for a saved conversation (`{ models }`, null = the global roles). 404 for an unknown file. |
-| `/api/model-config` | GET | token | Roles, default thinking level, subagent models, presets (global and, with `cwd=<folder>`, the project's layer), and `movedAside` if omp moved an unreadable config aside. |
+| `/api/model-config` | GET | token | Roles, default thinking level, subagent models, presets (global and, with `cwd=<folder>`, the project's layer), and `movedAside`: the copy an omp made of an unreadable `config.yml` (the server's own read, or another omp's, such as a running conversation's), while it exists and no valid `config.yml` was read since. |
 | `/api/model-config/roles` | POST | token | `{ roles, defaultThinkingLevel?, agentModelOverrides? }`: write the global roles (Settings and Set as default). |
 | `/api/model-config/preset/save` | POST | token | `{ name, roles?, defaultThinkingLevel?, agentModelOverrides?, overwrite? }`: save a preset (current roles if `roles` omitted); 409 if it exists without `overwrite`. |
 | `/api/model-config/preset/edit` | POST | token | `{ name, roles, defaultThinkingLevel (null = none), agentModelOverrides }`: replace those keys of a preset, keeping the rest. |

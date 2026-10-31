@@ -276,7 +276,7 @@ test("a release outside the supported range asks first, and warns again once ins
 		await page.goto(run.url);
 		await expect(notice(page)).toHaveAttribute("data-kind", "update-outside");
 		await expect(notice(page)).toContainText(
-			"omp 19.0.0 is available, but this omp-webui is made for omp >=18.11.0 <19.0.0.",
+			"omp 19.0.0 is available, but this omp-webui is made for omp >=18.12.3 <19.0.0.",
 		);
 		await expect(page.getByTestId("omp-update")).toHaveText("Update anyway");
 
@@ -296,7 +296,7 @@ test("a release outside the supported range asks first, and warns again once ins
 		await page.getByTestId("omp-update-done-dismiss").click();
 		await expect(notice(page)).toHaveAttribute("data-kind", "compat");
 		await expect(notice(page)).toContainText(
-			"omp 19.0.0 is newer than this omp-webui is made for (>=18.11.0 <19.0.0).",
+			"omp 19.0.0 is newer than this omp-webui is made for (>=18.12.3 <19.0.0).",
 		);
 		await page.getByTestId("omp-notice-dismiss").click();
 		await expect(notice(page)).toHaveCount(0);

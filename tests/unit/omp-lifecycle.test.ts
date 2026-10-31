@@ -1323,7 +1323,7 @@ test("a release outside the supported range needs the user's say-so, however it 
 	omp.startUpdate(true);
 	await pollUntil(() => f.last().job?.state === "done", "the acknowledged update to end");
 	// After updating, the installed omp is outside the range: the page warns at once.
-	expect(f.last().compat).toEqual({ range: ">=18.11.0 <19.0.0", verdict: "newer" });
+	expect(f.last().compat).toEqual({ range: ">=18.12.3 <19.0.0", verdict: "newer" });
 	await registry.stop();
 });
 
@@ -1333,13 +1333,13 @@ test("on start, an installed omp outside the range is reported as such", async (
 	const a = newer.make();
 	await a.init();
 	expect(a.state().compat.verdict).toBe("newer");
-	const older = fixture("18.9.0");
-	placeBrewOmp(older.prefix, older.template, "18.9.0");
+	const older = fixture("18.12.2");
+	placeBrewOmp(older.prefix, older.template, "18.12.2");
 	const b = older.make();
 	await b.init();
 	expect(b.state().compat.verdict).toBe("older");
-	const ok = fixture("18.12.1");
-	placeBrewOmp(ok.prefix, ok.template, "18.12.1");
+	const ok = fixture("18.12.3");
+	placeBrewOmp(ok.prefix, ok.template, "18.12.3");
 	const c = ok.make();
 	await c.init();
 	expect(c.state().compat.verdict).toBe("supported");

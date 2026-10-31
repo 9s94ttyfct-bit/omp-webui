@@ -1,4 +1,4 @@
-import { APPROVAL_MODES, type ApprovalMode } from "@shared/approval.ts";
+import { APPROVAL_MODES, type ApprovalMode, approvalModeNeeds } from "@shared/approval.ts";
 import { parseSelector } from "@shared/model-config.ts";
 import { CircleCheck, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -35,6 +35,7 @@ export function Onboarding() {
 	const t = useT();
 	const toast = useApp((s) => s.toast);
 	const setView = useApp((s) => s.setView);
+	const ompVersion = useApp((s) => s.meta?.ompVersion);
 	const [step, setStep] = useState<Step>("account");
 	const [signedIn, setSignedIn] = useState<number | null>(null);
 	const [models, setModels] = useState<ModelInfo[] | null>(null);
@@ -82,11 +83,12 @@ export function Onboarding() {
 	}, [model, models, config]);
 
 	useEffect(() => {
+		// A saved default the installed omp is too old for (it was saved under a newer one) is not offered again.
 		void sessionActions
 			.approvalDefault()
-			.then((d) => d.mode && setApproval(d.mode))
+			.then((d) => d.mode && !approvalModeNeeds(d.mode, ompVersion) && setApproval(d.mode))
 			.catch(() => {});
-	}, []);
+	}, [ompVersion]);
 
 	const finish = async (andStart: boolean) => {
 		setBusy(true);
@@ -223,11 +225,13 @@ export function Onboarding() {
 							<legend className="sr-only">{t("omp.setupApprovalTitle")}</legend>
 							{APPROVAL_MODES.map((mode) => {
 								const on = approval === mode;
+								const needs = approvalModeNeeds(mode, ompVersion);
 								return (
 									<label
 										key={mode}
 										className={cx(
-											"flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 text-sm has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent",
+											"flex items-start gap-3 rounded-xl border px-3 py-2 text-sm has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent",
+											needs ? "cursor-not-allowed opacity-60" : "cursor-pointer",
 											on ? "border-accent bg-accent-soft" : "border-border hover:bg-hover",
 											mode === "yolo" && on && "border-warning bg-warning/10",
 										)}
@@ -238,11 +242,14 @@ export function Onboarding() {
 											className="mt-1 accent-[var(--accent)]"
 											data-testid={`setup-approval-${mode}`}
 											checked={on}
+											disabled={needs !== null}
 											onChange={() => setApproval(mode)}
 										/>
 										<span>
 											{t(APPROVAL_META[mode].label)}
-											<span className="block text-xs text-muted">{t(APPROVAL_META[mode].hint)}</span>
+											<span className="block text-xs text-muted">
+												{needs ? t("panel.approvalNeedsOmp", { version: needs }) : t(APPROVAL_META[mode].hint)}
+											</span>
 										</span>
 									</label>
 								);

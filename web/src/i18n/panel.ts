@@ -116,6 +116,7 @@ export const en = {
 	approvalWriteHint: "Reads and edits run freely. Commands, the browser and subagents wait for your approval.",
 	approvalYolo: "Auto-approve",
 	approvalYoloHint: "Everything runs without asking. Use with care.",
+	approvalNeedsOmp: "Needs omp {version} or newer. Update omp to use it.",
 	approvalApplies: "{mode}: applies from the next tool call.",
 	approvalOmp: "omp's setting: {mode}",
 	approvalFailed: "Could not change the permission mode: {error}",

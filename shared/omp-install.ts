@@ -8,12 +8,35 @@ import type { ErrorInfo } from "./error-info.ts";
 
 /**
  * The omp versions this web UI supports: `min` up to, not including, `below`. omp's RPC protocol, config keys
- * and commands are what the web UI is written against (the contract tests run against the latest omp every
- * day); a release of the next major version may change them, so the web UI warns before moving there and when
- * it starts on one. Raise `min` when the web UI starts to rely on something older releases lack, and `below`
+ * and commands are what the web UI is written against (CI runs the unit and contract tests on `min` and on the latest
+ * omp for every change, and on the latest omp every day); a release of the next major version may change them, so the
+ * web UI warns before moving there and when it starts on one. Raise `min` when the web UI starts to rely on something
+ * older releases lack (and the first `omp` of CI's test matrix with it: a unit test holds them equal), and `below`
  * once a newer major release has been checked against it.
  */
-export const OMP_COMPAT = { min: "18.11.0", below: "19.0.0" } as const;
+export const OMP_COMPAT = { min: "18.12.3", below: "19.0.0" } as const;
+
+/**
+ * The first omp release with each feature the web UI offers only where omp has it. `OMP_COMPAT.min` is at least every
+ * one of them (a unit test holds it), so a supported omp has them all; these keep an omp older than supported (which
+ * the page warns about) from being handed what it does not know.
+ */
+export const OMP_FEATURES = {
+	/** The approval mode "Ask and remember" (`tools.approvalMode: always-ask-cached`). */
+	approvalModeCached: "18.12.3",
+} as const;
+
+export type OmpFeature = keyof typeof OMP_FEATURES;
+
+/**
+ * The first omp version with `feature` when `version` is older than it; null when it has it, or when `version` is not
+ * a version (omp could not report one: nothing is held back on a guess).
+ */
+export function ompLacks(feature: OmpFeature, version: string | null | undefined): string | null {
+	const since = OMP_FEATURES[feature];
+	if (!version || !parseVersion(version)) return null;
+	return compareVersions(version, since) < 0 ? since : null;
+}
 
 /** The range as a person reads it. */
 export const OMP_COMPAT_RANGE = `>=${OMP_COMPAT.min} <${OMP_COMPAT.below}`;

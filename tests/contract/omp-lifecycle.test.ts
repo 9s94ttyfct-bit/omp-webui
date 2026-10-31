@@ -142,7 +142,7 @@ let updatingWorld: World;
 let registry: FakeRegistry;
 beforeAll(async () => {
 	if (skip) return;
-	updatingWorld = world({ version: "18.12.0", installed: true });
+	updatingWorld = world({ version: "18.12.3", installed: true });
 	updatingWorld.state.setUpdateTo("19.0.0");
 	registry = await startFakeRegistry("19.0.0");
 	registries.push(registry);
@@ -163,7 +163,7 @@ test.skipIf(skip)(
 		const checked = (await (await post(updating, "/api/omp/check")).json()) as OmpSnapshot;
 		expect(checked.state.release).toMatchObject({ latest: "19.0.0", newer: true, compat: "newer", source: "npm" });
 		expect(registry.hits).toEqual(["/@oh-my-pi%2fpi-coding-agent/latest"]);
-		expect(checked.state.compat).toEqual({ range: ">=18.11.0 <19.0.0", verdict: "supported" });
+		expect(checked.state.compat).toEqual({ range: ">=18.12.3 <19.0.0", verdict: "supported" });
 
 		const refused = await post(updating, "/api/omp/update", {});
 		expect(refused.status).toBe(409);

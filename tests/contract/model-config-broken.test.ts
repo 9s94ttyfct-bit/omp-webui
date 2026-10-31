@@ -51,3 +51,36 @@ test("an unreadable config.yml is reported by omp's message with the backup it m
 	expect(later.status).toBe(200);
 	expect(later.body.movedAside).toBeUndefined();
 }, 120_000);
+
+test("a config.yml another omp moved aside is reported too, until a valid one is read again (#15)", async () => {
+	const config = join(s.agentDir, "config.yml");
+	const valid = "modelRoles:\n  default: anthropic/claude-haiku-5-5\n";
+	writeFileSync(config, valid);
+	const before = await get();
+	expect(before.status).toBe(200);
+	expect(before.body.movedAside).toBeUndefined();
+
+	// Another omp (a conversation's, one in a terminal) reads the broken file first and moves it aside: the server's own
+	// read never fails, so no message of omp's tells it where the file went.
+	writeFileSync(config, "modelRoles:\n  default: a/b\n bad: [\n  x: y: z\n");
+	const other = Bun.spawnSync([Bun.which("omp") as string, "config", "list", "--json"], {
+		env: { ...process.env, HOME: s.home, PI_CODING_AGENT_DIR: s.agentDir },
+		cwd: s.work,
+	});
+	expect(other.stderr.toString()).toContain("moved to");
+	expect(existsSync(config)).toBe(false);
+	expect(backups()).toHaveLength(1);
+
+	const after = await get();
+	expect(after.status).toBe(200);
+	expect(after.body.roles).toEqual({});
+	expect(after.body.movedAside).toEndWith(`/${backups()[0]}`);
+	expect(existsSync(after.body.movedAside as string)).toBe(true);
+
+	// The person writes a valid config.yml and keeps the copy: what is shown is theirs again, and nothing is said.
+	writeFileSync(config, valid);
+	const restored = await get();
+	expect(restored.status).toBe(200);
+	expect(restored.body.movedAside).toBeUndefined();
+	for (const f of backups()) rmSync(join(s.agentDir, f));
+}, 120_000);

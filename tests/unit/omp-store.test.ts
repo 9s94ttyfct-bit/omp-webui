@@ -43,7 +43,7 @@ const state = (over: Partial<OmpState> = {}): OmpState => ({
 	searched: [],
 	install: null,
 	options: [],
-	compat: { range: ">=18.11.0 <19.0.0", verdict: "supported" },
+	compat: { range: ">=18.12.3 <19.0.0", verdict: "supported" },
 	release: null,
 	releaseError: null,
 	checking: false,

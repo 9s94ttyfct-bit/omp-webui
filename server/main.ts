@@ -4,7 +4,7 @@ import { closeSync, existsSync, openSync, readSync, realpathSync, statSync } fro
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import pkg from "../package.json";
-import { isApprovalMode } from "../shared/approval.ts";
+import { type ApprovalMode, approvalModeNeeds, isApprovalMode } from "../shared/approval.ts";
 import { factsOf, noticeLang, working } from "../shared/attention.ts";
 import { CI_SCOPES } from "../shared/ci.ts";
 import { compactAtOf } from "../shared/compact-at.ts";
@@ -476,6 +476,15 @@ const host = new HostSampler({
 	}),
 });
 let version = omp.ompVersion ?? "unknown";
+
+/**
+ * Why a permission mode is not handed to the omp that runs: it is older than the release that brought the mode in
+ * (`approvalModeNeeds`), so it would not run in it while the page showed it (A-001). Null: it may be.
+ */
+function modeTooNew(mode: ApprovalMode): string | null {
+	const needs = approvalModeNeeds(mode, version);
+	return needs ? `The permission mode ${mode} needs omp ${needs} or newer; this omp is ${version}` : null;
+}
 
 // ------------------------------------------------------------------ the app's own updates (#571)
 
@@ -1510,6 +1519,8 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			if (req.method === "POST") {
 				const body = (await req.json()) as { mode?: unknown };
 				if (body.mode !== null && !isApprovalMode(body.mode)) return fail("Bad approval mode");
+				const refused = body.mode === null ? null : modeTooNew(body.mode);
+				if (refused) return fail(refused);
 				approval.setDefault(body.mode);
 			}
 			return json({ mode: approval.defaultMode(), omp: await approval.configured() });
@@ -2042,6 +2053,10 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 	switch (msg.t) {
 		case "open": {
 			let target = msg.target;
+			if (target.kind === "new" && isApprovalMode(target.approvalMode)) {
+				const refused = modeTooNew(target.approvalMode);
+				if (refused) return reply({ t: "reply", req: msg.req, ok: false, error: refused });
+			}
 			if (target.kind === "new" && target.guard !== undefined) {
 				// A conversation's own guard settings are changed on the computer omp-webui runs on, like the global ones (see
 				// `isLocalOnlyRoute`): a page that is not this computer's starts it under the global settings.
@@ -2211,6 +2226,8 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 			const live = pool.get(msg.liveId);
 			if (!live) return reply({ t: "reply", req: msg.req, ok: false, error: "Live session not found" });
 			if (!isApprovalMode(msg.mode)) return reply({ t: "reply", req: msg.req, ok: false, error: "Bad approval mode" });
+			const refused = modeTooNew(msg.mode);
+			if (refused) return reply({ t: "reply", req: msg.req, ok: false, error: refused });
 			touch(live);
 			await live.setApprovalMode(msg.mode);
 			return reply({ t: "reply", req: msg.req, ok: true, data: live.info });

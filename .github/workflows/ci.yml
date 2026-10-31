@@ -7,15 +7,23 @@ name: CI
 # themselves here; `bun scripts/release-local.ts vX.Y.Z` runs them (`test:live`) on the maintainer's Mac, and only for a
 # commit this workflow passed on. A newer push to the same branch or pull request cancels the run it supersedes.
 #
+# omp: unit + contract run on two omp releases, the oldest the web UI supports (OMP_COMPAT.min in shared/omp-install.ts)
+# and the latest; the end-to-end suite, whose omp is scripted for nearly every spec, on the latest only. Every day the
+# unit + contract tests also run on the latest omp by themselves (`schedule`), so an omp release that breaks the web UI
+# is found the day it is out, not on the next push.
+#
 # The test jobs take an `os` from their matrix, so another system is one more entry there.
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * *"
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # The daily run has a group of its own: a push to main does not cancel it, nor it a push's run.
+  group: ci-${{ github.event.pull_request.number || github.ref }}${{ github.event_name == 'schedule' && '-daily' || '' }}
   cancel-in-progress: true
 
 permissions:
@@ -70,6 +78,8 @@ jobs:
 
   checks:
     name: typecheck, lint, privacy, build, parity
+    # What these check is the code, which the daily run does not change.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -112,7 +122,7 @@ jobs:
       - run: bun run parity
 
   tests:
-    name: unit + contract ${{ matrix.shard }}/3 (${{ matrix.os }})
+    name: unit + contract ${{ matrix.shard }}/3 (omp ${{ matrix.omp }}, ${{ matrix.os }})
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
@@ -121,6 +131,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
+        # The first is OMP_COMPAT.min (tests/unit/omp-floor.test.ts holds them equal): the oldest omp the web UI says it
+        # supports is one it is tested on. The daily run is for what users update to: the latest only.
+        omp: ${{ fromJSON(github.event_name == 'schedule' && '["latest"]' || '["18.12.3", "latest"]') }}
         shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
@@ -130,10 +143,16 @@ jobs:
       - run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      - name: Install latest omp
+      - name: Install omp ${{ matrix.omp }}
         run: |
-          bun install -g @oh-my-pi/pi-coding-agent@latest
+          bun install -g "@oh-my-pi/pi-coding-agent@${{ matrix.omp }}"
           echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+      # Fails the job early when the release asked for is not the omp that runs.
+      - env:
+          WANT: ${{ matrix.omp }}
+        run: |
+          omp --version
+          [ "$WANT" = latest ] || omp --version | grep -qF "$WANT"
       # What the runner has: the timings and the shard counts are only as good as it is like the last one.
       - run: nproc && free -m
       # `bun run test:release`'s files, a third of them by the time each took (.bun-test-timings.json).
@@ -144,7 +163,7 @@ jobs:
   e2e:
     name: e2e ${{ matrix.shard }}/16 (${{ matrix.os }})
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' && github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     # Each worker owns its server; a 4-vCPU runner has one (playwright.config.ts). Sixteen runners each take a sixteenth of
@@ -203,7 +222,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  # One check that says whether the run passed: every job did, or was not needed (documentation only).
+  # One check that says whether the run passed: every job did, or was not needed (documentation only; the daily run needs
+  # no checks or e2e). A matrix job's result is `failure` when any of its legs failed (any omp, any shard), so each counts.
   ci-ok:
     name: CI ok
     if: always()

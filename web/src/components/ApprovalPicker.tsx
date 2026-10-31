@@ -1,5 +1,5 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
-import { APPROVAL_MODES, type ApprovalMode } from "@shared/approval.ts";
+import { APPROVAL_MODES, type ApprovalMode, approvalModeNeeds } from "@shared/approval.ts";
 import {
 	Check,
 	ChevronDown,
@@ -33,7 +33,7 @@ export const APPROVAL_META: Record<ApprovalMode, { label: MessageKey; hint: Mess
  * keeps the choice for conversations it has yet to start (New chat). Without a running omp (`liveId` null: a
  * saved conversation) `saved` is the mode the conversation comes back in, and choosing one starts omp (`start`)
  * and sets it. A mode of omp's own that the page cannot set (a newer omp's) is shown as omp names it, and picking
- * one of ours replaces it.
+ * one of ours replaces it. A mode the running omp is too old for is shown disabled, with the version it needs.
  */
 export function ApprovalPicker({
 	liveId,
@@ -50,6 +50,7 @@ export function ApprovalPicker({
 	const shortcutHint = useShortcutLabel("approval");
 	const toast = useApp((s) => s.toast);
 	const info = useApp((s) => (liveId ? s.lives[liveId]?.info : undefined));
+	const ompVersion = useApp((s) => s.meta?.ompVersion);
 	const current = info?.approvalMode ?? saved?.mode ?? undefined;
 	const ompOwn = info?.approvalOmp ?? saved?.omp ?? undefined;
 	const working = useApp((s) => {
@@ -87,7 +88,7 @@ export function ApprovalPicker({
 	const risky = shown === "yolo";
 
 	const choose = async (next: ApprovalMode) => {
-		if (next === shown) return;
+		if (next === shown || approvalModeNeeds(next, ompVersion)) return;
 		setAsked(next);
 		try {
 			const id = liveId ?? (await start?.());
@@ -146,13 +147,15 @@ export function ApprovalPicker({
 					<Menu.RadioGroup value={shown} onValueChange={(v) => void choose(v as ApprovalMode)}>
 						{APPROVAL_MODES.map((mode) => {
 							const meta = APPROVAL_META[mode];
+							const needs = approvalModeNeeds(mode, ompVersion);
 							return (
 								<Menu.RadioItem
 									key={mode}
 									value={mode}
+									disabled={needs !== null}
 									data-testid={`approval-${mode}`}
 									className={cx(
-										"flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-hover",
+										"flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-hover data-[disabled]:cursor-not-allowed data-[disabled]:opacity-60",
 										mode === "yolo" && "text-warning",
 									)}
 								>
@@ -160,7 +163,7 @@ export function ApprovalPicker({
 									<span className="min-w-0 flex-1">
 										<span className="block font-medium">{t(meta.label)}</span>
 										<span className={cx("block text-xs", mode === "yolo" ? "text-warning" : "text-muted")}>
-											{t(meta.hint)}
+											{needs ? t("panel.approvalNeedsOmp", { version: needs }) : t(meta.hint)}
 										</span>
 									</span>
 									<Menu.ItemIndicator className="mt-0.5">

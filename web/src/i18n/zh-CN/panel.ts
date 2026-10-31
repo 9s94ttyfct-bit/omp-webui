@@ -425,6 +425,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	approvalWriteHint: "读取和编辑直接运行；命令、浏览器和子代理需要你批准。",
 	approvalYolo: "自动批准",
 	approvalYoloHint: "所有操作都不再询问，请谨慎使用。",
+	approvalNeedsOmp: "需要 omp {version} 或更新版本。更新 omp 后即可使用。",
 	approvalApplies: "{mode}：从下一次工具调用起生效。",
 	approvalOmp: "omp 的设置：{mode}",
 	approvalFailed: "无法切换权限模式：{error}",

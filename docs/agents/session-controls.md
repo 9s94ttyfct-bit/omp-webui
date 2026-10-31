@@ -31,7 +31,7 @@ A paused conversation's panel shows the settings omp had when paused; changing o
 What omp asks about before running a tool (omp's `tools.approvalMode`), switched per conversation from the picker below the message box (or ⌘⇧A / Ctrl+Shift+A); it applies from the next tool call and is kept when the conversation is resumed:
 
 - **Ask every time** (`always-ask`): reads run freely; every edit and command waits for approval.
-- **Ask and remember** (`always-ask-cached`): like Ask every time, and file reads wait too; an approved file or folder can be remembered for this conversation or for good.
+- **Ask and remember** (`always-ask-cached`): like Ask every time, and file reads wait too; an approved file or folder can be remembered for this conversation or for good. It needs omp 18.12.3 or newer: with an older omp it is shown disabled ("Needs omp 18.12.3 or newer") here, in Settings and in the first-time setup, and the server refuses it.
 - **Ask for commands** (`write`): reads and edits run freely; commands, the browser and subagents wait for approval.
 - **Auto-approve** (`yolo`): everything runs without asking (shown in the warning colour).
 

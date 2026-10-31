@@ -1,5 +1,5 @@
-import { existsSync, statSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { isRecord } from "../../shared/guards.ts";
 import {
 	activePreset,
@@ -68,6 +68,41 @@ export function ompFailure(output: string): string {
  * its defaults, so what the page shows is not what the person had: told with every answer while the copy exists.
  */
 let movedAside: string | null = null;
+
+/**
+ * When a read of the global settings last found a valid `config.yml`: the read worked and the file was still there
+ * after it. 0: none has yet. A copy moved aside after it (`movedByAnother`) is one the person has not dealt with.
+ */
+let validAt = 0;
+
+/** The time a `config.yml.broken-<ms>-<pid>-<random>` copy was made, as omp names it; null for any other name. */
+function brokenCopyTime(name: string): number | null {
+	const m = /^config\.yml\.broken-(\d+)(?:-|$)/.exec(name);
+	return m ? Number(m[1]) : null;
+}
+
+/**
+ * The copy of `config.yml` that some other omp moved aside, when the server's own read did not (#15). Every omp that
+ * runs reads `config.yml` again when it changes, and the first to find it unreadable renames it to
+ * `config.yml.broken-<ms>-<pid>-<random>`: a conversation's omp, or one in a terminal, often before the server reads
+ * it, and the server's read then works, on omp's defaults, with no message saying where the file went. So the newest
+ * such copy in the agent directory made after the last read that found a valid `config.yml` is the one.
+ */
+function movedByAnother(agentDir: string): string | null {
+	let names: string[];
+	try {
+		names = readdirSync(agentDir);
+	} catch {
+		return null;
+	}
+	let newest: { path: string; at: number } | null = null;
+	for (const name of names) {
+		const at = brokenCopyTime(name);
+		if (at === null || at <= validAt || (newest && newest.at >= at)) continue;
+		newest = { path: join(agentDir, name), at };
+	}
+	return newest?.path ?? null;
+}
 
 /**
  * What makes `omp config` read the configuration of a conversation's process rather than the server's own: omp's global
@@ -235,10 +270,14 @@ export function queued<T>(fn: () => Promise<T>): Promise<T> {
 const waitingReads = new Map<string, Promise<ModelConfig>>();
 
 async function load(cfg: Config, cwd: string): Promise<ModelConfig> {
+	const began = Date.now();
 	const [global, project] = await Promise.all([
 		readView(cfg.ompBin, cfg.dataDir),
 		cwd ? readView(cfg.ompBin, cwd) : Promise.resolve(null),
 	]);
+	// The read worked: a config.yml that is still there was a valid one (an unreadable one fails the read, or is moved
+	// aside by an omp during it, and is gone).
+	if (existsSync(join(cfg.agentDir, "config.yml"))) validAt = began;
 	return project ? describeConfig(project, global) : describeConfig(global);
 }
 
@@ -642,9 +681,13 @@ const json = (data: unknown, status = 200) =>
 	new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
 const fail = (error: string, status: number) => json({ error }, status);
 
-/** `config` as the page is told it: with the copy of an unreadable config.yml, while there is one. */
-function answer(config: ModelConfig): ModelConfig {
-	return movedAside && existsSync(movedAside) ? { ...config, movedAside } : config;
+/**
+ * `config` as the page is told it: with the copy of an unreadable config.yml, while there is one. The server's own read
+ * names it when that read failed; otherwise it is the copy another omp made (`movedByAnother`).
+ */
+function answer(config: ModelConfig, cfg: Config): ModelConfig {
+	const moved = movedAside && existsSync(movedAside) ? movedAside : movedByAnother(cfg.agentDir);
+	return moved ? { ...config, movedAside: moved } : config;
 }
 
 /** `GET /api/model-config[?cwd=<folder>]`, and the `POST /api/model-config/<action>` writes in {@link ACTIONS}. */
@@ -653,13 +696,13 @@ export async function handleModelConfig(req: Request, url: URL, cfg: Config): Pr
 		const action = url.pathname.slice("/api/model-config".length);
 		if (action === "") {
 			if (req.method !== "GET") return fail("GET required", 405);
-			return json(answer(await readConfig(cfg, requireFolder(url.searchParams.get("cwd")))));
+			return json(answer(await readConfig(cfg, requireFolder(url.searchParams.get("cwd"))), cfg));
 		}
 		if (!Object.hasOwn(ACTIONS, action)) return fail("Not found", 404);
 		if (req.method !== "POST") return fail("POST required", 405);
 		const body: unknown = await req.json().catch(() => null);
 		if (!isRecord(body)) return fail("The body must be a JSON object", 400);
-		return json(answer(await ACTIONS[action](cfg, body)));
+		return json(answer(await ACTIONS[action](cfg, body), cfg));
 	} catch (e) {
 		if (e instanceof ConfigError) return fail(e.message, e.status);
 		throw e;
