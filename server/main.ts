@@ -380,7 +380,13 @@ pool.compactStep = new CompactStepService(cfg.dataDir);
 pool.docsTool = new DocsToolService(cfg.dataDir);
 /** The questions being answered now: an answer is sent once, whichever page sent it (two pages cannot both answer one). */
 const answering = new Set<string>();
-const actions = new SessionActions(cfg, pool, undefined, (file) => sessionRoots.flagsFor(file));
+const actions = new SessionActions(
+	cfg,
+	pool,
+	undefined,
+	(file) => sessionRoots.flagsFor(file),
+	() => version,
+);
 const pins = new SessionPins(cfg.agentDir, cfg.dataDir, store, actions);
 const favoriteModels = new ListPref(cfg.dataDir, "favorite-models");
 const archived = new ListPref(cfg.dataDir, "archived");
@@ -742,7 +748,7 @@ let migrating: Promise<MigrateService> | null = null;
 function migrateService(): Promise<MigrateService> {
 	migrating ??= (async () => {
 		const { MigrateService } = await import("./migrate/service.ts");
-		const { leaseHolders } = await import("./sessions/lease.ts");
+		const { leaseHeldElsewhere } = await import("./sessions/lease.ts");
 		return new MigrateService({
 			locations: () => ({
 				home: homedir(),
@@ -759,7 +765,8 @@ function migrateService(): Promise<MigrateService> {
 			hooks: {
 				busy: () => pool.busyCount(),
 				endIdle: () => pool.endAllIdle(),
-				openElsewhere: async (id) => (await leaseHolders(id)).length > 0,
+				// The conversations' own processes have all ended (`endIdle`, and none is busy): any holder is another omp.
+				openElsewhere: async (id) => (await leaseHeldElsewhere(id, null, { bin: cfg.ompBin, version })) !== null,
 			},
 			writing(on) {
 				importWriting = on;

@@ -6,7 +6,7 @@ import { hasCommand } from "../omp/loaded.ts";
 import { availableModels } from "../omp/models.ts";
 import { RpcClient } from "../omp/rpc-client.ts";
 import { withTimeout } from "../omp/run.ts";
-import { leaseHolders } from "./lease.ts";
+import { leaseHeldElsewhere } from "./lease.ts";
 
 /** The conversation is working, waiting for an answer or paused: omp would refuse to delete it, and ending it to try would cut it off. */
 export class SessionBusyError extends Error {}
@@ -48,6 +48,8 @@ export class SessionActions {
 		 * own profile (its auth, settings and images are there), a `--session-dir` one with the directory it is kept in.
 		 */
 		private readonly flagsFor: (file: string) => string[] = () => [],
+		/** The version of the omp that runs (`cfg.ompBin`), which decides how its session leases are read (see `lease.ts`). */
+		private readonly ompVersion: () => string | null = () => null,
 	) {}
 
 	/**
@@ -162,10 +164,10 @@ export class SessionActions {
 	private async refuseWhenHeldElsewhere(target: SessionTarget, what: string): Promise<void> {
 		const live = this.pool.list().find((l) => !l.exited && l.sessionFile === target.file);
 		const ours = live ? (this.pool.get(live.liveId)?.client.pid ?? null) : null;
-		const others = (await leaseHolders(target.id)).filter((pid) => pid !== ours);
-		if (others.length)
+		const elsewhere = await leaseHeldElsewhere(target.id, ours, { bin: this.cfg.ompBin, version: this.ompVersion() });
+		if (elsewhere)
 			throw new SessionOpenElsewhereError(
-				`This conversation is open for writing in another omp process (${others.join(", ")}), most likely a terminal: ${what}`,
+				`This conversation is open for writing in another omp process${elsewhere.pids.length ? ` (${elsewhere.pids.join(", ")})` : ""}, most likely a terminal: ${what}`,
 			);
 	}
 
