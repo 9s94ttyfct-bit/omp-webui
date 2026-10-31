@@ -7,7 +7,8 @@ import { expect, test } from "./fixtures.ts";
  * A link of a reply opens in a window of its own, so it must name somewhere else. A relative path, the empty address
  * react-markdown leaves for a scheme it refuses, and a footnote's `#anchor` named this page: a click opened a second
  * copy of the app in a browser (and nothing in the macOS app, which hands only web and mail addresses to the system).
- * Those are text now, and a footnote reference scrolls within its message (no model call).
+ * Those are text now, and a footnote reference scrolls within its message (no model call). A path to a Markdown file of
+ * the folder is a button that opens it in the Markdown editor over this page (v0.13.0), still with no address.
  */
 
 const ts = (min: number) => new Date(Date.UTC(2026, 0, 15, 10, min)).toISOString();
@@ -87,9 +88,20 @@ test("only web and mail addresses are links; paths and refused schemes are text 
 	await expect(reply.getByRole("link", { name: "web page" })).toHaveAttribute("target", "_blank");
 	await expect(reply.getByRole("link", { name: "web page" })).toHaveAttribute("rel", /noopener/);
 
+	// A Markdown file of the folder opens in the Markdown editor over this page (v0.13.0): a button, still no address.
+	const readme = reply.getByTestId("md-open-link");
+	await expect(readme).toHaveText("the README");
+	await expect(readme).toHaveAttribute("data-path", "docs/README.md");
+	await readme.click();
+	const editor = page.getByTestId("md-editor");
+	await expect(editor).toHaveAttribute("data-path", "docs/README.md");
+	// The fixture folder has no such file: the editor says so, and Close closes it.
+	await expect(editor.getByTestId("md-open-error")).toBeVisible();
+	await page.getByTestId("md-close").click();
+	await expect(editor).toHaveCount(0);
+
 	// The rest read as text: a path shows as a hint, a refused scheme (which react-markdown leaves with no address) as plain words; clicking opens nothing.
 	for (const [text, hint] of [
-		["the README", "docs/README.md"],
 		["the handler", "/tmp/project/src/a.ts#L10"],
 		["a sibling", "./b.ts"],
 	] as const) {

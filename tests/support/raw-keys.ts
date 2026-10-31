@@ -41,6 +41,7 @@ import { en as questions } from "../../web/src/i18n/questions.ts";
 import { en as quickPrompts } from "../../web/src/i18n/quick-prompts.ts";
 import { en as remote } from "../../web/src/i18n/remote.ts";
 import { en as remoteLater } from "../../web/src/i18n/remote-later.ts";
+import { en as settingsHelp } from "../../web/src/i18n/settings-help.ts";
 import { en as shell } from "../../web/src/i18n/shell.ts";
 import { en as update } from "../../web/src/i18n/update.ts";
 
@@ -77,6 +78,7 @@ export const NAMESPACES: Record<string, object[]> = {
 	projectGroups: [projectGroups],
 	macs: [macs],
 	push: [push],
+	settingsHelp: [settingsHelp],
 };
 
 const KEYS = new Set<string>();
