@@ -45,7 +45,7 @@ import { guardAgainstStrayErrors } from "./crash-guard.ts";
 import { contentSecurityPolicy, indexScriptHashes } from "./csp.ts";
 import { FamilyCache } from "./family.ts";
 import { osDescription, osUser, RepoVisibility } from "./feedback.ts";
-import { LazyFolder } from "./folder-lazy.ts";
+import { LazyFolder, reserveFromEnv } from "./folder-lazy.ts";
 import type { GhIssues } from "./gh-issues.ts";
 import type { GhRuns } from "./gh-runs.ts";
 import { LazyGit } from "./git-lazy.ts";
@@ -427,7 +427,10 @@ const runsReader = (): Promise<GhRuns> =>
 			throw error;
 		},
 	));
-const folder = new LazyFolder(() => ({ logFile: join(cfg.dataDir, "transfers.jsonl") }));
+const folder = new LazyFolder(() => ({
+	logFile: join(cfg.dataDir, "transfers.jsonl"),
+	limits: reserveFromEnv(process.env.OMP_WEBUI_TRANSFER_RESERVE_BYTES),
+}));
 /** The requests of a page on this computer that no tunnel carried (see `isThisComputer`), noted as they come in. */
 const onThisComputer = new WeakSet<Request>();
 const repoVisibility = new RepoVisibility(process.env.OMP_WEBUI_GITHUB_API);

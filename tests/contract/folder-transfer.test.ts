@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	realpathSync,
 	rmSync,
@@ -474,6 +475,29 @@ describe("an upload", () => {
 		});
 		expect(() => readFileSync(join(proj, "given-up.bin"))).toThrow();
 	});
+
+	test("a disk with less free than the reserve is 507 before anything is written (the test servers keep none: #8)", async () => {
+		// The reserve set past what any disk holds: the server's own check of its disk, with nothing stood in for it.
+		const full = await startTestServer(0, { OMP_WEBUI_TRANSFER_RESERVE_BYTES: String(2 ** 53) }, { login: false });
+		try {
+			const dir = join(realpathSync(full.work), "proj");
+			mkdirSync(dir, { recursive: true });
+			const session = writeChatSession(full.agentDir, {
+				n: 95,
+				title: "Full disk",
+				cwd: dir,
+				turns: [{ prompt: "hi", reply: "ok" }],
+			});
+			const r = await fetch(
+				`${full.url}/api/folder/upload?${new URLSearchParams({ file: session, name: "a.txt", size: "1" })}`,
+				{ method: "POST", headers: { "x-omp-webui-token": full.accessToken, [CSRF_HEADER]: "1" }, body: "x" },
+			);
+			expect(await failure(r)).toMatchObject({ status: 507, code: "diskFull" });
+			expect(readdirSync(dir)).toEqual([]);
+		} finally {
+			await full.stop();
+		}
+	}, 60_000);
 });
 
 describe("what this computer lets another page do", () => {

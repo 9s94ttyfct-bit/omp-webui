@@ -27,9 +27,17 @@ import { connect, request } from "../support/ws.ts";
  */
 
 const NESTED = "You are operating on a piece of work assigned to you by the main agent";
-/** A turn is over within this long when omp does its part (it takes milliseconds); one the server had to end takes the grace and the signals. */
+/**
+ * A turn is over within this long when omp does its part (it takes milliseconds); one the server had to end takes the grace and
+ * the signals. These are the product's bounds. What a test allows is the bound plus the time omp took to start on this run
+ * (`Chat.startMs`, from the open to omp's ready): a measure of how loaded the machine is. Measured under CPU load (#10: 10 and
+ * 30 busy loops on 12 cores, load up to 228), Stop to idle is the same on v0.12.2 and v0.13.0, (c) about 1.05 s and (d) about
+ * 30 ms in each, with no slower path on the later one; omp's start meanwhile took up to 7.3 s.
+ */
 const ENDS_BY_ITSELF_MS = STOP_GRACE_MS;
 const ENDED_BY_SERVER_MS = STOP_GRACE_MS + 6000;
+/** `bound`, plus what this run took to start omp. */
+const allowed = (chat: Chat, bound: number): number => bound + chat.startMs;
 
 type Mode = "ok" | "main-limit" | "hold" | "tool" | "tool-trap" | "bg-job" | "sub-limit";
 let mode: Mode = "ok";
@@ -161,6 +169,8 @@ interface Watched {
 interface Chat {
 	ws: WebSocket;
 	info: LiveInfo;
+	/** How long omp took to start for this conversation: from the open to the server's answer that it is ready. */
+	startMs: number;
 	frames: Watched;
 	/** The `live_exit` message of this process, when it comes. */
 	exit: Promise<ServerMsg>;
@@ -179,7 +189,9 @@ interface Chat {
 
 async function conversation(): Promise<Chat> {
 	const ws = await connect(server);
+	const opened = Date.now();
 	const info = await request<LiveInfo>(ws, { t: "open", target: { kind: "new", cwd: server.work } });
+	const startMs = Date.now() - opened;
 	const frames = watchFrames(ws, info.liveId);
 	const exit = messageWhere(ws, (m) => m.t === "live_exit" && m.liveId === info.liveId);
 	const rpc = <T>(command: Record<string, unknown>, id = info.liveId) =>
@@ -189,6 +201,7 @@ async function conversation(): Promise<Chat> {
 	return {
 		ws,
 		info,
+		startMs,
 		frames,
 		exit,
 		rpc,
@@ -248,18 +261,22 @@ async function stuck(how: Mode, ready: (f: Frame) => boolean): Promise<{ chat: C
  * session is settled with a frame of its own, behind the answer), and the next message is answered by it.
  */
 async function expectIdleAndUsable(chat: Chat, ms: number): Promise<void> {
-	expect(ms).toBeLessThan(ENDS_BY_ITSELF_MS);
+	expect(ms).toBeLessThan(allowed(chat, ENDS_BY_ITSELF_MS));
 	const over = await chat.listing();
 	expect(over).toMatchObject({ exited: false, streaming: false });
 	expect(over?.retry).toBeUndefined();
-	await pollUntil(async () => (await chat.listing())?.busy === false, "the conversation to be idle", ENDS_BY_ITSELF_MS);
+	await pollUntil(
+		async () => (await chat.listing())?.busy === false,
+		"the conversation to be idle",
+		allowed(chat, ENDS_BY_ITSELF_MS),
+	);
 	mode = "ok";
 	await chat.say("NEXT MARK-NEXT");
 }
 
 /** omp's process was ended by the server: the page was told why, nothing is left, and the file reopens with what was said before. */
 async function expectEndedAndReopens(chat: Chat, file: string, ms: number, pid: number): Promise<void> {
-	expect(ms).toBeLessThan(ENDED_BY_SERVER_MS);
+	expect(ms).toBeLessThan(allowed(chat, ENDED_BY_SERVER_MS));
 	expect(await chat.exit).toMatchObject({ t: "live_exit", by: "server", reason: "stopped" });
 	expect(processExists(pid)).toBe(false);
 	// The conversation is no longer listed as running: nothing holds it busy.
@@ -373,7 +390,7 @@ test("(d) a tool that ignores TERM, INT and HUP: Stop ends the turn within the b
 		expect(tool).not.toBe(omp);
 		expect(processExists(tool)).toBe(true);
 		const { ms } = await chat.stop(3);
-		expect(ms).toBeLessThan(ENDED_BY_SERVER_MS);
+		expect(ms).toBeLessThan(allowed(chat, ENDED_BY_SERVER_MS));
 		// omp ended the turn, or the server ended omp: no stream and no retry at the answer.
 		const left = await chat.listing();
 		expect(left === undefined || (left.streaming === false && left.retry === undefined)).toBe(true);
@@ -385,7 +402,7 @@ test("(d) a tool that ignores TERM, INT and HUP: Stop ends the turn within the b
 				return now === undefined || now.busy === false;
 			},
 			"the conversation to be idle",
-			ENDS_BY_ITSELF_MS,
+			allowed(chat, ENDS_BY_ITSELF_MS),
 		);
 		await pollUntil(() => !processExists(tool), "omp to end the stuck tool", 10_000);
 	} finally {
@@ -441,7 +458,7 @@ test("(e) a background job of the session that is not a subagent is left running
 			return l?.streaming === false && l.busy === true;
 		}, "the turn to end with the job still running");
 		const { ms, answers } = await chat.stop(3);
-		expect(ms).toBeLessThan(ENDS_BY_ITSELF_MS);
+		expect(ms).toBeLessThan(allowed(chat, ENDS_BY_ITSELF_MS));
 		expect(answers.some((a) => a.ended !== undefined)).toBe(false);
 		// Stop is for the turn: omp keeps its job, and omp is not ended for it.
 		expect((await chat.listing())?.pid).toBe(omp);

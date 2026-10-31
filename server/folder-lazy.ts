@@ -1,6 +1,6 @@
 import type { FolderContext, FolderWatches, handleFolder } from "./folder-routes.ts";
 import type { TransferOptions, TransferService } from "./folder-transfer.ts";
-import type { TransferContext, TransferEnv } from "./transfer-core.ts";
+import type { Limits, TransferContext, TransferEnv } from "./transfer-core.ts";
 
 /**
  * The Files tab's server side (`folder-routes.ts`, `folder.ts`), loaded when a page first uses it.
@@ -16,6 +16,16 @@ import type { TransferContext, TransferEnv } from "./transfer-core.ts";
 interface Loaded {
 	handleFolder: typeof handleFolder;
 	watches: FolderWatches;
+}
+
+/**
+ * The free space an upload leaves, from `OMP_WEBUI_TRANSFER_RESERVE_BYTES` (a whole number of bytes): it then stands in place of
+ * the larger of 1 GiB and 5 % of the disk (`DEFAULT_LIMITS`). For tests (#8): the test server sets 0, so that an upload does not
+ * depend on how full the disk it runs on is, and a test of a full disk sets more than the disk holds. Anything else: no override.
+ */
+export function reserveFromEnv(value: string | undefined): Partial<Limits> {
+	if (value === undefined || !/^\d+$/.test(value)) return {};
+	return { reserveBytes: Number(value), reservePercent: 0 };
 }
 
 export class LazyFolder {

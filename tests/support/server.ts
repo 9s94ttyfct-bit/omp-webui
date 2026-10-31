@@ -8,17 +8,21 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { FIXTURE_CWD, type SeededFixtures, seedFixtures } from "./fixtures.ts";
 import { hostEnv, isolatedEnv } from "./omp-env.ts";
 import { removeRelayDir } from "./relay-dirs.ts";
+import { trackServer } from "./test-servers.ts";
 import { serverTmp } from "./tmp.ts";
 
 export interface TestServer {
 	/** Everything the current server has printed so far (after a `restart`: since it). */
 	output(): string;
 	/**
-	 * What the servers of this world wrote to stderr, every start of them (#774). Not shown as it comes: a test that means
-	 * to hit an error (a port taken, a stray rejection) would look like a failure. The e2e fixture shows it for a test that
-	 * failed; a server that exits on its own prints it; `OMPW_SERVER_STDERR=1` shows it as it comes.
+	 * What the servers of this world wrote to stderr, every start of them (#774), and what the helper said of their life (one
+	 * that exited by itself, and its start again). Not shown as it comes: a test that means to hit an error (a port taken, a
+	 * stray rejection) would look like a failure. The e2e fixture shows it for a test that failed; a server that exits on its
+	 * own prints it; `OMPW_SERVER_STDERR=1` shows it as it comes.
 	 */
 	errors(): string;
+	/** The current server's process id. */
+	readonly pid: number | undefined;
 	/** Where the server listens now: another one after `restart(port)`. */
 	readonly url: string;
 	root: string;
@@ -32,6 +36,12 @@ export interface TestServer {
 	accessToken: string;
 	fixtures: SeededFixtures;
 	stop(): Promise<void>;
+	/**
+	 * Settles once the server answers: at once, or when the one started again after the last exited by itself is up (#3:
+	 * Bun's test runner can end it). Rejects with the reason when it could not be started again. Every test waits for it
+	 * first (`tests/support/preload.ts`).
+	 */
+	alive(): Promise<void>;
 	/**
 	 * Stop and start on the same data dir and token; omit `port` to reuse it, or pass 0 for a new free port. `signal`: how
 	 * the server is stopped (SIGKILL is a crash: it gets no chance to say goodbye); `downMs`: how long nothing runs
@@ -139,6 +149,17 @@ async function boot(
 	let errors = "";
 	/** Set while this helper stops the server itself: an exit then is no news. */
 	let stopping = false;
+	/** Set by `stop()`: the world is going, and a server that exits is not started again. */
+	let closed = false;
+	/** The start of a server again after the current one exited by itself (#3); what `alive()` gives. */
+	let comeback: Promise<void> = Promise.resolve();
+	/** The current server. */
+	let server!: ChildProcess;
+	/** What the helper says of a server's life: printed, and kept with the servers' stderr (`errors`). */
+	const note = (text: string) => {
+		errors += `${text}\n`;
+		process.stderr.write(`${text}\n`);
+	};
 	const launch = async (): Promise<ChildProcess> => {
 		const child = spawn("bun", [join(import.meta.dirname, "../../server/main.ts")], {
 			env: {
@@ -155,6 +176,9 @@ async function boot(
 				// The server asks omp for a title after a conversation's first exchange (a model call of its own): a spec that is
 				// about something else must not have it, so it is off unless the spec says (`OMP_WEBUI_AUTO_TITLE: "on"`).
 				OMP_WEBUI_AUTO_TITLE: "off",
+				// An upload leaves no free space of its own (#8): whether the disk the tests run on has 1 GiB or 5 % free is none of a
+				// test's business. A test of a full disk sets more than the disk holds.
+				OMP_WEBUI_TRANSFER_RESERVE_BYTES: "0",
 				// Playwright forces color in workers; omp config output is parsed as plain values, not ANSI.
 				FORCE_COLOR: "0",
 				NO_COLOR: "1",
@@ -179,10 +203,25 @@ async function boot(
 		child.once("exit", (code, signal) => {
 			// A server that ends while nobody stopped it is a crash the test may not even look at: say why, here. One that never
 			// got going says so in the error `launch` throws.
-			if (!up || stopping || errors.length === since) return;
-			process.stderr.write(
-				`omp-webui test server exited by itself (${code ?? signal}); its stderr:\n${errors.slice(since)}\n`,
+			if (!up || stopping) return;
+			const said = errors.length > since ? `; its stderr:\n${errors.slice(since)}` : "";
+			note(`omp-webui test server exited by itself (${code ?? signal})${said}`);
+			// Bun's test runner can end it cleanly, with SIGTERM and nothing on stderr (#3: `killed 1 dangling process`); the tests of
+			// the file after it would all fail on a refused connection. It is started again on the same data dir, port and token
+			// (it takes over what the last one kept, as in production), and the next test waits for it (`alive`).
+			if (closed || child !== server) return;
+			comeback = launch().then(
+				(next) => {
+					server = next;
+					note(`omp-webui test server started again on ${origin()}, on the same data dir`);
+				},
+				(error: Error) => {
+					note(`omp-webui test server could not be started again: ${error.message}`);
+					throw error;
+				},
 			);
+			// Told to whoever waits for it (`alive`); nobody waiting is not an unhandled rejection.
+			comeback.catch(() => {});
 		});
 		// Port 0 must be chosen by the listening socket, not a probe that another worker can race to claim.
 		printed = "";
@@ -244,13 +283,18 @@ async function boot(
 			stopping = false;
 		}
 	};
-	let server = await launch();
+	server = await launch();
+	const untrack = trackServer(() => comeback);
 	return {
 		get url() {
 			return origin();
 		},
 		output: () => printed,
 		errors: () => errors,
+		get pid() {
+			return server.pid;
+		},
+		alive: () => comeback,
 		root,
 		home: env.HOME,
 		agentDir,
@@ -260,6 +304,9 @@ async function boot(
 		accessToken,
 		fixtures,
 		async stop() {
+			closed = true;
+			untrack();
+			await comeback.catch(() => {});
 			// A paused conversation stays frozen, and one waiting out a usage limit goes on waiting, in the background when a server
 			// ends: end them, or they outlive the run.
 			// A server that no longer answers must not hold the teardown: the request has two seconds.
@@ -273,6 +320,7 @@ async function boot(
 			removeWorld(root);
 		},
 		async restart(onPort, options = {}) {
+			await comeback.catch(() => {});
 			if (onPort !== undefined) listening = onPort;
 			await kill(server, options.signal);
 			if (options.downMs) await sleep(options.downMs);

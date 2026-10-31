@@ -4,8 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { QUOTA_DIALOG_TITLE } from "../../shared/quota-hold.ts";
-import { type Frame, watchFrames } from "../support/frames.ts";
-import { pollUntil } from "../support/poll.ts";
+import { type Frame, messageWhere, watchFrames } from "../support/frames.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import {
 	type ScriptedRequest,
@@ -58,6 +57,10 @@ const callsFile = join(root, "calls");
 const stamps: number[] = [];
 /** How many tool steps the scripted main agent takes before it answers. */
 let steps = 1;
+/** By the mark of its prompt: what the first request of a turn waits for before it is answered (see `prompt`). */
+const answerAfter = new Map<string, Promise<unknown>>();
+/** Who waits for the stub to be asked with a mark in the conversation (see `asked`). */
+const askers: { m: string; resolve: () => void }[] = [];
 
 const isMain = (r: ScriptedRequest) => r.tools.includes("task");
 const mainRequests = (m: string) => agent.requests.filter((r) => isMain(r) && r.text.includes(m));
@@ -69,14 +72,24 @@ function taken(req: ScriptedRequest): number {
 	return messages.slice(last + 1).filter((m) => m.role === "tool").length;
 }
 
-const script = (req: ScriptedRequest): ScriptedTurn => {
+const script = async (req: ScriptedRequest): Promise<ScriptedTurn> => {
 	// A title's request offers no task tool.
 	if (!isMain(req)) return { text: "A title" };
-	stamps.push(Date.now());
 	const done = taken(req);
+	// The turn's own mark is the last of the conversation's that has a wait.
+	if (done === 0) await [...answerAfter].findLast(([m]) => req.text.includes(m))?.[1];
+	stamps.push(Date.now());
+	for (let i = askers.length - 1; i >= 0; i--) if (req.text.includes(askers[i].m)) askers.splice(i, 1)[0].resolve();
 	if (done < steps) return { call: { name: "bash", args: { command: `echo step-${done}`, timeout: 5 } } };
 	return { text: "Main done." };
 };
+
+/** The next time the stub is asked for the main agent of the conversation whose prompt had `m` (register it before). */
+function asked(m: string): Promise<void> {
+	const { promise, resolve } = Promise.withResolvers<void>();
+	askers.push({ m, resolve });
+	return promise;
+}
 
 /** What `omp usage --json` says: `provider`'s one window, `left` of it still there, resetting at `resetsAt`. */
 function say(provider: Provider, left: number, resetsAt: number): void {
@@ -186,14 +199,45 @@ async function conversation(provider: Provider): Promise<Conversation> {
 	return { live, ws, frames: watchFrames(ws, live.liveId) };
 }
 
-const prompt = (c: Conversation, message: string) =>
-	request(c.ws, { t: "rpc", liveId: c.live.liveId, command: { type: "prompt", message } });
+const listing = async (ws: WebSocket, liveId: string): Promise<LiveListing | undefined> =>
+	(await request<LiveListing[]>(ws, { t: "list_lives" })).find((l) => l.liveId === liveId);
+type Announced = Pick<LiveInfo, "quotaHold">;
+/**
+ * The conversation as the server has it now if that satisfies `match`, else as the server next announces it (`live`) in a way
+ * that does. Every change of its hold is announced, so this waits for the server's word, not a clock: what never comes ends the
+ * test at its own timeout (#2: a 15 s poll was what failed on a busy machine).
+ */
+async function announced(ws: WebSocket, liveId: string, match: (info: Announced) => boolean): Promise<Announced> {
+	// Listened for before the server is asked, so that a change between its answer and this is not missed.
+	const next = messageWhere(
+		ws,
+		(m) => m.t === "live" && (m.info as LiveInfo).liveId === liveId && match(m.info as LiveInfo),
+	);
+	const now = await listing(ws, liveId);
+	return now && match(now) ? now : ((await next).info as LiveInfo);
+}
+const isHeld = (info: Announced) => info.quotaHold?.state === "held";
+const isFree = (info: Announced) => info.quotaHold === undefined;
+/**
+ * Send `message`. With `armed`, the turn's first request is answered only once the server has announced the conversation at
+ * the floor (`armed`: the hold file the extension reads is written). The server looks at the quota when a turn begins, while
+ * omp makes its first request; a model takes seconds to answer it, the stub a few milliseconds, so without this the step the
+ * answer asks for could reach the extension before the look has written the hold, and nothing would wait. That race, not the
+ * product, is what made most of these cases fail on a Mac even alone (#2): the stub was asked and answered at once, and the
+ * server's look wrote the hold 4 ms later, after the step had gone through.
+ */
+async function prompt(c: Conversation, message: string, opts: { armed?: boolean } = {}): Promise<void> {
+	if (opts.armed)
+		answerAfter.set(
+			message,
+			announced(c.ws, c.live.liveId, (info) => info.quotaHold?.state === "armed"),
+		);
+	await request(c.ws, { t: "rpc", liveId: c.live.liveId, command: { type: "prompt", message } });
+}
 const fresh = (c: Conversation, match: (f: Frame) => boolean): Promise<Frame> => {
 	const from = c.frames.seen.length;
 	return c.frames.next((f) => c.frames.seen.indexOf(f) >= from && match(f));
 };
-const listing = async (ws: WebSocket, liveId: string): Promise<LiveListing | undefined> =>
-	(await request<LiveListing[]>(ws, { t: "list_lives" })).find((l) => l.liveId === liveId);
 const holdOf = async (c: Conversation) => (await listing(c.ws, c.live.liveId))?.quotaHold;
 const heldNow = async (c: Conversation) => (await holdOf(c))?.state === "held";
 /** The state letters `ps` gives a process: `T` is stopped (SIGSTOP), which a held conversation must not be. */
@@ -214,9 +258,9 @@ test("at the floor, the request in flight completes and the next one waits; the 
 	const c = await conversation("qf-hold");
 	const m = mark("held");
 	const ended = fresh(c, (f) => f.type === "agent_end");
-	await prompt(c, m);
+	await prompt(c, m, { armed: true });
 
-	await pollUntil(() => heldNow(c), "the conversation to be held");
+	await announced(c.ws, c.live.liveId, isHeld);
 	const hold = await holdOf(c);
 	expect(hold).toMatchObject({ state: "held", provider: "qf-hold", floor: FLOOR, window: "5 hour", resetsAt });
 	expect(hold?.remaining).toBeCloseTo(0.05);
@@ -248,7 +292,7 @@ test("at the floor, the request in flight completes and the next one waits; the 
 	await ended;
 	expect(mainRequests(m).length).toBe(2);
 	expect(stamps.at(-1) ?? 0).toBeGreaterThanOrEqual(resetsAt);
-	await pollUntil(async () => (await holdOf(c)) === undefined, "the hold to be gone");
+	await announced(c.ws, c.live.liveId, isFree);
 	c.ws.close();
 }, 120_000);
 
@@ -260,8 +304,8 @@ test("the reset passes but the provider still says low: the conversation stays h
 	const c = await conversation("qf-lag");
 	const m = mark("lag");
 	const ended = fresh(c, (f) => f.type === "agent_end");
-	await prompt(c, m);
-	await pollUntil(() => heldNow(c), "the conversation to be held");
+	await prompt(c, m, { armed: true });
+	await announced(c.ws, c.live.liveId, isHeld);
 	// Past the reset (and its grace) and the figures have not caught up: it is looked at again, and stays held. (An omission.)
 	await Bun.sleep(2_000 + GRACE_MS + 1_000);
 	expect(await heldNow(c)).toBe(true);
@@ -279,8 +323,8 @@ test("Continue anyway lets it go at once and stands for the conversation until t
 	const c = await conversation("qf-go");
 	const m = mark("override");
 	const ended = fresh(c, (f) => f.type === "agent_end");
-	await prompt(c, m);
-	await pollUntil(() => heldNow(c), "the conversation to be held");
+	await prompt(c, m, { armed: true });
+	await announced(c.ws, c.live.liveId, isHeld);
 	const before = mainRequests(m).length;
 	const reply = await request<LiveInfo>(c.ws, { t: "quota_override", liveId: c.live.liveId, on: true });
 	expect(reply.quotaHold?.state).toBe("overridden");
@@ -328,17 +372,17 @@ test("stopping a held conversation ends the hold with the turn; the next turn lo
 	steps = 1;
 	say("qf-stop", 0.05, Date.now() + HOUR);
 	const c = await conversation("qf-stop");
-	await prompt(c, mark("stop"));
-	await pollUntil(() => heldNow(c), "the conversation to be held");
+	await prompt(c, mark("stop"), { armed: true });
+	await announced(c.ws, c.live.liveId, isHeld);
 	const ended = fresh(c, (f) => f.type === "agent_end");
 	await request(c.ws, { t: "rpc", liveId: c.live.liveId, command: { type: "abort" }, stop: true });
 	await ended;
-	await pollUntil(async () => (await holdOf(c)) === undefined, "the hold to be gone with the turn");
+	await announced(c.ws, c.live.liveId, isFree);
 	// The next turn is held again, from its first tool step: its first request goes out (nothing is held before a tool step), the
 	// second is the one that waits.
 	const again = mark("stop-again");
-	await prompt(c, again);
-	await pollUntil(() => heldNow(c), "the conversation to be held again");
+	await prompt(c, again, { armed: true });
+	await announced(c.ws, c.live.liveId, isHeld);
 	expect(mainRequests(again).length).toBe(1);
 	c.ws.close();
 }, 120_000);
@@ -349,8 +393,8 @@ test("three conversations held on one provider cost one `omp usage` per interval
 	say("qf-storm", 0.05, Date.now() + HOUR);
 	const before = usageCalls();
 	const chats = await Promise.all([conversation("qf-storm"), conversation("qf-storm"), conversation("qf-storm")]);
-	await Promise.all(chats.map((c) => prompt(c, mark("storm"))));
-	for (const c of chats) await pollUntil(() => heldNow(c), "a conversation to be held");
+	await Promise.all(chats.map((c) => prompt(c, mark("storm"), { armed: true })));
+	for (const c of chats) await announced(c.ws, c.live.liveId, isHeld);
 	// They look every LOOK_MS and the cache is 25 s: held for six looks, the provider was asked once (an omission, so a real wait).
 	await Bun.sleep(LOOK_MS * 6);
 	expect(usageCalls() - before).toBeLessThanOrEqual(2);
@@ -368,8 +412,8 @@ test("a conversation held when the server ends is found held by the next one, an
 	say("qf-restart", 0.05, resetsAt);
 	const c = await conversation("qf-restart");
 	const m = mark("restart");
-	await prompt(c, m);
-	await pollUntil(() => heldNow(c), "the conversation to be held");
+	await prompt(c, m, { armed: true });
+	await announced(c.ws, c.live.liveId, isHeld);
 	const pid = (await listing(c.ws, c.live.liveId))?.pid as number;
 	const before = mainRequests(m).length;
 	c.ws.close();
@@ -387,10 +431,12 @@ test("a conversation held when the server ends is found held by the next one, an
 		expect((await listing(ws, c.live.liveId))?.quotaHold?.state).toBe("held");
 
 		// The reset: the quota is above the floor, and the conversation goes on with nobody having asked.
+		const goesOn = asked(m);
 		say("qf-restart", 0.9, Date.now() + HOUR);
-		await pollUntil(() => mainRequests(m).length === before + 1, "the turn to go on after the reset", 30_000);
+		await goesOn;
+		expect(mainRequests(m).length).toBe(before + 1);
 		expect(stamps.at(-1) ?? 0).toBeGreaterThanOrEqual(resetsAt);
-		await pollUntil(async () => (await listing(ws, c.live.liveId))?.quotaHold === undefined, "the hold to be gone");
+		await announced(ws, c.live.liveId, isFree);
 	} finally {
 		void request(ws, { t: "close", liveId: c.live.liveId }).catch(() => {});
 		ws.close();

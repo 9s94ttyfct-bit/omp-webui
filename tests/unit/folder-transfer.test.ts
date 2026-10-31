@@ -57,6 +57,8 @@ afterAll(async () => {
 });
 
 const MiB = 1024 * 1024;
+/** A disk with room for anything (#8): what a test uploads does not depend on how full the disk it runs on is. A test of a full disk gives its own. */
+const roomy = async () => ({ free: 2 ** 50, total: 2 ** 51 });
 
 function world(opts: Partial<TransferOptions> = {}, root: "proj" | "home" = "proj") {
 	const top = join(scratch, `case-${++cases}`);
@@ -75,6 +77,7 @@ function world(opts: Partial<TransferOptions> = {}, root: "proj" | "home" = "pro
 	const service = new TransferService({
 		logFile: join(top, "transfers.jsonl"),
 		now: clock.now,
+		statfs: roomy,
 		...opts,
 		limits: { pieceMax: 8, uploadBytes: 64, stallMs: 150, chunkBytes: 4, ...opts.limits },
 	});

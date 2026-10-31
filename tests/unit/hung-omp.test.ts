@@ -40,6 +40,12 @@ import { pollUntil, processExists } from "../support/poll.ts";
  */
 
 const LIMIT = 1000;
+/**
+ * The limit of a command that answers: what such a call shows is what is made of the answer, not the limit, and a limit of a
+ * second fails a fake that answers at once but did not get started within it on a loaded machine (#13). It still bounds a
+ * call that would never end.
+ */
+const ANSWERS = 20_000;
 let dir: string;
 const strays = new Set<number>();
 
@@ -94,15 +100,6 @@ wait
 const allGone = (pids: number[]): boolean => pids.every((p) => !processExists(p));
 
 /**
- * Whether the fake omp has recorded a call that starts with `prefix`. A limit runs from the start of the command, and
- * on a machine whose cores are all taken the fake may not have got to its first line before the limit ends it: the
- * wait is for the recording, not for a moment (#499).
- */
-async function recorded(omp: { calls: () => string[] }, prefix: string): Promise<void> {
-	await pollUntil(() => omp.calls().some((c) => c.startsWith(prefix)), `the fake omp to record a ${prefix} call`);
-}
-
-/**
  * Ask `what` until the fake omp has recorded a call that starts with `prefix`, and return what it answered. A limit
  * runs from the start of the command, and on a machine whose cores are all taken the fake may not get to its first
  * line before the limit ends it — so the first attempt may end a command that never ran. The attempt that matters is
@@ -133,12 +130,18 @@ test("run: output and exit status come back; a command that takes too long is ki
 
 	const pidFile = join(dir, "pids");
 	// What the limit ends is not waited for: the command sleeps for ten minutes, and the test's own timeout is far shorter.
-	const hung = run(["sh", "-c", `echo $$ >> ${pidFile}; sleep 600 & echo $! >> ${pidFile}; wait`], {
-		timeoutMs: LIMIT,
-	});
-	await expect(hung).rejects.toBeInstanceOf(RunTimeout);
-	const pids = readFileSync(pidFile, "utf8").split("\n").filter(Boolean).map(Number);
-	for (const pid of pids) strays.add(pid);
+	// It is run again until the shell has recorded itself and its child: a limit that ended the shell before it got to its
+	// first line (a loaded machine) ended a command that never ran (#13).
+	let pids: number[] = [];
+	while (pids.length < 2) {
+		rmSync(pidFile, { force: true });
+		const hung = run(["sh", "-c", `echo $$ >> ${pidFile}; sleep 600 & echo $! >> ${pidFile}; wait`], {
+			timeoutMs: LIMIT,
+		});
+		await expect(hung).rejects.toBeInstanceOf(RunTimeout);
+		pids = existsSync(pidFile) ? readFileSync(pidFile, "utf8").split("\n").filter(Boolean).map(Number) : [];
+		for (const pid of pids) strays.add(pid);
+	}
 	expect(pids).toHaveLength(2);
 	// The shell and the sleep it started: the group is gone.
 	await pollUntil(() => allGone(pids), "the command and its child to be gone");
@@ -146,29 +149,35 @@ test("run: output and exit status come back; a command that takes too long is ki
 
 test("omp stats: requests that come while a run is under way share it, and a run that hangs is killed", async () => {
 	const omp = hungOmp();
-	const first = ompStats(omp.bin, false, LIMIT);
-	const second = ompStats(omp.bin, true, LIMIT);
-	const third = ompStats(omp.bin, false, LIMIT);
-	const outcomes = await Promise.allSettled([first, second, third]);
-	expect(outcomes.map((o) => o.status)).toEqual(["rejected", "rejected", "rejected"]);
-	// One omp, not one per request. The run is asked again until the fake has recorded it: a limit that ends the
-	// command before the fake got to its first line ends a command that never ran (#499).
-	await recorded(omp, "stats");
+	const stats = () => omp.calls().filter((c) => c.startsWith("stats")).length;
+	// One omp, not one per request. The three are asked again until the fake has recorded their run: a limit that ends the
+	// command before the fake got to its first line ends a command that never ran (#499, #13).
+	await untilRecorded(omp, "stats", async () => {
+		const outcomes = await Promise.allSettled([
+			ompStats(omp.bin, false, LIMIT),
+			ompStats(omp.bin, true, LIMIT),
+			ompStats(omp.bin, false, LIMIT),
+		]);
+		expect(outcomes.map((o) => o.status)).toEqual(["rejected", "rejected", "rejected"]);
+	});
 	await pollUntil(() => allGone(omp.pids()), "the hung omp stats to be gone");
-	expect(omp.calls().filter((c) => c.startsWith("stats"))).toHaveLength(1);
-	// The next request starts a new run (nothing stays stuck).
-	await expect(ompStats(omp.bin, false, LIMIT)).rejects.toBeInstanceOf(RunTimeout);
-	expect(omp.calls().filter((c) => c.startsWith("stats"))).toHaveLength(2);
+	expect(stats()).toBe(1);
+	// The next request starts a new run (nothing stays stuck), asked again as above until the fake has recorded it.
+	for (;;) {
+		await expect(ompStats(omp.bin, false, LIMIT)).rejects.toBeInstanceOf(RunTimeout);
+		if (stats() === 2) break;
+		expect(stats()).toBe(1);
+	}
 });
 
 test("omp stats: an answer is kept for a while, and a failure is not", async () => {
 	const bin = join(dir, "omp");
 	writeFileSync(bin, `#!/bin/sh\necho "x" >> "${dir}/runs"\necho '{"n":1}'\n`);
 	chmodSync(bin, 0o755);
-	expect(await ompStats(bin, false, 5000)).toBe('{"n":1}\n');
-	expect(await ompStats(bin, false, 5000)).toBe('{"n":1}\n');
+	expect(await ompStats(bin, false, ANSWERS)).toBe('{"n":1}\n');
+	expect(await ompStats(bin, false, ANSWERS)).toBe('{"n":1}\n');
 	expect(readFileSync(join(dir, "runs"), "utf8").split("\n").filter(Boolean)).toHaveLength(1);
-	await ompStats(bin, true, 5000);
+	await ompStats(bin, true, ANSWERS);
 	expect(readFileSync(join(dir, "runs"), "utf8").split("\n").filter(Boolean)).toHaveLength(2);
 });
 
@@ -179,21 +188,21 @@ test("omp stats: a page is answered at once from the copy kept on disk while a r
 	const kept = join(dir, "omp-stats.json");
 	keepStatsIn(kept);
 	// Nothing kept yet: the page waits for a run.
-	expect(keptStats(bin, 5000)).toBeNull();
+	expect(keptStats(bin, ANSWERS)).toBeNull();
 	// What a server that ran before left (a restart forgets the one in memory).
 	writeFileSync(kept, '{"n":1}');
-	const first = keptStats(bin, 5000);
+	const first = keptStats(bin, ANSWERS);
 	expect(first).toMatchObject({ body: '{"n":1}', refreshing: true });
 	// The page's wait joins the run that answer started: one run, and its answer is kept for the next start.
-	expect(await ompStats(bin, false, 5000)).toBe('{"n":2}\n');
+	expect(await ompStats(bin, false, ANSWERS)).toBe('{"n":2}\n');
 	expect(readFileSync(join(dir, "runs"), "utf8").split("\n").filter(Boolean)).toHaveLength(1);
 	expect(readFileSync(kept, "utf8")).toBe('{"n":2}\n');
-	expect(keptStats(bin, 5000)).toMatchObject({ body: '{"n":2}\n', refreshing: false });
+	expect(keptStats(bin, ANSWERS)).toMatchObject({ body: '{"n":2}\n', refreshing: false });
 	// A copy that is not whole JSON is no answer.
 	forgetStats();
 	keepStatsIn(kept);
 	writeFileSync(kept, '{"n":');
-	expect(keptStats(bin, 5000)).toBeNull();
+	expect(keptStats(bin, ANSWERS)).toBeNull();
 });
 
 test("the models list: a hung omp fails the call within its limit, and the next call starts afresh", async () => {
@@ -221,7 +230,7 @@ for await (const chunk of Bun.stdin.stream()) {
 `,
 	);
 	chmodSync(healthy, 0o755);
-	expect(await availableModels(healthy, true, 20_000, 20_000)).toEqual([{ provider: "p", id: "m" }]);
+	expect(await availableModels(healthy, true, ANSWERS, ANSWERS)).toEqual([{ provider: "p", id: "m" }]);
 });
 
 test("the overlay the server waits for at start-up: an omp that hangs on `config get` costs the limit, not the server", async () => {
@@ -286,12 +295,12 @@ test("the Loaded dialog's and the toggles' omp commands: a hung `config get` or 
 	await expect(runJson(omp.bin, ["config", "get", "x", "--json"], dir, {}, LIMIT)).rejects.toBeInstanceOf(RunTimeout);
 	await pollUntil(() => allGone(omp.pids()), "the hung omp and its child to be gone");
 	heal(omp.bin, `echo '{"value":["a"]}'`);
-	expect(await runJson(omp.bin, ["config", "get", "x", "--json"], dir, {}, LIMIT)).toEqual({ value: ["a"] });
+	expect(await runJson(omp.bin, ["config", "get", "x", "--json"], dir, {}, ANSWERS)).toEqual({ value: ["a"] });
 	// What it prints is checked as before: a failure names its stderr, and text that is no JSON is no answer.
 	heal(omp.bin, `echo "boom: no" >&2\nexit 3`);
-	await expect(runJson(omp.bin, ["plugin", "list", "--json"], dir, {}, LIMIT)).rejects.toThrow("boom: no");
+	await expect(runJson(omp.bin, ["plugin", "list", "--json"], dir, {}, ANSWERS)).rejects.toThrow("boom: no");
 	heal(omp.bin, `echo not json`);
-	await expect(runJson(omp.bin, ["plugin", "list", "--json"], dir, {}, LIMIT)).rejects.toThrow("did not print JSON");
+	await expect(runJson(omp.bin, ["plugin", "list", "--json"], dir, {}, ANSWERS)).rejects.toThrow("did not print JSON");
 });
 
 test("the model settings: a read that hangs ends at its limit and does not hold up the reads and writes queued behind it", async () => {
@@ -304,7 +313,10 @@ test("the model settings: a read that hangs ends at its limit and does not hold 
 	await expect(second).rejects.toBeInstanceOf(RunTimeout);
 	await pollUntil(() => allGone(omp.pids()), "the hung omp commands and their children to be gone");
 	heal(omp.bin, `echo '{"modelRoles":{"value":{"default":"p/m","smol":"p/s"}}}'`);
-	expect(await absentModels(cfg, dir, { roles: { default: "p/m" } }, LIMIT)).toEqual({ roles: ["smol"], agents: [] });
+	expect(await absentModels(cfg, dir, { roles: { default: "p/m" } }, ANSWERS)).toEqual({
+		roles: ["smol"],
+		agents: [],
+	});
 });
 
 test("omp --version at start-up: a hang is 'cannot run' at the limit, with the command and what it started gone", async () => {
@@ -317,7 +329,7 @@ test("omp --version at start-up: a hang is 'cannot run' at the limit, with the c
 	await pollUntil(() => allGone(omp.pids()), "the hung omp --version and its child to be gone");
 	// An omp that answers is found, and what it sees is the environment it is given, not the server's.
 	heal(omp.bin, `echo "omp/$ASKED"`);
-	expect(await probeOmp(omp.bin, { PATH: process.env.PATH, ASKED: "18.12.2" }, LIMIT)).toEqual({
+	expect(await probeOmp(omp.bin, { PATH: process.env.PATH, ASKED: "18.12.2" }, ANSWERS)).toEqual({
 		ok: true,
 		version: "18.12.2",
 	});

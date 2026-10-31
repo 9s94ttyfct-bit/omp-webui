@@ -207,10 +207,12 @@ test("entryStart answers as the regular expression it replaced did, for every sh
  * What a worker thread that read a long conversation's entries still holds above what it held before, and the file's size.
  * `longIds`: the ids are 36 characters, not the 8 omp writes. JavaScriptCore copies a substring of up to 8 Latin-1
  * characters and shares the memory of a longer one, so only a long id can keep the text it was read from alive.
+ *
+ * The worker runs in a process of its own with JavaScriptCore's concurrent JIT off (`family-retention-run.ts`, #12): a
+ * compile queued on a background thread holds the text for a while, which a loaded machine let the worker see.
  */
 async function heldAfterScan(holdIds: boolean, longIds = false): Promise<{ held: number[]; size: number }> {
 	const root = mkdtempSync(join(tmpdir(), "ompw-family-retention-"));
-	const worker = new Worker(new URL("../support/family-retention-worker.ts", import.meta.url));
 	try {
 		let file = realpathSync(writeBigSession(root, 22 * 1024 * 1024));
 		if (longIds) {
@@ -221,13 +223,20 @@ async function heldAfterScan(holdIds: boolean, longIds = false): Promise<{ held:
 			);
 			file = long;
 		}
-		const reply = Promise.withResolvers<{ held: number[] }>();
-		worker.onmessage = (event: MessageEvent<{ held: number[] }>) => reply.resolve(event.data);
-		worker.onerror = (event) => reply.reject(new Error(event.message));
-		worker.postMessage({ file, holdIds });
-		return { held: (await reply.promise).held, size: statSync(file).size };
+		const run = Bun.spawn(
+			[process.execPath, join(import.meta.dir, "../support/family-retention-run.ts"), file, holdIds ? "1" : "0"],
+			{ env: { ...process.env, BUN_JSC_useConcurrentJIT: "0" }, stdout: "pipe", stderr: "pipe" },
+		);
+		const [out, err, code] = await Promise.all([
+			new Response(run.stdout).text(),
+			new Response(run.stderr).text(),
+			run.exited,
+		]);
+		expect(code, err).toBe(0);
+		// The runner's own JSON line (`family-retention-run.ts`).
+		const measured: { held: number[] } = JSON.parse(out);
+		return { held: measured.held, size: statSync(file).size };
 	} finally {
-		worker.terminate();
 		rmSync(root, { recursive: true, force: true });
 	}
 }

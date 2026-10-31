@@ -43,10 +43,11 @@
  * remove the temporary worktree and directory too.
  */
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { availableParallelism, tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Needs, type Probe, preflight } from "./lib/release-preflight.ts";
 import { isShuttingDown, killTree, onShutdown } from "./lib/shutdown.ts";
+import { gateWorkers, TEST_WORKERS_ENV } from "./lib/test-workers.ts";
 
 const REPO = "9s94ttyfct-bit/omp-webui";
 /** The workflow whose success on the released commit is required (.github/workflows/ci.yml). */
@@ -275,9 +276,14 @@ async function release(): Promise<void> {
 	if (`v${version}` !== tag) throw new Error(`tag ${tag} != package.json v${version}`);
 	await run(["bun", "scripts/check-release-notes.ts", tag], { cwd: tree });
 	// The tests CI cannot run: the cases only macOS has, then the ones that call a real model with this machine's login.
+	// This Mac is usually in use: they run on half its cores (or OMPW_TEST_WORKERS), not one worker per core (#1).
 	if (!skipTests) {
-		await run(["bun", "run", "test:mac"], { cwd: tree });
-		await run(["bun", "run", "test:live"], { cwd: tree });
+		const cores = availableParallelism();
+		const workers = String(gateWorkers(cores, process.env));
+		console.log(`The tests run ${workers} workers at a time (${cores} cores; ${TEST_WORKERS_ENV} sets it).`);
+		const env = { [TEST_WORKERS_ENV]: workers };
+		await run(["bun", "run", "test:mac"], { cwd: tree, env });
+		await run(["bun", "run", "test:live"], { cwd: tree, env });
 	}
 
 	await run(["bun", "run", "app"], { cwd: tree });

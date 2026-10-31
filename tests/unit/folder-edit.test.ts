@@ -46,6 +46,9 @@ const sha = (b: string | Uint8Array) => createHash("sha256").update(b).digest("h
 /** Text in Latin-1 (an é is the byte 0xE9): mostly ASCII, so the read takes it for text, and it is not UTF-8. */
 const LATIN1 = Buffer.concat([Buffer.from("plain ascii text before the accent ".repeat(4)), Buffer.from([0xe9, 0x0a])]);
 
+/** A disk with room for anything (#8): what a test writes does not depend on how full the disk it runs on is. */
+const roomy = async () => ({ free: 2 ** 50, total: 2 ** 51 });
+
 function world(opts: Partial<TransferOptions> = {}, root: "proj" | "home" = "proj") {
 	const top = join(scratch, `case-${++cases}`);
 	const home = join(top, "home");
@@ -53,7 +56,7 @@ function world(opts: Partial<TransferOptions> = {}, root: "proj" | "home" = "pro
 	const outside = join(top, "outside");
 	const data = join(top, "data");
 	for (const dir of [proj, outside, data]) mkdirSync(dir, { recursive: true });
-	const service = new TransferService({ logFile: join(top, "transfers.jsonl"), ...opts });
+	const service = new TransferService({ logFile: join(top, "transfers.jsonl"), statfs: roomy, ...opts });
 	services.push(service);
 	const cwd = root === "proj" ? proj : home;
 	const env = (over: Partial<TransferEnv> = {}): TransferEnv => ({

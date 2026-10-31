@@ -9,7 +9,7 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { availableParallelism, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pollUntil, processExists } from "../support/poll.ts";
 
@@ -91,6 +91,7 @@ esac`,
 	stub(
 		"bun",
 		`echo "bun $*" >> "${log}"
+case "$1 $2" in "run test:mac"|"run test:live") echo "$2 workers: \${OMPW_TEST_WORKERS:-unset}" >> "${log}" ;; esac
 if [ "$1 $2" = "run dmg" ] && [ -z "$STUB_DMG_FAIL" ]; then mkdir -p dist; : > "dist/omp-webui-${TAG}.dmg"; fi
 if [ "$1 $2" = "run test:mac" ] && [ -n "$STUB_MAC_FAIL" ]; then exit 1; fi
 if [ "$1 $2" = "run test:live" ] && [ -n "$STUB_LIVE_FAIL" ]; then exit 1; fi
@@ -317,6 +318,27 @@ test("CI's gates are not run again here: no type check, lint, build, parity, uni
 	}
 	expect(seen).toContain("bun run test:mac");
 	expect(seen).toContain("bun run test:live");
+});
+
+test("the macOS and the live tests run on half this Mac's cores, at least 2, or on the count OMPW_TEST_WORKERS sets (#1)", async () => {
+	const half = String(Math.max(2, Math.ceil(availableParallelism() / 2)));
+	let r = await finish(release(["--dry-run"], { OMPW_TEST_WORKERS: "" }, true));
+	expect(r.code).toBe(0);
+	expect(r.out).toContain(`The tests run ${half} workers at a time (${availableParallelism()} cores`);
+	expect(calls()).toContain(`test:mac workers: ${half}\n`);
+	expect(calls()).toContain(`test:live workers: ${half}\n`);
+
+	rmSync(log, { force: true });
+	r = await finish(release(["--dry-run"], { OMPW_TEST_WORKERS: "3" }, true));
+	expect(r.code).toBe(0);
+	expect(calls()).toContain("test:mac workers: 3\n");
+	expect(calls()).toContain("test:live workers: 3\n");
+
+	rmSync(log, { force: true });
+	r = await finish(release(["--dry-run"], { OMPW_TEST_WORKERS: "all" }, true));
+	expect(r.code).not.toBe(0);
+	expect(r.out).toContain('OMPW_TEST_WORKERS must be a whole number from 1, not "all"');
+	expect(calls()).not.toContain("bun run test:mac");
 });
 
 test("with no tag, live tests that fail make no tag here or on origin, and build nothing", async () => {

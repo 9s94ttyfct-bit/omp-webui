@@ -17,6 +17,7 @@ import { spawn } from "node:child_process";
 import { constants } from "node:os";
 import { join } from "node:path";
 import { killTree, onShutdown } from "./lib/shutdown.ts";
+import { gateTestCommand } from "./lib/test-workers.ts";
 
 /** The test files with cases that run only on macOS, relative to the checkout. */
 export const MAC_TESTS = [
@@ -62,11 +63,10 @@ if (import.meta.main) {
 	// The windowed tests stay by hand (`bun run test:gui`), whatever the shell this runs from has set.
 	const env = { ...process.env };
 	delete env.OMPW_GUI_TESTS;
-	const child = spawn("bun", ["test", "--parallel", "--timeout", "30000", ...MAC_TESTS.map((file) => `./${file}`)], {
-		cwd: root,
-		env,
-		stdio: "inherit",
-	});
+	// Half the cores at most (scripts/lib/test-workers.ts): the Mac that runs this is usually in use (#1).
+	const [bin, ...args] = gateTestCommand(["--timeout", "30000", ...MAC_TESTS.map((file) => `./${file}`)], env);
+	console.log(`$ ${bin} ${args.join(" ")}`);
+	const child = spawn(bin, args, { cwd: root, env, stdio: "inherit" });
 	const cleanup = onShutdown(async () => {
 		if (child.pid) await killTree(child.pid, 15_000);
 	});
