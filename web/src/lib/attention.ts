@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { t } from "../i18n/index.ts";
 import { useApp, type View } from "../store/app.ts";
 import type { LiveState } from "../store/live.ts";
+import { showPanelTab } from "./panel-panes.ts";
 import { setPref } from "./prefs.ts";
 import {
 	inRemoteShell,
@@ -186,12 +187,14 @@ function openFromShell(event: Extract<ShellEvent, { type: "open" }>): void {
 /**
  * What the macOS app says on its own: what macOS allows now (asked at start, and told again whenever the app comes to the
  * front, for it may have been changed in System Settings), and a click on a notification the app showed, which opens its
- * conversation (the page it opens in is a new one, so the click is handed over once the page has asked `status`).
+ * conversation, or the CI tab for a CI run's (the page it opens in is a new one, so the click is handed over once the page
+ * has asked `status`).
  */
 function followShell(): () => void {
 	// Listening comes first: a click that started the app is handed over right after the shell has answered the status.
 	const stop = onShellEvent((event) => {
 		if (event.type === "permission") return useNotify.setState({ permission: event.permission });
+		if (event.type === "open-panel") return showPanelTab(event.panel);
 		openFromShell(event);
 	});
 	void shellStatus().then((permission) => useNotify.setState({ permission }));

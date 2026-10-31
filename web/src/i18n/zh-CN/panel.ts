@@ -469,6 +469,10 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	todoEditNewTask: "要做什么？",
 	todoEditStale: "待办列表已在此期间发生变化，没有做任何更改，请重试。",
 	todoEditFailed: "无法修改待办列表：{error}",
+	todoEditNoTask: "该任务已不在列表中",
+	todoEditNoPhase: "该阶段已不在列表中",
+	todoEditEmptyTask: "任务需要填写内容",
+	todoEditEmptyPhase: "阶段需要填写名称",
 	todoMarkdownTitle: "以 Markdown 编辑待办列表",
 	todoMarkdownHelp:
 		"每个阶段一个 # 标题，每个任务一行：[ ] 待处理，[/] 进行中，[x] 已完成，[!] 受阻（行尾加 <!-- blocker: 原因 -->），[-] 已放弃。omp 按 /todo import 的方式读取。",

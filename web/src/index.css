@@ -633,6 +633,56 @@ body {
 }
 
 /*
+ * A diff's changed row (`DiffBody`, the Changes view and the Markdown editor's diff) is tinted over `bg-code`, which the
+ * token colours are made for, and the tint takes some of them under 4.5:1 (audit A-032). On such a row each token is
+ * mixed a quarter of the way to the text colour: `--diff-token` is the token a span is coloured by (shiki writes it
+ * inline), and tests/unit/palettes.test.ts holds every palette and every token here to 4.5:1 with this mix.
+ */
+.diff-body :is([data-change="add"], [data-change="del"]) span[style*="var(--shiki-"] {
+	/* biome-ignore lint/complexity/noImportantStyles: shiki writes each token's colour inline */
+	color: color-mix(in srgb, var(--diff-token) 75%, var(--fg)) !important;
+}
+.diff-body span[style*="var(--shiki-foreground)"] {
+	--diff-token: var(--shiki-foreground);
+}
+.diff-body span[style*="var(--shiki-token-comment)"] {
+	--diff-token: var(--shiki-token-comment);
+}
+.diff-body span[style*="var(--shiki-token-keyword)"] {
+	--diff-token: var(--shiki-token-keyword);
+}
+.diff-body span[style*="var(--shiki-token-string)"] {
+	--diff-token: var(--shiki-token-string);
+}
+.diff-body span[style*="var(--shiki-token-string-expression)"] {
+	--diff-token: var(--shiki-token-string-expression);
+}
+.diff-body span[style*="var(--shiki-token-constant)"] {
+	--diff-token: var(--shiki-token-constant);
+}
+.diff-body span[style*="var(--shiki-token-function)"] {
+	--diff-token: var(--shiki-token-function);
+}
+.diff-body span[style*="var(--shiki-token-parameter)"] {
+	--diff-token: var(--shiki-token-parameter);
+}
+.diff-body span[style*="var(--shiki-token-punctuation)"] {
+	--diff-token: var(--shiki-token-punctuation);
+}
+.diff-body span[style*="var(--shiki-token-link)"] {
+	--diff-token: var(--shiki-token-link);
+}
+.diff-body span[style*="var(--shiki-token-inserted)"] {
+	--diff-token: var(--shiki-token-inserted);
+}
+.diff-body span[style*="var(--shiki-token-deleted)"] {
+	--diff-token: var(--shiki-token-deleted);
+}
+.diff-body span[style*="var(--shiki-token-changed)"] {
+	--diff-token: var(--shiki-token-changed);
+}
+
+/*
  * A file in the Files tab: each line of its code (shiki's, or the plain text's) is numbered by CSS, so that copying the
  * text takes the code and not the numbers. The code is a block as wide as its longest line (`min-w-fit`), scrolled
  * sideways by the box around it.

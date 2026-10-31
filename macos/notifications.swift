@@ -1,10 +1,14 @@
 // Notifications of the app. The app shows them itself, from what the server tells it on its own (`shellevents.swift`): the
-// page shows none, and nothing depends on one being there, which is what lets the app run without a window (#627). The
-// window's WKWebView gives a page no usable `Notification` (it reports no permission that can be asked for, and constructing
-// one shows nothing), so what is left for the page is Settings › Notifications: it asks this bridge (see
-// web/src/lib/shell-notify.ts, which has the protocol) what macOS allows and for macOS to allow it, a script message handler
-// answering from UNUserNotificationCenter. A click on a notification opens the window on the conversation: the page is told which
-// one to open once it is up.
+// page shows none of a conversation's, and nothing depends on one being there, which is what lets the app run without a
+// window (#627). The window's WKWebView gives a page no usable `Notification` (it reports no permission that can be asked
+// for, and constructing one shows nothing), so what is left for the page is Settings › Notifications: it asks this bridge
+// (see web/src/lib/shell-notify.ts, which has the protocol) what macOS allows and for macOS to allow it, a script message
+// handler answering from UNUserNotificationCenter. A click on a notification opens the window on the conversation: the
+// page is told which one to open once it is up.
+//
+// The one notification a page may ask for is the end of a CI run (the CI tab's bell, which watches the runs from the page:
+// `CiNote`), and only in that shape: its identifier is `ci:` and the run's number, its text is bounded, and a click on it
+// opens the CI tab, nothing else (audit A-015).
 import AppKit
 import UserNotifications
 import WebKit
@@ -52,11 +56,45 @@ func isLooking(focused: Bool, shown: Shown?, liveId: String, file: String?) -> B
 	return false
 }
 
+/// The end of a CI run, as the CI tab tells it (web/src/lib/ci-runs.ts): the only notification a page may ask for.
+struct CiNote: Equatable {
+	/// `ci:` and the run's number: a newer word on the same run replaces the older.
+	var tag: String
+	var title: String
+	var body: String
+}
+
+/// The most a page's notification may carry, in characters; web/src/lib/shell-notify.ts cuts its text to these.
+let ciNoteTitleLimit = 200
+let ciNoteBodyLimit = 400
+
+/// `ci:` and a run's number (GitHub's run ids are decimal integers).
+func isCiTag(_ tag: String) -> Bool {
+	guard tag.hasPrefix("ci:") else { return false }
+	let digits = tag.dropFirst(3)
+	return (1...20).contains(digits.count) && digits.allSatisfy { $0.isASCII && $0.isNumber }
+}
+
+/// A page's `show` message, when it is a CI run's end in every part: `{ type: "show", tag, title, body, open: { panel: "ci" } }`.
+/// Anything else (another tag, a conversation's ids, text over the limits, a click that would open something else) is nil.
+func parseCiNote(_ message: [String: Any]) -> CiNote? {
+	guard let tag = message["tag"] as? String, isCiTag(tag),
+		let title = message["title"] as? String, !title.isEmpty, title.count <= ciNoteTitleLimit,
+		let body = message["body"] as? String, body.count <= ciNoteBodyLimit,
+		let open = message["open"] as? [String: Any], open.count == 1, open["panel"] as? String == "ci"
+	else { return nil }
+	let known: Set<String> = ["type", "tag", "title", "body", "open"]
+	guard Set(message.keys).isSubset(of: known) else { return nil }
+	return CiNote(tag: tag, title: title, body: body)
+}
+
 enum NotifyRequest: Equatable {
 	case status
 	case request
 	/// The conversation the page shows now (nil: none).
 	case viewing(Shown?)
+	/// A CI run of the page's folder ended (`CiNote`).
+	case show(CiNote)
 }
 
 /// The request a page's message is, or nil for anything else.
@@ -69,6 +107,7 @@ func parseNotifyRequest(_ body: Any) -> NotifyRequest? {
 		let liveId = (message["liveId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
 		let file = (message["file"] as? String).flatMap { $0.isEmpty ? nil : $0 }
 		return .viewing(liveId == nil && file == nil ? nil : Shown(liveId: liveId, file: file))
+	case "show": return parseCiNote(message).map(NotifyRequest.show)
 	default: return nil
 	}
 }
@@ -88,6 +127,16 @@ func notificationRequest(for banner: Banner) -> UNNotificationRequest {
 	return UNNotificationRequest(identifier: banner.id, content: content, trigger: nil)
 }
 
+/// The notification macOS is given for a CI run's end: it replaces the run's earlier one, sounds, and a click opens the CI tab.
+func notificationRequest(for note: CiNote) -> UNNotificationRequest {
+	let content = UNMutableNotificationContent()
+	content.title = note.title
+	content.body = note.body
+	content.sound = .default
+	content.userInfo = ["panel": "ci"]
+	return UNNotificationRequest(identifier: note.tag, content: content, trigger: nil)
+}
+
 /// Only the UI this app serves may use the bridge: the page in the main frame, at the server's own origin. The web view
 /// never shows another site (see `navigationVerdict`), but a frame inside the page would carry the handler too.
 func isOwnPage(scheme: String, host: String, port: Int, origin: URL?) -> Bool {
@@ -95,9 +144,10 @@ func isOwnPage(scheme: String, host: String, port: Int, origin: URL?) -> Bool {
 	return scheme == origin.scheme && host == ownHost && port == ownPort
 }
 
-/// What a click on a notification tells the page: which conversation to open. Nil when it names none (the notification
-/// is not one of this bridge's).
+/// What a click on a notification tells the page: which conversation to open, or (a CI run's) that the CI tab opens. Nil
+/// when it names neither (the notification is not one of this bridge's).
 func openEvent(from userInfo: [AnyHashable: Any]) -> [String: Any]? {
+	if userInfo["panel"] as? String == "ci" { return ["type": "open-panel", "panel": "ci"] }
 	let liveId = userInfo["liveId"] as? String
 	let file = userInfo["file"] as? String
 	guard liveId != nil || file != nil else { return nil }
@@ -169,6 +219,15 @@ final class NotificationBridge: NSObject, WKScriptMessageHandlerWithReply, UNUse
 		}
 	}
 
+	/// A CI run's end the page asked for (`CiNote`, checked by `parseCiNote`): shown when macOS allows notifications, and the
+	/// page is told what macOS allows (as for `status`). The page decides whether somebody is looking (its window is in use).
+	func present(_ note: CiNote, done: @escaping (String) -> Void) {
+		permission { [self] granted in
+			if granted == "granted", let center { center.add(notificationRequest(for: note)) { _ in } }
+			done(granted)
+		}
+	}
+
 	/// Ask macOS to allow notifications (a prompt the first time), then say what it allows now, in the page's words. A request it
 	/// refuses outright (an error, and still undecided) is as good as a no: System Settings is where to look.
 	func requestPermission(_ done: @escaping (String) -> Void) {
@@ -212,6 +271,8 @@ final class NotificationBridge: NSObject, WKScriptMessageHandlerWithReply, UNUse
 		case .viewing(let nowShown):
 			shown = nowShown
 			replyHandler([:], nil)
+		case .show(let note):
+			present(note, done: answer)
 		}
 	}
 

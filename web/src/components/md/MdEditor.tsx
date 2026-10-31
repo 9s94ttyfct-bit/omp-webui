@@ -15,9 +15,10 @@ import { conflictDiff, type DiskState, judgeDisk, nextDiskState } from "../../li
 import type { MdOpen } from "../../lib/md-open.ts";
 import { useMediaQuery } from "../../lib/media.ts";
 import { inConversation } from "../../lib/same-conversation.ts";
+import { findSection } from "../../lib/slug.ts";
 import { TransferError } from "../../lib/transfer-api.ts";
 import { dismissOverlays } from "../../store/app.ts";
-import { closeMdEditor, takeMdOpener } from "../../store/md-editor.ts";
+import { closeMdEditor, takeMdJump, takeMdOpener, useMdEditor } from "../../store/md-editor.ts";
 import { DiffBody } from "../changes/DiffBody.tsx";
 import { EditorView, editorState, SEARCH_PHRASES, setLanguage } from "../files/code-editor.ts";
 import { Button, cx, Empty, IconButton, Modal, Spinner } from "../ui.tsx";
@@ -69,28 +70,37 @@ function nameOf(path: string): { name: string; dir: string } {
 	return { name: path.slice(slash + 1), dir: slash < 0 ? "" : path.slice(0, slash) };
 }
 
-type Loaded = { state: "loading" } | { state: "error"; message: string } | { state: "ok"; file: TextFile };
+/** What was read, of which file: another file opened in the editor is loading until its own read has answered. */
+type Loaded = ({ state: "loading" } | { state: "error"; message: string } | { state: "ok"; file: TextFile }) & {
+	path: string;
+};
 
 export default function MdEditor({ scope, chatKey, path }: { scope: FolderScope; chatKey: string; path: string }) {
 	const t = useT();
 	const { name, dir } = nameOf(path);
-	const [loaded, setLoaded] = useState<Loaded>({ state: "loading" });
+	const [read, setLoaded] = useState<Loaded>({ state: "loading", path });
+	// The render that gives a new `path` comes before the effect that reads it: what is on hand is the previous file's, and the
+	// new file's pane (and the section a link opened it at, `useMdEditor`'s `jump`) waits for its own text.
+	const loaded: Loaded = read.path === path ? read : { state: "loading", path };
+	const content = useRef<HTMLDivElement>(null);
 	// Read once per file: the conversation's process may start or stop meanwhile (its scope changes), and the text being
 	// edited is not read again from under the person for that.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: the file is `path`; the scope it is asked with is the one at hand
 	useEffect(() => {
 		const ctl = new AbortController();
-		setLoaded({ state: "loading" });
+		setLoaded({ state: "loading", path });
 		folder.file(scope, path, ctl.signal).then(
 			(file) =>
 				setLoaded(
-					file.kind === "text" ? { state: "ok", file } : { state: "error", message: t("files.mdNotText", { name }) },
+					file.kind === "text"
+						? { state: "ok", file, path }
+						: { state: "error", message: t("files.mdNotText", { name }), path },
 				),
 			(e: unknown) => {
 				if (ctl.signal.aborted) return;
 				const reason =
 					e instanceof ApiError && e.status === 404 ? t("files.fileGone") : e instanceof Error ? e.message : String(e);
-				setLoaded({ state: "error", message: t("files.mdOpenFailed", { name, reason }) });
+				setLoaded({ state: "error", message: t("files.mdOpenFailed", { name, reason }), path });
 			},
 		);
 		return () => ctl.abort();
@@ -101,6 +111,7 @@ export default function MdEditor({ scope, chatKey, path }: { scope: FolderScope;
 		<Dialog.Root open onOpenChange={() => {}}>
 			<Dialog.Portal>
 				<Dialog.Content
+					ref={content}
 					className="fixed inset-0 z-40 flex flex-col bg-bg outline-none fade-in"
 					aria-describedby={undefined}
 					data-testid="md-editor"
@@ -112,6 +123,13 @@ export default function MdEditor({ scope, chatKey, path }: { scope: FolderScope;
 						if (e.isComposing || e.repeat) return;
 						if (dismissOverlays()) return;
 						closeMdEditor();
+					}}
+					// It opens loading: Radix would focus the first button, Close, whose tooltip opens on focus and would take the
+					// first Escape for itself (A-010). The editor itself takes the focus (named by its title, Tab for the first
+					// control), as the full screen of a subagent does; the file's pane takes it once the file is read (`Workspace`).
+					onOpenAutoFocus={(e) => {
+						e.preventDefault();
+						content.current?.focus();
 					}}
 					onCloseAutoFocus={(e) => {
 						const opener = takeMdOpener();
@@ -325,6 +343,16 @@ function Workspace({
 			editor.current = null;
 		};
 	}, []);
+
+	// A link to a section of this file (`guide.md#install`, from another file or this one) scrolls the preview to its heading.
+	const jump = useMdEditor((s) => s.jump);
+	useEffect(() => {
+		if (!jump) return;
+		const box = previewBox.current;
+		const heading = box ? findSection(box, jump.section) : null;
+		heading?.scrollIntoView({ block: "start" });
+		takeMdJump();
+	}, [jump]);
 
 	/** Put `next` in the editor in place of what is there (nothing unsaved is lost: the caller knows), keeping the place. */
 	const take = (next: TextFile) => {

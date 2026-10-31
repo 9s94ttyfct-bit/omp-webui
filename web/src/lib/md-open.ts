@@ -18,12 +18,20 @@ export interface MdOpen {
 	chatKey: string;
 	/** The folder relative links start from, relative to the conversation's ("" is that folder itself). */
 	base: string;
+	/**
+	 * The text gives its headings GitHub's ids (`lib/slug.ts`), so a link to a section of it (`#install`) scrolls there: the
+	 * Markdown editor's preview. A conversation's text has none, and shows such a link as text.
+	 */
+	sections?: boolean;
 }
 
 export const MdOpenContext = createContext<MdOpen | null>(null);
 
-/** A path a link names: relative to the conversation's folder, or absolute (resolved against the folder when it is known). */
-export type LinkedPath = { kind: "relative"; path: string } | { kind: "absolute"; path: string };
+/**
+ * A path a link names: relative to the conversation's folder, or absolute (resolved against the folder when it is known);
+ * `section` is the fragment it names in that file (`guide.md#install`), decoded, when it has one.
+ */
+export type LinkedPath = { kind: "relative" | "absolute"; path: string; section?: string };
 
 /** `a/b/../c/./d` as `a/c/d`; null when it climbs out of where it starts. */
 function normalize(parts: string[]): string | null {
@@ -40,14 +48,16 @@ function normalize(parts: string[]): string | null {
 
 /**
  * The file a link's address names, or null when it names none: a web or other address, an anchor, a path that climbs out
- * of the folder. `base` is the folder relative paths start from. A fragment, a query and a `:line[:column]` suffix (as
- * agents write paths) are dropped.
+ * of the folder. `base` is the folder relative paths start from. A query and a `:line[:column]` suffix (as agents write
+ * paths) are dropped; a fragment is kept as the section it names.
  */
 export function linkedPath(href: string | undefined, base: string): LinkedPath | null {
 	if (!href) return null;
 	let raw = href.trim();
 	if (/^file:\/\//i.test(raw)) raw = raw.replace(/^file:\/\/(?:localhost)?/i, "");
 	else if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("//") || raw.startsWith("#")) return null;
+	const hash = raw.indexOf("#");
+	const fragment = hash < 0 ? "" : raw.slice(hash + 1);
 	raw = raw.replace(/[?#].*$/, "").replace(/:\d+(?::\d+)?$/, "");
 	try {
 		raw = decodeURIComponent(raw);
@@ -55,9 +65,17 @@ export function linkedPath(href: string | undefined, base: string): LinkedPath |
 		return null;
 	}
 	if (raw === "" || raw.startsWith("~") || raw.includes("\\")) return null;
-	if (raw.startsWith("/")) return { kind: "absolute", path: raw };
+	// A fragment that does not decode names no section: the file still opens, at its top.
+	let named = "";
+	try {
+		named = decodeURIComponent(fragment);
+	} catch {
+		// Left unnamed.
+	}
+	const section = named === "" ? {} : { section: named };
+	if (raw.startsWith("/")) return { kind: "absolute", path: raw, ...section };
 	const path = normalize([...base.split("/"), ...raw.split("/")]);
-	return path === null ? null : { kind: "relative", path };
+	return path === null ? null : { kind: "relative", path, ...section };
 }
 
 /** The Markdown file a link names (see `linkedPath`), or null. */
@@ -120,5 +138,5 @@ export async function openLinked(
 		onOutside(t("chat.mdOpenOutside", { path: linked.path }));
 		return;
 	}
-	openMdEditor(open.chatKey, path, from);
+	openMdEditor(open.chatKey, path, from, linked.section);
 }

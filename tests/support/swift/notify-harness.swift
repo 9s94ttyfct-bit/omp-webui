@@ -2,9 +2,10 @@ import AppKit
 import UserNotifications
 import WebKit
 
-// Harness for macos/notifications.swift: what the page may ask of the bridge (the permission, and nothing that shows a
-// notification: the app shows those itself), what macOS is given for a notification and what a click on it opens, and the
-// bridge inside a real WKWebView, loaded the way the app loads its UI (the default data store, the handler in the page's world).
+// Harness for macos/notifications.swift: what the page may ask of the bridge (the permission, and of notifications only a
+// CI run's end in its one shape: a conversation's the app shows itself), what macOS is given for a notification and what a
+// click on it opens, and the bridge inside a real WKWebView, loaded the way the app loads its UI (the default data store,
+// the handler in the page's world).
 // Prints one JSON object.
 //
 //   harness <url of a page that has `window.run()`> <origin the bridge trusts>
@@ -22,6 +23,7 @@ func pure() -> [String: Any] {
 		case .status: return "status"
 		case .request: return "request"
 		case .viewing(let shown): return "viewing:\(shown?.liveId ?? "-")|\(shown?.file ?? "-")"
+		case .show(let note): return "show:\(note.tag)|\(note.title)|\(note.body)"
 		}
 	}
 	/// The notification macOS is given for a banner, and what a click on it tells the page (`notificationRequest`, `openEvent`).
@@ -57,6 +59,27 @@ func pure() -> [String: Any] {
 		]
 		return cases.map { isLooking(focused: $0.0, shown: $0.1, liveId: $0.2, file: $0.3) }
 	}
+	/// A CI run's end (`CiNote`, audit A-015): what macOS is given for it, and what a click on it tells the page.
+	func ciBanner() -> [String: Any] {
+		let request = notificationRequest(for: CiNote(tag: "ci:42", title: "CI passed", body: "main · Fix"))
+		return [
+			"id": request.identifier, "title": request.content.title, "body": request.content.body,
+			"sound": request.content.sound != nil, "immediate": request.trigger == nil,
+			"click": openEvent(from: request.content.userInfo) ?? "nil",
+		]
+	}
+	/// A `show` message of a CI run, with `change` made to it.
+	func ci(_ change: (inout [String: Any]) -> Void = { _ in }) -> [String: Any] {
+		var message: [String: Any] = [
+			"type": "show", "tag": "ci:123", "title": "CI passed", "body": "main · Fix", "open": ["panel": "ci"],
+		]
+		change(&message)
+		return message
+	}
+	/// Whether a CI run's `show` with that much text is taken (`ciNoteTitleLimit`, `ciNoteBodyLimit`).
+	func fits(title: Int, body: Int) -> Bool {
+		parseNotifyRequest(ci { $0["title"] = String(repeating: "t", count: title); $0["body"] = String(repeating: "b", count: body) }) != nil
+	}
 	let origin = URL(string: "http://127.0.0.1:7878/")
 	/// What a click on a notification carries (the notification's userInfo), and what the page is told of it.
 	func opened(_ liveId: String?, _ file: String?) -> Any {
@@ -75,6 +98,13 @@ func pure() -> [String: Any] {
 			parsed(["type": "viewing", "liveId": "a", "file": "/f"]), parsed(["type": "viewing", "liveId": "a"]),
 			parsed(["type": "viewing", "file": "/f"]), parsed(["type": "viewing", "liveId": "", "file": ""]),
 			parsed(["type": "viewing"]), parsed(["type": "viewing", "liveId": 5, "file": false]),
+			// A CI run's end, in its one shape (A-015); anything else is no request.
+			parsed(ci()),
+			parsed(ci { $0["tag"] = "a" }), parsed(ci { $0["tag"] = "ci:" }), parsed(ci { $0["tag"] = "ci:12x" }),
+			parsed(ci { $0["tag"] = "ci:" + String(repeating: "9", count: 21) }), parsed(ci { $0["tag"] = 123 }),
+			parsed(ci { $0["title"] = "" }), parsed(ci { $0["title"] = 5 }), parsed(ci { $0["body"] = nil }),
+			parsed(ci { $0["open"] = nil }), parsed(ci { $0["open"] = ["panel": "files"] }),
+			parsed(ci { $0["open"] = ["panel": "ci", "cwd": "/w"] }), parsed(ci { $0["liveId"] = "L" }),
 		],
 		"ownPage": [
 			isOwnPage(scheme: "http", host: "127.0.0.1", port: 7878, origin: origin),
@@ -83,10 +113,17 @@ func pure() -> [String: Any] {
 			isOwnPage(scheme: "https", host: "127.0.0.1", port: 7878, origin: origin),
 			isOwnPage(scheme: "http", host: "127.0.0.1", port: 7878, origin: nil),
 		],
-		"open": [opened("L", "/f"), opened("L", nil), opened(nil, "/f"), opened(nil, nil)],
+		"open": [opened("L", "/f"), opened("L", nil), opened(nil, "/f"), opened(nil, nil), openEvent(from: ["panel": "ci"]) ?? "nil",
+			openEvent(from: ["panel": "files"]) ?? "nil"],
 		"banners": [banner("a", file: "/s/a.jsonl"), banner("b", file: nil)],
 		"remoteBanner": remoteBanner(),
 		"looking": looking(),
+		"ciBanner": ciBanner(),
+		"ciLimits": [ciNoteTitleLimit, ciNoteBodyLimit],
+		"ciFits": [
+			fits(title: ciNoteTitleLimit, body: ciNoteBodyLimit), fits(title: ciNoteTitleLimit + 1, body: 1),
+			fits(title: 1, body: ciNoteBodyLimit + 1), fits(title: 1, body: 0),
+		],
 	]
 }
 
@@ -181,6 +218,10 @@ func pure() -> [String: Any] {
 		_ = await own.js("return await window.run()")
 		mine["afterFresh"] = await own.events(1)
 		mine["forwardedAfterGone"] = own.forwarded
+		// A click on a CI run's notification opens the window on the CI tab.
+		own.bridge.clicked(["panel": "ci"])
+		mine["afterCiClick"] = await own.events(2)
+		mine["forwardedAfterCi"] = own.forwarded
 		report["own"] = mine
 
 		// The page is at another origin than the bridge trusts.

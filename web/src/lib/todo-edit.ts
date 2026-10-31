@@ -1,3 +1,5 @@
+import "../i18n/later.ts";
+import type { MessageKey } from "../i18n/index.ts";
 import type { TodoTask } from "../store/live.ts";
 import type { TodoPhase } from "./todos.ts";
 
@@ -10,6 +12,33 @@ import type { TodoPhase } from "./todos.ts";
 
 export const TODO_STATUSES = ["pending", "in_progress", "completed", "blocked", "abandoned"] as const;
 export type TodoStatus = (typeof TODO_STATUSES)[number];
+
+/** Why an edit cannot be made: the page says it in its own language (`TODO_EDIT_MESSAGES`), not in these English words. */
+export const TODO_EDIT_CODES = ["noTask", "noPhase", "emptyTask", "emptyPhase"] as const;
+export type TodoEditCode = (typeof TODO_EDIT_CODES)[number];
+
+/** The string each reason is shown as (`panel`, in every language the page has). */
+export const TODO_EDIT_MESSAGES: Record<TodoEditCode, MessageKey> = {
+	noTask: "panel.todoEditNoTask",
+	noPhase: "panel.todoEditNoPhase",
+	emptyTask: "panel.todoEditEmptyTask",
+	emptyPhase: "panel.todoEditEmptyPhase",
+};
+
+const ENGLISH: Record<TodoEditCode, string> = {
+	noTask: "No such task",
+	noPhase: "No such phase",
+	emptyTask: "A task needs some text",
+	emptyPhase: "A phase needs a name",
+};
+
+/** An edit that cannot be made, by its reason; the message is English, for a log. */
+export class TodoEditError extends Error {
+	constructor(readonly code: TodoEditCode) {
+		super(ENGLISH[code]);
+		this.name = "TodoEditError";
+	}
+}
 
 /** The marker omp writes for each state in `- [ ] task`. */
 const MARKERS: Record<TodoStatus, string> = {
@@ -63,7 +92,7 @@ export function phaseIs(phases: TodoPhase[], p: number, name: string): boolean {
 function withTask(phases: TodoPhase[], p: number, t: number, change: (task: TodoTask) => void): TodoPhase[] {
 	const next = copy(phases);
 	const task = next[p]?.tasks[t];
-	if (!task) throw new Error("No such task");
+	if (!task) throw new TodoEditError("noTask");
 	change(task);
 	return next;
 }
@@ -79,7 +108,7 @@ export function setStatus(phases: TodoPhase[], p: number, t: number, status: Tod
 
 export function setContent(phases: TodoPhase[], p: number, t: number, content: string): TodoPhase[] {
 	const text = oneLine(content);
-	if (!text) throw new Error("A task needs some text");
+	if (!text) throw new TodoEditError("emptyTask");
 	return withTask(phases, p, t, (task) => {
 		task.content = text;
 	});
@@ -88,7 +117,7 @@ export function setContent(phases: TodoPhase[], p: number, t: number, content: s
 /** The task goes at the end of phase `p`; with no phase yet it starts omp's own default one, `Todos`. */
 export function addTask(phases: TodoPhase[], p: number, content: string): TodoPhase[] {
 	const text = oneLine(content);
-	if (!text) throw new Error("A task needs some text");
+	if (!text) throw new TodoEditError("emptyTask");
 	const next = copy(phases);
 	if (next.length === 0) next.push({ name: "Todos", tasks: [] });
 	const phase = next[p] ?? next[next.length - 1];
@@ -98,29 +127,29 @@ export function addTask(phases: TodoPhase[], p: number, content: string): TodoPh
 
 export function addPhase(phases: TodoPhase[], name: string): TodoPhase[] {
 	const text = oneLine(name);
-	if (!text) throw new Error("A phase needs a name");
+	if (!text) throw new TodoEditError("emptyPhase");
 	return [...copy(phases), { name: text, tasks: [] }];
 }
 
 export function renamePhase(phases: TodoPhase[], p: number, name: string): TodoPhase[] {
 	const text = oneLine(name);
-	if (!text) throw new Error("A phase needs a name");
+	if (!text) throw new TodoEditError("emptyPhase");
 	const next = copy(phases);
-	if (!next[p]) throw new Error("No such phase");
+	if (!next[p]) throw new TodoEditError("noPhase");
 	next[p].name = text;
 	return next;
 }
 
 export function removeTask(phases: TodoPhase[], p: number, t: number): TodoPhase[] {
 	const next = copy(phases);
-	if (!next[p]?.tasks[t]) throw new Error("No such task");
+	if (!next[p]?.tasks[t]) throw new TodoEditError("noTask");
 	next[p].tasks.splice(t, 1);
 	return next;
 }
 
 export function removePhase(phases: TodoPhase[], p: number): TodoPhase[] {
 	const next = copy(phases);
-	if (!next[p]) throw new Error("No such phase");
+	if (!next[p]) throw new TodoEditError("noPhase");
 	next.splice(p, 1);
 	return next;
 }
@@ -129,7 +158,7 @@ export function removePhase(phases: TodoPhase[], p: number): TodoPhase[] {
 export function moveTask(phases: TodoPhase[], p: number, t: number, by: -1 | 1): TodoPhase[] {
 	const next = copy(phases);
 	const tasks = next[p]?.tasks;
-	if (!tasks?.[t]) throw new Error("No such task");
+	if (!tasks?.[t]) throw new TodoEditError("noTask");
 	const to = t + by;
 	if (to < 0 || to >= tasks.length) return next;
 	[tasks[t], tasks[to]] = [tasks[to], tasks[t]];
@@ -138,7 +167,7 @@ export function moveTask(phases: TodoPhase[], p: number, t: number, by: -1 | 1):
 
 export function movePhase(phases: TodoPhase[], p: number, by: -1 | 1): TodoPhase[] {
 	const next = copy(phases);
-	if (!next[p]) throw new Error("No such phase");
+	if (!next[p]) throw new TodoEditError("noPhase");
 	const to = p + by;
 	if (to < 0 || to >= next.length) return next;
 	[next[p], next[to]] = [next[to], next[p]];

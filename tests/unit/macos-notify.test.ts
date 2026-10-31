@@ -3,16 +3,18 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isLookingAt } from "../../shared/attention.ts";
+import { CI_NOTE_LIMITS } from "../../web/src/lib/shell-notify.ts";
 
 /**
  * The macOS app's notifications (macos/notifications.swift, #627): the app shows them itself, from the server's own stream
  * (`macos-shell-events.test.ts`), because nothing may depend on a page that is not there while the app runs without a window.
  * What is left for the page is Settings › Notifications, which asks the shell over a script message handler (the app's web view
  * has no usable `Notification`: `requestPermission()` answers "denied" at once, with no prompt) what macOS allows. Compiled with
- * the `swiftc` the app is built with, a harness checks what the page may ask (nothing that shows a notification), what macOS is
- * given for a notification and what a click on it opens, and runs the bridge in a real WKWebView: a page's requests are answered,
- * a request from anywhere but the server's own page is refused, and a click on a notification reaches the page, also when it
- * came before the page was up, and when the window it opens is a fresh page. The harness is a bare executable, so
+ * the `swiftc` the app is built with, a harness checks what the page may ask (of notifications, only a CI run's end in its one
+ * shape, audit A-015: a conversation's are the app's own), what macOS is given for a notification and what a click on it opens,
+ * and runs the bridge in a real WKWebView: a page's requests are answered, a request from anywhere but the server's own page is
+ * refused, and a click on a notification reaches the page, also when it came before the page was up, and when the window it
+ * opens is a fresh page. The harness is a bare executable, so
  * UNUserNotificationCenter stays out of it (it needs an app bundle, and the system's prompt is not something a test can
  * answer): the bridge says "unsupported", as it does without a bundle. The web side of the protocol is tests/e2e/notify-shell.spec.ts.
  */
@@ -57,6 +59,8 @@ window.run = async () => {
 		show: { type: "show", id: "x", title: "t", body: "b", liveId: "L", file: null },
 		unknown: { type: "nope" },
 		badShow: { type: "show", id: "", title: "t" },
+		ciShow: { type: "show", tag: "ci:42", title: "CI passed: CI", body: "main · Fix", open: { panel: "ci" } },
+		ciShowElse: { type: "show", tag: "ci:42", title: "t", body: "b", open: { panel: "terminal" } },
 	})) {
 		try { out[name] = await handler.postMessage(message); } catch (e) { out[name] = "refused: " + e.message; }
 	}
@@ -73,6 +77,9 @@ interface Report {
 		banners: Record<string, unknown>[];
 		remoteBanner: Record<string, unknown>;
 		looking: boolean[];
+		ciBanner: Record<string, unknown>;
+		ciLimits: number[];
+		ciFits: boolean[];
 	};
 	own: {
 		messages: Record<string, unknown>;
@@ -85,6 +92,8 @@ interface Report {
 		whileGone: unknown[];
 		afterFresh: unknown[];
 		forwardedAfterGone: number;
+		afterCiClick: unknown[];
+		forwardedAfterCi: number;
 	};
 	other: { messages: Record<string, unknown>; events: unknown[] };
 }
@@ -122,12 +131,12 @@ test.skipIf(!mac)("what macOS allows is told in the browser's words", () => {
 });
 
 test.skipIf(!mac)(
-	"a page may ask what macOS allows, ask for the permission, and say which conversation it shows; it cannot make the app show a notification",
+	"a page may ask what macOS allows, ask for the permission, say which conversation it shows, and show a CI run's end in its one shape; no other notification",
 	() => {
 		expect(report.pure.parse).toEqual([
 			"status",
 			"request",
-			"nil", // a notification is no request of a page any more, whatever it carries
+			"nil", // a conversation's notification is no request of a page, whatever it carries
 			"nil",
 			"nil",
 			"nil",
@@ -139,7 +148,44 @@ test.skipIf(!mac)(
 			"viewing:-|-",
 			"viewing:-|-",
 			"viewing:-|-",
+			// A CI run's end (A-015): `ci:` and the run's number, a title, a body, a click that opens the CI tab.
+			"show:ci:123|CI passed|main · Fix",
+			// Another tag (none, an empty or a non-numeric run, one too long, not a string).
+			"nil",
+			"nil",
+			"nil",
+			"nil",
+			"nil",
+			// No title, a title that is no string, no body.
+			"nil",
+			"nil",
+			"nil",
+			// No click, a click that opens another panel or carries more, a conversation's id beside it.
+			"nil",
+			"nil",
+			"nil",
+			"nil",
 		]);
+	},
+);
+
+test.skipIf(!mac)("a CI run's text is bounded by the limits the page cuts it to", () => {
+	expect(report.pure.ciLimits).toEqual([CI_NOTE_LIMITS.title, CI_NOTE_LIMITS.body]);
+	// At the limits, over the title's, over the body's, an empty body.
+	expect(report.pure.ciFits).toEqual([true, false, false, true]);
+});
+
+test.skipIf(!mac)(
+	"what macOS is given for a CI run's end replaces the run's earlier one, and a click opens the CI tab",
+	() => {
+		expect(report.pure.ciBanner).toEqual({
+			id: "ci:42",
+			title: "CI passed",
+			body: "main · Fix",
+			sound: true,
+			immediate: true,
+			click: { type: "open-panel", panel: "ci" },
+		});
 	},
 );
 
@@ -202,23 +248,31 @@ test.skipIf(!mac)("only the page the app serves may use the bridge: its scheme, 
 	expect(report.pure.ownPage).toEqual([true, false, false, false, false]);
 });
 
-test.skipIf(!mac)("a click names the conversation to open by its process and its file, whichever it has", () => {
-	expect(report.pure.open).toEqual([
-		{ type: "open", liveId: "L", file: "/f" },
-		{ type: "open", liveId: "L", file: null },
-		{ type: "open", liveId: null, file: "/f" },
-		"nil",
-	]);
-});
+test.skipIf(!mac)(
+	"a click names the conversation to open by its process and its file, whichever it has, or the CI tab",
+	() => {
+		expect(report.pure.open).toEqual([
+			{ type: "open", liveId: "L", file: "/f" },
+			{ type: "open", liveId: "L", file: null },
+			{ type: "open", liveId: null, file: "/f" },
+			"nil",
+			{ type: "open-panel", panel: "ci" },
+			"nil",
+		]);
+	},
+);
 
 test.skipIf(!mac)(
-	"a page's permission requests are answered, and what is not one (a notification to show included) is refused",
+	"a page's permission requests and a CI run's end are answered; what is not one (a conversation's notification included) is refused",
 	() => {
 		expect(report.own.messages).toEqual({
 			status: { permission: "unsupported" },
 			show: "refused: Unknown request.",
 			unknown: "refused: Unknown request.",
 			badShow: "refused: Unknown request.",
+			// Answered with what macOS allows (nothing without an app bundle, so nothing is shown here).
+			ciShow: { permission: "unsupported" },
+			ciShowElse: "refused: Unknown request.",
 		});
 	},
 );
@@ -249,8 +303,23 @@ test.skipIf(!mac)(
 	},
 );
 
+test.skipIf(!mac)("a click on a CI run's notification opens the window and tells the page to open the CI tab", () => {
+	expect(report.own.afterCiClick).toEqual([
+		{ type: "open", liveId: "L-away", file: "/s/away.jsonl" },
+		{ type: "open-panel", panel: "ci" },
+	]);
+	expect(report.own.forwardedAfterCi).toBe(5);
+});
+
 test.skipIf(!mac)("a page at any other origin than the server's gets nothing and hears nothing", () => {
 	const refused = "refused: Not available to this page.";
-	expect(report.other.messages).toEqual({ status: refused, show: refused, unknown: refused, badShow: refused });
+	expect(report.other.messages).toEqual({
+		status: refused,
+		show: refused,
+		unknown: refused,
+		badShow: refused,
+		ciShow: refused,
+		ciShowElse: refused,
+	});
 	expect(report.other.events).toEqual([]);
 });

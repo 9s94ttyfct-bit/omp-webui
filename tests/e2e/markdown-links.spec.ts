@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import AxeBuilder from "@axe-core/playwright";
 import { FIXTURE_BUCKET, FIXTURE_CWD } from "../support/fixtures.ts";
 import { expect, test } from "./fixtures.ts";
 
@@ -21,7 +22,7 @@ const usage = {
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-/** One conversation whose reply has links of every kind, and a footnote defined far below its reference. */
+/** One conversation whose reply has links of every kind, a task list, and a footnote defined far below its reference. */
 function writeSession(agentDir: string): { file: string; title: string } {
 	const bucket = join(agentDir, "sessions", FIXTURE_BUCKET);
 	mkdirSync(bucket, { recursive: true });
@@ -36,6 +37,7 @@ function writeSession(agentDir: string): { file: string; title: string } {
 	);
 	const reply = [
 		"Open [the README](docs/README.md), [the handler](/tmp/project/src/a.ts#L10) and [a sibling](./b.ts); a [web page](https://example.com/ok), a [mail address](mailto:a@example.com), a [phone](tel:+15551234567), a [shell](ssh://evil.example), a [script](javascript:window.PWNED_LINK=1) and a claim with a note[^1].",
+		"- [x] Read the handler\n- [ ] Write the **tests**",
 		...filler,
 		"[^1]: The note at the very end.",
 	].join("\n\n");
@@ -95,10 +97,13 @@ test("only web and mail addresses are links; paths and refused schemes are text 
 	await readme.click();
 	const editor = page.getByTestId("md-editor");
 	await expect(editor).toHaveAttribute("data-path", "docs/README.md");
-	// The fixture folder has no such file: the editor says so, and Close closes it.
+	// The fixture folder has no such file: the editor says so, and one Escape closes it (A-010: the focus is not on Close,
+	// whose tooltip would take the first Escape) and gives the focus back to the link.
 	await expect(editor.getByTestId("md-open-error")).toBeVisible();
-	await page.getByTestId("md-close").click();
+	await expect(editor).toBeFocused();
+	await page.keyboard.press("Escape");
 	await expect(editor).toHaveCount(0);
+	await expect(readme).toBeFocused();
 
 	// The rest read as text: a path shows as a hint, a refused scheme (which react-markdown leaves with no address) as plain words; clicking opens nothing.
 	for (const [text, hint] of [
@@ -155,4 +160,15 @@ test("a footnote reference scrolls to its note in the same message, and back, wi
 	await page.waitForTimeout(500);
 	expect(opened).toEqual([]);
 	expect(await page.evaluate(() => location.hash)).toBe(hash);
+});
+
+test("a reply's task list boxes are named by their tasks, and the reply passes axe (A-011)", async ({ page }) => {
+	const { file } = writeSession(process.env.OMPW_E2E_AGENT_DIR as string);
+	await page.goto(`/#/s/${encodeURIComponent(file)}`);
+	const reply = page.getByTestId("msg-assistant").first();
+	await expect(reply).toContainText("Paragraph 40");
+	await expect(reply.getByRole("checkbox", { name: "Read the handler" })).toBeChecked();
+	await expect(reply.getByRole("checkbox", { name: "Write the tests" })).not.toBeChecked();
+	const result = await new AxeBuilder({ page }).include('[data-testid="msg-assistant"]').analyze();
+	expect(result.violations.map((v) => `${v.id} ${v.nodes.map((n) => n.target.join(" ")).join(" | ")}`)).toEqual([]);
 });

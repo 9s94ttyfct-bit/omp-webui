@@ -1,8 +1,11 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { DEFAULT_PALETTE, isPalette, PALETTES } from "../../web/src/lib/theme.ts";
 import {
 	ANSI_TOKENS,
 	backgroundsFor,
+	blend,
 	CHART_TOKENS,
 	CODE_TOKENS,
 	COLOUR_TOKENS,
@@ -26,6 +29,50 @@ const MODES = [
 	["light", false],
 	["dark", true],
 ] as const;
+
+/**
+ * What the Changes view's diff rows (web/src/components/changes/DiffBody.tsx) draw their line numbers and the mark of a
+ * clipped row in, the tints of an added and a removed row, and the box they are tinted over (`bg-code`), read from the
+ * component itself; and how much of a token's colour a changed row keeps (web/src/index.css, `--diff-token`), with the
+ * tokens it is written for. axe reports text over a translucent background as "incomplete", not as a violation, so this is
+ * what holds them to 4.5:1 (audits A-013, A-032).
+ */
+function diffRowColours(): {
+	texts: Record<string, string>;
+	tints: { token: string; alpha: number }[];
+	box: string;
+	tokenShare: number;
+	mixedTokens: string[];
+} {
+	const src = readFileSync(join(import.meta.dir, "../../web/src/components/changes/DiffBody.tsx"), "utf8");
+	const num = /const NUM = "[^"]*\btext-([a-z-]+)/.exec(src)?.[1];
+	const clipped = /className="text-([a-z-]+)" title=\{t\("files\.rowClipped"\)\}/.exec(src)?.[1];
+	const tint = /const TINT = \{ add: "bg-([a-z-]+)\/(\d+)", del: "bg-([a-z-]+)\/(\d+)"/.exec(src);
+	const box = /className="overflow-x-auto bg-([a-z-]+) /.exec(src)?.[1];
+	const css = readFileSync(join(import.meta.dir, "../../web/src/index.css"), "utf8");
+	const share = /color: color-mix\(in srgb, var\(--diff-token\) (\d+)%, var\(--fg\)\) !important;/.exec(css)?.[1];
+	if (!num || !clipped || !tint || !box || !share)
+		throw new Error(
+			"DiffBody.tsx or index.css no longer has what this test reads (NUM, TINT, the clipped mark, the box, the mix)",
+		);
+	return {
+		texts: { "line number": num, "clipped mark": clipped },
+		tints: [
+			{ token: tint[1] as string, alpha: Number(tint[2]) / 100 },
+			{ token: tint[3] as string, alpha: Number(tint[4]) / 100 },
+		],
+		box: box === "code" ? "code-bg" : box,
+		tokenShare: Number(share) / 100,
+		mixedTokens: [...css.matchAll(/span\[style\*="var\(--([a-z-]+)\)"\] \{\n\t--diff-token: var\(--\1\);/g)].map(
+			(m) => m[1] as string,
+		),
+	};
+}
+const diffRows = diffRowColours();
+
+test("a changed diff row mixes every code colour the highlighter writes", () => {
+	expect([...diffRows.mixedTokens].sort()).toEqual([...CODE_TOKENS].sort());
+});
 
 test("the palettes the app offers are the ones the stylesheet defines", () => {
 	expect(Object.keys(palettes).sort()).toEqual([...PALETTES].sort());
@@ -149,6 +196,34 @@ for (const [id, modes] of Object.entries(palettes)) {
 			// The bar that marks the current or highlighted row (3:1, the bar against the row).
 			for (const row of ["hover", "bg-soft", "surface"]) on(`accent bar on ${row}`, "accent", row, 3);
 			for (const code of CODE_TOKENS) on(`${code} on code-bg`, code, "code-bg", 4.5);
+			expect(low).toEqual([]);
+		});
+
+		test(`${id} ${mode}: a diff row's line numbers are 4.5:1 on its tint, over every surface the diff is drawn on`, () => {
+			const tokens = effective(modes, dark);
+			const low: string[] = [];
+			// The rows' own box (`bg-code`), and the surfaces around it: the panel (`bg-soft`), the editor and the large view.
+			for (const [what, text] of Object.entries(diffRows.texts))
+				for (const { token, alpha } of diffRows.tints)
+					for (const base of [diffRows.box, "bg", "bg-soft", "surface"]) {
+						const under = blend(colour(tokens, token), alpha, colour(tokens, base));
+						const ratio = contrast(colour(tokens, text), under);
+						if (ratio < 4.5)
+							low.push(`${what} (${text}) on ${token} ${alpha * 100}% over ${base}: ${ratio.toFixed(2)}`);
+					}
+			expect(low).toEqual([]);
+		});
+
+		test(`${id} ${mode}: a changed diff row's code colours, mixed toward the text colour, are 4.5:1 on its tint (A-032)`, () => {
+			const tokens = effective(modes, dark);
+			const low: string[] = [];
+			for (const code of CODE_TOKENS)
+				for (const { token, alpha } of diffRows.tints) {
+					const mixed = blend(colour(tokens, code), diffRows.tokenShare, colour(tokens, "fg"));
+					const under = blend(colour(tokens, token), alpha, colour(tokens, diffRows.box));
+					const ratio = contrast(mixed, under);
+					if (ratio < 4.5) low.push(`${code} on ${token} ${alpha * 100}% over ${diffRows.box}: ${ratio.toFixed(2)}`);
+				}
 			expect(low).toEqual([]);
 		});
 

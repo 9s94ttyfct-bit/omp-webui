@@ -9,11 +9,14 @@ import type { Shown } from "@shared/attention.ts";
  * - `{ type: "status" }`: what macOS allows this app now; it also tells the shell the page is up, which is when a click that
  *   opened the app is handed over.
  * - `{ type: "request" }`: ask macOS to allow notifications (a system prompt the first time), then say what it answered.
+ * - `{ type: "show", tag, title, body, open: { panel: "ci" } }`: the end of a CI run (the CI tab's bell, `lib/ci-runs.ts`),
+ *   the one notification a page may ask for, and only in that shape (`tag` is `ci:` and the run's number, the text at most
+ *   `CI_NOTE_LIMITS`, a click opens the CI tab); the shell refuses anything else. It is shown when macOS allows it.
  *
- * Each is answered with `{ permission }`. The shell also tells the page about two things on its own, as an `ompw-notification`
- * event on `window`: `{ type: "open", liveId, file }` when a notification was clicked (the window is already in front),
- * and `{ type: "permission", permission }` when the app came to the front, because the person may have changed the setting
- * in System Settings meanwhile.
+ * Each is answered with `{ permission }`. The shell also tells the page about things on its own, as an `ompw-notification`
+ * event on `window`: `{ type: "open", liveId, file }` when a conversation's notification was clicked (the window is already
+ * in front), `{ type: "open-panel", panel: "ci" }` when a CI run's was, and `{ type: "permission", permission }` when the app
+ * came to the front, because the person may have changed the setting in System Settings meanwhile.
  *
  * It also tells the shell what the page shows, once on start and whenever it changes: `{ type: "viewing", liveId, file }`, the
  * conversation on screen (null and null when another page is). The shell is the one that knows whether its window is the one in
@@ -29,6 +32,7 @@ export type ShellPermission = "default" | "granted" | "denied" | "unsupported";
 
 export type ShellEvent =
 	| { type: "open"; liveId: string | null; file: string | null }
+	| { type: "open-panel"; panel: "ci" }
 	| { type: "permission"; permission: ShellPermission };
 
 interface Handler {
@@ -93,7 +97,26 @@ export const shellStatus = (): Promise<ShellPermission> => ask({ type: "status" 
 /** Ask macOS to allow notifications. It prompts only while the person has not decided; the answer is what it says afterwards. */
 export const shellRequest = (): Promise<ShellPermission> => ask({ type: "request" });
 
-/** Hear what the shell says on its own; returns the way to stop. Anything that is not one of the two events is ignored. */
+/** The most a CI run's notification may carry, in characters: what `macos/notifications.swift` takes (`ciNoteTitleLimit`). */
+export const CI_NOTE_LIMITS = { title: 200, body: 400 } as const;
+
+/** `text` cut to `max` characters (code points, never more than Swift's characters), with an ellipsis when it was longer. */
+function cut(text: string, max: number): string {
+	const chars = Array.from(text);
+	return chars.length <= max ? text : `${chars.slice(0, max - 1).join("")}…`;
+}
+
+/** Ask the shell to show that a CI run (`runId`) ended: one per run, a newer word replacing the older; a click opens the CI tab. */
+export const shellShowCi = (runId: number, title: string, body: string): Promise<ShellPermission> =>
+	ask({
+		type: "show",
+		tag: `ci:${runId}`,
+		title: cut(title, CI_NOTE_LIMITS.title),
+		body: cut(body, CI_NOTE_LIMITS.body),
+		open: { panel: "ci" },
+	});
+
+/** Hear what the shell says on its own; returns the way to stop. Anything that is not one of its events is ignored. */
 export function onShellEvent(fn: (event: ShellEvent) => void): () => void {
 	const listener = (e: Event) => {
 		const d = (e as CustomEvent<Record<string, unknown> | null>).detail;
@@ -104,6 +127,8 @@ export function onShellEvent(fn: (event: ShellEvent) => void): () => void {
 				liveId: typeof liveId === "string" && liveId !== "" ? liveId : null,
 				file: typeof file === "string" && file !== "" ? file : null,
 			});
+		} else if (d?.type === "open-panel" && d.panel === "ci") {
+			fn({ type: "open-panel", panel: "ci" });
 		} else if (d?.type === "permission" && typeof d.permission === "string" && PERMISSIONS.includes(d.permission)) {
 			fn({ type: "permission", permission: d.permission as ShellPermission });
 		}

@@ -18,11 +18,13 @@ import ReactMarkdown, { type Components, defaultUrlTransform, type UrlTransform 
 import remarkGfm from "remark-gfm";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
+import { hastText } from "../lib/hast-text.ts";
 import { highlight, highlighted } from "../lib/highlight.ts";
 import { isAllowedImageSrc } from "../lib/image-src.ts";
 import { linkTarget } from "../lib/link-target.ts";
 import { type Nesting, nestsTooDeep, scanNesting } from "../lib/markdown-depth.ts";
 import { linkedMarkdown, MdOpenContext, openLinked } from "../lib/md-open.ts";
+import { findSection } from "../lib/slug.ts";
 import { useApp } from "../store/app.ts";
 import { type Block, type Blocks, type Group, splitBlocks } from "./markdown-blocks.ts";
 
@@ -91,19 +93,31 @@ export const CodeBlock = memo(function CodeBlock({ code, lang }: { code: string;
 function scrollToNote(from: HTMLElement, id: string): void {
 	const root = from.closest(".prose-omp");
 	const note = root ? [...root.querySelectorAll<HTMLElement>("[id]")].find((el) => el.id === id) : undefined;
-	if (!note) return;
-	note.scrollIntoView({ block: "center" });
-	// Keyboard and screen reader users arrive where the page does.
-	note.tabIndex = -1;
-	note.focus({ preventScroll: true });
+	if (note) arriveAt(note, "center");
+}
+
+/** Scroll to `el`; keyboard and screen reader users arrive where the page does. */
+function arriveAt(el: HTMLElement, block: ScrollLogicalPosition): void {
+	el.scrollIntoView({ block });
+	el.tabIndex = -1;
+	el.focus({ preventScroll: true });
+}
+
+/** Scroll to the heading a section link's `fragment` names (`lib/slug.ts`), within the text the button is in. */
+function scrollToSection(from: HTMLElement, fragment: string): void {
+	const root = from.closest(".prose-omp");
+	const heading = root ? findSection(root, fragment) : null;
+	if (heading) arriveAt(heading, "start");
 }
 
 /**
  * A link of the text. One that opens somewhere else (a web or mail address) opens in a window of its own. A footnote
- * reference scrolls within the message. A Markdown file of the conversation's folder opens in the Markdown editor, where
- * the text is a conversation's or a file of its folder (`MdOpenContext`). Anything else (an empty address, which is what a
- * scheme the sanitiser refuses leaves; another file path; `irc:`, which the macOS app does not open) has nowhere to go and
- * is shown as text: such a link opened this page again, in a second tab.
+ * reference scrolls within the message, and so does a link to a section (`#install`) in a text whose headings have ids (the
+ * Markdown editor's preview: `MdOpen.sections`). A Markdown file of the conversation's folder opens in the Markdown editor,
+ * where the text is a conversation's or a file of its folder (`MdOpenContext`), at the section it names if any. Anything
+ * else (an empty address, which is what a scheme the sanitiser refuses leaves; another file path; a section of a
+ * conversation's text; `irc:`, which the macOS app does not open) has nowhere to go and is shown as text: such a link opened
+ * this page again, in a second tab.
  */
 function MarkdownLink({
 	href,
@@ -143,6 +157,19 @@ function MarkdownLink({
 			</button>
 		);
 	}
+	if (target.kind === "section" && md?.sections) {
+		return (
+			<button
+				type="button"
+				id={id}
+				className="md-anchor"
+				data-testid="md-section-link"
+				onClick={(e) => scrollToSection(e.currentTarget, target.fragment)}
+			>
+				{children}
+			</button>
+		);
+	}
 	const linked = md ? linkedMarkdown(href, md.base) : null;
 	if (md && linked) {
 		return (
@@ -171,6 +198,30 @@ function MarkdownLink({
 	);
 }
 
+/** The text of the task list item a box is in: what names the box (`TaskBox`). */
+const TaskContext = createContext<string | null>(null);
+
+/** Not the text of a task: a nested list's items are tasks of their own. */
+const NOT_THE_TASK = ["ul", "ol"] as const;
+
+/**
+ * A task list's box (GFM draws a bare checkbox, which a screen reader reads as "checkbox, checked"): named by its task's
+ * text, as a `<label>` around the item would name it; by what it marks when the item has no text.
+ */
+function TaskBox({ checked }: { checked: boolean }) {
+	const t = useT();
+	const task = useContext(TaskContext);
+	return (
+		<input
+			type="checkbox"
+			checked={checked}
+			disabled
+			readOnly
+			aria-label={task || (checked ? t("chat.mdTaskDone") : t("chat.mdTaskOpen"))}
+		/>
+	);
+}
+
 /** How the conversation's Markdown draws its elements: the Markdown editor's preview draws a file with the same ones. */
 export const markdownComponents: Components = {
 	pre: ({ children }) => <>{children}</>,
@@ -187,6 +238,18 @@ export const markdownComponents: Components = {
 		</MarkdownLink>
 	),
 	img: ({ src, alt }) => <MarkdownImage src={src} alt={alt} />,
+	// A task's item tells its box the task's text; any other item is drawn as it is.
+	li({ node, children, ...props }) {
+		const classes = node?.properties.className;
+		if (!Array.isArray(classes) || !classes.includes("task-list-item")) return <li {...props}>{children}</li>;
+		const task = node ? hastText(node, NOT_THE_TASK).replace(/\s+/g, " ").trim() : "";
+		return (
+			<li {...props}>
+				<TaskContext.Provider value={task}>{children}</TaskContext.Provider>
+			</li>
+		);
+	},
+	input: ({ type, checked }) => (type === "checkbox" ? <TaskBox checked={checked === true} /> : null),
 };
 
 /**

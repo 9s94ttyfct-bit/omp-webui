@@ -316,6 +316,4 @@ export const en = {
 	mdDiagramFailed: "This diagram can't be drawn: {reason}",
 	mdDiagramLabel: "Diagram",
 	mdMathPending: "Typesetting the math…",
-	mdTaskDone: "Done",
-	mdTaskOpen: "Not done",
 };

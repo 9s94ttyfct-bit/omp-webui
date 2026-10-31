@@ -259,6 +259,23 @@ test("clicking a notification opens its conversation, by the process while it is
 	expect(useApp.getState().view).toEqual({ kind: "usage" });
 });
 
+test("clicking a CI run's notification opens the side panel on the CI tab, and leaves the view as it is (A-015)", () => {
+	globals.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+	try {
+		useApp.setState({ panelOpen: false });
+		stop = startAttention();
+		say({ type: "open-panel", panel: "ci" });
+		expect(useApp.getState().panelOpen).toBe(true);
+		expect(useApp.getState().view).toEqual({ kind: "usage" });
+		// Another panel is not something a notification opens.
+		useApp.setState({ panelOpen: false });
+		say({ type: "open-panel", panel: "files" });
+		expect(useApp.getState().panelOpen).toBe(false);
+	} finally {
+		delete globals.matchMedia;
+	}
+});
+
 test("the page tells the shell which conversation it shows, once and whenever that changes, and not what changes nothing", async () => {
 	const a = initialLive(info("a", "/sessions/a.jsonl"));
 	const b = initialLive(info("b", "/sessions/b.jsonl"));

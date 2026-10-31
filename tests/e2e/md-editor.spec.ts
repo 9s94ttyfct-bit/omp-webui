@@ -333,6 +333,32 @@ test.describe("where it opens from", () => {
 	});
 });
 
+test.describe("sections", () => {
+	test("a table of contents scrolls the preview to its heading; another file's section opens there (A-012)", async ({
+		page,
+	}) => {
+		const filler = Array.from({ length: 60 }, (_, i) => `Line ${i + 1}.`).join("\n\n");
+		write(
+			"toc.md",
+			`# Contents\n\n- [Far away](#far-away)\n- [The other end](toc-other.md#the-end)\n\n${filler}\n\n## Far away\n\nHere.\n`,
+		);
+		write("toc-other.md", `# Other\n\n${filler}\n\n## The end\n\nThere.\n`);
+		await openFiles(page);
+		await openInEditor(page, "toc.md");
+		const far = preview(page).getByRole("heading", { name: "Far away" });
+		await expect(far).toHaveAttribute("id", "user-content-far-away");
+		await expect(far).not.toBeInViewport();
+		await preview(page).getByTestId("md-section-link").filter({ hasText: "Far away" }).click();
+		await expect(far).toBeInViewport();
+		await expect(far).toBeFocused();
+
+		await preview(page).getByTestId("md-open-link").filter({ hasText: "The other end" }).click();
+		await expect(editor(page)).toHaveAttribute("data-path", "toc-other.md");
+		await expect(preview(page).getByRole("heading", { name: "The end" })).toBeInViewport();
+		await expect(preview(page).getByRole("heading", { name: "Other" })).not.toBeInViewport();
+	});
+});
+
 test.describe("on a phone", () => {
 	test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
@@ -378,12 +404,9 @@ for (const theme of ["light", "dark"] as const) {
 					.map((a) => a.finished),
 			),
 		);
-		// The diff's rows are `DiffBody`'s, as the Changes view draws them: axe reports the line numbers of its semi-transparent
-		// tinted rows (a property of that component, left out of the Changes view's own axe check too), so they are left out here.
-		const result = await new AxeBuilder({ page })
-			.include('[data-testid="md-editor"]')
-			.exclude('[data-testid="changes-diff-body"]')
-			.analyze();
+		// The diff's rows (`DiffBody`'s, as the Changes view draws them) are checked too (A-013): their line numbers hold on
+		// a changed row's tint.
+		const result = await new AxeBuilder({ page }).include('[data-testid="md-editor"]').analyze();
 		expect(result.violations.map((v) => `${v.id} ${v.nodes.map((n) => n.target.join(" ")).join(" | ")}`)).toEqual([]);
 	});
 }

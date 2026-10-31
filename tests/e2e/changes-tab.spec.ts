@@ -581,13 +581,9 @@ for (const theme of ["light", "dark"] as const) {
 			await expect(page.getByTestId("big-diff-split")).toHaveAccessibleName("Split");
 			await expect(page.getByTestId("big-diff-unified")).toHaveAccessibleName("Unified");
 			await expect(page.getByTestId("big-view")).toHaveAccessibleName("Changes in README.md");
-			// The rows themselves are `DiffBody`'s, drawn as the panel draws them: axe reports the line numbers of its
-			// semi-transparent tinted rows (a property of that component, not of this view), so the code body is left out and
-			// everything this view adds — its name, its switches, its close, its state line — is checked.
-			const { violations } = await new AxeBuilder({ page })
-				.include('[data-testid="big-view"]')
-				.exclude('[data-testid="changes-diff-body"]')
-				.analyze();
+			// The rows are checked too (A-013): their line numbers are `muted`, 4.5:1 on a changed row's tint in every palette
+			// (tests/unit/palettes.test.ts computes that; axe judges this palette as drawn).
+			const { violations } = await new AxeBuilder({ page }).include('[data-testid="big-view"]').analyze();
 			expect(
 				violations.map((v) => `large diff: ${v.id} ${v.nodes.map((n) => n.target.join(" ")).join(" | ")}`),
 				"large diff",

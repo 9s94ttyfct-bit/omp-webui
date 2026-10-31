@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { en as panelLater } from "../../web/src/i18n/panel-later.ts";
+import { zh as panelZh } from "../../web/src/i18n/zh-CN/panel.ts";
 import {
 	addPhase,
 	addTask,
@@ -10,6 +12,9 @@ import {
 	renamePhase,
 	setContent,
 	setStatus,
+	TODO_EDIT_CODES,
+	TODO_EDIT_MESSAGES,
+	TodoEditError,
 	taskIs,
 	todosToMarkdown,
 	toggledStatus,
@@ -142,4 +147,49 @@ test("an edit is for the task or phase it was opened on: a list that moved on no
 	expect(taskIs(list(), 3, 0, "Deploy")).toBe(false);
 	expect(phaseIs(list(), 1, "Build")).toBe(true);
 	expect(phaseIs(list(), 1, "Research")).toBe(false);
+});
+
+/** What `fn` threw: the code of a `TodoEditError`, or what else it was. */
+function codeOf(fn: () => unknown): string {
+	try {
+		fn();
+	} catch (e) {
+		return e instanceof TodoEditError ? e.code : `not a TodoEditError: ${String(e)}`;
+	}
+	return "nothing thrown";
+}
+
+test("an edit that cannot be made says why by a code, which the page shows in its own language (A-014)", () => {
+	expect([
+		codeOf(() => setContent(list(), 0, 0, "  ")),
+		codeOf(() => addTask(list(), 0, "\n")),
+		codeOf(() => addPhase(list(), " ")),
+		codeOf(() => renamePhase(list(), 1, "")),
+		codeOf(() => renamePhase(list(), 7, "Ship")),
+		codeOf(() => removeTask(list(), 5, 0)),
+		codeOf(() => setStatus(list(), 0, 9, "pending")),
+		codeOf(() => removePhase(list(), 4)),
+		codeOf(() => moveTask(list(), 0, 3, 1)),
+		codeOf(() => movePhase(list(), 2, -1)),
+	]).toEqual([
+		"emptyTask",
+		"emptyTask",
+		"emptyPhase",
+		"emptyPhase",
+		"noPhase",
+		"noTask",
+		"noTask",
+		"noPhase",
+		"noTask",
+		"noPhase",
+	]);
+	// Every reason has its words in English and in Chinese.
+	for (const code of TODO_EDIT_CODES) {
+		const key = TODO_EDIT_MESSAGES[code];
+		expect(key.startsWith("panel."), key).toBe(true);
+		const name = key.slice("panel.".length);
+		expect(panelLater[name as keyof typeof panelLater], `en ${key}`).toBeString();
+		expect(panelZh[name as keyof typeof panelZh], `zh-CN ${key}`).toBeString();
+	}
+	expect(new Set(Object.values(TODO_EDIT_MESSAGES)).size).toBe(TODO_EDIT_CODES.length);
 });

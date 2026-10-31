@@ -17,7 +17,15 @@ export interface MdTarget {
 	path: string;
 }
 
-export const useMdEditor = create<{ target: MdTarget | null }>(() => ({ target: null }));
+/** A section of the file to show (`guide.md#install`, see `lib/slug.ts`): a new object for each link followed, taken once shown. */
+export interface MdJump {
+	section: string;
+}
+
+export const useMdEditor = create<{ target: MdTarget | null; jump: MdJump | null }>(() => ({
+	target: null,
+	jump: null,
+}));
 
 /** Whether a path names a file the editor opens: what the Files tab renders as Markdown (`viewOf` on the server). */
 export function isMarkdownPath(path: string): boolean {
@@ -36,23 +44,33 @@ export function takeMdOpener(): HTMLElement | null {
 }
 
 /**
- * Open `path` in the editor over the conversation `chatKey`. Another file open in it is replaced, after asking when it has
- * text that is not saved (and so is a file with unsaved text in the large view's editor: `lib/leave-guard.ts`).
+ * Open `path` in the editor over the conversation `chatKey`, at its `section` when one is named (the preview scrolls to that
+ * heading). Another file open in it is replaced, after asking when it has text that is not saved (and so is a file with
+ * unsaved text in the large view's editor: `lib/leave-guard.ts`). The file already open only goes to the section.
  */
-export function openMdEditor(chatKey: string, path: string, from?: Element | null): void {
+export function openMdEditor(chatKey: string, path: string, from?: Element | null, section?: string): void {
 	const cur = useMdEditor.getState().target;
-	if (cur?.chatKey === chatKey && cur.path === path) return;
+	const jump = section ? { section } : null;
+	if (cur?.chatKey === chatKey && cur.path === path) {
+		if (jump) useMdEditor.setState({ jump });
+		return;
+	}
 	const focused = document.activeElement;
 	const source = from ?? (focused === document.body ? null : focused);
 	whenFree(null, () => {
 		// The first file opened keeps the element to give focus back to; one opened from inside the editor does not replace it.
 		if (cur === null) opener = source instanceof HTMLElement ? source : null;
-		useMdEditor.setState({ target: { chatKey, path } });
+		useMdEditor.setState({ target: { chatKey, path }, jump });
 	});
+}
+
+/** The section the editor was opened at, once: the preview has scrolled to it (or it named none there). */
+export function takeMdJump(): void {
+	if (useMdEditor.getState().jump !== null) useMdEditor.setState({ jump: null });
 }
 
 /** Close the editor (unsaved text is asked about first). */
 export function closeMdEditor(): void {
 	if (useMdEditor.getState().target === null) return;
-	whenFree(null, () => useMdEditor.setState({ target: null }));
+	whenFree(null, () => useMdEditor.setState({ target: null, jump: null }));
 }

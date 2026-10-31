@@ -1,3 +1,4 @@
+import type { Element, Root as HastRoot } from "hast";
 import { memo, useEffect, useMemo, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -5,8 +6,10 @@ import type { PluggableList } from "unified";
 import { useT } from "../../i18n/index.ts";
 import { folder } from "../../lib/folder-api.ts";
 import { type FrontMatterRow, splitFrontMatter } from "../../lib/front-matter.ts";
+import { hastText } from "../../lib/hast-text.ts";
 import { nestsTooDeep, scanNesting } from "../../lib/markdown-depth.ts";
 import { linkedImage, type MdOpen, MdOpenContext } from "../../lib/md-open.ts";
+import { SECTION_PREFIX, Slugger } from "../../lib/slug.ts";
 import { MAX_RENDER_CHARS } from "../files/FileBody.tsx";
 import { CodeBlock, MarkdownImage, markdownComponents, urlTransform } from "../Markdown.tsx";
 import { MermaidBlock } from "./MermaidBlock.tsx";
@@ -19,8 +22,9 @@ import { MermaidBlock } from "./MermaidBlock.tsx";
  *
  * It is drawn by the conversation's renderer and under its rules: HTML written in the file is shown as text, never parsed;
  * an address with a scheme react-markdown refuses (`javascript:`) is dropped; web and mail links open in a window of their
- * own; a link to another Markdown file of the folder opens it here (`MdOpenContext`); an image is shown only when it is a file
- * of the conversation's folder (by a relative path, fetched from this server) or inline, never fetched from elsewhere.
+ * own; a link to another Markdown file of the folder opens it here (`MdOpenContext`), at the section it names; an image is
+ * shown only when it is a file of the conversation's folder (by a relative path, fetched from this server) or inline, never
+ * fetched from elsewhere. Its headings have GitHub's ids (`lib/slug.ts`), so a table of contents (`#install`) scrolls.
  */
 
 /** A text that may hold math: KaTeX is fetched when one first does. */
@@ -93,21 +97,26 @@ function FrontMatterTable({ rows }: { rows: FrontMatterRow[] }) {
 	);
 }
 
-/** A task list's box: it says what it marks (GFM draws a bare checkbox, which a screen reader reads as "checkbox"). */
-function TaskBox({ checked }: { checked: boolean }) {
-	const t = useT();
-	return (
-		<input
-			type="checkbox"
-			checked={checked}
-			disabled
-			readOnly
-			aria-label={checked ? t("files.mdTaskDone") : t("files.mdTaskOpen")}
-		/>
-	);
+const HEADING = /^h[1-6]$/;
+
+/** GitHub's ids on the headings (`user-content-` and the slug, numbered when repeated); one that has an id keeps it. */
+function headingIds() {
+	return (tree: HastRoot) => {
+		const slugger = new Slugger();
+		const walk = (node: HastRoot | Element) => {
+			for (const child of node.children) {
+				if (child.type !== "element") continue;
+				if (HEADING.test(child.tagName) && child.properties.id === undefined) {
+					child.properties.id = `${SECTION_PREFIX}${slugger.slug(hastText(child))}`;
+				} else walk(child);
+			}
+		};
+		walk(tree);
+	};
 }
 
 const gfm: PluggableList = [remarkGfm];
+const ids: PluggableList = [headingIds];
 
 export const MdPreview = memo(function MdPreview({
 	text,
@@ -126,6 +135,7 @@ export const MdPreview = memo(function MdPreview({
 	const wantsMath = MATH_HINT.test(body);
 	const mathPlugins = useMath(wantsMath);
 	const { scope, base } = open;
+	const sectioned = useMemo<MdOpen>(() => ({ ...open, sections: true }), [open]);
 	const components = useMemo<Components>(
 		() => ({
 			...markdownComponents,
@@ -149,9 +159,6 @@ export const MdPreview = memo(function MdPreview({
 					/>
 				);
 			},
-			input({ type, checked }) {
-				return type === "checkbox" ? <TaskBox checked={checked === true} /> : null;
-			},
 		}),
 		[scope, base, version],
 	);
@@ -163,12 +170,12 @@ export const MdPreview = memo(function MdPreview({
 		);
 	}
 	return (
-		<MdOpenContext.Provider value={open}>
+		<MdOpenContext.Provider value={sectioned}>
 			<div className="prose-omp md-preview" data-testid="md-preview-body">
 				{rows ? <FrontMatterTable rows={rows} /> : null}
 				<ReactMarkdown
 					remarkPlugins={mathPlugins ? [...gfm, ...mathPlugins.remark] : gfm}
-					rehypePlugins={mathPlugins?.rehype}
+					rehypePlugins={mathPlugins ? [...ids, ...mathPlugins.rehype] : ids}
 					components={components}
 					urlTransform={urlTransform}
 				>

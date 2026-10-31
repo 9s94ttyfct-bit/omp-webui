@@ -15,7 +15,9 @@ import {
 	renamePhase,
 	setContent,
 	setStatus,
+	TODO_EDIT_MESSAGES,
 	TODO_STATUSES,
+	TodoEditError,
 	type TodoStatus,
 	taskIs,
 	todosToMarkdown,
@@ -517,7 +519,9 @@ export function TodoEditList({ live, empty }: { live: LiveState; empty?: ReactNo
 			await refreshState(liveId, true);
 			setEditing(null);
 		} catch (e) {
-			toast("error", t("panel.todoEditFailed", { error: (e as Error).message }));
+			// An edit that cannot be made says why in the page's language; anything else (omp's answer) as it came.
+			const why = e instanceof TodoEditError ? t(TODO_EDIT_MESSAGES[e.code]) : (e as Error).message;
+			toast("error", t("panel.todoEditFailed", { error: why }));
 		} finally {
 			setBusy(false);
 		}

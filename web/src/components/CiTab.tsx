@@ -33,6 +33,7 @@ import { askJobs, ciNotifyPossible, ciWatcher, useCiRuns } from "../lib/ci-runs.
 import { fmtElapsed } from "../lib/clock.ts";
 import { fmtRelative } from "../lib/format.ts";
 import { onPrefsChanged, setPref } from "../lib/prefs.ts";
+import { inShell } from "../lib/shell-notify.ts";
 import { ScrollPane } from "./ScrollPane.tsx";
 import { cx, Empty, IconButton, Spinner } from "./ui.tsx";
 
@@ -171,7 +172,7 @@ function NotifyToggle() {
 			</IconButton>
 			{blocked ? (
 				<p className="basis-full text-xs text-muted" role="status" data-testid="ci-notify-blocked">
-					{t("ci.notifyBlocked")}
+					{t(inShell() ? "ci.notifyBlockedApp" : "ci.notifyBlocked")}
 				</p>
 			) : null}
 		</>

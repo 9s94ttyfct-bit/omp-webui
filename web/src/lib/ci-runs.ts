@@ -7,7 +7,7 @@ import { useNotify, windowInUse } from "./attention.ts";
 import { browserPage } from "./auto-refresh.ts";
 import { type CiView, CiWatcher } from "./ci-watch.ts";
 import { showPanelTab } from "./panel-panes.ts";
-import { inRemoteShell, inShell } from "./shell-notify.ts";
+import { inRemoteShell, inShell, shellShowCi } from "./shell-notify.ts";
 
 /**
  * The CI tab's runs on this page (`lib/ci-watch.ts`): the one watcher every view of them shares, the tab's badge, and the
@@ -25,21 +25,22 @@ async function post<T>(path: string, body: unknown): Promise<CiAnswer<T>> {
 	return data as CiAnswer<T>;
 }
 
-/** Whether a run's end can be told here: in a browser (the macOS app's window has no notifications a page can show). */
-export const ciNotifyPossible = (): boolean => typeof Notification !== "undefined" && !inShell() && !inRemoteShell();
+/**
+ * Whether a run's end can be told here: in a browser, and in the macOS app, which shows it for the page (`shellShowCi`, audit
+ * A-015). Not in the app's window onto another Mac: that app's own window watches its runs.
+ */
+export const ciNotifyPossible = (): boolean => inShell() || (typeof Notification !== "undefined" && !inRemoteShell());
 
-/** Whether the person wants a run's end told, and notifications are on here. */
+/** Whether the person wants a run's end told, and notifications are on here (in the app: what macOS allows it). */
 export function ciNotifyWanted(): boolean {
-	return (
-		ciNotifyPossible() &&
-		localStorage.getItem(PREF.ciNotify) === "on" &&
-		useNotify.getState().enabled &&
-		Notification.permission === "granted"
-	);
+	if (!ciNotifyPossible() || localStorage.getItem(PREF.ciNotify) !== "on") return false;
+	const notify = useNotify.getState();
+	if (!notify.enabled) return false;
+	return inShell() ? notify.permission === "granted" : Notification.permission === "granted";
 }
 
-function notifyFinished(_cwd: string, runs: CiRun[]): void {
-	// Somebody looking at this window sees the tab's badge change.
+/** Tell that `runs` of the folder's branch ended, unless somebody is looking at this window (they see the tab's badge change). */
+export function notifyFinished(_cwd: string, runs: CiRun[]): void {
 	if (!ciNotifyWanted() || windowInUse()) return;
 	for (const run of runs) {
 		const title =
@@ -50,9 +51,15 @@ function notifyFinished(_cwd: string, runs: CiRun[]): void {
 					: run.state === "cancelled"
 						? t("panel.ciNotifyCancelled", { workflow: run.workflow })
 						: t("panel.ciNotifyDone", { workflow: run.workflow });
+		const body = `${run.branch} · ${run.title}`;
+		// The macOS app shows it (its web view has no `Notification` that shows anything); a click opens the CI tab there too.
+		if (inShell()) {
+			void shellShowCi(run.id, title, body);
+			continue;
+		}
 		try {
 			// One per run: a newer word on the same run replaces the older.
-			const note = new Notification(title, { body: `${run.branch} · ${run.title}`, tag: `ci:${run.id}` });
+			const note = new Notification(title, { body, tag: `ci:${run.id}` });
 			note.onclick = () => {
 				window.focus();
 				note.close();

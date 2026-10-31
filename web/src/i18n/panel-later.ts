@@ -394,6 +394,11 @@ export const en = {
 	todoEditNewTask: "What needs doing?",
 	todoEditStale: "The list changed in the meantime. Nothing was changed; try again.",
 	todoEditFailed: "Couldn’t change the todo list: {error}",
+	// Why an edit of the list could not be made (put after todoEditFailed's colon).
+	todoEditNoTask: "that task is no longer in the list",
+	todoEditNoPhase: "that phase is no longer in the list",
+	todoEditEmptyTask: "a task needs some text",
+	todoEditEmptyPhase: "a phase needs a name",
 	todoMarkdownTitle: "Edit the todo list as Markdown",
 	todoMarkdownHelp:
 		"One # heading per phase and one line per task: [ ] pending, [/] in progress, [x] done, [!] blocked (end the line with <!-- blocker: reason -->), [-] abandoned. omp reads it as /todo import does.",

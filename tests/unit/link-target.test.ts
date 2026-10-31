@@ -36,6 +36,12 @@ describe("linkTarget", () => {
 		expect(linkTarget("#user-content-fn-%")).toEqual({ kind: "none" });
 	});
 
+	test("a link to a section names it, decoded (A-012): the editor's preview scrolls to it, a conversation shows text", () => {
+		expect(linkTarget("#heading")).toEqual({ kind: "section", fragment: "heading" });
+		expect(linkTarget("#caf%C3%A9-1")).toEqual({ kind: "section", fragment: "café-1" });
+		expect(linkTarget("#%")).toEqual({ kind: "none" });
+	});
+
 	test("everything else has nowhere to go", () => {
 		for (const href of [
 			undefined,
@@ -46,7 +52,6 @@ describe("linkTarget", () => {
 			"/tmp/project/src/a.ts#L10",
 			"src/a.ts#L10",
 			"/\\evil.example/x",
-			"#heading",
 			"#",
 			"C:/Users/me/a.txt",
 			"docs/a:b.md",
@@ -103,6 +108,23 @@ describe("what the page renders", () => {
 		expect(out).toContain('id="user-content-fn-1"');
 		expect(out).toContain('id="user-content-fnref-1"');
 		expect(out).not.toContain("<a ");
+	});
+
+	test("a section link in a conversation is text: its headings have no ids", () => {
+		const out = html("[Install](#install)\n\n# Install");
+		expect(out).toContain('<span class="md-ref" title="#install">Install</span>');
+		expect(out).toContain("<h1>Install</h1>");
+		expect(out).not.toContain("md-section-link");
+	});
+
+	test("a task list's boxes are named by their tasks (A-011)", () => {
+		const out = html(["Plan:", "", "- [x] Write the tests", "- [ ] Ship **it**", "- [ ] "].join("\n"));
+		const boxes = [...out.matchAll(/<input [^>]*>/g)].map((m) => m[0]);
+		expect(boxes.length).toBeGreaterThanOrEqual(2);
+		expect(boxes[0]).toContain('aria-label="Write the tests"');
+		expect(boxes[0]).toContain('checked=""');
+		expect(boxes[1]).toContain('aria-label="Ship it"');
+		for (const box of boxes) expect(box).toMatch(/aria-label="[^"]+"/);
 	});
 
 	test("an image that does not load is a link only to a web address", () => {

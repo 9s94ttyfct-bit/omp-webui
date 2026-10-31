@@ -174,9 +174,27 @@ describe("a file that changed on the computer", () => {
 });
 
 describe("links and images of a Markdown file", () => {
-	test("a link to a Markdown file of the folder: relative to the file's folder, with its fragment, query and line dropped", () => {
+	test("a link to a Markdown file of the folder: relative to the file's folder, its query and line dropped, its fragment the section", () => {
 		expect(linkedMarkdown("guide.md", "docs")).toEqual({ kind: "relative", path: "docs/guide.md" });
-		expect(linkedMarkdown("../README.md#install", "docs")).toEqual({ kind: "relative", path: "README.md" });
+		// The section it names is kept (A-012): the editor opens the file there.
+		expect(linkedMarkdown("../README.md#install", "docs")).toEqual({
+			kind: "relative",
+			path: "README.md",
+			section: "install",
+		});
+		expect(linkedMarkdown("guide.md?x=1#caf%C3%A9", "")).toEqual({
+			kind: "relative",
+			path: "guide.md",
+			section: "café",
+		});
+		expect(linkedMarkdown("/abs/proj/x.md#Usage", "")).toEqual({
+			kind: "absolute",
+			path: "/abs/proj/x.md",
+			section: "Usage",
+		});
+		// A fragment that does not decode names no section; an empty one neither.
+		expect(linkedMarkdown("guide.md#%E0%A4%A", "")).toEqual({ kind: "relative", path: "guide.md" });
+		expect(linkedMarkdown("guide.md#", "")).toEqual({ kind: "relative", path: "guide.md" });
 		expect(linkedMarkdown("./a%20b.markdown?x=1", "")).toEqual({ kind: "relative", path: "a b.markdown" });
 		expect(linkedMarkdown("docs/guide.md:12:3", "")).toEqual({ kind: "relative", path: "docs/guide.md" });
 		expect(linkedMarkdown("/abs/proj/x.md", "")).toEqual({ kind: "absolute", path: "/abs/proj/x.md" });
@@ -286,6 +304,39 @@ describe("what a hostile file renders as", () => {
 		expect(out).toContain('data-path="README.md"');
 		expect(out).not.toContain('href="guide.md"');
 		expect(out).toContain('<span class="md-ref" title="../../x.md">out</span>');
+	});
+
+	test("headings have GitHub's ids, numbered when repeated; a table of contents scrolls to them (A-012)", () => {
+		const out = html(
+			[
+				"- [Install](#install)",
+				"- [Usage](#usage) and [again](#usage-1)",
+				"",
+				"# Install",
+				"## Usage",
+				"## Usage",
+				"### What's `new`?",
+			].join("\n"),
+		);
+		expect(out).toContain('<h1 id="user-content-install">Install</h1>');
+		expect(out).toContain('<h2 id="user-content-usage">Usage</h2>');
+		expect(out).toContain('<h2 id="user-content-usage-1">Usage</h2>');
+		expect(out).toContain('<h3 id="user-content-whats-new">');
+		// The links are buttons that scroll within the preview, not addresses (and not text, as in a conversation).
+		expect(out.match(/data-testid="md-section-link"/g)?.length).toBe(3);
+		expect(out).not.toContain('href="#');
+		expect(out).not.toContain('class="md-ref"');
+	});
+
+	test("a task list's boxes are named by their tasks (A-011)", () => {
+		const out = html(["- [x] Write the tests", "- [ ] Ship *it*", "  - [ ] nested"].join("\n"));
+		const boxes = [...out.matchAll(/<input [^>]*>/g)].map((m) => m[0]);
+		expect(boxes).toHaveLength(3);
+		expect(boxes[0]).toContain('aria-label="Write the tests"');
+		expect(boxes[0]).toContain('checked=""');
+		// The item's own text, not its nested list's.
+		expect(boxes[1]).toContain('aria-label="Ship it"');
+		expect(boxes[2]).toContain('aria-label="nested"');
 	});
 
 	test("front matter is a table, not text; GFM tables, task lists, strikethrough and autolinks render", () => {

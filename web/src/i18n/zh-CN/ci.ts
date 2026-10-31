@@ -10,6 +10,8 @@ export const zh: Record<keyof typeof en, string> = {
 	refresh: "刷新",
 	notify: "这个分支的运行结束时通知我",
 	notifyBlocked: "通知被阻止或未开启。请允许这个网站显示通知，并在设置 › 对话与文件里打开“通知”。",
+	notifyBlockedApp:
+		"macOS 屏蔽了 omp-webui 的通知，或通知未开启。请在「系统设置 › 通知 › omp-webui」中允许通知，并在设置 › 对话与文件里打开“通知”。",
 	empty: "没有工作流运行",
 	emptyBranch: "GitHub 上还没有 {branch} 的运行。",
 	emptyAll: "这个仓库没有 GitHub Actions 运行。",

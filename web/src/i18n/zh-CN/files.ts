@@ -309,6 +309,4 @@ export const zh: Record<keyof typeof en, string> = {
 	mdDiagramFailed: "无法绘制此图表：{reason}",
 	mdDiagramLabel: "图表",
 	mdMathPending: "正在排版公式…",
-	mdTaskDone: "已完成",
-	mdTaskOpen: "未完成",
 };

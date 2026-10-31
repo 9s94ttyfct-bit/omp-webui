@@ -58,6 +58,9 @@ export const en = {
 	mdOpenLink: "Open {path} in the Markdown editor",
 	mdOpenFile: "Open in the Markdown editor",
 	mdOpenOutside: "{path} is not in this conversation's folder: it is not opened here.",
+	// A task list's box is named by its task's text; one with no text by what it marks.
+	mdTaskDone: "Done",
+	mdTaskOpen: "Not done",
 
 	// Resume-model dialog
 	resumeTitle: "Choose a model to continue",

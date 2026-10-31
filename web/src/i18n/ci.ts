@@ -14,6 +14,8 @@ export const en = {
 	notify: "Notify when a run of this branch finishes",
 	notifyBlocked:
 		"Notifications are blocked or off. Allow them for this site, and turn on Notifications in Settings › Conversations & files.",
+	notifyBlockedApp:
+		"macOS blocks notifications for omp-webui, or they are off. Allow them in System Settings › Notifications › omp-webui, and turn on Notifications in Settings › Conversations & files.",
 	empty: "No workflow runs",
 	emptyBranch: "GitHub has no run of {branch} yet.",
 	emptyAll: "This repository has no GitHub Actions runs.",

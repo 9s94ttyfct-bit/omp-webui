@@ -70,7 +70,7 @@ function Code({ row, html }: { row: DiffRow; html: string | undefined }) {
 				row.text
 			)}
 			{row.clipped ? (
-				<span className="text-faint" title={t("files.rowClipped")}>
+				<span className="text-muted" title={t("files.rowClipped")}>
 					…
 				</span>
 			) : null}
@@ -97,7 +97,9 @@ function HunkHeader({ hunk, wide }: { hunk: DiffHunk; wide: boolean }) {
 	);
 }
 
-const NUM = "w-10 shrink-0 select-none pr-2 text-right tabular-nums text-faint";
+// `muted`, not `faint`: a changed row's tint over the panel takes `faint` under 4.5:1 in most light palettes (audit A-013,
+// held by tests/unit/palettes.test.ts).
+const NUM = "w-10 shrink-0 select-none pr-2 text-right tabular-nums text-muted";
 
 /** One row of the unified view: old and new line numbers, a sign, the text. */
 function UnifiedRow({ row, html }: { row: DiffRow; html: string | undefined }) {
@@ -181,7 +183,7 @@ export const DiffBody = memo(function DiffBody({
 		);
 	});
 	return (
-		<div data-testid="changes-diff-body" data-layout={split ? "split" : "unified"}>
+		<div className="diff-body" data-testid="changes-diff-body" data-layout={split ? "split" : "unified"}>
 			<section
 				className="overflow-x-auto bg-code py-1 font-mono text-xs leading-relaxed"
 				// A long line scrolls this box sideways: it must take the focus to be scrolled by keys (axe's
