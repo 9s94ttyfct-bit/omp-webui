@@ -54,6 +54,10 @@ export const en = {
 
 	// Markdown
 	copyCode: "Copy code",
+	// A Markdown file a message or a rendered file links to, and the button that opens it in the Markdown editor.
+	mdOpenLink: "Open {path} in the Markdown editor",
+	mdOpenFile: "Open in the Markdown editor",
+	mdOpenOutside: "{path} is not in this conversation's folder: it is not opened here.",
 
 	// Resume-model dialog
 	resumeTitle: "Choose a model to continue",

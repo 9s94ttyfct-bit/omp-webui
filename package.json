@@ -78,14 +78,18 @@
 		"clsx": "^2.1.1",
 		"cmdk": "^1.1.1",
 		"fflate": "^0.8.3",
+		"katex": "0.18.11",
 		"lighthouse": "^13.5.0",
 		"lucide-react": "^1.58.0",
+		"mermaid": "^12.2.0",
 		"pdfjs-dist": "^6.4.299",
 		"react": "^19.3.1",
 		"react-dom": "^19.3.1",
 		"react-markdown": "^10.1.0",
 		"recharts": "^3.10.1",
+		"rehype-katex": "^7.0.1",
 		"remark-gfm": "^4.0.1",
+		"remark-math": "^6.0.0",
 		"remark-parse": "^11.0.0",
 		"shiki": "^4.5.0",
 		"tailwindcss": "^4.3.3",
@@ -93,5 +97,8 @@
 		"unified": "^11.0.5",
 		"vite": "^8.3.4",
 		"zustand": "^5.0.15"
+	},
+	"overrides": {
+		"katex": "0.18.11"
 	}
 }

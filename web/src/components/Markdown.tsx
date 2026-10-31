@@ -22,6 +22,8 @@ import { highlight, highlighted } from "../lib/highlight.ts";
 import { isAllowedImageSrc } from "../lib/image-src.ts";
 import { linkTarget } from "../lib/link-target.ts";
 import { type Nesting, nestsTooDeep, scanNesting } from "../lib/markdown-depth.ts";
+import { linkedMarkdown, MdOpenContext, openLinked } from "../lib/md-open.ts";
+import { useApp } from "../store/app.ts";
 import { type Block, type Blocks, type Group, splitBlocks } from "./markdown-blocks.ts";
 
 /** Longer blocks are left plain: tokenising them is slow and the HTML would be thousands of elements. */
@@ -98,9 +100,10 @@ function scrollToNote(from: HTMLElement, id: string): void {
 
 /**
  * A link of the text. One that opens somewhere else (a web or mail address) opens in a window of its own. A footnote
- * reference scrolls within the message. Anything else (an empty address, which is what a scheme the sanitiser refuses
- * leaves; a file path; `irc:`, which the macOS app does not open) has nowhere to go and is shown as text: such a link
- * opened this page again, in a second tab.
+ * reference scrolls within the message. A Markdown file of the conversation's folder opens in the Markdown editor, where
+ * the text is a conversation's or a file of its folder (`MdOpenContext`). Anything else (an empty address, which is what a
+ * scheme the sanitiser refuses leaves; another file path; `irc:`, which the macOS app does not open) has nowhere to go and
+ * is shown as text: such a link opened this page again, in a second tab.
  */
 function MarkdownLink({
 	href,
@@ -115,6 +118,8 @@ function MarkdownLink({
 	describedBy?: string;
 	children?: ReactNode;
 }) {
+	const t = useT();
+	const md = useContext(MdOpenContext);
 	const target = linkTarget(href);
 	if (target.kind === "open") {
 		return (
@@ -138,6 +143,24 @@ function MarkdownLink({
 			</button>
 		);
 	}
+	const linked = md ? linkedMarkdown(href, md.base) : null;
+	if (md && linked) {
+		return (
+			<button
+				type="button"
+				id={id}
+				className="md-anchor"
+				title={t("chat.mdOpenLink", { path: linked.path })}
+				data-testid="md-open-link"
+				data-path={linked.path}
+				onClick={(e) =>
+					void openLinked(md, linked, e.currentTarget, (message) => useApp.getState().toast("error", message))
+				}
+			>
+				{children}
+			</button>
+		);
+	}
 	// A path is kept as a hint to what the text points at, not as an address.
 	return href ? (
 		<span id={id} className="md-ref" title={href}>
@@ -148,7 +171,8 @@ function MarkdownLink({
 	);
 }
 
-const components: Components = {
+/** How the conversation's Markdown draws its elements: the Markdown editor's preview draws a file with the same ones. */
+export const markdownComponents: Components = {
 	pre: ({ children }) => <>{children}</>,
 	code({ className, children }) {
 		const text = String(children ?? "");
@@ -162,25 +186,29 @@ const components: Components = {
 			{children}
 		</MarkdownLink>
 	),
-	// An <img> is fetched the moment it renders, so a model (or a page it read) could leak data through the URL.
-	// Only this server's stored attachments and inline images render; any other source becomes a link.
-	img: ({ src, alt }) => {
-		if (isAllowedImageSrc(src, location.origin)) return <img src={src} alt={alt ?? ""} className="rounded-lg" />;
-		const href = defaultUrlTransform(src ?? "");
-		const label = alt || src || "";
-		const target = linkTarget(href);
-		return target.kind === "open" ? (
-			<a href={target.href} target="_blank" rel="noreferrer noopener" title={target.href} data-testid="md-image-link">
-				{label}
-			</a>
-		) : (
-			<span>{label}</span>
-		);
-	},
+	img: ({ src, alt }) => <MarkdownImage src={src} alt={alt} />,
 };
 
+/**
+ * An <img> of the text. It is fetched the moment it renders, so a model (or a page it read) could leak data through the URL:
+ * only this server's stored attachments and inline images render; any other source becomes a link.
+ */
+export function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
+	if (isAllowedImageSrc(src, location.origin)) return <img src={src} alt={alt ?? ""} className="rounded-lg" />;
+	const href = defaultUrlTransform(src ?? "");
+	const label = alt || src || "";
+	const target = linkTarget(href);
+	return target.kind === "open" ? (
+		<a href={target.href} target="_blank" rel="noreferrer noopener" title={target.href} data-testid="md-image-link">
+			{label}
+		</a>
+	) : (
+		<span>{label}</span>
+	);
+}
+
 /** Image sources reach the `img` component untouched, which judges them; every other URL gets react-markdown's scheme filter. */
-const urlTransform: UrlTransform = (url, key, node) =>
+export const urlTransform: UrlTransform = (url, key, node) =>
 	key === "src" && node.tagName === "img" ? url : defaultUrlTransform(url);
 
 const remarkPlugins = [remarkGfm];
@@ -188,7 +216,7 @@ const remarkPlugins = [remarkGfm];
 /** One top-level block of the text, rendered on its own: a block whose text did not change is not rendered again. */
 export const MarkdownBlock = memo(function MarkdownBlock({ text }: { text: string }) {
 	return (
-		<ReactMarkdown remarkPlugins={remarkPlugins} components={components} urlTransform={urlTransform}>
+		<ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents} urlTransform={urlTransform}>
 			{text}
 		</ReactMarkdown>
 	);
@@ -282,7 +310,7 @@ function ExtractTable({ node, children }: Pick<HostProps, "node" | "children">) 
 }
 
 const hostComponents: Components = {
-	...components,
+	...markdownComponents,
 	ul: host("ul"),
 	ol: host("ol"),
 	blockquote: host("blockquote"),
@@ -291,7 +319,7 @@ const hostComponents: Components = {
 };
 
 const chunkComponents: Components = {
-	...components,
+	...markdownComponents,
 	ul: extract("ul"),
 	ol: extract("ol"),
 	blockquote: extract("blockquote"),

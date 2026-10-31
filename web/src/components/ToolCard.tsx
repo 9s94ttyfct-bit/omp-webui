@@ -39,6 +39,7 @@ import type { ToolExec } from "../store/live.ts";
 import { TaskAssignments } from "./Assignment.tsx";
 import { DiffView, PathLabel } from "./DiffView.tsx";
 import { CopyButton } from "./Markdown.tsx";
+import { MdOpenButton } from "./md/MdOpenButton.tsx";
 import { StartTime } from "./StartTime.tsx";
 import { CallStops } from "./SubagentStop.tsx";
 import { ToolImages } from "./ToolImages.tsx";
@@ -419,13 +420,18 @@ function NoteBox({
 function FileSection({ file, rows, many }: { file: FileChange; rows: DiffRow[]; many: boolean }) {
 	const t = useT();
 	const op = opLabel(file);
+	// A Markdown file it wrote or edited opens in the Markdown editor from here (nothing for a file that was deleted).
+	const open = file.op === "delete" ? null : <MdOpenButton path={file.move ?? file.path} />;
 	const label =
 		many || op ? (
 			<span className="flex min-w-0 items-center gap-2 normal-case tracking-normal">
 				<PathLabel path={file.path} />
 				{op ? <span className="shrink-0 text-faint">{op}</span> : null}
+				{open}
 			</span>
-		) : undefined;
+		) : (
+			(open ?? undefined)
+		);
 	return rows.length > 0 ? (
 		<DiffView rows={rows} copyText={file.diff ?? ""} title={t("chat.toolDiff")} label={label} />
 	) : (
@@ -449,7 +455,12 @@ function FileBody({ view, texts, children }: { view: FileView; texts: string[]; 
 				))
 			) : (
 				<>
-					<DiffView rows={listing} copyText={content} title={t("chat.toolContent")} />
+					<DiffView
+						rows={listing}
+						copyText={content}
+						title={t("chat.toolContent")}
+						label={changes.files[0] ? <MdOpenButton path={changes.files[0].path} /> : undefined}
+					/>
 					{summary ? <p className="font-mono text-xs whitespace-pre-wrap text-muted">{summary}</p> : null}
 				</>
 			)}

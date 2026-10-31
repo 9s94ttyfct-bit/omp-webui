@@ -1,6 +1,6 @@
 import type { ChangeState } from "@shared/changes.ts";
 import type { FolderFile } from "@shared/folder.ts";
-import { Code, Columns2, Eye, FileDiff as FileDiffIcon, FileX, Pencil, Rows3, X } from "lucide-react";
+import { Code, Columns2, Eye, FileDiff as FileDiffIcon, FileX, NotebookPen, Pencil, Rows3, X } from "lucide-react";
 import { lazy, type ReactNode, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { en } from "../i18n/files.ts";
 import { registerStrings, useT } from "../i18n/index.ts";
@@ -11,6 +11,7 @@ import { dismissOverlays } from "../store/app.ts";
 import { type BigTarget, takeBigOpener } from "../store/big.ts";
 import { uiOf, useChanges } from "../store/changes.ts";
 import { keyOf, useTree } from "../store/files.ts";
+import { openMdEditor } from "../store/md-editor.ts";
 import { DiffBody, DiffNote } from "./changes/DiffBody.tsx";
 import { SPLIT_MIN_PX, useDiff, versionOf } from "./changes/use-diff.ts";
 import { FileBody, FileNotices, useFile } from "./files/FileBody.tsx";
@@ -283,6 +284,7 @@ function FileLarge({ scope, path }: { scope: FolderScope; path: string }) {
 	const file = loaded.state === "ok" ? loaded.file : null;
 	const rendered = file?.kind === "text" && file.view !== "code";
 	const editable = file?.kind === "text" && file.editable;
+	const markdown = file?.kind === "text" && file.view === "markdown";
 	return (
 		<div className="flex h-full min-h-0 flex-col" data-testid="big-file">
 			{session ? (
@@ -309,6 +311,16 @@ function FileLarge({ scope, path }: { scope: FolderScope; path: string }) {
 									onClick={() => setSession({ file, reads })}
 								>
 									<Pencil size={13} /> {t("files.edit")}
+								</Button>
+							) : null}
+							{markdown ? (
+								<Button
+									size="sm"
+									variant="ghost"
+									data-testid="big-md-editor"
+									onClick={(e) => openMdEditor(keyOf(scope), path, e.currentTarget)}
+								>
+									<NotebookPen size={13} /> {t("files.mdOpen")}
 								</Button>
 							) : null}
 							{rendered ? (

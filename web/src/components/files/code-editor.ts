@@ -14,6 +14,7 @@ import {
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { extensionOf } from "@shared/folder.ts";
+import type { MessageKey } from "../../i18n/index.ts";
 
 /**
  * The editor of the Files tab's large view (`FileEditor.tsx`): CodeMirror 6 with what a person editing a file expects (undo and
@@ -26,6 +27,23 @@ import { extensionOf } from "@shared/folder.ts";
  * face is `--font-mono` and the size is the container's (`text-xs`, the caption step of the type scale), which CodeMirror
  * inherits.
  */
+
+/** CodeMirror's own words for its find panel, in the page's language: its phrase on the left, the page's string on the right. */
+export const SEARCH_PHRASES: Record<string, MessageKey> = {
+	Find: "files.editFind",
+	Replace: "files.editReplaceWith",
+	next: "files.editNext",
+	previous: "files.editPrevious",
+	all: "files.editAll",
+	"match case": "files.editMatchCase",
+	regexp: "files.editRegexp",
+	"by word": "files.editByWord",
+	replace: "files.editReplaceOne",
+	"replace all": "files.editReplaceAll",
+	close: "files.editCloseSearch",
+	"Go to line": "files.editGoToLine",
+	go: "files.editGo",
+};
 
 /** The modes worth having, by the extension of the file's name; a file of another kind is plain text. Each is a chunk of its own. */
 const LANGUAGES: Record<string, () => Promise<Extension>> = {
@@ -169,6 +187,14 @@ export interface EditorConfig {
 	phrases: Record<string, string>;
 	/** Told of every change of the view (the text, the selection, the focus). */
 	onUpdate(update: ViewUpdate): void;
+	/** The text can be read, selected and searched, not changed (a file this page may not save). */
+	readOnly?: boolean;
+	/**
+	 * Tab indents (the default). The Markdown editor turns it off: there Tab moves the focus on, as in any field, and Escape
+	 * closes the editor, so the keys CodeMirror otherwise leaves a keyboard user to get out with are not needed
+	 * (⌘] and ⌘[ still indent).
+	 */
+	tabIndents?: boolean;
 }
 
 /** The state of an editor holding `doc`: its history is its own, so a state made for another text starts with none. */
@@ -186,7 +212,13 @@ export function editorState(doc: string, config: EditorConfig): EditorState {
 			highlightActiveLine(),
 			highlightSelectionMatches(),
 			search({ top: true }),
-			keymap.of([...defaultKeymap, ...searchKeymap, ...historyKeymap, indentWithTab]),
+			keymap.of([
+				...defaultKeymap,
+				...searchKeymap,
+				...historyKeymap,
+				...(config.tabIndents === false ? [] : [indentWithTab]),
+			]),
+			...(config.readOnly ? [EditorState.readOnly.of(true)] : []),
 			syntaxHighlighting(colours),
 			theme,
 			EditorState.phrases.of(config.phrases),

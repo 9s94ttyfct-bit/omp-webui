@@ -29,6 +29,10 @@ export default defineConfig({
 		outDir: "../dist/web",
 		emptyOutDir: true,
 		chunkSizeWarningLimit: 1500,
+		// A font is always a file of its own, never a `data:` URL in the stylesheet: the page's Content-Security-Policy loads
+		// fonts from the page's own origin only (`server/csp.ts`), so an inlined one (KaTeX's smallest, the Markdown editor's
+		// math) would be refused. Anything else keeps Vite's own limit.
+		assetsInlineLimit: (file) => (/\.(?:woff2?|ttf|otf|eot)$/i.test(file) ? false : undefined),
 		rolldownOptions: {
 			output: {
 				codeSplitting: {

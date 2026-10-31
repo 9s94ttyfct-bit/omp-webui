@@ -48,6 +48,9 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	toolOpMove: "已移至 {path}",
 
 	copyCode: "复制代码",
+	mdOpenLink: "在 Markdown 编辑器中打开 {path}",
+	mdOpenFile: "在 Markdown 编辑器中打开",
+	mdOpenOutside: "{path} 不在此对话的文件夹中，不在这里打开。",
 
 	resumeTitle: "选择一个模型以继续",
 	resumeDesc: "omp 无法恢复此对话使用的模型：",

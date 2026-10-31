@@ -571,6 +571,31 @@ body {
 .prose-omp hr {
 	border-color: var(--border);
 }
+/* A GFM task list: its checkboxes are the markers. */
+.prose-omp .contains-task-list {
+	list-style: none;
+	padding-left: 0.2em;
+}
+.prose-omp .task-list-item input[type="checkbox"] {
+	margin-right: 0.4em;
+	vertical-align: -0.1em;
+	accent-color: var(--accent);
+}
+/* The Markdown editor's preview (`components/md/`): front matter as a table of its keys, diagrams and display math that scroll sideways. */
+.prose-omp .md-front-matter th {
+	white-space: nowrap;
+	vertical-align: top;
+}
+.prose-omp .md-mermaid svg {
+	max-width: 100%;
+	height: auto;
+	margin-inline: auto;
+}
+.prose-omp .katex-display {
+	overflow-x: auto;
+	overflow-y: hidden;
+	padding-block: 0.2em;
+}
 
 /* Markdown in the side panel and on cards (what a subagent was told): the conversation's text size is too large there. */
 .prose-compact .prose-omp {

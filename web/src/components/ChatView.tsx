@@ -49,6 +49,7 @@ import { loadGuardDecisions } from "../lib/guard-decisions.ts";
 import { Carried, figuresOf, joinPrompts, NO_ABOVE, needsStats } from "../lib/history.ts";
 import { attachedBytes, MAX_TOTAL_IMAGE_BYTES } from "../lib/images.ts";
 import { openLoaded } from "../lib/loaded.ts";
+import { MdOpenContext } from "../lib/md-open.ts";
 import { useNarrowerThan } from "../lib/media.ts";
 import { messageOf, type PromptImage, promptImages, roleOf, textOf } from "../lib/messages.ts";
 import { useStartConfig } from "../lib/model-config.ts";
@@ -88,6 +89,7 @@ import { closeBig, useBig } from "../store/big.ts";
 import { conversationOf, useGuard } from "../store/guard.ts";
 import { useHistory } from "../store/history.ts";
 import { isApproval, type LiveState, type OverlayMessage } from "../store/live.ts";
+import { useMdEditor } from "../store/md-editor.ts";
 import { clearGoal, conversationKey, showGoal } from "../store/shown-goal.ts";
 import { ApprovalPicker } from "./ApprovalPicker.tsx";
 import { ArchivedMark } from "./ArchivedMark.tsx";
@@ -129,6 +131,9 @@ const GuardToggle = lazy(() => import("./GuardToggle.tsx"));
 // A file, or a file's change, opened large over the conversation's column (#635): the Files tab's own chunk, loaded when
 // something is opened large and not before.
 const BigView = lazy(() => import("./BigView.tsx"));
+// A Markdown file open over the whole window, its source beside its rendering: the editor, its renderer and CodeMirror are a
+// chunk of their own, loaded when a file is first opened in it (Mermaid and KaTeX later still, when a file needs them).
+const MdEditor = lazy(() => import("./md/MdEditor.tsx"));
 // The switch for unattended mode (#646) and the chip with the number of questions waiting: a chunk of its own, with its strings.
 const UnattendedToggle = lazy(() => import("./UnattendedToggle.tsx"));
 // Quick prompts (#659) and the built-in Soft stop (#658): a chunk of its own with its strings, edited in Settings.
@@ -431,6 +436,11 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 	// conversation alone — the key the panel's tree is kept under (see `store/big.ts`).
 	const chatKey = currentFile ?? liveId ?? "";
 	const big = useBig((s) => (s.chatKey === chatKey ? s.target : null));
+	// The Markdown editor, kept for this conversation as the large view is (see `store/md-editor.ts`), and what a path in its
+	// messages (or a Markdown file of its folder) opens it with.
+	const mdPath = useMdEditor((s) => (s.target?.chatKey === chatKey ? s.target.path : null));
+	const folderScope = useMemo(() => ({ live: liveId, file: currentFile }), [liveId, currentFile]);
+	const mdOpen = useMemo(() => ({ scope: folderScope, chatKey, base: "" }), [folderScope, chatKey]);
 
 	// Load the lineage family when the file changes, or a conversation of the family does (a branch is written or removed,
 	// another omp process appends to one): not for a write anywhere else, nor to the live file, whose entries arrive here.
@@ -1313,410 +1323,441 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 	}
 
 	return (
-		<div className="relative flex h-full min-w-0 flex-1">
-			{/* The large view covers this column, not the panel: the file it shows is opened from the panel, which stays usable. */}
-			<div className="relative flex min-w-0 flex-1">
-				<div ref={setColumn} className={cx("flex h-full min-w-0 flex-1 flex-col", big && "invisible")}>
-					<header className="flex h-13 shrink-0 items-center gap-2 border-b border-border px-4">
-						{titleBlock}
-						{compact ? (
-							<>
-								{quota}
-								{panelToggle}
-								{guardToggle}
-								<HeaderMenu
-									usage={usage}
-									controls={canAct ? { live, start: startLive } : undefined}
-									onRename={currentFile ? () => setRenaming(title) : undefined}
-									onExport={currentFile ? exportHtml : undefined}
-									onGoal={() => openGoal()}
-									hasGoal={goalOpenNow}
-									onLoaded={openLoaded}
-									status={<StatusMenuRows live={live} entries={fileEntries} stats={figures} />}
-								/>
-							</>
-						) : (
-							<>
-								<SessionCost usage={usage} tip />
-								{quota}
-								{currentFile ? (
-									<IconButton label={t("chat.exportHtml")} data-testid="export-html" onClick={exportHtml}>
-										<Download size={16} />
+		<MdOpenContext.Provider value={mdOpen}>
+			<div className="relative flex h-full min-w-0 flex-1">
+				{/* The large view covers this column, not the panel: the file it shows is opened from the panel, which stays usable. */}
+				<div className="relative flex min-w-0 flex-1">
+					<div ref={setColumn} className={cx("flex h-full min-w-0 flex-1 flex-col", big && "invisible")}>
+						<header className="flex h-13 shrink-0 items-center gap-2 border-b border-border px-4">
+							{titleBlock}
+							{compact ? (
+								<>
+									{quota}
+									{panelToggle}
+									{guardToggle}
+									<HeaderMenu
+										usage={usage}
+										controls={canAct ? { live, start: startLive } : undefined}
+										onRename={currentFile ? () => setRenaming(title) : undefined}
+										onExport={currentFile ? exportHtml : undefined}
+										onGoal={() => openGoal()}
+										hasGoal={goalOpenNow}
+										onLoaded={openLoaded}
+										status={<StatusMenuRows live={live} entries={fileEntries} stats={figures} />}
+									/>
+								</>
+							) : (
+								<>
+									<SessionCost usage={usage} tip />
+									{quota}
+									{currentFile ? (
+										<IconButton label={t("chat.exportHtml")} data-testid="export-html" onClick={exportHtml}>
+											<Download size={16} />
+										</IconButton>
+									) : null}
+									{guardToggle}
+									{canAct ? <SessionControls live={live} start={startLive} /> : null}
+									<IconButton
+										label={t(goalOpenNow ? "chat.showGoal" : "chat.setGoal")}
+										active={goalExpanded}
+										aria-expanded={goalOpenNow ? goalExpanded : undefined}
+										onClick={toggleGoal}
+										data-testid="open-goal"
+									>
+										<Target size={16} />
 									</IconButton>
-								) : null}
-								{guardToggle}
-								{canAct ? <SessionControls live={live} start={startLive} /> : null}
-								<IconButton
-									label={t(goalOpenNow ? "chat.showGoal" : "chat.setGoal")}
-									active={goalExpanded}
-									aria-expanded={goalOpenNow ? goalExpanded : undefined}
-									onClick={toggleGoal}
-									data-testid="open-goal"
-								>
-									<Target size={16} />
-								</IconButton>
-								<IconButton label={t("loaded.title")} onClick={openLoaded} data-testid="open-loaded">
-									<Layers size={16} />
-								</IconButton>
-								{panelToggle}
-							</>
-						)}
-					</header>
-					{guardUnavailable ? (
-						<Suspense fallback={null}>
-							<GuardNotice homes={guardHomes} />
-						</Suspense>
-					) : null}
-					{liveId && live?.info.ungated ? (
-						<Suspense fallback={null}>
-							<GuardUngated liveId={liveId} kind={live.info.ungated} onReopen={currentFile ? reopen : null} />
-						</Suspense>
-					) : null}
-
-					{/* On a phone the button below is a strip under the transcript, not a button over it: the text it floated on was unreadable. */}
-					<div className="relative min-h-0 flex-1 max-sm:flex max-sm:flex-col">
-						<div
-							ref={scroller}
-							className="h-full overflow-y-auto max-sm:h-auto max-sm:min-h-0 max-sm:flex-1"
-							data-testid="transcript"
-							// Whether the reader follows the end: a finished turn folds under a reader who does (see `AgentTurnBlock`).
-							data-following={atBottom}
-							onScroll={(e) => {
-								// The end is where the reader follows it from: not the bottom of a window that stops short of it.
-								scrolled(e.currentTarget, transcript.current?.endShown() !== false);
-							}}
-						>
-							<Transcript
-								ref={transcript}
-								scroller={scroller}
-								path={path}
-								idx={fam.idx}
-								toolResults={toolResults}
-								live={live}
-								streaming={streaming || maybeRunning}
-								actions={actions}
-								focusId={focusId}
-								hasFile={Boolean(currentFile)}
-								commandNotes={commandNotes}
-								onReopen={currentFile ? reopen : null}
-								restore={reading?.window}
-								history={hist}
-								before={
-									<>
-										{loadError ? (
-											<LoadError title={t("chat.loadErrorTitle")} error={loadError} onRetry={retryLoad} />
-										) : null}
-										{viewLeaf && viewLeaf !== headLeaf ? (
-											<div className="rounded-lg border border-accent/30 bg-accent-soft px-3 py-2 text-xs text-fg">
-												{t("chat.viewingEarlier")}{" "}
-												<button type="button" className="underline" onClick={() => setViewLeaf(null)}>
-													{t("chat.backToLatest")}
-												</button>
-											</div>
-										) : null}
-									</>
-								}
-							/>
-						</div>
-						{!atBottom ? (
-							<button
-								type="button"
-								aria-label={t("chat.scrollToBottom")}
-								className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-surface p-2 text-muted shadow-lg hover:text-fg max-sm:static max-sm:flex max-sm:h-9 max-sm:w-full max-sm:shrink-0 max-sm:translate-x-0 max-sm:items-center max-sm:justify-center max-sm:gap-1.5 max-sm:rounded-none max-sm:border-x-0 max-sm:border-b-0 max-sm:p-0 max-sm:text-xs max-sm:shadow-none"
-								// A glide to the end (smooth) aims at where the end is when it starts: while the conversation grows it ends
-								// short, still not following. A conversation that is growing is gone to at once.
-								onClick={() =>
-									running || transcript.current?.endShown() === false
-										? pinToBottom()
-										: scroller.current && glideToEnd(scroller.current)
-								}
-							>
-								<ArrowDown size={16} />
-								<span className="sm:hidden">{t("chat.scrollToBottom")}</span>
-							</button>
+									<IconButton label={t("loaded.title")} onClick={openLoaded} data-testid="open-loaded">
+										<Layers size={16} />
+									</IconButton>
+									{panelToggle}
+								</>
+							)}
+						</header>
+						{guardUnavailable ? (
+							<Suspense fallback={null}>
+								<GuardNotice homes={guardHomes} />
+							</Suspense>
 						) : null}
-					</div>
+						{liveId && live?.info.ungated ? (
+							<Suspense fallback={null}>
+								<GuardUngated liveId={liveId} kind={live.info.ungated} onReopen={currentFile ? reopen : null} />
+							</Suspense>
+						) : null}
 
-					{/*
-					 * The bottom block never takes more than the window gives it, nor more than the keyboard leaves of it (`--vvh`,
-					 * see `useChatBottom`). The transcript gives way first; past that the jobs list and a tool approval do, each
-					 * scrolling inside itself, so that the approval's choices and the composer stay on the screen. In a short window
-					 * (`data-short`) a waiting request keeps only itself and the message box (index.css), and with no keyboard
-					 * the request comes first: the block scrolls to the message box.
-					 */}
-					<div
-						ref={chatBottom}
-						className="flex max-h-[var(--vvh,none)] min-h-0 flex-col px-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6 [&[data-keyboard]]:pb-2 [&[data-short]:not([data-keyboard])]:overflow-y-auto [&[data-short]:not([data-keyboard])]:overscroll-contain"
-						data-chat-bottom
-						data-asking={asking || undefined}
-					>
-						<div className="mx-auto flex min-h-0 w-full max-w-3xl flex-col">
-							{goalHere && goalOpenNow ? (
-								<GoalBar
-									liveId={liveId}
-									goal={goalHere}
-									working={streaming}
-									waiting={goalWait(live)}
-									expanded={goalExpanded}
-									onExpandedChange={(open) => setExpandedGoal(open ? goalHere.id : null)}
-									ensureLive={ensureLive}
+						{/* On a phone the button below is a strip under the transcript, not a button over it: the text it floated on was unreadable. */}
+						<div className="relative min-h-0 flex-1 max-sm:flex max-sm:flex-col">
+							<div
+								ref={scroller}
+								className="h-full overflow-y-auto max-sm:h-auto max-sm:min-h-0 max-sm:flex-1"
+								data-testid="transcript"
+								// Whether the reader follows the end: a finished turn folds under a reader who does (see `AgentTurnBlock`).
+								data-following={atBottom}
+								onScroll={(e) => {
+									// The end is where the reader follows it from: not the bottom of a window that stops short of it.
+									scrolled(e.currentTarget, transcript.current?.endShown() !== false);
+								}}
+							>
+								<Transcript
+									ref={transcript}
+									scroller={scroller}
+									path={path}
+									idx={fam.idx}
+									toolResults={toolResults}
+									live={live}
+									streaming={streaming || maybeRunning}
+									actions={actions}
+									focusId={focusId}
+									hasFile={Boolean(currentFile)}
+									commandNotes={commandNotes}
+									onReopen={currentFile ? reopen : null}
+									restore={reading?.window}
+									history={hist}
+									before={
+										<>
+											{loadError ? (
+												<LoadError title={t("chat.loadErrorTitle")} error={loadError} onRetry={retryLoad} />
+											) : null}
+											{viewLeaf && viewLeaf !== headLeaf ? (
+												<div className="rounded-lg border border-accent/30 bg-accent-soft px-3 py-2 text-xs text-fg">
+													{t("chat.viewingEarlier")}{" "}
+													<button type="button" className="underline" onClick={() => setViewLeaf(null)}>
+														{t("chat.backToLatest")}
+													</button>
+												</div>
+											) : null}
+										</>
+									}
 								/>
+							</div>
+							{!atBottom ? (
+								<button
+									type="button"
+									aria-label={t("chat.scrollToBottom")}
+									className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-border bg-surface p-2 text-muted shadow-lg hover:text-fg max-sm:static max-sm:flex max-sm:h-9 max-sm:w-full max-sm:shrink-0 max-sm:translate-x-0 max-sm:items-center max-sm:justify-center max-sm:gap-1.5 max-sm:rounded-none max-sm:border-x-0 max-sm:border-b-0 max-sm:p-0 max-sm:text-xs max-sm:shadow-none"
+									// A glide to the end (smooth) aims at where the end is when it starts: while the conversation grows it ends
+									// short, still not following. A conversation that is growing is gone to at once.
+									onClick={() =>
+										running || transcript.current?.endShown() === false
+											? pinToBottom()
+											: scroller.current && glideToEnd(scroller.current)
+									}
+								>
+									<ArrowDown size={16} />
+									<span className="sm:hidden">{t("chat.scrollToBottom")}</span>
+								</button>
 							) : null}
-							{live ? <TodoStrip live={live} /> : null}
-							{live && liveId && guidedGoalActive(live) && !pendingProposal(live) ? (
-								<GuidedGoalBar live={live} />
-							) : null}
-							{live ? <UIRequests live={live} /> : null}
-							{live ? <JobsBlock live={live} /> : null}
-							<GoalDialog
-								open={goalOpen}
-								onOpenChange={setGoalOpen}
-								initialMode={goalMode}
-								onGuided={async (rough) => {
-									const ok = await run(translate("chat.errGoal"), async () => {
-										const id = await ensureLive();
-										const target = useApp.getState().lives[id];
-										if (goalOpenNow || goalHeld(target?.goal)) throw new Error(translate("panel.goalActive"));
-										// One interview at a time: a second would only confuse the model and leave the bar showing the first.
-										if (guidedGoalActive(target)) throw new Error(translate("panel.guidedActive"));
-										// Starting the interview is sending a message: it wakes an archived or paused conversation too.
-										unarchiveOnSend(target?.info.sessionFile);
-										if (target?.info.pausedAt) await setPaused(id, false);
-										await alignLeaf(id);
-										await startGuidedGoal(id, rough, { queue: Boolean(target?.streaming) });
-									});
-									if (ok) setGoalOpen(false);
-									return ok;
-								}}
-								onCreate={async (objective, budget) => {
-									const ok = await run(translate("chat.errGoal"), async () => {
-										const id = await ensureLive();
-										// omp refuses a second goal (`A goal is already active`) with a message about a goal the page may not show.
-										if (goalOpenNow || goalHeld(useApp.getState().lives[id]?.goal))
-											throw new Error(translate("panel.goalActive"));
-										await createGoal(id, objective, budget);
-									});
-									if (ok) setGoalOpen(false);
-									return ok;
-								}}
-							/>
-							{live && Object.keys(live.statuses).length ? (
-								<div className="mb-1.5 flex flex-wrap gap-3 text-xs text-faint">
-									{Object.entries(live.statuses).map(([k, v]) => (
-										<span key={k}>{v}</span>
-									))}
-								</div>
-							) : null}
-							{live ? <RetryStatus live={live} /> : null}
-							{/* `data-keep`: Stop and Resume stay while a request waits in a short window (index.css). */}
-							{liveId ? (
+						</div>
+
+						{/*
+						 * The bottom block never takes more than the window gives it, nor more than the keyboard leaves of it (`--vvh`,
+						 * see `useChatBottom`). The transcript gives way first; past that the jobs list and a tool approval do, each
+						 * scrolling inside itself, so that the approval's choices and the composer stay on the screen. In a short window
+						 * (`data-short`) a waiting request keeps only itself and the message box (index.css), and with no keyboard
+						 * the request comes first: the block scrolls to the message box.
+						 */}
+						<div
+							ref={chatBottom}
+							className="flex max-h-[var(--vvh,none)] min-h-0 flex-col px-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6 [&[data-keyboard]]:pb-2 [&[data-short]:not([data-keyboard])]:overflow-y-auto [&[data-short]:not([data-keyboard])]:overscroll-contain"
+							data-chat-bottom
+							data-asking={asking || undefined}
+						>
+							<div className="mx-auto flex min-h-0 w-full max-w-3xl flex-col">
+								{goalHere && goalOpenNow ? (
+									<GoalBar
+										liveId={liveId}
+										goal={goalHere}
+										working={streaming}
+										waiting={goalWait(live)}
+										expanded={goalExpanded}
+										onExpandedChange={(open) => setExpandedGoal(open ? goalHere.id : null)}
+										ensureLive={ensureLive}
+									/>
+								) : null}
+								{live ? <TodoStrip live={live} /> : null}
+								{live && liveId && guidedGoalActive(live) && !pendingProposal(live) ? (
+									<GuidedGoalBar live={live} />
+								) : null}
+								{live ? <UIRequests live={live} /> : null}
+								{live ? <JobsBlock live={live} /> : null}
+								<GoalDialog
+									open={goalOpen}
+									onOpenChange={setGoalOpen}
+									initialMode={goalMode}
+									onGuided={async (rough) => {
+										const ok = await run(translate("chat.errGoal"), async () => {
+											const id = await ensureLive();
+											const target = useApp.getState().lives[id];
+											if (goalOpenNow || goalHeld(target?.goal)) throw new Error(translate("panel.goalActive"));
+											// One interview at a time: a second would only confuse the model and leave the bar showing the first.
+											if (guidedGoalActive(target)) throw new Error(translate("panel.guidedActive"));
+											// Starting the interview is sending a message: it wakes an archived or paused conversation too.
+											unarchiveOnSend(target?.info.sessionFile);
+											if (target?.info.pausedAt) await setPaused(id, false);
+											await alignLeaf(id);
+											await startGuidedGoal(id, rough, { queue: Boolean(target?.streaming) });
+										});
+										if (ok) setGoalOpen(false);
+										return ok;
+									}}
+									onCreate={async (objective, budget) => {
+										const ok = await run(translate("chat.errGoal"), async () => {
+											const id = await ensureLive();
+											// omp refuses a second goal (`A goal is already active`) with a message about a goal the page may not show.
+											if (goalOpenNow || goalHeld(useApp.getState().lives[id]?.goal))
+												throw new Error(translate("panel.goalActive"));
+											await createGoal(id, objective, budget);
+										});
+										if (ok) setGoalOpen(false);
+										return ok;
+									}}
+								/>
+								{live && Object.keys(live.statuses).length ? (
+									<div className="mb-1.5 flex flex-wrap gap-3 text-xs text-faint">
+										{Object.entries(live.statuses).map(([k, v]) => (
+											<span key={k}>{v}</span>
+										))}
+									</div>
+								) : null}
+								{live ? <RetryStatus live={live} /> : null}
+								{/* `data-keep`: Stop and Resume stay while a request waits in a short window (index.css). */}
+								{liveId ? (
+									<div data-keep>
+										<PendingCommands liveId={liveId} onStop={stopAll} />
+									</div>
+								) : null}
+								{liveId && live?.info.pausedAt ? (
+									<div data-keep>
+										<PausedBanner
+											since={live.info.pausedAt}
+											commands={bash.map((r) => r.command)}
+											resumeRef={resumeButton}
+											onStop={stopAll}
+											onStopKey={escapeStop}
+											onResume={() =>
+												void setPaused(liveId, false).catch((e) =>
+													toast("error", translate("chat.errPause", { error: e.message })),
+												)
+											}
+										/>
+									</div>
+								) : null}
+								{stopping ? (
+									<div data-keep>
+										<StoppingNote />
+									</div>
+								) : null}
+								{/* The question the first Esc asks; `data-keep`: it stays while a request waits in a short window (index.css). */}
 								<div data-keep>
-									<PendingCommands liveId={liveId} onStop={stopAll} />
+									<StopConfirm
+										armed={confirmStop.armed}
+										onStop={() => {
+											confirmStop.cancel();
+											stopAll();
+										}}
+										onCancel={confirmStop.cancel}
+										returnFocus={composer}
+									/>
 								</div>
-							) : null}
-							{liveId && live?.info.pausedAt ? (
-								<div data-keep>
-									<PausedBanner
-										since={live.info.pausedAt}
-										commands={bash.map((r) => r.command)}
-										resumeRef={resumeButton}
-										onStop={stopAll}
+								{/* `data-keep`: in a short window the block keeps the message box (index.css), unless a field of the request has the keyboard. */}
+								<div data-keep data-composer>
+									<Composer
+										ref={composer}
+										history={history}
+										draftKey={currentFile ?? liveIdProp}
+										commands={live?.commands ?? []}
+										onLoaded={openLoaded}
+										cwd={cwd}
+										predictLive={liveId}
+										uploadScope={liveId || currentFile ? { live: liveId, file: currentFile } : null}
+										streaming={streaming || bashRunning}
+										paused={Boolean(live?.info.pausedAt)}
+										approvalPending={approvalPending}
+										retryWait={live?.retry?.phase === "waiting" && !live.retry.resumed}
+										onPause={
+											liveId
+												? () =>
+														void setPaused(liveId, true).catch((e) =>
+															toast("error", translate("chat.errPause", { error: e.message })),
+														)
+												: undefined
+										}
+										disabled={busy}
+										queue={queue}
+										onSend={send}
+										draft={draft}
+										onAbort={stopAll}
+										stoppable={subagentsWorking}
+										stopping={stopping}
 										onStopKey={escapeStop}
-										onResume={() =>
-											void setPaused(liveId, false).catch((e) =>
-												toast("error", translate("chat.errPause", { error: e.message })),
-											)
+										onRemoveQueued={(text, queue) =>
+											liveId &&
+											void socket
+												.act(liveId, { type: "remove_queued_message", message: text, queue })
+												.catch((e) => toast("error", e.message))
+										}
+										onPromoteQueued={(text) =>
+											liveId &&
+											void socket
+												.act(liveId, { type: "promote_queued_message", message: text })
+												// A message sent now is a message like any other: omp holds it behind an open tool approval, so
+												// the approval is denied once the message is on its way.
+												.then(() => denyPendingApprovals(liveId))
+												.catch((e) => toast("error", e.message))
+										}
+										onEditQueued={liveId ? editQueued : undefined}
+										// One line beside Attach and Send (V17): where the controls with their names do not fit on it (a side panel open), the
+										// less used are behind "⋯" and the rest keep only their icons.
+										footerOneRow
+										footer={({ typing }) =>
+											liveId || currentFile ? (
+												<>
+													<PresetPicker
+														liveId={liveId}
+														folder={cwd}
+														file={currentFile}
+														saved={saved}
+														start={startLive}
+													/>
+													<ModelPicker liveId={liveId} current={shownModel} start={startLive} />
+													{/* Where they do not fit on the row with their names these are behind "⋯" (C1): the model, permission mode, unattended mode and Attach stay in the row. */}
+													<ComposerMore>
+														<ThinkingPicker
+															liveId={liveId}
+															level={thinking.selected}
+															resolved={thinking.resolved}
+															current={shownModel}
+															start={startLive}
+														/>
+														{/* A message sent while omp asks for an approval denies it: no one-tap send then, the approval is answered first (and a phone's row of controls keeps its room for the choices). */}
+														{approvalPending ? null : (
+															<Suspense fallback={null}>
+																<QuickPromptMenu
+																	liveId={liveId}
+																	streaming={streaming}
+																	onSend={send}
+																	ensureLive={ensureLive}
+																	hidden={typing}
+																/>
+															</Suspense>
+														)}
+													</ComposerMore>
+													<ApprovalPicker liveId={liveId} saved={savedApproval} start={startLive} />
+													<Suspense fallback={null}>
+														<UnattendedToggle liveId={liveId} file={currentFile} start={startLive} />
+													</Suspense>
+												</>
+											) : null
 										}
 									/>
 								</div>
-							) : null}
-							{stopping ? (
-								<div data-keep>
-									<StoppingNote />
-								</div>
-							) : null}
-							{/* The question the first Esc asks; `data-keep`: it stays while a request waits in a short window (index.css). */}
-							<div data-keep>
-								<StopConfirm
-									armed={confirmStop.armed}
-									onStop={() => {
-										confirmStop.cancel();
-										stopAll();
-									}}
-									onCancel={confirmStop.cancel}
-									returnFocus={composer}
-								/>
-							</div>
-							{/* `data-keep`: in a short window the block keeps the message box (index.css), unless a field of the request has the keyboard. */}
-							<div data-keep data-composer>
-								<Composer
-									ref={composer}
-									history={history}
-									draftKey={currentFile ?? liveIdProp}
-									commands={live?.commands ?? []}
-									onLoaded={openLoaded}
+								<ChatStatus
+									live={live}
+									entries={fileEntries}
+									stats={figures}
 									cwd={cwd}
-									predictLive={liveId}
-									uploadScope={liveId || currentFile ? { live: liveId, file: currentFile } : null}
-									streaming={streaming || bashRunning}
-									paused={Boolean(live?.info.pausedAt)}
-									approvalPending={approvalPending}
-									retryWait={live?.retry?.phase === "waiting" && !live.retry.resumed}
-									onPause={
-										liveId
-											? () =>
-													void setPaused(liveId, true).catch((e) =>
-														toast("error", translate("chat.errPause", { error: e.message })),
-													)
-											: undefined
-									}
-									disabled={busy}
-									queue={queue}
-									onSend={send}
-									draft={draft}
-									onAbort={stopAll}
-									stoppable={subagentsWorking}
-									stopping={stopping}
-									onStopKey={escapeStop}
-									onRemoveQueued={(text, queue) =>
-										liveId &&
-										void socket
-											.act(liveId, { type: "remove_queued_message", message: text, queue })
-											.catch((e) => toast("error", e.message))
-									}
-									onPromoteQueued={(text) =>
-										liveId &&
-										void socket
-											.act(liveId, { type: "promote_queued_message", message: text })
-											// A message sent now is a message like any other: omp holds it behind an open tool approval, so
-											// the approval is denied once the message is on its way.
-											.then(() => denyPendingApprovals(liveId))
-											.catch((e) => toast("error", e.message))
-									}
-									onEditQueued={liveId ? editQueued : undefined}
-									// One line beside Attach and Send (V17): where the controls with their names do not fit on it (a side panel open), the
-									// less used are behind "⋯" and the rest keep only their icons.
-									footerOneRow
-									footer={({ typing }) =>
-										liveId || currentFile ? (
-											<>
-												<PresetPicker liveId={liveId} folder={cwd} file={currentFile} saved={saved} start={startLive} />
-												<ModelPicker liveId={liveId} current={shownModel} start={startLive} />
-												{/* Where they do not fit on the row with their names these are behind "⋯" (C1): the model, permission mode, unattended mode and Attach stay in the row. */}
-												<ComposerMore>
-													<ThinkingPicker
-														liveId={liveId}
-														level={thinking.selected}
-														resolved={thinking.resolved}
-														current={shownModel}
-														start={startLive}
-													/>
-													{/* A message sent while omp asks for an approval denies it: no one-tap send then, the approval is answered first (and a phone's row of controls keeps its room for the choices). */}
-													{approvalPending ? null : (
-														<Suspense fallback={null}>
-															<QuickPromptMenu
-																liveId={liveId}
-																streaming={streaming}
-																onSend={send}
-																ensureLive={ensureLive}
-																hidden={typing}
-															/>
-														</Suspense>
-													)}
-												</ComposerMore>
-												<ApprovalPicker liveId={liveId} saved={savedApproval} start={startLive} />
-												<Suspense fallback={null}>
-													<UnattendedToggle liveId={liveId} file={currentFile} start={startLive} />
-												</Suspense>
-											</>
-										) : null
-									}
+									cost={{ main: totals.main.cost, subagents: totals.subagents.cost, advisor: totals.advisor.cost }}
+									agentsRunning={totals.subagents.running}
+									savedThinking={saved.thinking}
+									compact={compact}
 								/>
+								<p className="mt-1.5 text-center text-xs text-faint">
+									{busy ? t("chat.working") : t("chat.disclaimer")}
+								</p>
 							</div>
-							<ChatStatus
-								live={live}
-								entries={fileEntries}
-								stats={figures}
-								cwd={cwd}
-								cost={{ main: totals.main.cost, subagents: totals.subagents.cost, advisor: totals.advisor.cost }}
-								agentsRunning={totals.subagents.running}
-								savedThinking={saved.thinking}
-								compact={compact}
-							/>
-							<p className="mt-1.5 text-center text-xs text-faint">{busy ? t("chat.working") : t("chat.disclaimer")}</p>
 						</div>
+						<LoadedDialog live={live} file={currentFile} onRestart={restartOmp} />
+						<ResumeModelDialog prompt={modelPrompt} />
+						<ResumeFolderDialog prompt={folderPrompt} />
+						<Modal open={renaming !== null} onOpenChange={(o) => !o && setRenaming(null)} title={t("chat.renameTitle")}>
+							<form
+								onSubmit={(e) => {
+									e.preventDefault();
+									const name = renaming?.trim();
+									setRenaming(null);
+									if (name && currentFile) {
+										// A running omp renames its own conversation; without one the server does it through a short-lived one.
+										const renamed = liveId
+											? socket.act(liveId, { type: "set_session_name", name })
+											: sessionActions.rename(currentFile, name);
+										void renamed
+											// set_session_name emits no frames: refresh the header's state ourselves.
+											.then(() =>
+												Promise.all([liveId ? refreshState(liveId, true) : null, useApp.getState().loadSessions()]),
+											)
+											.catch((err) => toast("error", err.message));
+									}
+								}}
+							>
+								<input
+									aria-label={t("chat.renameLabel")}
+									className="w-full rounded-lg border border-border bg-bg-soft px-3 py-2 text-sm outline-none focus:border-faint"
+									value={renaming ?? ""}
+									onChange={(e) => setRenaming(e.target.value)}
+									// biome-ignore lint/a11y/noAutofocus: dialog primary field
+									autoFocus
+								/>
+								<div className="mt-3 flex justify-end gap-2">
+									<Button variant="ghost" onClick={() => setRenaming(null)}>
+										{t("common.cancel")}
+									</Button>
+									<Button variant="primary" type="submit">
+										{t("common.save")}
+									</Button>
+								</div>
+							</form>
+						</Modal>
 					</div>
-					<LoadedDialog live={live} file={currentFile} onRestart={restartOmp} />
-					<ResumeModelDialog prompt={modelPrompt} />
-					<ResumeFolderDialog prompt={folderPrompt} />
-					<Modal open={renaming !== null} onOpenChange={(o) => !o && setRenaming(null)} title={t("chat.renameTitle")}>
-						<form
-							onSubmit={(e) => {
-								e.preventDefault();
-								const name = renaming?.trim();
-								setRenaming(null);
-								if (name && currentFile) {
-									// A running omp renames its own conversation; without one the server does it through a short-lived one.
-									const renamed = liveId
-										? socket.act(liveId, { type: "set_session_name", name })
-										: sessionActions.rename(currentFile, name);
-									void renamed
-										// set_session_name emits no frames: refresh the header's state ourselves.
-										.then(() =>
-											Promise.all([liveId ? refreshState(liveId, true) : null, useApp.getState().loadSessions()]),
-										)
-										.catch((err) => toast("error", err.message));
-								}
-							}}
+					{big ? (
+						// The conversation's own column under it is hidden, not unmounted: its place, its draft and the panel stay.
+						<ErrorBoundary
+							resetKey={`${currentFile ?? ""}\u0000${big.kind}\u0000${big.path}`}
+							fallback={(error) => (
+								<div className="absolute inset-0 z-10 bg-bg">
+									<ErrorScreen error={error} />
+								</div>
+							)}
 						>
-							<input
-								aria-label={t("chat.renameLabel")}
-								className="w-full rounded-lg border border-border bg-bg-soft px-3 py-2 text-sm outline-none focus:border-faint"
-								value={renaming ?? ""}
-								onChange={(e) => setRenaming(e.target.value)}
-								// biome-ignore lint/a11y/noAutofocus: dialog primary field
-								autoFocus
-							/>
-							<div className="mt-3 flex justify-end gap-2">
-								<Button variant="ghost" onClick={() => setRenaming(null)}>
-									{t("common.cancel")}
-								</Button>
-								<Button variant="primary" type="submit">
-									{t("common.save")}
-								</Button>
-							</div>
-						</form>
-					</Modal>
+							<Suspense fallback={<BigFallback />}>
+								<BigView scope={{ live: liveId, file: currentFile }} target={big} onClose={closeBig} />
+							</Suspense>
+						</ErrorBoundary>
+					) : null}
 				</div>
-				{big ? (
-					// The conversation's own column under it is hidden, not unmounted: its place, its draft and the panel stay.
+				{panelOpen ? (
+					<RightPanel
+						live={live}
+						file={currentFile}
+						family={fam}
+						entries={path}
+						onClose={() => set({ panelOpen: false })}
+						onNavigate={(f) => setView({ kind: "chat", file: f, liveId: liveFor(f)?.info.liveId ?? null })}
+						start={startLive}
+						figures={figures}
+						totals={totals}
+					/>
+				) : null}
+				{mdPath !== null ? (
+					// Over the whole window (a portal): a chunk that is gone shows the Reload screen in its place.
 					<ErrorBoundary
-						resetKey={`${currentFile ?? ""}\u0000${big.kind}\u0000${big.path}`}
+						resetKey={`${chatKey}\u0000${mdPath}`}
 						fallback={(error) => (
-							<div className="absolute inset-0 z-10 bg-bg">
+							<div className="fixed inset-0 z-40 bg-bg">
 								<ErrorScreen error={error} />
 							</div>
 						)}
 					>
-						<Suspense fallback={<BigFallback />}>
-							<BigView scope={{ live: liveId, file: currentFile }} target={big} onClose={closeBig} />
+						<Suspense
+							fallback={
+								<div className="fixed inset-0 z-40 flex items-center justify-center bg-bg" data-testid="md-fallback">
+									<Spinner />
+								</div>
+							}
+						>
+							<MdEditor scope={folderScope} chatKey={chatKey} path={mdPath} />
 						</Suspense>
 					</ErrorBoundary>
 				) : null}
 			</div>
-			{panelOpen ? (
-				<RightPanel
-					live={live}
-					file={currentFile}
-					family={fam}
-					entries={path}
-					onClose={() => set({ panelOpen: false })}
-					onNavigate={(f) => setView({ kind: "chat", file: f, liveId: liveFor(f)?.info.liveId ?? null })}
-					start={startLive}
-					figures={figures}
-					totals={totals}
-				/>
-			) : null}
-		</div>
+		</MdOpenContext.Provider>
 	);
 }

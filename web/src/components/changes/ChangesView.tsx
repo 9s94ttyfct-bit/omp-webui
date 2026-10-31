@@ -9,6 +9,7 @@ import {
 	FileText,
 	GitBranch,
 	Hourglass,
+	NotebookPen,
 	RefreshCw,
 	Rows3,
 	ShieldAlert,
@@ -27,6 +28,7 @@ import { useApp } from "../../store/app.ts";
 import { openBig } from "../../store/big.ts";
 import { patchChanges, setDiffMode, uiOf, useChanges } from "../../store/changes.ts";
 import { keyOf, select } from "../../store/files.ts";
+import { isMarkdownPath, openMdEditor } from "../../store/md-editor.ts";
 import { cx, Empty, IconButton, Spinner } from "../ui.tsx";
 import { DiffBody, DiffNote } from "./DiffBody.tsx";
 import { SPLIT_MIN_PX, useDiff, versionOf } from "./use-diff.ts";
@@ -422,6 +424,16 @@ function Opened({ scope, file, onBack }: { scope: FolderScope; file: ChangedFile
 						}}
 					>
 						<FileText size={14} />
+					</IconButton>
+				) : null}
+				{shown && shown !== "deleted" && isMarkdownPath(path) ? (
+					<IconButton
+						label={t("files.mdOpen")}
+						size="sm"
+						data-testid="change-md-editor"
+						onClick={(e) => openMdEditor(key, path, e.currentTarget)}
+					>
+						<NotebookPen size={14} />
 					</IconButton>
 				) : null}
 				<IconButton

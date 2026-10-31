@@ -11,6 +11,7 @@ import {
 	Eye,
 	FileX,
 	FolderSearch,
+	NotebookPen,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useT } from "../../i18n/index.ts";
@@ -21,6 +22,7 @@ import { PANEL_SHEET_QUERY, useMediaQuery } from "../../lib/media.ts";
 import { useApp } from "../../store/app.ts";
 import { openBig } from "../../store/big.ts";
 import { keyOf } from "../../store/files.ts";
+import { openMdEditor } from "../../store/md-editor.ts";
 import { Empty, IconButton, Spinner } from "../ui.tsx";
 import { FileBody, FileNotices, useFile } from "./FileBody.tsx";
 
@@ -117,6 +119,16 @@ export function FilePreview({
 						</div>
 					) : null}
 				</div>
+				{file?.kind === "text" && file.view === "markdown" ? (
+					<IconButton
+						label={t("files.mdOpen")}
+						size="sm"
+						data-testid="file-md-editor"
+						onClick={(e) => openMdEditor(keyOf(scope), path, e.currentTarget)}
+					>
+						<NotebookPen size={14} />
+					</IconButton>
+				) : null}
 				{rendered ? (
 					<IconButton
 						label={source ? t("files.viewRendered") : t("files.viewSource")}

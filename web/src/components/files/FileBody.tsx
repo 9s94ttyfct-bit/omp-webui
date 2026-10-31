@@ -6,6 +6,8 @@ import { ApiError } from "../../lib/api.ts";
 import { fmtBytes, languageOf } from "../../lib/files-rows.ts";
 import { type FolderScope, folder } from "../../lib/folder-api.ts";
 import { highlight, highlighted } from "../../lib/highlight.ts";
+import { MdOpenContext } from "../../lib/md-open.ts";
+import { keyOf } from "../../store/files.ts";
 import { Empty, Spinner } from "../ui.tsx";
 
 /**
@@ -194,6 +196,8 @@ export function FileBody({
 		);
 	}
 	if (file.view === "markdown" && !source && file.text.length <= MAX_RENDER_CHARS) {
+		// Its links to other Markdown files of the folder open them in the Markdown editor, from the file's own folder.
+		const dir = file.path.includes("/") ? file.path.slice(0, file.path.lastIndexOf("/")) : "";
 		return (
 			<div className="prose-compact p-3" data-testid="file-markdown">
 				<Suspense
@@ -203,7 +207,9 @@ export function FileBody({
 						</div>
 					}
 				>
-					<Markdown text={file.text} />
+					<MdOpenContext.Provider value={{ scope, chatKey: keyOf(scope), base: dir }}>
+						<Markdown text={file.text} />
+					</MdOpenContext.Provider>
 				</Suspense>
 			</div>
 		);

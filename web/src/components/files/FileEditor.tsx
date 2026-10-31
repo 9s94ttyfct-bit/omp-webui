@@ -2,16 +2,15 @@ import type { Text } from "@codemirror/state";
 import type { ViewUpdate } from "@codemirror/view";
 import { FOLDER_LIMITS, type FolderFile } from "@shared/folder.ts";
 import { useEffect, useRef, useState } from "react";
-import { type MessageKey, useT } from "../../i18n/index.ts";
-import { nextChatKey } from "../../lib/chat-key.ts";
+import { useT } from "../../i18n/index.ts";
 import { eolOf, saveFailureText, saveFile } from "../../lib/file-save.ts";
 import { fmtBytes } from "../../lib/files-rows.ts";
 import { type FolderScope, folder } from "../../lib/folder-api.ts";
 import { holdLeaveGuard } from "../../lib/leave-guard.ts";
+import { inConversation } from "../../lib/same-conversation.ts";
 import { TransferError } from "../../lib/transfer-api.ts";
-import { useApp, type View } from "../../store/app.ts";
 import { Button, Modal } from "../ui.tsx";
-import { EditorView, editorState, setLanguage } from "./code-editor.ts";
+import { EditorView, editorState, SEARCH_PHRASES, setLanguage } from "./code-editor.ts";
 
 /**
  * The editor of the large view: the text of one file in CodeMirror, with Save (⌘S, Ctrl+S) and Cancel, what to do when the
@@ -24,31 +23,6 @@ import { EditorView, editorState, setLanguage } from "./code-editor.ts";
  * would take the person away from it asks first (`lib/leave-guard.ts`: another view, another conversation, the large view
  * closing or showing another file; a reload or a closed tab is the browser's to ask).
  */
-
-/** CodeMirror's own words for its find panel, in the page's language: its phrase on the left, the page's string on the right. */
-const PHRASES: Record<string, MessageKey> = {
-	Find: "files.editFind",
-	Replace: "files.editReplaceWith",
-	next: "files.editNext",
-	previous: "files.editPrevious",
-	all: "files.editAll",
-	"match case": "files.editMatchCase",
-	regexp: "files.editRegexp",
-	"by word": "files.editByWord",
-	replace: "files.editReplaceOne",
-	"replace all": "files.editReplaceAll",
-	close: "files.editCloseSearch",
-	"Go to line": "files.editGoToLine",
-	go: "files.editGo",
-};
-
-/** Whether going to the view `next` stays in the conversation the large view covers (it is then not leaving what is unsaved). */
-function inConversation(next: View): boolean {
-	const now = useApp.getState().view;
-	if (now.kind !== "chat" || next.kind !== "chat") return false;
-	const here = nextChatKey(null, now);
-	return nextChatKey(here, next).key === here.key;
-}
 
 type TextFile = Extract<FolderFile, { kind: "text" }>;
 
@@ -85,7 +59,7 @@ export default function FileEditor({
 	const config = () => ({
 		name,
 		label: latest.current.t("files.editorText", { name }),
-		phrases: Object.fromEntries(Object.entries(PHRASES).map(([phrase, key]) => [phrase, latest.current.t(key)])),
+		phrases: Object.fromEntries(Object.entries(SEARCH_PHRASES).map(([phrase, key]) => [phrase, latest.current.t(key)])),
 		onUpdate: (u: ViewUpdate) => {
 			if (!u.docChanged || base.current.doc === null) return;
 			setDirty(!u.state.doc.eq(base.current.doc));
