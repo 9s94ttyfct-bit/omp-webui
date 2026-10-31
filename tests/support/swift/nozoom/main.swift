@@ -55,19 +55,39 @@ func evaluate(_ web: WKWebView, _ script: String) -> String {
 	return result ?? "timeout"
 }
 
+/// Runs the main loop for `seconds`; when the web view is expected to zoom (`zooms`), on until its magnification has left
+/// 1 and then held still for 0.3 s, or 10 s more passed. A loaded machine (the parallel suite) can start or finish the
+/// animation later than the fixed wait; a web view that must not zoom gets the fixed wait only.
+func settle(_ web: WKWebView, _ seconds: Double, zooms: Bool) {
+	spin(seconds)
+	guard zooms else { return }
+	let deadline = Date().addingTimeInterval(10)
+	var last = web.magnification
+	var stillSince = Date()
+	while Date() < deadline {
+		spin(0.05)
+		if web.magnification != last {
+			last = web.magnification
+			stillSince = Date()
+		} else if last != 1, Date().timeIntervalSince(stillSince) >= 0.3 {
+			return
+		}
+	}
+}
+
 /// How far a pinch and then a smart zoom magnify `web` (1: not at all).
-func zoomByGestures(_ web: WKWebView) -> [String: Any] {
+func zoomByGestures(_ web: WKWebView, zooms: Bool) -> [String: Any] {
 	for (amount, phase) in [(0.0, 1), (0.3, 2), (0.3, 2), (0.0, 4)] as [(Double, Int64)] {
 		if let event = gesture(hid: 8, amount: amount, phase: phase) { web.magnify(with: event) }
 		spin(0.2)
 	}
-	spin(1)
+	settle(web, 1, zooms: zooms)
 	let pinch = web.magnification
 	web.setMagnification(1, centeredAt: .zero)
 	spin(0.3)
 	// Over the narrow block of text, which a smart zoom fits to the view.
 	if let event = gesture(hid: 22, at: CGPoint(x: 60, y: 30)) { web.smartMagnify(with: event) }
-	spin(1.5)
+	settle(web, 1.5, zooms: zooms)
 	return ["pinch": pinch, "smartZoom": web.magnification, "pageZoom": web.pageZoom]
 }
 
@@ -104,8 +124,8 @@ case "gestures":
 	let (app, appWindow) = loadedWebView(page, prepare: prepareWebView)
 	let (control, controlWindow) = loadedWebView(page) { $0.allowsMagnification = true }
 	report = [
-		"app": zoomByGestures(app).merging(["allowsMagnification": app.allowsMagnification]) { $1 },
-		"control": zoomByGestures(control),
+		"app": zoomByGestures(app, zooms: false).merging(["allowsMagnification": app.allowsMagnification]) { $1 },
+		"control": zoomByGestures(control, zooms: true),
 	]
 	appWindow.close()
 	controlWindow.close()
