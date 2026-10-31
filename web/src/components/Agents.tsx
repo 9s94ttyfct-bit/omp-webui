@@ -28,6 +28,7 @@ import {
 	elapsedMs,
 	isOver,
 	parentId,
+	rowContext,
 	rowTotals,
 	subagentsForToolCall,
 	toolCallArguments,
@@ -42,6 +43,7 @@ import { useApp } from "../store/app.ts";
 import type { LiveState, ToolExec } from "../store/live.ts";
 import { useSubagentTranscript } from "../store/subagent-transcript.ts";
 import { AssignmentDetails } from "./Assignment.tsx";
+import { ContextPercent } from "./ContextPercent.tsx";
 import { MessageRow } from "./Message.tsx";
 import { StopSubagent } from "./SubagentStop.tsx";
 import { argSummary } from "./ToolCard.tsx";
@@ -184,6 +186,7 @@ export function Agents({ file, live }: { file: string | null; live: LiveState | 
 								</span>
 								{r.agent ? <Badge>{r.agent}</Badge> : null}
 								<span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs text-faint tabular-nums">
+									<ContextPercent ctx={rowContext(r)} />
 									{elapsed !== undefined ? (
 										<span className="text-accent" data-testid="subagent-elapsed">
 											{fmtElapsed(elapsed)}
@@ -316,6 +319,7 @@ export function AgentDetail({
 	const initial = useMemo(() => assignmentOfInit(entries), [entries]);
 	const assignment = assignmentOfRow(row, initial);
 	const model = row.live?.progress?.resolvedModel;
+	const ctx = rowContext(row);
 	// A task card inside this subagent's transcript opens the subagents it started, which are named after it.
 	const actions = useMemo(
 		() => ({
@@ -412,10 +416,11 @@ export function AgentDetail({
 					<div className="text-faint">{t("panel.agentTime")}</div>
 				</div>
 			</div>
-			{row.agent || model ? (
+			{row.agent || model || ctx ? (
 				<div className="flex flex-wrap items-center gap-1.5 border-b border-border px-3 py-1.5 text-xs text-muted">
 					{row.agent ? <Badge>{row.agent}</Badge> : null}
 					{model ? <span className="font-mono">{model}</span> : null}
+					<ContextPercent ctx={ctx} className="ml-auto" />
 				</div>
 			) : null}
 			{view ? (

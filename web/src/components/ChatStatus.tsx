@@ -3,6 +3,7 @@ import { Clock, Cpu, FolderOpen, Target, TriangleAlert, Users, Zap } from "lucid
 import { useEffect, useMemo, useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
+import { contextLevel } from "../lib/context-usage.ts";
 import { fmtCost, fmtCostExact, shortPath } from "../lib/format.ts";
 import { useCrampedRow } from "../lib/media.ts";
 import { useStartConfig } from "../lib/model-config.ts";
@@ -28,6 +29,8 @@ import { cx, Tip } from "./ui.tsx";
 
 const ITEM = "inline-flex items-center gap-1 whitespace-nowrap";
 const ICON = "shrink-0 text-faint";
+/** The context meter's colour by how full it is (`contextLevel`; a subagent's figure has the same thresholds). */
+const LEVEL_BAR = { ok: "bg-accent", warn: "bg-warning", high: "bg-danger" } as const;
 
 /** Fewer characters of the branch than this (about five) are not worth showing: the chip is its icon instead. */
 const BRANCH_MIN_PX = 32;
@@ -250,10 +253,7 @@ export function ChatStatus({
 				>
 					<span className="h-1.5 w-12 overflow-hidden rounded-full bg-hover" aria-hidden>
 						<span
-							className={cx(
-								"block h-full rounded-full",
-								ctx.percent > 80 ? "bg-danger" : ctx.percent > 60 ? "bg-warning" : "bg-accent",
-							)}
+							className={cx("block h-full rounded-full", LEVEL_BAR[contextLevel(ctx.percent)])}
 							style={{ width: `${Math.min(100, ctx.percent)}%` }}
 						/>
 					</span>
