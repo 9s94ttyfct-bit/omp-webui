@@ -37,6 +37,7 @@
 		"parity": "bun scripts/parity.ts",
 		"lighthouse": "vite build && bun scripts/lighthouse.ts",
 		"app": "bun scripts/app.ts",
+		"icons": "bun scripts/icons.ts",
 		"dmg": "bun scripts/dmg.ts",
 		"screenshots": "vite build && bun scripts/screenshots.ts",
 		"app-shots": "bun scripts/app-shots.ts",

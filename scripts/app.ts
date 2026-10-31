@@ -8,11 +8,12 @@
  *
  * omp is not bundled: the shell finds the installed one at launch.
  */
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { inflateSync } from "node:zlib";
 import pkg from "../package.json";
+import { readMaster, renderIcon } from "./icons.ts";
+import { encodePng } from "./lib/png.ts";
 import { killTree, onShutdown } from "./lib/shutdown.ts";
 import { signBundle } from "./signing-identity.ts";
 
@@ -33,25 +34,6 @@ async function run(cmd: string[], cwd = root): Promise<void> {
 	const code = await proc.exited;
 	running = null;
 	if (code !== 0) throw new Error(`${cmd[0]} exited with ${code}`);
-}
-
-/**
- * Alpha (0–255) of the top-left pixel of an 8-bit RGBA PNG. That pixel needs no filter arithmetic — every
- * PNG filter reads only pixels above or to the left of the one it decodes, and this one has none — so it is
- * the fifth byte of the inflated image data (after the row's filter byte).
- */
-function cornerAlpha(file: string): number {
-	const png = readFileSync(file);
-	const idat: Buffer[] = [];
-	for (let at = 8; at < png.length; ) {
-		const length = png.readUInt32BE(at);
-		const data = png.subarray(at + 8, at + 8 + length);
-		const type = png.toString("latin1", at + 4, at + 8);
-		if (type === "IHDR" && (data[8] !== 8 || data[9] !== 6)) throw new Error(`${file} is not an 8-bit RGBA PNG`);
-		if (type === "IDAT") idat.push(data);
-		at += 12 + length;
-	}
-	return inflateSync(Buffer.concat(idat))[4];
 }
 
 /** The icon scratch directory, once made. */
@@ -123,18 +105,17 @@ try {
 		join(contents, "MacOS", "omp-webui"),
 	]);
 
-	// Icon: macos/icon.png (1024 px, the shape on Apple's 824 px grid, transparent around it) → iconset → .icns.
-	// An opaque corner would show as a frame around the icon in the Dock.
-	const master = join(root, "macos", "icon.png");
-	if (cornerAlpha(master) !== 0) throw new Error("macos/icon.png has an opaque corner: it would show a frame.");
+	// Icon: macos/icon.png (1024 px, the shape on Apple's 824 px grid, transparent around it) → iconset → .icns, each
+	// size rendered the way scripts/icons.ts renders the web's. `readMaster` refuses an opaque corner: it would show as
+	// a frame around the icon in the Dock.
+	const master = readMaster();
 	iconTmp = mkdtempSync(join(tmpdir(), "ompw-icon-"));
 	const iconset = join(iconTmp, "AppIcon.iconset");
 	mkdirSync(iconset);
 	for (const size of [16, 32, 128, 256, 512]) {
 		for (const scale of [1, 2]) {
-			const px = size * scale;
 			const name = `icon_${size}x${size}${scale === 2 ? "@2x" : ""}.png`;
-			await run(["sips", "-z", String(px), String(px), master, "--out", join(iconset, name)]);
+			writeFileSync(join(iconset, name), encodePng(renderIcon(master, size * scale, "plate")));
 		}
 	}
 	await run(["iconutil", "-c", "icns", iconset, "-o", join(resources, "AppIcon.icns")]);

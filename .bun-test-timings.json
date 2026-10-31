@@ -236,6 +236,7 @@
     "tests/contract/folder-transfer.test.ts": 446,
     "tests/contract/remote-shell.test.ts": 442,
     "tests/unit/migrate-roundtrip.test.ts": 440,
+    "tests/unit/icons.test.ts": 437,
     "tests/contract/folder-edit.test.ts": 427,
     "tests/contract/remote-ai-live.test.ts": 422,
     "tests/unit/session-roots.test.ts": 409,
