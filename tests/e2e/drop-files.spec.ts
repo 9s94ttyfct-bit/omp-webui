@@ -4,6 +4,7 @@ import { PREF } from "../../shared/prefs.ts";
 import { writeChatSession } from "../support/chat-session.ts";
 import { type DragFile, dropOnComposer, PIXEL_PNG, pasteIntoComposer } from "../support/drop-files.ts";
 import { writeLongFakeOmp } from "../support/long-fake-omp-bin.ts";
+import { choose, readOptions } from "../support/select.ts";
 import type { TestServer } from "../support/server.ts";
 import { startTestServer } from "../support/server.ts";
 import { tapSocket } from "../support/socket-tap.ts";
@@ -218,9 +219,12 @@ test("Remember settles that kind of file next time, and Settings undoes it", asy
 	await page.goto(`${s.url}/#/settings/chats`);
 	const select = page.getByTestId("drop-choice-text");
 	await expect(page.getByTestId("drop-settings")).toBeVisible();
-	await expect(select).toHaveValue("attach");
-	await expect(page.getByTestId("drop-choice-other").locator("option")).toHaveText(["Ask each time", "Insert path"]);
-	await select.selectOption("ask");
+	await expect(select).toHaveAttribute("data-value", "attach");
+	expect((await readOptions(page.getByTestId("drop-choice-other"))).map((o) => o.text)).toEqual([
+		"Ask each time",
+		"Insert path",
+	]);
+	await choose(select, "ask");
 	await expect.poll(() => saved(PREF.dropChoicesPage)).toBeNull();
 });
 

@@ -99,7 +99,7 @@ test("Settings adds a follow-up prompt that waits for the turn, and Restore brin
 		const row = card.getByTestId("quick-prompt-row").last();
 		await row.getByTestId("quick-prompt-name").fill("Run checks");
 		await row.getByTestId("quick-prompt-text").fill("Run the tests next");
-		await expect(row.getByTestId("quick-prompt-mode")).toHaveValue("followUp");
+		await expect(row.getByTestId("quick-prompt-mode")).toHaveAttribute("data-value", "followUp");
 		await card.getByTestId("quick-prompts-save").click();
 		await expect(card.getByTestId("quick-prompts-save")).toBeDisabled();
 

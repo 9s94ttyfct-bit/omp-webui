@@ -2,7 +2,7 @@ import { realpathSync } from "node:fs";
 import { devices, expect, type Page, test, webkit } from "./fixtures.ts";
 
 /**
- * The composer's thinking-level control is a native `<select>`, and a touch screen sets selects at 16px so that iOS does
+ * On a touch screen the composer's thinking-level control is the system's `<select>`, set at 16px so that iOS does
  * not zoom into one that takes focus. That made the thinking level (and only it) larger than Presets, the model and the
  * permission mode beside it. It must be set like them (size, family, weight) on an iPad and an iPhone, and still be a
  * 16px field underneath. Measured in WebKit with Playwright's device descriptors; no model call.

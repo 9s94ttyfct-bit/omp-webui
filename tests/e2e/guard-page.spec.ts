@@ -7,6 +7,7 @@ import { en } from "../../web/src/i18n/guard.ts";
 import { zh } from "../../web/src/i18n/zh-CN/guard.ts";
 import { writeFakeOmp } from "../support/fake-omp.ts";
 import { FIXTURE_CWD } from "../support/fixtures.ts";
+import { choose, readOptions } from "../support/select.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { removeTrackedTempDirs, tempDir } from "../support/temp-dirs.ts";
 import { expect, type Page, test } from "./fixtures.ts";
@@ -245,28 +246,28 @@ test.describe("the decisions", () => {
 	test("are filtered by outcome, by who decided and by words, and say how many match", async ({ page }) => {
 		await openGuard(page);
 		const count = page.getByTestId("guard-log-count");
-		await page.getByTestId("guard-filter-outcome").selectOption("blocked");
+		await choose(page.getByTestId("guard-filter-outcome"), "blocked");
 		await expect(count).toHaveText(fill(en.decCountFiltered, { matched: SEEDED.blocked, total: TOTAL }));
 		await expect(rows(page).first()).toBeVisible();
 		for (const outcome of await rows(page).evaluateAll((els) => els.map((e) => e.getAttribute("data-outcome")))) {
 			expect(["denied", "guardRefused", "youDenied", "unavailable"]).toContain(outcome);
 		}
-		await page.getByTestId("guard-filter-outcome").selectOption("asked");
+		await choose(page.getByTestId("guard-filter-outcome"), "asked");
 		await expect(count).toHaveText(fill(en.decCountFiltered, { matched: SEEDED.asked, total: TOTAL }));
 		for (const by of await rows(page).evaluateAll((els) => els.map((e) => e.getAttribute("data-by"))))
 			expect(by).toBe("person");
 
-		await page.getByTestId("guard-filter-outcome").selectOption("");
-		await page.getByTestId("guard-filter-by").selectOption("classifier");
+		await choose(page.getByTestId("guard-filter-outcome"), "");
+		await choose(page.getByTestId("guard-filter-by"), "classifier");
 		await expect(count).toHaveText(fill(en.decCountFiltered, { matched: SEEDED.classifier, total: TOTAL }));
 		for (const by of await rows(page).evaluateAll((els) => els.map((e) => e.getAttribute("data-by"))))
 			expect(by).toBe("classifier");
 		// Both at once: nothing the classifier decided was allowed.
-		await page.getByTestId("guard-filter-outcome").selectOption("allowed");
+		await choose(page.getByTestId("guard-filter-outcome"), "allowed");
 		await expect(page.getByTestId("guard-log-nomatch")).toHaveText(en.decNoMatch);
 
-		await page.getByTestId("guard-filter-outcome").selectOption("");
-		await page.getByTestId("guard-filter-by").selectOption("");
+		await choose(page.getByTestId("guard-filter-outcome"), "");
+		await choose(page.getByTestId("guard-filter-by"), "");
 		await page.getByTestId("guard-filter-text").fill("cmd-077");
 		await expect(count).toHaveText(fill(en.decCountFiltered, { matched: 1, total: TOTAL }));
 		await expect(rows(page)).toHaveCount(1);
@@ -287,7 +288,7 @@ test.describe("the decisions", () => {
 		await expect(rows(page).first()).toContainText(tag, { timeout: 15_000 });
 		await expect(rows(page).first().getByTestId("guard-log-chip")).toHaveText(en.chipGuardRefused);
 		// With a filter it does not match, it is not added; the count stays what the filter says.
-		await page.getByTestId("guard-filter-outcome").selectOption("allowed");
+		await choose(page.getByTestId("guard-filter-outcome"), "allowed");
 		await expect(page.getByTestId("guard-log-count")).toHaveText(
 			fill(en.decCountFiltered, { matched: SEEDED.allowed, total: TOTAL + 1 }),
 		);
@@ -549,7 +550,7 @@ test.describe("the benchmark", () => {
 	test("the person's own cases are added, judged with the rest, and removed", async ({ page }) => {
 		await openGuard(page, { tab: "bench" });
 		await page.getByTestId("bench-own-name").fill("my wipe");
-		await page.getByTestId("bench-own-expect").selectOption("harmful");
+		await choose(page.getByTestId("bench-own-expect"), "harmful");
 		await page.getByTestId("bench-own-command").fill("find ~/Music -name '*.mp3' -delete");
 		await page.getByTestId("bench-own-add").click();
 		await expect(page.getByTestId("bench-own-item")).toHaveCount(1);
@@ -571,7 +572,7 @@ test.describe("the benchmark", () => {
 	}) => {
 		await openGuard(page, { tab: "bench" });
 		await page.getByTestId("bench-own-name").fill("my global install");
-		await page.getByTestId("bench-own-expect").selectOption("harmless");
+		await choose(page.getByTestId("bench-own-expect"), "harmless");
 		// The fake reviewer denies a message that names `rm -rf`, as a comment does.
 		await page.getByTestId("bench-own-command").fill("npm install -g left-pad # rm -rf");
 		await page.getByTestId("bench-own-add").click();
@@ -654,7 +655,7 @@ for (const [lang, words] of [
 			await expect(page.getByTestId("guard-tab-bench")).toHaveText(words.tabBench);
 			await expect(rows(page).first()).toBeVisible();
 			await rows(page).first().getByTestId("guard-log-call-toggle").click();
-			await expect(page.getByTestId("guard-filter-by")).toContainText(words.byClassifier);
+			expect((await readOptions(page.getByTestId("guard-filter-by"))).map((o) => o.text)).toContain(words.byClassifier);
 			let found = await new AxeBuilder({ page }).include('[data-testid="guard-page"]').analyze();
 			expect(found.violations.map((v) => `${theme} decisions ${v.id}: ${v.help}`)).toEqual([]);
 

@@ -1,5 +1,6 @@
 import { rmSync, utimesSync } from "node:fs";
 import { writeSimpleSession } from "../support/fixtures.ts";
+import { choose } from "../support/select.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -122,9 +123,9 @@ test.describe("conversations", () => {
 			const range = page.getByTestId("session-range");
 			await expect(range).toHaveCount(1);
 			// Today keeps today's only; all time has the old one back.
-			await range.selectOption("today");
+			await choose(range, "today");
 			await expect(row).toHaveCount(0);
-			await range.selectOption("all");
+			await choose(range, "all");
 			await expect(row).toHaveCount(1);
 			await expect(page.getByTestId("session-filter")).toHaveAttribute("placeholder", "筛选对话…");
 			await expect(page.getByTestId("session-range")).toHaveAttribute("aria-label", "时间范围");

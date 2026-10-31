@@ -7,6 +7,7 @@ import { SHOWCASE_PROMPT, writeFillerSessions, writeShowcaseSession } from "../s
 import { effective, hex, parseHex, readPalettes, resolve } from "../support/palettes.ts";
 import { distance, pixelsAt } from "../support/pixels.ts";
 import { NOTES_PROMPT, writeNotesSession } from "../support/render-fixtures.ts";
+import { choose } from "../support/select.ts";
 import type { Rgb } from "../support/style.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -290,7 +291,7 @@ test("the palette picker is named in English and in Chinese", async ({ page }) =
 	}
 	await expect(picker.getByRole("radio", { name: pagesZh.settingsPaletteTerminal })).toBeVisible();
 
-	await page.getByTestId("language").selectOption("en");
+	await choose(page.getByTestId("language"), "en");
 	await expect(page.getByRole("heading", { name: pagesEn.settingsPalette })).toBeVisible();
 	await expect(picker.getByRole("radio", { name: pagesEn.settingsPaletteTerminal })).toBeVisible();
 });

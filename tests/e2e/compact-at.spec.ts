@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ownSession, sessionRow, startLive } from "../support/live.ts";
+import { choose } from "../support/select.ts";
 import { type SocketTap, tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -68,13 +69,13 @@ test("a conversation's point is a share, kept when the page is loaded again, and
 	// Nothing was chosen: the conversation follows omp's configuration, which names no point, so omp's own reserve
 	// decides — and the row says which.
 	const row = compactRow(only.page);
-	await expect(row.getByTestId("compact-at-mode")).toHaveValue("default");
+	await expect(row.getByTestId("compact-at-mode")).toHaveAttribute("data-value", "default");
 	await expect(row.getByTestId("compact-at-effective")).toContainText("Compacts at");
 	await expect(row.getByTestId("compact-at-effective")).toContainText("omp's default");
 
 	// A share of the window.
-	await row.getByTestId("compact-at-mode").selectOption("percent");
-	await row.getByTestId("compact-at-percent").selectOption("70");
+	await choose(row.getByTestId("compact-at-mode"), "percent");
+	await choose(row.getByTestId("compact-at-percent"), "70");
 	await expect(only.page.getByTestId("toast").filter({ hasText: "Compact at: 70% of the window" })).toBeVisible();
 	await expect(row.getByTestId("compact-at-effective")).toHaveText("Compacts at 70% of the window.");
 	// The conversation's own point reaches its process, which omp reads at each check (the overlay, reloaded by omp).
@@ -82,11 +83,11 @@ test("a conversation's point is a share, kept when the page is loaded again, and
 
 	// A page loaded again shows the conversation's own point, not what a fresh page would know.
 	await reopenPanel(only.page);
-	await expect(compactRow(only.page).getByTestId("compact-at-mode")).toHaveValue("percent");
-	await expect(compactRow(only.page).getByTestId("compact-at-percent")).toHaveValue("70");
+	await expect(compactRow(only.page).getByTestId("compact-at-mode")).toHaveAttribute("data-value", "percent");
+	await expect(compactRow(only.page).getByTestId("compact-at-percent")).toHaveAttribute("data-value", "70");
 
 	// A count, typed the way the page prints amounts.
-	await compactRow(only.page).getByTestId("compact-at-mode").selectOption("tokens");
+	await choose(compactRow(only.page).getByTestId("compact-at-mode"), "tokens");
 	await compactRow(only.page).getByTestId("compact-at-tokens").fill("40k");
 	await expect(compactRow(only.page).getByTestId("compact-at-share")).toContainText(/% of the window\.$/);
 	await compactRow(only.page).getByTestId("compact-at-apply").click();
@@ -95,13 +96,13 @@ test("a conversation's point is a share, kept when the page is loaded again, and
 	await expect.poll(async () => told(only.page, liveId), { timeout: 20_000 }).toEqual({ tokens: 40_000 });
 
 	// Default: the conversation follows omp's configuration again, and a page loaded again says so.
-	await compactRow(only.page).getByTestId("compact-at-mode").selectOption("default");
+	await choose(compactRow(only.page).getByTestId("compact-at-mode"), "default");
 	await expect(only.page.getByTestId("toast").filter({ hasText: "Compact at: omp's default" })).toBeVisible();
-	await expect(compactRow(only.page).getByTestId("compact-at-mode")).toHaveValue("default");
+	await expect(compactRow(only.page).getByTestId("compact-at-mode")).toHaveAttribute("data-value", "default");
 	await expect(compactRow(only.page).getByTestId("compact-at-effective")).toContainText("omp's default");
 	await expect.poll(async () => told(only.page, liveId), { timeout: 20_000 }).toBeUndefined();
 	await reopenPanel(only.page);
-	await expect(compactRow(only.page).getByTestId("compact-at-mode")).toHaveValue("default");
+	await expect(compactRow(only.page).getByTestId("compact-at-mode")).toHaveAttribute("data-value", "default");
 });
 
 test("the row is in Simplified Chinese, says what it does there, and its choice is kept", async ({ page }) => {
@@ -116,7 +117,7 @@ test("the row is in Simplified Chinese, says what it does there, and its choice 
 	// Nothing of the row is left in English.
 	expect(await row.innerText()).not.toMatch(/Compact at|Default|Percent of window|Tokens/);
 
-	await row.getByTestId("compact-at-mode").selectOption("percent");
+	await choose(row.getByTestId("compact-at-mode"), "percent");
 	await expect(only.page.getByTestId("toast").filter({ hasText: "压缩阈值：窗口的 85%" })).toBeVisible();
 	await expect.poll(async () => told(only.page, liveId), { timeout: 20_000 }).toEqual({ percent: 85 });
 
@@ -124,10 +125,10 @@ test("the row is in Simplified Chinese, says what it does there, and its choice 
 	await expect(only.page.getByTestId("session-controls")).toBeVisible({ timeout: 30_000 });
 	await only.page.getByTestId("session-controls").click();
 	await expect(panel(only.page)).toBeVisible({ timeout: 60_000 });
-	await expect(compactRow(only.page).getByTestId("compact-at-mode")).toHaveValue("percent");
-	await expect(compactRow(only.page).getByTestId("compact-at-percent")).toHaveValue("85");
+	await expect(compactRow(only.page).getByTestId("compact-at-mode")).toHaveAttribute("data-value", "percent");
+	await expect(compactRow(only.page).getByTestId("compact-at-percent")).toHaveAttribute("data-value", "85");
 	// Default again, in the same words.
-	await compactRow(only.page).getByTestId("compact-at-mode").selectOption("default");
+	await choose(compactRow(only.page).getByTestId("compact-at-mode"), "default");
 	await expect(only.page.getByTestId("toast").filter({ hasText: "压缩阈值：omp 的默认值" })).toBeVisible();
 	await only.page.close();
 });
@@ -141,12 +142,12 @@ test("Settings sets omp's own point in omp's own configuration, keeps it across 
 		const card = page.getByTestId("compact-at-settings");
 		await expect(card).toBeVisible({ timeout: 60_000 });
 		await expect(card).toContainText("When omp compacts by itself");
-		await expect(card.getByTestId("compact-at-mode")).toHaveValue("default");
+		await expect(card.getByTestId("compact-at-mode")).toHaveAttribute("data-value", "default");
 		// "Default" is omp's own reserve, said as the value for the window omp starts new conversations on.
 		await expect(card.getByTestId("compact-at-effective")).toContainText("omp's default");
 
-		await card.getByTestId("compact-at-mode").selectOption("percent");
-		await card.getByTestId("compact-at-percent").selectOption("60");
+		await choose(card.getByTestId("compact-at-mode"), "percent");
+		await choose(card.getByTestId("compact-at-percent"), "60");
 		await expect(page.getByTestId("toast").filter({ hasText: "Compact at: 60% of the window" })).toBeVisible();
 		// omp's own setting, as `omp config set` writes it (so the terminal sees it), and the count line cleared: omp takes
 		// a positive count over a share, and a leftover one would win.
@@ -155,10 +156,10 @@ test("Settings sets omp's own point in omp's own configuration, keeps it across 
 		await expect(card.getByTestId("compact-at-effective")).toContainText("(omp's setting)");
 
 		await page.reload();
-		await expect(card.getByTestId("compact-at-mode")).toHaveValue("percent", { timeout: 60_000 });
-		await expect(card.getByTestId("compact-at-percent")).toHaveValue("60");
+		await expect(card.getByTestId("compact-at-mode")).toHaveAttribute("data-value", "percent", { timeout: 60_000 });
+		await expect(card.getByTestId("compact-at-percent")).toHaveAttribute("data-value", "60");
 
-		await card.getByTestId("compact-at-mode").selectOption("default");
+		await choose(card.getByTestId("compact-at-mode"), "default");
 		await expect(page.getByTestId("toast").filter({ hasText: "Compact at: omp's default" })).toBeVisible();
 		await expect.poll(() => readFileSync(configFile(), "utf8")).not.toMatch(/thresholdPercent|thresholdTokens/);
 	} finally {

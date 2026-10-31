@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { choose, readOptions } from "../support/select.ts";
 import { type SocketTap, tapSocket } from "../support/socket-tap.ts";
 import { type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
 import { expect, type Page, test } from "./fixtures.ts";
@@ -56,18 +57,16 @@ async function restartThroughOptions(page: Page, tap: SocketTap, value: string) 
 test("a thinking level chosen before the options change is on the next process", async ({ page }) => {
 	const tap = await newChat(page);
 	const picker = page.getByTestId("thinking-picker");
-	const levels = await picker
-		.locator("option")
-		.evaluateAll((els) => els.map((el) => (el instanceof HTMLOptionElement ? el.value : "")));
-	const current = await picker.inputValue();
+	const levels = (await readOptions(picker)).map((o) => o.value);
+	const current = await picker.getAttribute("data-value");
 	const chosen = levels.find((l) => l !== current);
 	expect(chosen).toBeTruthy();
-	await picker.selectOption(chosen as string);
+	await choose(picker, chosen as string);
 	await expect.poll(() => tap.commands("set_thinking_level")).toEqual([{ type: "set_thinking_level", level: chosen }]);
 
 	await restartThroughOptions(page, tap, "kept");
 	await expect(picker).toBeVisible({ timeout: 60_000 });
-	await expect(picker).toHaveValue(chosen as string);
+	await expect(picker).toHaveAttribute("data-value", chosen as string);
 	// The new process was told, once: it started on the default.
 	await expect.poll(() => tap.commands("set_thinking_level")).toHaveLength(2);
 	expect(tap.commands("set_thinking_level")[1]).toEqual({ type: "set_thinking_level", level: chosen });

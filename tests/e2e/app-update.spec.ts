@@ -7,6 +7,7 @@ import type { UpdateSnapshot } from "../../shared/update.ts";
 import { realOmp } from "../support/fake-install.ts";
 import { type FakeReleases, RELEASE_BODY, startFakeReleases } from "../support/fake-releases.ts";
 import { sessionRow } from "../support/live.ts";
+import { choose } from "../support/select.ts";
 import { buildInstallers, type Installers, startUpdateServer, type UpdateServer } from "../support/update-world.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -118,7 +119,7 @@ test.describe("a release that is newer, on a copy that cannot install", () => {
 		try {
 			// The language is chosen on the Look page; the notes are on the App page.
 			await page.locator('[data-testid="settings-page-tab"][data-page="look"]').click();
-			await page.getByTestId("language").selectOption("zh-CN");
+			await choose(page.getByTestId("language"), "zh-CN");
 			await expect(notes).toContainText("应用可以从 GitHub Releases 自行更新。");
 			await expect(notes).not.toContainText("updates itself");
 			await expect(notes).not.toContainText("安装 macOS 应用");
@@ -126,7 +127,7 @@ test.describe("a release that is newer, on a copy that cannot install", () => {
 			await expect(page.getByTestId("update-latest")).toHaveText(`有新版本 v${VERSION}`);
 		} finally {
 			await page.locator('[data-testid="settings-page-tab"][data-page="look"]').click();
-			await page.getByTestId("language").selectOption("en");
+			await choose(page.getByTestId("language"), "en");
 		}
 	});
 

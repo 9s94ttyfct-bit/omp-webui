@@ -1,6 +1,7 @@
 import { PREF, type PrefsSnapshot, PUSH_DEVICE_KEY } from "../../shared/prefs.ts";
 import type { PushList } from "../../shared/push.ts";
 import { newReceiver } from "../support/push-receiver.ts";
+import { choose } from "../support/select.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { expect, type Locator, type Page, test } from "./fixtures.ts";
 
@@ -368,7 +369,7 @@ test("in Chinese the card, its states and its answers are in Chinese", async ({ 
 	try {
 		// The language is on the Look page, the card on Chats.
 		await page.locator('[data-testid="settings-page-tab"][data-page="look"]').click();
-		await page.getByTestId("language").selectOption("zh-CN");
+		await choose(page.getByTestId("language"), "zh-CN");
 		await page.locator('[data-testid="settings-page-tab"][data-page="chats"]').click();
 		await expect(card(page)).toContainText("页面关闭时的通知");
 		await expect(page.getByTestId("push-unsupported")).toContainText("这个浏览器无法在页面关闭时接收通知。");
@@ -376,6 +377,6 @@ test("in Chinese the card, its states and its answers are in Chinese", async ({ 
 		await expect(card(page)).not.toContainText("Notifications when this page is closed");
 	} finally {
 		await page.locator('[data-testid="settings-page-tab"][data-page="look"]').click();
-		await page.getByTestId("language").selectOption("en");
+		await choose(page.getByTestId("language"), "en");
 	}
 });

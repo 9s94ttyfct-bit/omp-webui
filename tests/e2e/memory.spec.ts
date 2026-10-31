@@ -10,6 +10,7 @@ import { withYaml } from "../support/config-yml.ts";
 import { writeSimpleSession } from "../support/fixtures.ts";
 import { boxOf } from "../support/geometry.ts";
 import { bankPath, seedBank, storedContent } from "../support/mnemopi-seed-node.ts";
+import { choose } from "../support/select.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /**
@@ -191,7 +192,7 @@ test.describe
 
 			// One project: its notes only, with the retired one only when asked for.
 			await page.getByTestId("memory-scope-project").click();
-			await page.getByTestId("memory-project").selectOption({ label: "app" });
+			await choose(page.getByTestId("memory-project"), { label: "app" });
 			await expect(row(page, "pnpm")).toHaveCount(1);
 			await expect(row(page, "capistrano")).toHaveCount(0);
 			await page.getByTestId("memory-show-retired").click();
@@ -423,7 +424,7 @@ test.describe
 			await expect(page.getByTestId("memory-add-global")).toBeDisabled();
 			await expect(dialog).toContainText(en.addGlobalNo);
 			await expect(page.getByTestId("memory-add-project")).toBeChecked();
-			await page.getByTestId("memory-add-bank").selectOption({ label: "site" });
+			await choose(page.getByTestId("memory-add-bank"), { label: "site" });
 			await expect(page.getByTestId("memory-add-submit")).toBeDisabled();
 			await page.getByTestId("memory-add-text").fill(`Remember the aardvark tariff ${SECRET}`);
 			await expect(dialog.getByRole("status")).toContainText(en.secretWarning);

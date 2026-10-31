@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { choose } from "../support/select.ts";
 import { type APIRequestContext, expect, type Page, test } from "./fixtures.ts";
 
 /**
@@ -131,11 +132,11 @@ test("Settings › Presets: a preset's subagent models are edited in a dialog an
 
 	// A new subagent starts on the preset's default model; another model and its own thinking level are one choice each.
 	await expect(agent("reviewer").getByTestId("agent-model")).toContainText("Claude Haiku 5.5", { timeout: 30_000 });
-	await expect(agent("reviewer").getByTestId("agent-thinking")).toHaveValue("low");
+	await expect(agent("reviewer").getByTestId("agent-thinking")).toHaveAttribute("data-value", "low");
 	await agent("reviewer").getByTestId("agent-model").click();
 	await page.getByPlaceholder("Search models…").fill("Sonnet 5.5");
 	await page.getByRole("option", { name: /Claude Sonnet 5\.5/ }).click();
-	await agent("reviewer").getByTestId("agent-thinking").selectOption("high");
+	await choose(agent("reviewer").getByTestId("agent-thinking"), "high");
 	await dialog.getByTestId("new-agent").fill("scout");
 	await dialog.getByTestId("add-agent").click();
 	await expect(agent("scout")).toBeVisible();

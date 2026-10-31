@@ -1,4 +1,5 @@
 import { PREF, type PrefsSnapshot } from "../../shared/prefs.ts";
+import { choose } from "../support/select.ts";
 import type { TestServer } from "../support/server.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -89,7 +90,7 @@ test("the card speaks the language of the page, and Chinese says 对话 where it
 	await appShell(page);
 	await page.goto("/#/settings/look");
 	try {
-		await page.getByTestId("language").selectOption("zh-CN");
+		await choose(page.getByTestId("language"), "zh-CN");
 		await page.locator('[data-testid="settings-page-tab"][data-page="app"]').click();
 		const card = page.getByTestId("quit-settings");
 		await expect(card.getByRole("heading", { name: "退出应用" })).toBeVisible();
@@ -100,6 +101,6 @@ test("the card speaks the language of the page, and Chinese says 对话 where it
 		await expect(card).not.toContainText("会话");
 	} finally {
 		await page.locator('[data-testid="settings-page-tab"][data-page="look"]').click();
-		await page.getByTestId("language").selectOption("en");
+		await choose(page.getByTestId("language"), "en");
 	}
 });

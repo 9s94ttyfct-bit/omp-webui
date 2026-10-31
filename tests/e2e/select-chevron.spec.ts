@@ -1,18 +1,18 @@
 import { realpathSync } from "node:fs";
+import { choose } from "../support/select.ts";
 import { expect, type Locator, type Page, test } from "./fixtures.ts";
 
 /**
  * The app's selects wear its own chevron, not the one the OS draws. In the composer the thinking level is as wide as
  * the level it shows, with the chevron right after it like the model and preset chips beside it (it used to be as wide
  * as its longest option: "Off", then a gap of about 60px, then a heavy native arrow). The sidebar's project filter
- * starts its text where the filter field above it does. The native `<select>` stays underneath, so it still takes
- * `selectOption`, a keyboard and a phone's own picker. No model call.
+ * starts its text where the filter field above it does. On a computer the control is the app's own listbox; on a phone
+ * the system's `<select>`, so it still takes a phone's own picker. No model call.
  */
 
 /** What a select looks like, measured: its own box, the words it shows, and the chevron laid over it. */
 async function look(select: Locator) {
 	return select.evaluate((el) => {
-		if (!(el instanceof HTMLSelectElement)) throw new Error("not a select");
 		const style = getComputedStyle(el);
 		const ctx = document.createElement("canvas").getContext("2d");
 		if (!ctx) throw new Error("no 2d canvas");
@@ -29,7 +29,8 @@ async function look(select: Locator) {
 				box.left +
 				Number.parseFloat(style.borderLeftWidth) +
 				Number.parseFloat(style.paddingLeft) +
-				ctx.measureText(el.selectedOptions[0]?.text ?? "").width,
+				ctx.measureText(el instanceof HTMLSelectElement ? (el.selectedOptions[0]?.text ?? "") : (el.textContent ?? ""))
+					.width,
 			chevron: chevron ? { left: chevron.left, right: chevron.right } : null,
 		};
 	});
@@ -57,8 +58,8 @@ test("the thinking level is as wide as what it shows, with the app's chevron 6px
 
 	// It still takes a level the way a select does.
 	const picker = page.getByTestId("thinking-picker");
-	await picker.selectOption("high");
-	await expect(picker).toHaveValue("high");
+	await choose(picker, "high");
+	await expect(picker).toHaveAttribute("data-value", "high");
 });
 
 test("every select of Settings has the app's chevron at its right end and still selects", async ({ page }) => {
@@ -72,7 +73,9 @@ test("every select of Settings has the app's chevron at its right end and still 
 			"page",
 		);
 		if (id === "models") await expect(page.getByTestId("default-thinking")).toBeVisible();
-		const selects = page.locator(`[data-settings-page="${id}"] select`);
+		const selects = page.locator(
+			`[data-settings-page="${id}"] :is(select:not([aria-hidden]), [role="combobox"][data-value])`,
+		);
 		count += await selects.count();
 		for (const [i, select] of (await selects.all()).entries()) {
 			const shown = await look(select);
@@ -89,8 +92,8 @@ test("every select of Settings has the app's chevron at its right end and still 
 	expect(count, "selects on the pages").toBeGreaterThanOrEqual(4);
 	await page.goto("/#/settings/models");
 	const level = page.getByTestId("default-thinking");
-	await level.selectOption("high");
-	await expect(level).toHaveValue("high");
+	await choose(level, "high");
+	await expect(level).toHaveAttribute("data-value", "high");
 });
 
 test.describe("on a touch screen, where selects are 16px", () => {

@@ -1,6 +1,7 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import { writeChatSession } from "../support/chat-session.ts";
+import { choose } from "../support/select.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /** Sidebar actions use conversations of their own: renaming or deleting a shared fixture poisons later files. */
@@ -100,10 +101,10 @@ test("the list is sorted the way the person chose, and the choice is remembered 
 	own(0x34, "Sort probe");
 	await page.goto("/");
 	const sort = page.getByTestId("session-sort");
-	await expect(sort).toHaveValue("activity");
+	await expect(sort).toHaveAttribute("data-value", "activity");
 	await expect(page.getByTestId("session-list")).toContainText("Today");
 	try {
-		await sort.selectOption("title");
+		await choose(sort, "title");
 		// By name: one list under one heading, A to Z.
 		await expect(page.getByTestId("session-list")).toContainText("By name");
 		await expect(page.getByTestId("session-list")).not.toContainText("Today");
@@ -112,10 +113,10 @@ test("the list is sorted the way the person chose, and the choice is remembered 
 			.evaluateAll((rows) => rows.map((r) => r.getAttribute("data-file") ?? ""));
 		expect(names.length).toBeGreaterThan(1);
 		await page.reload();
-		await expect(page.getByTestId("session-sort")).toHaveValue("title");
+		await expect(page.getByTestId("session-sort")).toHaveAttribute("data-value", "title");
 		await expect(page.getByTestId("session-list")).toContainText("By name");
 	} finally {
-		await page.getByTestId("session-sort").selectOption("activity");
+		await choose(page.getByTestId("session-sort"), "activity");
 	}
 	await expect(page.getByTestId("session-list")).toContainText("Today");
 });

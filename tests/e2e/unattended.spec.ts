@@ -8,6 +8,7 @@ import { zh } from "../../web/src/i18n/zh-CN/questions.ts";
 import { writeSimpleSession } from "../support/fixtures.ts";
 import { openSidebar, startLive } from "../support/live.ts";
 import { panelTab } from "../support/panel.ts";
+import { choose } from "../support/select.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -189,7 +190,7 @@ for (const lang of ["en", "zh-CN"] as const) {
 		await asLang(page, lang);
 		await page.goto("/#/questions");
 		await expect(page.getByTestId("question-row")).toHaveCount(2, { timeout: 30_000 });
-		await page.getByTestId("questions-scope").selectOption({ label: b.title });
+		await choose(page.getByTestId("questions-scope"), { label: b.title });
 		await expect(page.getByTestId("question-row")).toHaveCount(1);
 		const row = page.getByTestId("question-row");
 		await row.getByRole("button", { name: /B asks\?/ }).click();
@@ -246,7 +247,7 @@ for (const lang of ["en", "zh-CN"] as const) {
 		// Its button opens the page, scoped to this conversation.
 		await tab.getByTestId("questions-open-page").click();
 		await expect(page.getByTestId("questions-page")).toBeVisible();
-		await expect(page.getByTestId("questions-scope")).toHaveValue(mine.key);
+		await expect(page.getByTestId("questions-scope")).toHaveAttribute("data-value", mine.key);
 		await expect(page.getByTestId("question-row")).toHaveCount(2);
 
 		// Back to the conversation, the switch is still on; turned off, the questions stay in the list.

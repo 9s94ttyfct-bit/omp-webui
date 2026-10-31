@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { ownSession, sessionRow, startLive } from "../support/live.ts";
 import { panelTab } from "../support/panel.ts";
+import { choose, readOptions } from "../support/select.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { expect, test } from "./fixtures.ts";
 
@@ -61,8 +62,8 @@ test("a paused conversation takes every action with one click, and stays paused"
 	await expect(page.locator("[cmdk-item]").first()).toBeVisible({ timeout: 30_000 });
 	await page.keyboard.press("Escape");
 	const select = page.getByTestId("thinking-picker");
-	const levels = await select.locator("option").evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value));
-	await select.selectOption(levels.find((v) => v !== (levels[0] ?? "")) ?? "off");
+	const levels = (await readOptions(select)).map((o) => o.value);
+	await choose(select, levels.find((v) => v !== (levels[0] ?? "")) ?? "off");
 
 	// A session setting.
 	await page.getByTestId("session-controls").click();

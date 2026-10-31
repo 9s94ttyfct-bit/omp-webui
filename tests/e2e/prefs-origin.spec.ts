@@ -3,6 +3,7 @@ import { PREF, type PrefsSnapshot } from "../../shared/prefs.ts";
 import { FIXTURE } from "../support/fixtures.ts";
 import { boxOf } from "../support/geometry.ts";
 import { sessionRow } from "../support/live.ts";
+import { choose } from "../support/select.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { expect, type Locator, type Page, test } from "./fixtures.ts";
 
@@ -70,7 +71,7 @@ test("theme, palette, language, panel widths and the panes survive the server co
 	await page.getByTestId("panel-pane-bottom").getByTestId("pane-tab-btw").click();
 	await page.getByTestId("pane-fold-top").click();
 	await page.goto(`${firstUrl}/#/settings`);
-	await page.getByTestId("language").selectOption("zh-CN");
+	await choose(page.getByTestId("language"), "zh-CN");
 	await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
 
 	// They are on the server, not only in this origin.
@@ -109,7 +110,7 @@ test("theme, palette, language, panel widths and the panes survive the server co
 	// And the app comes up as it was left.
 	await page.goto(`${s.url}/#/settings`);
 	await page.reload();
-	await expect(page.getByTestId("language")).toHaveValue("zh-CN");
+	await expect(page.getByTestId("language")).toHaveAttribute("data-value", "zh-CN");
 	await expect(page.locator('input[name="theme"][value="light"]')).toBeChecked();
 	await expect(page.getByTestId("palette-terminal").getByRole("radio")).toBeChecked();
 	await expect(page.locator("html")).toHaveAttribute("data-palette", "terminal");

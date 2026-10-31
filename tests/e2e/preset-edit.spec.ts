@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { choose } from "../support/select.ts";
 import { type APIRequestContext, expect, type Page, test } from "./fixtures.ts";
 
 /**
@@ -140,7 +141,7 @@ test("Settings › Presets: one Edit dialog changes a preset's roles, thinking l
 	await row("aaa").getByTestId("edit-preset").click();
 	const dialog = page.getByTestId("preset-edit-dialog");
 	await expect(page.getByRole("dialog")).toContainText("Edit preset · aaa");
-	await expect(dialog.getByTestId("default-thinking")).toHaveValue("high");
+	await expect(dialog.getByTestId("default-thinking")).toHaveAttribute("data-value", "high");
 	await expect(dialog.locator('[data-testid="role-row"][data-role="default"]').getByTestId("role-model")).toContainText(
 		"Claude Sonnet 5.5",
 		{ timeout: 30_000 },
@@ -157,13 +158,13 @@ test("Settings › Presets: one Edit dialog changes a preset's roles, thinking l
 	await role("commit").getByTestId("role-remove").click();
 	await expect(role("commit")).toHaveCount(0);
 	// The default thinking level, which the preset may also leave unset.
-	await dialog.getByTestId("default-thinking").selectOption("xhigh");
+	await choose(dialog.getByTestId("default-thinking"), "xhigh");
 	// Subagents: one added, the one it had given a thinking level.
 	await dialog.getByTestId("new-agent").fill("reviewer");
 	await dialog.getByTestId("add-agent").click();
 	const agent = (name: string) => dialog.locator(`[data-testid="agent-row"][data-agent="${name}"]`);
 	await expect(agent("reviewer")).toBeVisible();
-	await agent("scout").getByTestId("agent-thinking").selectOption("low");
+	await choose(agent("scout").getByTestId("agent-thinking"), "low");
 	await expect(dialog.getByTestId("edit-unsaved")).toBeVisible();
 
 	await expect(save).toBeEnabled();
@@ -185,7 +186,7 @@ test("Settings › Presets: one Edit dialog changes a preset's roles, thinking l
 
 	// A preset may stop setting a thinking level and subagent models: both keys go.
 	await row("aaa").getByTestId("edit-preset").click();
-	await dialog.getByTestId("default-thinking").selectOption({ label: "Not set (keep the current level)" });
+	await choose(dialog.getByTestId("default-thinking"), { label: "Not set (keep the current level)" });
 	for (const name of ["scout", "reviewer"]) await agent(name).getByTestId("agent-remove").click();
 	await dialog.getByTestId("save-preset-edit").click();
 	await expect(dialog).toHaveCount(0);
