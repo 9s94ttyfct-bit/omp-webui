@@ -218,6 +218,16 @@ export class LazyRemote {
 		return chain.service.handle(req, url, peer);
 	}
 
+	/** The settings as the card shows them (the chain is loaded for them, as for the card). */
+	async config(): Promise<RemoteConfig> {
+		return (await this.load()).service.snapshot().config;
+	}
+
+	/** Change the settings as the card's Save does (`RemoteService.saveConfig`): refused whole when a value does not fit. */
+	async saveConfig(patch: Partial<RemoteConfig>): Promise<void> {
+		await (await this.load()).service.saveConfig(patch);
+	}
+
 	/**
 	 * The chain is loaded and started: the tunnel comes up when the settings ask for it.
 	 *

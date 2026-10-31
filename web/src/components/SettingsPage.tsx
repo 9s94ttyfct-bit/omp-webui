@@ -64,6 +64,8 @@ const NavLayoutSettings = lazy(() => import("./NavLayoutSettings.tsx").then((m) 
 const QuickPromptsSettings = lazy(() =>
 	import("./QuickPromptsSettings.tsx").then((m) => ({ default: m.QuickPromptsSettings })),
 );
+// Ask agent for help (v0.13.0): a chunk of its own, with its strings; only a page on this computer has it (its routes are local-only).
+const SettingsHelpCard = lazy(() => import("./SettingsHelp.tsx").then((m) => ({ default: m.SettingsHelpCard })));
 
 export function SettingsPage() {
 	const t = useT();
@@ -225,6 +227,11 @@ export function SettingsPage() {
 					scroller={scroller}
 				/>
 				<SettingsSearch onGo={goToSetting} />
+				{meta?.local ? (
+					<Suspense fallback={null}>
+						<SettingsHelpCard where={t(SETTINGS_PAGE_LABEL[page])} />
+					</Suspense>
+				) : null}
 				{part(
 					"look",
 					<>

@@ -216,6 +216,11 @@ export class ModeService implements Launcher {
 		return this.store.lightModels;
 	}
 
+	/** The Light settings as they are kept. */
+	get offline(): OfflineSettings {
+		return this.store.offline;
+	}
+
 	/** `fn` is told the new state after every change of the mode or of the Light settings, whoever made it. */
 	onChange(fn: (state: ModeState) => void): void {
 		this.listeners.add(fn);

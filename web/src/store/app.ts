@@ -51,6 +51,7 @@ import {
 	withWork,
 } from "./live.ts";
 import { ompApi, onOmpMessage } from "./omp.ts";
+import { setSettingsHelpState } from "./settings-help.ts";
 import { endAll, mergeSnapshot } from "./subagents-live.ts";
 import { clearTurnClock, noteTurnFrame, seedTurnClock } from "./turn-clock.ts";
 
@@ -1580,6 +1581,9 @@ export function onServer(msg: ServerMessage): void {
 		case "guard_decision":
 		case "guard_config":
 			onGuardMessage(msg);
+			return;
+		case "settings_help":
+			setSettingsHelpState(msg.state);
 			return;
 		default:
 			return;

@@ -52,6 +52,7 @@ const LOCAL_ONLY = [
 	"/api/migrate",
 	"/api/memory",
 	"/api/shell",
+	"/api/settings-help",
 ];
 
 /**
@@ -60,8 +61,10 @@ const LOCAL_ONLY = [
  * guards the agent and what it decided (`/api/guard*`), the app's own updates (`/api/update*`), moving to another
  * computer (`/api/migrate/*`), what omp remembers (`/api/memory*`: the folders of the projects and excerpts of
  * conversations, and what is written to it is put into the prompt of every later conversation, which a page that is not
- * on this computer must not be able to do) and what the macOS app is told on its own (`/api/shell/*`: which
- * conversations work and wait, and the titles of the ones that need somebody, for the app's notifications). A page that
+ * on this computer must not be able to do), what the macOS app is told on its own (`/api/shell/*`: which
+ * conversations work and wait, and the titles of the ones that need somebody, for the app's notifications) and Ask agent
+ * for help (`/api/settings-help*`: starting a conversation that changes settings, the Allow / Deny of a security-sensitive
+ * change, Revoke now and Undo). A page that
  * is not on this computer (see `isThisComputer`) is refused them, whether it
  * came through the tunnel or over the network, and whatever token it holds: the token lets a page use the conversations,
  * not reconfigure, replace or carry away the computer they run on. A route added here is refused to such a page by

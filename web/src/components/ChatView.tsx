@@ -128,6 +128,9 @@ const GuardNotice = lazy(() => import("./GuardNotice.tsx"));
 const GuardUngated = lazy(() => import("./GuardUngated.tsx"));
 // The guard's switch beside This session (v0.12.2): Off for this conversation alone and back; a chunk of its own, with the guard's strings.
 const GuardToggle = lazy(() => import("./GuardToggle.tsx"));
+// A conversation started from Settings › Ask agent for help: its badge, the time its access has left with Revoke now, and
+// the security changes waiting for an Allow. A chunk of its own, with its strings; other conversations never load it.
+const SettingsHelpBar = lazy(() => import("./SettingsHelp.tsx").then((m) => ({ default: m.SettingsHelpBar })));
 // A file, or a file's change, opened large over the conversation's column (#635): the Files tab's own chunk, loaded when
 // something is opened large and not before.
 const BigView = lazy(() => import("./BigView.tsx"));
@@ -1376,6 +1379,11 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 						{guardUnavailable ? (
 							<Suspense fallback={null}>
 								<GuardNotice homes={guardHomes} />
+							</Suspense>
+						) : null}
+						{cwd && meta?.settingsHelpFolder === cwd ? (
+							<Suspense fallback={null}>
+								<SettingsHelpBar liveId={live?.info.liveId ?? null} />
 							</Suspense>
 						) : null}
 						{liveId && live?.info.ungated ? (

@@ -41,6 +41,7 @@ import type * as questions from "./questions.ts";
 import type * as quickPrompts from "./quick-prompts.ts";
 import * as remote from "./remote.ts";
 import type * as remoteLater from "./remote-later.ts";
+import type * as settingsHelp from "./settings-help.ts";
 import * as shell from "./shell.ts";
 import type * as update from "./update.ts";
 
@@ -111,7 +112,8 @@ type LazyKey =
 	| `macs.${Extract<keyof typeof macs.en, string>}`
 	| `push.${Extract<keyof typeof push.en, string>}`
 	| `questions.${Extract<keyof typeof questions.en, string>}`
-	| `guidance.${Extract<keyof typeof guidance.en, string>}`;
+	| `guidance.${Extract<keyof typeof guidance.en, string>}`
+	| `settingsHelp.${Extract<keyof typeof settingsHelp.en, string>}`;
 
 export type MessageKey =
 	| { [NS in keyof Modules]: `${NS}.${Extract<NamespaceKeys<NS>, string>}` }[keyof Modules]

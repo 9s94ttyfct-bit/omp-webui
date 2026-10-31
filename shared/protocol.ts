@@ -25,6 +25,7 @@ import type { PrefsSnapshot } from "./prefs.ts";
 import type { LiveQuotaHold } from "./quota-floor.ts";
 import type { RemoteStatus } from "./remote.ts";
 import type { SessionSettings } from "./session-defaults.ts";
+import type { SettingsHelpState } from "./settings-help.ts";
 import type { SleepNote } from "./sleep.ts";
 import type { LiveUnattended, QuestionCounts, QuestionDropNote } from "./unattended.ts";
 import type { AppUpdateState } from "./update.ts";
@@ -523,6 +524,11 @@ export type ServerMessage =
 	| { t: "macs_changed" }
 	/** The app's own updates changed (a check answered, an install moved on): sent to local pages only. */
 	| { t: "app_update"; state: AppUpdateState }
+	/**
+	 * Ask agent for help (Settings) changed: a conversation's access began or ended, a sensitive change waits for the
+	 * person's Allow or Deny or was answered, a change was made or undone. Sent to the pages on this computer only.
+	 */
+	| { t: "settings_help"; state: SettingsHelpState }
 	/** Something changed in a folder this page watches (`folder_watch`); `root` is the folder of the conversation, as `GET /api/folder/list` names it. */
 	| { t: "folder_changed"; root: string }
 	/**

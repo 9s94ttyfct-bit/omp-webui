@@ -31,3 +31,4 @@ The docs are English only, by choice. Agents running inside omp-webui read the s
 - [Move to another computer](docs/agents/migration.md): export and import of conversations and settings
 - [The server and its security](docs/agents/server-and-security.md): data folder, access token, network address, local-only routes, environment variables
 - [The webui_docs tool](docs/agents/webui-docs-tool.md): the read-only lookup tool agents use to read these docs
+- [Ask agent for help](docs/agents/settings-help.md): the dedicated conversation that changes settings with webui_settings, its 30-minute access, confirmations and the change log

@@ -55,9 +55,10 @@ They are written in English only, by choice: one language keeps them exact and s
 - [Move to another computer](migration.md)
 - [The server and its security](server-and-security.md)
 - [The webui_docs tool](webui-docs-tool.md)
+- [Ask agent for help](settings-help.md)
 
 ## Rules for an agent
 
 - Answer from these docs; when they do not say, say so rather than guess.
 - These docs describe what the app can do, not what this installation has set. To know a current value, ask the person or look where the topic says it is shown.
-- Do not change the person's settings on their behalf unless they ask; never change guard, remote access, memory, update or migration settings unasked. The local-only routes refuse remote pages by design.
+- Do not change the person's settings on their behalf unless they ask; never change guard, remote access, memory, update or migration settings unasked. The local-only routes refuse remote pages by design. A conversation started from Settings › Ask agent for help changes settings with its `webui_settings` tool only (topic `settings-help`), never by editing files.

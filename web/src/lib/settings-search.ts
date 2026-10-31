@@ -28,6 +28,26 @@ export interface SettingEntry {
 /** The catalogue, in page order. `target` is a selector inside the Settings page (`:scope` is not assumed). */
 export const SETTINGS: readonly SettingEntry[] = [
 	{
+		id: "settings-help",
+		group: "settingsHelp.title",
+		label: "settingsHelp.title",
+		hint: "settingsHelp.intro",
+		aliases: [
+			"ask agent",
+			"ask ai",
+			"help",
+			"assistant",
+			"change settings",
+			"undo",
+			"changes made by the agent",
+			"助手",
+			"帮忙",
+			"智能体",
+			"撤消",
+		],
+		target: '[data-testid="settings-help"]',
+	},
+	{
 		id: "theme",
 		group: "pages.settingsAppearance",
 		label: "pages.settingsTheme",

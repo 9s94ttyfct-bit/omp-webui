@@ -35,6 +35,12 @@ export interface HostToolServer {
 	 * mode. The others go through omp's tool approval like any tool of its own.
 	 */
 	readonly readOnly: readonly string[];
+	/**
+	 * omp's own tools that omp asks the person about at every call in this conversation, whatever its permission mode
+	 * (Auto-approve too): what could do there what `tools` exist to do with the person's say (write the files the server
+	 * keeps its settings in, run a command that does). None: omp's tools follow the conversation's mode.
+	 */
+	readonly prompted?: readonly string[];
 	/** Answer a call. Throwing is answering with the error's message. */
 	call(call: HostToolCall): Promise<HostToolResult>;
 	/** The conversation has ended: nothing will call again. */

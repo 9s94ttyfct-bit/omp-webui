@@ -15,6 +15,7 @@ import {
 	FOLLOW_GLOBAL_GUARD,
 	GUARD_BYS,
 	GUARD_OUTCOMES,
+	type GuardConfig,
 	GuardConfigError,
 	parseGuardOverridePatch,
 	reviewerSelectors,
@@ -28,7 +29,7 @@ import {
 	type SessionGuidance,
 } from "../shared/model-guidance.ts";
 import { isMode } from "../shared/offline.ts";
-import { PREF } from "../shared/prefs.ts";
+import { PREF, type PrefsSnapshot } from "../shared/prefs.ts";
 import { type ClientMessage, type LiveAttached, MAX_WS_MESSAGE_BYTES, type ServerMessage } from "../shared/protocol.ts";
 import { PUSH_API } from "../shared/push.ts";
 import { REMOTE_SHELL_OFF } from "../shared/remote.ts";
@@ -112,6 +113,9 @@ import {
 import { SessionPins } from "./sessions/pins.ts";
 import { SessionRoots } from "./sessions/roots.ts";
 import { SessionStore } from "./sessions/store.ts";
+import { SettingsCatalog } from "./settings-help/catalog.ts";
+import { handleSettingsHelp } from "./settings-help/routes.ts";
+import { SettingsHelp } from "./settings-help/service.ts";
 import { NOTIFY_EVENTS_PATH, SHELL_EVENTS_PATH, ShellEvents } from "./shell-events.ts";
 import { caffeinateBin, KeepAwake, SleepDetector, spawnCaffeinate, workingIds } from "./sleep.ts";
 import { isLocalOnlyRoute, isThisComputer } from "./this-computer.ts";
@@ -630,6 +634,69 @@ pool.onAnnounce((info) => {
 	shellEvents.note(info);
 	pushHub?.note(info);
 });
+
+/**
+ * Change the synced preferences (`UiPrefs.apply`, which refuses a change whole) and, when anything changed, do what the
+ * change means beyond the file: every open page shows it (the macOS window included), whether notifications are on is part
+ * of whether the guard has somebody to ask (`ShellEvents.reaches`), "Keep the Mac awake while a conversation works" (#647)
+ * takes effect now, and the macOS app shows its menu bar icon or not as Settings says. Settings' own cards and Ask agent
+ * for help change them through this.
+ */
+function applyPrefs(changes: unknown): PrefsSnapshot {
+	const before = uiPrefs.snapshot().rev;
+	const snapshot = uiPrefs.apply(changes);
+	if (snapshot.rev !== before) {
+		broadcastAll({ t: "prefs", snapshot });
+		pool.syncRisk();
+		applyKeepAwake();
+		shellEvents.prefsChanged();
+	}
+	return snapshot;
+}
+
+/** The guard's settings changed (Settings › Safety, or Ask agent for help): every gate and every page on this computer is told now. */
+function guardChanged(config: GuardConfig): void {
+	pool.syncRisk();
+	broadcastLocal({ t: "guard_config", config });
+}
+
+/**
+ * "Ask agent for help" (Settings): a conversation of its own, in `<data dir>/settings-help`, whose agent changes settings
+ * with `webui_settings` (`server/settings-help/`) through the setters below, the ones Settings' cards use.
+ */
+const settingsHelp = new SettingsHelp(
+	new SettingsCatalog({
+		prefs: { values: () => uiPrefs.snapshot().values, apply: (changes) => void applyPrefs(changes) },
+		guard: { get: () => guardSettings.get(), set: (patch) => guardChanged(guardSettings.set(patch)) },
+		remote: { get: () => remoteAuth.config(), save: (patch) => remoteAuth.saveConfig(patch) },
+		mode: {
+			get: () => ({ mode: modes.mode, lightModels: modes.lightModels, offline: modes.offline }),
+			update: (patch) => void modes.update(patch),
+		},
+		approval: { get: () => approval.defaultMode(), set: (mode) => approval.setDefault(mode) },
+		unattended: {
+			get: () => {
+				const settings = unattendedMode.settings();
+				return settings.custom ? settings.instruction : null;
+			},
+			set: (text) => {
+				unattendedMode.setInstruction(text);
+				// What a conversation that is unattended is told changes at its next turn.
+				pool.rewriteUnattended();
+			},
+		},
+	}),
+	{ dataDir: cfg.dataDir, folder: join(cfg.dataDir, "settings-help") },
+	{
+		open: async (server, cwd) => (await pool.openServing(cwd, server)).attached(),
+		heldRemotely: (liveId) =>
+			remoteTouched.has(liveId) || [...sockets].some((ws) => !ws.data.local && ws.data.attached.has(liveId)),
+		changed: (state) => broadcastLocal({ t: "settings_help", state }),
+	},
+	undefined,
+	// Tests shorten the access to see it end (`OMP_WEBUI_SETTINGS_HELP_MS`); the service never lets it be longer than 30 minutes.
+	Number(process.env.OMP_WEBUI_SETTINGS_HELP_MS) || undefined,
+);
 modes.onChange((state) => broadcastAll({ t: "mode_settings", state }));
 store.onChange(() => broadcastAll({ t: "sessions_changed" }));
 // A pin made in omp (`/pin`, in a conversation here or in a terminal) is the sidebar's too: the page reads the list again.
@@ -972,6 +1039,8 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				// `caffeinate` is the only way it has, so a server anywhere else says the setting is not available rather than
 				// showing a switch that does nothing.
 				keepAwakeAvailable: keepAwake.available,
+				// The folder Ask agent for help's conversations run in, for a page on this computer: it marks one when it shows it.
+				...(onThisComputer.has(req) ? { settingsHelpFolder: settingsHelp.state().folder } : {}),
 			});
 		case "/api/diagnostics":
 			return json({ os: await osDescription(), mode: modes.mode });
@@ -1307,9 +1376,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				const body: unknown = await req.json().catch(() => null);
 				try {
 					const config = guardSettings.set(body);
-					// Every gate is told now, not at the next look.
-					pool.syncRisk();
-					broadcastLocal({ t: "guard_config", config });
+					guardChanged(config);
 					return json({ config });
 				} catch (e) {
 					if (e instanceof GuardConfigError) return fail(e.message);
@@ -1410,20 +1477,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				if (!onThisComputer.has(req) && isRecord(body?.changes) && Object.hasOwn(body.changes, PREF.keepAwake))
 					return fail("Keep the Mac awake is changed on the computer omp-webui runs on", 403);
 				try {
-					const before = uiPrefs.snapshot().rev;
-					const snapshot = uiPrefs.apply(body?.changes);
-					// Every open page, this one's other tabs and the macOS window included, shows what was chosen.
-					if (snapshot.rev !== before) {
-						broadcastAll({ t: "prefs", snapshot });
-						// Whether notifications are on is part of whether the guard has somebody to ask (`ShellEvents.reaches`).
-						pool.syncRisk();
-						// "Keep the Mac awake while a conversation works" (#647) takes effect now: `caffeinate` starts or goes
-						// with what is working, rather than at the next turn.
-						applyKeepAwake();
-						// The macOS app shows its menu bar icon beside its window, or not, as Settings now says.
-						shellEvents.prefsChanged();
-					}
-					return json(snapshot);
+					return json(applyPrefs(body?.changes));
 				} catch (e) {
 					if (e instanceof PrefsError) return fail(e.message);
 					throw e;
@@ -1901,6 +1955,9 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 	}
 	if (p.startsWith("/api/migrate/")) return (await (await migrateService()).handle(req, url)) ?? fail("Not found", 404);
 	if (p === "/api/memory" || p.startsWith("/api/memory/")) return (await memoryService()).handle(req, url);
+	// Ask agent for help (local-only: `isLocalOnlyRoute`, refused to any other page in `route`).
+	if (p === "/api/settings-help" || p.startsWith("/api/settings-help/"))
+		return handleSettingsHelp(req, url, settingsHelp, onThisComputer.has(req), { json, fail });
 	// Not local-only (phones come in through the tunnel): the token (or Access) is the gate, as for the conversations.
 	if (p === PUSH_API || p.startsWith(`${PUSH_API}/`))
 		return (await pushService()).handle(req, url, { remote: remoteOf.has(req) });

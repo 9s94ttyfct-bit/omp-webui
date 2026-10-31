@@ -202,6 +202,8 @@ export interface Meta {
 	questions?: QuestionCounts;
 	/** Whether this machine can be held from idle sleep while a conversation works (#647): macOS's `caffeinate`. */
 	keepAwakeAvailable?: boolean;
+	/** The folder Ask agent for help's conversations run in (Settings, v0.13.0): told to a page on this computer only. */
+	settingsHelpFolder?: string;
 }
 
 /** The permission mode new conversations start in: the user's choice, or null to follow omp's own setting (`omp`). */

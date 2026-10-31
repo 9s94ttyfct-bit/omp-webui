@@ -4225,7 +4225,10 @@ export class LivePool {
 		if (!this.approval) throw new Error("This server cannot hold tools that must be asked about");
 		const policies: ToolPolicies = {
 			allow: server.readOnly,
-			prompt: server.tools.map((t) => t.name).filter((name) => !server.readOnly.includes(name)),
+			prompt: [
+				...server.tools.map((t) => t.name).filter((name) => !server.readOnly.includes(name)),
+				...(server.prompted ?? []),
+			],
 		};
 		const live = await this.spawn(cwd, [], null, false, await this.plan([], null), requested, policies);
 		try {
