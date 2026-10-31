@@ -56,6 +56,8 @@ export interface TabDef {
 	busy?: boolean;
 	/** What the tab's tooltip says when it is more than the label (the label and what the figures stand for). */
 	title?: string;
+	/** A state drawn as a dot after the label (the CI tab's last runs): running, failed or passed; `text` is its name. */
+	status?: { tone: "running" | "failed" | "passed"; text: string };
 }
 
 /** The tabs of the panel by their ids: a row lists the ones the layout puts in it. */
@@ -118,7 +120,7 @@ export function Pane({
 	useFittingTabStrip(
 		sheet ? sheetStrip : strip,
 		tab ?? "",
-		row.map((id) => `${defs[id].label}|${defs[id].count}`).join(","),
+		row.map((id) => `${defs[id].label}|${defs[id].count}|${defs[id].status ? "•" : ""}`).join(","),
 		!sheet,
 	);
 	if (tab === null) return null;
@@ -139,13 +141,25 @@ export function Pane({
 	const at = menu ? row.indexOf(menu.tab) : -1;
 	const across = otherPane(pane);
 	const triggers = row.map((id) => {
-		const { Icon, label, count, busy, title } = defs[id];
+		const { Icon, label, count, busy, title, status } = defs[id];
 		// A space between the words, for the name the text makes: "Agents 3", not "Agents3". Work in progress is a badge.
 		const figures = count ? (
 			<span className="tabular-nums">
 				{" "}
 				{busy ? <span className="rounded-full bg-accent px-1.5 text-accent-fg">{count}</span> : count}
 			</span>
+		) : status ? (
+			<span
+				className={cx(
+					"inline-block h-2 w-2 shrink-0 rounded-full",
+					status.tone === "running" && "animate-pulse bg-warning motion-reduce:animate-none",
+					status.tone === "failed" && "bg-danger",
+					status.tone === "passed" && "bg-success",
+				)}
+				data-testid={`pane-tab-status-${id}`}
+				data-status={status.tone}
+				aria-hidden
+			/>
 		) : null;
 		return (
 			<Tabs.Trigger
@@ -154,8 +168,8 @@ export function Pane({
 				data-testid={`pane-tab-${id}`}
 				data-pane-tab={id}
 				data-dragging={dragged === id || undefined}
-				aria-label={count ? `${label} ${count}` : label}
-				title={title ?? label}
+				aria-label={count ? `${label} ${count}` : status ? status.text : label}
+				title={title ?? (status ? status.text : label)}
 				onClick={() => folded && show(id)}
 				onPointerDown={sheet ? undefined : (e) => beginTabDrag(e, id)}
 				onContextMenu={

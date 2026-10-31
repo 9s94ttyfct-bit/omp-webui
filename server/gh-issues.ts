@@ -46,7 +46,8 @@ export type GhRun = (
 	env: Record<string, string | undefined>,
 ) => Promise<GhRan>;
 
-const spawnGh: GhRun = async (argv, cwd, timeoutMs, env) => {
+/** `gh` itself, with a time limit and a cap on what it may print (also the CI tab's, `server/gh-runs.ts`). */
+export const spawnGh: GhRun = async (argv, cwd, timeoutMs, env) => {
 	try {
 		const ran = await run(argv, { cwd, base: env, timeoutMs, maxBytes: MAX_OUTPUT_BYTES });
 		return { code: ran.code, stdout: ran.stdout, stderr: ran.stderr };
@@ -54,6 +55,19 @@ const spawnGh: GhRun = async (argv, cwd, timeoutMs, env) => {
 		return e instanceof RunTimeout ? "slow" : "missing";
 	}
 };
+
+/** The environment `gh` (and the git it runs) is given: nothing may wait for an answer, a pager or an update check. */
+export function ghEnv(base: Record<string, string | undefined> = childEnv()): Record<string, string | undefined> {
+	return {
+		...base,
+		// A tool that asks a question would wait for an answer nobody gives.
+		GIT_TERMINAL_PROMPT: "0",
+		GH_PROMPT_DISABLED: "1",
+		GH_NO_UPDATE_NOTIFIER: "1",
+		GH_PAGER: "cat",
+		NO_COLOR: "1",
+	};
+}
 
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
 const loginOf = (v: unknown): string | undefined => (isRecord(v) ? str(v.login) || undefined : undefined);
@@ -172,15 +186,7 @@ export class GhIssues {
 	constructor(opts: GhIssuesOptions = {}) {
 		this.#run = opts.run ?? spawnGh;
 		this.#now = opts.now ?? Date.now;
-		this.#env = {
-			...(opts.env ?? childEnv()),
-			// A tool that asks a question would wait for an answer nobody gives.
-			GIT_TERMINAL_PROMPT: "0",
-			GH_PROMPT_DISABLED: "1",
-			GH_NO_UPDATE_NOTIFIER: "1",
-			GH_PAGER: "cat",
-			NO_COLOR: "1",
-		};
+		this.#env = ghEnv(opts.env);
 	}
 
 	/** The folder's issues. `dir` is a folder as `directoryOf` returns it. */

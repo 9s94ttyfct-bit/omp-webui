@@ -69,12 +69,12 @@ for (const [lang, top, bottom] of [
 	[
 		"en",
 		[/^Agents 1\/55$/, /^Todos 12\/20$/, /^Jobs 1\/1$/, /^Branches$/, /^Info$/, /^Guidance$/, /^Questions$/],
-		[/^Files$/, /^Issues$/, /^Ask$/, /^Host$/],
+		[/^Files$/, /^Issues$/, /^CI$/, /^Ask$/, /^Host$/],
 	],
 	[
 		"zh-CN",
 		[/^子代理 1\/55$/, /^待办 12\/20$/, /^任务 1\/1$/, /^分支$/, /^信息$/, /^模型指引$/, /^问题$/],
-		[/^文件$/, /^Issues$/, /^提问$/, /^本机$/],
+		[/^文件$/, /^Issues$/, /^CI$/, /^提问$/, /^本机$/],
 	],
 ] as const) {
 	test(`at the default panel width every tab is whole and clickable, with counts (${lang})`, async ({ page }) => {

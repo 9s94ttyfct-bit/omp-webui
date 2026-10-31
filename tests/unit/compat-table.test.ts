@@ -165,7 +165,7 @@ describe("docs/TECHNICAL.md › How it stays compatible with omp updates names",
 		expect(missing(found, (command) => names(`omp ${command}`))).toEqual([]);
 	});
 
-	/** Flags that are not omp's: the server's own relay launcher, git's (server/git.ts, server/git-vet.ts, server/git-changes.ts), gh's (server/gh-issues.ts), cloudflared's (server/remote-tunnel.ts), codesign's and open's (server/update/), a CSS variable set from script. */
+	/** Flags that are not omp's: the server's own relay launcher, git's (server/git.ts, server/git-vet.ts, server/git-changes.ts, server/gh-runs.ts), gh's (server/gh-issues.ts, server/gh-runs.ts), cloudflared's (server/remote-tunnel.ts), codesign's and open's (server/update/), a CSS variable set from script. */
 	const NOT_OMP = new Set([
 		"--ompw-relay",
 		"--branch",
@@ -193,6 +193,7 @@ describe("docs/TECHNICAL.md › How it stays compatible with omp updates names",
 		"--work-tree",
 		"--no-pager",
 		"--show-toplevel",
+		"--show-current",
 		"--untracked-files",
 		"--raw",
 		"--numstat",

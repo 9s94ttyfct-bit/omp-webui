@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import pkg from "../package.json";
 import { isApprovalMode } from "../shared/approval.ts";
 import { factsOf, noticeLang, working } from "../shared/attention.ts";
+import { CI_SCOPES } from "../shared/ci.ts";
 import { compactAtOf } from "../shared/compact-at.ts";
 import { type ErrorInfo, errorInfoOf } from "../shared/error-info.ts";
 import { ISSUE_FILTERS } from "../shared/github.ts";
@@ -39,6 +40,7 @@ import { FamilyCache } from "./family.ts";
 import { osDescription, osUser, RepoVisibility } from "./feedback.ts";
 import { LazyFolder } from "./folder-lazy.ts";
 import type { GhIssues } from "./gh-issues.ts";
+import type { GhRuns } from "./gh-runs.ts";
 import { LazyGit } from "./git-lazy.ts";
 import { GuardLog, GuardSettings } from "./guard.ts";
 import { BenchBusy, defaultPlaces, GuardBench } from "./guard-bench.ts";
@@ -393,6 +395,16 @@ const issuesReader = (): Promise<GhIssues> =>
 		(m) => new m.GhIssues(),
 		(error: unknown) => {
 			ghIssues = null;
+			throw error;
+		},
+	));
+/** The CI tab's reader of GitHub Actions runs, likewise; one for the server, so every page shares its looks. */
+let ghRuns: Promise<GhRuns> | null = null;
+const runsReader = (): Promise<GhRuns> =>
+	(ghRuns ??= import("./gh-runs.ts").then(
+		(m) => new m.GhRuns(),
+		(error: unknown) => {
+			ghRuns = null;
 			throw error;
 		},
 	));
@@ -1126,6 +1138,29 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			const state = ISSUE_FILTERS.find((f) => f === body?.state) ?? "open";
 			const search = typeof body?.search === "string" ? body.search : undefined;
 			return json(await reader.list(dir, { state, search, fresh }));
+		}
+		case "/api/github/runs":
+		case "/api/github/run": {
+			// The CI tab: the folder's GitHub Actions runs, and one run's jobs, read with the person's `gh` (a POST, as GitHub is
+			// asked). Pages that ask within a look's interval share it (`server/gh-runs.ts`).
+			if (req.method !== "POST") return fail("POST required", 405);
+			const body = (await req.json().catch(() => null)) as {
+				cwd?: unknown;
+				scope?: unknown;
+				id?: unknown;
+				fresh?: unknown;
+			} | null;
+			let dir: string;
+			try {
+				dir = await git.directoryOf(typeof body?.cwd === "string" ? body.cwd : "");
+			} catch (e) {
+				return fail((e as Error).message);
+			}
+			const reader = await runsReader();
+			const fresh = body?.fresh === true;
+			if (p === "/api/github/run") return json(await reader.jobs(dir, Number(body?.id), { fresh }));
+			const scope = CI_SCOPES.find((s) => s === body?.scope) ?? "branch";
+			return json(await reader.runs(dir, scope, { fresh }));
 		}
 		case "/api/usage": {
 			const { isProviderId, providerUsage } = await import("./omp/usage.ts");

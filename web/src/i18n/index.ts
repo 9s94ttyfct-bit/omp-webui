@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { setPref } from "../lib/prefs.ts";
 import * as chat from "./chat.ts";
 import type * as chatLater from "./chat-later.ts";
+import type * as ci from "./ci.ts";
 import * as common from "./common.ts";
 // Not imported for its values: the English strings of a namespace that only a lazily loaded chunk uses are registered by
 // that chunk (`registerStrings`), so the first page does not carry them. The type is what keeps its keys checked.
@@ -68,6 +69,7 @@ type LazyModules = {
 	update: typeof update;
 	files: typeof files;
 	issues: typeof issues;
+	ci: typeof ci;
 	quickPrompts: typeof quickPrompts;
 	controlsHelp: typeof controlsHelp;
 	presetAgents: typeof presetAgents;

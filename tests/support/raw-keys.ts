@@ -5,6 +5,7 @@
  */
 import { en as chat } from "../../web/src/i18n/chat.ts";
 import { en as chatLater } from "../../web/src/i18n/chat-later.ts";
+import { en as ci } from "../../web/src/i18n/ci.ts";
 import { en as common } from "../../web/src/i18n/common.ts";
 import { en as controlsHelp } from "../../web/src/i18n/controls-help.ts";
 import { en as drop } from "../../web/src/i18n/drop.ts";
@@ -61,6 +62,7 @@ export const NAMESPACES: Record<string, object[]> = {
 	update: [update],
 	files: [files],
 	issues: [issues],
+	ci: [ci],
 	quickPrompts: [quickPrompts],
 	controlsHelp: [controlsHelp],
 	migrate: [migrate],

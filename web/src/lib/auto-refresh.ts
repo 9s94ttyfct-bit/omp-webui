@@ -17,7 +17,8 @@ export interface PageEnv {
 /** How often the Issues tab asks again while it is shown: modest, as the server keeps an answer for 30 s (`server/gh-issues.ts`). */
 export const AUTO_REFRESH_MS = 60_000;
 
-const browserPage: PageEnv = {
+/** The page as the browser tells it (also the CI tab's, `lib/ci-watch.ts`). */
+export const browserPage: PageEnv = {
 	visible: () => document.visibilityState !== "hidden",
 	onVisibility: (listener) => {
 		document.addEventListener("visibilitychange", listener);

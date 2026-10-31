@@ -17,7 +17,7 @@ The docs are English only, by choice. Agents running inside omp-webui read the s
 - [Notifications](docs/agents/notifications.md): page notifications and Web Push
 - [Unattended mode and questions](docs/agents/unattended.md): working while the person is away, and their questions
 - [Quota and usage](docs/agents/quota-and-usage.md): provider quota, the quota floor, waiting for a reset, Usage & cost
-- [Projects, folders and git](docs/agents/projects-and-git.md): the projects folder, project groups, git status and worktrees
+- [Projects, folders and git](docs/agents/projects-and-git.md): the projects folder, project groups, git status, worktrees, GitHub issues and CI runs
 - [Feedback](docs/agents/feedback.md): sending feedback and the star prompt
 - [Guard dangerous commands](docs/agents/guard.md): the reviewer gate for risky tool calls
 - [Remote access](docs/agents/remote-access.md): Cloudflare tunnel and Access, what a remote page may do

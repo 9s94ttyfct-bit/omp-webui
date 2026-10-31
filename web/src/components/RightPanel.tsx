@@ -14,10 +14,12 @@ import {
 	MessageCircleQuestion,
 	Sparkles,
 	SquareTerminal,
+	Workflow,
 } from "lucide-react";
 import { lazy, type ReactNode, type RefObject, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
+import { useCiBadge } from "../lib/ci-runs.ts";
 import { fmtElapsed } from "../lib/clock.ts";
 import type { Family } from "../lib/family.ts";
 import { fmtCost, fmtCostExact, fmtRelative, fmtTokens } from "../lib/format.ts";
@@ -53,6 +55,8 @@ import { cx, Empty } from "./ui.tsx";
 const GuidanceEditor = lazy(() => import("./GuidanceEditor.tsx").then((m) => ({ default: m.GuidanceEditor })));
 // The folder's GitHub issues (#653): asked of `gh` only when the tab is shown, so a chunk of its own with its strings.
 const IssuesTab = lazy(() => import("./IssuesTab.tsx").then((m) => ({ default: m.IssuesTab })));
+// The folder's GitHub Actions runs: its strings and its rows are a chunk of their own; the tab's badge (`useCiBadge`) is here.
+const CiTab = lazy(() => import("./CiTab.tsx").then((m) => ({ default: m.CiTab })));
 // The Terminal tab (v0.11.18 §8): xterm.js and the shell's code are a chunk of their own, fetched when the tab is shown.
 const ShellTab = lazy(() => import("./ShellTab.tsx").then((m) => ({ default: m.ShellTab })));
 const QuestionsTab = lazy(() => import("./QuestionsPage.tsx").then((m) => ({ default: m.QuestionsTab })));
@@ -93,6 +97,9 @@ export function RightPanel({ live, file, family, entries, onClose, onNavigate, s
 	// What the conversation's turns changed, for the Files tab's Changes view: asked for by that view when it needs it, through a
 	// function that never changes, so that this panel's redraws do not reach the tab.
 	const headerCwd = fileData?.header?.cwd;
+	const cwd = live?.info.cwd ?? (typeof headerCwd === "string" ? headerCwd : null);
+	// The badge of the CI tab: the latest commit's runs on the folder's branch, looked at while the panel is open.
+	const ci = useCiBadge(cwd);
 	const getTurns = useStable(
 		(): TurnSource => ({
 			entries: entries ?? NO_ENTRIES,
@@ -151,6 +158,19 @@ export function RightPanel({ live, file, family, entries, onClose, onNavigate, s
 		},
 		files: { Icon: FolderTree, label: t("panel.tabFiles"), count: "" },
 		issues: { Icon: CircleDot, label: t("panel.tabIssues"), count: "" },
+		ci: {
+			Icon: Workflow,
+			label: t("panel.tabCi"),
+			count: "",
+			status: ci
+				? {
+						tone: ci,
+						text: t(
+							ci === "running" ? "panel.tabCiRunning" : ci === "failed" ? "panel.tabCiFailed" : "panel.tabCiPassed",
+						),
+					}
+				: undefined,
+		},
 		info: { Icon: Info, label: t("panel.tabInfo"), count: "" },
 		tree: { Icon: GitBranch, label: t("panel.tabBranches"), count: "" },
 		btw: { Icon: MessageCircleQuestion, label: t("panel.tabAsk"), count: "" },
@@ -212,7 +232,13 @@ export function RightPanel({ live, file, family, entries, onClose, onNavigate, s
 			case "issues":
 				return (
 					<Suspense fallback={null}>
-						<IssuesTab cwd={live?.info.cwd ?? (typeof headerCwd === "string" ? headerCwd : null)} />
+						<IssuesTab cwd={cwd} />
+					</Suspense>
+				);
+			case "ci":
+				return (
+					<Suspense fallback={null}>
+						<CiTab cwd={cwd} />
 					</Suspense>
 				);
 			case "info":
@@ -244,7 +270,7 @@ export function RightPanel({ live, file, family, entries, onClose, onNavigate, s
 			case "worktrees":
 				return (
 					<Suspense fallback={null}>
-						<WorktreesTab cwd={live?.info.cwd ?? (typeof headerCwd === "string" ? headerCwd : null)} />
+						<WorktreesTab cwd={cwd} />
 					</Suspense>
 				);
 			case "tree":
@@ -272,11 +298,7 @@ export function RightPanel({ live, file, family, entries, onClose, onNavigate, s
 					);
 				return (
 					<Suspense fallback={null}>
-						<ShellTab
-							conversation={key}
-							liveKey={live ? `live:${live.info.liveId}` : null}
-							cwd={live?.info.cwd ?? (typeof headerCwd === "string" ? headerCwd : undefined)}
-						/>
+						<ShellTab conversation={key} liveKey={live ? `live:${live.info.liveId}` : null} cwd={cwd ?? undefined} />
 					</Suspense>
 				);
 			}

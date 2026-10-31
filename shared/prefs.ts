@@ -24,6 +24,8 @@ export const PREF = {
 	panelPanes: "ompw.panelPanes",
 	/** Whether notifications are wanted; what the browser allows is per origin and is asked again where it is not granted. */
 	notify: "ompw.notify",
+	/** Whether the end of a GitHub Actions run of the folder's branch is notified while the CI tab's badge watches it: `on` or `off` (the default). */
+	ciNotify: "ompw.ciNotify",
 	autoTitle: "ompw.autoTitle",
 	keepThinking: "ompw.keepThinking",
 	/** The folder of the last new conversation. */
@@ -138,6 +140,7 @@ const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 	[PREF.panelWidth]: (v) => /^[1-9]\d{0,3}$/.test(v),
 	[PREF.panelPanes]: (v) => parsePanes(v) !== null,
 	[PREF.notify]: switchValue,
+	[PREF.ciNotify]: switchValue,
 	[PREF.autoTitle]: switchValue,
 	[PREF.keepThinking]: switchValue,
 	[PREF.quitAction]: oneOf(QUIT_ACTIONS),

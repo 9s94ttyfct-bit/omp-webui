@@ -119,9 +119,9 @@ test.describe("beside the conversation (1400 px)", () => {
 		await expect(pane(page, "bottom")).toHaveAttribute("data-tab", "files");
 		await expect(pane(page, "top").getByRole("tablist")).toBeVisible();
 		await expect(pane(page, "bottom").getByRole("tablist")).toBeVisible();
-		// A tab is in one row: seven above and six below, and none is listed twice.
+		// A tab is in one row: seven above and seven below, and none is listed twice.
 		expect(await idsIn(page, "top")).toEqual(["agents", "todos", "jobs", "tree", "info", "guidance", "questions"]);
-		expect(await idsIn(page, "bottom")).toEqual(["files", "issues", "btw", "host", "terminal", "worktrees"]);
+		expect(await idsIn(page, "bottom")).toEqual(["files", "issues", "ci", "btw", "host", "terminal", "worktrees"]);
 		for (const id of ALL) await expect(page.getByTestId(`pane-tab-${id}`)).toHaveCount(1);
 		await expect(tabOf(page, "top", /^Agents/)).toHaveAttribute("aria-selected", "true");
 		await expect(tabOf(page, "bottom", /^Files/)).toHaveAttribute("aria-selected", "true");
@@ -161,7 +161,7 @@ test.describe("beside the conversation (1400 px)", () => {
 		await expect(pane(page, "top")).toHaveAttribute("data-tab", "todos");
 		await expect(pane(page, "bottom")).toHaveAttribute("data-tab", "files");
 		expect(await idsIn(page, "top")).toEqual(["agents", "todos", "jobs", "tree", "info", "guidance", "questions"]);
-		expect(await idsIn(page, "bottom")).toEqual(["files", "issues", "btw", "host", "terminal", "worktrees"]);
+		expect(await idsIn(page, "bottom")).toEqual(["files", "issues", "ci", "btw", "host", "terminal", "worktrees"]);
 		await tabOf(page, "bottom", "Ask").click();
 		await expect(pane(page, "bottom")).toHaveAttribute("data-tab", "btw");
 		await expect(pane(page, "top")).toHaveAttribute("data-tab", "todos");
@@ -337,7 +337,7 @@ test.describe("beside the conversation (1400 px)", () => {
 		await expect(pane(page, "bottom")).toHaveAttribute("data-tab", "btw");
 		await expect(pane(page, "top")).toHaveAttribute("data-tab", "agents");
 		expect(await idsIn(page, "top")).toEqual(["agents", "todos", "jobs", "tree", "info", "guidance", "questions"]);
-		expect(await idsIn(page, "bottom")).toEqual(["files", "issues", "btw", "host", "terminal", "worktrees"]);
+		expect(await idsIn(page, "bottom")).toEqual(["files", "issues", "ci", "btw", "host", "terminal", "worktrees"]);
 	});
 
 	test("a layout that the page cannot read is the default", async ({ page }) => {
@@ -367,7 +367,16 @@ test.describe("beside the conversation (1400 px)", () => {
 		await expect(pane(page, "bottom")).toHaveAttribute("data-collapsed", "true");
 		// Jobs was the lower pane's tab: it is listed in the lower row now, after the default five.
 		expect(await idsIn(page, "top")).toEqual(["agents", "todos", "tree", "info", "guidance", "questions"]);
-		expect(await idsIn(page, "bottom")).toEqual(["files", "issues", "btw", "host", "terminal", "worktrees", "jobs"]);
+		expect(await idsIn(page, "bottom")).toEqual([
+			"files",
+			"issues",
+			"ci",
+			"btw",
+			"host",
+			"terminal",
+			"worktrees",
+			"jobs",
+		]);
 		for (const id of ALL) await expect(page.getByTestId(`pane-tab-${id}`)).toHaveCount(1);
 		// It is written as version 2 when the layout next changes, with the fold and the divider kept.
 		await page.getByTestId("pane-fold-bottom").click();
@@ -377,7 +386,7 @@ test.describe("beside the conversation (1400 px)", () => {
 				version: 2,
 				rows: {
 					top: ["agents", "todos", "tree", "info", "guidance", "questions"],
-					bottom: ["files", "issues", "btw", "host", "terminal", "worktrees", "jobs"],
+					bottom: ["files", "issues", "ci", "btw", "host", "terminal", "worktrees", "jobs"],
 				},
 				top: "info",
 				bottom: "jobs",
@@ -408,7 +417,7 @@ test.describe("beside the conversation (1400 px)", () => {
 		await expect(page.getByTestId("pane-drag-ghost")).toHaveCount(0);
 		expect(await idsIn(page, "top")).toEqual(["jobs", "agents", "todos", "tree", "info", "guidance", "questions"]);
 		// The lower pane's row is as it was, and the drop was not taken for a click on the tab it ended over.
-		expect(await idsIn(page, "bottom")).toEqual(["files", "issues", "btw", "host", "terminal", "worktrees"]);
+		expect(await idsIn(page, "bottom")).toEqual(["files", "issues", "ci", "btw", "host", "terminal", "worktrees"]);
 		await expect(pane(page, "top")).toHaveAttribute("data-tab", "jobs");
 		await expect(pane(page, "bottom")).toHaveAttribute("data-tab", "files");
 		await expect
@@ -442,12 +451,21 @@ test.describe("beside the conversation (1400 px)", () => {
 		await expect(page.getByTestId("pane-drag-ghost")).toHaveCount(0);
 		await page.mouse.up();
 		expect(await idsIn(page, "top")).toEqual(["agents", "todos", "jobs", "tree", "info", "guidance", "questions"]);
-		expect(await idsIn(page, "bottom")).toEqual(["files", "issues", "btw", "host", "terminal", "worktrees"]);
+		expect(await idsIn(page, "bottom")).toEqual(["files", "issues", "ci", "btw", "host", "terminal", "worktrees"]);
 
 		// Dropped on the lower row, between Files and Issues.
 		await carry(page, tabOf(page, "top", /^Todos/), toIssues);
 		await page.mouse.up();
-		expect(await idsIn(page, "bottom")).toEqual(["files", "todos", "issues", "btw", "host", "terminal", "worktrees"]);
+		expect(await idsIn(page, "bottom")).toEqual([
+			"files",
+			"todos",
+			"issues",
+			"ci",
+			"btw",
+			"host",
+			"terminal",
+			"worktrees",
+		]);
 		expect(await idsIn(page, "top")).toEqual(["agents", "jobs", "tree", "info", "guidance", "questions"]);
 		for (const id of ALL) await expect(page.getByTestId(`pane-tab-${id}`)).toHaveCount(1);
 		await expect(pane(page, "bottom")).toHaveAttribute("data-tab", "todos");
@@ -458,7 +476,7 @@ test.describe("beside the conversation (1400 px)", () => {
 			.toMatchObject({
 				rows: {
 					top: ["agents", "jobs", "tree", "info", "guidance", "questions"],
-					bottom: ["files", "todos", "issues", "btw", "host", "terminal", "worktrees"],
+					bottom: ["files", "todos", "issues", "ci", "btw", "host", "terminal", "worktrees"],
 				},
 				top: "jobs",
 				bottom: "todos",
@@ -547,7 +565,16 @@ test.describe("beside the conversation (1400 px)", () => {
 		// showed (Agents: giving a tab the focus picks it, so Agents is the one that was last moved).
 		await tabOf(page, "top", /^Todos/).click({ button: "right" });
 		await item("Move to bottom pane").click();
-		expect(await idsIn(page, "bottom")).toEqual(["files", "issues", "btw", "host", "terminal", "worktrees", "todos"]);
+		expect(await idsIn(page, "bottom")).toEqual([
+			"files",
+			"issues",
+			"ci",
+			"btw",
+			"host",
+			"terminal",
+			"worktrees",
+			"todos",
+		]);
 		expect(await idsIn(page, "top")).toEqual(["jobs", "agents", "tree", "info", "guidance", "questions"]);
 		await expect(pane(page, "bottom")).toHaveAttribute("data-tab", "todos");
 		await expect(tabOf(page, "bottom", /^Todos/)).toBeFocused();
@@ -557,7 +584,7 @@ test.describe("beside the conversation (1400 px)", () => {
 			.toMatchObject({
 				rows: {
 					top: ["jobs", "agents", "tree", "info", "guidance", "questions"],
-					bottom: ["files", "issues", "btw", "host", "terminal", "worktrees", "todos"],
+					bottom: ["files", "issues", "ci", "btw", "host", "terminal", "worktrees", "todos"],
 				},
 			});
 	});
@@ -595,7 +622,16 @@ test.describe("beside the conversation (1400 px)", () => {
 		await page.keyboard.press("ArrowDown");
 		await expect(item("Move to bottom pane")).toBeFocused();
 		await page.keyboard.press("Enter");
-		expect(await idsIn(page, "bottom")).toEqual(["files", "issues", "btw", "host", "terminal", "worktrees", "info"]);
+		expect(await idsIn(page, "bottom")).toEqual([
+			"files",
+			"issues",
+			"ci",
+			"btw",
+			"host",
+			"terminal",
+			"worktrees",
+			"info",
+		]);
 		await expect(pane(page, "bottom")).toHaveAttribute("data-tab", "info");
 		await expect(tabOf(page, "bottom", /^Info/)).toBeFocused();
 	});
@@ -968,6 +1004,7 @@ test.describe("on a phone", () => {
 			"questions",
 			"files",
 			"issues",
+			"ci",
 			"btw",
 			"host",
 			"terminal",

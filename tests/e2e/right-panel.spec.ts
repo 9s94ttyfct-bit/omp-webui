@@ -62,7 +62,7 @@ test.describe("beside the conversation (1400 px)", () => {
 		await page.getByTestId("toggle-panel").click();
 		const panel = page.getByTestId("right-panel");
 		await expect(panel).toBeVisible();
-		await expectReachable(page, panel, { top: 7, bottom: 6 });
+		await expectReachable(page, panel, { top: 7, bottom: 7 });
 		await expect(page.getByTestId("right-panel-backdrop")).toHaveCount(0);
 		// At the default width the tabs that are not shown are icons (with their counts) so that seven tabs and the pane's buttons
 		// fit one line: each still has a name for a screen reader and a tooltip.
@@ -85,7 +85,7 @@ test.describe("beside the conversation (1400 px)", () => {
 		const panel = page.getByTestId("right-panel");
 		await expect(panel).toBeVisible();
 		expect(Math.round((await boxOf(panel)).width)).toBe(720);
-		await expectReachable(page, panel, { top: 7, bottom: 6 });
+		await expectReachable(page, panel, { top: 7, bottom: 7 });
 		for (const [which, tabs] of [
 			[
 				"top",
@@ -104,6 +104,7 @@ test.describe("beside the conversation (1400 px)", () => {
 				[
 					[/^Files$/, /^Files$/],
 					[/^Issues$/, /^Issues$/],
+					[/^CI$/, /^CI$/],
 					[/^Ask$/, /^Ask$/],
 					[/^Host$/, /^Host$/],
 					[/^Terminal$/, /^Terminal$/],
@@ -147,10 +148,10 @@ test.describe("a sheet over the conversation (phone)", () => {
 		await expect(panel).toBeVisible();
 		const close = await boxOf(panel.getByTestId("right-panel-close"));
 		expect(close.x + close.width).toBeLessThanOrEqual(390);
-		// Thirteen labelled tabs are wider than a phone's sheet, so its one row of tabs scrolls sideways: every tab stays
+		// Fourteen labelled tabs are wider than a phone's sheet, so its one row of tabs scrolls sideways: every tab stays
 		// on one line with its name (P1: none shrinks to a bare icon), and the last is brought into view before Close.
 		const tabs = panel.getByRole("tab");
-		await expect(tabs).toHaveCount(13);
+		await expect(tabs).toHaveCount(14);
 		const tops = await tabs.evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
 		expect(new Set(tops).size, "the tabs share one line").toBe(1);
 		await expect(panel.getByRole("tablist")).not.toHaveAttribute("data-compact");
