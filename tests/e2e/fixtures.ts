@@ -13,6 +13,11 @@ export * from "@playwright/test";
 let lastFile: string | undefined;
 /** What the worker's agent folder held under `sessions` when its server had started: the fixtures (`session-prune.ts`). */
 let seeded = new Set<string>();
+/**
+ * What it held when the worker's last test ended: what the file before had written. Taken then and not at the next file's
+ * first test, which runs after that file's `beforeAll`: the conversations a `beforeAll` writes are the next file's own.
+ */
+let left = new Set<string>();
 
 /**
  * Files stay sequential within a worker; no server, HOME, config, sessions or auth state crosses worker boundaries, and no
@@ -28,10 +33,11 @@ export const test = base.extend<
 		async ({ e2eServer }, use, testInfo) => {
 			if (lastFile !== undefined && lastFile !== testInfo.file) {
 				await endAllLives(e2eServer);
-				pruneSessions(e2eServer.agentDir, seeded);
+				pruneSessions(e2eServer.agentDir, seeded, left);
 			}
 			lastFile = testInfo.file;
 			await use(undefined);
+			left = sessionEntries(e2eServer.agentDir);
 		},
 		{ auto: true },
 	],
