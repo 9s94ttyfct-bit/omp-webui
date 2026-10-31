@@ -16,7 +16,8 @@ import { BY_TEXT, OUTCOME_TEXT } from "../lib/guard-format.ts";
 import { useApp } from "../store/app.ts";
 import { conversationOf, useGuard } from "../store/guard.ts";
 import { DecisionRow } from "./GuardDecisionRow.tsx";
-import { Select, Spinner } from "./ui.tsx";
+import { Select } from "./Select.tsx";
+import { Spinner } from "./ui.tsx";
 
 /** How many decisions one request asks for: the list is read a page at a time, as the person scrolls. */
 const PAGE = 50;
@@ -155,7 +156,7 @@ export default function GuardDecisions() {
 						tone="compact"
 						data-testid="guard-filter-outcome"
 						value={filters.outcome}
-						onChange={(e) => set({ outcome: e.target.value as GuardOutcome | "" })}
+						onValueChange={(v) => set({ outcome: v as GuardOutcome | "" })}
 					>
 						<option value="">{t("guard.decAll")}</option>
 						{GUARD_OUTCOMES.map((o) => (
@@ -171,7 +172,7 @@ export default function GuardDecisions() {
 						tone="compact"
 						data-testid="guard-filter-by"
 						value={filters.by}
-						onChange={(e) => set({ by: e.target.value as GuardBy | "" })}
+						onValueChange={(v) => set({ by: v as GuardBy | "" })}
 					>
 						<option value="">{t("guard.decAnyone")}</option>
 						{GUARD_BYS.map((b) => (

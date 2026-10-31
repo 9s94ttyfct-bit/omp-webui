@@ -50,6 +50,7 @@ import { MachineChip } from "./MachineChip.tsx";
 import { NavGroup } from "./NavDock.tsx";
 import { RemoteIndicator } from "./RemoteIndicator.tsx";
 import { ResizeHandle } from "./ResizeHandle.tsx";
+import { Select } from "./Select.tsx";
 import { type LiveDot, type SessionAction, sessionLabel } from "./SessionItem.tsx";
 import { SessionList } from "./SessionList.tsx";
 import { StarPrompt } from "./StarPrompt.tsx";
@@ -373,28 +374,28 @@ export function Sidebar() {
 				</button>
 			)}
 			{/*
-			 * The order of the list (#701): a native select laid invisibly over its icon, so it takes no more of the list's
+			 * The order of the list (#701): the app's select laid invisibly over its icon, so it takes no more of the list's
 			 * first line than an icon (the narrowest sidebar still fits Select beside it); the headings show the order, and so
-			 * does the tooltip. A plain select: the first page carries it at no cost, and the keyboard and screen readers know it.
+			 * does the tooltip.
 			 */}
 			<span
 				className={cx(listButton, "relative focus-within:bg-hover focus-within:text-fg")}
 				title={`${t("shell.sidebarSort")}: ${t(SORT_LABEL[sort])}`}
 			>
 				<ArrowUpDown size={13} aria-hidden />
-				<select
+				<Select
+					tone="overlay"
 					aria-label={t("shell.sidebarSort")}
 					data-testid="session-sort"
-					className="absolute inset-0 cursor-pointer opacity-0"
 					value={sort}
-					onChange={(e) => setSessionSort(e.target.value as SessionSort)}
+					onValueChange={(v) => setSessionSort(v as SessionSort)}
 				>
 					{SESSION_SORTS.map((s) => (
 						<option key={s} value={s}>
 							{t(SORT_LABEL[s])}
 						</option>
 					))}
-				</select>
+				</Select>
 			</span>
 			<button
 				type="button"

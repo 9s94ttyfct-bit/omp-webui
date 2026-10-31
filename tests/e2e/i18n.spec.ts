@@ -3,6 +3,7 @@ import { zh as chatZh } from "../../web/src/i18n/zh-CN/chat.ts";
 import { zh as pagesZh } from "../../web/src/i18n/zh-CN/pages.ts";
 import { zh as shellZh } from "../../web/src/i18n/zh-CN/shell.ts";
 import { chatEn, pagesEn } from "../support/i18n-en.ts";
+import { choose } from "../support/select.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /** Interface language: Settings switches to zh-CN, the choice persists, navigator.language sets the default. */
@@ -23,7 +24,7 @@ async function chooseLanguage(page: Page, value: string) {
 		.getByRole("complementary")
 		.getByRole("button", { name: /^(Settings|设置)$/ })
 		.click();
-	await page.getByTestId("language").selectOption(value);
+	await choose(page.getByTestId("language"), value);
 }
 
 test("Settings switches the interface to Chinese across key surfaces, and the choice persists", async ({ page }) => {

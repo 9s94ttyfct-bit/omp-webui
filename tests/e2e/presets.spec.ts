@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { holdState } from "../support/hold-state.ts";
 import { ownSession, sessionRow, startLive } from "../support/live.ts";
+import { choose } from "../support/select.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { type APIRequestContext, expect, type Page, test } from "./fixtures.ts";
 
@@ -420,12 +421,12 @@ test("Settings: model roles are edited as a draft, saved to omp's config, and ca
 	await expect(row("default").getByTestId("role-model")).toContainText("Claude Haiku 5.5", { timeout: 30_000 });
 	// The button's accessible name carries the chosen model, not only the role (WCAG 2.5.3).
 	await expect(roles.getByRole("button", { name: "Model for Default: Claude Haiku 5.5" })).toBeVisible();
-	await expect(row("default").getByTestId("role-thinking")).toHaveValue("low");
+	await expect(row("default").getByTestId("role-thinking")).toHaveAttribute("data-value", "low");
 	const save = roles.getByTestId("save-roles");
 	await expect(save).toBeDisabled();
 
 	// Discard puts the draft back.
-	await roles.getByTestId("default-thinking").selectOption("low");
+	await choose(roles.getByTestId("default-thinking"), "low");
 	await expect(roles.getByTestId("roles-unsaved")).toBeVisible();
 	await roles.getByTestId("discard-roles").click();
 	await expect(roles.getByTestId("roles-unsaved")).toHaveCount(0);
@@ -434,7 +435,7 @@ test("Settings: model roles are edited as a draft, saved to omp's config, and ca
 	await row("default").getByTestId("role-model").click();
 	await page.getByPlaceholder("Search models…").fill("Sonnet 5.5");
 	await page.getByRole("option", { name: /Claude Sonnet 5\.5/ }).click();
-	await row("default").getByTestId("role-thinking").selectOption("high");
+	await choose(row("default").getByTestId("role-thinking"), "high");
 	await row("commit").getByTestId("role-remove").click();
 	await roles.getByTestId("new-role").fill("1x");
 	await roles.getByTestId("add-role").click();
@@ -442,7 +443,7 @@ test("Settings: model roles are edited as a draft, saved to omp's config, and ca
 	await roles.getByTestId("new-role").fill("plan");
 	await roles.getByTestId("add-role").click();
 	await expect(row("plan")).toBeVisible();
-	await roles.getByTestId("default-thinking").selectOption("medium");
+	await choose(roles.getByTestId("default-thinking"), "medium");
 	await expect(roles.getByTestId("roles-unsaved")).toBeVisible();
 	await expect(save).toBeEnabled();
 	await save.click();

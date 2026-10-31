@@ -1,3 +1,4 @@
+import { choose } from "../support/select.ts";
 import { expect, test } from "./fixtures.ts";
 
 /**
@@ -15,8 +16,8 @@ test("while the roles editor has unsaved edits, no button saves the stored roles
 
 	// Fast (smol): another thinking level than the stored one.
 	const level = page.locator('[data-testid="role-row"][data-role="smol"]').getByTestId("role-thinking");
-	const stored = await level.inputValue();
-	await level.selectOption(stored === "low" ? "high" : "low");
+	const stored = await level.getAttribute("data-value");
+	await choose(level, stored === "low" ? "high" : "low");
 	await expect(page.getByTestId("roles-unsaved")).toBeVisible();
 	await expect(saveAsPreset).toBeDisabled();
 	await expect(saveCurrent).toBeDisabled();

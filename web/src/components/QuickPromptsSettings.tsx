@@ -12,7 +12,8 @@ import { registerStrings, useT } from "../i18n/index.ts";
 import { en } from "../i18n/quick-prompts.ts";
 import { promptName, QuickPromptsTooLarge, saveQuickPrompts, useQuickPrompts } from "../lib/quick-prompts.ts";
 import { useApp } from "../store/app.ts";
-import { Button, CardHeader, cx, IconButton, Select } from "./ui.tsx";
+import { Select } from "./Select.tsx";
+import { Button, CardHeader, cx, IconButton } from "./ui.tsx";
 
 // This chunk carries its own English strings: the first page does not (see `registerStrings`).
 registerStrings("quickPrompts", en);
@@ -165,7 +166,7 @@ export function QuickPromptsSettings() {
 										className="min-w-0 flex-1 basis-64 sm:flex-none sm:basis-auto"
 										value={p.mode}
 										data-testid="quick-prompt-mode"
-										onChange={(e) => update(i, { mode: e.target.value === "followUp" ? "followUp" : "steer" })}
+										onValueChange={(v) => update(i, { mode: v === "followUp" ? "followUp" : "steer" })}
 									>
 										<option value="steer">{t("quickPrompts.fieldModeSteer")}</option>
 										<option value="followUp">{t("quickPrompts.fieldModeFollowUp")}</option>

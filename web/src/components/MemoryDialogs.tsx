@@ -5,7 +5,8 @@ import { useT } from "../i18n/index.ts";
 import { memoryApi, memoryErrorText } from "../lib/memory-api.ts";
 import { addableProjects, importanceOf, projectNames } from "../lib/memory-view.ts";
 import { useApp } from "../store/app.ts";
-import { Button, Modal, Select, Spinner, WithCode } from "./ui.tsx";
+import { Select } from "./Select.tsx";
+import { Button, Modal, Spinner, WithCode } from "./ui.tsx";
 
 /** How much of a memory the delete dialog repeats: enough to know which one it is. */
 const PREVIEW = 280;
@@ -199,7 +200,7 @@ function AddForm({
 				{where === "project" && projects.length > 0 ? (
 					<label className="ml-6 block space-y-1">
 						<span className="text-xs text-muted">{t("memory.addProjectLabel")}</span>
-						<Select value={bank} onChange={(e) => setBank(e.target.value)} data-testid="memory-add-bank">
+						<Select value={bank} onValueChange={setBank} data-testid="memory-add-bank">
 							{projects.map((p) => (
 								<option key={p.bank} value={p.bank}>
 									{names.get(p.bank)}

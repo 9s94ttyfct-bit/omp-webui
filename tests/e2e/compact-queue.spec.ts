@@ -1,3 +1,4 @@
+import { choose } from "../support/select.ts";
 import { SIDES, show, startWorld, type World } from "../support/two-pages.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -138,8 +139,8 @@ test("the place the compact runs is chosen in This session, starts from Settings
 			location.hash = "#/settings/chats";
 		});
 		const pref = pages.local.getByTestId("compact-where");
-		await expect(pref).toHaveValue("turn");
-		await pref.selectOption("step");
+		await expect(pref).toHaveAttribute("data-value", "turn");
+		await choose(pref, "step");
 		await expect.poll(() => pages.local.evaluate(() => localStorage.getItem("ompw.compactWhere"))).toBe("step");
 
 		await show(pages.local, title);
@@ -151,11 +152,11 @@ test("the place the compact runs is chosen in This session, starts from Settings
 		// While a turn runs This session has the choice, and it starts from the preference.
 		await openControls(pages.local);
 		const choice = pages.local.getByTestId("compact-where-choice");
-		await expect(choice).toHaveValue("step");
+		await expect(choice).toHaveAttribute("data-value", "step");
 		await expect(compactButton(pages.local)).toContainText("Compact between steps");
-		await choice.selectOption("turn");
+		await choose(choice, "turn");
 		await expect(compactButton(pages.local)).toContainText("Compact after this turn");
-		await choice.selectOption("step");
+		await choose(choice, "step");
 
 		// The stand-in omp does not run the app's extension, so a compact between steps is for the end of the turn, and says so.
 		await compactButton(pages.local).click();

@@ -15,7 +15,8 @@ import { type MessageKey, registerStrings, type Translate, useT } from "../i18n/
 import { fmtTokens } from "../lib/format.ts";
 import { parseTokenAmount } from "../lib/token-amount.ts";
 import { useCompactAt } from "../store/compact-at.ts";
-import { Button, cx, Select } from "./ui.tsx";
+import { Select } from "./Select.tsx";
+import { Button, cx } from "./ui.tsx";
 
 registerStrings("controlsHelp", helpEn);
 
@@ -150,7 +151,7 @@ export function CompactAtRow({
 					aria-label={t("panel.controlsCompactAt")}
 					value={mode}
 					disabled={disabled || !loaded}
-					onChange={(e) => choose(e.target.value as Mode)}
+					onValueChange={(v) => choose(v as Mode)}
 				>
 					<option value="default">{t("panel.controlsCompactAtDefault")}</option>
 					<option value="percent">{t("panel.controlsCompactAtPercent")}</option>
@@ -162,7 +163,7 @@ export function CompactAtRow({
 						aria-label={t("panel.controlsCompactAtPercent")}
 						value={String(percent)}
 						disabled={disabled || !loaded}
-						onChange={(e) => onChange(compactAtOf({ percent: Number(e.target.value) }))}
+						onValueChange={(v) => onChange(compactAtOf({ percent: Number(v) }))}
 					>
 						{PERCENTS.map((p) => (
 							<option key={p} value={String(p)}>

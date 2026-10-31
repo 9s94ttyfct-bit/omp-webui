@@ -16,7 +16,8 @@ import { useApp } from "../store/app.ts";
 import type { ModelInfo } from "../store/live.ts";
 import { LEVELS } from "./ModelRolesEditor.tsx";
 import { ModelSelect } from "./ModelSelect.tsx";
-import { Button, IconButton, Modal, Select, Spinner } from "./ui.tsx";
+import { Select } from "./Select.tsx";
+import { Button, IconButton, Modal, Spinner } from "./ui.tsx";
 
 // Part of the Settings chunk: its strings are not in the first page.
 registerStrings("presetAgents", en);
@@ -105,12 +106,8 @@ export function AgentFields({
 									aria-label={t("presetAgents.thinkingAria", { agent: row.agent })}
 									disabled={!parsed}
 									value={parsed?.level ?? ""}
-									onChange={(e) => {
-										if (parsed)
-											setRow(
-												i,
-												formatSelector({ ...parsed, level: SELECTOR_LEVELS.find((l) => l === e.target.value) }),
-											);
+									onValueChange={(v) => {
+										if (parsed) setRow(i, formatSelector({ ...parsed, level: SELECTOR_LEVELS.find((l) => l === v) }));
 									}}
 									className="w-36 shrink-0"
 								>

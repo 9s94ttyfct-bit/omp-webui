@@ -2,7 +2,8 @@ import { COMPACT_WHERES, type CompactWhere, compactWhereOf } from "@shared/compa
 import "../i18n/later.ts";
 import { type MessageKey, useT } from "../i18n/index.ts";
 import { setCompactWherePref, useCompactWherePref } from "../lib/compact-where.ts";
-import { CardHeader, Select, WithCode } from "./ui.tsx";
+import { Select } from "./Select.tsx";
+import { CardHeader, WithCode } from "./ui.tsx";
 
 const LABELS: Record<CompactWhere, MessageKey> = {
 	turn: "pages.settingsCompactWhereTurn",
@@ -32,7 +33,7 @@ export function CompactWhereSettings() {
 				aria-label={t("pages.settingsCompactWhere")}
 				data-testid="compact-where"
 				value={where}
-				onChange={(e) => setCompactWherePref(compactWhereOf(e.target.value) ?? "turn")}
+				onValueChange={(v) => setCompactWherePref(compactWhereOf(v) ?? "turn")}
 			>
 				{COMPACT_WHERES.map((w) => (
 					<option key={w} value={w}>

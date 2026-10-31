@@ -7,7 +7,8 @@ import { guardApi } from "../lib/guard-api.ts";
 import { BENCH_GROUP_TEXT, BENCH_OUTCOME_TEXT, CAT_NAME, THRESHOLD_TEXT } from "../lib/guard-format.ts";
 import { useGuard } from "../store/guard.ts";
 import { AllowConfirm } from "./GuardAllowConfirm.tsx";
-import { Button, cx, Select, Spinner } from "./ui.tsx";
+import { Select } from "./Select.tsx";
+import { Button, cx, Spinner } from "./ui.tsx";
 
 const GROUPS: readonly BenchGroup[] = ["deletion", "overwrite", "system", "harmless", "own"];
 const POLL_MS = 600;
@@ -375,7 +376,7 @@ export default function GuardBench() {
 							id={`${ids}-expect`}
 							data-testid="bench-own-expect"
 							value={expect}
-							onChange={(e) => setExpect(e.target.value as Expect)}
+							onValueChange={(v) => setExpect(v as Expect)}
 						>
 							<option value="harmful">{t("guard.ownHarmful")}</option>
 							<option value="harmless">{t("guard.ownHarmless")}</option>

@@ -2,6 +2,7 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { writeChatSession } from "../support/chat-session.ts";
 import { appReady } from "../support/live.ts";
+import { choose, readOptions } from "../support/select.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -9,12 +10,11 @@ import { expect, type Page, test } from "./fixtures.ts";
 
 const LEVELS = "get_available_thinking_levels";
 
-/** The levels the picker offers (option values: the labels are translated), read without touching the control. */
-const levelsShown = (page: Page) =>
-	page
-		.getByTestId("thinking-picker")
-		.locator("option")
-		.evaluateAll((els) => els.map((el) => (el instanceof HTMLOptionElement ? el.value : "")));
+/**
+ * The levels the picker offers (option values: the labels are translated). The list is opened to read them, and closed
+ * again: what is checked is that they are there, which was asked for on arrival, with no focus needed for it.
+ */
+const levelsShown = async (page: Page) => (await readOptions(page.getByTestId("thinking-picker"))).map((o) => o.value);
 
 /** `levels` of an omp `get_available_thinking_levels` reply. */
 function levelsOf(reply: unknown): string[] {
@@ -30,9 +30,10 @@ test("levels are listed without focusing the picker and follow the model", async
 	const picker = page.getByTestId("thinking-picker");
 	await expect(picker).toBeVisible({ timeout: 60_000 });
 
-	// On arrival, with the control untouched: every level the model offers, not just the current one.
-	await expect.poll(async () => (await levelsShown(page)).length).toBeGreaterThan(1);
+	// On arrival, with the control untouched: the levels are asked for, and every level the model offers is listed, not just
+	// the current one.
 	await expect.poll(() => tap.commands(LEVELS).length).toBeGreaterThanOrEqual(1);
+	await expect.poll(async () => (await levelsShown(page)).length).toBeGreaterThan(1);
 	const before = tap.commands(LEVELS).length;
 
 	// Switch to another model of the same provider (its credentials exist in this environment).
@@ -52,7 +53,10 @@ test("levels are listed without focusing the picker and follow the model", async
 			const offered = answered.some((l) => l !== "off")
 				? [...answered.slice(0, 1), "auto", ...answered.slice(1)]
 				: answered;
-			return (await levelsShown(page)).join() === [...new Set([await picker.inputValue(), ...offered])].join();
+			return (
+				(await levelsShown(page)).join() ===
+				[...new Set([(await picker.getAttribute("data-value")) ?? "", ...offered])].join()
+			);
 		})
 		.toBe(true);
 });
@@ -77,19 +81,19 @@ test("`auto` is offered, shown with the level it resolved to, and left and chose
 
 	// Choosing it sets it, and the picker keeps saying `auto` (omp reports the level it resolved to as its level), with
 	// that level as a hint.
-	await picker.selectOption("auto");
+	await choose(picker, "auto");
 	await expect.poll(() => tap.commands("set_thinking_level").at(-1)?.level).toBe("auto");
-	await expect(picker).toHaveValue("auto");
-	await expect(picker.locator("option:checked")).toHaveText(/^Auto \(.+\)$/);
+	await expect(picker).toHaveAttribute("data-value", "auto");
+	await expect(picker).toHaveText(/^Auto \(.+\)$/);
 
 	// An explicit level ends it, and `auto` can be chosen again.
-	await picker.selectOption("low");
+	await choose(picker, "low");
 	await expect.poll(() => tap.commands("set_thinking_level").at(-1)?.level).toBe("low");
-	await expect(picker).toHaveValue("low");
-	await expect(picker.locator("option:checked")).toHaveText("Low");
-	await picker.selectOption("auto");
+	await expect(picker).toHaveAttribute("data-value", "low");
+	await expect(picker).toHaveText("Low");
+	await choose(picker, "auto");
 	await expect.poll(() => tap.commands("set_thinking_level").at(-1)?.level).toBe("auto");
-	await expect(picker).toHaveValue("auto");
+	await expect(picker).toHaveAttribute("data-value", "auto");
 });
 
 test("a saved conversation that was on `auto` shows `auto`, not the level it resolved to", async ({ page }) => {
@@ -113,8 +117,8 @@ test("a saved conversation that was on `auto` shows `auto`, not the level it res
 	await page.goto(`/#/s/${encodeURIComponent(file)}`);
 	await appReady(page);
 	const picker = page.getByTestId("thinking-picker");
-	await expect(picker).toHaveValue("auto");
-	await expect(picker.locator("option:checked")).toHaveText(/^Auto/);
+	await expect(picker).toHaveAttribute("data-value", "auto");
+	await expect(picker).toHaveText(/^Auto/);
 });
 
 /**
@@ -139,8 +143,8 @@ test("a conversation omp starts on `auto` by its config shows Auto", async ({ pa
 		await page.goto("/");
 		const picker = page.getByTestId("thinking-picker");
 		await expect(picker).toBeVisible({ timeout: 60_000 });
-		await expect(picker).toHaveValue("auto", { timeout: 15_000 });
-		await expect(picker.locator("option:checked")).toHaveText(/^Auto/);
+		await expect(picker).toHaveAttribute("data-value", "auto", { timeout: 15_000 });
+		await expect(picker).toHaveText(/^Auto/);
 	} finally {
 		writeFileSync(file, original);
 	}
@@ -158,8 +162,8 @@ test("choosing Auto keeps it selected when omp accepts it without announcing a c
 	const picker = page.getByTestId("thinking-picker");
 	await expect(picker).toBeVisible({ timeout: 60_000 });
 	await expect.poll(() => levelsShown(page)).toContain("auto");
-	await picker.selectOption("auto");
+	await choose(picker, "auto");
 	await expect.poll(() => tap.commands("set_thinking_level").length).toBe(1);
 	await page.waitForTimeout(500);
-	await expect(picker).toHaveValue("auto");
+	await expect(picker).toHaveAttribute("data-value", "auto");
 });

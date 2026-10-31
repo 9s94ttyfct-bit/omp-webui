@@ -2,6 +2,7 @@ import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModeState } from "../../shared/offline.ts";
 import { ownSession, sessionRow, startLive } from "../support/live.ts";
+import { choose as chooseOption, readOptions } from "../support/select.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
 import { expect, type Page, test } from "./fixtures.ts";
@@ -162,8 +163,8 @@ test("offline settings: model, thinking, MCP servers, tools, skills and AGENTS.m
 	await page.goto("/#/settings/models");
 	await expect(page.getByTestId("backend-models")).toContainText("serves 2 models");
 
-	await page.getByTestId("offline-model").selectOption("omlx/stub-two");
-	await page.getByTestId("offline-thinking").selectOption("low");
+	await chooseOption(page.getByTestId("offline-model"), "omlx/stub-two");
+	await chooseOption(page.getByTestId("offline-thinking"), "low");
 	// The MCP servers are the ones in mcp.json; `rea` is on by default.
 	await expect(page.getByTestId("offline-mcp-rea")).toBeChecked();
 	await expect(page.getByTestId("offline-mcp-other")).not.toBeChecked();
@@ -191,8 +192,8 @@ test("offline settings: model, thinking, MCP servers, tools, skills and AGENTS.m
 
 	// Kept across a visit.
 	await page.reload();
-	await expect(page.getByTestId("offline-model")).toHaveValue("omlx/stub-two");
-	await expect(page.getByTestId("offline-thinking")).toHaveValue("low");
+	await expect(page.getByTestId("offline-model")).toHaveAttribute("data-value", "omlx/stub-two");
+	await expect(page.getByTestId("offline-thinking")).toHaveAttribute("data-value", "low");
 	await expect(page.getByTestId("offline-mcp-other")).toBeChecked();
 	await expect(page.getByTestId("offline-tool-ask")).toBeChecked();
 	await expect(page.getByTestId("offline-tool-todo")).not.toBeChecked();
@@ -454,14 +455,14 @@ test("Settings › Mode: the local backend is oMLX, Ollama or LM Studio, each wi
 		const address = page.getByTestId("offline-base-url");
 		const source = page.getByTestId("offline-base-url-source");
 		const status = page.getByTestId("backend-models");
-		const modelOptions = page.getByTestId("offline-model").getByRole("option");
+		const modelOptions = async () => (await readOptions(page.getByTestId("offline-model"))).map((o) => o.text);
 
 		// oMLX is as it was: the address of its provider in models.yml, and its models.
 		await expect(page.getByTestId("offline-backend-omlx")).toBeChecked();
 		await expect(address).toHaveValue(omlx.url);
 		await expect(source).toContainText("From the oMLX provider in your models.yml");
 		await expect(status).toContainText(`oMLX at ${omlx.url} serves 2 models.`);
-		await expect(modelOptions).toHaveText(["Automatic (the first model oMLX serves)", "stub-model", "stub-two"]);
+		await expect.poll(modelOptions).toEqual(["Automatic (the first model oMLX serves)", "stub-model", "stub-two"]);
 
 		// Ollama: models.yml has an entry at an address nothing listens at, and the status says so.
 		await choose("ollama");
@@ -470,14 +471,14 @@ test("Settings › Mode: the local backend is oMLX, Ollama or LM Studio, each wi
 		await expect(page.getByTestId("backend-error")).toContainText(
 			"Ollama is not reachable at http://127.0.0.1:1/v1 (connection refused)",
 		);
-		await expect(modelOptions).toHaveText(["Automatic (the first model Ollama serves)"]);
+		await expect.poll(modelOptions).toEqual(["Automatic (the first model Ollama serves)"]);
 		// The address of the server is all it takes.
 		await address.fill(ollama.url);
 		await address.blur();
 		await expect(status).toContainText(`Ollama at ${ollama.url} serves 1 models.`);
 		await expect(page.getByTestId("backend-error")).toHaveCount(0);
 		await expect(source).toContainText("Set here");
-		await page.getByTestId("offline-model").selectOption("ollama/stub-ollama-model");
+		await chooseOption(page.getByTestId("offline-model"), "ollama/stub-ollama-model");
 		await expect
 			.poll(offline)
 			.toMatchObject({ backend: "ollama", model: "ollama/stub-ollama-model", baseUrls: { ollama: ollama.url } });
@@ -492,12 +493,12 @@ test("Settings › Mode: the local backend is oMLX, Ollama or LM Studio, each wi
 		await choose("lm-studio");
 		await expect(address).toHaveValue(lmStudio.url);
 		await expect(status).toContainText(`LM Studio at ${lmStudio.url} serves 2 models.`);
-		await expect(page.getByTestId("offline-model")).toHaveValue("");
-		await page.getByTestId("offline-model").selectOption("lm-studio/stub/lm-other");
+		await expect(page.getByTestId("offline-model")).toHaveAttribute("data-value", "");
+		await chooseOption(page.getByTestId("offline-model"), "lm-studio/stub/lm-other");
 		await expect.poll(offline).toMatchObject({ backend: "lm-studio", model: "lm-studio/stub/lm-other" });
 		await page.reload();
 		await expect(page.getByTestId("offline-backend-lm-studio")).toBeChecked();
-		await expect(page.getByTestId("offline-model")).toHaveValue("lm-studio/stub/lm-other");
+		await expect(page.getByTestId("offline-model")).toHaveAttribute("data-value", "lm-studio/stub/lm-other");
 
 		// Clearing an address goes back to the one in models.yml.
 		await choose("ollama");

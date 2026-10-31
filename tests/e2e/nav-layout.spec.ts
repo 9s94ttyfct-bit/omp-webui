@@ -1,4 +1,5 @@
 import { boxOf } from "../support/geometry.ts";
+import { choose } from "../support/select.ts";
 import { expect, type Locator, type Page, test } from "./fixtures.ts";
 
 /**
@@ -273,18 +274,18 @@ test.describe("at 1400 px", () => {
 		// The group of Memory: Top. The item is in the top group now, and the control that moved it still has the focus.
 		const memory = () => page.getByRole("combobox", { name: "Group of Memory in the Sidebar" });
 		await memory().focus();
-		await memory().selectOption("top");
+		await choose(memory(), "top");
 		await expectRows(page, "top", ["memory"]);
 		await expect(memory()).toBeFocused();
 
 		// Hidden: gone from the sidebar, kept in the card's list, and still in the palette.
-		await page.getByRole("combobox", { name: "Group of Commands & terminal in the Sidebar" }).selectOption("hidden");
+		await choose(page.getByRole("combobox", { name: "Group of Commands & terminal in the Sidebar" }), "hidden");
 		await expect(page.getByTestId("nav-cli")).toHaveCount(0);
 		await expect(page.getByTestId("nav-edit-group-sidebar-hidden").getByTestId("nav-edit-sidebar-cli")).toBeVisible();
 
 		// The rail's controls are its own: the sidebar's arrangement did not move them.
 		expect((await stored(page))?.rail).toEqual({ top: [], bottom: ALL, hidden: [] });
-		await page.getByRole("combobox", { name: /^Group of Guard in the Rail/ }).selectOption("top");
+		await choose(page.getByRole("combobox", { name: /^Group of Guard in the Rail/ }), "top");
 		await page.getByRole("button", { name: "Hide sidebar" }).click();
 		await expectIcons(page, "top", ["guard"]);
 		await page.getByRole("button", { name: "Show sidebar" }).click();

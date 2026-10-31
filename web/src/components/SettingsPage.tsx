@@ -26,13 +26,14 @@ import { OmpSettings } from "./OmpSettings.tsx";
 import { PalettePicker } from "./PalettePicker.tsx";
 import { QuitSettings } from "./QuitSettings.tsx";
 import { RemoteSettings } from "./RemoteSettings.tsx";
+import { Select } from "./Select.tsx";
 import { SettingsIndex } from "./SettingsIndex.tsx";
 import { SettingsSearch } from "./SettingsSearch.tsx";
 import { StarPromptSetting } from "./StarPromptSetting.tsx";
 import { ToolTimerSetting } from "./ToolTimerSetting.tsx";
 import { UpdateSettings } from "./UpdateSettings.tsx";
 import { UsageWaitSetting } from "./UsageWaitSetting.tsx";
-import { Button, CardHeader, cx, Select, WithCode } from "./ui.tsx";
+import { Button, CardHeader, cx, WithCode } from "./ui.tsx";
 
 // The card holds its own strings and code (and the Chinese strings a chunk of their own): none of it is in the first chunk.
 const MigrationSettings = lazy(() => import("./MigrationSettings.tsx").then((m) => ({ default: m.MigrationSettings })));
@@ -278,7 +279,7 @@ export function SettingsPage() {
 								data-testid="language"
 								aria-label={t("common.language")}
 								value={lang}
-								onChange={(e) => void setLang(e.target.value as Lang)}
+								onValueChange={(v) => void setLang(v as Lang)}
 							>
 								{LANGS.map((l) => (
 									<option key={l.value} value={l.value}>

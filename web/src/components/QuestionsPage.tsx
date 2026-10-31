@@ -6,8 +6,9 @@ import { fmtRelative } from "../lib/format.ts";
 import { questionsApi } from "../lib/questions-api.ts";
 import { useQuestionsStrings } from "../lib/questions-strings.ts";
 import { useApp } from "../store/app.ts";
+import { Select } from "./Select.tsx";
 import { sessionLabel } from "./SessionItem.tsx";
-import { Badge, Button, cx, Empty, Select, Spinner } from "./ui.tsx";
+import { Badge, Button, cx, Empty, Spinner } from "./ui.tsx";
 
 const TOUCH = "pointer-coarse:min-h-11";
 const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
@@ -111,7 +112,7 @@ export default function QuestionsPage() {
 							aria-label={t("questions.filterLabel")}
 							data-testid="questions-scope"
 							value={scope}
-							onChange={(e) => setScope(e.target.value)}
+							onValueChange={setScope}
 						>
 							<option value="">{t("questions.filterAll")}</option>
 							{conversations.map((file) => (

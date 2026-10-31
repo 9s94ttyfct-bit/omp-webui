@@ -1,8 +1,8 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import clsx from "clsx";
-import { ChevronDown, Loader2, X } from "lucide-react";
-import { type ButtonHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useRef } from "react";
+import { Loader2, X } from "lucide-react";
+import { type ButtonHTMLAttributes, type ReactNode, useRef } from "react";
 import { useT } from "../i18n/index.ts";
 
 export const cx = clsx;
@@ -212,71 +212,6 @@ export function CardHeader({
 			</div>
 			{hint ? <p className="mt-1 max-w-prose text-xs text-muted">{hint}</p> : null}
 		</div>
-	);
-}
-
-/**
- * How each kind of select looks. The chevron is the app's own (a lucide `ChevronDown`) over a native `<select>` that draws
- * none: the browser's own chevron is bolder than the thin ones of the buttons beside it and moves with the OS.
- */
-const SELECT_TONES = {
-	/** A form field: the box of the text fields and of the model picker beside it. */
-	field: {
-		wrap: "block",
-		select: "h-9 w-full rounded-xl border border-border bg-bg-soft pr-9 pl-3 text-sm outline-none focus:border-faint",
-		chevron: "right-3 text-muted",
-		size: 14,
-	},
-	/** A small filter above a list, with the text of the field over it. */
-	compact: {
-		wrap: "block",
-		select:
-			"w-full rounded-lg border border-border bg-surface py-1.5 pr-8 pl-2.5 text-xs text-muted outline-none focus-visible:border-faint",
-		chevron: "right-2.5 text-muted",
-		size: 12,
-	},
-	/**
-	 * A control among the chips of the composer: no box, as wide as what it shows, the chevron right after it. The select is
-	 * laid over the words that size it (`fit`) instead of sharing their cell: WebKit counts a select's longest option toward
-	 * the width of a grid cell whatever its `w-0`, which left a gap of a few words after "Off".
-	 */
-	chip: {
-		wrap: "inline-grid",
-		select: "absolute inset-0 size-full cursor-pointer bg-transparent pr-4 outline-none",
-		chevron: "right-0",
-		size: 12,
-	},
-} as const;
-
-type SelectProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, "className"> & {
-	/** Layout of the control as a whole (width, shrink, margin); how it looks comes from `tone`. */
-	className?: string;
-} & (
-		| { tone?: "field" | "compact"; fit?: never }
-		// A chip is as wide as the words it shows, which a `<select>` cannot be (it is as wide as its longest option): `fit`
-		// is what it shows now, set invisibly in the same cell to give the control its width.
-		| { tone: "chip"; fit: ReactNode }
-	);
-
-/** A `<select>` with the app's chevron. Everything of a `<select>` (value, `onChange`, `data-testid`, `aria-label`…) goes to it. */
-export function Select({ tone = "field", fit, className, children, ...rest }: SelectProps) {
-	const look = SELECT_TONES[tone];
-	return (
-		<span className={cx("relative", look.wrap, "has-[:disabled]:opacity-50", className)}>
-			{fit === undefined ? null : (
-				<span aria-hidden data-select-sizer className="invisible col-start-1 row-start-1 whitespace-nowrap pr-4">
-					{fit}
-				</span>
-			)}
-			<select {...rest} className={cx("appearance-none", look.select)}>
-				{children}
-			</select>
-			<ChevronDown
-				size={look.size}
-				aria-hidden
-				className={cx("pointer-events-none absolute top-1/2 -translate-y-1/2", look.chevron)}
-			/>
-		</span>
 	);
 }
 

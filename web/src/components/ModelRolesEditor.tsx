@@ -15,7 +15,8 @@ import { describeSelector, modelConfig } from "../lib/model-config.ts";
 import { useApp } from "../store/app.ts";
 import type { ModelInfo } from "../store/live.ts";
 import { ModelSelect } from "./ModelSelect.tsx";
-import { Badge, Button, CardHeader, IconButton, Select } from "./ui.tsx";
+import { Select } from "./Select.tsx";
+import { Badge, Button, CardHeader, IconButton } from "./ui.tsx";
 
 /** The roles omp knows, in the order they are listed, with their names. Others are listed after them by id. */
 const ROLES: Record<string, MessageKey> = {
@@ -137,7 +138,7 @@ export function RolesFields({
 		<>
 			<label className="mb-1 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3 text-sm">
 				<span>{t("presets.defaultThinking")}</span>
-				<Select data-testid="default-thinking" value={thinking} onChange={(e) => onThinking(e.target.value)}>
+				<Select data-testid="default-thinking" value={thinking} onValueChange={onThinking}>
 					{allowUnsetThinking ? <option value="">{t("presets.editThinkingUnset")}</option> : null}
 					{thinkingChoices.map((level) => (
 						<option key={level} value={level}>
@@ -192,12 +193,8 @@ export function RolesFields({
 									aria-label={t("presets.roleThinkingAria", { role: name })}
 									disabled={!parsed}
 									value={parsed?.level ?? ""}
-									onChange={(e) => {
-										if (parsed)
-											setRow(
-												i,
-												formatSelector({ ...parsed, level: SELECTOR_LEVELS.find((l) => l === e.target.value) }),
-											);
+									onValueChange={(v) => {
+										if (parsed) setRow(i, formatSelector({ ...parsed, level: SELECTOR_LEVELS.find((l) => l === v) }));
 									}}
 									// Wide enough for "Model default" with the field's padding and chevron: at w-36 its last letters were cut.
 									className="w-44 shrink-0"

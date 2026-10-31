@@ -4,7 +4,10 @@ import { flushSync } from "react-dom";
 /** Where the chat's side panel is a sheet over the conversation instead of a column beside it (Tailwind's `max-lg`). */
 export const PANEL_SHEET_QUERY = "(width < 64rem)";
 
-/** Whether a CSS media query matches right now; re-renders when that changes. */
+/**
+ * Whether a CSS media query matches right now; re-renders when that changes. A render to a string (a unit test) asks
+ * `matchMedia` too: there is no page it could be told differently by.
+ */
 export function useMediaQuery(query: string): boolean {
 	const subscribe = useCallback(
 		(onChange: () => void) => {
@@ -14,7 +17,8 @@ export function useMediaQuery(query: string): boolean {
 		},
 		[query],
 	);
-	return useSyncExternalStore(subscribe, () => matchMedia(query).matches);
+	const matches = () => matchMedia(query).matches;
+	return useSyncExternalStore(subscribe, matches, matches);
 }
 
 /**

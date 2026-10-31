@@ -2,6 +2,7 @@ import { PREF } from "../../shared/prefs.ts";
 import { FIXTURE } from "../support/fixtures.ts";
 import { boxOf } from "../support/geometry.ts";
 import { sessionRow } from "../support/live.ts";
+import { choose } from "../support/select.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type Browser, expect, type Locator, type Page, test } from "./fixtures.ts";
 
@@ -54,7 +55,7 @@ async function chooseEverything(page: Page, light: boolean, palette: string, lan
 		.first()
 		.click();
 	await page.getByTestId(`palette-${palette}`).click();
-	await page.getByTestId("language").selectOption(lang);
+	await choose(page.getByTestId("language"), lang);
 	await drag(page, page.getByTestId("resize-sidebar"), sidebarDx);
 }
 
@@ -66,7 +67,7 @@ async function expectEverything(page: Page, light: boolean, palette: string, lan
 		page.locator('input[name="theme"]').and(page.locator(`[value="${light ? "light" : "dark"}"]`)),
 	).toBeChecked();
 	await expect(page.getByTestId(`palette-${palette}`).getByRole("radio")).toBeChecked();
-	await expect(page.getByTestId("language")).toHaveValue(lang);
+	await expect(page.getByTestId("language")).toHaveAttribute("data-value", lang);
 	await expect(page.locator("html")).toHaveAttribute("lang", lang);
 	await expect(page.getByTestId("resize-sidebar")).toHaveAttribute("aria-valuenow", String(sidebar));
 }
@@ -91,7 +92,7 @@ test("a browser with its own storage (the macOS window beside a browser tab) sho
 		expect(await mode(b)).toEqual({ dark: false, palette: "terminal" });
 
 		// And back, from the other side, for a change that forgets a key: the reset layout button.
-		await b.getByTestId("language").selectOption("en");
+		await choose(b.getByTestId("language"), "en");
 		await b.locator("label", { hasText: "Dark" }).first().click();
 		await b.getByTestId("palette-omp").click();
 		await b.getByTestId("reset-layout").click();

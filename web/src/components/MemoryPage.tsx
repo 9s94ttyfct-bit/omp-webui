@@ -31,8 +31,9 @@ import { useStable } from "../lib/stable.ts";
 import { useApp } from "../store/app.ts";
 import { MemoryDetail } from "./MemoryDetail.tsx";
 import { AddMemory } from "./MemoryDialogs.tsx";
+import { Select } from "./Select.tsx";
 import { Switch } from "./Switch.tsx";
-import { Badge, Button, cx, Empty, IconButton, Select, Spinner, WithCode } from "./ui.tsx";
+import { Badge, Button, cx, Empty, IconButton, Spinner, WithCode } from "./ui.tsx";
 
 /** What turns omp's long-term memory on. This page cannot change omp's own settings, so it is given as a command to run. */
 const ENABLE_COMMAND = "omp config set memory.backend mnemopi";
@@ -519,7 +520,7 @@ export function MemoryPage() {
 						className="min-w-0 flex-1"
 						aria-label={t("memory.projectLabel")}
 						value={filters.bank}
-						onChange={(e) => setFilters((f) => ({ ...f, bank: e.target.value }))}
+						onValueChange={(bank) => setFilters((f) => ({ ...f, bank }))}
 						data-testid="memory-project"
 					>
 						<option value="">{t("memory.allProjects")}</option>

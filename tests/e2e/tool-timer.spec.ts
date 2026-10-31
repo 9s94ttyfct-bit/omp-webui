@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { FIXTURE_BUCKET, FIXTURE_CWD } from "../support/fixtures.ts";
 import { ownSession, startLive } from "../support/live.ts";
 import { agentStart, messageStart, toolCall, toolEnd, toolStart } from "../support/omp-frames.ts";
+import { choose } from "../support/select.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -57,14 +58,14 @@ test("a running call ticks, and a finished one keeps its length", async ({ page 
 test("shell only times bash, off times nothing, and the choice is set in Settings", async ({ page }) => {
 	await page.goto("/#/settings/chats");
 	const mode = page.getByTestId("tool-timer-mode");
-	await expect(mode).toHaveValue("all");
-	await mode.selectOption("shell");
+	await expect(mode).toHaveAttribute("data-value", "all");
+	await choose(mode, "shell");
 	await expect.poll(() => page.evaluate(() => localStorage.getItem("ompw.toolTimer"))).toBe("shell");
-	await mode.selectOption("off");
+	await choose(mode, "off");
 	await expect.poll(() => page.evaluate(() => localStorage.getItem("ompw.toolTimer"))).toBe("off");
 	await page.reload();
-	await expect(page.getByTestId("tool-timer-mode")).toHaveValue("off");
-	await page.getByTestId("tool-timer-mode").selectOption("all");
+	await expect(page.getByTestId("tool-timer-mode")).toHaveAttribute("data-value", "off");
+	await choose(page.getByTestId("tool-timer-mode"), "all");
 	await expect.poll(() => page.evaluate(() => localStorage.getItem("ompw.toolTimer"))).toBe("all");
 });
 
@@ -153,7 +154,7 @@ test("a conversation read from its file shows each call's length, and the settin
 	// Shell commands only, chosen in Settings: the bash call keeps its length and the read loses its clock.
 	await page.getByRole("complementary").getByText("Settings", { exact: true }).click();
 	await page.locator('[data-testid="settings-page-tab"][data-page="chats"]').click();
-	await page.getByTestId("tool-timer-mode").selectOption("shell");
+	await choose(page.getByTestId("tool-timer-mode"), "shell");
 	await page.getByRole("complementary").getByText("Saved timer probe").click();
 	await expect(page.getByText("Both calls are timed.")).toBeVisible();
 	if (await summary.count()) await summary.click();
@@ -163,7 +164,7 @@ test("a conversation read from its file shows each call's length, and the settin
 	// Leave the shared setting as it was found.
 	await page.getByRole("complementary").getByText("Settings", { exact: true }).click();
 	await page.locator('[data-testid="settings-page-tab"][data-page="chats"]').click();
-	await page.getByTestId("tool-timer-mode").selectOption("all");
+	await choose(page.getByTestId("tool-timer-mode"), "all");
 });
 
 test("a !command shows how long it ran beside what it printed", async ({ page }) => {

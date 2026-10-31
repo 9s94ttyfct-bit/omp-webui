@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useT } from "../i18n/index.ts";
 import { templateName } from "../lib/guidance-names.ts";
 import { useGuidanceStrings } from "../lib/guidance-strings.ts";
+import { Select } from "./Select.tsx";
 import { Button } from "./ui.tsx";
 
 /**
@@ -45,13 +46,11 @@ export function GuidanceChoice({
 		<div className="space-y-3" data-testid="guidance-choice">
 			<label className="block text-sm">
 				<span className="mb-1 block text-muted">{t("guidance.templateLabel")}</span>
-				<select
-					className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-sm"
+				<Select
 					data-testid="guidance-template"
 					value={shown}
 					disabled={disabled}
-					onChange={(e) => {
-						const id = e.target.value;
+					onValueChange={(id) => {
 						if (id === "custom") {
 							setCustom(true);
 							return;
@@ -71,7 +70,7 @@ export function GuidanceChoice({
 						</option>
 					))}
 					<option value="custom">{t("guidance.pickCustom")}</option>
-				</select>
+				</Select>
 			</label>
 			{custom ? (
 				<>

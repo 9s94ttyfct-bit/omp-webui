@@ -149,9 +149,10 @@ html[data-standalone] .ios-top-edge {
 		font-size: 16px;
 	}
 	/*
-	 * A chip-sized select (`Select` in ui.tsx) sits among the composer's 12px chips, so its 16px words would stand out. The
-	 * field stays 16px (what iOS looks at) but draws nothing; the words the reader sees are the sizer's, at the size of the
-	 * chips beside it, in the cell the select covers. Taps still reach the select, which sits over them.
+	 * A chip-sized select (`Select` in Select.tsx: the system's `<select>` on a touch screen) sits among the composer's
+	 * 12px chips, so its 16px words would stand out. The field stays 16px (what iOS looks at) but draws nothing; the
+	 * words the reader sees are the sizer's, at the size of the chips beside it, in the cell the select covers. Taps still
+	 * reach the select, which sits over them.
 	 */
 	[data-select-sizer] {
 		visibility: visible;
@@ -284,11 +285,13 @@ body {
  * A current or highlighted row sits on the --hover tint, which is 1.06:1 against the sidebar: not a visible state.
  * The accent bar on its leading edge is (4.6:1 or better). Each such row already tells assistive tech, which is
  * what this keys on: aria-current (sidebar rows, the command list), aria-selected (cmdk results, the composer's
- * slash menu) and Radix's data-highlighted (menus). New rows only have to set the right attribute.
+ * slash menu) and Radix's data-highlighted (menus, and the options of the app's `Select`). New rows only have to set the
+ * right attribute.
  */
 @layer components {
 	[aria-current="page"],
 	[role="option"][aria-selected="true"],
+	[role="option"][data-highlighted],
 	[role="menuitem"][data-highlighted] {
 		box-shadow: inset 3px 0 0 var(--accent);
 	}

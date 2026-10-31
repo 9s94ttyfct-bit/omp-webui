@@ -1,5 +1,6 @@
 import { unfoldAdvanced } from "../support/controls.ts";
 import * as omp from "../support/omp-frames.ts";
+import { choose } from "../support/select.ts";
 import { other, SIDES, type Side, show, startWorld, type World } from "../support/two-pages.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -69,11 +70,12 @@ for (const acting of SIDES) {
 	test(`the thinking level chosen on the ${acting} page is the one the ${watching} page shows`, async ({ browser }) => {
 		const { pages } = await running(browser, acting === "local" ? 45 : 46, `Thinking from ${acting}`, acting);
 		try {
-			for (const side of SIDES) await expect(pages[side].getByTestId("thinking-picker")).toHaveValue("high");
-			await pages[acting].getByTestId("thinking-picker").selectOption("low");
-			for (const side of SIDES) await expect(pages[side].getByTestId("thinking-picker")).toHaveValue("low");
-			await pages[watching].getByTestId("thinking-picker").selectOption("medium");
-			for (const side of SIDES) await expect(pages[side].getByTestId("thinking-picker")).toHaveValue("medium");
+			const picker = (side: Side) => pages[side].getByTestId("thinking-picker");
+			for (const side of SIDES) await expect(picker(side)).toHaveAttribute("data-value", "high");
+			await choose(picker(acting), "low");
+			for (const side of SIDES) await expect(picker(side)).toHaveAttribute("data-value", "low");
+			await choose(picker(watching), "medium");
+			for (const side of SIDES) await expect(picker(side)).toHaveAttribute("data-value", "medium");
 		} finally {
 			await pages.close();
 		}

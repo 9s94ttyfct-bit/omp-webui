@@ -15,7 +15,8 @@ import { noteThinking, useApp } from "../store/app.ts";
 import type { ModelInfo } from "../store/live.ts";
 import { ErrorBoundary } from "./ErrorBoundary.tsx";
 import { ModelSearch } from "./ModelSearch.tsx";
-import { Select, Spinner } from "./ui.tsx";
+import { Select } from "./Select.tsx";
+import { Spinner } from "./ui.tsx";
 
 const modelCache = new Map<string, ModelInfo[]>();
 
@@ -311,7 +312,7 @@ export function ThinkingPicker({
 	return (
 		<label
 			title={`${t("panel.thinkingLevel")}: ${shownLabel}`}
-			className="relative inline-flex h-8 items-center gap-1 rounded-lg px-2 text-xs text-muted hover:bg-hover hover:text-fg has-[select:focus-visible]:outline-2 has-[select:focus-visible]:outline-offset-2 has-[select:focus-visible]:outline-accent composer-narrow:w-8 composer-narrow:justify-center composer-narrow:px-0"
+			className="relative inline-flex h-8 items-center gap-1 rounded-lg px-2 text-xs text-muted hover:bg-hover hover:text-fg has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent composer-narrow:w-8 composer-narrow:justify-center composer-narrow:px-0"
 		>
 			<Brain size={14} />
 			<span className="sr-only composer-more:hidden">{t("panel.thinkingLevel")}</span>
@@ -326,8 +327,7 @@ export function ThinkingPicker({
 				data-testid="thinking-picker"
 				className="cursor-pointer bg-transparent outline-none composer-narrow:absolute composer-narrow:inset-0 composer-narrow:w-full composer-narrow:opacity-0"
 				value={shown}
-				onChange={(e) => {
-					const next = e.target.value;
+				onValueChange={(next) => {
 					setAsked(next);
 					void (async () => {
 						try {
