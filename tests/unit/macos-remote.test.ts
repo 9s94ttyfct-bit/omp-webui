@@ -202,6 +202,7 @@ beforeAll(async () => {
 			join(here, "../../macos/remotepolicy.swift"),
 			join(here, "../../macos/shellevents.swift"),
 			join(here, "../../macos/remotewindow.swift"),
+			join(here, "../../macos/webview.swift"),
 			join(here, "../support/swift/remote/main.swift"),
 			"-o",
 			harness,
@@ -1332,6 +1333,8 @@ test.skipIf(!windowServer)(
 			expect(w.minWidth).toBe(640);
 			expect(w.windowMinSize).toEqual([640, 480]);
 			expect(w.popOutMinWidth).toBe(640);
+			// Neither the Mac's own window nor a pop-out zooms its page (tests/unit/macos-no-zoom.test.ts).
+			expect(w.allowsMagnification).toEqual([false, false]);
 			// The bar names the host that has the page: all of a short one, the end of a long one, never cut off at its end.
 			const strips = w.stripWidths as Record<
 				string,

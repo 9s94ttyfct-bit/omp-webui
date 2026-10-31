@@ -47,12 +47,7 @@ final class PopOutWindows: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
 		let web = WKWebView(frame: .zero, configuration: configuration)
 		web.navigationDelegate = self
 		web.uiDelegate = self
-		web.allowsMagnification = true
-		web.setValue(false, forKey: "drawsBackground")
-		// Covered by another window, the page must still hear what streams in (see the same switch for the app's window).
-		if web.responds(to: NSSelectorFromString("_setWindowOcclusionDetectionEnabled:")) {
-			web.setValue(false, forKey: "windowOcclusionDetectionEnabled")
-		}
+		prepareWebView(web)
 
 		let width = (features.width?.doubleValue).map { min(max($0, 480), 4000) } ?? 1100
 		let height = (features.height?.doubleValue).map { min(max($0, 360), 3000) } ?? 800
@@ -175,7 +170,7 @@ func isWindowRequestAllowed(isMainFrame: Bool, scheme: String, host: String, por
 	return scheme == origin.scheme && host == ownHost && port == ownPort
 }
 
-/// The web view a menu command (Reload, Actual Size, Zoom) acts on: the one in the window in front, a pop-out's or the
+/// The web view a menu command (Reload) acts on: the one in the window in front, a pop-out's or the
 /// app's own; the app's own when no window is.
 func targetWebView(keyWindow: NSWindow?, fallback: WKWebView) -> WKWebView {
 	(keyWindow?.contentView as? WKWebView) ?? fallback

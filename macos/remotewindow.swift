@@ -204,12 +204,7 @@ final class RemoteWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUI
 		super.init()
 		web.navigationDelegate = self
 		web.uiDelegate = self
-		web.allowsMagnification = true
-		web.setValue(false, forKey: "drawsBackground")
-		// Covered by another window, the page must still hear what streams in (see the same switch for the app's own window).
-		if web.responds(to: NSSelectorFromString("_setWindowOcclusionDetectionEnabled:")) {
-			web.setValue(false, forKey: "windowOcclusionDetectionEnabled")
-		}
+		prepareWebView(web)
 		strip.onDisconnect = { [weak self] in self?.session?.disconnect() }
 		content.reload = { [weak self] in self?.reloadOrRetry() }
 

@@ -677,7 +677,7 @@ export function Sidebar() {
 
 /**
  * The sidebar's column: its width is the remembered one, and dragging the handle re-renders only this frame (the
- * list inside is the same element tree as before). In a window too short for everything in it (the app zoomed in, a
+ * list inside is the same element tree as before). In a window too short for everything in it (a browser zoomed in, a
  * phone on its side) the column scrolls inside itself, the list keeping `SessionList`'s minimum height: the app's
  * frame does not scroll (index.css), so this is what keeps the lower items (the pages, feedback, the remote mark)
  * reachable by a wheel, a finger and Tab. The handle is the frame's: it stands outside the box, which a scroll

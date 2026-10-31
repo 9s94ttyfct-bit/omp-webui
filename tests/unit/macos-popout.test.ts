@@ -33,6 +33,7 @@ beforeAll(async () => {
 			"5",
 			join(here, "../../macos/navigation.swift"),
 			join(here, "../../macos/popout.swift"),
+			join(here, "../../macos/webview.swift"),
 			join(here, "../../macos/windowframe.swift"),
 			join(here, "../support/swift/popout-harness.swift"),
 			"-o",
@@ -67,6 +68,7 @@ interface Report {
 		width: number;
 		height: number;
 		isOtherWindow: boolean;
+		allowsMagnification: boolean;
 		hasHandler: string;
 		loadedEvents: boolean[];
 		fullScreenEvents: boolean[];
@@ -138,6 +140,8 @@ test.skipIf(!guiTests)("window.open of the pop-out address opens a window of its
 	// The size the page asked for.
 	expect(Math.abs(p.width - 900)).toBeLessThanOrEqual(2);
 	expect(Math.abs(p.height - 700)).toBeLessThanOrEqual(2);
+	// Set up as every web view of the app is: its page is never zoomed (tests/unit/macos-no-zoom.test.ts).
+	expect(p.allowsMagnification).toBe(false);
 });
 
 test.skipIf(!guiTests)("the window can go to native full screen, and the page hears that it did", () => {

@@ -295,6 +295,8 @@ async function main(): Promise<void> {
 			join(root, "macos/droppaths.swift"),
 			join(root, "macos/navigation.swift"),
 			join(root, "macos/popout.swift"),
+			join(root, "macos/webview.swift"),
+			join(root, "macos/windowframe.swift"),
 			join(root, "tests/support/swift/appshots-harness.swift"),
 			"-o",
 			harness,

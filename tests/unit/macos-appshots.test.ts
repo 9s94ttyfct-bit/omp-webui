@@ -35,6 +35,7 @@ beforeAll(() => {
 			join(here, "../../macos/droppaths.swift"),
 			join(here, "../../macos/navigation.swift"),
 			join(here, "../../macos/popout.swift"),
+			join(here, "../../macos/webview.swift"),
 			join(here, "../../macos/windowframe.swift"),
 			join(here, "../support/swift/appshots-harness.swift"),
 			"-o",

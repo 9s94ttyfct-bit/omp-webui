@@ -630,14 +630,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 		web.navigationDelegate = self
 		web.uiDelegate = self
 		notifications.webView = web
-		web.allowsMagnification = true
-		web.setValue(false, forKey: "drawsBackground")
-		// WebKit holds back a page whose window other windows cover: its timers coarsen to seconds and what arrives over its
-		// sockets is handled late, in bursts, so a transcript that is partly in view beside another app's window goes stale (#381).
-		// The app turns that detection off for its web views. A WebKit without the switch just keeps its behaviour.
-		if web.responds(to: NSSelectorFromString("_setWindowOcclusionDetectionEnabled:")) {
-			web.setValue(false, forKey: "windowOcclusionDetectionEnabled")
-		}
+		prepareWebView(web)
 		if let url = takePageURL() {
 			web.load(URLRequest(url: url))
 		} else {
@@ -667,59 +660,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 	}
 
 	func buildMenu() {
-		let main = NSMenu()
-		func submenu(_ title: String, _ items: [NSMenuItem]) {
-			let item = NSMenuItem()
-			let menu = NSMenu(title: title)
-			items.forEach(menu.addItem)
-			item.submenu = menu
-			main.addItem(item)
-		}
-		func item(_ title: String, _ action: Selector?, _ key: String, _ mods: NSEvent.ModifierFlags = .command) -> NSMenuItem {
-			let i = NSMenuItem(title: title, action: action, keyEquivalent: key)
-			i.keyEquivalentModifierMask = mods
-			return i
-		}
-		submenu(appName, [
-			item("About \(appName)", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), ""),
-			.separator(),
-			item("Hide \(appName)", #selector(NSApplication.hide(_:)), "h"),
-			item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
-			item("Show All", #selector(NSApplication.unhideAllApplications(_:)), ""),
-			.separator(),
-			item("Quit \(appName)", #selector(NSApplication.terminate(_:)), "q"),
-		])
-		// Standard editing commands: WebKit text fields need these for ⌘C / ⌘V / ⌘Z.
-		submenu("Edit", [
-			item("Undo", Selector(("undo:")), "z"),
-			item("Redo", Selector(("redo:")), "z", [.command, .shift]),
-			.separator(),
-			item("Cut", #selector(NSText.cut(_:)), "x"),
-			item("Copy", #selector(NSText.copy(_:)), "c"),
-			item("Paste", #selector(NSText.paste(_:)), "v"),
-			item("Select All", #selector(NSText.selectAll(_:)), "a"),
-		])
-		submenu("View", [
-			item("Reload", #selector(reload), "r"),
-			item("Actual Size", #selector(zoomReset), "0"),
-			item("Zoom In", #selector(zoomIn), "+"),
-			item("Zoom Out", #selector(zoomOut), "-"),
-			.separator(),
-			item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
-		])
 		// The Macs menu: the other Macs this app opens a window onto (macOS 14 and later; before it there is no such menu).
-		if #available(macOS 14.0, *) { main.addItem(remote.menuItem) }
-		submenu("Window", [
-			item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
-			item("Close", #selector(NSWindow.performClose(_:)), "w"),
-		])
+		var macs: NSMenuItem?
+		if #available(macOS 14.0, *) { macs = remote.menuItem }
+		let main = appMainMenu(appName: appName, reload: #selector(reload), macs: macs)
 		// From macOS 14 the Window menu also lists the windows by their titles, which is how a window onto another Mac is found
 		// by its name; before it the menu is what it was.
 		if #available(macOS 14.0, *) { NSApp.windowsMenu = main.items.first { $0.submenu?.title == "Window" }?.submenu }
 		NSApp.mainMenu = main
 	}
 
-	/// The web view the View menu acts on: the one of the window in front (a pop-out's too); none while the app has no window.
+	/// The web view Reload acts on: the one of the window in front (a pop-out's too); none while the app has no window.
 	var frontWebView: WKWebView? {
 		(NSApp.keyWindow?.contentView as? RemoteContentView)?.web
 			?? webView.map { targetWebView(keyWindow: NSApp.keyWindow, fallback: $0) }
@@ -729,9 +680,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 		if let remote = NSApp.keyWindow?.contentView as? RemoteContentView, let reload = remote.reload { return reload() }
 		frontWebView?.reload()
 	}
-	@objc func zoomReset() { frontWebView?.pageZoom = 1 }
-	@objc func zoomIn() { if let web = frontWebView { web.pageZoom = min(web.pageZoom + 0.1, 3) } }
-	@objc func zoomOut() { if let web = frontWebView { web.pageZoom = max(web.pageZoom - 0.1, 0.5) } }
 
 	// MARK: Navigation
 
