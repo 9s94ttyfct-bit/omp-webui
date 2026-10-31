@@ -1,9 +1,11 @@
 import { FIXTURE_FILES } from "../support/fixtures.ts";
+import { openSidebar } from "../support/live.ts";
 import { devices, expect, type Page, test } from "./fixtures.ts";
 
 /**
- * Controls that appear on hover must be visible where there is no hover: row menus, message actions and
- * love buttons on coarse pointers, and the version switcher whenever there are several versions (no model call).
+ * Controls that appear on hover must be reachable where there is no hover: the open conversation's row menu, message
+ * actions and love buttons on coarse pointers, and the version switcher whenever there are several versions (no model
+ * call). The other rows show no menu button on a touch screen: their names have the whole row.
  */
 
 const { defaultBrowserType: _browser, ...pixel } = devices["Pixel 5"];
@@ -22,18 +24,21 @@ async function openGamma(page: Page) {
 test.describe("touch screen", () => {
 	test.use(pixel);
 
-	test("the row menu, message actions and version switcher are visible without hover", async ({ page }) => {
+	test("the open row's menu, message actions and version switcher are visible without hover", async ({ page }) => {
 		await page.goto("/");
 		expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
 		expect(await page.evaluate(() => matchMedia("(hover: hover)").matches)).toBe(false);
 
 		await page.getByRole("button", { name: "Show sidebar" }).click();
-		await expect(menuOf(page)).toHaveCSS("opacity", "1");
+		await expect(menuOf(page)).toHaveCSS("opacity", "0");
 		await openGamma(page);
 
 		await expect(versionedPrompt(page).getByTestId("msg-actions")).toHaveCSS("opacity", "1");
 		await expect(versionedPrompt(page).getByTestId("sibling-nav")).toContainText("/ 2");
 		await expect(versionedPrompt(page).getByTestId("sibling-nav")).toHaveCSS("opacity", "1");
+
+		await openSidebar(page);
+		await expect(menuOf(page)).toHaveCSS("opacity", "1");
 	});
 
 	test("the love button in the model picker is visible without hover", async ({ page }) => {
