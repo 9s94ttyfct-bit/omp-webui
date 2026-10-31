@@ -8,8 +8,14 @@ import { RISK_COMMAND, RISK_IN, type RiskKind } from "./risk-confirm.ts";
  *
  * It is a best effort and says so wherever it is documented: it reads the command or the path a call carries and knows a
  * short list of things (docs/TECHNICAL.md, "Confirm risky commands from remote pages"). It is not a sandbox. A script that is run by
- * name, a command assembled when it runs, a path a program works out: none of it can be seen from here. A call it does
- * not recognise runs as the conversation's permission mode says. Read-only tools never need confirming.
+ * name, a path a program works out: none of it can be seen from here. A command assembled when it runs (a variable or a
+ * substitution as the command, `eval`, a script piped into a shell) cannot be read either, so it is `dynamic_command` and
+ * asks. A call it does not recognise runs as the conversation's permission mode says. Read-only tools never need confirming.
+ *
+ * TODO(windows): it reads POSIX shells only (sh, bash, zsh and their quoting). A Windows omp runs `cmd.exe` or PowerShell,
+ * whose quoting, paths (`C:\…`, `%USERPROFILE%`, `$env:HOME`), deletes (`del /s`, `rd /s /q`, `Remove-Item -Recurse`) and
+ * dynamic commands (`iex`, `Invoke-Expression`, `& $cmd`) it does not know: there it would miss most of what it is for.
+ * Remote access is to be turned off on Windows for that reason; this must be extended before it is offered there.
  */
 
 /** Where the call runs and what is its own: every other place is "outside the project". */
@@ -830,6 +836,11 @@ interface Command {
 	args: Word[];
 	/** It came through `xargs`: what it is given is not known (`ls | xargs rm`). */
 	viaXargs: boolean;
+	/**
+	 * The command word is only known when it runs (`$r -rf ~`, `$(echo rm) …`, `` `echo rm` … ``, `"$@"`): what it runs
+	 * cannot be read here, and `name` (the word, its unknown parts `DYN`) matches no program.
+	 */
+	dynamic?: true;
 }
 
 /** The programs that run another: the options that take a value, and how many plain words come before the command. */
@@ -852,7 +863,8 @@ function commandOf(words: readonly Word[]): Command | null {
 	let viaXargs = false;
 	for (let guard = 0; guard < 16; guard++) {
 		while (i < words.length && (listed(RESERVED, words[i].text) || ASSIGNMENT.test(words[i].text))) i++;
-		if (i >= words.length || words[i].dynamic) return null;
+		if (i >= words.length) return null;
+		if (words[i].dynamic) return { name: words[i].text, args: words.slice(i + 1), viaXargs, dynamic: true };
 		const name = baseName(words[i].text);
 		const wrapper = Object.hasOwn(WRAPPERS, name) ? WRAPPERS[name] : undefined;
 		if (!wrapper) return { name, args: words.slice(i + 1), viaXargs };
@@ -938,6 +950,37 @@ function readsStdinAsCode(stage: Command): boolean {
 	}
 	return name === "source" || name === "eval";
 }
+
+/**
+ * Whether `stage` runs as code what comes down a pipe into it (`… | sh`, `… | sudo bash`, `… | python3`, `… | source
+ * /dev/stdin`): whatever made that text, it is a command put together when it runs.
+ */
+function runsPipedCode(stage: Command): boolean {
+	if (stage.dynamic) return false;
+	if (stage.name === "su") return !stage.args.some((a) => a.text === "-c");
+	if (listed(PRIVILEGE, stage.name)) {
+		const inner = commandOf(afterPrivilegeOptions(stage.args));
+		return inner !== null && runsPipedCode(inner);
+	}
+	if (stage.name === "source" || stage.name === ".")
+		return /^\/dev\/(?:stdin|fd\/0)$/.test(stage.args[0]?.text ?? "") || stage.args.length === 0;
+	if (stage.name === "eval") return false;
+	return readsStdinAsCode(stage);
+}
+
+/** What a stage writes into a pipe when it is written out in it (`echo '…'`, `printf '…'`, `cat <<EOF`), or null. */
+function writtenInto(simple: Simple, cmd: Command | null): string | null {
+	if (!cmd || cmd.dynamic) return null;
+	const { operands } = splitArgs(cmd.args);
+	if (operands.some((w) => w.dynamic)) return null;
+	if (cmd.name === "echo") return operands.map((w) => w.text).join(" ");
+	if (cmd.name === "printf" && operands.length > 0) return operands[0].text.replace(/\\n/g, "\n");
+	if (cmd.name === "cat" && operands.length === 0 && simple.body !== null) return simple.body;
+	return null;
+}
+
+/** A word that is nothing but a substitution (`<(…)`, `$(…)`): the script a shell is handed to run is only made when it runs. */
+const opensSubstitution = (w: Word | undefined): boolean => w !== undefined && w.text === DYN && w.subs.length > 0;
 
 /** Whether a script runs one of `programs` as a command (`curl` in the `$(curl …)` that a shell is asked to run). */
 function mentions(src: string, programs: Table, home: string): boolean {
@@ -1188,6 +1231,18 @@ class Scan {
 		return this.loops.get(w.named) ?? [w];
 	}
 
+	/**
+	 * How deep the scan is in a program's source (`python -c`, an `eval` cell): its lines and strings are read as shell
+	 * commands to find paths and programs, but a `$x` or a `${…}` there is the program's own, not a command the shell puts
+	 * together, so `dynamic_command` is not said of it (`shell_out` is what a program's unseen command is).
+	 */
+	private inCode = 0;
+
+	/** A command only put together when it runs, unless it is a program's own text (`inCode`). */
+	private dynamicCommand(): void {
+		if (this.inCode === 0) this.add("dynamic_command");
+	}
+
 	add(kind: RiskKind): void {
 		this.kinds.add(kind);
 	}
@@ -1261,6 +1316,15 @@ class Scan {
 				if (cmd && listed(FETCHERS, cmd.name) && named.slice(n + 1).some((c) => c && readsStdinAsCode(c)))
 					this.add("remote_exec");
 			});
+			// A script piped into a shell (`printf '…' | sh`, `base64 -d … | bash`): what runs is what the pipe carries. A
+			// download is `remote_exec` already; what the stage before wrote out (`echo '…'`, `cat <<EOF`) is read as well.
+			named.forEach((cmd, n) => {
+				if (n === 0 || !cmd || !runsPipedCode(cmd)) return;
+				if (named.slice(0, n).some((c) => c && listed(FETCHERS, c.name))) return;
+				this.dynamicCommand();
+				const fed = writtenInto(pipeline[n - 1], named[n - 1]);
+				if (fed !== null) this.script(fed, cwd, depth + 1);
+			});
 			for (const simple of pipeline) here = this.simple(simple, here, depth);
 		}
 	}
@@ -1286,6 +1350,11 @@ class Scan {
 	}
 
 	private command(cmd: Command, body: string | null, cwd: string | null, depth: number): string | null {
+		// `$r -rf ~`, `$(echo rm) -rf ~`: what runs is not known, so neither is what it does.
+		if (cmd.dynamic) {
+			this.dynamicCommand();
+			return cwd;
+		}
 		const { name, args } = cmd;
 		const { opts, operands } = splitArgs(args);
 		// `for f in a b c`: the variable stands for those words in the commands that follow.
@@ -1308,6 +1377,10 @@ class Scan {
 			if (args.some((a) => /empty\s+(?:the\s+)?trash/i.test(a.text))) this.add("mass_delete");
 		}
 		if (name === "launchctl") this.add("launchctl");
+		this.scheduled(name, opts, operands);
+		this.credentials(name, opts, operands);
+		if (name === "ssh" || name === "autossh" || name === "mosh" || name === "scp" || name === "sftp")
+			this.ssh(name, args, cwd, depth);
 		if (listed(TUNNELS, name)) this.add("tunnel");
 		if (name === "tailscale" && operands.some((o) => o.text === "serve" || o.text === "funnel")) this.add("tunnel");
 		if ((name === "ssh" || name === "autossh") && args.some((a) => /^-[A-Za-z]*[RD]$|^-[RD][^A-Za-z]/.test(a.text)))
@@ -1332,15 +1405,21 @@ class Scan {
 		}
 
 		const runs = listed(SHELLS, name) || name === "eval" || name === "source" || name === ".";
-		if (runs && args.some((a) => a.subs.some((s) => mentions(s, FETCHERS, this.ctx.home)))) this.add("remote_exec");
+		// A download is `remote_exec`: the substitution it comes in is not said to be a command put together as well.
+		const fetched = runs && args.some((a) => a.subs.some((s) => mentions(s, FETCHERS, this.ctx.home)));
+		if (fetched) this.add("remote_exec");
 		if (listed(SHELLS, name)) {
 			// A shell that is handed a script (`-c`), or reads one from its input (a here-document).
 			const at = args.findIndex((a) => /^-[a-z]*c[a-z]*$/.test(a.text));
 			const script = at >= 0 ? args.slice(at + 1).find((a) => !a.text.startsWith("-")) : undefined;
-			if (script) this.script(script.text, cwd, depth + 1);
-			else if (body !== null) this.script(body, cwd, depth + 1);
+			if (script) {
+				if (!(fetched && script.dynamic)) this.script(script.text, cwd, depth + 1);
+			} else if (body !== null) this.script(body, cwd, depth + 1);
+			else if (!fetched && opensSubstitution(operands[0])) this.dynamicCommand();
 		} else if (name === "eval") {
-			this.script(args.map((a) => a.text).join(" "), cwd, depth + 1);
+			if (!(fetched && args.some((a) => a.dynamic))) this.script(args.map((a) => a.text).join(" "), cwd, depth + 1);
+		} else if ((name === "source" || name === ".") && !fetched && opensSubstitution(operands[0])) {
+			this.dynamicCommand();
 		} else if (listed(CODE_INTERPRETERS, name)) {
 			const at = args.findIndex((a) => /^-(c|e|p|pe|ne|ep|r)$|^--eval$/.test(a.text));
 			const code = at >= 0 ? args[at + 1]?.text : body;
@@ -1705,8 +1784,133 @@ class Scan {
 		if ((name === "cargo" || name === "pipx") && verb === "install") this.add("global_install");
 	}
 
+	/**
+	 * `ssh host cmd`, `autossh … host cmd`, `mosh host -- cmd`: a command run on another computer (`remote_shell`), read as
+	 * one too, in the home folder it starts in there (which is this one's as far as can be told). What ssh, scp or sftp run
+	 * on this computer (`-o ProxyCommand=…`, `LocalCommand`, `KnownHostsCommand`) is read as a command here.
+	 */
+	private ssh(name: string, args: Word[], cwd: string | null, depth: number): void {
+		// The short options that take a value, attached (`-p22`) or in the next word.
+		const valued =
+			name === "mosh"
+				? "p"
+				: name === "scp" || name === "sftp"
+					? "BbcDFiJloPRSsX"
+					: `BbcDEeFIiJLlmOopQRSWw${name === "autossh" ? "M" : ""}`;
+		let host = -1;
+		for (let i = 0; i < args.length && host < 0; i++) {
+			const t = args[i].text;
+			if (t === "--") host = i + 1;
+			else if (!t.startsWith("-") || t === "-") host = i;
+			else if (!t.startsWith("--")) {
+				for (let k = 1; k < t.length; k++) {
+					if (!valued.includes(t[k])) continue;
+					const value = k + 1 < t.length ? t.slice(k + 1) : (args[++i]?.text ?? "");
+					if (t[k] === "o") this.sshOption(value, cwd, depth);
+					break;
+				}
+			}
+		}
+		if (name !== "ssh" && name !== "autossh" && name !== "mosh") return;
+		let rest = host < 0 ? [] : args.slice(host + 1);
+		if (rest[0]?.text === "--") rest = rest.slice(1);
+		if (rest.length === 0) return;
+		this.add("remote_shell");
+		// ssh hands the words, joined by spaces, to the other computer's shell, which takes them apart again.
+		this.script(rest.map((w) => w.text).join(" "), this.ctx.home, depth + 1);
+	}
+
+	/** One `-o` of ssh, scp or sftp: a command it runs here, or one it runs there (`RemoteCommand`). */
+	private sshOption(value: string, cwd: string | null, depth: number): void {
+		const m = /^(ProxyCommand|LocalCommand|KnownHostsCommand|RemoteCommand)\s*[=\s]\s*([\s\S]*)$/i.exec(value.trim());
+		if (!m) return;
+		if (m[1].toLowerCase() !== "remotecommand") this.script(m[2], cwd, depth + 1);
+		else {
+			this.add("remote_shell");
+			this.script(m[2], this.ctx.home, depth + 1);
+		}
+	}
+
+	/**
+	 * What changes the jobs this computer runs on its own, or its services (`scheduled`): `crontab -r`, `-e` or a new table
+	 * (a file, `-`, or its input), `at`, `batch`, `atrm`, `systemctl stop|disable|…`. Listing them is not asked about.
+	 */
+	private scheduled(name: string, opts: string[], operands: Word[]): void {
+		switch (name) {
+			case "crontab":
+				if (!hasShort(opts, "l") || hasShort(opts, "re")) this.add("scheduled");
+				break;
+			case "at":
+			case "batch":
+				// A program's text says "at" in prose (`"at the end"`): only a shell's `at` is one.
+				if (this.inCode === 0 && !(name === "at" && hasShort(opts, "lc") && !hasShort(opts, "rd")))
+					this.add("scheduled");
+				break;
+			case "atrm":
+				this.add("scheduled");
+				break;
+			case "systemctl": {
+				const verb = operands[0]?.text ?? "";
+				if (/^(poweroff|reboot|halt|kexec|suspend|hibernate|hybrid-sleep|rescue|emergency)$/.test(verb))
+					this.add("system");
+				else if (
+					/^(start|stop|restart|try-restart|reload|reload-or-restart|kill|enable|disable|reenable|mask|unmask|link|edit|set-default|isolate|preset|preset-all|revert|daemon-reload|set-property)$/.test(
+						verb,
+					)
+				)
+					this.add("scheduled");
+				break;
+			}
+			default:
+		}
+	}
+
+	/**
+	 * What prints a stored password or token (`secret_read`): the keychain's (`security find-*-password -w`/`-g`,
+	 * `dump-keychain`, `export`), gh's, gcloud's, aws's, 1Password's. Deleting from the keychain is `protected`.
+	 */
+	private credentials(name: string, opts: string[], operands: Word[]): void {
+		const verb = operands[0]?.text ?? "";
+		const sub = operands[1]?.text ?? "";
+		let reads = false;
+		switch (name) {
+			case "security":
+				reads =
+					(/^find-(?:generic|internet)-password$/.test(verb) && hasShort(opts, "wg")) ||
+					verb === "dump-keychain" ||
+					verb === "export";
+				if (/^delete-(?:keychain|generic-password|internet-password|certificate|identity)$/.test(verb))
+					this.add("protected");
+				break;
+			case "gh":
+				reads = verb === "auth" && sub === "token";
+				break;
+			case "gcloud":
+				reads =
+					verb === "auth" && operands.slice(1).some((o) => /^print-(?:access|identity|refresh)-token$/.test(o.text));
+				break;
+			case "aws":
+				reads = (verb === "configure" && sub === "export-credentials") || sub === "get-login-password";
+				break;
+			case "op":
+				reads = verb === "read" || (verb === "item" && sub === "get" && opts.includes("--reveal"));
+				break;
+			default:
+		}
+		if (reads) this.add("secret_read");
+	}
+
 	/** Code handed to an interpreter (`python -c`, an `eval` cell): read line by line and string by string, as shell. */
 	code(code: string, cwd: string | null, depth: number): void {
+		this.inCode++;
+		try {
+			this.readCode(code, cwd, depth);
+		} finally {
+			this.inCode--;
+		}
+	}
+
+	private readCode(code: string, cwd: string | null, depth: number): void {
 		if (code.length > MAX_CODE) {
 			this.add("unreadable");
 			return;
@@ -1740,6 +1944,8 @@ class Scan {
 const ORDER: readonly RiskKind[] = [
 	"privilege",
 	"remote_exec",
+	"dynamic_command",
+	"remote_shell",
 	"shell_out",
 	"mass_delete",
 	"delete_outside",
@@ -1750,6 +1956,7 @@ const ORDER: readonly RiskKind[] = [
 	"write_outside",
 	"permissions",
 	"launchctl",
+	"scheduled",
 	"osascript",
 	"tunnel",
 	"global_install",

@@ -8,7 +8,7 @@ settings: guard
 
 ## What it does
 
-Every conversation's omp process (the main agent and each subagent) is started with a gate. A pattern classifier flags tool calls that look risky (administrator rights, mass deletion, writes or deletes outside the project, credentials, force-push, downloaded scripts, tunnels, system-wide installs, and so on). With the guard on, a flagged call does not run until it is approved:
+Every conversation's omp process (the main agent and each subagent) is started with a gate. A pattern classifier flags tool calls that look risky (administrator rights, mass deletion, writes or deletes outside the project, credentials and stored passwords or tokens, force-push, downloaded scripts, a command put together when it runs, commands run on another computer over ssh, changes to scheduled jobs and services, tunnels, system-wide installs, and so on). With the guard on, a flagged call does not run until it is approved:
 
 - **Off** (`off`): calls are not looked at by the guard; the permission mode alone decides.
 - **Reviewer model** (`reviewer`, the default): a second model reads the call and the recent conversation, and allows or denies it before it runs.
@@ -74,7 +74,8 @@ A per-conversation choice is kept with the conversation (not in `guard.json`). T
 
 ## Limits and caveats
 
-- Best effort, not a sandbox: it judges a call from the command, code or paths it names before the tool runs, and can be wrong in both directions. It does not see what a program does once it runs, nor what the user types in a terminal.
+- Best effort, not a sandbox: it judges a call from the command, code or paths it names before the tool runs, and can be wrong in both directions. It does not see what a program does once it runs, nor what the user types in a terminal. A command put together when it runs (a variable or `$(…)` as the command, `eval`, a script piped into a shell) is flagged as "A command put together when it runs" (`dynamic_command`) because what it runs cannot be read; harmless forms such as `$EDITOR file` are flagged too.
+- Only POSIX shells (sh, bash, zsh) are read; Windows `cmd.exe` and PowerShell commands are not.
 - Every reviewer call uses tokens on the same quota as the user's conversations.
 - A conversation whose omp process started before the guard (or under another server) is not covered; the conversation shows a notice with **Open it again**.
 - In Ask me mode, or when asking on unavailable/denied, the user is asked only if a page can reach them; a subagent's call is refused instead.

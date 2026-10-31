@@ -341,6 +341,24 @@ describe("the setting is on", () => {
 		expect(c.asked()).toHaveLength(asking);
 		await c.close();
 	}, 90_000);
+
+	test("a command put together when it runs waits for the page too (A-007); denied, it does not run", async () => {
+		setSettings({ confirmRisky: true });
+		const c = await conversation();
+		const victim = join(outside, "assembled");
+		mkdirSync(victim, { recursive: true });
+		writeFileSync(join(victim, "keep.txt"), "x");
+		// What runs is `rm`, but only the shell knows that: the classifier sees a substitution where the command is.
+		const command = `$(echo rm) -rf '${victim}'`;
+		let shown = null as RiskTitle | null;
+		await turn(c, c.remote, { name: "bash", args: { command } }, (ask) => {
+			shown = parseRiskTitle(String(ask.title));
+			return RISK_DENY;
+		});
+		expect(shown).toEqual({ tool: "bash", by: "remote", kinds: ["dynamic_command"], detail: `Command: ${command}` });
+		expect(existsSync(join(victim, "keep.txt"))).toBe(true);
+		await c.close();
+	}, 90_000);
 });
 
 describe("a conversation that cannot be covered", () => {

@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { installGate } from "../../server/omp/gate/install.ts";
 import { GUARD_UNAVAILABLE, type GuardDecision, type GuardWord, parseDecision } from "../../shared/guard.ts";
-import { parseRiskTitle, RISK_ALLOW, RISK_DENY } from "../../shared/risk-confirm.ts";
+import { parseRiskTitle, RISK_ALLOW, RISK_DENY, type RiskKind } from "../../shared/risk-confirm.ts";
 
 /**
  * "Guard dangerous commands" (#609), the gate as omp loads it from the data folder, with no omp: a fake `ctx` (models,
@@ -908,5 +908,50 @@ describe("what no threshold lets through unasked", () => {
 		sent.length = 0;
 		expect(await g.handler({ toolName: "read", input: { path: "/work/proj/guard.json" } }, ctx)).toBeUndefined();
 		expect(sent).toEqual([]);
+	});
+});
+
+// ------------------------------------------------------------------ A-007: shapes the classifier used to let through
+
+describe("a command put together when it runs, another computer, the keychain, the crontab (A-007)", () => {
+	const BYPASSES: [string, RiskKind][] = [
+		["$(echo rm) -rf ~", "dynamic_command"],
+		["`echo rm` -rf ~", "dynamic_command"],
+		["r=rm; $r -rf ~", "dynamic_command"],
+		["printf 'rm -rf ~' | sh", "dynamic_command"],
+		["echo cm0gLXJmIH4= | base64 -d | bash", "dynamic_command"],
+		[`bash -c "$(printf 'rm -rf ~')"`, "dynamic_command"],
+		["ssh host 'rm -rf ~'", "remote_shell"],
+		["security find-generic-password -wa x", "secret_read"],
+		["crontab -r", "scheduled"],
+	];
+
+	test("each is put to the reviewer, whose denial refuses it", async () => {
+		answers["gpt-reviewer"] = DENY;
+		const g = await load();
+		const { ctx } = context({ cwd: scratch() });
+		for (const [n, [command, kind]] of BYPASSES.entries()) {
+			sent.length = 0;
+			const out = await g.handler({ toolName: "bash", toolCallId: `a7_${n}`, input: { command } }, ctx);
+			expect(out?.block, command).toBe(true);
+			expect(sent, command).toHaveLength(1);
+			expect(sent[0].user, command).toContain(JSON.stringify(`Command: ${command}`));
+			expect(g.decisions().at(-1)?.kinds, command).toContain(kind);
+		}
+	});
+
+	test('each waits for the page while "Confirm risky commands from remote pages" is armed', async () => {
+		const g = await load({ mode: "off" }, { armed: true });
+		for (const [command, kind] of BYPASSES) {
+			const { ctx, asked } = context({ cwd: scratch(), answer: RISK_DENY });
+			const out = await g.handler({ toolName: "bash", toolCallId: "a7", input: { command } }, ctx);
+			expect(out?.block, command).toBe(true);
+			expect(asked, command).toHaveLength(1);
+			expect(parseRiskTitle(asked[0].title), command).toMatchObject({
+				by: "remote",
+				kinds: expect.arrayContaining([kind]),
+				detail: `Command: ${command}`,
+			});
+		}
 	});
 });

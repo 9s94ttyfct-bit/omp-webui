@@ -94,9 +94,13 @@ export const en = {
 	reqRisk_force_push: "it overwrites or deletes history on a git remote",
 	reqRisk_discard: "it throws away uncommitted work or git history",
 	reqRisk_remote_exec: "it runs a script it downloads",
+	reqRisk_dynamic_command:
+		"its command is only put together when it runs (a variable or $(…) as the command, eval, or a script piped into a shell)",
+	reqRisk_remote_shell: "it runs a command on another computer (ssh)",
 	reqRisk_permissions: "it changes the permissions of many files",
 	reqRisk_shell_out: "it starts a program from a command that is only known when it runs",
 	reqRisk_launchctl: "it changes what macOS starts (launchctl)",
+	reqRisk_scheduled: "it changes scheduled jobs or system services (crontab, at, systemctl)",
 	reqRisk_osascript: "it runs AppleScript (osascript)",
 	reqRisk_tunnel: "it opens a tunnel to this computer",
 	reqRisk_global_install: "it installs software for the whole system",

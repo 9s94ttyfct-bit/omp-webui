@@ -235,6 +235,10 @@ describe("what the guard promises to look at, in a program an eval cell runs", (
 		],
 		["a delete of one file whose name is worked out", "import { unlinkSync } from 'node:fs'; unlinkSync(file)"],
 		["a list's remove", "items.remove(x)"],
+		// A template's or a string's `${…}` is the program's own, not a command the shell puts together (A-007).
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: a program's source, handed to the classifier as text
+		["a message from a template", "console.log(`${name} is done`)"],
+		["a string that starts with a variable", "const line = '$HOME is ' + home; console.log(line)"],
 	])("%s runs unasked", (_name, code) => {
 		expect(evalJs(code)).toEqual([]);
 	});
@@ -245,6 +249,11 @@ describe("what the guard promises to look at, in a program an eval cell runs", (
 				"const d = fs.mkdtempSync(path.join(os.tmpdir(), 'x-')); fs.rmSync(path.join(os.homedir(), name), { recursive: true })",
 			),
 		).toContain("delete_outside");
+	});
+
+	test("a python f-string or a perl variable is not a command put together by the shell (A-007)", () => {
+		expect(evalPy('print(f"{name} has {n} items")')).toEqual([]);
+		expect(bash("perl -ne '$n++ if /x/; END { print $n }' a.txt")).toEqual([]);
 	});
 });
 
