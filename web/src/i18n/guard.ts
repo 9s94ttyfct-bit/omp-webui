@@ -90,6 +90,17 @@ export const en = {
 	sessionDeniedOff: "When the reviewer denies a call, it is refused",
 	pickerLabel: "Guard: {mode}",
 	pickerTitle: "Guard dangerous commands, for this conversation",
+	// ---- The guard's switch in a conversation's header
+	toggleStateOn: "Guard is on for this conversation: {mode}.",
+	toggleStateOff: "Guard is off for this conversation.",
+	toggleStateOffSettings: "Guard is off (following the global setting).",
+	toggleTurnOff: "Turn it off for this conversation alone.",
+	toggleTurnOnPrevious: "Turn it back on: {mode}.",
+	toggleTurnOnHere: "Turn it on for this conversation alone: {mode}.",
+	toggleTurnOnSettings: "Turn it back on: follow Settings ({mode}).",
+	toggleRemote: "It is switched on the computer omp-webui runs on.",
+	toggleTip: "{state} {action}",
+	toggleFailed: "Could not switch the guard of this conversation: {error}",
 	perConversation:
 		"These settings are the default. A conversation can choose its own, for itself and its subagents: in “This session”, and in New chat before the first message. What it does not choose follows these. The rules and the category settings of the Guard page apply to every conversation.",
 	sessionDamaged:
