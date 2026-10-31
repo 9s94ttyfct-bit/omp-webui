@@ -57,7 +57,7 @@ test("a streamed token costs the page the same with hundreds of conversations li
 	await page.goto("/");
 	const rows = page.locator('[data-testid="session-item"]');
 	// The sidebar draws only the rows in view: how many conversations it lists is how tall its list is (a row is ~32 px).
-	const listed = () => page.getByTestId("session-list").evaluate((el) => el.scrollHeight / 32);
+	const listed = () => page.getByTestId("session-scroll").evaluate((el) => el.scrollHeight / 32);
 	await expect.poll(listed, { timeout: 60_000 }).toBeGreaterThan(BULK);
 	const liveId = await startLive(page, tap, title, "stream-cost-probe");
 

@@ -27,11 +27,9 @@ const ROW_HEIGHT = 32;
 /** A content match's row (#717) has the line of the message under its name. */
 const HIT_ROW_HEIGHT = 50;
 const HEADING_HEIGHT = 32;
-const TITLE_HEIGHT = 28;
 
 type Entry =
-	| { kind: "title"; key: string }
-	| { kind: "heading"; key: string; label: string; fold?: boolean }
+	| { kind: "heading"; key: string; label: string }
 	| { kind: "session"; key: string; session: SessionSummary };
 
 /** The group whose heading folds it (the Pinned one, #700): its name, whether it is folded, and how many rows it has. */
@@ -119,20 +117,26 @@ export function SessionList({
 	onSelect,
 }: Props) {
 	const t = useT();
-	const navRef = useRef<HTMLElement>(null);
-	const entries = useMemo<Entry[]>(() => {
+	const navRef = useRef<HTMLDivElement>(null);
+	/**
+	 * The rows that scroll. The archive's title and the Pinned group's fold are not among them: they are on the list's
+	 * toolbar, which stays put while the rows scroll under it, with the list's actions (Select, the archive, the order).
+	 */
+	const { entries, pinnedHeading } = useMemo(() => {
 		const out: Entry[] = [];
-		if (showArchived && groups.length) out.push({ kind: "title", key: "title" });
+		let pinnedHeading = false;
 		for (const [label, list] of groups) {
 			// A search's results are one ranked list: its groups are the caller's order, not dates to head. The content
 			// matches are the exception: they are not name matches, and the heading says so.
 			const found = list[0] !== undefined && hits?.has(list[0].file) === true;
-			if (!ranked || found)
-				out.push({ kind: "heading", key: `heading:${label}`, label, fold: foldable?.label === label });
+			if (!ranked || found) {
+				if (foldable?.label === label) pinnedHeading = true;
+				else out.push({ kind: "heading", key: `heading:${label}`, label });
+			}
 			for (const session of list) out.push({ kind: "session", key: session.file, session });
 		}
-		return out;
-	}, [groups, showArchived, ranked, foldable?.label, hits]);
+		return { entries: out, pinnedHeading };
+	}, [groups, ranked, foldable?.label, hits]);
 	const indexOfFile = useMemo(() => {
 		const m = new Map<string, number>();
 		entries.forEach((e, i) => {
@@ -151,7 +155,7 @@ export function SessionList({
 		estimateSize: (i) => {
 			const entry = entries[i];
 			if (entry?.kind === "session") return hits?.has(entry.session.file) ? HIT_ROW_HEIGHT : ROW_HEIGHT;
-			return entry?.kind === "heading" ? HEADING_HEIGHT : TITLE_HEIGHT;
+			return HEADING_HEIGHT;
 		},
 		getItemKey: (i) => entries[i]?.key ?? i,
 		overscan: OVERSCAN,
@@ -225,77 +229,76 @@ export function SessionList({
 		if (!(e.relatedTarget instanceof Node && navRef.current?.contains(e.relatedTarget))) focused.current = null;
 	};
 
+	const fold = pinnedHeading ? foldable : undefined;
 	return (
 		<nav
-			ref={navRef}
-			className="@container mt-1 min-h-32 flex-1 overflow-y-auto px-2 pb-2"
+			className="mt-1 flex min-h-32 flex-1 flex-col"
 			data-testid="session-list"
 			onKeyDown={onKeyDown}
 			onFocus={onFocus}
 			onBlur={onBlur}
 		>
-			{!entries.length && (showArchived || actions) ? (
-				<ListHeading first caps label={showArchived ? t("shell.sidebarArchived") : ""} actions={actions} />
-			) : null}
-			{before}
-			{entries.length ? (
-				<div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
-					{virtualizer.getVirtualItems().map((v) => {
-						const entry = entries[v.index];
-						if (!entry) return null;
-						return (
-							<div
-								key={entry.key}
-								ref={virtualizer.measureElement}
-								data-index={v.index}
-								data-row-file={entry.kind === "session" ? entry.session.file : undefined}
-								className="absolute top-0 left-0 w-full"
-								style={{ transform: `translateY(${v.start}px)` }}
-							>
-								{entry.kind === "title" ? (
-									<ListHeading
-										first={v.index === 0}
-										caps
-										label={t("shell.sidebarArchived")}
-										actions={v.index === 0 ? actions : null}
-									/>
-								) : entry.kind === "heading" ? (
-									<ListHeading
-										first={v.index === 0}
-										label={entry.label}
-										actions={v.index === 0 ? actions : null}
-										fold={entry.fold ? foldable : undefined}
-									/>
-								) : (
-									<SessionItem
-										session={entry.session}
-										mark={marks?.get(entry.session.file)}
-										snippet={hits?.get(entry.session.file)?.snippet}
-										active={activeFile === entry.session.file}
-										pinned={pinSet.has(entry.session.file)}
-										archived={archivedSet.has(entry.session.file)}
-										liveState={liveFiles.get(entry.session.file)}
-										onOpen={onOpen}
-										onTogglePin={onTogglePin}
-										onToggleArchive={onToggleArchive}
-										onAction={onAction}
-										selecting={selecting}
-										selected={selected.has(entry.session.file)}
-										onSelect={onSelect}
-									/>
-								)}
-							</div>
-						);
-					})}
+			{showArchived || actions || fold ? (
+				// A container of its own: the actions drop their labels by the list's width (`@container` queries), not the page's.
+				<div className="@container shrink-0 px-2" data-testid="session-list-toolbar">
+					<ListHeading
+						first
+						caps={showArchived}
+						label={showArchived ? t("shell.sidebarArchived") : ""}
+						actions={actions}
+						fold={fold}
+					/>
 				</div>
 			) : null}
+			<div ref={navRef} className="@container min-h-0 flex-1 overflow-y-auto px-2 pb-2" data-testid="session-scroll">
+				{before}
+				{entries.length ? (
+					<div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+						{virtualizer.getVirtualItems().map((v) => {
+							const entry = entries[v.index];
+							if (!entry) return null;
+							return (
+								<div
+									key={entry.key}
+									ref={virtualizer.measureElement}
+									data-index={v.index}
+									data-row-file={entry.kind === "session" ? entry.session.file : undefined}
+									className="absolute top-0 left-0 w-full"
+									style={{ transform: `translateY(${v.start}px)` }}
+								>
+									{entry.kind === "heading" ? (
+										<ListHeading first={v.index === 0} label={entry.label} actions={null} />
+									) : (
+										<SessionItem
+											session={entry.session}
+											mark={marks?.get(entry.session.file)}
+											snippet={hits?.get(entry.session.file)?.snippet}
+											active={activeFile === entry.session.file}
+											pinned={pinSet.has(entry.session.file)}
+											archived={archivedSet.has(entry.session.file)}
+											liveState={liveFiles.get(entry.session.file)}
+											onOpen={onOpen}
+											onTogglePin={onTogglePin}
+											onToggleArchive={onToggleArchive}
+											onAction={onAction}
+											selecting={selecting}
+											selected={selected.has(entry.session.file)}
+											onSelect={onSelect}
+										/>
+									)}
+								</div>
+							);
+						})}
+					</div>
+				) : null}
+			</div>
 		</nav>
 	);
 }
 
 /**
- * One line of the list: a date group's name (or the archive's title) and, on the first line of the list, the list's
- * actions at the right (Select, the archive), so that they take no row of their own above it.
+ * One line of the list: a date group's name, or the list's toolbar (the archive's title, the Pinned group's fold and the
+ * list's actions at the right: Select, the archive, the order), which stays above the rows as they scroll.
  *
  * The name keeps its full width (`min-w-min`): the date is the only thing that says which group a row is in, and a
  * stub of it ("T…") says nothing. The actions are one group that moves to a second line when the name and the
@@ -312,13 +315,16 @@ function ListHeading({
 	actions: ReactNode;
 	first: boolean;
 	caps?: boolean;
-	/** The heading folds its group: it is a button that says so, with how many rows are hidden while it is folded. */
+	/** The Pinned group's fold: a button that says so, with how many rows are hidden while it is folded. */
 	fold?: FoldableGroup;
 }) {
 	const t = useT();
-	const name = cx("min-w-min flex-1 truncate text-xs font-medium text-faint", caps && "tracking-wide uppercase");
+	const name = "min-w-min flex-1 truncate text-xs font-medium text-faint";
 	return (
 		<div className={cx("flex flex-wrap items-center gap-1 px-2.5", first ? "pt-1 pb-0.5" : "pt-3 pb-1")}>
+			{label || !fold ? (
+				<span className={cx(name, caps && "tracking-wide uppercase", fold && "flex-none")}>{label}</span>
+			) : null}
 			{fold ? (
 				<button
 					type="button"
@@ -329,12 +335,10 @@ function ListHeading({
 					onClick={fold.onToggle}
 				>
 					{fold.folded ? <ChevronRight size={12} aria-hidden /> : <ChevronDown size={12} aria-hidden />}
-					{label}
+					{fold.label}
 					{fold.folded ? <span className="ml-1 tabular-nums">{fold.count}</span> : null}
 				</button>
-			) : (
-				<span className={name}>{label}</span>
-			)}
+			) : null}
 			{actions ? <span className="flex shrink-0 items-center gap-1">{actions}</span> : null}
 		</div>
 	);

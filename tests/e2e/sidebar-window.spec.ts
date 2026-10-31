@@ -53,7 +53,8 @@ test.beforeAll(() => {
 });
 test.afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-const list = (page: Page) => page.getByTestId("session-list");
+/** The part of the list that scrolls: the rows and the date headings, under the list's toolbar. */
+const list = (page: Page) => page.getByTestId("session-scroll");
 const rows = (page: Page) => list(page).getByTestId("session-item");
 const scrollTo = (page: Page, top: number) =>
 	list(page).evaluate((el, y) => {
@@ -83,6 +84,29 @@ test("only the rows in view are in the page, and scrolling brings the others", a
 	expect(await rows(page).count()).toBeLessThan(80);
 	await scrollTo(page, 0);
 	await expect(rows(page).first()).toContainText(title(COUNT));
+});
+
+test("the list's toolbar (Select, the order) stays put while the rows scroll under it", async ({ page }) => {
+	await openSidebar(page);
+	const toolbar = page.getByTestId("session-list-toolbar");
+	const select = toolbar.getByTestId("select-sessions");
+	const sort = toolbar.getByTestId("session-sort");
+	const before = await select.boundingBox();
+	if (!before) throw new Error("no Select button");
+	const scroller = await list(page).boundingBox();
+	if (!scroller) throw new Error("no list");
+	// The rows start under the toolbar, not under the search field.
+	expect(scroller.y).toBeGreaterThanOrEqual(before.y + before.height - 1);
+
+	await scrollTo(page, 200 * 32);
+	await expect(rows(page).first()).not.toContainText(title(COUNT));
+	await expect(select).toBeInViewport();
+	await expect(sort).toBeVisible();
+	expect(await select.boundingBox(), "the toolbar did not move with the rows").toEqual(before);
+	await select.click();
+	await expect(select).toHaveAttribute("aria-pressed", "true");
+	await select.click();
+	await expect(select).toHaveAttribute("aria-pressed", "false");
 });
 
 test("the keyboard reaches every row: arrows, Home, End and Tab", async ({ page }) => {

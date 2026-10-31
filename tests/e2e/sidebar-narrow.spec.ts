@@ -5,14 +5,14 @@ import { expect, type Page, test } from "./fixtures.ts";
 
 /**
  * The sidebar at its narrowest (200px, the minimum the handle allows) still says what it says (no model call):
- * the first date group's name is whole next to the list's actions (Select, the archive). A date cut to "T…" says
- * nothing, and an action that spills out of the sidebar cannot be used.
+ * the first date group's name is whole, and the list's actions (Select, the archive) on the toolbar above it fit. A
+ * date cut to "T…" says nothing, and an action that spills out of the sidebar cannot be used.
  */
 
 const sidebar = (page: Page) => page.locator("aside", { has: page.getByTestId("session-list") });
 
-/** The first line of the list: the date group's name, and the actions at its right. */
-const listHeading = (page: Page) => page.getByTestId("session-list").locator("div > div > span").first();
+/** The first date group's name: the first heading of the rows, under the list's toolbar. */
+const listHeading = (page: Page) => page.getByTestId("session-scroll").getByText(/^(Today|今天)$/).first();
 
 /** Put the sidebar at its narrowest, the way a user does: the handle, then Home. */
 async function narrowest(page: Page) {
@@ -66,7 +66,7 @@ for (const [lang, archiveMenu] of [
 			try {
 				await narrowest(page);
 
-				// The first date group's name: whole, and next to the actions rather than cut to a stub.
+				// The first date group's name: whole, not cut to a stub.
 				const heading = listHeading(page);
 				await expect(heading).toHaveText(/Today|今天/);
 				expect(await heading.evaluate((e) => e.scrollWidth > e.clientWidth + 1), "the date is not cut off").toBe(false);
