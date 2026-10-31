@@ -43,9 +43,16 @@ export interface FakeOmpOptions {
 	/**
 	 * What `omp -p` (print mode, without `--mode`) does, as the guard's benchmark asks its reviewer: appends its arguments to
 	 * `log` (one JSON line each), waits `delayMs`, and answers a deny when the message (the last argument) contains one of
-	 * `deny`, an allow otherwise. It never runs anything.
+	 * `deny`, an allow otherwise. `answers`: the first whose `when` the message contains is printed as it is instead (what
+	 * another request asked through print mode, the guidance conflict check, is answered). It never runs anything.
 	 */
-	review?: { log?: string; delayMs?: number; deny?: string[]; reason?: string };
+	review?: {
+		log?: string;
+		delayMs?: number;
+		deny?: string[];
+		reason?: string;
+		answers?: { when: string; text: string }[];
+	};
 	/**
 	 * `cancel_subagent` parks the subagent (`get_subagents` no longer lists it) and these frames follow it `afterMs` later, as omp
 	 * (18.14) continues the turn that waited for it; `marker`: a file created once they are written.
@@ -64,6 +71,11 @@ if (!process.argv.includes("--mode")) {
     if (options.review.log) require("node:fs").appendFileSync(options.review.log, JSON.stringify({ argv, cwd: process.cwd() }) + "\\n");
     if (options.review.delayMs) await Bun.sleep(options.review.delayMs);
     const user = argv[argv.length - 1];
+    const answer = (options.review.answers ?? []).find((a) => user.includes(a.when));
+    if (answer) {
+      console.log(answer.text);
+      process.exit(0);
+    }
     const deny = (options.review.deny ?? []).some((s) => user.includes(s));
     console.log(deny ? JSON.stringify({ decision: "deny", reason: options.review.reason ?? "the fake reviewer denies this" }) : JSON.stringify({ decision: "allow" }));
     process.exit(0);

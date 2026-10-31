@@ -1,3 +1,4 @@
+import type { ConflictCheckResult } from "@shared/guidance-conflict.ts";
 import {
 	GUIDANCE_MAX,
 	GUIDANCE_NAME_MAX,
@@ -9,15 +10,22 @@ import {
 	type LiveGuidance,
 	newGuidanceId,
 } from "@shared/model-guidance.ts";
+import { PREF } from "@shared/prefs.ts";
 import { Check, Pencil, Sparkles, X } from "lucide-react";
-import { type ComponentProps, useEffect, useId, useRef, useState } from "react";
+import { type ComponentProps, lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { type Translate, useT } from "../i18n/index.ts";
 import { GuidanceApiError, guidanceApi } from "../lib/guidance-api.ts";
 import { templateName } from "../lib/guidance-names.ts";
 import { useGuidanceStrings } from "../lib/guidance-strings.ts";
+import { onPrefsChanged } from "../lib/prefs.ts";
 import { useApp } from "../store/app.ts";
 import { Select } from "./Select.tsx";
 import { Button, cx, IconButton, Modal, Spinner } from "./ui.tsx";
+
+// The review of a conflict check: drawn only once a check is asked for, so a chunk of its own.
+const GuidanceConflicts = lazy(() => import("./GuidanceConflicts.tsx").then((m) => ({ default: m.GuidanceConflicts })));
+
+const checkWanted = (): boolean => localStorage.getItem(PREF.guidanceCheck) !== "off";
 
 /** Why a template's name is refused, in the page's language. */
 function nameProblemText(problem: GuidanceNameProblem, t: Translate): string {
@@ -115,10 +123,20 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 	const renameNote = useId();
 	const newNote = useId();
 	const key = liveId ?? file;
+	// The conflict check (v0.13.0): its answer (null while it runs), shown under the actions until closed.
+	const [check, setCheck] = useState<{ result: ConflictCheckResult | null } | null>(null);
+	const checkAbort = useRef<AbortController | null>(null);
+	// Save to template wrote a template: templates are not checked against a folder, and the tab says how to check this one.
+	const [templateNote, setTemplateNote] = useState(false);
+	const [checkOn, setCheckOn] = useState(checkWanted);
+	useEffect(() => onPrefsChanged((keys) => keys.includes(PREF.guidanceCheck) && setCheckOn(checkWanted())), []);
 	useEffect(() => {
 		if (!key) return;
 		let live = true;
 		setError(null);
+		setCheck(null);
+		setTemplateNote(false);
+		checkAbort.current?.abort();
 		setTemplates(null);
 		const read = liveId ? guidanceApi.ofLive(liveId) : guidanceApi.ofFile(file as string);
 		read.then(
@@ -133,6 +151,7 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 		);
 		return () => {
 			live = false;
+			checkAbort.current?.abort();
 		};
 	}, [key, liveId, file]);
 	const value: LiveGuidance | null = liveId ? (liveGuidance ?? null) : kept;
@@ -171,9 +190,32 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 	const tooLong = text.length > GUIDANCE_MAX;
 	const readOnly = !local || busy;
 
-	const apply = async (next: { template?: string; text?: string } | null) => {
+	/** Ask the server to check `guidance`, now saved for this conversation, for conflicts (v0.13.0); a page elsewhere never does. */
+	const runCheck = (guidance: string) => {
+		if (!local || !checkOn || !guidanceText(guidance)) return;
+		checkAbort.current?.abort();
+		const abort = new AbortController();
+		checkAbort.current = abort;
+		setCheck({ result: null });
+		guidanceApi.conflicts({ liveId, file }, guidance, abort.signal).then(
+			(result) => {
+				if (!abort.signal.aborted) setCheck({ result });
+			},
+			(e: unknown) => {
+				// The request itself failed (the server is gone, a refusal): the check could not be made; the save stands.
+				if (!abort.signal.aborted)
+					setCheck({ result: { state: "failed", reason: "model", detail: (e as Error).message } });
+			},
+		);
+	};
+	/**
+	 * Make `next` what the conversation carries. `checked`: a save of the person's (Save for this conversation, another
+	 * template) is checked for conflicts afterwards when it changed what the conversation carries.
+	 */
+	const apply = async (next: { template?: string; text?: string } | null, checked = false): Promise<boolean> => {
 		setBusy(true);
 		setError(null);
+		const before = carried;
 		try {
 			const now = liveId
 				? ((await guidanceApi.change(liveId, next)) ?? null)
@@ -181,11 +223,25 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 			setKept(now);
 			setTouched(false);
 			setText(now?.text ?? "");
+			setTemplateNote(false);
+			if (checked && now && guidanceText(now.text) !== guidanceText(before)) runCheck(now.text);
+			return true;
 		} catch (e) {
 			setError((e as Error).message);
+			return false;
 		} finally {
 			setBusy(false);
 		}
+	};
+	/** A change the review applies to the guidance: this conversation's own text, saved without another check. */
+	const saveReviewed = async (next: string): Promise<string> => {
+		const now = liveId
+			? ((await guidanceApi.change(liveId, { text: next })) ?? null)
+			: await guidanceApi.changeFile(file as string, { text: next });
+		setKept(now);
+		setTouched(false);
+		setText(now?.text ?? "");
+		return now?.text ?? "";
 	};
 	/** Write the box into `into` (as the store has it now, so that a rename made elsewhere is kept), then carry it here. */
 	const writeTemplate = async (into: GuidanceTemplate) => {
@@ -202,7 +258,7 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 			return;
 		}
 		setBusy(false);
-		await apply({ template: into.id, text });
+		if (await apply({ template: into.id, text })) setTemplateNote(true);
 	};
 	/** Save to template: asks first when other conversations use the template (counted now, not when the tab opened). */
 	const saveToTemplate = async () => {
@@ -310,6 +366,17 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 				: (templates?.length ?? 0) >= GUIDANCE_TEMPLATES_MAX
 					? t("guidance.tooManyTemplates", { max: GUIDANCE_TEMPLATES_MAX })
 					: null);
+	// Check for conflicts: the text the conversation carries now (saved), compared again on the person's word.
+	const checkReason =
+		remote ??
+		waiting ??
+		(!checkOn
+			? t("guidance.conflictCheckOff")
+			: !guidanceText(carried)
+				? t("guidance.textNeeded")
+				: check?.result === null
+					? t("guidance.conflictChecking")
+					: null);
 	const shown = value?.template && template ? value.template : value || customMode ? "custom" : "";
 
 	return (
@@ -415,7 +482,8 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 										setCustomMode(false);
 										if (!id) return void apply(null);
 										const found = templates.find((x) => x.id === id);
-										if (found) void apply({ template: found.id, text: found.text });
+										// Another template is a save of the person's: it is checked like one.
+										if (found) void apply({ template: found.id, text: found.text }, true);
 									}}
 								>
 									<option value="">{t("guidance.pickNone")}</option>
@@ -487,7 +555,7 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 							reason={saveReason}
 							hint={t("guidance.saveHereHint")}
 							// This conversation's own text (none when empty); a template it came from is left as it is.
-							onRun={() => void apply(guidanceText(text) ? { text } : null)}
+							onRun={() => void apply(guidanceText(text) ? { text } : null, true)}
 						>
 							{t("guidance.saveHere")}
 						</ReasonButton>
@@ -509,7 +577,37 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 						>
 							{t("guidance.newFromText")}
 						</ReasonButton>
+						<ReasonButton
+							size="sm"
+							variant="ghost"
+							data-testid="guidance-check"
+							reason={checkReason}
+							hint={t("guidance.conflictCheckHint")}
+							onRun={() => runCheck(carried)}
+						>
+							{t("guidance.conflictCheck")}
+						</ReasonButton>
 					</div>
+					{templateNote && checkOn && local ? (
+						<p className="text-xs text-faint" data-testid="guidance-template-note">
+							{t("guidance.conflictTemplateNote")}
+						</p>
+					) : null}
+					{check ? (
+						<Suspense fallback={<Spinner size={12} />}>
+							<GuidanceConflicts
+								result={check.result}
+								scope={{ liveId, file }}
+								carried={carried}
+								saveGuidance={saveReviewed}
+								onRetry={() => runCheck(carried)}
+								onClose={() => {
+									checkAbort.current?.abort();
+									setCheck(null);
+								}}
+							/>
+						</Suspense>
+					) : null}
 					{value?.skipped ? (
 						<p className="text-xs text-warning" data-testid="guidance-skipped">
 							{value.skipped === "trustedExtension"

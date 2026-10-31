@@ -19,6 +19,7 @@ import { Button, CardHeader, cx, Modal, Spinner } from "./ui.tsx";
 
 const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 const defaultOf = (): string | null => localStorage.getItem(PREF.guidanceDefault);
+const checkOf = (): boolean => localStorage.getItem(PREF.guidanceCheck) !== "off";
 
 /** A template being edited: a new one (no id yet) or one that exists. */
 interface Draft {
@@ -48,7 +49,15 @@ export function GuidanceSettings() {
 	const [busy, setBusy] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [defaultId, setDefaultId] = useState(defaultOf);
-	useEffect(() => onPrefsChanged((keys) => keys.includes(PREF.guidanceDefault) && setDefaultId(defaultOf())), []);
+	const [checkOn, setCheckOn] = useState(checkOf);
+	useEffect(
+		() =>
+			onPrefsChanged((keys) => {
+				if (keys.includes(PREF.guidanceDefault)) setDefaultId(defaultOf());
+				if (keys.includes(PREF.guidanceCheck)) setCheckOn(checkOf());
+			}),
+		[],
+	);
 	useEffect(() => {
 		let live = true;
 		guidanceApi.templates().then(
@@ -126,6 +135,24 @@ export function GuidanceSettings() {
 					{byDefault ? t("guidance.newChatsGet", { name: templateName(byDefault, t) }) : t("guidance.newChatsNone")}
 				</p>
 			) : null}
+			{/* The conflict check (v0.13.0): on by default; what it costs is said beside the switch. */}
+			<label className="mb-3 flex cursor-pointer items-start gap-2 text-sm" data-testid="guidance-check-setting">
+				<input
+					type="checkbox"
+					className="mt-1 accent-[var(--accent)]"
+					data-testid="guidance-check-toggle"
+					checked={checkOn}
+					disabled={!local}
+					onChange={(e) => {
+						setPref(PREF.guidanceCheck, e.target.checked ? "on" : "off");
+						setCheckOn(e.target.checked);
+					}}
+				/>
+				<span>
+					{t("guidance.conflictSetting")}
+					<span className="block text-xs text-muted">{t("guidance.conflictSettingHint")}</span>
+				</span>
+			</label>
 			{error ? (
 				<p className="mb-2 text-xs text-danger" data-testid="guidance-settings-error">
 					{t("guidance.loadFailed", { error })}
@@ -197,6 +224,7 @@ export function GuidanceSettings() {
 					key={draft.id ?? `new:${draft.name}`}
 					draft={draft}
 					isDefault={draft.id !== undefined && draft.id === defaultId}
+					checkOn={checkOn}
 					shipped={BUILTIN_GUIDANCE.find((b) => b.id === draft.id) ?? null}
 					busy={busy}
 					onClose={() => setDraft(null)}
@@ -260,6 +288,7 @@ export function GuidanceSettings() {
 function TemplateDialog({
 	draft,
 	isDefault,
+	checkOn,
 	shipped,
 	busy,
 	onClose,
@@ -269,6 +298,8 @@ function TemplateDialog({
 }: {
 	draft: Draft;
 	isDefault: boolean;
+	/** The conflict check is on: the editor says that a template is not checked against a folder, and how one is. */
+	checkOn: boolean;
 	/** The shipped template of the same id, for Reset. */
 	shipped: GuidanceTemplate | null;
 	busy: boolean;
@@ -328,6 +359,11 @@ function TemplateDialog({
 						}}
 					/>
 				</label>
+				{checkOn ? (
+					<p className="text-xs text-faint" data-testid="guidance-template-check-note">
+						{t("guidance.conflictTemplateNote")}
+					</p>
+				) : null}
 				<label className="flex cursor-pointer items-start gap-2 text-sm">
 					<input
 						type="checkbox"

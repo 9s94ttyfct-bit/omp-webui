@@ -17,10 +17,16 @@ import {
 	GUARD_OUTCOMES,
 	GuardConfigError,
 	parseGuardOverridePatch,
+	reviewerSelectors,
 } from "../shared/guard.ts";
 import { GUARD_DEFAULTS } from "../shared/guard-policy.ts";
 import { isRecord } from "../shared/guards.ts";
-import { guidanceProblemText, parseSessionGuidance, type SessionGuidance } from "../shared/model-guidance.ts";
+import {
+	GUIDANCE_MAX,
+	guidanceProblemText,
+	parseSessionGuidance,
+	type SessionGuidance,
+} from "../shared/model-guidance.ts";
 import { isMode } from "../shared/offline.ts";
 import { PREF } from "../shared/prefs.ts";
 import { type ClientMessage, type LiveAttached, MAX_WS_MESSAGE_BYTES, type ServerMessage } from "../shared/protocol.ts";
@@ -72,6 +78,7 @@ import { watchOmpConfig } from "./omp/config-watch.ts";
 import { DocsToolService } from "./omp/docs-tool/install.ts";
 import { gatePaths, installGate } from "./omp/gate/install.ts";
 import { GATE_HANDLER_MS } from "./omp/gate/state.ts";
+import type { GuidanceConflictCheck } from "./omp/guidance/conflict-check.ts";
 import { liveGuidanceOf } from "./omp/guidance/hooks.ts";
 import { GuidanceService } from "./omp/guidance/service.ts";
 import { GuidanceStoreError } from "./omp/guidance/store.ts";
@@ -268,6 +275,8 @@ pool.setHold(() => importWriting);
 approval.handlerMs = GATE_HANDLER_MS;
 const guardSettings = new GuardSettings(cfg.dataDir);
 const guardLog = new GuardLog(cfg.dataDir);
+/** The guard's reviewer as the server reaches it (`omp -p`): the benchmark asks it, and so does the guidance conflict check. */
+const reviewerSource = ompReviewer(cfg.ompBin);
 /**
  * The benchmark of the guard (Guard page › Benchmark): the shipped and the person's own cases, judged by the settings as they
  * are now. It runs nothing; the reviewer, when the person asks for it, is asked through `omp -p` (`guard-reviewer.ts`).
@@ -281,7 +290,7 @@ const guardBench = new GuardBench({
 			gateApiPorts(),
 			gateHosts.length > 0 ? gateHosts : undefined,
 		),
-	reviewer: ompReviewer(cfg.ompBin),
+	reviewer: reviewerSource,
 });
 const DEV_PORT = Number(process.env.OMP_WEBUI_DEV_PORT) || null;
 /** The address of a network this server is bound to (`OMP_WEBUI_HOST`), as its gates should treat it (see `boundHosts`). */
@@ -730,6 +739,33 @@ function memoryService(): Promise<MemoryService> {
 		throw e;
 	});
 	return memoryLoading;
+}
+
+/**
+ * The guidance conflict check (v0.13.0, `server/omp/guidance/conflict-server.ts`), made on first use: a conversation's new
+ * guidance compared with the folder's context files and the project's memories by the guard reviewer's model, as the
+ * Guidance tab asks for it after a save. Off when Settings says so (`ompw.guidanceCheck`).
+ */
+let conflictLoading: Promise<GuidanceConflictCheck> | null = null;
+function guidanceConflicts(): Promise<GuidanceConflictCheck> {
+	conflictLoading ??= import("./omp/guidance/conflict-server.ts")
+		.then(({ serverConflictCheck }) =>
+			serverConflictCheck({
+				ompBin: cfg.ompBin,
+				agentDir: cfg.agentDir,
+				dataDirs: [cfg.dataDir, ...knownDataDirs()],
+				protect: [cfg.dataDir, cfg.agentDir, ...knownDataDirs()],
+				reviewer: reviewerSource,
+				configured: () => reviewerSelectors(guardSettings.get().reviewer),
+				enabled: () => uiPrefs.snapshot().values[PREF.guidanceCheck] !== "off",
+				memories: async (cwd, limit) => (await memoryService()).forFolder(cwd, limit),
+			}),
+		)
+		.catch((e: unknown) => {
+			conflictLoading = null;
+			throw e;
+		});
+	return conflictLoading;
 }
 
 /**
@@ -1614,6 +1650,23 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			} catch (e) {
 				return fail(`Could not change the conversation's guidance: ${(e as Error).message}`, 409);
 			}
+		}
+		case "/api/model-guidance/conflicts": {
+			// The guidance conflict check (v0.13.0): `text`, the guidance the conversation (`liveId`, or its session `file`) was
+			// just given, compared with its folder's AGENTS.md and the like and the project's memories by a small model. It
+			// writes nothing: the page proposes each change for the person to apply. This computer only, as a change of the
+			// guidance is, and because it reads the folder's files and what omp remembers.
+			if (req.method !== "POST") return fail("POST required", 405);
+			if (!onThisComputer.has(req)) return fail("The model guidance is changed on the computer omp-webui runs on", 403);
+			const body: unknown = await req.json().catch(() => null);
+			if (!isRecord(body) || typeof body.text !== "string" || body.text.length > GUIDANCE_MAX)
+				return fail("Bad value", 422);
+			const cwd = await conversationCwd(
+				typeof body.liveId === "string" ? body.liveId : null,
+				typeof body.file === "string" ? body.file : null,
+			);
+			if (!cwd) return fail("Unknown conversation", 404);
+			return json(await (await guidanceConflicts()).check(cwd, body.text));
 		}
 		case "/api/quota-floor": {
 			// The quota floor (#652): for each provider that has one, the share of a usage window that may be left before the work

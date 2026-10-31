@@ -300,7 +300,7 @@ export const SETTINGS: readonly SettingEntry[] = [
 		group: "guidance.title",
 		label: "guidance.title",
 		hint: "guidance.settingsIntro",
-		aliases: ["subagent", "template", "model guidance", "指导", "子代理", "模板"],
+		aliases: ["subagent", "template", "model guidance", "conflict", "AGENTS.md", "指导", "子代理", "模板", "冲突"],
 		target: '[data-testid="guidance-settings"]',
 	},
 	{

@@ -113,15 +113,21 @@ export const FIXTURE_FILES = {
  * that delete or otherwise consume sessions without touching the shared fixtures.
  * `n` (0–255) makes the file name and session id unique, and orders the sidebar: it lists by
  * mtime, so each file is stamped `now + n` seconds (writes in one tick would otherwise tie).
- * Returns the file path.
+ * Returns the file path. `cwd`: the folder the conversation worked in (the fixture project by default).
  */
-export function writeSimpleSession(agentDir: string, n: number, title: string, cost?: number): string {
+export function writeSimpleSession(
+	agentDir: string,
+	n: number,
+	title: string,
+	cost?: number,
+	cwd: string = FIXTURE_CWD,
+): string {
 	const hex = n.toString(16).padStart(2, "0");
 	const id = `01a00000-0000-7000-8000-0000000099${hex}`;
 	const file = join(agentDir, "sessions", FIXTURE_BUCKET, `2026-01-07T00-${hex}-00-000Z_${id}.jsonl`);
 	write(
 		file,
-		{ type: "session", version: 3, id, timestamp: ts(300 + n), cwd: FIXTURE_CWD },
+		{ type: "session", version: 3, id, timestamp: ts(300 + n), cwd },
 		[
 			user(`s${hex}000001`, null, 300 + n, `${title}?`),
 			assistant(`s${hex}000002`, `s${hex}000001`, 300 + n, [{ type: "text", text: `${title}.` }], {

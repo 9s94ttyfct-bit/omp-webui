@@ -1,3 +1,4 @@
+import { isAbsolute, relative, sep } from "node:path";
 import { isRecord } from "../../shared/guards.ts";
 import {
 	looksLikeSecret,
@@ -8,6 +9,7 @@ import {
 	MEMORY_PAGE_MAX,
 	type MemoryDeleted,
 	type MemoryDetail,
+	type MemoryItem,
 	type MemoryKind,
 	type MemoryOverview,
 	type MemoryQuery,
@@ -199,6 +201,43 @@ export class MemoryService {
 		const item = readMemory(file, id, this.#now());
 		if (!item) throw new MemoryError("That memory is not in the store (any more).", "notFound", 404);
 		return { item };
+	}
+
+	/**
+	 * The memories omp keeps for the project in `cwd`, newest first, at most `limit` (the guidance conflict check reads
+	 * them): every active note and consolidated memory of a project's bank whose memories were made in that folder, one
+	 * inside it or one it is inside, and the shared bank's notes made there. Not the excerpts of conversations: they say
+	 * what was said, not what holds.
+	 */
+	async forFolder(cwd: string, limit: number): Promise<MemoryItem[]> {
+		const { layout } = await this.#resolved();
+		const now = this.#now();
+		const within = (parent: string, child: string): boolean => {
+			const rel = relative(parent, child);
+			return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
+		};
+		const related = (dir: string): boolean => within(dir, cwd) || within(cwd, dir);
+		const items: MemoryItem[] = [];
+		for (const file of bankFiles(layout)) {
+			if (file.scratch) continue;
+			const query: MemoryQuery = {
+				q: "",
+				scope: file.scope,
+				bank: file.bank,
+				kinds: ["note", "consolidated"],
+				retired: "active",
+				limit: MEMORY_PAGE_MAX,
+				offset: 0,
+			};
+			if (file.scope === "project") {
+				if (bankInfo(file, now).cwds.some(related)) items.push(...listMemories(layout, query, now).items);
+			} else {
+				const made = listMemories(layout, { ...query, kinds: ["note"] }, now).items;
+				items.push(...made.filter((m) => m.provenance.cwd !== null && related(m.provenance.cwd)));
+			}
+		}
+		items.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+		return items.slice(0, limit);
 	}
 
 	/** The memory as the body names it, read now. */

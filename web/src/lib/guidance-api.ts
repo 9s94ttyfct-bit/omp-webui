@@ -1,3 +1,4 @@
+import type { ConflictCheckResult } from "@shared/guidance-conflict.ts";
 import type { GuidanceProblem, GuidanceTemplate, GuidanceTemplates, LiveGuidance } from "@shared/model-guidance.ts";
 import { useApp } from "../store/app.ts";
 
@@ -98,4 +99,15 @@ export const guidanceApi = {
 			headers: WRITE_HEADERS,
 			body: JSON.stringify({ file, guidance }),
 		}).then(({ guidance: now }) => now ?? null),
+	/**
+	 * Check `text`, which the conversation was just given, for conflicts with its folder's AGENTS.md and the like and with
+	 * what omp remembers for the project (v0.13.0). It writes nothing; a check that could not be made is an answer too.
+	 */
+	conflicts: (scope: { liveId: string | null; file: string | null }, text: string, signal?: AbortSignal) =>
+		request<ConflictCheckResult>("/api/model-guidance/conflicts", {
+			method: "POST",
+			headers: WRITE_HEADERS,
+			body: JSON.stringify({ ...(scope.liveId ? { liveId: scope.liveId } : { file: scope.file }), text }),
+			signal,
+		}),
 };

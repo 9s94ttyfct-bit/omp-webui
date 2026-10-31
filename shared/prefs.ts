@@ -75,6 +75,12 @@ export const PREF = {
 	 * id; v0.11.18 §6). Unset: none, as before. A template that is deleted stops being it.
 	 */
 	guidanceDefault: "ompw.guidanceDefault",
+	/**
+	 * Whether saving a conversation's guidance (or switching it to another template) checks it for conflicts with the folder's
+	 * AGENTS.md and similar files and with omp's memories of the project (v0.13.0): `on` (the default) or `off`. One request
+	 * to the guard reviewer's model per check; see `shared/guidance-conflict.ts`.
+	 */
+	guidanceCheck: "ompw.guidanceCheck",
 	/** The order of the sidebar's conversations (#701): `activity` (the default), `created` or `title`; see `web/src/lib/session-order.ts`. */
 	sessionSort: "ompw.sessionSort",
 	/** Whether the sidebar's Pinned group is folded (#700): `on` or `off` (the default). */
@@ -172,6 +178,7 @@ const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 	[PREF.guardBefore]: json(isRecord),
 	// A template's id, as the store bounds it (`GUIDANCE_ID_MAX`).
 	[PREF.guidanceDefault]: (v) => /^[^\s]{1,80}$/.test(v),
+	[PREF.guidanceCheck]: switchValue,
 };
 
 /** Whether `value` is something the app ever writes under `key` (length is checked apart: `MAX_PREF_LENGTH`). */
