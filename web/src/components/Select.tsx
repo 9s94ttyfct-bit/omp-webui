@@ -180,7 +180,7 @@ export function Select({
 }
 
 const ITEM =
-	"relative flex min-h-8 cursor-default select-none items-center rounded-lg py-1.5 pr-3 pl-8 outline-none data-[disabled]:pointer-events-none data-[highlighted]:bg-hover data-[disabled]:opacity-50 pointer-coarse:min-h-11";
+	"relative flex min-h-8 cursor-default select-none items-center rounded-lg py-1.5 pr-3 pl-8 outline-none data-[disabled]:pointer-events-none data-[highlighted]:bg-hover data-[disabled]:opacity-50";
 
 /** The list of a computer: Radix's select, its trigger in the place and look of the `<select>` it stands for. */
 function AppPicker({

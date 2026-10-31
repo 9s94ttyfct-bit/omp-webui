@@ -2,7 +2,7 @@ import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Select } from "../../../web/src/components/Select.tsx";
 import { Modal } from "../../../web/src/components/ui.tsx";
-import "../../../web/src/index.css";
+import "./harness.css";
 
 /**
  * The app's `Select` alone on a page (`tests/e2e/select-component.spec.ts` builds it with Vite): a list with a blank

@@ -175,6 +175,8 @@ test.describe("on a computer: the app's own listbox", () => {
 
 	test("a box that clips its content does not clip the list", async ({ page }) => {
 		await openHarness(page);
+		// The box is short and clips what overflows it, as a scrolled card or a dialog's body does.
+		await expect(page.getByTestId("clip")).toHaveCSS("overflow", "hidden");
 		await page.getByTestId("clipped").click();
 		const list = page.getByRole("listbox");
 		await expect(list).toBeVisible();
