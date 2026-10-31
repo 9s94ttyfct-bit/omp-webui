@@ -16,7 +16,8 @@ import { GuidanceApiError, guidanceApi } from "../lib/guidance-api.ts";
 import { templateName } from "../lib/guidance-names.ts";
 import { useGuidanceStrings } from "../lib/guidance-strings.ts";
 import { useApp } from "../store/app.ts";
-import { Button, cx, IconButton, Modal, Select, Spinner } from "./ui.tsx";
+import { Select } from "./Select.tsx";
+import { Button, cx, IconButton, Modal, Spinner } from "./ui.tsx";
 
 /** Why a template's name is refused, in the page's language. */
 function nameProblemText(problem: GuidanceNameProblem, t: Translate): string {
@@ -403,8 +404,7 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 									data-testid="guidance-template"
 									value={shown}
 									disabled={readOnly}
-									onChange={(e) => {
-										const id = e.target.value;
+									onValueChange={(id) => {
 										if (id === "custom") {
 											// A template's text becomes the conversation's own, so that editing it needs no question;
 											// with nothing carried yet, the box waits for text and Save.

@@ -18,7 +18,8 @@ import { type MessageKey, useT } from "../i18n/index.ts";
 import { codedText, errorText } from "../lib/error-text.ts";
 import { loadMode, modeApi, saveOffline, setLightModels, setMode, useMode } from "../lib/offline.ts";
 import { contextRows, formatTokens, parseList, savingPercent } from "../lib/offline-format.ts";
-import { Button, CardHeader, cx, Select, Spinner, WithCode } from "./ui.tsx";
+import { Select } from "./Select.tsx";
+import { Button, CardHeader, cx, Spinner, WithCode } from "./ui.tsx";
 
 /** omp's names for what fills a fresh context window, as this page words them; any other name is shown as omp has it. */
 const ROW_LABELS: Record<string, MessageKey> = {
@@ -289,7 +290,7 @@ function LocalServerOptions({ state }: { state: ModeState }) {
 					<Select
 						data-testid="offline-model"
 						value={offline.model ?? ""}
-						onChange={(e) => void saveOffline({ model: e.target.value || null })}
+						onValueChange={(model) => void saveOffline({ model: model || null })}
 					>
 						<option value="">{t("mode.modelAuto", { backend: name })}</option>
 						{served.map((id) => (
@@ -331,8 +332,7 @@ function LocalServerOptions({ state }: { state: ModeState }) {
 				<Select
 					data-testid="offline-thinking"
 					value={offline.thinking}
-					onChange={(e) => {
-						const level = e.target.value;
+					onValueChange={(level) => {
 						if (isThinkingLevel(level)) void saveOffline({ thinking: level });
 					}}
 				>

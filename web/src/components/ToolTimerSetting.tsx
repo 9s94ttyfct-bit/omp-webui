@@ -1,7 +1,8 @@
 import "../i18n/later.ts";
 import { type MessageKey, useT } from "../i18n/index.ts";
 import { setToolTimerMode, TOOL_TIMERS, type ToolTimerMode, toolTimerOf, useToolTimerMode } from "../lib/tool-timer.ts";
-import { Select, WithCode } from "./ui.tsx";
+import { Select } from "./Select.tsx";
+import { WithCode } from "./ui.tsx";
 
 const LABELS: Record<ToolTimerMode, MessageKey> = {
 	all: "pages.settingsToolTimerAll",
@@ -28,7 +29,7 @@ export function ToolTimerSetting() {
 					className="mt-1.5"
 					data-testid="tool-timer-mode"
 					value={mode}
-					onChange={(e) => setToolTimerMode(toolTimerOf(e.target.value))}
+					onValueChange={(v) => setToolTimerMode(toolTimerOf(v))}
 				>
 					{TOOL_TIMERS.map((m) => (
 						<option key={m} value={m}>

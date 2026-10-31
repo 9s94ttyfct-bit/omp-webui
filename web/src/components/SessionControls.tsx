@@ -41,7 +41,8 @@ import { setConversationCompactAt } from "../store/compact-at.ts";
 import type { LiveState } from "../store/live.ts";
 import { COMPACT_AT_HELP, CompactAtRow, compactAtText } from "./CompactAtRow.tsx";
 import { INFO_BOX, InfoButton } from "./InfoButton.tsx";
-import { Button, cx, IconButton, Select, Spinner } from "./ui.tsx";
+import { Select } from "./Select.tsx";
+import { Button, cx, IconButton, Spinner } from "./ui.tsx";
 
 // The explanations are opened by a click: their strings travel with this chunk, not with the first page.
 registerStrings("controlsHelp", helpEn);
@@ -949,7 +950,7 @@ export function SessionControls({
 									aria-label={t("panel.controlsCompactWhere")}
 									data-testid="compact-where-choice"
 									value={where}
-									onChange={(e) => setPickedWhere(compactWhereOf(e.target.value) ?? "turn")}
+									onValueChange={(v) => setPickedWhere(compactWhereOf(v) ?? "turn")}
 								>
 									<option value="turn">{t("panel.controlsCompactWhereTurn")}</option>
 									<option value="step">{t("panel.controlsCompactWhereStep")}</option>

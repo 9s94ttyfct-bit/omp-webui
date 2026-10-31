@@ -20,8 +20,9 @@ import { setUpWithAi } from "../lib/remote-ai.ts";
 import { webUrl } from "../lib/web-url.ts";
 import { useApp } from "../store/app.ts";
 import { RemoteTransfer } from "./RemoteTransfer.tsx";
+import { Select } from "./Select.tsx";
 import { Switch } from "./Switch.tsx";
-import { Button, CardHeader, cx, Select, Spinner } from "./ui.tsx";
+import { Button, CardHeader, cx, Spinner } from "./ui.tsx";
 
 /** Where the Access application is made. */
 const DASHBOARD = "https://one.dash.cloudflare.com/";
@@ -378,7 +379,7 @@ export function RemoteSettings() {
 						disabled={busy === "config" && chosen.fileTransfer !== undefined}
 						aria-describedby={`${transferId}-hint`}
 						data-testid="remote-file-transfer-select"
-						onChange={(e) => void flip({ fileTransfer: e.target.value as FileTransfer })}
+						onValueChange={(v) => void flip({ fileTransfer: v as FileTransfer })}
 					>
 						<option value="off">{t("remote.fileTransferOff")}</option>
 						<option value="download">{t("remote.fileTransferDownload")}</option>

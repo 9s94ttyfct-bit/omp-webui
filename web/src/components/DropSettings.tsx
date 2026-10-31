@@ -5,7 +5,8 @@ import { sizeText } from "../lib/drop-flow.ts";
 import { choicesKey, readChoices, setChoice } from "../lib/drop-prefs.ts";
 import "../lib/drop-strings.ts";
 import { onPrefsChanged } from "../lib/prefs.ts";
-import { CardHeader, Select } from "./ui.tsx";
+import { Select } from "./Select.tsx";
+import { CardHeader } from "./ui.tsx";
 
 const KINDS: { kind: DropKind; label: MessageKey }[] = [
 	{ kind: "text", label: "drop.settingsKindText" },
@@ -40,8 +41,7 @@ export function DropSettings() {
 							className="w-full sm:w-48"
 							value={shown(choices, kind)}
 							data-testid={`drop-choice-${kind}`}
-							onChange={(e) => {
-								const value = e.target.value;
+							onValueChange={(value) => {
 								setChoice(kind, value === "attach" || value === "path" ? value : null);
 								setChoices(readChoices());
 							}}

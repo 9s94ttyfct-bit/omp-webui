@@ -149,9 +149,10 @@ html[data-standalone] .ios-top-edge {
 		font-size: 16px;
 	}
 	/*
-	 * A chip-sized select (`Select` in ui.tsx) sits among the composer's 12px chips, so its 16px words would stand out. The
-	 * field stays 16px (what iOS looks at) but draws nothing; the words the reader sees are the sizer's, at the size of the
-	 * chips beside it, in the cell the select covers. Taps still reach the select, which sits over them.
+	 * A chip-sized select (`Select` in Select.tsx: the system's `<select>` on a touch screen) sits among the composer's
+	 * 12px chips, so its 16px words would stand out. The field stays 16px (what iOS looks at) but draws nothing; the
+	 * words the reader sees are the sizer's, at the size of the chips beside it, in the cell the select covers. Taps still
+	 * reach the select, which sits over them.
 	 */
 	[data-select-sizer] {
 		visibility: visible;

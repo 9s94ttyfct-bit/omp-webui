@@ -13,7 +13,8 @@ import {
 } from "../lib/nav-layout.ts";
 import { moveNavItem, nudgeNavItem, resetNavLayout } from "../lib/nav-layout-edit.ts";
 import { useApp } from "../store/app.ts";
-import { Button, CardHeader, IconButton, Select } from "./ui.tsx";
+import { Select } from "./Select.tsx";
+import { Button, CardHeader, IconButton } from "./ui.tsx";
 
 // This card is a chunk of its own (Settings): the arrangement's controls and their strings are not in the first page. The
 // bars themselves (and the names of the pages) are, and they are what a drag arranges without this card.
@@ -176,8 +177,8 @@ function GroupSelect({
 			aria-label={label}
 			data-testid={`nav-edit-group-select-${surface}-${id}`}
 			value={group}
-			onChange={(e) => {
-				const next = e.target.value as NavGroup;
+			onValueChange={(v) => {
+				const next = v as NavGroup;
 				if (next === group) return;
 				// The control that moved is re-created in the other group: it is found again by its id.
 				onMoved(`nav-edit-group-select-${surface}-${id}`);
