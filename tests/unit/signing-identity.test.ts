@@ -14,6 +14,7 @@ import {
 	requirementFor,
 	signBundle,
 } from "../../scripts/signing-identity.ts";
+import { capabilities } from "../../server/platform/capabilities.ts";
 
 /**
  * Why updates lose the macOS permissions (#456): an ad-hoc signature's designated requirement is the build's cdhash, which
@@ -22,7 +23,7 @@ import {
  * `codesign` against a keychain of their own (never the one the app is built with), which only a Mac has.
  */
 
-const mac = process.platform === "darwin" && Bun.which("codesign") !== null && Bun.which("security") !== null;
+const mac = capabilities.appUpdate && Bun.which("codesign") !== null && Bun.which("security") !== null;
 const dir = mkdtempSync(join(tmpdir(), "ompw-signing-"));
 // The module makes this keychain on first use; the other is never made, as on a Mac that has no identity yet.
 const keychain = join(dir, "test.keychain-db");

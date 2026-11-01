@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GPU_MARKER } from "../../server/host-gpu-guard.ts";
+import { platform } from "../../server/platform/index.ts";
 import type { HostHistory, HostPoint, HostProc, HostSeries } from "../../shared/host.ts";
 import { type AccessKey, type Jwks, makeKey, startJwks } from "../support/access-jwt.ts";
 import { pollUntil } from "../support/poll.ts";
@@ -128,7 +129,7 @@ describe("GET /api/host at this computer", () => {
 		// The server looks every BACKGROUND_MS while no page watches: the history is there without anyone asking for it.
 		await pollUntil(async () => (await history()).fine.t.length >= 2, "two looks of the background pace");
 		const h = await history();
-		expect(h.info.platform).toBe(process.platform);
+		expect(h.info.platform).toBe(platform.id);
 		expect(h.info.cores).toBeGreaterThan(0);
 		expect(h.info.memTotal).toBeGreaterThan(0);
 		expect(h.info.liveMs).toBe(LIVE_MS);
@@ -149,13 +150,13 @@ describe("GET /api/host at this computer", () => {
 	test("a Mac says its GPU and memory pressure (this runs on whatever computer it is run on)", async () => {
 		await pollUntil(async () => (await history()).fine.t.length >= 1, "a look");
 		const h = await history();
-		if (process.platform === "darwin") {
+		// The GPU's load (IOKit) and the memory pressure are macOS's figures: `gpuLoad` is where they are read.
+		if (platform.capabilities.gpuLoad) {
 			expect(h.info.pressure).toBe(true);
 			expect(h.fine.pressure.every((p) => p !== null)).toBe(true);
 			expect(h.info.gpu).not.toBeNull();
 			expect(h.fine.gpu.every((g) => g !== null)).toBe(true);
-		}
-		if (process.platform === "linux") expect(h.info.gpu).toBeNull();
+		} else expect(h.info.gpu).toBeNull();
 	});
 
 	test("is refused to a page of another origin, and to one with no token", async () => {
@@ -328,7 +329,7 @@ describe("a page that came in through the tunnel", () => {
 		const res = await remote.fetch("/api/host");
 		expect(res.status).toBe(200);
 		const h = (await res.json()) as HostHistory;
-		expect(h.info.platform).toBe(process.platform);
+		expect(h.info.platform).toBe(platform.id);
 		expect(h.info.memTotal).toBeGreaterThan(0);
 		expectSeries(h.fine);
 		expectSeries(h.coarse);
@@ -391,7 +392,7 @@ describe("the GPU probe is isolated", () => {
 	};
 
 	test("a start that crashed in the probe leaves the GPU out (the mark stays), and the CPU and memory are still looked at", async () => {
-		if (process.platform !== "darwin") return;
+		if (!platform.capabilities.gpuLoad) return;
 		// The first look cleared the mark: the probe came back.
 		await pollUntil(() => markerOf(s) === "ok", "the probe's first read");
 		// A start that died in the probe left `probing`: the next start does not open it.

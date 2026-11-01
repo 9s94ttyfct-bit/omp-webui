@@ -3,6 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pkg from "../../package.json";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { designatedRequirementOf, leafOf, refusalOf } from "../../server/update/verify.ts";
 import { buildFixtures, disposeFixtures, type Fixtures, NEWER } from "../support/update-fixtures.ts";
 
@@ -12,7 +13,7 @@ import { buildFixtures, disposeFixtures, type Fixtures, NEWER } from "../support
  * apps signed with two throwaway certificates (and one ad hoc), each wrong in exactly one way: never the app's own keychain.
  */
 
-const mac = process.platform === "darwin" && Bun.which("codesign") !== null && Bun.which("security") !== null;
+const mac = capabilities.appUpdate && Bun.which("codesign") !== null && Bun.which("security") !== null;
 let fixtures: Fixtures;
 
 beforeAll(async () => {

@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { platform } from "../../server/platform/index.ts";
 import { isRecord } from "../../shared/guards.ts";
 import { PREF, type PrefsSnapshot } from "../../shared/prefs.ts";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
@@ -78,7 +79,7 @@ beforeAll(async () => {
 	// Every omp is noted. A process that answers a side question (`--mode rpc`) is not replaced by omp (`exec`): once omp has
 	// ended, the modes of everything in the folder of its copy are written down, before the server removes it. `stat`
 	// spells "octal permission bits and name" differently on BSD (macOS) and GNU (Linux).
-	const modeAndName = process.platform === "darwin" ? "stat -f '%Lp %N'" : "stat -c '%a %n'";
+	const modeAndName = platform.id === "darwin" ? "stat -f '%Lp %N'" : "stat -c '%a %n'";
 	writeFileSync(
 		wrapper,
 		String.raw`#!/bin/sh

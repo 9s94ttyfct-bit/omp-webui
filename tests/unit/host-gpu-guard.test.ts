@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { MIN_BACKGROUND_MS, MIN_LIVE_MS, paceFrom } from "../../server/host.ts";
 import { GPU_MARKER, guardedGpu } from "../../server/host-gpu-guard.ts";
 import { systemReader } from "../../server/host-read.ts";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { tempDir } from "../support/temp-dirs.ts";
 
 /**
@@ -236,7 +237,7 @@ describe("a thread that does not answer, fails or ends", () => {
 	});
 
 	test("takes only the GPU out of a look: CPU and memory are still read (macOS)", async () => {
-		if (process.platform !== "darwin") return;
+		if (!capabilities.gpuLoad) return;
 		const q = quiet();
 		const d = dir();
 		const reader = systemReader({ gpu: { ...FAST, markerDir: d, spawn: thread(WORKERS.silent) } });
@@ -368,7 +369,7 @@ describe("the crash marker", () => {
 
 describe("the real thread (macOS)", () => {
 	test("answers with this Mac's accelerators from a thread of its own, and is stopped by close()", async () => {
-		if (process.platform !== "darwin") return;
+		if (!capabilities.gpuLoad) return;
 		const g = guardedGpu();
 		try {
 			const readings = await g.read();

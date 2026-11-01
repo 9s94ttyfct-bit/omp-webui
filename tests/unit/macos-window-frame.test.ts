@@ -2,6 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 
 /**
  * Where the macOS app puts its window (macos/windowframe.swift): the frame the person left is put back when it still fits
@@ -12,7 +13,7 @@ import { join } from "node:path";
 
 const here = import.meta.dir;
 const dir = mkdtempSync(join(tmpdir(), "ompw-windowframe-"));
-const mac = process.platform === "darwin" && Bun.which("swiftc") !== null;
+const mac = capabilities.appShell && Bun.which("swiftc") !== null;
 
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 

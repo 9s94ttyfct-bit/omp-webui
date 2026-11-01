@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { join } from "node:path";
 import type { Server } from "bun";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { tempDir } from "../support/temp-dirs.ts";
 
 /**
@@ -15,7 +16,7 @@ import { tempDir } from "../support/temp-dirs.ts";
 const here = import.meta.dir;
 const dir = tempDir("ompw-shell-events-");
 const harness = join(dir, "shell-events-harness");
-const mac = process.platform === "darwin" && Bun.which("swiftc") !== null;
+const mac = capabilities.appShell && Bun.which("swiftc") !== null;
 
 /** What a server was asked, in order, and what it is doing now. */
 interface Seen {

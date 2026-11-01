@@ -25,7 +25,7 @@ import { connect, request } from "../support/ws.ts";
  * request to quit (SIGUSR1) and, where the app would, stops the server the way the app's supervisor does (SIGTERM).
  */
 
-const mac = process.platform === "darwin" && Bun.which("hdiutil") !== null && Bun.which("codesign") !== null;
+const mac = platform.capabilities.appUpdate && Bun.which("hdiutil") !== null && Bun.which("codesign") !== null;
 /**
  * The installer a release lists. A look for releases never opens it, so where the signed disk images cannot be made (not a
  * Mac) any file stands in for it, and a server there is no app (it has no signed bundle to be).

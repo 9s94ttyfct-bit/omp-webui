@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { platform } from "../../server/platform/index.ts";
 import { FOLDER_LIMITS, type FolderFile, type FolderFound, type FolderListing } from "../../shared/folder.ts";
 import { type AccessKey, AUD, EMAIL, HOSTNAME, type Jwks, makeKey, startJwks, TEAM } from "../support/access-jwt.ts";
 import { writeChatSession } from "../support/chat-session.ts";
@@ -364,10 +365,9 @@ describe("open and reveal", () => {
 	 * server says so first, whatever the request names (the walls it would meet are tests/unit/folder.test.ts).
 	 */
 	const refused = async (res: Response, status: number, error: string, label: string, dir = false) => {
-		const told =
-			process.platform === "darwin"
-				? { status, error }
-				: { status: 501, error: `Opening ${dir ? "folders" : "files"} from the page is only available on macOS` };
+		const told = platform.capabilities.openFiles
+			? { status, error }
+			: { status: 501, error: `Opening ${dir ? "folders" : "files"} from the page is only available on macOS` };
 		expect(res.status, label).toBe(told.status);
 		expect(await res.json(), label).toEqual({ error: told.error });
 	};
@@ -441,7 +441,7 @@ describe("open and reveal", () => {
 		expect(res.status).toBe(200);
 		expect(((await res.json()) as FolderFile).local).toBe(false);
 		const local = (await read("README.md")).body;
-		expect(local.local).toBe(process.platform === "darwin");
+		expect(local.local).toBe(platform.capabilities.openFiles);
 		// Reading is the conversation's folder for it too, and the same walls stand.
 		const out = await remote.fetch(`/api/folder/file?file=${encodeURIComponent(file)}&path=../outside.txt`);
 		expect(out.status).toBe(403);
@@ -480,16 +480,16 @@ describe("open and reveal", () => {
 		for (const path of ["README.md", "src/app.ts", "run.sh", "pic.png", "data.bin"]) {
 			await refused(await open({ path, dir: true }), 400, "Only folders are opened", path, true);
 		}
-		const mac = process.platform === "darwin";
-		expect((await open({ path: "no-such-folder", dir: true })).status).toBe(mac ? 404 : 501);
-		expect((await open({ path: 5, dir: true })).status).toBe(mac ? 400 : 501);
+		const opens = platform.capabilities.openFiles;
+		expect((await open({ path: "no-such-folder", dir: true })).status).toBe(opens ? 404 : 501);
+		expect((await open({ path: 5, dir: true })).status).toBe(opens ? 400 : 501);
 		// The conversation is looked up before the system is asked anything: one the server does not know is not found anywhere.
 		expect((await open({ file: "no-such-conversation.jsonl", path: "", dir: true })).status).toBe(404);
 	});
 
 	test("the listing tells this computer's page it may open folders, and the tunnel's page nothing", async () => {
 		const here = await list();
-		expect(here.body.local).toBe(process.platform === "darwin" ? true : undefined);
+		expect(here.body.local).toBe(platform.capabilities.openFiles ? true : undefined);
 		const res = await remote.fetch(`/api/folder/list?file=${encodeURIComponent(file)}&path=`);
 		expect(res.status).toBe(200);
 		const there = (await res.json()) as FolderListing;

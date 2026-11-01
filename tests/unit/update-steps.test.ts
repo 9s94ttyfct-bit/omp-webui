@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { attach, detach, download, stage, UpdateCancelled, UpdateError } from "../../server/update/steps.ts";
 import { buildFixtures, disposeFixtures, type Fixtures } from "../support/update-fixtures.ts";
 
@@ -12,7 +13,7 @@ import { buildFixtures, disposeFixtures, type Fixtures } from "../support/update
  * (`hdiutil`), the apps in them signed for real.
  */
 
-const mac = process.platform === "darwin" && Bun.which("hdiutil") !== null && Bun.which("codesign") !== null;
+const mac = capabilities.appUpdate && Bun.which("hdiutil") !== null && Bun.which("codesign") !== null;
 const root = mkdtempSync(join(tmpdir(), "ompw-steps-"));
 let fixtures: Fixtures;
 

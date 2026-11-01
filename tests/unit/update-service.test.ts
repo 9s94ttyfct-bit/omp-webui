@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pkg from "../../package.json";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { MAX_LOG_BYTES, rotateLog } from "../../server/update/files.ts";
 import { AppUpdater, type Conversations, relaunchCommand, type UpdaterOptions } from "../../server/update/service.ts";
 import { attach, detach } from "../../server/update/steps.ts";
@@ -30,7 +31,7 @@ import { buildFixtures, disposeFixtures, type Fixtures, NEWER, type Variant } fr
  * itself, so that nothing launches a real application.
  */
 
-const mac = process.platform === "darwin" && Bun.which("hdiutil") !== null && Bun.which("codesign") !== null;
+const mac = capabilities.appUpdate && Bun.which("hdiutil") !== null && Bun.which("codesign") !== null;
 const root = mkdtempSync(join(tmpdir(), "ompw-updater-"));
 let fixtures: Fixtures;
 let fake: FakeReleases;

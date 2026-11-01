@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Server } from "bun";
+import { capabilities } from "../../server/platform/capabilities.ts";
 
 /**
  * The harness behind scripts/app-shots.ts (tests/support/swift/appshots-harness.swift): it photographs a page in a
@@ -17,7 +18,7 @@ const dir = mkdtempSync(join(tmpdir(), "ompw-appshots-"));
 const harness = join(dir, "appshots-harness");
 // A window server session: WKWebView needs one, a build on a remote shell or in CI has none.
 const mac =
-	process.platform === "darwin" &&
+	capabilities.appShell &&
 	Bun.which("swiftc") !== null &&
 	Bun.spawnSync(["launchctl", "managername"]).stdout.toString().trim() === "Aqua";
 

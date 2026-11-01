@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { guiSkipNotice, guiTests } from "../support/gui-tests.ts";
 
 /**
@@ -15,7 +16,7 @@ import { guiSkipNotice, guiTests } from "../support/gui-tests.ts";
 const here = import.meta.dir;
 const dir = mkdtempSync(join(tmpdir(), "ompw-quit-"));
 const harness = join(dir, "quit-harness");
-const mac = process.platform === "darwin" && Bun.which("swiftc") !== null;
+const mac = capabilities.appShell && Bun.which("swiftc") !== null;
 guiSkipNotice("macos-quit (the pending-quit question)");
 
 interface Context {

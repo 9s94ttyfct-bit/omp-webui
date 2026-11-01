@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { DEFAULT_ROWS } from "../../shared/panes.ts";
 import { writeChatSession } from "../support/chat-session.ts";
 import { makeFilesProject } from "../support/files-project.ts";
@@ -560,7 +561,7 @@ test.describe("the message box", () => {
 
 test.describe("open in the default app and reveal in Finder", () => {
 	test("are on a page of this Mac, and ask the server for exactly the file shown", async ({ page }) => {
-		test.skip(process.platform !== "darwin", "macOS only");
+		test.skip(!capabilities.openFiles, "macOS only");
 		const posted: unknown[] = [];
 		await page.route("**/api/folder/open", async (route) => {
 			posted.push(route.request().postDataJSON());
@@ -591,7 +592,7 @@ test.describe("open in the default app and reveal in Finder", () => {
 	});
 
 	test("a refusal from the server is said, not swallowed", async ({ page }) => {
-		test.skip(process.platform !== "darwin", "macOS only");
+		test.skip(!capabilities.openFiles, "macOS only");
 		await page.route("**/api/folder/open", (route) =>
 			route.fulfill({ status: 403, json: { error: "An executable file is never opened" } }),
 		);
@@ -616,7 +617,7 @@ test.describe("open the folder in Finder", () => {
 	test("the tab's header opens the conversation's folder itself, and each folder row's menu opens that folder", async ({
 		page,
 	}) => {
-		test.skip(process.platform !== "darwin", "macOS only");
+		test.skip(!capabilities.openFiles, "macOS only");
 		const posted = await capture(page);
 		await openFiles(page);
 		await treeReady(page);
@@ -656,7 +657,7 @@ test.describe("open the folder in Finder", () => {
 	test("from the keyboard: the menu key (or Shift+F10) on a folder row opens its menu, and the row has the focus back", async ({
 		page,
 	}) => {
-		test.skip(process.platform !== "darwin", "macOS only");
+		test.skip(!capabilities.openFiles, "macOS only");
 		const posted = await capture(page);
 		await openFiles(page);
 		await treeReady(page);
@@ -683,7 +684,7 @@ test.describe("open the folder in Finder", () => {
 	});
 
 	test("a refusal from the server is said, not swallowed", async ({ page }) => {
-		test.skip(process.platform !== "darwin", "macOS only");
+		test.skip(!capabilities.openFiles, "macOS only");
 		await page.route("**/api/folder/open", (route) =>
 			route.fulfill({
 				status: 403,
@@ -752,7 +753,7 @@ test.describe("open the folder in Finder", () => {
 		test.use({ locale: "zh-CN" });
 
 		test("the button, the menu and its name are in Simplified Chinese", async ({ page }) => {
-			test.skip(process.platform !== "darwin", "macOS only");
+			test.skip(!capabilities.openFiles, "macOS only");
 			await capture(page);
 			await openFiles(page);
 			await treeReady(page);

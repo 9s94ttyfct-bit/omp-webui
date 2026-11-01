@@ -2,6 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 
 /**
  * How the macOS shell hears that the server has an update to install (macos/update.swift, #571): SIGUSR1 means "quit for the
@@ -16,7 +17,7 @@ import { join } from "node:path";
 
 const here = import.meta.dir;
 const dir = mkdtempSync(join(tmpdir(), "ompw-update-quit-"));
-const mac = process.platform === "darwin" && Bun.which("swiftc") !== null;
+const mac = capabilities.appShell && Bun.which("swiftc") !== null;
 const harness = join(dir, "update-harness");
 
 if (mac) {

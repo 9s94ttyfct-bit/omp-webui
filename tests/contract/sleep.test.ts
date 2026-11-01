@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
+import { platform } from "../../server/platform/index.ts";
 import type { Capabilities } from "../../shared/platform.ts";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { startAppServer } from "../support/app-server.ts";
@@ -21,7 +22,8 @@ import { connect, request } from "../support/ws.ts";
  * macOS has `caffeinate`, so the test is about a server there (it skips elsewhere). A scripted omp, no model.
  */
 
-const mac = process.platform === "darwin";
+/** Where the server can hold sleep off at all (macOS's `caffeinate`): the stub stands in for it there. */
+const awake = platform.capabilities.keepAwake;
 const root = mkdtempSync(join(tmpdir(), "ompw-sleep-contract-"));
 const work = join(root, "work");
 let env: Record<string, string>;
@@ -141,7 +143,7 @@ async function boot(name: string, extra: Record<string, string> = {}) {
 /** A turn of omp's own: `agent_start` until `agent_end`, which is what `working` counts. */
 const turnEnds = { type: "agent_end", isTerminal: true };
 
-(mac ? test : test.skip)(
+(awake ? test : test.skip)(
 	"a working conversation starts caffeinate for this server, and it is let go when nothing works",
 	async () => {
 		const stub = writeStubCaffeinate();
@@ -177,7 +179,7 @@ const turnEnds = { type: "agent_end", isTerminal: true };
 	},
 );
 
-(mac ? test : test.skip)(
+(awake ? test : test.skip)(
 	"the setting off stops caffeinate at once and starts none, and on again starts one with what works",
 	async () => {
 		const stub = writeStubCaffeinate();
@@ -217,7 +219,7 @@ const turnEnds = { type: "agent_end", isTerminal: true };
 	},
 );
 
-(mac ? test : test.skip)(
+(awake ? test : test.skip)(
 	"a server that stops takes caffeinate with it, and /api/meta says this machine can be held awake",
 	async () => {
 		const stub = writeStubCaffeinate();
@@ -248,7 +250,7 @@ const turnEnds = { type: "agent_end", isTerminal: true };
 test("a server elsewhere says the setting is not available, and starts nothing", async () => {
 	// Not a claim about this machine: the flag the page reads is the server's answer about its own platform, and a server
 	// that is not on macOS has no `caffeinate` to run (see `KeepAwake.available`).
-	if (mac) {
+	if (awake) {
 		// On a Mac the flag is true, and the stub tests above cover what it starts; nothing to assert here.
 		expect(existsSync("/usr/bin/caffeinate")).toBe(true);
 		return;
@@ -307,7 +309,7 @@ test("a page that is not on this computer cannot change keep-awake, and the othe
 	expect((await remote({ "ompw.lang": "zh-CN" })).status).toBe(200);
 });
 
-(mac ? test : test.skip)(
+(awake ? test : test.skip)(
 	"a conversation waiting out a usage limit does not hold the Mac awake, and a short backoff does",
 	async () => {
 		const stub = writeStubCaffeinate();

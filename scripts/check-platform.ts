@@ -46,7 +46,6 @@ export const ALLOWLIST: Record<string, string> = {
 	"scripts/dmg.ts": "builds the macOS disk image",
 	"scripts/signing-identity.ts": "the macOS signing identity (security, codesign)",
 	"scripts/app-shots.ts": "screenshots of the macOS app's windows",
-	"scripts/mac-tests.ts": "runs the tests only macOS runs, and refuses elsewhere",
 	"scripts/update-smoke.ts": "the in-app updater's smoke test, macOS-only",
 	"scripts/upgrade-pause-check.ts": "an upgrade of the macOS app with paused conversations, macOS-only",
 	"scripts/bench.ts": "the release's benchmark on its Mac (caffeinate, sw_vers, process listings)",

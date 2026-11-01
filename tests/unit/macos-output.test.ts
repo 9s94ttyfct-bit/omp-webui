@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 
 /**
  * The macOS shell reads the server's output through `followOutput` (macos/serveroutput.swift). When the server
@@ -14,7 +15,7 @@ import { join } from "node:path";
 const here = import.meta.dir;
 const dir = mkdtempSync(join(tmpdir(), "ompw-swift-"));
 const harness = join(dir, "output-harness");
-const mac = process.platform === "darwin" && Bun.which("swiftc") !== null;
+const mac = capabilities.appShell && Bun.which("swiftc") !== null;
 
 beforeAll(() => {
 	if (!mac) return;

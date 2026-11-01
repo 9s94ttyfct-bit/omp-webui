@@ -3,6 +3,7 @@ import { HostSampler } from "../../server/host.ts";
 import { openGpuProbe } from "../../server/host-gpu.ts";
 import type { PsRow } from "../../server/host-parse.ts";
 import { type HostReader, type Reading, systemReader } from "../../server/host-read.ts";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import type { ServerMessage } from "../../shared/protocol.ts";
 
 /** How many accelerators this computer's probe reads: 0 where there is none (not macOS, or a Mac with no GPU statistics). */
@@ -447,7 +448,7 @@ describe("the computer's own reader", () => {
 			expect(b.memUsed).toBeGreaterThan(0);
 			expect(b.memUsed).toBeLessThanOrEqual(b.memTotal);
 		}
-		if (process.platform === "darwin") {
+		if (capabilities.gpuLoad) {
 			expect(b.memUsed).not.toBeNull();
 			expect([0, 1, 2]).toContain(b.pressure as number);
 		}
@@ -468,7 +469,7 @@ describe("the computer's own reader", () => {
 
 describe("the IOKit GPU probe", () => {
 	test("is none off macOS", () => {
-		if (process.platform !== "darwin") expect(openGpuProbe()).toBeNull();
+		if (!capabilities.gpuLoad) expect(openGpuProbe()).toBeNull();
 	});
 
 	// Skipped (not passed) on a Mac that has no accelerator to read: the probe is fine, there is nothing for it to say.

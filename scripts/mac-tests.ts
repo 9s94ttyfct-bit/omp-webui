@@ -5,51 +5,51 @@
  * macOS's own answer (folders, the host's readings, sleep). Without this step those cases ran only when someone ran the
  * whole suite on a Mac by hand.
  *
- * `MAC_TESTS` is the list, by hand. tests/unit/mac-tests.test.ts keeps it whole: every test file under tests/ that
- * compares `process.platform` with "darwin" is in it, and nothing else is. The tests that open real windows
- * (`OMPW_GUI_TESTS=1`, tests/support/gui-tests.ts) still skip here: they take the focus of whoever uses the Mac, and stay
- * `bun run test:gui`, by hand.
+ * `MAC_TESTS` is the list, read from the tests themselves: a test file whose cases only a Mac runs gates them on a
+ * capability macOS has and Linux has not (`MAC_ONLY`: `capabilities.appShell`, `appUpdate`, `openFiles`, `keepAwake`,
+ * `gpuLoad`), or, for a case about the system itself rather than a feature (BSD's `stat`, `~/Library`), on the darwin
+ * adapter by its id (`platform.id === "darwin"`). tests/unit/mac-tests.test.ts holds the tests to that: none asks
+ * `process.platform`. The tests that open real windows (`OMPW_GUI_TESTS=1`, tests/support/gui-tests.ts) still skip here:
+ * they take the focus of whoever uses the Mac, and stay `bun run test:gui`, by hand.
  *
- * It refuses to run off macOS or without `swiftc` (the Xcode command line tools), since the harness tests would all skip
- * and the step would pass having proved nothing.
+ * It refuses to run where one of `MAC_ONLY` is off or without `swiftc` (the Xcode command line tools), since the harness
+ * tests would all skip and the step would pass having proved nothing.
  */
 import { spawn } from "node:child_process";
+import { readdirSync, readFileSync } from "node:fs";
 import { constants } from "node:os";
 import { join } from "node:path";
+import { capabilities, capabilitiesFor } from "../server/platform/capabilities.ts";
+import type { Capability } from "../shared/platform.ts";
 import { killTree, onShutdown } from "./lib/shutdown.ts";
 import { gateTestCommand } from "./lib/test-workers.ts";
 
+const ROOT = join(import.meta.dirname, "..");
+
+const mac = capabilitiesFor("darwin");
+const linux = capabilitiesFor("linux");
+/** The capabilities macOS has and Linux, where CI runs the suite, has not: what CI's run of a test file skips. */
+export const MAC_ONLY = (Object.keys(mac) as Capability[]).filter((c) => mac[c] && !linux[c]);
+
+/** A gate of a case only a Mac runs: a capability of `MAC_ONLY`, or the darwin adapter by its id. */
+const MAC_GATE = new RegExp(
+	`\\bcapabilities\\.(?:${MAC_ONLY.join("|")})\\b|\\bplatform\\.id\\s*[!=]==?\\s*["']darwin["']`,
+);
+
+/** The test files under `root`'s tests/ with cases that run only on macOS, relative to the checkout, sorted. */
+export function macTests(root = ROOT): string[] {
+	return readdirSync(join(root, "tests"), { recursive: true, encoding: "utf8" })
+		.filter((name) => /\.test\.tsx?$/.test(name))
+		.map((name) => `tests/${name.split("\\").join("/")}`)
+		.filter((file) => MAC_GATE.test(readFileSync(join(root, file), "utf8")))
+		.sort();
+}
+
 /** The test files with cases that run only on macOS, relative to the checkout. */
-export const MAC_TESTS = [
-	"tests/contract/btw-model.test.ts",
-	"tests/contract/folder.test.ts",
-	"tests/contract/host.test.ts",
-	"tests/contract/sleep.test.ts",
-	"tests/contract/update.test.ts",
-	"tests/unit/files.test.ts",
-	"tests/unit/folder.test.ts",
-	"tests/unit/host-gpu-guard.test.ts",
-	"tests/unit/host-sampler.test.ts",
-	"tests/unit/macos-appshots.test.ts",
-	"tests/unit/macos-background.test.ts",
-	"tests/unit/macos-drop.test.ts",
-	"tests/unit/macos-no-zoom.test.ts",
-	"tests/unit/macos-notify.test.ts",
-	"tests/unit/macos-output.test.ts",
-	"tests/unit/macos-quit.test.ts",
-	"tests/unit/macos-remote.test.ts",
-	"tests/unit/macos-server.test.ts",
-	"tests/unit/macos-shell-events.test.ts",
-	"tests/unit/macos-update.test.ts",
-	"tests/unit/macos-window-frame.test.ts",
-	"tests/unit/signing-identity.test.ts",
-	"tests/unit/update-service.test.ts",
-	"tests/unit/update-steps.test.ts",
-	"tests/unit/update-verify.test.ts",
-];
+export const MAC_TESTS = macTests();
 
 if (import.meta.main) {
-	if (process.platform !== "darwin") {
+	if (MAC_ONLY.some((c) => !capabilities[c])) {
 		console.error("These are the tests only macOS runs: run them on a Mac.");
 		process.exit(1);
 	}

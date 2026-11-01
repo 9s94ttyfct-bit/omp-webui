@@ -2,6 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 
 /**
  * How the macOS shell keeps its server (macos/server.swift): started again when it dies on its own (#373), its last
@@ -18,7 +19,7 @@ const here = import.meta.dir;
 const dir = mkdtempSync(join(tmpdir(), "ompw-supervisor-"));
 const harness = join(dir, "supervisor-harness");
 const tsanHarness = join(dir, "supervisor-harness-tsan");
-const mac = process.platform === "darwin" && Bun.which("swiftc") !== null;
+const mac = capabilities.appShell && Bun.which("swiftc") !== null;
 
 async function build(output: string, ...flags: string[]): Promise<boolean> {
 	const compiled = Bun.spawn(

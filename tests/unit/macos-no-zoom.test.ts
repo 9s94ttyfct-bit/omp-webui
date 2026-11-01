@@ -1,5 +1,6 @@
 import { beforeAll, expect, test } from "bun:test";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { tempDir } from "../support/temp-dirs.ts";
 
 /**
@@ -18,7 +19,7 @@ import { tempDir } from "../support/temp-dirs.ts";
 const here = import.meta.dir;
 const dir = tempDir("ompw-nozoom-");
 const harness = join(dir, "nozoom-harness");
-const mac = process.platform === "darwin" && Bun.which("swiftc") !== null;
+const mac = capabilities.appShell && Bun.which("swiftc") !== null;
 // A window server session: a web view needs one, a build on a remote shell or in CI has none.
 const aqua = mac && Bun.spawnSync(["launchctl", "managername"]).stdout.toString().trim() === "Aqua";
 

@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync }
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { PREF, type PrefsSnapshot } from "../../shared/prefs.ts";
 import type { UpdateSnapshot } from "../../shared/update.ts";
 import { realOmp } from "../support/fake-install.ts";
@@ -284,7 +285,7 @@ test("GitHub out of reach is a warning that says so", async ({ page }) => {
 test.describe("installing", () => {
 	// The installers are signed disk images, and installing is the macOS app replacing itself (`codesign`, `hdiutil`,
 	// `security`): there is nothing of it to build or run elsewhere.
-	test.skip(process.platform !== "darwin", "macOS only");
+	test.skip(!capabilities.appUpdate, "macOS only");
 	let installers: Installers;
 	test.beforeAll(() => {
 		test.setTimeout(240_000);

@@ -1,6 +1,7 @@
 import { beforeAll, expect, test } from "bun:test";
 import { mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { tempDir } from "../support/temp-dirs.ts";
 
 /**
@@ -15,7 +16,7 @@ import { tempDir } from "../support/temp-dirs.ts";
  */
 
 const here = import.meta.dir;
-const mac = process.platform === "darwin" && Bun.which("swiftc") !== null;
+const mac = capabilities.appShell && Bun.which("swiftc") !== null;
 // The real path: /tmp and /var are symlinks on macOS, and a file reference URL resolves them.
 const dir = realpathSync(tempDir("ompw-drop-"));
 const files = join(dir, "files");

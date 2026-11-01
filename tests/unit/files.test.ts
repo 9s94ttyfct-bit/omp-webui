@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { FileIndex, type ReadDir, SCAN_LIMITS, scanFiles, suggestFiles } from "../../server/files.ts";
+import { platform } from "../../server/platform/index.ts";
 
 /** `@` file completion: a bounded walk that skips hidden and heavy directories before entering them. */
 
@@ -75,7 +76,8 @@ test("hidden and dependency directories are skipped before they are read", async
 	expect([...reads].sort()).toEqual(["/p", "/p/.github", "/p/constructor", "/p/src"]);
 });
 
-test.skipIf(process.platform !== "darwin")(
+// `~/Library` is macOS's own (the darwin adapter's `skipPaths`): a case about the system itself, not a capability.
+test.skipIf(platform.id !== "darwin")(
 	"~/Library is not walked when the home folder is the working directory",
 	async () => {
 		const home = realpathSync(homedir());

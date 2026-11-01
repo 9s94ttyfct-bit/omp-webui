@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { foldMacName } from "../../shared/macs.ts";
 import {
 	ADDRESS_OK,
@@ -33,7 +34,7 @@ import {
 const here = import.meta.dir;
 const dir = mkdtempSync(join(tmpdir(), "ompw-remote-"));
 const harness = join(dir, "remote-harness");
-const mac = process.platform === "darwin" && Bun.which("swiftc") !== null;
+const mac = capabilities.appShell && Bun.which("swiftc") !== null;
 // A window server session: WKWebView needs one, a build on a remote shell or in CI has none.
 const windowServer = mac && Bun.spawnSync(["launchctl", "managername"]).stdout.toString().trim() === "Aqua";
 

@@ -15,7 +15,7 @@ const flagged = (src: string) => expect(lines(src).length, src).toBeGreaterThan(
 const clean = (src: string) => expect(checkSource(src, "f.ts"), src).toEqual([]);
 
 test("process.platform, getuid and node:os's platform are flagged", () => {
-	flagged('if (process.platform === "darwin") {}');
+	flagged('if (process.platform === "win32") {}');
 	flagged("const p = process.platform;");
 	flagged("const uid = process.getuid?.();");
 	flagged('import { arch, platform } from "node:os";');

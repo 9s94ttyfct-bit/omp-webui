@@ -1,4 +1,5 @@
 import type { LiveInfo } from "@shared/protocol.ts";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { ownSession, startLive } from "../support/live.ts";
 import { type SocketTap, tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
@@ -87,8 +88,8 @@ test("Settings finds the Sleep card by its name, its sentence and the words peop
 	await field.press("Enter");
 	await expect(page.locator('[data-marked="true"]')).toHaveCount(1);
 	await expect(page.getByTestId("sleep-settings")).toBeVisible();
-	if (process.platform !== "darwin") {
-		// A server that is not on a Mac has no `caffeinate` (`keepAwakeAvailable`): the card says so, with no switch to turn.
+	if (!capabilities.keepAwake) {
+		// A server without `keepAwake` (`capabilities` in `/api/meta`): the card says so, with no switch to turn.
 		await expect(page.getByTestId("keep-awake")).toBeDisabled();
 		await expect(page.getByTestId("keep-awake")).not.toBeChecked();
 		await expect(page.getByTestId("keep-awake-hint")).toHaveText(
