@@ -152,35 +152,39 @@ test("a recorded server whose app is still running is left alone", async () => {
 	expect(second.port).not.toBe(first.port);
 }, 60_000);
 
-test("a recorded server whose app has gone is stopped, also when the app's pid now belongs to another program", async () => {
-	const dir = dataDir("orphaned");
-	const appCommand = "/Applications/omp-webui.app/Contents/MacOS/omp-webui";
-	const old = await startServer(dir);
+test.skipIf(!has.notWindowsYet)(
+	"a recorded server whose app has gone is stopped, also when the app's pid now belongs to another program",
+	async () => {
+		const dir = dataDir("orphaned");
+		const appCommand = "/Applications/omp-webui.app/Contents/MacOS/omp-webui";
+		const old = await startServer(dir);
 
-	// Recorded as started by an app that is gone: a process that has ended.
-	const ended = Bun.spawn(["true"]);
-	await ended.exited;
-	writeFileSync(
-		join(dir, "server.pid"),
-		JSON.stringify({ ...record(dir), parent: { pid: ended.pid, command: appCommand } }),
-	);
-	const next = await startServer(dir, old.port);
-	expect(await old.proc.exited).toBeDefined();
-	expect(alive(old.proc.pid)).toBe(false);
-	expect(next.port).toBe(old.port);
+		// Recorded as started by an app that is gone: a process that has ended.
+		const ended = Bun.spawn(["true"]);
+		await ended.exited;
+		writeFileSync(
+			join(dir, "server.pid"),
+			JSON.stringify({ ...record(dir), parent: { pid: ended.pid, command: appCommand } }),
+		);
+		const next = await startServer(dir, old.port);
+		expect(await old.proc.exited).toBeDefined();
+		expect(alive(old.proc.pid)).toBe(false);
+		expect(next.port).toBe(old.port);
 
-	// The app's pid was reused by another program: that is not the app either.
-	const bystander = Bun.spawn(["sleep", "600"]);
-	procs.push(bystander);
-	writeFileSync(
-		join(dir, "server.pid"),
-		JSON.stringify({ ...record(dir), parent: { pid: bystander.pid, command: appCommand } }),
-	);
-	const last = await startServer(dir, next.port);
-	expect(await next.proc.exited).toBeDefined();
-	expect(alive(bystander.pid)).toBe(true);
-	expect(last.port).toBe(next.port);
-}, 90_000);
+		// The app's pid was reused by another program: that is not the app either.
+		const bystander = Bun.spawn(["sleep", "600"]);
+		procs.push(bystander);
+		writeFileSync(
+			join(dir, "server.pid"),
+			JSON.stringify({ ...record(dir), parent: { pid: bystander.pid, command: appCommand } }),
+		);
+		const last = await startServer(dir, next.port);
+		expect(await next.proc.exited).toBeDefined();
+		expect(alive(bystander.pid)).toBe(true);
+		expect(last.port).toBe(next.port);
+	},
+	90_000,
+);
 
 test("the access token is never printed when the app starts the server", async () => {
 	const server = await startServer(dataDir("quiet"));

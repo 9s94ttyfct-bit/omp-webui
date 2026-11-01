@@ -12,6 +12,7 @@ import { platform } from "../../server/platform/index.ts";
 import { isRecord } from "../../shared/guards.ts";
 import { RESTART_TOOL } from "../../shared/restart.ts";
 import { type FakeOmpOptions, fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
+import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
 
 /**
@@ -103,62 +104,66 @@ const only = (store: RestartStore) => {
 };
 
 describe("the agent's restart", () => {
-	test("a wedged process is ended with all it started when the turn ends, and the conversation goes on in a new process told once", async () => {
-		const w = world();
-		const live = await w.open();
-		const ompPid = live.info.pid as number;
-		// A thread that spins inside omp, a tool in a session of its own and one in omp's group.
-		const pidsFile = join(w.dir, "wedge.json");
-		await live.rpc({ type: "wedge", file: pidsFile });
-		await pollUntil(() => existsSync(pidsFile), "the wedge");
-		const { children } = JSON.parse(readFileSync(pidsFile, "utf8")) as { children: number[] };
-		for (const pid of children) strays.add(pid);
-		const before = await platform.proc.identities([ompPid, ...children]);
-		expect(before.size).toBe(3);
-		// A background job keeps the session unsettled: the conversation is never idle, and the restart does not wait for that.
-		await live.rpc({ type: "set_state", state: { hasPendingAsyncWork: true } });
+	test.skipIf(!has.notWindowsYet)(
+		"a wedged process is ended with all it started when the turn ends, and the conversation goes on in a new process told once",
+		async () => {
+			const w = world();
+			const live = await w.open();
+			const ompPid = live.info.pid as number;
+			// A thread that spins inside omp, a tool in a session of its own and one in omp's group.
+			const pidsFile = join(w.dir, "wedge.json");
+			await live.rpc({ type: "wedge", file: pidsFile });
+			await pollUntil(() => existsSync(pidsFile), "the wedge");
+			const { children } = JSON.parse(readFileSync(pidsFile, "utf8")) as { children: number[] };
+			for (const pid of children) strays.add(pid);
+			const before = await platform.proc.identities([ompPid, ...children]);
+			expect(before.size).toBe(3);
+			// A background job keeps the session unsettled: the conversation is never idle, and the restart does not wait for that.
+			await live.rpc({ type: "set_state", state: { hasPendingAsyncWork: true } });
 
-		await emit(live, [{ type: "agent_start" }, ...call(ARGS)]);
-		await pollUntil(() => live.info.restartPending !== undefined, "the request");
-		const record = only(w.store);
-		expect(record).toMatchObject({ by: "agent", state: "requested", reason: ARGS.reason, force: false });
-		// Nothing happens before the turn ends: an absence, which no event announces, so it is looked at a moment later.
-		await Bun.sleep(300);
-		expect(live.info.exited).toBe(false);
-		expect(w.store.get(record.id)?.state).toBe("requested");
+			await emit(live, [{ type: "agent_start" }, ...call(ARGS)]);
+			await pollUntil(() => live.info.restartPending !== undefined, "the request");
+			const record = only(w.store);
+			expect(record).toMatchObject({ by: "agent", state: "requested", reason: ARGS.reason, force: false });
+			// Nothing happens before the turn ends: an absence, which no event announces, so it is looked at a moment later.
+			await Bun.sleep(300);
+			expect(live.info.exited).toBe(false);
+			expect(w.store.get(record.id)?.state).toBe("requested");
 
-		await emit(live, [{ type: "agent_end", messages: [] }]);
-		await pollUntil(() => w.store.get(record.id)?.state === "delivered", "the restart", 30_000);
+			await emit(live, [{ type: "agent_end", messages: [] }]);
+			await pollUntil(() => w.store.get(record.id)?.state === "delivered", "the restart", 30_000);
 
-		// omp (and the thread inside it) and both tools are gone: none of the listed processes is still the one listed.
-		const after = await platform.proc.identities([ompPid, ...children]);
-		for (const [pid, identity] of before) expect(after.get(pid)).not.toBe(identity);
-		expect(live.info.exited).toBe(true);
-		// The spinning thread kept omp alive past its closed stdin: it took a signal to end it.
-		expect(w.pool.exitOf(live.info.liveId)?.exit).toMatchObject({
-			by: "server",
-			reason: "agentRestart",
-			signal: "SIGTERM",
-		});
-		// The conversation runs in a new process on the same file.
-		const next = w.pool.liveOfFile(w.file);
-		expect(next).toBeDefined();
-		expect(next?.info.liveId).not.toBe(live.info.liveId);
-		expect(next?.info.pid).not.toBe(ompPid);
-		if (next?.info.pid) strays.add(next.info.pid);
-		expect(w.store.get(record.id)?.newLiveId).toBe(next?.info.liveId);
-		// Told once, with the request's id and the agent's own words; the session file has it. Still once a moment later
-		// (nothing sends it again): the second look is the point of the wait.
-		await Bun.sleep(500);
-		const told = sent(w.prompts).filter((m) => m.includes(record.id));
-		expect(told).toHaveLength(1);
-		expect(told[0]).toStartWith(`[omp-webui restart ${record.id}] Restarted by the agent: bash calls hang`);
-		expect(told[0]).toContain(ARGS.continue_with);
-		expect(told[0]).toContain("it is not from the person");
-		expect(readFileSync(w.file, "utf8")).toContain(record.id);
-		// Nothing of the old process's notes is left on the new one.
-		expect(next?.info.restartPending).toBeUndefined();
-	}, 60_000);
+			// omp (and the thread inside it) and both tools are gone: none of the listed processes is still the one listed.
+			const after = await platform.proc.identities([ompPid, ...children]);
+			for (const [pid, identity] of before) expect(after.get(pid)).not.toBe(identity);
+			expect(live.info.exited).toBe(true);
+			// The spinning thread kept omp alive past its closed stdin: it took a signal to end it.
+			expect(w.pool.exitOf(live.info.liveId)?.exit).toMatchObject({
+				by: "server",
+				reason: "agentRestart",
+				signal: "SIGTERM",
+			});
+			// The conversation runs in a new process on the same file.
+			const next = w.pool.liveOfFile(w.file);
+			expect(next).toBeDefined();
+			expect(next?.info.liveId).not.toBe(live.info.liveId);
+			expect(next?.info.pid).not.toBe(ompPid);
+			if (next?.info.pid) strays.add(next.info.pid);
+			expect(w.store.get(record.id)?.newLiveId).toBe(next?.info.liveId);
+			// Told once, with the request's id and the agent's own words; the session file has it. Still once a moment later
+			// (nothing sends it again): the second look is the point of the wait.
+			await Bun.sleep(500);
+			const told = sent(w.prompts).filter((m) => m.includes(record.id));
+			expect(told).toHaveLength(1);
+			expect(told[0]).toStartWith(`[omp-webui restart ${record.id}] Restarted by the agent: bash calls hang`);
+			expect(told[0]).toContain(ARGS.continue_with);
+			expect(told[0]).toContain("it is not from the person");
+			expect(readFileSync(w.file, "utf8")).toContain(record.id);
+			// Nothing of the old process's notes is left on the new one.
+			expect(next?.info.restartPending).toBeUndefined();
+		},
+		60_000,
+	);
 
 	test("a call the extension refused is no request", async () => {
 		const w = world();

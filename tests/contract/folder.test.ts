@@ -542,9 +542,14 @@ describe("a page that is not this computer's", () => {
 
 	const q = (route: string, query: Record<string, string>) =>
 		`/api/folder/${route}?${new URLSearchParams({ file, ...query })}`;
-	/** The page through the tunnel, and the page on this computer behind a proxy that says where the request came from. */
-	const guardedPages: [string, (path: string) => Promise<Response>][] = [
-		["through the tunnel", (path) => remote.fetch(path)],
+	/**
+	 * The page through the tunnel (where remote access is: not on Windows), and the page on this computer behind a proxy
+	 * that says where the request came from.
+	 */
+	type GuardedPage = [string, (path: string) => Promise<Response>];
+	const tunnelPage: GuardedPage = ["through the tunnel", (path) => remote.fetch(path)];
+	const guardedPages: GuardedPage[] = [
+		...(capabilities.remoteAccess ? [tunnelPage] : []),
 		[
 			"behind a proxy",
 			(path) => fetch(`${s.url}${path}`, { headers: { ...headers(), "x-forwarded-for": "203.0.113.9" } }),

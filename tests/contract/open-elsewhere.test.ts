@@ -8,6 +8,7 @@ import { type LeaseSystem, leaseHeldElsewhere, SESSION_LEASE_SINCE } from "../..
 import { compareVersions, parseVersion } from "../../shared/omp-install.ts";
 import type { LiveInfo, SessionSummary } from "../../shared/protocol.ts";
 import { writeSimpleSession } from "../support/fixtures.ts";
+import { has } from "../support/needs.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
 import { pollUntil } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
@@ -75,44 +76,48 @@ async function terminalOn(file: string, server = s, env?: Record<string, string>
 	return terminal;
 }
 
-test("renaming or deleting a conversation that a terminal's omp has open is refused, and works once it is closed", async () => {
-	const file = realpathSync(writeSimpleSession(s.agentDir, 0x61, "Held by a terminal"));
-	const bucket = dirname(file);
-	const files = () => readdirSync(bucket).filter((f) => f.endsWith(".jsonl"));
-	const before = files();
-	const terminal = await terminalOn(file);
-	await pollUntil(async () => (await titleOf(file)) === "Named in the terminal", "the terminal's name to be listed");
+test.skipIf(!has.notWindowsYet)(
+	"renaming or deleting a conversation that a terminal's omp has open is refused, and works once it is closed",
+	async () => {
+		const file = realpathSync(writeSimpleSession(s.agentDir, 0x61, "Held by a terminal"));
+		const bucket = dirname(file);
+		const files = () => readdirSync(bucket).filter((f) => f.endsWith(".jsonl"));
+		const before = files();
+		const terminal = await terminalOn(file);
+		await pollUntil(async () => (await titleOf(file)) === "Named in the terminal", "the terminal's name to be listed");
 
-	const rename = await post("/api/session/rename", { file, title: "Renamed in the web UI" });
-	expect(rename.status).toBe(409);
-	expect(String(rename.body.error)).toMatch(/another omp process/);
-	// Nothing was written anywhere: not to the conversation, and not to a copy of it.
-	expect(files()).toEqual(before);
-	expect(await titleOf(file)).toBe("Named in the terminal");
+		const rename = await post("/api/session/rename", { file, title: "Renamed in the web UI" });
+		expect(rename.status).toBe(409);
+		expect(String(rename.body.error)).toMatch(/another omp process/);
+		// Nothing was written anywhere: not to the conversation, and not to a copy of it.
+		expect(files()).toEqual(before);
+		expect(await titleOf(file)).toBe("Named in the terminal");
 
-	const remove = await post("/api/session/delete", { file });
-	expect(remove.status).toBe(409);
-	expect(String(remove.body.error)).toMatch(/another omp process/);
-	expect(existsSync(file)).toBe(true);
+		const remove = await post("/api/session/delete", { file });
+		expect(remove.status).toBe(409);
+		expect(String(remove.body.error)).toMatch(/another omp process/);
+		expect(existsSync(file)).toBe(true);
 
-	// In bulk it is reported as not deleted, with the same reason.
-	const bulk = await post("/api/sessions/delete", { files: [file] });
-	expect(bulk.body.deleted).toEqual([]);
-	expect(bulk.body.failed).toMatchObject([{ file, error: remove.body.error }]);
-	expect(existsSync(file)).toBe(true);
+		// In bulk it is reported as not deleted, with the same reason.
+		const bulk = await post("/api/sessions/delete", { files: [file] });
+		expect(bulk.body.deleted).toEqual([]);
+		expect(bulk.body.failed).toMatchObject([{ file, error: remove.body.error }]);
+		expect(existsSync(file)).toBe(true);
 
-	// The terminal's omp ends (its lease goes with it): the rename is the conversation's own, and so is the delete.
-	terminal.kill("SIGKILL");
-	await terminal.whenExited;
-	const renamed = await post("/api/session/rename", { file, title: "Renamed in the web UI" });
-	expect(renamed.status).toBe(200);
-	await pollUntil(async () => (await titleOf(file)) === "Renamed in the web UI", "the new name to be listed");
-	expect(files()).toEqual(before);
+		// The terminal's omp ends (its lease goes with it): the rename is the conversation's own, and so is the delete.
+		terminal.kill("SIGKILL");
+		await terminal.whenExited;
+		const renamed = await post("/api/session/rename", { file, title: "Renamed in the web UI" });
+		expect(renamed.status).toBe(200);
+		await pollUntil(async () => (await titleOf(file)) === "Renamed in the web UI", "the new name to be listed");
+		expect(files()).toEqual(before);
 
-	const removed = await post("/api/session/delete", { file });
-	expect(removed.status).toBe(200);
-	expect(existsSync(file)).toBe(false);
-}, 120_000);
+		const removed = await post("/api/session/delete", { file });
+		expect(removed.status).toBe(200);
+		expect(existsSync(file)).toBe(false);
+	},
+	120_000,
+);
 
 test.skipIf(!capabilities.leaseHolders)(
 	"a conversation open here too: refused while a terminal's omp holds it, not while the server's own process does",

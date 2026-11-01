@@ -2,6 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { has } from "../support/needs.ts";
 import { pruneSessions, sessionEntries } from "../support/session-prune.ts";
 
 /**
@@ -45,17 +46,20 @@ test("what the earlier file left goes, folders and all; the fixtures stay", () =
 	expect(pruneSessions(agentDir, seeded, left)).toBe(0);
 });
 
-test("what the next file wrote before its first test (a beforeAll) stays, in a folder the earlier file made too (A-036)", () => {
-	const { agentDir, bucket, seeded } = started("agent-before-all");
-	earlierFile(agentDir, bucket);
-	// The earlier file's last test has ended; then the next file's beforeAll writes, in the fixture project and in the
-	// project folder the earlier file had made, before its first test (where the prune runs).
-	const left = sessionEntries(agentDir);
-	writeFileSync(join(bucket, "next-0.jsonl"), "{}\n");
-	writeFileSync(join(agentDir, "sessions", "-tmp-own-project", "next-1.jsonl"), "{}\n");
+test.skipIf(!has.notWindowsYet)(
+	"what the next file wrote before its first test (a beforeAll) stays, in a folder the earlier file made too (A-036)",
+	() => {
+		const { agentDir, bucket, seeded } = started("agent-before-all");
+		earlierFile(agentDir, bucket);
+		// The earlier file's last test has ended; then the next file's beforeAll writes, in the fixture project and in the
+		// project folder the earlier file had made, before its first test (where the prune runs).
+		const left = sessionEntries(agentDir);
+		writeFileSync(join(bucket, "next-0.jsonl"), "{}\n");
+		writeFileSync(join(agentDir, "sessions", "-tmp-own-project", "next-1.jsonl"), "{}\n");
 
-	pruneSessions(agentDir, seeded, left);
-	expect([...sessionEntries(agentDir)].sort()).toEqual(
-		[...seeded, "-tmp-fixture/next-0.jsonl", "-tmp-own-project", "-tmp-own-project/next-1.jsonl"].sort(),
-	);
-});
+		pruneSessions(agentDir, seeded, left);
+		expect([...sessionEntries(agentDir)].sort()).toEqual(
+			[...seeded, "-tmp-fixture/next-0.jsonl", "-tmp-own-project", "-tmp-own-project/next-1.jsonl"].sort(),
+		);
+	},
+);

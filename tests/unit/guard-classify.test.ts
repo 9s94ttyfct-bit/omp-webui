@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { classifyToolCall, type RiskContext } from "../../shared/remote-risk.ts";
 import type { RiskKind } from "../../shared/risk-confirm.ts";
 import { growth } from "../support/growth.ts";
+import { has } from "../support/needs.ts";
 
 /**
  * What "Guard dangerous commands" (#609) sends to its reviewer: the classifier of #608 (`shared/remote-risk.ts`), read for
@@ -112,37 +113,40 @@ describe("the server's own API, under every spelling of this computer that a cli
 		expect(evalPy("import requests\nrequests.get('http://[::ffff:127.0.0.1]:7878/api/guard')")).toContain("protected");
 	});
 
-	test("a long input that nearly spells one does not take seconds: the classifier runs inside omp's tool_call handler", () => {
-		// Some of these used to make the loopback pattern scan towards the end of the input from every start: quadratic (3.6 s
-		// for the `$(hostname` run, 10 s for the `localhost:` run). What is read is how the cost grows when the input is
-		// sixteen times as long, in CPU time (`growth`): about 16 when linear, about 256 when quadratic, whatever the machine
-		// and its load; 60 is between.
-		const commands: ((n: number) => string)[] = [
-			(n) => `echo ${"$(hostname ".repeat(n)}`,
-			(n) => `echo $(hostname${"x".repeat(10 * n)}`,
-			(n) => `echo ${"`hostname".repeat(n)}`,
-			(n) => `echo \`hostname${"x".repeat(10 * n)}`,
-			(n) => `echo ${"$(uname  ".repeat(n)}`,
-			(n) => `curl ${"localhost:".repeat(n)}`,
-			(n) => `curl ${"127.0.0.1:".repeat(n)}`,
-			(n) => `curl ${"[0:0:0:".repeat(n)}`,
-			(n) => `curl http://localhost:${"1".repeat(10 * n)}`,
-			(n) => `curl http://127.${"1".repeat(10 * n)}`,
-		];
-		for (const command of commands) {
-			const ratio = growth(
-				(n) => {
-					const line = command(n);
-					return () => void bash(line);
-				},
-				{ small: 3_125, big: 50_000 },
-			);
-			expect(ratio, command(1)).toBeLessThan(60);
-		}
-		// Within the bound, the spellings are still read.
-		expect(bash(`curl http://$(hostname ${"-s ".repeat(20)})/api/guard`)).toContain("protected");
-		expect(bash("curl http://localhost:7878/api/guard")).toContain("protected");
-	});
+	test.skipIf(!has.notWindowsYet)(
+		"a long input that nearly spells one does not take seconds: the classifier runs inside omp's tool_call handler",
+		() => {
+			// Some of these used to make the loopback pattern scan towards the end of the input from every start: quadratic (3.6 s
+			// for the `$(hostname` run, 10 s for the `localhost:` run). What is read is how the cost grows when the input is
+			// sixteen times as long, in CPU time (`growth`): about 16 when linear, about 256 when quadratic, whatever the machine
+			// and its load; 60 is between.
+			const commands: ((n: number) => string)[] = [
+				(n) => `echo ${"$(hostname ".repeat(n)}`,
+				(n) => `echo $(hostname${"x".repeat(10 * n)}`,
+				(n) => `echo ${"`hostname".repeat(n)}`,
+				(n) => `echo \`hostname${"x".repeat(10 * n)}`,
+				(n) => `echo ${"$(uname  ".repeat(n)}`,
+				(n) => `curl ${"localhost:".repeat(n)}`,
+				(n) => `curl ${"127.0.0.1:".repeat(n)}`,
+				(n) => `curl ${"[0:0:0:".repeat(n)}`,
+				(n) => `curl http://localhost:${"1".repeat(10 * n)}`,
+				(n) => `curl http://127.${"1".repeat(10 * n)}`,
+			];
+			for (const command of commands) {
+				const ratio = growth(
+					(n) => {
+						const line = command(n);
+						return () => void bash(line);
+					},
+					{ small: 3_125, big: 50_000 },
+				);
+				expect(ratio, command(1)).toBeLessThan(60);
+			}
+			// Within the bound, the spellings are still read.
+			expect(bash(`curl http://$(hostname ${"-s ".repeat(20)})/api/guard`)).toContain("protected");
+			expect(bash("curl http://localhost:7878/api/guard")).toContain("protected");
+		},
+	);
 });
 
 describe("what the guard promises to look at, in a program an eval cell runs", () => {

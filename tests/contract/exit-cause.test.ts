@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { LivePool } from "../../server/live.ts";
 import type { ServerMessage } from "../../shared/protocol.ts";
 import { type FakeOmpOptions, fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
+import { has } from "../support/needs.ts";
 
 /**
  * Who ended a conversation's omp, and why: the page must be able to tell an end the server asked for (the idle
@@ -67,16 +68,20 @@ test("a Close says the user closed the process", async () => {
 	expect(exitOf(exits)).toMatchObject({ by: "server", reason: "closed" });
 }, 30_000);
 
-test("a process that ends on its own is not blamed on the server", async () => {
-	const { live, exits } = await setup();
-	// The process is killed from outside: it ends on its own, and the server did not ask for it.
-	process.kill(live.info.pid as number, "SIGKILL");
-	await Bun.sleep(1000);
-	const exit = exitOf(exits);
-	expect(exit).not.toBeNull();
-	expect(exit).toMatchObject({ by: "omp", code: null, signal: "SIGKILL" });
-	expect(exit && "reason" in exit ? exit.reason : undefined).toBeUndefined();
-}, 30_000);
+test.skipIf(!has.notWindowsYet)(
+	"a process that ends on its own is not blamed on the server",
+	async () => {
+		const { live, exits } = await setup();
+		// The process is killed from outside: it ends on its own, and the server did not ask for it.
+		process.kill(live.info.pid as number, "SIGKILL");
+		await Bun.sleep(1000);
+		const exit = exitOf(exits);
+		expect(exit).not.toBeNull();
+		expect(exit).toMatchObject({ by: "omp", code: null, signal: "SIGKILL" });
+		expect(exit && "reason" in exit ? exit.reason : undefined).toBeUndefined();
+	},
+	30_000,
+);
 
 test("a restart says the process was ended to be started again", async () => {
 	const { pool, live, exits } = await setup();

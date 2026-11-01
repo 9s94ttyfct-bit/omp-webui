@@ -8,6 +8,7 @@ import { type AccessKey, type Jwks, makeKey, startJwks } from "../support/access
 import { writeFakeOmp } from "../support/fake-omp.ts";
 import { messageWhere } from "../support/frames.ts";
 import { expectMode } from "../support/modes.ts";
+import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
 import { remoteClient, remoteSettings } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
@@ -192,36 +193,40 @@ describe("what the person tuned", () => {
 		expect(reviewed()).toEqual([]);
 	}, 60_000);
 
-	test("what an Allow would let through is tried first: the shipped harmful cases that would then run unasked, from the classifier alone", async () => {
-		const none = await post("/api/guard/bench/preview", { thresholds: {} });
-		expect(none.status).toBe(200);
-		const idle = ((await none.json()) as { preview: { now: number; after: number; total: number } }).preview;
-		expect(idle).toMatchObject({ now: 0, after: 0 });
-		expect(idle.total).toBeGreaterThan(15);
-		const res = await post("/api/guard/bench/preview", { thresholds: { delete_outside: "allow" } });
-		expect(res.status).toBe(200);
-		const { preview } = (await res.json()) as { preview: { now: number; after: number; ids: string[] } };
-		expect(preview.now).toBe(0);
-		expect(preview.after).toBeGreaterThan(0);
-		// Only what carries nothing broader: the sweeps, the loops, the home folder stay Ask.
-		expect(preview.ids).toContain("rm_folder");
-		for (const id of ["rm_home_glob", "find_delete", "xargs_rm", "rsync_delete", "truncate_loop"])
-			expect(preview.ids, id).not.toContain(id);
-		// A trial changes nothing, and runs nothing.
-		expect((await rulesNow()).thresholds?.delete_outside).not.toBe("allow");
-		const info = (await (await fetch(`${s.url}/api/guard/bench`, { headers: authed() })).json()) as BenchInfo;
-		expect(info.run).toBeNull();
-		// What cannot be Allow cannot be tried as Allow; a bad body is refused; only POST.
-		for (const bad of [
-			{ thresholds: { mass_delete: "allow" } },
-			{ thresholds: { protected: "allow" } },
-			{ thresholds: { nope: "allow" } },
-			{ thresholds: 5 },
-			{},
-		])
-			expect((await post("/api/guard/bench/preview", bad)).status, JSON.stringify(bad)).toBe(400);
-		expect((await fetch(`${s.url}/api/guard/bench/preview`, { headers: authed() })).status).toBe(405);
-	}, 60_000);
+	test.skipIf(!has.posixPaths)(
+		"what an Allow would let through is tried first: the shipped harmful cases that would then run unasked, from the classifier alone",
+		async () => {
+			const none = await post("/api/guard/bench/preview", { thresholds: {} });
+			expect(none.status).toBe(200);
+			const idle = ((await none.json()) as { preview: { now: number; after: number; total: number } }).preview;
+			expect(idle).toMatchObject({ now: 0, after: 0 });
+			expect(idle.total).toBeGreaterThan(15);
+			const res = await post("/api/guard/bench/preview", { thresholds: { delete_outside: "allow" } });
+			expect(res.status).toBe(200);
+			const { preview } = (await res.json()) as { preview: { now: number; after: number; ids: string[] } };
+			expect(preview.now).toBe(0);
+			expect(preview.after).toBeGreaterThan(0);
+			// Only what carries nothing broader: the sweeps, the loops, the home folder stay Ask.
+			expect(preview.ids).toContain("rm_folder");
+			for (const id of ["rm_home_glob", "find_delete", "xargs_rm", "rsync_delete", "truncate_loop"])
+				expect(preview.ids, id).not.toContain(id);
+			// A trial changes nothing, and runs nothing.
+			expect((await rulesNow()).thresholds?.delete_outside).not.toBe("allow");
+			const info = (await (await fetch(`${s.url}/api/guard/bench`, { headers: authed() })).json()) as BenchInfo;
+			expect(info.run).toBeNull();
+			// What cannot be Allow cannot be tried as Allow; a bad body is refused; only POST.
+			for (const bad of [
+				{ thresholds: { mass_delete: "allow" } },
+				{ thresholds: { protected: "allow" } },
+				{ thresholds: { nope: "allow" } },
+				{ thresholds: 5 },
+				{},
+			])
+				expect((await post("/api/guard/bench/preview", bad)).status, JSON.stringify(bad)).toBe(400);
+			expect((await fetch(`${s.url}/api/guard/bench/preview`, { headers: authed() })).status).toBe(405);
+		},
+		60_000,
+	);
 });
 
 /** Wait for the benchmark's run to be over, and give it. */

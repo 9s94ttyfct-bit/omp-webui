@@ -5,6 +5,7 @@ import type { PsRow } from "../../server/host-parse.ts";
 import { type HostReader, type Reading, systemReader } from "../../server/host-read.ts";
 import { capabilities } from "../../server/platform/capabilities.ts";
 import type { ServerMessage } from "../../shared/protocol.ts";
+import { has } from "../support/needs.ts";
 
 /** How many accelerators this computer's probe reads: 0 where there is none (not macOS, or a Mac with no GPU statistics). */
 const accelerators = openGpuProbe()?.read().length ?? 0;
@@ -461,7 +462,7 @@ describe("the computer's own reader", () => {
 		}
 	});
 
-	test("lists processes, this one among them", async () => {
+	test.skipIf(!has.notWindowsYet)("lists processes, this one among them", async () => {
 		const rows = await systemReader().processes();
 		expect(rows.find((r) => r.pid === process.pid)?.rss).toBeGreaterThan(0);
 	});

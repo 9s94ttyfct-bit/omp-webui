@@ -329,7 +329,7 @@ describe("the socket: host_watch and host_sample", () => {
 	}, 30_000);
 });
 
-describe("a page that came in through the tunnel", () => {
+describe.skipIf(!capabilities.remoteAccess)("a page that came in through the tunnel", () => {
 	test("reads the history, and the answer is the same shape as at this computer", async () => {
 		const res = await remote.fetch("/api/host");
 		expect(res.status).toBe(200);
@@ -363,18 +363,14 @@ describe("a page that came in through the tunnel", () => {
 		}
 	}, 30_000);
 
-	test.skipIf(!capabilities.remoteAccess)(
-		"closing its socket ends the watch, as for a page at this computer",
-		async () => {
-			const ws = await remote.socket();
-			if (!ws) throw new Error("the tunnel's socket was refused");
-			watch(ws, true, { procs: true });
-			await pollUntil(async () => (await history()).procs !== null, "the processes listed for the remote page");
-			ws.close();
-			await pollUntil(async () => (await history()).procs === null, "the listing stopped");
-		},
-		30_000,
-	);
+	test("closing its socket ends the watch, as for a page at this computer", async () => {
+		const ws = await remote.socket();
+		if (!ws) throw new Error("the tunnel's socket was refused");
+		watch(ws, true, { procs: true });
+		await pollUntil(async () => (await history()).procs !== null, "the processes listed for the remote page");
+		ws.close();
+		await pollUntil(async () => (await history()).procs === null, "the listing stopped");
+	}, 30_000);
 });
 
 describe("a server that restarts", () => {

@@ -3,6 +3,7 @@ import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { messageWhere } from "../support/frames.ts";
+import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
@@ -86,22 +87,26 @@ test("a saved conversation that is moved shows its new folder, and comes back th
 	ws.close();
 }, 90_000);
 
-test("`/wt` takes a conversation into a new worktree, and the folder it shows is the worktree", async () => {
-	const ws = await connect(s);
-	const repo = join(s.root, "worktree-source");
-	mkdirSync(repo, { recursive: true });
-	const git = (...args: string[]) =>
-		Bun.spawnSync(["git", "-C", repo, "-c", "user.email=a@b", "-c", "user.name=n", ...args]);
-	git("init", "-q");
-	git("commit", "-q", "--allow-empty", "-m", "init");
-	const live = await request<LiveInfo>(ws, { t: "open", target: { kind: "new", cwd: repo } });
-	await request(ws, { t: "rpc", liveId: live.liveId, command: { type: "prompt", message: "/wt" } });
-	// omp makes the worktree under its own directory (the test server's HOME), named for the time.
-	const worktrees = join(realpathSync(s.home), ".omp", "wt");
-	await pollUntil(
-		async () => (await listing(ws, live.liveId))?.cwd.startsWith(`${worktrees}/`) === true,
-		"the worktree as the folder",
-	);
-	await request(ws, { t: "close", liveId: live.liveId });
-	ws.close();
-}, 90_000);
+test.skipIf(!has.notWindowsYet)(
+	"`/wt` takes a conversation into a new worktree, and the folder it shows is the worktree",
+	async () => {
+		const ws = await connect(s);
+		const repo = join(s.root, "worktree-source");
+		mkdirSync(repo, { recursive: true });
+		const git = (...args: string[]) =>
+			Bun.spawnSync(["git", "-C", repo, "-c", "user.email=a@b", "-c", "user.name=n", ...args]);
+		git("init", "-q");
+		git("commit", "-q", "--allow-empty", "-m", "init");
+		const live = await request<LiveInfo>(ws, { t: "open", target: { kind: "new", cwd: repo } });
+		await request(ws, { t: "rpc", liveId: live.liveId, command: { type: "prompt", message: "/wt" } });
+		// omp makes the worktree under its own directory (the test server's HOME), named for the time.
+		const worktrees = join(realpathSync(s.home), ".omp", "wt");
+		await pollUntil(
+			async () => (await listing(ws, live.liveId))?.cwd.startsWith(`${worktrees}/`) === true,
+			"the worktree as the folder",
+		);
+		await request(ws, { t: "close", liveId: live.liveId });
+		ws.close();
+	},
+	90_000,
+);

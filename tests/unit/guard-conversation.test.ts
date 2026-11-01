@@ -37,6 +37,7 @@ import { isRecord } from "../../shared/guards.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
+import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
 import { setTempDir } from "../support/tmp.ts";
 
@@ -558,23 +559,26 @@ describe("a conversation's gate", () => {
 		expect(a.guardChoice).toBeNull();
 	});
 
-	test("is not told a choice it could not be told: nothing changes when the word cannot be written", async () => {
-		const t = setup();
-		const a = await t.open("a");
-		a.changeGuard({ mode: "ask" });
-		const folder = dirname(t.overlays()[0]);
-		// Its folder takes no new file: the word cannot be written.
-		chmodSync(folder, 0o500);
-		try {
-			expect(() => a.changeGuard({ mode: "off" })).toThrow(/could not be told/);
-		} finally {
-			chmodSync(folder, 0o700);
-		}
-		expect(a.guardChoice).toEqual({ mode: "ask" });
-		expect(a.info.guard?.config.mode).toBe("ask");
-		expect(ownOf(t.approval, sessionKey(a.info.sessionFile ?? ""))).toEqual({ mode: "ask" });
-		expect(t.word(0)?.mode).toBe("ask");
-	});
+	test.skipIf(!has.notWindowsYet)(
+		"is not told a choice it could not be told: nothing changes when the word cannot be written",
+		async () => {
+			const t = setup();
+			const a = await t.open("a");
+			a.changeGuard({ mode: "ask" });
+			const folder = dirname(t.overlays()[0]);
+			// Its folder takes no new file: the word cannot be written.
+			chmodSync(folder, 0o500);
+			try {
+				expect(() => a.changeGuard({ mode: "off" })).toThrow(/could not be told/);
+			} finally {
+				chmodSync(folder, 0o700);
+			}
+			expect(a.guardChoice).toEqual({ mode: "ask" });
+			expect(a.info.guard?.config.mode).toBe("ask");
+			expect(ownOf(t.approval, sessionKey(a.info.sessionFile ?? ""))).toEqual({ mode: "ask" });
+			expect(t.word(0)?.mode).toBe("ask");
+		},
+	);
 
 	test("is that of the conversation a process is opened on, by this server again or by the next", async () => {
 		const t = setup();

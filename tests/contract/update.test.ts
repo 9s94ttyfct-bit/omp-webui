@@ -12,6 +12,7 @@ import type { AppUpdateState, UpdateSnapshot } from "../../shared/update.ts";
 import { type AppServer, startAppServer } from "../support/app-server.ts";
 import { writeFakeOmp } from "../support/fake-omp.ts";
 import { type FakeReleases, startFakeReleases } from "../support/fake-releases.ts";
+import { has } from "../support/needs.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
 import { buildFixtures, disposeFixtures, type Fixtures, NEWER } from "../support/update-fixtures.ts";
@@ -186,19 +187,22 @@ test("the server looks for a release soon after it starts, with no one asking, a
 	late.close();
 }, 90_000);
 
-test("a restarted server knows the release before it asks, and asks with the ETag it was given: a 304 changes nothing", async () => {
-	fake.publish({ tag: `v${NEWER}`, dmg: releaseDmg() });
-	const dataDir = join(root, "data-etag");
-	const a = await boot(dataDir);
-	await pollUntil(async () => (await a.state()).newer, "the first look");
-	await quit(a);
-	fake.requests.length = 0;
-	const b = await boot(dataDir);
-	await pollUntil(() => fake.requests.some((r) => r.path.endsWith("/releases/latest")), "the second server's look");
-	expect(fake.requests[0]?.headers["if-none-match"]).toMatch(/^W\/"fake-/);
-	await pollUntil(async () => (await b.state()).checkedAt !== null, "the answer to be taken");
-	expect(await b.state()).toMatchObject({ newer: true, failure: null, latest: { tag: `v${NEWER}` } });
-});
+test.skipIf(!has.posixSignals)(
+	"a restarted server knows the release before it asks, and asks with the ETag it was given: a 304 changes nothing",
+	async () => {
+		fake.publish({ tag: `v${NEWER}`, dmg: releaseDmg() });
+		const dataDir = join(root, "data-etag");
+		const a = await boot(dataDir);
+		await pollUntil(async () => (await a.state()).newer, "the first look");
+		await quit(a);
+		fake.requests.length = 0;
+		const b = await boot(dataDir);
+		await pollUntil(() => fake.requests.some((r) => r.path.endsWith("/releases/latest")), "the second server's look");
+		expect(fake.requests[0]?.headers["if-none-match"]).toMatch(/^W\/"fake-/);
+		await pollUntil(async () => (await b.state()).checkedAt !== null, "the answer to be taken");
+		expect(await b.state()).toMatchObject({ newer: true, failure: null, latest: { tag: `v${NEWER}` } });
+	},
+);
 
 test("a server that is no app cannot install, and every route is for a page of this origin only", async () => {
 	fake.publish({ tag: `v${NEWER}`, dmg: releaseDmg() });

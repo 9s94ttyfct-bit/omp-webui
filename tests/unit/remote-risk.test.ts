@@ -3,6 +3,7 @@ import { apiPorts } from "../../server/instance.ts";
 import { classifyCode, classifyShell, classifyToolCall, type RiskContext } from "../../shared/remote-risk.ts";
 import { parseRiskTitle, RISK_DETAIL_MAX, type RiskKind, riskCommand, riskTitle } from "../../shared/risk-confirm.ts";
 import { growth } from "../support/growth.ts";
+import { has } from "../support/needs.ts";
 
 /** A conversation in `/work/proj` on a Mac whose user is `me`: the places the gate treats as its own or as protected. */
 const ctx: RiskContext = {
@@ -1180,36 +1181,39 @@ describe("tool calls", () => {
 		expect(classifyCode("x".repeat(300_000), ctx)).toEqual(["unreadable"]);
 	});
 
-	test("the classifier runs inside omp's tool_call handler, so a large one-line cell does not take seconds", () => {
-		// Many `Path('…')` on one line with no method after them: the span between a path and a method is bounded, so it is
-		// linear (it was quadratic, 1 s for 176 KB here and over 5 s elsewhere). What is read is how the cost grows when the
-		// cell is sixteen times as long (a cell past 300 KB is refused unread, so the long one is the size below), in CPU time
-		// (`growth`): about 16 when linear, about 256 when quadratic, whatever the machine and its load; 60 is between.
-		const cells: [string, number][] = [
-			["Path('/tmp/a'), ", 11_000],
-			["Bun.file('/tmp/a'), ", 8_500],
-			["Path('/tmp/a') + 'x', ", 8_000],
-		];
-		for (const [unit, count] of cells) {
-			const cell = unit.repeat(count);
-			expect(cell.length).toBeGreaterThan(150_000);
-			expect(classifyCode(cell, ctx)).toEqual([]);
-			const ratio = growth(
-				(size) => {
-					const code = unit.repeat(size);
-					return () => void classifyCode(code, ctx);
-				},
-				{ small: count / 16, big: count },
+	test.skipIf(!has.notWindowsYet)(
+		"the classifier runs inside omp's tool_call handler, so a large one-line cell does not take seconds",
+		() => {
+			// Many `Path('…')` on one line with no method after them: the span between a path and a method is bounded, so it is
+			// linear (it was quadratic, 1 s for 176 KB here and over 5 s elsewhere). What is read is how the cost grows when the
+			// cell is sixteen times as long (a cell past 300 KB is refused unread, so the long one is the size below), in CPU time
+			// (`growth`): about 16 when linear, about 256 when quadratic, whatever the machine and its load; 60 is between.
+			const cells: [string, number][] = [
+				["Path('/tmp/a'), ", 11_000],
+				["Bun.file('/tmp/a'), ", 8_500],
+				["Path('/tmp/a') + 'x', ", 8_000],
+			];
+			for (const [unit, count] of cells) {
+				const cell = unit.repeat(count);
+				expect(cell.length).toBeGreaterThan(150_000);
+				expect(classifyCode(cell, ctx)).toEqual([]);
+				const ratio = growth(
+					(size) => {
+						const code = unit.repeat(size);
+						return () => void classifyCode(code, ctx);
+					},
+					{ small: count / 16, big: count },
+				);
+				expect(ratio, unit).toBeLessThan(60);
+			}
+			// A chain within the bound is still read.
+			expect(classifyCode("Path('/Users/me/Documents/x').resolve().parent.joinpath('y').write_text('z')", ctx)).toEqual(
+				["write_outside"],
 			);
-			expect(ratio, unit).toBeLessThan(60);
-		}
-		// A chain within the bound is still read.
-		expect(classifyCode("Path('/Users/me/Documents/x').resolve().parent.joinpath('y').write_text('z')", ctx)).toEqual([
-			"write_outside",
-		]);
-		// Past it, it is not: a documented limit (docs/TECHNICAL.md says the chain between a path and its method is read up to 300 characters).
-		expect(classifyCode(`Path('/Users/me/Documents/x')${".resolve()".repeat(40)}.write_text('z')`, ctx)).toEqual([]);
-	});
+			// Past it, it is not: a documented limit (docs/TECHNICAL.md says the chain between a path and its method is read up to 300 characters).
+			expect(classifyCode(`Path('/Users/me/Documents/x')${".resolve()".repeat(40)}.write_text('z')`, ctx)).toEqual([]);
+		},
+	);
 });
 
 describe("the confirmation's words", () => {

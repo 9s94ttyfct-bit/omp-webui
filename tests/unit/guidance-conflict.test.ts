@@ -21,6 +21,7 @@ import {
 } from "../../server/omp/guidance/conflict-sources.ts";
 import { applyChange, CONFLICT_LIMITS, lineDiff } from "../../shared/guidance-conflict.ts";
 import type { MemoryItem } from "../../shared/memory.ts";
+import { has } from "../support/needs.ts";
 import { tempDir } from "../support/temp-dirs.ts";
 
 /**
@@ -351,28 +352,31 @@ describe("the context files of a folder", () => {
 		expect(without).toContain(join(cwd, "RULES.md"));
 	});
 
-	test("the files that exist, read once each, labelled, and editable as the callback says", async () => {
-		const { home, repo, cwd, agentDir, rules } = world();
-		writeFileSync(join(cwd, "AGENTS.md"), "Reply in Chinese.\n");
-		writeFileSync(join(repo, "AGENTS.md"), "Repository rules.\n");
-		writeFileSync(join(cwd, "CLAUDE.md"), "   \n");
-		symlinkSync(join(cwd, "AGENTS.md"), join(cwd, ".omp", "AGENTS.md"));
-		writeFileSync(join(agentDir, "AGENTS.md"), "The person's own rules.\n");
-		writeFileSync(join(home, ".claude", "CLAUDE.md"), "Claude's rules.\n");
-		const asked: string[] = [];
-		const found = await contextFiles(cwd, rules, async (abs) => {
-			asked.push(abs);
-			return abs.startsWith(cwd) ? abs.slice(cwd.length + 1) : null;
-		});
-		expect(found.map((f) => [f.id, f.label, f.level, f.rel])).toEqual([
-			["f1", "AGENTS.md", "project", "AGENTS.md"],
-			["f2", "~/code/repo/AGENTS.md", "project", null],
-			["f3", "~/.omp/agent/AGENTS.md", "user", null],
-			["f4", "~/.claude/CLAUDE.md", "user", null],
-		]);
-		expect(found[0].text).toBe("Reply in Chinese.\n");
-		expect(labelOf("/elsewhere/AGENTS.md", cwd, home)).toBe("/elsewhere/AGENTS.md");
-	});
+	test.skipIf(!has.notWindowsYet)(
+		"the files that exist, read once each, labelled, and editable as the callback says",
+		async () => {
+			const { home, repo, cwd, agentDir, rules } = world();
+			writeFileSync(join(cwd, "AGENTS.md"), "Reply in Chinese.\n");
+			writeFileSync(join(repo, "AGENTS.md"), "Repository rules.\n");
+			writeFileSync(join(cwd, "CLAUDE.md"), "   \n");
+			symlinkSync(join(cwd, "AGENTS.md"), join(cwd, ".omp", "AGENTS.md"));
+			writeFileSync(join(agentDir, "AGENTS.md"), "The person's own rules.\n");
+			writeFileSync(join(home, ".claude", "CLAUDE.md"), "Claude's rules.\n");
+			const asked: string[] = [];
+			const found = await contextFiles(cwd, rules, async (abs) => {
+				asked.push(abs);
+				return abs.startsWith(cwd) ? abs.slice(cwd.length + 1) : null;
+			});
+			expect(found.map((f) => [f.id, f.label, f.level, f.rel])).toEqual([
+				["f1", "AGENTS.md", "project", "AGENTS.md"],
+				["f2", "~/code/repo/AGENTS.md", "project", null],
+				["f3", "~/.omp/agent/AGENTS.md", "user", null],
+				["f4", "~/.claude/CLAUDE.md", "user", null],
+			]);
+			expect(found[0].text).toBe("Reply in Chinese.\n");
+			expect(labelOf("/elsewhere/AGENTS.md", cwd, home)).toBe("/elsewhere/AGENTS.md");
+		},
+	);
 
 	test("memories become sources by bank and id, at most the limit", () => {
 		const item = (n: number): MemoryItem => ({

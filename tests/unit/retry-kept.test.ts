@@ -188,13 +188,16 @@ test.skipIf(!capabilities.pauseResume)(
 	},
 );
 
-test("ending what outlives the server stops a waiting conversation's omp: it would sleep through the limit and retry for nobody", async () => {
-	const { first, live } = await start();
-	await emit(live, { type: "agent_start" }, usageLimitWait);
-	await pollUntil(() => first.parked.list().length === 1, "the wait to be written down");
-	const pid = live.info.pid as number;
-	expect(await first.endKept()).toBe(1);
-	await pollUntil(() => live.info.exited, "the waiting omp to end");
-	expect(Bun.spawnSync(["kill", "-0", String(pid)]).exitCode).not.toBe(0);
-	expect(first.parked.list()).toEqual([]);
-});
+test.skipIf(!capabilities.relay)(
+	"ending what outlives the server stops a waiting conversation's omp: it would sleep through the limit and retry for nobody",
+	async () => {
+		const { first, live } = await start();
+		await emit(live, { type: "agent_start" }, usageLimitWait);
+		await pollUntil(() => first.parked.list().length === 1, "the wait to be written down");
+		const pid = live.info.pid as number;
+		expect(await first.endKept()).toBe(1);
+		await pollUntil(() => live.info.exited, "the waiting omp to end");
+		expect(Bun.spawnSync(["kill", "-0", String(pid)]).exitCode).not.toBe(0);
+		expect(first.parked.list()).toEqual([]);
+	},
+);

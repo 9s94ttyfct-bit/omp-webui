@@ -21,6 +21,7 @@ import type { TransferEnv } from "../../server/transfer-core.ts";
 import { FOLDER_LIMITS, type FolderFile, type FolderSaved } from "../../shared/folder.ts";
 import { ERROR_HEADER, type TransferRecord } from "../../shared/transfer.ts";
 import { expectMode } from "../support/modes.ts";
+import { has } from "../support/needs.ts";
 import { tempDir } from "../support/temp-dirs.ts";
 
 /**
@@ -284,42 +285,45 @@ describe("what a save refuses", () => {
 		expect(names(w.proj)).toEqual(["dir"]);
 	});
 
-	test("what CI runs, what looks like a secret, a protected place and the app's own data: for a page on this computer too", async () => {
-		const w = world();
-		const key = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----\n";
-		const files: [string, string, string][] = [
-			[".github/workflows/ci.yml", "on: push\n", "protected"],
-			[".GitHub/Actions/run.yml", "run\n", "protected"],
-			["src/.env", "A=1\n", "secret"],
-			["src/id_rsa", "x\n", "secret"],
-			["notes.txt", key, "secret"],
-			["protected/file.txt", "p\n", "protected"],
-		];
-		for (const [path, text] of files) write(join(w.proj, path), text);
-		// Where names differ by case alone (Linux; not a Mac's APFS) `.GitHub` is a folder of its own, not `.github`: a hidden
-		// folder, which a page that is not on this computer is refused before anything else. This computer's page is refused it
-		// as what CI runs, by its name, as on a Mac.
-		const oneGithub = existsSync(join(w.proj, ".github", "Actions", "run.yml"));
-		for (const local of [true, false]) {
-			for (const [path, text, protectedCode] of files) {
-				const code = !local && !oneGithub && path.startsWith(".GitHub/") ? "hidden" : protectedCode;
-				const { status, json } = await w.save({ path, text: "changed", etag: sha(text) }, w.env({ local }));
-				expect([status, json.code], `${path} ${local ? "local" : "remote"}`).toEqual([403, code]);
-				expect(readFileSync(join(w.proj, path), "utf8"), path).toBe(text);
+	test.skipIf(!has.notWindowsYet)(
+		"what CI runs, what looks like a secret, a protected place and the app's own data: for a page on this computer too",
+		async () => {
+			const w = world();
+			const key = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----\n";
+			const files: [string, string, string][] = [
+				[".github/workflows/ci.yml", "on: push\n", "protected"],
+				[".GitHub/Actions/run.yml", "run\n", "protected"],
+				["src/.env", "A=1\n", "secret"],
+				["src/id_rsa", "x\n", "secret"],
+				["notes.txt", key, "secret"],
+				["protected/file.txt", "p\n", "protected"],
+			];
+			for (const [path, text] of files) write(join(w.proj, path), text);
+			// Where names differ by case alone (Linux; not a Mac's APFS) `.GitHub` is a folder of its own, not `.github`: a hidden
+			// folder, which a page that is not on this computer is refused before anything else. This computer's page is refused it
+			// as what CI runs, by its name, as on a Mac.
+			const oneGithub = existsSync(join(w.proj, ".github", "Actions", "run.yml"));
+			for (const local of [true, false]) {
+				for (const [path, text, protectedCode] of files) {
+					const code = !local && !oneGithub && path.startsWith(".GitHub/") ? "hidden" : protectedCode;
+					const { status, json } = await w.save({ path, text: "changed", etag: sha(text) }, w.env({ local }));
+					expect([status, json.code], `${path} ${local ? "local" : "remote"}`).toEqual([403, code]);
+					expect(readFileSync(join(w.proj, path), "utf8"), path).toBe(text);
+				}
 			}
-		}
-		// The data folder of an omp-webui, when the conversation's folder holds it (and a path that goes there through a link).
-		const inner = world();
-		const dataIn = join(inner.proj, "appdata");
-		write(join(dataIn, "state.json"), "{}");
-		const env = inner.env({ dataDirs: [dataIn], protect: [] });
-		const refused = await inner.save({ path: "appdata/state.json", text: "{}", etag: sha("{}") }, env);
-		expect([refused.status, refused.json.code]).toEqual([403, "ownData"]);
-		symlinkSync(dataIn, join(inner.proj, "via-link"));
-		const viaLink = await inner.save({ path: "via-link/state.json", text: "{ }", etag: sha("{}") }, env);
-		expect([viaLink.status, viaLink.json.code]).toEqual([403, "ownData"]);
-		expect(readFileSync(join(dataIn, "state.json"), "utf8")).toBe("{}");
-	});
+			// The data folder of an omp-webui, when the conversation's folder holds it (and a path that goes there through a link).
+			const inner = world();
+			const dataIn = join(inner.proj, "appdata");
+			write(join(dataIn, "state.json"), "{}");
+			const env = inner.env({ dataDirs: [dataIn], protect: [] });
+			const refused = await inner.save({ path: "appdata/state.json", text: "{}", etag: sha("{}") }, env);
+			expect([refused.status, refused.json.code]).toEqual([403, "ownData"]);
+			symlinkSync(dataIn, join(inner.proj, "via-link"));
+			const viaLink = await inner.save({ path: "via-link/state.json", text: "{ }", etag: sha("{}") }, env);
+			expect([viaLink.status, viaLink.json.code]).toEqual([403, "ownData"]);
+			expect(readFileSync(join(dataIn, "state.json"), "utf8")).toBe("{}");
+		},
+	);
 
 	test("a request that is not a save: no body, not JSON, the wrong kinds, no etag", async () => {
 		const w = world();

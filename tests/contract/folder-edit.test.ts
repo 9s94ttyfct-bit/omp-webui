@@ -206,37 +206,36 @@ describe("who may ask", () => {
 	);
 });
 
+/** This computer's page, and the tunnel's where remote access is (not on Windows: the server refuses it there). */
+const pages = capabilities.remoteAccess ? [here, tunnel] : [here];
 describe("saving what a page opened", () => {
-	for (const page of [here, tunnel]) {
-		test.skipIf(!capabilities.remoteAccess)(
-			`${page.name}: the read gives the etag, a save names it and answers the next, and the log says who`,
-			async () => {
-				const path = `src/saved-by-${page.who === "local" ? "local" : "tunnel"}.ts`;
-				writeFileSync(join(proj, path), "one\n");
-				const first = await text(page, path);
-				expect(first).toMatchObject({ kind: "text", editable: true, text: "one\n", truncated: false });
-				const saved = await save(page, path, "one\ntwo\n", first.etag);
-				expect(saved.status).toBe(200);
-				expect(onDisk(path)).toBe("one\ntwo\n");
-				expect(saved.body).toMatchObject({ size: 8 });
-				// What the next read says is what the save answered, and it is the file the next save is made from.
-				const second = await text(page, path);
-				expect(second).toMatchObject({ text: "one\ntwo\n", etag: saved.body.etag });
-				expect((await save(page, path, "three\n", second.etag)).status).toBe(200);
-				expect(onDisk(path)).toBe("three\n");
-				await pollUntil(
-					() => logged().some((l) => l.kind === "edit" && l.who === page.who && l.path === path && l.size === 6),
-					"the log line of the save",
-				);
-				expect(logged().findLast((l) => l.kind === "edit" && l.path === path)).toMatchObject({
-					kind: "edit",
-					who: page.who,
-					root: proj,
-					size: 6,
-					status: "ok",
-				});
-			},
-		);
+	for (const page of pages) {
+		test(`${page.name}: the read gives the etag, a save names it and answers the next, and the log says who`, async () => {
+			const path = `src/saved-by-${page.who === "local" ? "local" : "tunnel"}.ts`;
+			writeFileSync(join(proj, path), "one\n");
+			const first = await text(page, path);
+			expect(first).toMatchObject({ kind: "text", editable: true, text: "one\n", truncated: false });
+			const saved = await save(page, path, "one\ntwo\n", first.etag);
+			expect(saved.status).toBe(200);
+			expect(onDisk(path)).toBe("one\ntwo\n");
+			expect(saved.body).toMatchObject({ size: 8 });
+			// What the next read says is what the save answered, and it is the file the next save is made from.
+			const second = await text(page, path);
+			expect(second).toMatchObject({ text: "one\ntwo\n", etag: saved.body.etag });
+			expect((await save(page, path, "three\n", second.etag)).status).toBe(200);
+			expect(onDisk(path)).toBe("three\n");
+			await pollUntil(
+				() => logged().some((l) => l.kind === "edit" && l.who === page.who && l.path === path && l.size === 6),
+				"the log line of the save",
+			);
+			expect(logged().findLast((l) => l.kind === "edit" && l.path === path)).toMatchObject({
+				kind: "edit",
+				who: page.who,
+				root: proj,
+				size: 6,
+				status: "ok",
+			});
+		});
 	}
 
 	test("a file that changed meanwhile is a 409 with the etag it has now; saving again with it overwrites, and nothing else is touched", async () => {
@@ -263,7 +262,7 @@ describe("saving what a page opened", () => {
 });
 
 describe("what no save is let into", () => {
-	for (const page of [here, tunnel]) {
+	for (const page of pages) {
 		test(`${page.name}: not outside the folder, not what CI runs, not a secret`, async () => {
 			for (const [path, code] of [
 				["../outside.txt", "outside"],

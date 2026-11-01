@@ -117,13 +117,15 @@ const FAMILIES: Family[] = [
 
 describe("route families loaded on first use", () => {
 	for (const family of FAMILIES) {
-		test(`${family.name}: nothing the server loads at start imports it`, () => {
+		// The relay's code is not the server's to load where there is no relay (Windows).
+		const absent = family.files.some((f) => f.includes("relay")) && !capabilities.relay;
+		test.skipIf(absent)(`${family.name}: nothing the server loads at start imports it`, () => {
 			const atStart = loadedAtStart(family.entry);
 			const reached = family.files.filter((f) => atStart.has(f)).map((f) => `${f} (imported by ${atStart.get(f)})`);
 			expect(reached).toEqual([]);
 		});
 
-		test(`${family.name}: it is loaded with import(), from where it is meant to be`, () => {
+		test.skipIf(absent)(`${family.name}: it is loaded with import(), from where it is meant to be`, () => {
 			const actual: Record<string, string[]> = {};
 			for (const target of Object.keys(family.loadedBy)) actual[target] = dynamicImporters(target);
 			expect(actual).toEqual(family.loadedBy);
