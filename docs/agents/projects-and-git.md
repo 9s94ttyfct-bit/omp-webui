@@ -8,9 +8,9 @@ settings: projects-folder
 
 ## What it does
 
-**A conversation's folder.** Every conversation runs omp in one folder (its project). **New chat** asks for it with a folder picker that lists the folders of a path (hidden ones left out; `~` is the home folder) and remembers the last one used. From the picker, **New project folder** makes an empty folder in the projects folder under a name the person types (*Folder name*, *Create and use*) and starts the chat there. A name is one folder: at most 100 characters (and 255 bytes), no `/` or `\`, not starting with a dot, not starting or ending with a space or ending with a dot, no control characters or `< > : " | ? *`, and not a folder that already exists.
+**A conversation's folder.** Every conversation runs omp in one folder (its project). **New chat** makes a new project by default (v0.17.0): *Project name* (empty: named from the time, `chat-YYYY-MM-DD-HHMM`, then `-2`, …) is made in the projects folder (*Made in …*, *Change*) when the first message is sent, never before; everything picked before then goes to the process started there. **Use an existing folder** opens a folder picker that lists the folders of a path (hidden ones left out; `~` is the home folder); **Make a new project instead** goes back. An entry point with a folder (an issue's *New conversation with it*, `#/new?cwd=<folder>`) opens New chat in that folder. From the picker, **New project folder** makes an empty folder in the projects folder under a name the person types (*Folder name*, *Create and use*) and starts the chat there. A name is one folder: at most 100 characters (and 255 bytes), no `/` or `\`, not starting with a dot, not starting or ending with a space or ending with a dot, no control characters or `< > : " | ? *`, and not a folder that already exists.
 
-**The projects folder** is where New project folder makes projects. Default: `~/omp` (made when the first project folder is). The person can choose another folder or go back to the default.
+**The projects folder** is where New project folder makes projects. Default: `~/omp` (made when the first project folder is). New chat makes its new projects there too. The person can choose another folder or go back to the default.
 
 **Project groups.** The sidebar's project list (the funnel: *All projects* / *Projects*) shows each project (folder) with its conversation count; a project appears with its first conversation. Projects can be put into named groups (*New group…*, *Rename…*, *Delete group…*, *Move up* / *Move down*, *Move out of the group*, move a project into a group), and a group can be folded. Groups change only the sidebar: no folder is touched. Deleting a group keeps its projects (they go back to the top level).
 
@@ -37,7 +37,7 @@ settings: projects-folder
 
 | Key | Values | Default | Effect |
 |---|---|---|---|
-| `ompw.cwd` | a folder path (free text) | unset | Synced preference. The folder of the last new conversation; the New chat folder picker starts there (unset: the home folder). |
+| `ompw.cwd` | a folder path (free text) | unset | Synced preference. The folder of the last new conversation (Settings › Model config reads it as the project). It no longer picks New chat's folder. |
 | `ompw.ciNotify` | `on`, `off` | unset: off | Synced preference. The CI tab's bell: notify when a run of the folder's branch that was queued or running finishes (a browser page or the macOS app, not its window onto another Mac; needs `ompw.notify` and the browser's or macOS's permission). |
 
 Other stored data (in the data folder, `~/.omp-webui`):

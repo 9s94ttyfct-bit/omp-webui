@@ -52,7 +52,7 @@ Edit a prompt or regenerate a reply to create a branch and flip between versions
 | `ompw.toolTimer` | `all`, `shell`, `off` | unset (= `all`) | Synced preference. Which tool cards show how long they ran. |
 | `ompw.sessionSort` | `activity`, `created`, `title` | unset (= `activity`) | Synced preference. Order of the sidebar list (Last activity / Created / Name A–Z). |
 | `ompw.pinnedFolded` | `on`, `off` | unset (= `off`) | Synced preference. Whether the sidebar's Pinned group is folded. |
-| `ompw.cwd` | a folder path (free text) | unset | Synced preference. The folder of the last new conversation; New chat's folder picker starts there. Also set when an issue is sent to New chat. |
+| `ompw.cwd` | a folder path (free text) | unset | Synced preference. The folder of the last new conversation (Settings › Model config reads it as the project). It no longer picks New chat's folder: New chat makes a new project, and an entry point with a folder opens `#/new?cwd=<folder>`. |
 
 | Variable | Values | Effect |
 |---|---|---|
