@@ -1252,12 +1252,7 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 							) : (
 								<FolderOpen size={11} className="shrink-0" />
 							)}
-							<span
-								className="truncate"
-								title={cwd}
-								data-testid="chat-cwd"
-								data-repo={repoInHeader ? "" : undefined}
-							>
+							<span className="truncate" title={cwd} data-testid="chat-cwd" data-repo={repoInHeader ? "" : undefined}>
 								{repoInHeader ? repoName : shortPath(cwd, meta?.home)}
 							</span>
 						</>

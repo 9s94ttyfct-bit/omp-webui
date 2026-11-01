@@ -126,6 +126,11 @@ export type CustomNote =
 	| { kind: "jobs"; jobs: JobInfo[]; result: string }
 	/** Supervised processes that ended; `text` is omp's own sentence, shown when it listed none. */
 	| { kind: "daemons"; daemons: DaemonInfo[]; text: string }
+	/**
+	 * The conversation's guidance changed (`text`: what it says now) or was turned off (empty): the note the guidance
+	 * extension leaves (`server/omp/guidance/extension.ts`, custom type `ompw-guidance`).
+	 */
+	| { kind: "guidance"; text: string }
 	| {
 			kind: "irc";
 			mode: IrcMode;
@@ -204,6 +209,7 @@ export function classifyCustom(customType: unknown, details: unknown, content: u
 		const text = contentText(content).trim();
 		return daemons.length || text ? { kind: "daemons", daemons, text } : null;
 	}
+	if (customType === "ompw-guidance") return typeof d?.text === "string" ? { kind: "guidance", text: d.text } : null;
 	const mode = ircMode(customType);
 	if (!mode) return null;
 	const own = mode === "incoming" ? str(d?.message) : str(d?.body);

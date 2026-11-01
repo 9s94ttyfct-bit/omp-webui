@@ -243,6 +243,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	execExit: "退出码 {code}",
 	noteAgentInjected: "代理注入的消息",
 	noteExtension: "扩展消息",
+	noteGuidanceChanged: "指引已更改",
+	noteGuidanceRemoved: "指引已关闭",
 	noteRead: "读取 {files}",
 	noteMentionedFiles: "提及的文件",
 	noteBranchSummary: "已放弃分支的摘要",

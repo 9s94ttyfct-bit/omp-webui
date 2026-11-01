@@ -178,6 +178,17 @@ describe("typed custom messages", () => {
 		});
 	});
 
+	test("a guidance note carries the new text from its details, and a removal is an empty text", () => {
+		const said = "The standing instructions of this conversation are now:\n\nReply in French.\n\nThey replace …";
+		expect(classifyCustom("ompw-guidance", { text: "Reply in French." }, said)).toEqual({
+			kind: "guidance",
+			text: "Reply in French.",
+		});
+		expect(classifyCustom("ompw-guidance", { text: "" }, "…were removed.")).toEqual({ kind: "guidance", text: "" });
+		// Details that say nothing readable: the plain note shows what the model was told.
+		expect(classifyCustom("ompw-guidance", {}, said)).toBeNull();
+	});
+
 	test("a type omp has no card for is left to the plain note, and prototype names are not types", () => {
 		expect(classifyCustom("my-extension", {}, "text")).toBeNull();
 		expect(classifyCustom("constructor", {}, "text")).toBeNull();

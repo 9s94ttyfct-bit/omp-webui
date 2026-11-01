@@ -216,6 +216,8 @@ export const en = {
 	execExit: "exit {code}",
 	noteAgentInjected: "Agent-injected message",
 	noteExtension: "Extension message",
+	noteGuidanceChanged: "Guidance changed",
+	noteGuidanceRemoved: "Guidance turned off",
 	noteRead: "Read {files}",
 	noteMentionedFiles: "mentioned files",
 	noteBranchSummary: "Summary of abandoned branch",

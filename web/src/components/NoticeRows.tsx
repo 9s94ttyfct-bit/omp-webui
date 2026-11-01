@@ -14,6 +14,7 @@ import {
 	OctagonAlert,
 	ShieldAlert,
 	ShieldX,
+	Sparkles,
 	TriangleAlert,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -376,7 +377,26 @@ export function TypedNote({ note, live }: { note: CustomNote; live?: boolean }) 
 			return <DaemonNote daemons={note.daemons} text={note.text} live={live} />;
 		case "irc":
 			return <IrcCard note={note} live={live} />;
+		case "guidance":
+			return <GuidanceNote text={note.text} live={live} />;
 	}
+}
+
+/**
+ * The conversation's guidance changed, or was turned off (`text` empty): the note the guidance extension leaves in the
+ * conversation, which the model reads too. The new text folds under the line.
+ */
+function GuidanceNote({ text, live }: { text: string; live?: boolean }) {
+	const t = useT();
+	return (
+		<NoteRow
+			icon={<Sparkles size={14} />}
+			title={text ? t("chat.noteGuidanceChanged") : t("chat.noteGuidanceRemoved")}
+			text={text || undefined}
+			testId="guidance-note"
+			live={live}
+		/>
+	);
 }
 
 /**

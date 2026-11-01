@@ -1,14 +1,14 @@
 /**
- * Strings for model guidance (#641): New chat's *Guidance* picker, the card in Settings that edits the templates, and a
+ * Strings for guidance (#641): New chat's *Guidance* picker, the card in Settings that edits the templates, and a
  * conversation's *Guidance* tab that edits what it carries (#715). All of it is in lazy chunks (`GuidancePicker`,
  * `GuidanceSettings`, `GuidanceEditor`), so unlike most namespaces this one is not in `MODULES` of `index.ts`: its strings
  * travel with those chunks (`lib/guidance-strings.ts`, `addStrings`). The zh-CN ones are a chunk of their own, fetched
  * only by a person who reads the page in Chinese.
  */
 export const en = {
-	title: "Model guidance",
+	title: "Guidance",
 	intro:
-		"The main agent is told, in its standing instructions, how to hand work to subagents and which models to use for them. It is off unless you pick one, or make a template the default in Settings.",
+		"Standing rules for a whole conversation: how to hand work to subagents and which models they use, and anything else you want it to keep to (its language, how it commits, …). The main agent follows them over recalled memories and earlier instructions. Off unless you pick one, or make a template the default in Settings.",
 	pick: "Guidance",
 	pickNone: "None",
 	pickPreviewHint: "Point at a template to read what it tells the main agent.",
@@ -17,7 +17,8 @@ export const en = {
 	empty: "No guidance: the main agent decides by itself.",
 	templateGone:
 		"That template was deleted meanwhile. Save the text for this conversation only, or pick another template.",
-	changeIntro: "This is part of the main agent's instructions from its next turn on. Subagents do not see it.",
+	changeIntro:
+		"The main agent follows this from its next turn on, over recalled memories and earlier instructions; a change is noted in the conversation. Subagents do not see it.",
 	readOnly:
 		"This conversation's omp was started without the extension that carries the guidance (its own flags rule it out, or it already ran), so a change is kept for its next opening.",
 	skippedTrusted:
@@ -59,7 +60,7 @@ export const en = {
 	nameEmpty: "The template needs a name.",
 	textEmpty: "The template needs some text.",
 	nameTooLong: "A name is at most {max} characters.",
-	readOnlyRemote: "Model guidance is changed on the computer omp-webui runs on.",
+	readOnlyRemote: "Guidance is changed on the computer omp-webui runs on.",
 	chip: "Guidance: {name}",
 	chipOff: "Guidance: off",
 	defaultBadge: "Default",
@@ -88,7 +89,7 @@ export const en = {
 	textNeeded: "Write some text first.",
 	newFromText: "Create new template",
 	newFromTextHint: "Makes a new template from this text; this conversation then uses it.",
-	tooManyTemplates: "Keep at most {max} templates: delete one in Settings › Model guidance first.",
+	tooManyTemplates: "Keep at most {max} templates: delete one in Settings › Guidance first.",
 	createIntro:
 		"A new template is made from this conversation's text, and this conversation uses it from then on. New chats can pick it too.",
 	create: "Create",
@@ -138,7 +139,7 @@ export const en = {
 	conflictCheck: "Check for conflicts",
 	conflictCheckHint:
 		"Compares this guidance with the folder's AGENTS.md (and the other files omp loads there) and with omp's memories of the project, using a small model. Nothing is changed unless you apply it.",
-	conflictCheckOff: "The conflict check is off (Settings › Model guidance).",
+	conflictCheckOff: "The conflict check is off (Settings › Guidance).",
 	conflictTruncated: "Read only in part (too long): {files}.",
 	conflictModel: "Checked by {model}.",
 	conflictCached: "Checked by {model} (the same text was checked a moment ago).",

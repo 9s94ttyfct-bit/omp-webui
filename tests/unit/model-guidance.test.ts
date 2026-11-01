@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { removeOverlayFiles } from "../../server/omp/approval.ts";
 import extension, {
 	GUIDANCE_FILE_ENV,
+	GUIDANCE_HEADING,
 	GUIDANCE_LOADED_SUFFIX,
 	GUIDANCE_READ_MAX,
 } from "../../server/omp/guidance/extension.ts";
@@ -300,8 +301,8 @@ describe("the extension's own side of the file", () => {
 		const main = await load(file, "main");
 		const block = main?.systemPrompt?.[1] ?? "";
 		expect(main?.systemPrompt?.[0]).toBe("omp's own");
-		expect(block.startsWith("## Model guidance\n")).toBe(true);
-		expect(block.length).toBe("## Model guidance\n".length + GUIDANCE_MAX);
+		expect(block.startsWith(`${GUIDANCE_HEADING}\n`)).toBe(true);
+		expect(block.endsWith(`\n\n${"é".repeat(GUIDANCE_MAX)}`)).toBe(true);
 		expect(block).not.toContain("TAIL-PAST-THE-LIMIT");
 		expect(await load(file, "sub")).toBeUndefined();
 		expect(await load(file, undefined)).toBeUndefined();

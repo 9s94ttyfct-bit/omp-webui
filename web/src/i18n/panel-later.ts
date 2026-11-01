@@ -69,7 +69,7 @@ export const en = {
 	worktreesAhead: "{n} commits not on {branch}",
 	worktreesAheadOne: "1 commit not on {branch}",
 	worktreesOnMain: "Every commit is on {branch}",
-	guidanceNoProcess: "Open a conversation to see and change its model guidance.",
+	guidanceNoProcess: "Open a conversation to see and change its guidance.",
 	terminalRestart: "Restart",
 	terminalClear: "Clear",
 	terminalClearTip: "Clear the screen and its scrollback",
