@@ -361,6 +361,7 @@
     "tests/unit/subagent-frames.test.ts": 15,
     "tests/unit/todos-server.test.ts": 15,
     "tests/unit/line-cursor.test.ts": 14,
+    "tests/unit/live-motion.test.ts": 14,
     "tests/unit/omp-update.test.ts": 14,
     "tests/unit/stat-format.test.ts": 14,
     "tests/unit/store-app.test.ts": 14,
