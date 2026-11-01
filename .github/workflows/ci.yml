@@ -135,7 +135,18 @@ jobs:
         # supports is one it is tested on. The daily run is for what users update to: the latest only.
         omp: ${{ fromJSON(github.event_name == 'schedule' && '["latest"]' || '["18.12.3", "latest"]') }}
         shard: [1, 2, 3]
+        # Windows: the latest omp only. What Windows lacks (pause, the relay, process groups, keep-awake, the app shell
+        # and updater, remote access) its tests skip by capability (server/platform/capabilities.ts).
+        include:
+          - { os: windows-latest, omp: latest, shard: 1 }
+          - { os: windows-latest, omp: latest, shard: 2 }
+          - { os: windows-latest, omp: latest, shard: 3 }
     steps:
+      # Windows checks the files out as they are in the repository (LF, .gitattributes) and keeps Defender off the
+      # checkout, the temp folder and the home folder, where every test writes.
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:USERPROFILE
       - uses: actions/checkout@v4
       # On Linux the temp folder is /tmp, which the guard's classifier counts as scratch space: nothing written there is
       # "outside the project". The tests' own folders (and the home folders they give omp) stand for places outside it, as
@@ -146,7 +157,7 @@ jobs:
       - name: Install omp ${{ matrix.omp }}
         run: |
           bun install -g "@oh-my-pi/pi-coding-agent@${{ matrix.omp }}"
-          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+          echo "$(bun pm bin -g)" >> "$GITHUB_PATH"
       # Fails the job early when the release asked for is not the omp that runs.
       - env:
           WANT: ${{ matrix.omp }}
@@ -154,7 +165,8 @@ jobs:
           omp --version
           [ "$WANT" = latest ] || omp --version | grep -qF "$WANT"
       # What the runner has: the timings and the shard counts are only as good as it is like the last one.
-      - run: nproc && free -m
+      - if: runner.os == 'Linux'
+        run: nproc && free -m
       # `bun run test:release`'s files, a third of them by the time each took (.bun-test-timings.json).
       - run: |
           mapfile -t files < <(bun scripts/test-shard.ts --shard ${{ matrix.shard }}/3)
@@ -222,12 +234,52 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # Windows: a smoke set of the offline end-to-end specs (the page loads and unlocks, a first run, the sidebar, a
+  # conversation's rename, pin and delete through omp, New chat starting omp, Settings), on Chromium, against the latest
+  # omp. The whole suite runs on Linux.
+  e2e-windows:
+    name: e2e smoke (windows-latest)
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && github.event_name != 'schedule'
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - shell: pwsh
+        run: Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:USERPROFILE
+      - uses: actions/checkout@v4
+      - run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: bun install --frozen-lockfile
+      - name: Install latest omp
+        run: |
+          bun install -g @oh-my-pi/pi-coding-agent@latest
+          echo "$(bun pm bin -g)" >> "$GITHUB_PATH"
+      - run: omp --version
+      - run: bunx playwright install chromium
+      - run: >-
+          bun run test:e2e auth.spec.ts first-run.spec.ts sidebar-chrome.spec.ts sessions.spec.ts
+          new-chat-options.spec.ts settings-nav.spec.ts theme.spec.ts
+        env:
+          PLAYWRIGHT_CHANNEL: chromium
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-smoke-windows
+          path: |
+            .tmp/e2e/*/results
+            .tmp/e2e/*/report
+          include-hidden-files: true
+          retention-days: 14
+
   # One check that says whether the run passed: every job did, or was not needed (documentation only; the daily run needs
   # no checks or e2e). A matrix job's result is `failure` when any of its legs failed (any omp, any shard), so each counts.
   ci-ok:
     name: CI ok
     if: always()
-    needs: [changes, checks, tests, e2e]
+    needs: [changes, checks, tests, e2e, e2e-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
