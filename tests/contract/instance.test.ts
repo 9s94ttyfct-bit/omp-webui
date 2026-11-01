@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
@@ -7,6 +7,7 @@ import { platform } from "../../server/platform/index.ts";
 import { type AppServer, startAppServer } from "../support/app-server.ts";
 import { has } from "../support/needs.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * The macOS app's server start (OMP_WEBUI_AUTO_PORT=1): never fails on a taken port,
@@ -24,7 +25,7 @@ beforeAll(async () => {
 afterEach(() => {
 	for (const p of procs.splice(0)) p.kill("SIGKILL");
 });
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => removeScratch(root));
 
 const alive = (pid: number) => {
 	try {

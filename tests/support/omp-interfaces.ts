@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 /**
  * What the server and the page ask of omp, read out of their source: the RPC commands sent to a process, the slash
@@ -16,7 +17,7 @@ export interface Found {
 	at: string;
 }
 
-const ROOT = new URL("../../", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const DIRS = ["server", "shared", "web/src"];
 
 /**
