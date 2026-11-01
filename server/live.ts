@@ -4576,8 +4576,10 @@ export class LivePool {
 		if (this.unattended && !trusted && this.unattended.ensure()) extensions.push(this.unattended.extension);
 		// And the docs tool, read-only, for every conversation: an agent asked about omp-webui looks it up instead of guessing.
 		if (this.docsTool && !trusted && this.docsTool.ensure()) extensions.push(this.docsTool.extension);
-		// And `restart_session`, for every conversation's main agent: a way out of a process that is wedged.
-		if (this.restarts && !trusted && this.restarts.service.ensure()) extensions.push(this.restarts.service.extension);
+		// And `restart_session`, for every Full conversation's main agent: a way out of a process that is wedged. A Light one
+		// offers the model exactly the tools Settings › Full / Light allows, so it has none of its own (Force restart still works).
+		if (this.restarts && !trusted && launch.mode !== "light" && this.restarts.service.ensure())
+			extensions.push(this.restarts.service.extension);
 		const flags = extensions.flatMap((extension) => ["--extension", extension]);
 		return [...(this.overlay ? ["--config", this.overlay] : []), ...flags, ...launch.args, ...home, ...args];
 	}

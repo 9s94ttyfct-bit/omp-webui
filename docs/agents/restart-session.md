@@ -56,7 +56,7 @@ None of its own. The page's Force restart is the WebSocket message `force_restar
 
 - Delivery of `continue_with` is at least once. Before sending, the server looks for the request's id in the session file and skips the message when omp has it already; a server that stops between handing the message to omp and omp writing it to the session file can send it again. That window is small, and is why `continue_with` must be safe to do twice.
 - A server that crashes in the middle of a restart finishes it when it starts again (the request records are in `<data dir>/restart/requests/`). A request that still waited for its turn when the person quit the app is not made.
-- A conversation started with the person's own `--trusted-extension` flag has no `restart_session` (omp refuses `--extension` with it). Force restart still works.
+- A conversation started with the person's own `--trusted-extension` flag has no `restart_session` (omp refuses `--extension` with it), and neither has a Light conversation (it offers the model exactly the tools Settings › Full / Light allows). Force restart still works in both.
 - If omp does not end even after SIGKILL, the restart fails and the conversation says so; the old process goes on.
 
 ## Security notes

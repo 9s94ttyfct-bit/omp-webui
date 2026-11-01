@@ -86,11 +86,11 @@ async function startBusy(page: Page, run: Run, marker: string): Promise<() => vo
 test("a newer release is announced with its version and release notes, and Update runs omp's own update", async ({
 	page,
 }) => {
-	const run = await serve("18.12.0", "18.13.0");
+	const run = await serve("18.12.3", "18.13.0");
 	try {
 		await page.goto(run.url);
 		await expect(notice(page)).toHaveAttribute("data-kind", "update");
-		await expect(notice(page)).toContainText("omp 18.13.0 is available — you have 18.12.0.");
+		await expect(notice(page)).toContainText("omp 18.13.0 is available — you have 18.12.3.");
 		await expect(page.getByTestId("omp-release-notes")).toHaveAttribute(
 			"href",
 			"https://github.com/can1357/oh-my-pi/releases/tag/v18.13.0",
@@ -121,7 +121,7 @@ test("a newer release is announced with its version and release notes, and Updat
 });
 
 test("Later puts a release away until there is a newer one; Settings looks for one on request", async ({ page }) => {
-	const run = await serve("18.12.0", "18.13.0");
+	const run = await serve("18.12.3", "18.13.0");
 	try {
 		await page.goto(run.url);
 		await expect(notice(page)).toHaveAttribute("data-kind", "update");
@@ -134,7 +134,7 @@ test("Later puts a release away until there is a newer one; Settings looks for o
 		await page.getByRole("complementary").getByRole("button", { name: "Settings" }).click();
 		await page.locator('[data-testid="settings-page-tab"][data-page="app"]').click();
 		const settings = page.getByTestId("omp-settings");
-		await expect(settings).toContainText("Installed: omp 18.12.0");
+		await expect(settings).toContainText("Installed: omp 18.12.3");
 		await expect(page.getByTestId("omp-install-method")).toHaveAttribute("data-method", "homebrew");
 		await expect(page.getByTestId("omp-install-method")).toContainText("brew upgrade can1357/tap/omp");
 		await expect(page.getByTestId("omp-latest")).toContainText("omp 18.13.0 is available.");
@@ -156,7 +156,7 @@ test("Later puts a release away until there is a newer one; Settings looks for o
 });
 
 test("an update waits while a conversation is working, and can be cancelled", async ({ page }) => {
-	const run = await serve("18.12.0", "18.13.0");
+	const run = await serve("18.12.3", "18.13.0");
 	try {
 		await page.goto(run.url);
 		const letBusyEnd = await startBusy(page, run, "busy-over");
@@ -186,7 +186,7 @@ test("an update waits while a conversation is working, and can be cancelled", as
 });
 
 test("an update a paused conversation holds says so, and Update anyway goes ahead without it", async ({ page }) => {
-	const run = await serve("18.12.0", "18.13.0");
+	const run = await serve("18.12.3", "18.13.0");
 	try {
 		await page.goto(run.url);
 		await startBusy(page, run, "never-printed-while-paused");
@@ -213,7 +213,7 @@ test("an update a paused conversation holds says so, and Update anyway goes ahea
 test("an automatic update a paused conversation holds says what it waits for, in the notice and in Settings", async ({
 	page,
 }) => {
-	const run = await serve("18.12.0", "18.13.0");
+	const run = await serve("18.12.3", "18.13.0");
 	try {
 		await page.goto(run.url);
 		await startBusy(page, run, "never-printed-while-paused");
@@ -243,7 +243,7 @@ test("an automatic update a paused conversation holds says what it waits for, in
 test("'Update omp automatically' is off by default and, once on, updates by itself when nothing is working", async ({
 	page,
 }) => {
-	const run = await serve("18.12.0", "18.13.0");
+	const run = await serve("18.12.3", "18.13.0");
 	try {
 		await page.goto(run.url);
 		await page.getByRole("complementary").getByRole("button", { name: "Settings" }).click();
@@ -271,7 +271,7 @@ test("'Update omp automatically' is off by default and, once on, updates by itse
 });
 
 test("a release outside the supported range asks first, and warns again once installed", async ({ page }) => {
-	const run = await serve("18.12.0", "19.0.0");
+	const run = await serve("18.12.3", "19.0.0");
 	try {
 		await page.goto(run.url);
 		await expect(notice(page)).toHaveAttribute("data-kind", "update-outside");
@@ -338,14 +338,14 @@ test("on start, an installed omp outside the supported range is warned about", a
 });
 
 test("a failed update says why and can be tried again", async ({ page }) => {
-	const run = await serve("18.12.0", "18.13.0");
+	const run = await serve("18.12.3", "18.13.0");
 	try {
 		run.world.state.failUpdates(true);
 		await page.goto(run.url);
 		await page.getByTestId("omp-update").click();
 		await expect(notice(page)).toHaveAttribute("data-kind", "failed");
 		await expect(notice(page)).toContainText("the release server is down");
-		await expect((await meta(run)).ompVersion).toBe("18.12.0");
+		await expect((await meta(run)).ompVersion).toBe("18.12.3");
 
 		run.world.state.failUpdates(false);
 		await page.getByTestId("omp-update-retry").click();
@@ -358,7 +358,7 @@ test("a failed update says why and can be tried again", async ({ page }) => {
 test("an answer to Update that is read after the update has already failed does not put the notice back to running", async ({
 	page,
 }) => {
-	const run = await serve("18.12.0", "18.13.0");
+	const run = await serve("18.12.3", "18.13.0");
 	try {
 		run.world.state.failUpdates(true);
 		// The answer to the request that starts an update is the state of that moment: `running`. An update that fails at

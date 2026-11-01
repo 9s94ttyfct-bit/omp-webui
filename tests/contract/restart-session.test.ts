@@ -197,6 +197,8 @@ describe("refusals: told to the agent, nothing ended", () => {
 			{ type: "agent_end", messages: [] },
 		]);
 		await pollUntil(() => sent(w.prompts).length > 0, "the refusal");
+		// The record says the agent was told once the message has been taken: after the prompt went out, not with it.
+		await pollUntil(() => only(w.store).notified === true, "the refusal's record");
 		const record = only(w.store);
 		expect(record).toMatchObject({ state: "refused", refusal: "asking", notified: true });
 		expect(sent(w.prompts)[0]).toStartWith(`[omp-webui restart-refused ${record.id} asking] Restart refused:`);
