@@ -80,6 +80,8 @@ export const zh: Record<keyof typeof en, string> = {
 	failedSpace: "可用空间不够，无法更新：需要 {needed}，现在只剩 {free}。腾出一些空间后再试。",
 	failedNotWritable: "当前用户不能写入文件夹 `{dir}`，应用没法在那里替换自己。",
 	failedStage: "新应用没能复制到旧应用旁边：{detail}",
+	failedHelper:
+		"更新助手（Windows PowerShell）没有启动，所以没有改动任何东西，omp-webui 继续运行。只允许签名脚本的策略或安全软件可能会拦住它；请到发布页面手动安装新版本。",
 	failedUnknown: "更新没能安装（原因：{code}），没有改动任何东西。",
 	retry: "重试",
 	dismiss: "关闭",

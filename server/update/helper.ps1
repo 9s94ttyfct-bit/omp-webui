@@ -33,6 +33,10 @@ $ack = Join-Path $StateDir "ack.json"
 $handover = Join-Path $StateDir "handover.json"
 $result = Join-Path $StateDir "result.json"
 
+# First of all: say this script runs. The server waits for this file before it exits, so that a PowerShell that never ran
+# the script (a policy, security software) leaves the server running to say so, instead of an app that just closed.
+[System.IO.File]::WriteAllText((Join-Path $StateDir "helper-started-$Id"), "$PID")
+
 # Straight to this process's output (the helper's log), never to the pipeline: a function that returns a value and logs
 # would otherwise return the line too.
 function Log([string]$message) {
@@ -107,8 +111,12 @@ $stagedExe = Join-Path $Staged "omp-webui.exe"
 if (-not (Test-Path -LiteralPath $stagedExe -PathType Leaf) -or -not (Test-Path -LiteralPath (Join-Path $Staged "web\index.html") -PathType Leaf)) {
 	$bad = $true
 } else {
-	$said = (& $stagedExe --version 2>$null | Select-Object -First 1)
-	if ($LASTEXITCODE -ne 0 -or "$said".Trim() -ne $To) { $bad = $true }
+	# The exit code is read before anything else runs: `Select-Object -First` in the same pipeline could stop it early and
+	# leave $LASTEXITCODE unset.
+	$out = & $stagedExe --version 2>$null
+	$code = $LASTEXITCODE
+	$said = $out | Select-Object -First 1
+	if ($code -ne 0 -or "$said".Trim() -ne $To) { $bad = $true }
 }
 if ($bad) {
 	Log "the staged folder is not fit to install"

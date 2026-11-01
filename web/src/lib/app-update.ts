@@ -71,6 +71,7 @@ const FAILURE_KEYS = {
 	space: "update.failedSpace",
 	notWritable: "update.failedNotWritable",
 	stage: "update.failedStage",
+	helper: "update.failedHelper",
 } as const satisfies Record<UpdateFailureCode, MessageKey>;
 
 export const UPDATE_FAILURE_CODES = Object.keys(FAILURE_KEYS) as UpdateFailureCode[];
@@ -91,6 +92,7 @@ const FAILURE_PARAMS: Record<UpdateFailureCode, readonly string[]> = {
 	space: ["needed", "free"],
 	notWritable: ["dir"],
 	stage: ["detail"],
+	helper: [],
 };
 
 /** A hash of 16 characters or more cut to its first 12 (`sha256:` dropped); anything else (`ad hoc`) as it is. */

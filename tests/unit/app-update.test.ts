@@ -226,6 +226,7 @@ const SAMPLE_PARAMS: Record<UpdateFailureCode, Record<string, string | number>> 
 	space: { needed: 200 * 1024 * 1024, free: 12 * 1024 * 1024 },
 	notWritable: { dir: "/Applications" },
 	stage: { detail: "ditto: no space left" },
+	helper: {},
 };
 
 const PLACEHOLDER = /\{(\w+)\}/g;

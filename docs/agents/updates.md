@@ -33,7 +33,7 @@ The app can install updates only when it is the macOS app (started by its own sh
 
 When omp is not found or does not start, the app shows **Install omp to get started** instead of the conversations: choices Homebrew (recommended where present), omp's installer (standalone binary in `~/.local/bin`; on Windows omp's PowerShell installer, into `%LOCALAPPDATA%\omp`) and Bun, each with the command it runs, the installer output, **Cancel**, and **I installed it myself — look again**. After an install the first-time setup follows.
 
-On Windows, omp-webui runs from `omp-webui.exe` (the release's `omp-webui-vX.Y.Z-windows-x64.zip`): a double-click starts the server and opens the page in the default browser; closing its console window stops it. It updates itself as described above.
+On Windows, omp-webui runs from `omp-webui.exe` (the release's `omp-webui-vX.Y.Z-windows-x64.zip`): a double-click starts the server and opens the page in the default browser; closing its console window stops it. It updates itself as described above. The server exits for the update only once the PowerShell helper has said it runs (within 10 seconds); a helper that does not (a policy that allows only signed scripts, security software) is ended, and the install fails with nothing changed and the server still running.
 
 ## Where it is
 
@@ -80,7 +80,7 @@ Every omp route answers with the new `{ state, log }`; errors are `{ error, code
 
 ## Limits and caveats
 
-- Only the macOS app can install its own updates; the web version (or a copy started another way) only shows that a release exists and links its page.
+- Only the macOS app and the Windows launcher can install their own updates; the web version (or a copy started another way) only shows that a release exists and links its page.
 - Installing an omp-webui update restarts the app, which stops conversations that are replying.
 - GitHub's anonymous rate limit can stop look-ups for a while; the card says when it will look again.
 - An omp update waits for paused and asking conversations too unless **Update anyway** is used; conversations that stay open keep running the old omp until restarted.
@@ -90,6 +90,6 @@ Every omp route answers with the new `{ state, log }`; errors are `{ error, code
 ## Security notes
 
 - All `/api/update*` routes are local-only: a page through the tunnel or the network cannot replace the app, whatever token it holds. Update state is sent only to pages on this computer.
-- A downloaded app is installed only if its signature is valid and made with the same certificate as the running app, so a file merely published under a release's name is refused.
+- A downloaded macOS app is installed only if its signature is valid and made with the same certificate as the running app, so a file merely published under a release's name is refused. The Windows launcher is unsigned: its zip is installed only with the SHA-256 GitHub lists for it, which guards against a broken or altered download, not against a compromised release or account.
 - The `/api/omp*` routes are open to any page with the access token, including remote ones: such a page can update or install the omp of the computer omp-webui runs on.
 - Agents should not install updates or switch automatic updates on or off unless the user asks.

@@ -113,7 +113,12 @@ export type UpdateFailureCode =
 	/** The app's folder cannot be written: `dir`. */
 	| "notWritable"
 	/** The new app could not be copied next to the old one: `detail`. */
-	| "stage";
+	| "stage"
+	/**
+	 * The Windows launcher's update helper (`helper.ps1`, run by Windows PowerShell) did not say it runs, so the launcher did
+	 * not exit and nothing was changed (a policy that allows only signed scripts, or security software, can stop it).
+	 */
+	| "helper";
 
 export interface UpdateFailure {
 	code: UpdateFailureCode;

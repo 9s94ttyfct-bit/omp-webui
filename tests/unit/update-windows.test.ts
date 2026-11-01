@@ -12,7 +12,7 @@ import type { AppUpdateState } from "../../shared/update.ts";
 import { writeBunProgram } from "../support/bun-program.ts";
 import { type FakeReleases, startFakeReleases } from "../support/fake-releases.ts";
 import { has } from "../support/needs.ts";
-import { pollUntil } from "../support/poll.ts";
+import { pollUntil, processExists } from "../support/poll.ts";
 import { removeScratch } from "../support/scratch.ts";
 
 /**
@@ -220,6 +220,8 @@ interface Launcher {
 	quits: number;
 	/** The arguments the stand-in for PowerShell was started with, once it has been. */
 	helperArgs(): string[] | null;
+	/** The stand-in's pid, once it has started. */
+	helperPid(): number | null;
 }
 
 const launchers: AppUpdater[] = [];
@@ -228,7 +230,15 @@ afterEach(() => {
 	fake.publish({ tag: "v0.0.0" });
 });
 
-function launcher(extra: Partial<ConstructorParameters<typeof AppUpdater>[0]> = {}): Launcher {
+/**
+ * A launcher's updater, with a stand-in for PowerShell that records how it was started and then does what `helper.ps1`
+ * does first (`starts`: writes `helper-started-<id>` and ends), or never gets that far and stays (`never`: a policy that
+ * stops the script).
+ */
+function launcher(
+	extra: Partial<ConstructorParameters<typeof AppUpdater>[0]> = {},
+	helper: "starts" | "never" = "starts",
+): Launcher {
 	const dir = mkdtempSync(join(root, "launcher-"));
 	const data = join(dir, "data");
 	const folder = join(dir, ZIP_TOP);
@@ -236,10 +246,22 @@ function launcher(extra: Partial<ConstructorParameters<typeof AppUpdater>[0]> = 
 	writeFileSync(join(folder, WINDOWS_EXE), "the installed program");
 	writeFileSync(join(folder, "web", "index.html"), "old");
 	const argsFile = join(dir, "helper-args.json");
+	const pidFile = join(dir, "helper-pid");
 	const powershell = writeBunProgram(
 		dir,
 		"powershell",
-		`import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(argsFile)}, JSON.stringify(process.argv.slice(2)));\n`,
+		[
+			'import { writeFileSync } from "node:fs";',
+			'import { join } from "node:path";',
+			"const args = process.argv.slice(2);",
+			`writeFileSync(${JSON.stringify(argsFile)}, JSON.stringify(args));`,
+			`writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));`,
+			'const named = (name) => args[args.indexOf("-" + name) + 1];',
+			helper === "starts"
+				? 'writeFileSync(join(named("StateDir"), "helper-started-" + named("Id")), String(process.pid));'
+				: "setInterval(() => {}, 60_000);",
+			"",
+		].join("\n"),
 	);
 	const target: InstallTarget = { kind: "windows", folder };
 	const l: Launcher = {
@@ -248,6 +270,7 @@ function launcher(extra: Partial<ConstructorParameters<typeof AppUpdater>[0]> = 
 		states: [],
 		quits: 0,
 		helperArgs: () => (existsSync(argsFile) ? JSON.parse(readFileSync(argsFile, "utf8")) : null),
+		helperPid: () => (existsSync(pidFile) ? Number(readFileSync(pidFile, "utf8")) : null),
 		updater: undefined as unknown as AppUpdater,
 	};
 	l.updater = new AppUpdater({
@@ -289,7 +312,8 @@ test.skipIf(!readsZips)(
 		// Nothing was swapped: that is the helper's, after this server has exited.
 		expect(readFileSync(join(l.folder, "web", "index.html"), "utf8")).toBe("old");
 		const update = join(l.data, "update");
-		expect(readdirSync(update).filter((n) => n.endsWith(".zip") || n.endsWith(".part"))).toEqual([]);
+		// No download left, and the helper's word that it runs was read and removed.
+		expect(readdirSync(update).filter((n) => /\.(zip|part)$|^helper-started-/.test(n))).toEqual([]);
 		expect(readFileSync(join(update, "helper.ps1"), "utf8")).toContain("param(");
 		const handover = JSON.parse(readFileSync(join(update, "handover.json"), "utf8"));
 		expect(handover).toMatchObject({
@@ -321,6 +345,26 @@ test.skipIf(!readsZips)(
 		expect(named("To")).toBe("9.0.0");
 		expect(named("Exe")).toBe(join(l.folder, WINDOWS_EXE));
 		expect(l.updater.state().job?.phase).toBe("handover");
+	},
+);
+
+test.skipIf(!readsZips)(
+	"a helper that never says it runs is ended, the install fails with nothing changed, and the launcher keeps running",
+	async () => {
+		const l = launcher({ helperStartMs: 1500 }, "never");
+		fake.publish({ tag: "v9.0.0", dmg: writeZip(releaseMembers("9.0.0")), assetName: zipName("9.0.0") });
+		await l.updater.check();
+		await l.updater.install("v9.0.0", false);
+		await pollUntil(() => l.updater.state().failed !== null, "the install to fail", 30_000);
+		expect(l.updater.state().failed).toEqual({ code: "helper", tag: "v9.0.0", params: {} });
+		expect(l.updater.state().job).toBeNull();
+		const pid = l.helperPid();
+		expect(pid).not.toBeNull();
+		await pollUntil(() => !processExists(pid as number), "the stand-in for PowerShell to be ended", 10_000);
+		expect(existsSync(join(l.data, "update", "handover.json"))).toBe(false);
+		expect(existsSync(`${l.folder}.updating`)).toBe(false);
+		expect(readFileSync(join(l.folder, "web", "index.html"), "utf8")).toBe("old");
+		expect(l.quits).toBe(0);
 	},
 );
 

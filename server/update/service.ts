@@ -118,6 +118,8 @@ export interface UpdaterOptions {
 	relaunch?: string[];
 	/** The program that runs `helper.ps1` (Windows PowerShell by default); a test's stand-in for it. */
 	powershell?: string;
+	/** How long the Windows launcher waits for `helper.ps1` to say it runs (`HELPER_START_MS`); a test's shorter one. */
+	helperStartMs?: number;
 }
 
 /** An install that was asked for and will not start: the 409 the page words (`UpdateRefusal`). */
@@ -137,6 +139,8 @@ const MIN_GAP_MS = 10_000;
 const PROGRESS_MS = 250;
 /** How long the Windows launcher waits after the handover before it exits: the pages are told the phase first. */
 const QUIT_DELAY_MS = 1000;
+/** How long `helper.ps1` has to say it runs (it does so first thing; PowerShell starts in a second or two). */
+const HELPER_START_MS = 10_000;
 
 /** What either helper is started with, besides the install's paths. */
 interface HelperRun {
@@ -303,6 +307,8 @@ export class AppUpdater {
 			const path = join(this.paths.dir, name);
 			if (name.startsWith("mount-")) await removeMount(path);
 			else if (name.endsWith(".dmg") || name.endsWith(".zip") || name.endsWith(".part")) rmSync(path, { force: true });
+			// A Windows helper's word that it ran, from an install that ended before the server read it.
+			else if (name.startsWith("helper-started-")) rmSync(path, { force: true });
 		}
 		if (this.opts.target === null) return;
 		const installed = pathOf(this.opts.target);
@@ -563,7 +569,7 @@ export class AppUpdater {
 				checkCancelled();
 			}
 
-			this.handOver(job, release, target, staged);
+			await this.handOver(job, release, target, staged);
 			handedOver = true;
 		} catch (e) {
 			if (!(e instanceof UpdateCancelled)) {
@@ -635,11 +641,11 @@ export class AppUpdater {
 
 	/**
 	 * Everything is staged and checked: start the helper that waits for the app to quit and swaps, then end the app — the
-	 * macOS shell is asked to quit, which stops this server; the Windows launcher is this server, which exits itself — and
-	 * wait for the end. What happens next is the helper's; a helper that cannot do its part has written why before this
-	 * server is asked again.
+	 * macOS shell is asked to quit, which stops this server; the Windows launcher is this server, which exits itself once the
+	 * helper has said it runs — and wait for the end. What happens next is the helper's; a helper that cannot do its part
+	 * has written why before this server is asked again.
 	 */
-	private handOver(job: UpdateJob, release: AppRelease, target: InstallTarget, staged: string): void {
+	private async handOver(job: UpdateJob, release: AppRelease, target: InstallTarget, staged: string): Promise<void> {
 		const installed = pathOf(target);
 		const id = randomUUID();
 		const backup = `${installed}.previous`;
@@ -658,6 +664,7 @@ export class AppUpdater {
 		} finally {
 			closeSync(log);
 		}
+		if (target.kind === "windows") await this.helperStarted(id, pid);
 		const handover: Handover = {
 			id,
 			from: this.opts.installed,
@@ -683,6 +690,29 @@ export class AppUpdater {
 		const waiting = setTimeout(() => this.handoverEnded(handover), (quitSecs + 20) * 1000);
 		waiting.unref();
 		this.timers.push(waiting);
+	}
+
+	/**
+	 * Wait until `helper.ps1` says it runs (its first line writes `helper-started-<id>`): only then may the launcher exit.
+	 * PowerShell can start and never run the script (a machine policy that allows only signed scripts, security software
+	 * that stops hidden PowerShell); a server that exited then would close the app and leave nothing to swap it or start it
+	 * again. One that does not say so in time is ended, and the install fails with nothing changed.
+	 */
+	private async helperStarted(id: string, pid: number): Promise<void> {
+		const marker = join(this.paths.dir, `helper-started-${id}`);
+		const waitMs = this.opts.helperStartMs ?? HELPER_START_MS;
+		const deadline = Date.now() + waitMs;
+		// Until it says so, ends or runs out of time; then one last look (it may have said so just before it ended).
+		while (!existsSync(marker) && Date.now() < deadline && alive(pid)) await Bun.sleep(100);
+		const started = existsSync(marker);
+		removeFiles(marker);
+		if (started) return;
+		try {
+			process.kill(pid);
+		} catch {
+			// it has ended already
+		}
+		throw new UpdateError("helper");
 	}
 
 	/** `helper.sh`, started in a session of its own; its pid. */
@@ -769,7 +799,7 @@ export class AppUpdater {
 		);
 		// A program that cannot be started says so by an event, after `spawn` returns: without a listener it would end the server.
 		child.on("error", (e) => console.error(`omp-webui: the update helper failed: ${e.message}`));
-		if (child.pid === undefined) throw new UpdateError("stage", { detail: "the update helper could not be started" });
+		if (child.pid === undefined) throw new UpdateError("helper");
 		child.unref();
 		return child.pid;
 	}

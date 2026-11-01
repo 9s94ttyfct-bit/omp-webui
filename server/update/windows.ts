@@ -154,6 +154,26 @@ function isPlainFile(path: string): boolean {
 	}
 }
 
+/** The errors of a rename that a moment later may work: a file in the folder is still open (an antivirus scan, an indexer). */
+const BUSY: Record<string, true> = { EPERM: true, EBUSY: true, EACCES: true };
+
+/**
+ * `from` renamed to `to`, tried for about ten seconds: Windows refuses to rename a folder while a file in it is open, and
+ * antivirus software opens a program that was just written to scan it (helper.ps1's `Move-Folder` does the same).
+ */
+export async function renameRetrying(from: string, to: string, tries = 20, gapMs = 500): Promise<void> {
+	for (let i = 1; ; i++) {
+		try {
+			renameSync(from, to);
+			return;
+		} catch (e) {
+			const code = (e as NodeJS.ErrnoException).code ?? "";
+			if (i >= tries || !Object.hasOwn(BUSY, code)) throw e;
+			await Bun.sleep(gapMs);
+		}
+	}
+}
+
 /**
  * Unpack the release's `zip` (downloaded, its size and SHA-256 checked) into `staged`, next to the install folder, and check
  * it: the members are listed and vetted first (`memberAllowed`, files and folders only), the room for them is looked at,
@@ -199,7 +219,7 @@ export async function stageWindows(
 			throw new UpdateError("noApp", { name: ZIP_TOP });
 		}
 		rmSync(staged, { recursive: true, force: true });
-		renameSync(top, staged);
+		await renameRetrying(top, staged);
 	} finally {
 		rmSync(unpack, { recursive: true, force: true });
 	}

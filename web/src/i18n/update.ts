@@ -88,6 +88,8 @@ export const en = {
 		"There is not enough free space for the update: it needs {needed} and {free} is free. Free some space and try again.",
 	failedNotWritable: "The folder `{dir}` cannot be written by this user, so the app cannot replace itself there.",
 	failedStage: "The new app could not be copied next to the old one: {detail}",
+	failedHelper:
+		"The update helper (Windows PowerShell) did not start, so nothing was changed and omp-webui keeps running. A policy that allows only signed scripts, or security software, can stop it; install the new version by hand from the release page.",
 	failedUnknown: "The update could not be installed (reason: {code}). Nothing was changed.",
 	retry: "Try again",
 	dismiss: "Dismiss",
