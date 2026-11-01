@@ -14,9 +14,9 @@
  * `--out <dir>` builds into another folder, and `--version <x.y.z>` builds a program that says it is that version
  * (`omp-webui.exe --version`, the server's own): the updater's tests install it as a later release.
  */
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import pkg from "../package.json";
 import { readMaster, renderIcon } from "./icons.ts";
 import { encodeIco } from "./lib/ico.ts";
@@ -41,6 +41,15 @@ if (!/^\d+\.\d+\.\d+$/.test(version)) {
 }
 const outArg = arg("out");
 const out = outArg ? resolve(root, outArg) : join(root, "dist", "omp-webui-windows-x64");
+// The folder is emptied before the build: only one that is new, empty or an earlier build's, never the checkout or a
+// folder that holds it.
+const rel = relative(out, root);
+const holdsCheckout = rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+const earlierBuild = existsSync(join(out, "omp-webui.exe"));
+if (holdsCheckout || (existsSync(out) && readdirSync(out).length > 0 && !earlierBuild)) {
+	console.error(`--out ${out}: give a new or empty folder, or an earlier build's (it is emptied first)`);
+	process.exit(1);
+}
 const stage = mkdtempSync(join(tmpdir(), "ompw-win-"));
 
 async function run(cmd: string[], cwd = root): Promise<void> {
