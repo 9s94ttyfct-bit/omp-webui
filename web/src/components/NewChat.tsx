@@ -165,7 +165,8 @@ function PickersSkeleton() {
 	);
 }
 
-export function NewChat() {
+/** `cwd`: the folder the view opened New chat in (`#/new?cwd=`); none: the page picks. */
+export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 	const t = useT();
 	const { sessions, sessionsLoaded, meta, setView, toast } = useApp(
 		useShallow((s) => ({
@@ -187,7 +188,7 @@ export function NewChat() {
 		}
 		return out.slice(0, 8);
 	}, [sessions]);
-	const [cwd, setCwd] = useState<string>(() => localStorage.getItem(PREF.cwd) ?? "");
+	const [cwd, setCwd] = useState<string>(() => openedIn ?? localStorage.getItem(PREF.cwd) ?? "");
 	const [browse, setBrowse] = useState(false);
 	const pickerOpened = useRef(false);
 	pickerOpened.current ||= browse;

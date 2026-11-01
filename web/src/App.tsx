@@ -274,7 +274,8 @@ export function App() {
 										reading={view.reading}
 									/>
 								) : null}
-								{view.kind === "new" ? <NewChat /> : null}
+								{/* Keyed by the folder it was opened in: New chat in another folder starts over, as a new page. */}
+								{view.kind === "new" ? <NewChat key={view.cwd ?? ""} cwd={view.cwd} /> : null}
 								{view.kind === "usage" ? <UsagePage /> : null}
 								{view.kind === "memory" ? <MemoryPage /> : null}
 								{view.kind === "guard" ? <GuardPage /> : null}

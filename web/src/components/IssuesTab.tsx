@@ -6,7 +6,6 @@ import {
 	type IssuesAnswer,
 	type IssuesProblem,
 } from "@shared/github.ts";
-import { PREF } from "@shared/prefs.ts";
 import {
 	ArrowLeft,
 	CircleCheck,
@@ -26,7 +25,6 @@ import { keepDraft, readDraft } from "../lib/drafts.ts";
 import { fmtRelative } from "../lib/format.ts";
 import { issuePrompt } from "../lib/issue-prompt.ts";
 import { PANEL_SHEET_QUERY, useMediaQuery } from "../lib/media.ts";
-import { setPref } from "../lib/prefs.ts";
 import { useApp } from "../store/app.ts";
 import { Markdown } from "./Markdown.tsx";
 import { ScrollPane } from "./ScrollPane.tsx";
@@ -313,16 +311,15 @@ function IssueView({ cwd, number, onBack }: { cwd: string; number: number; onBac
 	};
 	const toNew = () => {
 		if (!issue) return;
-		// New chat starts in the folder it was last given, and its message box opens with its draft: the issue is added to
-		// what is there.
-		setPref(PREF.cwd, cwd);
+		// New chat opens in this conversation's folder (the issue's repository), and its message box opens with its draft:
+		// the issue is added to what is there.
 		const draft = readDraft("new");
 		keepDraft("new", {
 			...draft,
 			images: draft?.images ?? [],
 			text: appendPiece(draft?.text ?? "", issuePrompt(issue, t)),
 		});
-		setView({ kind: "new" });
+		setView({ kind: "new", cwd });
 	};
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" data-testid="issue-view">

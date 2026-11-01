@@ -121,6 +121,18 @@ test("Settings' pages are #/settings/<page>; an unknown page is Settings at the 
 	expect(viewFromHash()).toEqual({ kind: "settings" });
 });
 
+test("New chat in a folder is #/new?cwd=<folder>, and the address opens it there again; #/new and #/ are New chat", () => {
+	useApp.getState().setView({ kind: "new", cwd: "/tmp/a b&c" });
+	expect(historyLog.at(-1)).toBe(`push #/new?cwd=${encodeURIComponent("/tmp/a b&c")}`);
+	expect(viewFromHash()).toEqual({ kind: "new", cwd: "/tmp/a b&c" });
+	location.hash = "#/new";
+	expect(viewFromHash()).toEqual({ kind: "new" });
+	location.hash = "#/new?cwd=";
+	expect(viewFromHash()).toEqual({ kind: "new" });
+	location.hash = "#/";
+	expect(viewFromHash()).toEqual({ kind: "new" });
+});
+
 // A subagent full screen is a route of its own on the conversation's address: reload and Back/Forward keep it.
 
 test("a conversation's subagent full screen is #/s/<file>/agent/<id>, and the address opens it again", () => {

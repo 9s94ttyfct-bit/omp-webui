@@ -71,7 +71,8 @@ export type View =
 			/** A subagent of this conversation shown full screen over the page (its id, as omp names it): a route of its own. */
 			agent?: string;
 	  }
-	| { kind: "new" }
+	/** New chat; `cwd`: in this folder (an entry point that knows its folder), else in a new project (the default). */
+	| { kind: "new"; cwd?: string }
 	| { kind: "usage" }
 	| { kind: "memory" }
 	| { kind: "guard" }
@@ -321,6 +322,7 @@ export function hashOf(v: View): string {
 	if (v.kind === "agents") return v.file ? `#/agents/${encodeURIComponent(v.file)}` : "#/agents";
 	if (["usage", "memory", "guard", "questions", "settings"].includes(v.kind)) return `#/${v.kind}`;
 	if (v.kind === "cli") return v.command ? `#/cli/${encodeURIComponent(v.command)}` : "#/cli";
+	if (v.kind === "new" && v.cwd) return `#/new?cwd=${encodeURIComponent(v.cwd)}`;
 	return "#/";
 }
 
@@ -367,6 +369,10 @@ export function viewFromHash(): View {
 		}
 		if (h.startsWith("/cli"))
 			return { kind: "cli", command: h.length > 5 ? decodeURIComponent(h.slice(5)) : undefined };
+		if (h.startsWith("/new?")) {
+			const cwd = new URLSearchParams(h.slice("/new?".length)).get("cwd");
+			return cwd ? { kind: "new", cwd } : { kind: "new" };
+		}
 	} catch {
 		// A truncated or hand-edited address (`#/s/%`) names nothing to open.
 	}
