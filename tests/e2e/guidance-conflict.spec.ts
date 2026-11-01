@@ -105,7 +105,7 @@ async function openGuidance(page: Page, lang: "en" | "zh-CN" = "en") {
 	await row.click();
 	await expect(page.getByTestId("chat-title")).toBeVisible({ timeout: 30_000 });
 	await page.getByTestId("toggle-panel").click();
-	await topTab(page, /Guidance|模型指引/).click();
+	await topTab(page, /Guidance|指引/).click();
 	const editor = page.getByTestId("guidance-editor");
 	await expect(editor.getByTestId("guidance-text")).toBeVisible({ timeout: 30_000 });
 	// None: the box starts empty (a previous test's text is not carried over).

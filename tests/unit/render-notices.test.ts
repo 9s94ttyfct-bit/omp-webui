@@ -321,7 +321,10 @@ describe("live notices in the branch", () => {
 		expect(ids(withLiveNotices([user, reply], [card, relay]))).toEqual(["u1", "a1", "live-notice-1", "live-notice-2"]);
 	});
 
-	test("what stays on screen when a turn folds its steps: advisor cards and fallbacks, not ordinary rows", () => {
+	test("what stays on screen when a turn folds its steps: advisor cards, fallbacks and guidance changes, not ordinary rows", () => {
+		expect(isPinned(entry("x", { type: "custom_message", customType: "ompw-guidance", details: { text: "" } }))).toBe(
+			true,
+		);
 		expect(
 			isPinned(entry("x", { type: "custom_message", customType: "advisor", details: { notes: [{ note: "n" }] } })),
 		).toBe(true);

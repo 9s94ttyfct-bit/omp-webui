@@ -154,6 +154,13 @@ export const NOTES_PROMPT = "Notes probe: advisor, rules, fallback, jobs and IRC
 export function writeNotesSession(agentDir: string): string {
 	const c = new Chain("nt01");
 	c.user(NOTES_PROMPT);
+	// The guidance changed before this turn: the note the guidance extension leaves (`server/omp/guidance/extension.ts`),
+	// which omp writes after the person's message, at the start of the turn.
+	c.custom(
+		"ompw-guidance",
+		"The standing instructions of this conversation are now:\n\nGUIDANCE-NOTE-TEXT: reply in French.\n\nThey replace any earlier instruction in this conversation, and any recalled memory, that disagrees with them.",
+		{ text: "GUIDANCE-NOTE-TEXT: reply in French." },
+	);
 	// platform-allow: a recorded transcript's path, text the page shows; no file is used
 	c.assistant([{ type: "toolCall", id: "toolu_n1", name: "read", arguments: { path: "/tmp/a.ts" } }]);
 	c.toolResult("toolu_n1", "read", [{ type: "text", text: "contents of a" }]);

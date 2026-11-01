@@ -456,7 +456,11 @@ export class LiveRows {
 
 /** Rows that stay on screen when a finished turn folds its steps: they say something the reader must not miss. */
 export function isPinned(e: SessionEntry): boolean {
-	if (e.type === "custom_message") return e.customType === "advisor" && advisorNotes(e.details, e.content).length > 0;
+	if (e.type === "custom_message") {
+		// A change of the guidance is a rule for the turns that follow: the reader must not miss it in a folded turn.
+		if (e.customType === "ompw-guidance") return true;
+		return e.customType === "advisor" && advisorNotes(e.details, e.content).length > 0;
+	}
 	if (e.type === "model_change") return e.resolvedModelIsFallback === true;
 	const live = noticeOf(e);
 	return (

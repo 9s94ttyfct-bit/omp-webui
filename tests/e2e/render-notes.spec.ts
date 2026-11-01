@@ -34,6 +34,7 @@ test("a folded turn keeps its advisor card and fallback in view and says it has 
 	// What the reader must not miss stays.
 	const card = page.getByTestId("advisor-card");
 	await expect(card).toBeVisible();
+	await expect(page.getByTestId("guidance-note")).toContainText("Guidance changed");
 	await expect(card).toHaveAttribute("data-severity", "blocker");
 	await expect(card.getByTestId("advisor-badge")).toHaveText(["1 blocker", "2 concerns", "1 nit", "1 note"]);
 	await expect(card.getByTestId("advisor-note")).toHaveCount(3);
@@ -98,6 +99,19 @@ test("opened, the same turn shows rules, jobs, processes and IRC as typed rows, 
 		await expect(turn, wrapper).not.toContainText(wrapper);
 });
 
+test("a guidance note says the guidance changed, and opened shows the new text, not what the model was told around it", async ({
+	page,
+}) => {
+	await page.goto("/");
+	await page.getByRole("complementary").getByText(NOTES_PROMPT).click();
+	const note = page.getByTestId("guidance-note");
+	await expect(note).toContainText("Guidance changed");
+	await expect(note).not.toContainText("GUIDANCE-NOTE-TEXT");
+	await note.getByRole("button").click();
+	await expect(note).toContainText("GUIDANCE-NOTE-TEXT: reply in French.");
+	await expect(note).not.toContainText("The standing instructions of this conversation");
+});
+
 test("the typed rows speak Chinese when the interface does", async ({ page }) => {
 	await page.addInitScript(() => localStorage.setItem("ompw.lang", "zh-CN"));
 	await page.goto("/");
@@ -109,6 +123,7 @@ test("the typed rows speak Chinese when the interface does", async ({ page }) =>
 	await expect(page.getByTestId("rule-note")).toContainText("已应用规则：ts-set-map");
 	await expect(page.getByTestId("job-line")).toContainText("后台任务已完成");
 	await expect(page.getByTestId("irc-card")).toContainText("来自 Main 的 IRC 消息");
+	await expect(page.getByTestId("guidance-note")).toContainText("指引已更改");
 });
 
 test("rules, fallbacks and IRC messages announced while omp works appear as rows, in order, and merge where omp does", async ({
