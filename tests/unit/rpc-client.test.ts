@@ -93,7 +93,7 @@ describe("RpcClient", () => {
 		c.close();
 	});
 
-	test("failure responses reject call() with omp's error code", async () => {
+	test.skipIf(!has.notWindowsYet)("failure responses reject call() with omp's error code", async () => {
 		const { c } = start(`
       if (cmd.type === "negotiate_protocol") out({ id: cmd.id, type: "response", command: cmd.type, success: true });
       if (cmd.type === "fork") out({ id: cmd.id, type: "response", command: "fork", success: false, error: "busy", code: "session_busy" });

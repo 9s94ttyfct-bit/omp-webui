@@ -107,20 +107,24 @@ test("a pid file naming another program is ignored, never acted on", async () =>
 	expect(s.port).not.toBe(d.port);
 }, 60_000);
 
-test("a leftover server recorded for this data dir is stopped and its port reused", async () => {
-	const dir = dataDir("stale");
-	const old = await startServer(dir);
-	expect(JSON.parse(readFileSync(join(dir, "server.pid"), "utf8"))).toMatchObject({
-		pid: old.proc.pid,
-		command: platform.proc.commandLineSync(old.proc.pid),
-	});
+test.skipIf(!has.notWindowsYet)(
+	"a leftover server recorded for this data dir is stopped and its port reused",
+	async () => {
+		const dir = dataDir("stale");
+		const old = await startServer(dir);
+		expect(JSON.parse(readFileSync(join(dir, "server.pid"), "utf8"))).toMatchObject({
+			pid: old.proc.pid,
+			command: platform.proc.commandLineSync(old.proc.pid),
+		});
 
-	const next = await startServer(dir, old.port);
-	expect(await old.proc.exited).toBeDefined();
-	expect(alive(old.proc.pid)).toBe(false);
-	expect(next.port).toBe(old.port);
-	expect(JSON.parse(readFileSync(join(dir, "server.pid"), "utf8")).pid).toBe(next.proc.pid);
-}, 60_000);
+		const next = await startServer(dir, old.port);
+		expect(await old.proc.exited).toBeDefined();
+		expect(alive(old.proc.pid)).toBe(false);
+		expect(next.port).toBe(old.port);
+		expect(JSON.parse(readFileSync(join(dir, "server.pid"), "utf8")).pid).toBe(next.proc.pid);
+	},
+	60_000,
+);
 
 test.skipIf(!has.posixSignals)(
 	"stopping the server removes its record",

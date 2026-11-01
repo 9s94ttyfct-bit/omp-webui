@@ -564,66 +564,70 @@ describe("a conversation's guard moved to another computer", () => {
 // ------------------------------------------------------------------ the guard's own settings
 
 describe("the guard's settings moved to another computer", () => {
-	test("an import that takes longer than the server's look keeps the file it wrote: the look leaves it alone while the import writes, and takes it when it ends", async () => {
-		// The other Mac's settings, in its data dir (its own guard file is elsewhere: this is the file an archive carries).
-		const imported: GuardConfig = {
-			mode: "ask",
-			reviewer: "moved/one",
-			askWhenUnavailable: false,
-			askWhenDenied: false,
-		};
-		const a = await startTestServer(0, {}, { login: false });
-		const archive = join(root, "guard-settings.ompw");
-		// The server here is told to keep its guard settings where this version does (`<data dir>/guard.json`), as the app does.
-		const b = await startTestServer(0, { OMP_WEBUI_GUARD_CONFIG: "" }, { login: false });
-		// A file of the archive that sorts after `guard.json`, for the import to stand still at once guard.json is written, and
-		// that nothing else here reads while it stands still.
-		const pipe = join(b.root, "data", "interviews.json");
-		try {
-			writeFileSync(join(a.root, "data", "guard.json"), `${JSON.stringify(imported, null, 2)}\n`);
-			// The file the import stands still at is in the archive too (an archive carries only what is there).
-			writeFileSync(join(a.root, "data", "interviews.json"), "[]");
-			await exportTo(a, archive, { credentials: false });
-			expect((await uploadAndVerify(b, archive)).state).toBe("ready");
-			// What the import reads on this Mac before it decides what to do with it: a pipe, which does not answer until
-			// somebody writes to it.
-			expect(spawnSync("mkfifo", [pipe]).status).toBe(0);
-			const started = await call<ImportStatus>(b, MIGRATE_API.importApply, {
-				method: "POST",
-				body: JSON.stringify({ mode: "merge", credentials: false }),
-			});
-			expect(started.status).toBe(200);
+	test.skipIf(!has.notWindowsYet)(
+		"an import that takes longer than the server's look keeps the file it wrote: the look leaves it alone while the import writes, and takes it when it ends",
+		async () => {
+			// The other Mac's settings, in its data dir (its own guard file is elsewhere: this is the file an archive carries).
+			const imported: GuardConfig = {
+				mode: "ask",
+				reviewer: "moved/one",
+				askWhenUnavailable: false,
+				askWhenDenied: false,
+			};
+			const a = await startTestServer(0, {}, { login: false });
+			const archive = join(root, "guard-settings.ompw");
+			// The server here is told to keep its guard settings where this version does (`<data dir>/guard.json`), as the app does.
+			const b = await startTestServer(0, { OMP_WEBUI_GUARD_CONFIG: "" }, { login: false });
+			// A file of the archive that sorts after `guard.json`, for the import to stand still at once guard.json is written, and
+			// that nothing else here reads while it stands still.
+			const pipe = join(b.root, "data", "interviews.json");
+			try {
+				writeFileSync(join(a.root, "data", "guard.json"), `${JSON.stringify(imported, null, 2)}\n`);
+				// The file the import stands still at is in the archive too (an archive carries only what is there).
+				writeFileSync(join(a.root, "data", "interviews.json"), "[]");
+				await exportTo(a, archive, { credentials: false });
+				expect((await uploadAndVerify(b, archive)).state).toBe("ready");
+				// What the import reads on this Mac before it decides what to do with it: a pipe, which does not answer until
+				// somebody writes to it.
+				expect(spawnSync("mkfifo", [pipe]).status).toBe(0);
+				const started = await call<ImportStatus>(b, MIGRATE_API.importApply, {
+					method: "POST",
+					body: JSON.stringify({ mode: "merge", credentials: false }),
+				});
+				expect(started.status).toBe(200);
 
-			const file = join(b.root, "data", "guard.json");
-			const kept = (): GuardConfig => JSON.parse(readFileSync(file, "utf8")) as GuardConfig;
-			await pollUntil(() => existsSync(file) && kept().mode === "ask", "the import to have written guard.json");
-			expect(((await state(b)).body as MigrateState).import?.state).toBe("applying");
-			// A real wait, for a real timer: the server looks at the file once a second and writes its own settings over one it
-			// did not write itself. The import is still writing, and must be left alone for three looks.
-			await Bun.sleep(3_500);
-			expect(((await state(b)).body as MigrateState).import?.state).toBe("applying");
-			expect(kept()).toEqual(imported);
+				const file = join(b.root, "data", "guard.json");
+				const kept = (): GuardConfig => JSON.parse(readFileSync(file, "utf8")) as GuardConfig;
+				await pollUntil(() => existsSync(file) && kept().mode === "ask", "the import to have written guard.json");
+				expect(((await state(b)).body as MigrateState).import?.state).toBe("applying");
+				// A real wait, for a real timer: the server looks at the file once a second and writes its own settings over one it
+				// did not write itself. The import is still writing, and must be left alone for three looks.
+				await Bun.sleep(3_500);
+				expect(((await state(b)).body as MigrateState).import?.state).toBe("applying");
+				expect(kept()).toEqual(imported);
 
-			// The pipe answers, and the import goes on to its end.
-			const fd = openSync(pipe, "w");
-			writeSync(fd, "[]");
-			closeSync(fd);
-			await pollUntil(
-				async () => ((await state(b)).body as MigrateState).import?.state === "done",
-				"the import to end",
-			);
-			// What the import brought is the server's own now: every gate and page is told, and the looks leave the file.
-			const answered = await fetch(`${b.url}/api/guard`, {
-				headers: { "x-omp-webui-token": b.accessToken, "x-omp-webui": "1" },
-			});
-			const body: unknown = await answered.json();
-			expect(typeof body === "object" && body !== null && "config" in body ? body.config : null).toEqual(imported);
-			await Bun.sleep(2_500);
-			expect(kept()).toEqual(imported);
-		} finally {
-			await Promise.all([a.stop(), b.stop()]);
-		}
-	}, 240_000);
+				// The pipe answers, and the import goes on to its end.
+				const fd = openSync(pipe, "w");
+				writeSync(fd, "[]");
+				closeSync(fd);
+				await pollUntil(
+					async () => ((await state(b)).body as MigrateState).import?.state === "done",
+					"the import to end",
+				);
+				// What the import brought is the server's own now: every gate and page is told, and the looks leave the file.
+				const answered = await fetch(`${b.url}/api/guard`, {
+					headers: { "x-omp-webui-token": b.accessToken, "x-omp-webui": "1" },
+				});
+				const body: unknown = await answered.json();
+				expect(typeof body === "object" && body !== null && "config" in body ? body.config : null).toEqual(imported);
+				await Bun.sleep(2_500);
+				expect(kept()).toEqual(imported);
+			} finally {
+				await Promise.all([a.stop(), b.stop()]);
+			}
+		},
+		240_000,
+	);
 });
 
 // ------------------------------------------------------------------ the once-a-second look goes on

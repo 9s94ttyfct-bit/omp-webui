@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
@@ -7,6 +7,7 @@ import type { OmpSnapshot } from "../../shared/omp-install.ts";
 import { startAppServer } from "../support/app-server.ts";
 import { writeFakeOmp } from "../support/fake-omp.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * An omp install or update that ended while no server ran is settled by the next one, in `OmpLifecycle.init`, before
@@ -28,7 +29,7 @@ beforeAll(async () => {
 afterEach(() => {
 	for (const p of procs.splice(0)) p.kill("SIGKILL");
 });
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => removeScratch(root));
 
 /** What an earlier server left in `<data dir>/omp-job` for an `omp update` that ended. */
 function leaveJob(dataDir: string, files: { record?: unknown; exit?: string | null; output?: string }): string {

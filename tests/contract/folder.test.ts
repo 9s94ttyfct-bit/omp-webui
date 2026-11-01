@@ -16,6 +16,7 @@ import { platform } from "../../server/platform/index.ts";
 import { FOLDER_LIMITS, type FolderFile, type FolderFound, type FolderListing } from "../../shared/folder.ts";
 import { type AccessKey, AUD, EMAIL, HOSTNAME, type Jwks, makeKey, startJwks, TEAM } from "../support/access-jwt.ts";
 import { writeChatSession } from "../support/chat-session.ts";
+import { has } from "../support/needs.ts";
 import { remoteClient } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect } from "../support/ws.ts";
@@ -591,36 +592,39 @@ describe("a page that is not this computer's", () => {
 			expect(inDependency.matches).toEqual([]);
 		});
 
-		test(`${who}: what looks like a secret is not read, whatever it is called, nor a link to it, nor a key by its text, nor a picture by such a name`, async () => {
-			const refused = [
-				...SECRETS.map((n) => `probe/${n}`),
-				...KEYS.map((n) => `probe/${n}`),
-				"probe/.ssh/config",
-				"probe/.ssh",
-				"probe/innocent.txt",
-				".git/config",
-			];
-			for (const path of refused) {
-				for (const route of ["file", "list"]) {
-					const res = await get(q(route, { path, all: "1" }));
-					const text = await res.text();
-					// A folder is not a file and a file not a folder: what matters is that no secret comes back.
-					expect(text, `${route} ${path}`).not.toContain("SECRET");
-					if (route === "file") expect(res.status, `${route} ${path}`).toBe(403);
+		test.skipIf(!has.notWindowsYet)(
+			`${who}: what looks like a secret is not read, whatever it is called, nor a link to it, nor a key by its text, nor a picture by such a name`,
+			async () => {
+				const refused = [
+					...SECRETS.map((n) => `probe/${n}`),
+					...KEYS.map((n) => `probe/${n}`),
+					"probe/.ssh/config",
+					"probe/.ssh",
+					"probe/innocent.txt",
+					".git/config",
+				];
+				for (const path of refused) {
+					for (const route of ["file", "list"]) {
+						const res = await get(q(route, { path, all: "1" }));
+						const text = await res.text();
+						// A folder is not a file and a file not a folder: what matters is that no secret comes back.
+						expect(text, `${route} ${path}`).not.toContain("SECRET");
+						if (route === "file") expect(res.status, `${route} ${path}`).toBe(403);
+					}
 				}
-			}
-			expect((await get(q("raw", { path: "probe/id_rsa.png" }))).status).toBe(403);
-			// What its listing leaves out (hidden by default) is not read by its path either, though it is no secret by name.
-			for (const path of [...HIDDEN, ".git/HEAD"].map((n) => (n.startsWith(".git") ? n : `probe/${n}`))) {
-				for (const route of ["file", "list"]) {
-					const res = await get(q(route, { path, all: "1" }));
-					expect(await res.text(), `${route} ${path}`).not.toContain("HIDDEN-ONLY");
-					if (route === "file") expect(res.status, `${route} ${path}`).toBe(403);
+				expect((await get(q("raw", { path: "probe/id_rsa.png" }))).status).toBe(403);
+				// What its listing leaves out (hidden by default) is not read by its path either, though it is no secret by name.
+				for (const path of [...HIDDEN, ".git/HEAD"].map((n) => (n.startsWith(".git") ? n : `probe/${n}`))) {
+					for (const route of ["file", "list"]) {
+						const res = await get(q(route, { path, all: "1" }));
+						expect(await res.text(), `${route} ${path}`).not.toContain("HIDDEN-ONLY");
+						if (route === "file") expect(res.status, `${route} ${path}`).toBe(403);
+					}
 				}
-			}
-			// What is neither is read, whatever its name sounds like.
-			for (const name of PLAIN) expect((await get(q("file", { path: `probe/${name}` }))).status, name).toBe(200);
-		});
+				// What is neither is read, whatever its name sounds like.
+				for (const name of PLAIN) expect((await get(q("file", { path: `probe/${name}` }))).status, name).toBe(200);
+			},
+		);
 	}
 
 	test("the page on this computer is given all of it", async () => {

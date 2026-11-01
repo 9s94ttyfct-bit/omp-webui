@@ -40,6 +40,7 @@ import {
 	type ModeState,
 	type OfflineSettings,
 } from "../../shared/offline.ts";
+import { has } from "../support/needs.ts";
 import { newestOfflineAgent } from "../support/offline-agent.ts";
 import { type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
 
@@ -342,17 +343,20 @@ describe("the offline agent directory", () => {
 	const modeOf = (path: string) => statSync(path).mode & 0o777;
 	const textOf = (dir: string, name: string) => readFileSync(join(dir, name), "utf8");
 
-	test("holds the key and the selection, privately, and nothing of the other providers or servers", () => {
-		const { build } = setup();
-		const { dir, missing } = build();
-		expect(missing).toEqual([]);
-		expect(modeOf(dir)).toBe(0o700);
-		for (const f of ["models.yml", "mcp.json", "config.yml"]) expect(modeOf(join(dir, f))).toBe(0o600);
-		expect(textOf(dir, "models.yml")).toContain("sk-omlx-secret");
-		expect(textOf(dir, "models.yml")).not.toContain("sk-ollama-secret");
-		expect(Object.keys(JSON.parse(textOf(dir, "mcp.json")).mcpServers)).toEqual(["rea"]);
-		expect(existsSync(join(dir, "AGENTS.md"))).toBe(false);
-	});
+	test.skipIf(!has.posixModes)(
+		"holds the key and the selection, privately, and nothing of the other providers or servers",
+		() => {
+			const { build } = setup();
+			const { dir, missing } = build();
+			expect(missing).toEqual([]);
+			expect(modeOf(dir)).toBe(0o700);
+			for (const f of ["models.yml", "mcp.json", "config.yml"]) expect(modeOf(join(dir, f))).toBe(0o600);
+			expect(textOf(dir, "models.yml")).toContain("sk-omlx-secret");
+			expect(textOf(dir, "models.yml")).not.toContain("sk-ollama-secret");
+			expect(Object.keys(JSON.parse(textOf(dir, "mcp.json")).mcpServers)).toEqual(["rea"]);
+			expect(existsSync(join(dir, "AGENTS.md"))).toBe(false);
+		},
+	);
 
 	test("each configuration has a directory of its own, named by a digest of what is in it, and a directory is never changed", () => {
 		const { agentDir, offlineRoot, build } = setup();
@@ -1329,26 +1333,29 @@ describe("what a context measurement depends on", () => {
 		expect(await run()).toEqual({ full: 0, light: 0 });
 	});
 
-	test("both sides are measured again once omp was installed or updated, and not before (#313)", async () => {
-		const { run, cfg } = service();
-		// omp is missing at first (its version is unknown, and that is not remembered).
-		expect(await run()).toEqual({ full: 1, light: 1 });
-		expect(await run()).toEqual({ full: 0, light: 0 });
-		const bin = join(cfg.dataDir, "omp");
-		const install = (version: string) => {
-			writeFileSync(bin, `#!/bin/sh\necho "omp/${version}"\n`);
-			chmodSync(bin, 0o755);
-		};
-		install("18.12.2");
-		cfg.ompBin = bin;
-		// The install: omp is found, and its version is part of what a measurement depends on.
-		expect(await run()).toEqual({ full: 1, light: 1 });
-		expect(await run()).toEqual({ full: 0, light: 0 });
-		// The update replaces the program, the server keeps running: the numbers are the new omp's to measure.
-		install("18.13.0-beta.1");
-		expect(await run()).toEqual({ full: 1, light: 1 });
-		expect(await run()).toEqual({ full: 0, light: 0 });
-	});
+	test.skipIf(!has.notWindowsYet)(
+		"both sides are measured again once omp was installed or updated, and not before (#313)",
+		async () => {
+			const { run, cfg } = service();
+			// omp is missing at first (its version is unknown, and that is not remembered).
+			expect(await run()).toEqual({ full: 1, light: 1 });
+			expect(await run()).toEqual({ full: 0, light: 0 });
+			const bin = join(cfg.dataDir, "omp");
+			const install = (version: string) => {
+				writeFileSync(bin, `#!/bin/sh\necho "omp/${version}"\n`);
+				chmodSync(bin, 0o755);
+			};
+			install("18.12.2");
+			cfg.ompBin = bin;
+			// The install: omp is found, and its version is part of what a measurement depends on.
+			expect(await run()).toEqual({ full: 1, light: 1 });
+			expect(await run()).toEqual({ full: 0, light: 0 });
+			// The update replaces the program, the server keeps running: the numbers are the new omp's to measure.
+			install("18.13.0-beta.1");
+			expect(await run()).toEqual({ full: 1, light: 1 });
+			expect(await run()).toEqual({ full: 0, light: 0 });
+		},
+	);
 
 	test("Light is measured again when its models.yml entry (the context window) changes", async () => {
 		const { run, models } = service();

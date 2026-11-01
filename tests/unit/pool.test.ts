@@ -262,32 +262,38 @@ test("shutdown gives an idle process the time to finish writing, then stops it",
 	expect(await vanished(pid)).toBe(true);
 });
 
-test("shutdown kills a process that ignores both its closed stdin and SIGTERM, with everything it started", async () => {
-	// The tool shares omp's process group: the group goes down with it.
-	const { pool, newChat } = setup({ ignoreClose: true, ignoreTerm: true, tool: true });
-	const live = await newChat();
-	const pid = live.info.pid as number;
-	const tool = (await platform.proc.tree(pid)).find((p) => p !== pid) as number;
-	expect(tool).toBeGreaterThan(0);
-	strays.push(tool);
+test.skipIf(!has.posixSignals)(
+	"shutdown kills a process that ignores both its closed stdin and SIGTERM, with everything it started",
+	async () => {
+		// The tool shares omp's process group: the group goes down with it.
+		const { pool, newChat } = setup({ ignoreClose: true, ignoreTerm: true, tool: true });
+		const live = await newChat();
+		const pid = live.info.pid as number;
+		const tool = (await platform.proc.tree(pid)).find((p) => p !== pid) as number;
+		expect(tool).toBeGreaterThan(0);
+		strays.push(tool);
 
-	await pool.shutdown(100, 100);
-	expect(await vanished(pid)).toBe(true);
-	expect(await vanished(tool)).toBe(true);
-});
+		await pool.shutdown(100, 100);
+		expect(await vanished(pid)).toBe(true);
+		expect(await vanished(tool)).toBe(true);
+	},
+);
 
-test("shutdown also kills a tool that runs in a session of its own, as omp's tools do", async () => {
-	const { pool, newChat } = setup({ ignoreClose: true, ignoreTerm: true, tool: true, toolDetached: true });
-	const live = await newChat();
-	const pid = live.info.pid as number;
-	const tool = (await platform.proc.tree(pid)).find((p) => p !== pid) as number;
-	expect(tool).toBeGreaterThan(0);
-	strays.push(tool);
+test.skipIf(!has.posixSignals)(
+	"shutdown also kills a tool that runs in a session of its own, as omp's tools do",
+	async () => {
+		const { pool, newChat } = setup({ ignoreClose: true, ignoreTerm: true, tool: true, toolDetached: true });
+		const live = await newChat();
+		const pid = live.info.pid as number;
+		const tool = (await platform.proc.tree(pid)).find((p) => p !== pid) as number;
+		expect(tool).toBeGreaterThan(0);
+		strays.push(tool);
 
-	await pool.shutdown(100, 100);
-	expect(await vanished(pid)).toBe(true);
-	expect(await vanished(tool)).toBe(true);
-});
+		await pool.shutdown(100, 100);
+		expect(await vanished(pid)).toBe(true);
+		expect(await vanished(tool)).toBe(true);
+	},
+);
 
 test("a pool that is shutting down opens nothing new", async () => {
 	const { pool, newChat, resume } = setup({});

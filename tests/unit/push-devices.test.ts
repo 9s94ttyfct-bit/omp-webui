@@ -8,6 +8,7 @@ import { allowedEndpoint, extraOrigins } from "../../server/push/endpoint.ts";
 import { loadVapid, VAPID_FILE } from "../../server/push/vapid.ts";
 import { MAX_PUSH_DEVICES } from "../../shared/push.ts";
 import { expectMode } from "../support/modes.ts";
+import { has } from "../support/needs.ts";
 import { tempDir } from "../support/temp-dirs.ts";
 
 /** What the server keeps of the devices and of its own key: for its user alone, and nothing a page can make it send to. */
@@ -121,7 +122,7 @@ describe("the key", () => {
 		}
 	});
 
-	test.skipIf(process.getuid?.() === 0)(
+	test.skipIf(process.getuid?.() === 0 || !has.posixModes)(
 		"a file that cannot be read for want of permission is no reason to make a new key: loading fails and the key stays",
 		async () => {
 			const data = dir();

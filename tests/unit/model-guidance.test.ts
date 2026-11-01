@@ -22,6 +22,7 @@ import {
 	parseSessionGuidance,
 } from "../../shared/model-guidance.ts";
 import { expectMode } from "../support/modes.ts";
+import { has } from "../support/needs.ts";
 import { tempDir } from "../support/temp-dirs.ts";
 
 /**
@@ -214,12 +215,15 @@ describe("what a page sends as a conversation's guidance", () => {
 });
 
 describe("the file a conversation's omp reads", () => {
-	test("it sits beside the conversation's settings overlay, or in the fallback folder when there is none", () => {
-		expect(guidanceFileFor("L1", "/tmp/ompw-live-1/L1.yml", "/data/guidance/live")).toBe(
-			"/tmp/ompw-live-1/L1.yml.guidance.md",
-		);
-		expect(guidanceFileFor("L1", null, "/data/guidance/live")).toBe("/data/guidance/live/L1.guidance.md");
-	});
+	test.skipIf(!has.notWindowsYet)(
+		"it sits beside the conversation's settings overlay, or in the fallback folder when there is none",
+		() => {
+			expect(guidanceFileFor("L1", "/tmp/ompw-live-1/L1.yml", "/data/guidance/live")).toBe(
+				"/tmp/ompw-live-1/L1.yml.guidance.md",
+			);
+			expect(guidanceFileFor("L1", null, "/data/guidance/live")).toBe("/data/guidance/live/L1.guidance.md");
+		},
+	);
 
 	test("writing it is 0600 and atomic, and no text takes the file away", () => {
 		const data = dir();

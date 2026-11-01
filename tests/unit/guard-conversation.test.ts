@@ -336,32 +336,35 @@ describe("the store", () => {
 		expect(ownOf(new ApprovalStore("omp", dir, 0), "/s/a.jsonl")).toEqual({ mode: "ask" });
 	});
 
-	test("never throws when it cannot write: it says so once, goes on, and puts the file right when it can", () => {
-		const dir = scratch();
-		const file = join(dir, "approval.json");
-		const store = new ApprovalStore("omp", dir, 0);
-		store.rememberGuard("/s/a.jsonl", { mode: "ask" });
-		const warn = spyOn(console, "warn").mockImplementation(() => {});
-		try {
-			// An Off planted in the file, and the folder that holds it takes no new file: the write cannot be made.
-			writeFileSync(file, JSON.stringify({ guard: { "/s/a.jsonl": { mode: "off" } } }));
-			chmodSync(dir, 0o500);
+	test.skipIf(!has.posixModes)(
+		"never throws when it cannot write: it says so once, goes on, and puts the file right when it can",
+		() => {
+			const dir = scratch();
+			const file = join(dir, "approval.json");
+			const store = new ApprovalStore("omp", dir, 0);
+			store.rememberGuard("/s/a.jsonl", { mode: "ask" });
+			const warn = spyOn(console, "warn").mockImplementation(() => {});
 			try {
-				expect(store.verify()).toBe(false);
-				expect(store.verify()).toBe(false);
+				// An Off planted in the file, and the folder that holds it takes no new file: the write cannot be made.
+				writeFileSync(file, JSON.stringify({ guard: { "/s/a.jsonl": { mode: "off" } } }));
+				chmodSync(dir, 0o500);
+				try {
+					expect(store.verify()).toBe(false);
+					expect(store.verify()).toBe(false);
+					expect(warn).toHaveBeenCalledTimes(1);
+					expect(ownOf(store, "/s/a.jsonl")).toEqual({ mode: "ask" });
+				} finally {
+					chmodSync(dir, 0o700);
+				}
+				// The folder can be written again: the next look writes the server's own copy over what was planted, and says nothing.
+				expect(store.verify()).toBe(true);
+				expect(JSON.parse(readFileSync(file, "utf8")).guard).toEqual({ "/s/a.jsonl": { mode: "ask" } });
 				expect(warn).toHaveBeenCalledTimes(1);
-				expect(ownOf(store, "/s/a.jsonl")).toEqual({ mode: "ask" });
 			} finally {
-				chmodSync(dir, 0o700);
+				warn.mockRestore();
 			}
-			// The folder can be written again: the next look writes the server's own copy over what was planted, and says nothing.
-			expect(store.verify()).toBe(true);
-			expect(JSON.parse(readFileSync(file, "utf8")).guard).toEqual({ "/s/a.jsonl": { mode: "ask" } });
-			expect(warn).toHaveBeenCalledTimes(1);
-		} finally {
-			warn.mockRestore();
-		}
-	});
+		},
+	);
 });
 
 describe("damage and the records of a conversation", () => {
