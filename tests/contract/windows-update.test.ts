@@ -1,7 +1,7 @@
 // needs: windowsLauncher
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import pkg from "../../package.json";
@@ -77,6 +77,8 @@ interface Install {
 	folder: string;
 	data: string;
 	update: string;
+	/** What the launcher this test started printed (its server's own log). */
+	output(): string;
 }
 
 /** A copy of the built launcher in a folder of its own, started as a double-click would, and its server up. */
@@ -108,7 +110,7 @@ async function startInstall(): Promise<Install> {
 		out += d.toString();
 	});
 	await pollUntil(() => runningServer(data) !== null, `the launcher's server to start; output:\n${out}`, 60_000);
-	return { folder, data, update: join(data, "update") };
+	return { folder, data, update: join(data, "update"), output: () => out };
 }
 
 async function api(install: Install, path: string, body?: unknown): Promise<Response> {
@@ -146,14 +148,49 @@ const readJson = (file: string): Record<string, unknown> | null => {
 	}
 };
 
-/** Wait for `condition`; a wait that ends without it says what the helper wrote of its work (`helper.log`). */
+/** The files in `dir`, one per line with its size, or why they cannot be listed. */
+function listing(dir: string): string {
+	try {
+		return readdirSync(dir)
+			.map((name) => {
+				const st = statSync(join(dir, name));
+				return `  ${name}${st.isDirectory() ? "/" : ` (${st.size} bytes)`}`;
+			})
+			.join("\n");
+	} catch (e) {
+		return `  (${(e as Error).message})`;
+	}
+}
+
+/**
+ * Everything there is to know of an update that did not end as it should: the update folder and the small files the
+ * server, the helper and the new server tell each other things by, the helper's log, what is beside the install folder,
+ * what the launcher printed, and what its server (or the one started after it) says of the update now.
+ */
+async function diagnosis(install: Install): Promise<string> {
+	const parts = [`update folder ${install.update}:\n${listing(install.update)}`];
+	for (const name of existsSync(install.update) ? readdirSync(install.update) : []) {
+		if (/\.json$|^helper-started-|\.log$/.test(name)) {
+			parts.push(`--- ${name}:\n${readFileSync(join(install.update, name), "utf8")}`);
+		}
+	}
+	parts.push(`beside the install folder ${dirname(install.folder)}:\n${listing(dirname(install.folder))}`);
+	parts.push(`--- the launcher's output:\n${install.output()}`);
+	try {
+		const state = await updateState(install);
+		parts.push(`--- /api/update now: ${JSON.stringify({ ...state, latest: state.latest?.tag })}`);
+	} catch (e) {
+		parts.push(`--- /api/update now: ${(e as Error).message}`);
+	}
+	return parts.join("\n");
+}
+
+/** Wait for `condition`; a wait that ends without it says everything `diagnosis` finds. */
 async function untilHelper(install: Install, condition: () => boolean, what: string, ms: number): Promise<void> {
 	try {
 		await pollUntil(condition, what, ms);
 	} catch (e) {
-		const log = join(install.update, "helper.log");
-		const text = existsSync(log) ? readFileSync(log, "utf8") : "(no helper log)";
-		throw new Error(`${(e as Error).message}\nhelper log:\n${text}`);
+		throw new Error(`${(e as Error).message}\n${await diagnosis(install)}`);
 	}
 }
 

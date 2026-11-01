@@ -32,16 +32,27 @@ $ErrorActionPreference = "Continue"
 $ack = Join-Path $StateDir "ack.json"
 $handover = Join-Path $StateDir "handover.json"
 $result = Join-Path $StateDir "result.json"
+$logFile = Join-Path $StateDir "helper.log"
+
+# Appended to the helper's log by this script itself, never to the pipeline (a function that returns a value and logs
+# would otherwise return the line too) nor to its standard output: it is started detached and without a console, and
+# what it inherits for output is not to be relied on.
+function Log([string]$message) {
+	try {
+		[System.IO.File]::AppendAllText($logFile, ("{0} {1}`r`n" -f (Get-Date -Format "yyyy-MM-ddTHH:mm:ss"), $message))
+	} catch { }
+}
+
+# An error nobody handled is written down before the script goes on (or ends): the log is all there is to read afterwards.
+trap {
+	Log "error: $_ ($($_.InvocationInfo.PositionMessage))"
+	continue
+}
 
 # First of all: say this script runs. The server waits for this file before it exits, so that a PowerShell that never ran
 # the script (a policy, security software) leaves the server running to say so, instead of an app that just closed.
 [System.IO.File]::WriteAllText((Join-Path $StateDir "helper-started-$Id"), "$PID")
-
-# Straight to this process's output (the helper's log), never to the pipeline: a function that returns a value and logs
-# would otherwise return the line too.
-function Log([string]$message) {
-	[Console]::Out.WriteLine(("{0} {1}" -f (Get-Date -Format "yyyy-MM-ddTHH:mm:ss"), $message))
-}
+Log "helper $PID started for the update from $From to $To (id $Id)"
 
 # Write how this ended, for the next server (atomically: it may look at once; without a byte-order mark, which JSON.parse
 # refuses).

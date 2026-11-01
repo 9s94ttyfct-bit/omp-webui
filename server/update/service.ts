@@ -151,7 +151,7 @@ interface HelperRun {
 	startSecs: number;
 	/** The version installed. */
 	version: string;
-	/** The helper's log, open for appending: its output and errors. */
+	/** The helper's log, open for appending: `helper.sh`'s output and errors (`helper.ps1` appends to the file itself). */
 	log: number;
 }
 
@@ -707,6 +707,10 @@ export class AppUpdater {
 		const started = existsSync(marker);
 		removeFiles(marker);
 		if (started) return;
+		const ended = !alive(pid);
+		console.warn(
+			`omp-webui: the update helper ${pid} did not say it runs (${ended ? "it ended" : `not within ${waitMs} ms`}): the update is not installed`,
+		);
 		try {
 			process.kill(pid);
 		} catch {
@@ -752,7 +756,9 @@ export class AppUpdater {
 	/**
 	 * `helper.ps1`, started by Windows PowerShell, hidden and detached (it must outlive this server, whose console closes
 	 * when it exits); its pid. It runs from the update folder, never from inside the folder it renames, and with this
-	 * server's environment: the new program it starts is started as this one was (its data folder, a test's settings).
+	 * server's environment: the new program it starts is started as this one was (its data folder, a test's settings). It
+	 * writes its log itself: a process started detached has no console, and the output handles it is given are not to be
+	 * relied on.
 	 */
 	private spawnWindowsHelper(folder: string, h: HelperRun): number {
 		writeFileSync(this.paths.helperWindows, helperWindowsScript, { mode: 0o700 });
@@ -792,13 +798,15 @@ export class AppUpdater {
 			{
 				cwd: this.paths.dir,
 				env: this.opts.env ?? process.env,
-				stdio: ["ignore", h.log, h.log],
+				stdio: "ignore",
 				detached: true,
 				windowsHide: true,
 			},
 		);
 		// A program that cannot be started says so by an event, after `spawn` returns: without a listener it would end the server.
 		child.on("error", (e) => console.error(`omp-webui: the update helper failed: ${e.message}`));
+		// What the server can see of a helper that ended while it still runs (one that never ran the script ends at once).
+		child.on("exit", (code) => console.log(`omp-webui: the update helper ${child.pid} ended (exit ${code})`));
 		if (child.pid === undefined) throw new UpdateError("helper");
 		child.unref();
 		return child.pid;

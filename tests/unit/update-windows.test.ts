@@ -7,7 +7,14 @@ import pkg from "../../package.json";
 import { platformId } from "../../server/platform/capabilities.ts";
 import { AppUpdater, type InstallTarget } from "../../server/update/service.ts";
 import { UpdateError } from "../../server/update/steps.ts";
-import { memberAllowed, stageWindows, tarCommand, WINDOWS_EXE, ZIP_TOP } from "../../server/update/windows.ts";
+import {
+	memberAllowed,
+	powershellCommand,
+	stageWindows,
+	tarCommand,
+	WINDOWS_EXE,
+	ZIP_TOP,
+} from "../../server/update/windows.ts";
 import type { AppUpdateState } from "../../shared/update.ts";
 import { writeBunProgram } from "../support/bun-program.ts";
 import { type FakeReleases, startFakeReleases } from "../support/fake-releases.ts";
@@ -89,6 +96,14 @@ async function refusal(promise: Promise<unknown>): Promise<UpdateError> {
 	if (!(e instanceof UpdateError)) throw new Error(`expected an UpdateError, got ${String(e)}`);
 	return e;
 }
+
+test.skipIf(platformId !== "win32")("helper.ps1 parses in Windows PowerShell, which runs it", () => {
+	const script = join(import.meta.dir, "..", "..", "server", "update", "helper.ps1");
+	const check = `$errors = $null; [void][System.Management.Automation.Language.Parser]::ParseFile('${script}', [ref]$null, [ref]$errors); $errors | ForEach-Object { $_.ToString() }; exit @($errors).Count`;
+	const ran = Bun.spawnSync([powershellCommand(), "-NoProfile", "-NonInteractive", "-Command", check]);
+	expect(`${ran.stdout}${ran.stderr}`.trim()).toBe("");
+	expect(ran.exitCode).toBe(0);
+});
 
 test("helper.ps1 is ASCII: Windows PowerShell reads a script without a byte-order mark in the ANSI code page", () => {
 	const script = readFileSync(join(import.meta.dir, "..", "..", "server", "update", "helper.ps1"), "utf8");
