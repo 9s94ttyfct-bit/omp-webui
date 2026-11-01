@@ -92,6 +92,7 @@ export function defaultPlaces(
 ): BenchPlaces {
 	return {
 		home: homedir(),
+		// platform-allow: the remote-risk classifier's POSIX temp folders, names a command's paths are compared with; no file is used
 		temp: [...new Set([tmpdir(), "/tmp", "/private/tmp", "/var/tmp", "/private/var/tmp"])],
 		protect,
 		...(ports ? { ports } : {}),

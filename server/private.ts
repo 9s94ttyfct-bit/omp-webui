@@ -1,5 +1,6 @@
 import { chmodSync, lstatSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { platform } from "./platform/index.ts";
 
 /**
  * What this server keeps in its data dir is for its user alone: the search index holds the text of every conversation,
@@ -17,7 +18,8 @@ export function ensurePrivateDir(dir: string): void {
 	mkdirSync(dir, { recursive: true, mode: 0o700 });
 	try {
 		const info = lstatSync(dir);
-		if (info.isSymbolicLink() || (process.getuid && info.uid !== process.getuid())) {
+		const uid = platform.proc.uid();
+		if (info.isSymbolicLink() || (uid !== undefined && info.uid !== uid)) {
 			console.warn(`omp-webui: ${dir} is not this user's own directory: its permissions are left as they are`);
 			return;
 		}

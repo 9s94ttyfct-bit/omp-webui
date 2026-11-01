@@ -1,4 +1,5 @@
 import type { PlatformId } from "../../shared/platform.ts";
+import { platformIdOf } from "./capabilities.ts";
 import { createDarwin } from "./darwin.ts";
 import { createLinux } from "./linux.ts";
 import { systemDeps } from "./system.ts";
@@ -17,11 +18,6 @@ const CREATE: Record<PlatformId, (deps: SystemDeps) => Platform> = {
 	win32: createWin32,
 };
 
-/** `process.platform` as an adapter's name: a POSIX system without one of its own (a BSD) gets Linux's. */
-export function platformIdOf(name: string): PlatformId {
-	return name === "darwin" || name === "win32" ? name : "linux";
-}
-
 const made: Partial<Record<PlatformId, Platform>> = {};
 
 /**
@@ -38,4 +34,11 @@ export function platformFor(id: PlatformId, deps?: Partial<SystemDeps>): Platfor
 /** The system this server runs on. */
 export const platform: Platform = platformFor(platformIdOf(process.platform));
 
+/**
+ * The system's own name for itself (`process.platform`), for what records it or downloads for it (an export's manifest,
+ * omp's build target): a BSD is served by Linux's adapter, but its name stays its own.
+ */
+export const osName: NodeJS.Platform = process.platform;
+
+export { capabilities, platformIdOf } from "./capabilities.ts";
 export type { Platform, SystemDeps } from "./types.ts";

@@ -181,6 +181,7 @@ function contextFor(
 	hosts?: readonly string[],
 ): RiskContext {
 	const home = homedir();
+	// platform-allow: the remote-risk classifier's POSIX temp folders, names a command's paths are compared with; no file is used
 	const temp = [tmpdir(), "/tmp", "/private/tmp", "/var/tmp", "/private/var/tmp"];
 	const agent = process.env.PI_CODING_AGENT_DIR;
 	return {

@@ -2,10 +2,11 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { platformFor } from "../../server/platform/index.ts";
 import {
 	type AwakeChild,
+	type AwakeDeps,
 	awakeWorking,
-	caffeinateArgv,
 	KeepAwake,
 	SLEEP_MIN_MS,
 	SleepDetector,
@@ -14,6 +15,7 @@ import {
 	workingIds,
 } from "../../server/sleep.ts";
 import { workCounts } from "../../shared/attention.ts";
+import type { PlatformId } from "../../shared/platform.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { processExists } from "../support/poll.ts";
 
@@ -81,12 +83,17 @@ function fakeSpawner(): {
 	};
 }
 
-function keeper(opts: { platform?: NodeJS.Platform; enabled?: boolean } = {}) {
+/** How the server builds `hold` (server/main.ts): from the system's power operations, with no `OMP_WEBUI_CAFFEINATE`. */
+function holdOf(system: PlatformId): AwakeDeps["hold"] {
+	const power = platformFor(system).power;
+	return power ? (pid) => power.keepAwakeArgv(power.keepAwakeBin({}), pid) : null;
+}
+
+function keeper(opts: { system?: PlatformId; enabled?: boolean } = {}) {
 	const spawner = fakeSpawner();
 	const reports: string[] = [];
 	const awake = new KeepAwake({
-		platform: opts.platform ?? "darwin",
-		bin: "/usr/bin/caffeinate",
+		hold: holdOf(opts.system ?? "darwin"),
 		spawn: spawner.spawn,
 		pid: () => 777,
 		report: (m) => reports.push(m),
@@ -109,7 +116,12 @@ describe("keep awake: who is started, and who is stopped", () => {
 		expect(awake.holding).toBe(true);
 		expect(spawner.argv).toEqual([["/usr/bin/caffeinate", "-i", "-w", "777"]]);
 		// The command line is the argv, never a shell string: `-i` (idle sleep only), `-w` this server's pid.
-		expect(caffeinateArgv("/usr/bin/caffeinate", 777)).toEqual(["/usr/bin/caffeinate", "-i", "-w", "777"]);
+		expect(platformFor("darwin").power?.keepAwakeArgv("/usr/bin/caffeinate", 777)).toEqual([
+			"/usr/bin/caffeinate",
+			"-i",
+			"-w",
+			"777",
+		]);
 	});
 
 	test("another conversation works on top of it, and the first ends: one child, ended only when nothing works", () => {
@@ -168,19 +180,20 @@ describe("keep awake: who is started, and who is stopped", () => {
 		expect(spawner.argv).toEqual([]);
 	});
 
-	test("a machine that is not a Mac: nothing is ever started, and the card may say it is not available", () => {
-		const { awake, spawner } = keeper({ platform: "linux" });
-		expect(awake.available).toBe(false);
-		awake.setCount(true);
-		expect(spawner.argv).toEqual([]);
-		expect(awake.holding).toBe(false);
+	test("a system without keepAwake (Linux, Windows): nothing is ever started, and the card may say it is not available", () => {
+		for (const system of ["linux", "win32"] as const) {
+			const { awake, spawner } = keeper({ system });
+			expect(awake.available).toBe(false);
+			awake.setCount(true);
+			expect(spawner.argv).toEqual([]);
+			expect(awake.holding).toBe(false);
+		}
 	});
 
 	test("caffeinate cannot be started: the work goes on, and the failure is said once", () => {
 		const reports: string[] = [];
 		const awake = new KeepAwake({
-			platform: "darwin",
-			bin: "/usr/bin/caffeinate",
+			hold: holdOf("darwin"),
 			spawn: () => null,
 			pid: () => 1,
 			report: (m) => reports.push(m),

@@ -64,7 +64,7 @@ None stored by the app for these cards. Environment variables the server reads:
 | Route | Methods | Access | Purpose |
 |---|---|---|---|
 | `/api/auth` | POST | token; not through the tunnel (403) | Body `{ token }`: exchange the token for the cookie (`{ ok: true }` with `Set-Cookie`), 401 if wrong. Used by the unlock screen. |
-| `/api/meta` | GET | token | `{ ompVersion, serverVersion, agentDir, sessionsDir, home, user, remote, local, fileTransfer, shell, macs, questions, keepAwakeAvailable }`: whether this page is remote or on this computer, what it may do with files and terminals, the saved Macs, open questions, whether keep-awake is available. |
+| `/api/meta` | GET | token | `{ ompVersion, serverVersion, agentDir, sessionsDir, home, user, remote, local, fileTransfer, shell, macs, questions, capabilities }`: whether this page is remote or on this computer, what it may do with files and terminals, the saved Macs, open questions, and what the server's system lets it do (`shared/platform.ts`: keep-awake, remote access, …). |
 | `/api/diagnostics` | GET | token | `{ os, mode }`: the OS description and the current Full / Light mode (for the Feedback report's optional diagnostics). |
 | `/api/cli` | GET | token | omp's CLI inventory: `{ version, commands, flags }` parsed from `omp --help` (cached 5 minutes). |
 | `/api/cli/help` | GET | token | Query `cmd=<command>` (one or two words): `{ command, description, usage, args, flags, subcommands, raw }` from `omp <command> --help`. |

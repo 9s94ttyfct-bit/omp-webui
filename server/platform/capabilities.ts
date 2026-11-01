@@ -54,6 +54,17 @@ export function capabilitiesFor(id: PlatformId): Capabilities {
 	return { ...CAPABILITIES[id] };
 }
 
+/** `process.platform` as an adapter's name: a POSIX system without one of its own (a BSD) gets Linux's. */
+export function platformIdOf(name: string): PlatformId {
+	return name === "darwin" || name === "win32" ? name : "linux";
+}
+
+/**
+ * The capabilities of the system this process runs on: `platform.capabilities`, for what cannot load the adapter (a
+ * Playwright spec skips by it, and Playwright's runner is not Bun).
+ */
+export const capabilities: Capabilities = capabilitiesFor(platformIdOf(process.platform));
+
 /**
  * Why a capability is off where it is: what an error says when something that needs it is asked for anyway. Every
  * capability that is false somewhere has a reason here (tests/unit/platform-adapter.test.ts keeps the list whole).

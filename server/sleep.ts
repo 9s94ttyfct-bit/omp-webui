@@ -108,13 +108,13 @@ export function sleepBetween(before: ClockReading, after: ClockReading): { from:
 
 /**
  * The Mac is kept from going to *idle* sleep while a conversation works (#647), so that a turn is not cut in half by a
- * machine that decided it was idle: the server runs `/usr/bin/caffeinate -i -w <its own pid>` for as long as the working
- * count is above zero, and lets it go when the count returns to zero.
+ * machine that decided it was idle: the server runs `/usr/bin/caffeinate -i -w <its own pid>` (`platform.power`) for as
+ * long as the working count is above zero, and lets it go when the count returns to zero.
  *
  * What this does not do, on purpose: the display still sleeps (`-i` is idle sleep only, and the display is the person's),
  * and a closed lid still sleeps the machine (macOS's own rule, short of clamshell mode on power with a display). The
- * setting is "Keep the Mac awake while a conversation works" in Settings; a machine that is not a Mac has no
- * `caffeinate`, and the server says so rather than pretend.
+ * setting is "Keep the Mac awake while a conversation works" in Settings; a system without the `keepAwake` capability
+ * has no way to do it, and the server says so rather than pretend.
  *
  * One child at a time, and never a shell: `caffeinate` is started from an argument list, ended with SIGTERM (and SIGKILL
  * after a moment if it does not go), and reaped. `-w <pid>` makes it `caffeinate`'s own business to end when this server
@@ -123,10 +123,11 @@ export function sleepBetween(before: ClockReading, after: ClockReading): { from:
 
 /** What the server hands to `caffeinate`, and what it must not do (a test supplies its own). */
 export interface AwakeDeps {
-	/** The platform the server runs on: `caffeinate` is macOS's. */
-	platform: NodeJS.Platform;
-	/** The program to run; `/usr/bin/caffeinate` unless the server was told another (`OMP_WEBUI_CAFFEINATE`, a test's stub). */
-	bin: string;
+	/**
+	 * The command line that holds idle sleep off for as long as the process `pid` lives (`platform.power`: `caffeinate`, or
+	 * what `OMP_WEBUI_CAFFEINATE` names); null where the system has no way to (`capabilities.keepAwake` off).
+	 */
+	hold: ((pid: number) => string[]) | null;
 	/** Start `argv` (never through a shell) and return a handle that can end it; null when it could not be started. */
 	spawn(argv: string[]): AwakeChild | null;
 	/** This server's pid, which `caffeinate -w` outlives it by watching. */
@@ -147,22 +148,12 @@ export interface AwakeChild {
 	onExit(fn: () => void): void;
 }
 
-/** The binary, from an argument list: never a shell, never a string with the pid interpolated into it. */
-export const CAFFEINATE = "/usr/bin/caffeinate";
-
-/** The `caffeinate` this server runs: the platform's own, unless `OMP_WEBUI_CAFFEINATE` names another (a test's stand-in). */
-export const caffeinateBin = (env: Record<string, string | undefined> = process.env): string =>
-	env.OMP_WEBUI_CAFFEINATE || CAFFEINATE;
-
 /** How long `caffeinate` is given to go after SIGTERM before it is killed. */
 const STOP_GRACE_MS = 2000;
 
-/** The command line that holds idle sleep off for as long as `pid` lives. */
-export const caffeinateArgv = (bin: string, pid: number): string[] => [bin, "-i", "-w", String(pid)];
-
 /**
  * Starts and ends `caffeinate` as the working count crosses zero. Nothing is started while the setting is off, or on a
- * machine that has no `caffeinate`: `available()` says which of the two it is, for the page to say it.
+ * system that has no way to: `available()` says which of the two it is, for the page to say it.
  */
 export class KeepAwake {
 	private child: AwakeChild | null = null;
@@ -174,15 +165,17 @@ export class KeepAwake {
 	private refused = false;
 	/** The server is ending: nothing starts again, whatever the working count does next. */
 	private stopped = false;
+	/** The program that holds sleep off, as the log names it: the first word of the last command line started. */
+	private bin = "caffeinate";
 
 	constructor(private readonly deps: AwakeDeps) {}
 
 	/**
-	 * Whether this machine can hold sleep off at all. A machine that is not a Mac has no `caffeinate`; the Settings card
-	 * says it is not available there rather than showing a switch that does nothing.
+	 * Whether this machine can hold sleep off at all (`capabilities.keepAwake`); the Settings card says it is not
+	 * available where it cannot rather than showing a switch that does nothing.
 	 */
 	get available(): boolean {
-		return this.deps.platform === "darwin";
+		return this.deps.hold !== null;
 	}
 
 	/** Whether `caffeinate` is running now (for the server's own log, and for tests). */
@@ -222,12 +215,12 @@ export class KeepAwake {
 	}
 
 	private begin(): void {
-		if (this.child) return;
-		const argv = caffeinateArgv(this.deps.bin, this.deps.pid());
+		if (this.child || !this.deps.hold) return;
+		const argv = this.deps.hold(this.deps.pid());
+		this.bin = argv[0];
 		const child = this.deps.spawn(argv);
 		if (!child) {
-			if (!this.refused)
-				this.deps.report(`could not start ${this.deps.bin}: the Mac may sleep while a conversation works`);
+			if (!this.refused) this.deps.report(`could not start ${this.bin}: the Mac may sleep while a conversation works`);
 			this.refused = true;
 			return;
 		}
@@ -249,7 +242,7 @@ export class KeepAwake {
 		try {
 			child.stop();
 		} catch (e) {
-			this.deps.report(`could not end ${this.deps.bin}: ${(e as Error).message}`);
+			this.deps.report(`could not end ${this.bin}: ${(e as Error).message}`);
 		}
 	}
 }

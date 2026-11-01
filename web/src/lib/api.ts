@@ -4,6 +4,7 @@ import type { DirListing } from "@shared/dirs.ts";
 import type { ErrorParams } from "@shared/error-info.ts";
 import type { SavedMac } from "@shared/macs.ts";
 import type { ConversationModels } from "@shared/model-config.ts";
+import type { Capabilities } from "@shared/platform.ts";
 import type { ProjectGroups } from "@shared/project-groups.ts";
 import type {
 	CliHelp,
@@ -200,8 +201,11 @@ export interface Meta {
 	macs: SavedMac[];
 	/** How many questions of unattended mode wait for the person (#646), and in which conversations; kept current by the `questions` message. A server of an earlier version leaves it out. */
 	questions?: QuestionCounts;
-	/** Whether this machine can be held from idle sleep while a conversation works (#647): macOS's `caffeinate`. */
-	keepAwakeAvailable?: boolean;
+	/**
+	 * What the system the server runs on lets it do (`shared/platform.ts`): keeping the machine awake (#647), remote access,
+	 * and the rest. A server of an earlier version leaves it out.
+	 */
+	capabilities?: Capabilities;
 	/** The folder Ask agent for help's conversations run in (Settings, v0.13.0): told to a page on this computer only. */
 	settingsHelpFolder?: string;
 }

@@ -1,4 +1,4 @@
-import { arch, platform, release, userInfo } from "node:os";
+import { userInfo } from "node:os";
 import { REPO } from "../shared/repo.ts";
 
 /** How long an answer GitHub gave stays good; one that could not be had is asked for again sooner. */
@@ -62,27 +62,4 @@ export function osUser(): string {
 	} catch {
 		return "";
 	}
-}
-
-let macos: Promise<string | null> | undefined;
-
-/** `sw_vers -productVersion` on a Mac, else null; asked once. */
-function macosVersion(): Promise<string | null> {
-	macos ??= (async () => {
-		if (platform() !== "darwin") return null;
-		try {
-			const proc = Bun.spawn(["sw_vers", "-productVersion"], { stdout: "pipe", stderr: "ignore" });
-			const out = (await new Response(proc.stdout).text()).trim();
-			return (await proc.exited) === 0 && /^\d+(\.\d+)*$/.test(out) ? out : null;
-		} catch {
-			return null;
-		}
-	})();
-	return macos;
-}
-
-/** The machine as a bug report names it: `macOS 15.1 (arm64)`, `linux 6.8.0 (x64)`. */
-export async function osDescription(): Promise<string> {
-	const mac = await macosVersion();
-	return mac ? `macOS ${mac} (${arch()})` : `${platform()} ${release()} (${arch()})`;
 }

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { InstallMethod, OmpRelease } from "../../shared/omp-install.ts";
+import { osName } from "../platform/index.ts";
 import { NPM_PACKAGE } from "./install.ts";
 import { QUICK_MS, run } from "./run.ts";
 
@@ -292,11 +293,7 @@ async function npmLatest(pkg: string, env: Env, home: string, lookup: Lookup, ch
 // ------------------------------------------------------------------ the build service
 
 /** The build service's name for this platform (`macos-arm64`, `linux-x86_64`, `linux-musl-arm64`). */
-export function buildTarget(
-	platform: NodeJS.Platform = process.platform,
-	arch: string = process.arch,
-	musl = false,
-): string {
+export function buildTarget(platform: NodeJS.Platform = osName, arch: string = process.arch, musl = false): string {
 	const os =
 		platform === "darwin"
 			? "macos"
@@ -314,8 +311,8 @@ export function buildTarget(
 
 async function buildLatest(env: Env, lookup: Lookup, channel: UpdateChannel): Promise<string> {
 	const origin = (env.PI_BUILD_URL ?? "").trim().replace(/\/+$/, "") || DEFAULT_BUILD_URL;
-	const musl = process.platform === "linux" && existsSync("/etc/alpine-release");
-	const target = buildTarget(process.platform, process.arch, musl);
+	const musl = osName === "linux" && existsSync("/etc/alpine-release");
+	const target = buildTarget(osName, process.arch, musl);
 	const url = `${origin}/api/products/omp/latest/${target}?channel=${channel}`;
 	const { status, body } = await getJson(url, lookup);
 	if (status === 404 && record(body)?.error === "no_build") {

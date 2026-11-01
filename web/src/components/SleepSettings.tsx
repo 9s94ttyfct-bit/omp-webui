@@ -12,8 +12,8 @@ import { CardHeader } from "./ui.tsx";
  *
  * The card says what this does *not* do, because both are the questions it raises: the display still sleeps (only idle
  * sleep is held off, `caffeinate -i`), and closing the lid still sleeps the machine (macOS's own rule). What it cannot do
- * at all is on a machine that has no `caffeinate` (anything but macOS): `/api/meta` says so (`keepAwakeAvailable`), and the
- * card says the setting is not available there rather than showing a switch that would do nothing.
+ * at all is on a system without the `keepAwake` capability (anything but macOS): `/api/meta` says so (`capabilities`), and
+ * the card says the setting is not available there rather than showing a switch that would do nothing.
  *
  * A page that is not on this computer reads it and cannot change it, as it cannot change the guard's settings: the server
  * refuses `ompw.keepAwake` from such a page (`/api/prefs`), and the switch says why rather than failing on a click.
@@ -26,7 +26,7 @@ export function SleepSettings() {
 	const t = useT();
 	const [on, setOn] = useState(() => localStorage.getItem(PREF.keepAwake) !== "off");
 	// Whether this machine can be held awake at all: a server of an earlier version does not say, and had no such setting.
-	const available = useApp((s) => s.meta?.keepAwakeAvailable) === true;
+	const available = useApp((s) => s.meta?.capabilities?.keepAwake) === true;
 	const remote = useApp((s) => s.meta?.remote === true);
 	useEffect(
 		() =>

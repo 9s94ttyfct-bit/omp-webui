@@ -9,6 +9,7 @@ import {
 	type MigrateProgress,
 	migrateHeldCategories,
 } from "../../shared/migrate.ts";
+import { osName } from "../platform/index.ts";
 import { encrypt } from "./crypto.ts";
 import {
 	bankIsOf,
@@ -367,7 +368,7 @@ export async function runExport(input: ExportInput): Promise<{ manifest: Manifes
 				homeReal: loc.homeReal !== loc.home ? loc.homeReal : undefined,
 				agentDir: loc.agentDir,
 				dataDir: loc.dataDir,
-				platform: process.platform,
+				platform: osName,
 				ompVersion: input.ompVersion,
 				serverVersion: input.serverVersion,
 			},

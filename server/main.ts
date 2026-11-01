@@ -45,7 +45,7 @@ import { loadConfig } from "./config.ts";
 import { guardAgainstStrayErrors } from "./crash-guard.ts";
 import { contentSecurityPolicy, indexScriptHashes } from "./csp.ts";
 import { FamilyCache } from "./family.ts";
-import { osDescription, osUser, RepoVisibility } from "./feedback.ts";
+import { osUser, RepoVisibility } from "./feedback.ts";
 import { LazyFolder, reserveFromEnv } from "./folder-lazy.ts";
 import type { GhIssues } from "./gh-issues.ts";
 import type { GhRuns } from "./gh-runs.ts";
@@ -99,6 +99,7 @@ import { configureConcurrency, readConcurrencyDefault } from "./omp/subagent-con
 import { QuestionError } from "./omp/unattended/questions.ts";
 import { UnattendedService } from "./omp/unattended/service.ts";
 import { InstructionError } from "./omp/unattended/store.ts";
+import { platform } from "./platform/index.ts";
 import { PrefsError, UiPrefs } from "./prefs.ts";
 import { ProjectGroupError, ProjectGroupStore } from "./project-groups.ts";
 import { PtyManager, runsOmpShell, terminalDir } from "./pty.ts";
@@ -121,7 +122,7 @@ import { SettingsCatalog } from "./settings-help/catalog.ts";
 import { handleSettingsHelp } from "./settings-help/routes.ts";
 import { SettingsHelp } from "./settings-help/service.ts";
 import { NOTIFY_EVENTS_PATH, SHELL_EVENTS_PATH, ShellEvents } from "./shell-events.ts";
-import { caffeinateBin, KeepAwake, SleepDetector, spawnCaffeinate, workingIds } from "./sleep.ts";
+import { KeepAwake, SleepDetector, spawnCaffeinate, workingIds } from "./sleep.ts";
 import { isLocalOnlyRoute, isThisComputer } from "./this-computer.ts";
 import type { TransferEnv } from "./transfer-core.ts";
 import type { AppUpdater, Conversations } from "./update/service.ts";
@@ -566,17 +567,17 @@ function appUpdater(): Promise<AppUpdater> {
  * Sleep (#647): the Mac is kept from going to *idle* sleep while a conversation works, and a sleep it did go through is
  * noticed and said in the transcripts of the conversations it interrupted.
  *
- * - `keepAwake` runs `/usr/bin/caffeinate -i -w <this server's pid>` for as long as `workCounts(...).working` is above
- *   zero: the same count the macOS app's menu bar icon and the shell events show, so the two never disagree on whether
- *   anything is working. The setting (`ompw.keepAwake`) turns it off; a machine that is not a Mac has no `caffeinate`, and
- *   `/api/meta` says so.
+ * - `keepAwake` runs `/usr/bin/caffeinate -i -w <this server's pid>` (`platform.power`) for as long as
+ *   `workCounts(...).working` is above zero: the same count the macOS app's menu bar icon and the shell events show, so the
+ *   two never disagree on whether anything is working. The setting (`ompw.keepAwake`) turns it off; a system without the
+ *   `keepAwake` capability has no way to do it, and `/api/meta` says so.
  * - `sleepDetector` reads its clocks once a second and reports a gap of the wall clock that the monotonic one did not
  *   count (see `sleepBetween` in `server/sleep.ts` for why `performance.now` and not `hrtime`), with the conversations
  *   that were working when the machine went away.
  */
+const power = platform.power;
 const keepAwake = new KeepAwake({
-	platform: process.platform,
-	bin: caffeinateBin(),
+	hold: power ? (pid) => power.keepAwakeArgv(power.keepAwakeBin(process.env), pid) : null,
 	spawn: (argv) => spawnCaffeinate(argv, (message) => console.warn(`omp-webui: ${message}`)),
 	pid: () => process.pid,
 	report: (message) => console.warn(`omp-webui: ${message}`),
@@ -1065,15 +1066,14 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				macs: savedMacs.saved(),
 				// How many questions wait for the person (#646): the sidebar's badge is there from the first look.
 				questions: unattendedMode.questions.counts(),
-				// Whether the server can keep this machine from going to idle sleep while a conversation works (#647): macOS's
-				// `caffeinate` is the only way it has, so a server anywhere else says the setting is not available rather than
-				// showing a switch that does nothing.
-				keepAwakeAvailable: keepAwake.available,
+				// What the system the server runs on lets it do (`shared/platform.ts`): the page shows what a flag turns off (the
+				// Sleep card without `keepAwake`, the Remote access card without `remoteAccess`) rather than asking which OS it is.
+				capabilities: platform.capabilities,
 				// The folder Ask agent for help's conversations run in, for a page on this computer: it marks one when it shows it.
 				...(onThisComputer.has(req) ? { settingsHelpFolder: settingsHelp.state().folder } : {}),
 			});
 		case "/api/diagnostics":
-			return json({ os: await osDescription(), mode: modes.mode });
+			return json({ os: await platform.describe(), mode: modes.mode });
 		case "/api/repo":
 			return json({ public: await repoVisibility.isPublic() });
 		case "/api/sessions": {
@@ -2793,7 +2793,7 @@ function shutdown(): Promise<never> {
 	})();
 	return stopping;
 }
-for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(sig, () => void shutdown());
+for (const sig of platform.shell.shutdownSignals) process.on(sig, () => void shutdown());
 // Ready only once a signal is answered: the app (or a test) stops the server the moment it reads the line below, and before
 // a handler is installed a SIGTERM ends the process outright, leaving its record (`server.pid`) and its open databases behind.
 // The address the server listens on, and the loopback one of a server bound to a network address (see `listenOnLoopback`).
@@ -2829,12 +2829,9 @@ guardAgainstStrayErrors({ onStorm: () => void shutdown() });
 if (cfg.parentPid !== null) {
 	const parent = cfg.parentPid;
 	const check = setInterval(() => {
-		try {
-			process.kill(parent, 0);
-		} catch {
-			clearInterval(check);
-			void shutdown();
-		}
+		if (platform.proc.exists(parent)) return;
+		clearInterval(check);
+		void shutdown();
 	}, 1000);
 	check.unref();
 }

@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
+import type { Capabilities } from "../../shared/platform.ts";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { startAppServer } from "../support/app-server.ts";
 import { writeFakeOmp } from "../support/fake-omp.ts";
@@ -224,10 +225,8 @@ const turnEnds = { type: "agent_end", isTerminal: true };
 		const b = await boot("data-exit", { OMP_BIN: bin, OMP_WEBUI_CAFFEINATE: stub.bin });
 		const meta = (await (
 			await fetch(`${b.url}/api/meta`, { headers: { "x-omp-webui-token": b.server.token } })
-		).json()) as {
-			keepAwakeAvailable?: boolean;
-		};
-		expect(meta.keepAwakeAvailable).toBe(true);
+		).json()) as { capabilities?: Capabilities };
+		expect(meta.capabilities?.keepAwake).toBe(true);
 
 		const live = await request<LiveInfo>(b.ws, { t: "open", target: { kind: "new", cwd: work } });
 		await request(b.ws, {
@@ -259,10 +258,8 @@ test("a server elsewhere says the setting is not available, and starts nothing",
 	const b = await boot("data-elsewhere", { OMP_BIN: bin, OMP_WEBUI_CAFFEINATE: stub.bin });
 	const meta = (await (
 		await fetch(`${b.url}/api/meta`, { headers: { "x-omp-webui-token": b.server.token } })
-	).json()) as {
-		keepAwakeAvailable?: boolean;
-	};
-	expect(meta.keepAwakeAvailable).toBe(false);
+	).json()) as { capabilities?: Capabilities };
+	expect(meta.capabilities?.keepAwake).toBe(false);
 	const live = await request<LiveInfo>(b.ws, { t: "open", target: { kind: "new", cwd: work } });
 	await request(b.ws, {
 		t: "rpc",
