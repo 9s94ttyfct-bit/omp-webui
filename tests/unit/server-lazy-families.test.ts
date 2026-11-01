@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 
 /**
  * Route families the server loads when a request first needs them, not at start (#585): an idle server holds none of
@@ -130,9 +131,12 @@ describe("route families loaded on first use", () => {
 		});
 	}
 
-	test("a process that is a relay loads the relay, and the server does not load it for that", () => {
-		// `relay-main.ts` is the first import of `main.ts`: what it loads statically, the server loads too.
-		const atStart = loadedAtStart("omp/relay-main.ts");
-		expect([...atStart.keys()].sort()).toEqual(["omp/relay-main.ts", "omp/relay-protocol.ts"]);
-	});
+	test.skipIf(!capabilities.relay)(
+		"a process that is a relay loads the relay, and the server does not load it for that",
+		() => {
+			// `relay-main.ts` is the first import of `main.ts`: what it loads statically, the server loads too.
+			const atStart = loadedAtStart("omp/relay-main.ts");
+			expect([...atStart.keys()].sort()).toEqual(["omp/relay-main.ts", "omp/relay-protocol.ts"]);
+		},
+	);
 });

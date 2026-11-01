@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { RpcClient, RpcError } from "../../server/omp/rpc-client.ts";
 import type { OmpFrame } from "../../shared/protocol.ts";
 import { writeBunProgram } from "../support/bun-program.ts";
+import { has } from "../support/needs.ts";
 
 /**
  * Drives RpcClient against a scripted fake `omp` so framing edge cases
@@ -160,24 +161,27 @@ describe("RpcClient", () => {
 		expect(await exit).toBe(3);
 	});
 
-	test("an omp killed by a signal rejects what is pending naming the signal, and reports the signal, not a made-up code", async () => {
-		const bin = fakeOmp(`${SERVER_PRELUDE}
+	test.skipIf(!has.posixSignals)(
+		"an omp killed by a signal rejects what is pending naming the signal, and reports the signal, not a made-up code",
+		async () => {
+			const bin = fakeOmp(`${SERVER_PRELUDE}
 function handle(cmd) {
   if (cmd.type === "negotiate_protocol") out({ id: cmd.id, type: "response", command: cmd.type, success: true });
   if (cmd.type === "die") process.kill(process.pid, "SIGKILL");
 }`);
-		const exit = Promise.withResolvers<{ code: number | null; signal: string | null }>();
-		const c = new RpcClient({
-			bin,
-			args: [],
-			cwd: tmpdir(),
-			onFrame: () => {},
-			onExit: (code, _stderr, signal) => exit.resolve({ code, signal }),
-		});
-		await c.ready;
-		await expect(c.call({ type: "die" })).rejects.toThrow("omp exited (killed by SIGKILL)");
-		expect(await exit.promise).toEqual({ code: null, signal: "SIGKILL" });
-	});
+			const exit = Promise.withResolvers<{ code: number | null; signal: string | null }>();
+			const c = new RpcClient({
+				bin,
+				args: [],
+				cwd: tmpdir(),
+				onFrame: () => {},
+				onExit: (code, _stderr, signal) => exit.resolve({ code, signal }),
+			});
+			await c.ready;
+			await expect(c.call({ type: "die" })).rejects.toThrow("omp exited (killed by SIGKILL)");
+			expect(await exit.promise).toEqual({ code: null, signal: "SIGKILL" });
+		},
+	);
 
 	test("a child that dies while a large request is being written rejects it; nothing goes unhandled", async () => {
 		// Bun reports EPIPE on the stdin write as a rejected Promise; unhandled, it takes the whole server down.

@@ -1,3 +1,4 @@
+// needs: posixFiles
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import {
 	closeSync,

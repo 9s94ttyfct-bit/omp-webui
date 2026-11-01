@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { Subprocess } from "bun";
 import { platform } from "../../server/platform/index.ts";
 import { type AppServer, startAppServer } from "../support/app-server.ts";
+import { has } from "../support/needs.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
 
 /**
@@ -121,13 +122,17 @@ test("a leftover server recorded for this data dir is stopped and its port reuse
 	expect(JSON.parse(readFileSync(join(dir, "server.pid"), "utf8")).pid).toBe(next.proc.pid);
 }, 60_000);
 
-test("stopping the server removes its record", async () => {
-	const dir = dataDir("clean");
-	const s = await startServer(dir);
-	s.proc.kill("SIGTERM");
-	await s.proc.exited;
-	expect(() => readFileSync(join(dir, "server.pid"))).toThrow();
-}, 60_000);
+test.skipIf(!has.posixSignals)(
+	"stopping the server removes its record",
+	async () => {
+		const dir = dataDir("clean");
+		const s = await startServer(dir);
+		s.proc.kill("SIGTERM");
+		await s.proc.exited;
+		expect(() => readFileSync(join(dir, "server.pid"))).toThrow();
+	},
+	60_000,
+);
 
 /** The pid file of a data dir, as the server wrote it. */
 const record = (dir: string) => JSON.parse(readFileSync(join(dir, "server.pid"), "utf8"));

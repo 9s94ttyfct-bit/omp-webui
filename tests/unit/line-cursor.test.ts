@@ -3,6 +3,7 @@ import { appendFileSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type LineCursor, SessionFile } from "../../server/sessions/lines.ts";
+import { has } from "../support/needs.ts";
 
 /** Reading a transcript from a byte offset: the offsets are what an index resumes from. */
 
@@ -102,37 +103,43 @@ test("the hash of the bytes before an offset changes when they do and not when w
 	expect(hashAt(file, 0)).toBe(hashAt(file, 0));
 });
 
-test("a file replaced while it is read is read to the end as it was opened, and its size, time and hash are its own", async () => {
-	const old = Array.from({ length: 50 }, (_, i) => `old line ${i}`).join("\n");
-	const file = write(`${old}\n`);
-	const open = SessionFile.open(file) as SessionFile;
-	const size = open.size;
-	try {
-		// 16-byte chunks: the file is read in many pieces, and it is replaced between them.
-		const cursor = open.lines(0, size, 16);
-		const got: string[] = [];
-		for (let line = await cursor.next(); line; line = await cursor.next()) {
-			got.push(line.text);
-			if (got.length === 10) {
-				writeFileSync(`${file}.new`, `${Array.from({ length: 80 }, (_, i) => `NEW line ${i} (longer)`).join("\n")}\n`);
-				renameSync(`${file}.new`, file);
-			}
-		}
-		expect(got).toEqual(Array.from({ length: 50 }, (_, i) => `old line ${i}`));
-		// What is recorded of the read is of the file that was read, not of what the path names now.
-		expect(open.size).toBe(size);
-		const hash = open.windowHash(size);
-		const again = SessionFile.open(file) as SessionFile;
+test.skipIf(!has.posixFiles)(
+	"a file replaced while it is read is read to the end as it was opened, and its size, time and hash are its own",
+	async () => {
+		const old = Array.from({ length: 50 }, (_, i) => `old line ${i}`).join("\n");
+		const file = write(`${old}\n`);
+		const open = SessionFile.open(file) as SessionFile;
+		const size = open.size;
 		try {
-			expect(again.size).not.toBe(size);
-			expect(again.windowHash(size)).not.toBe(hash);
+			// 16-byte chunks: the file is read in many pieces, and it is replaced between them.
+			const cursor = open.lines(0, size, 16);
+			const got: string[] = [];
+			for (let line = await cursor.next(); line; line = await cursor.next()) {
+				got.push(line.text);
+				if (got.length === 10) {
+					writeFileSync(
+						`${file}.new`,
+						`${Array.from({ length: 80 }, (_, i) => `NEW line ${i} (longer)`).join("\n")}\n`,
+					);
+					renameSync(`${file}.new`, file);
+				}
+			}
+			expect(got).toEqual(Array.from({ length: 50 }, (_, i) => `old line ${i}`));
+			// What is recorded of the read is of the file that was read, not of what the path names now.
+			expect(open.size).toBe(size);
+			const hash = open.windowHash(size);
+			const again = SessionFile.open(file) as SessionFile;
+			try {
+				expect(again.size).not.toBe(size);
+				expect(again.windowHash(size)).not.toBe(hash);
+			} finally {
+				again.close();
+			}
 		} finally {
-			again.close();
+			open.close();
 		}
-	} finally {
-		open.close();
-	}
-});
+	},
+);
 
 test("closing a file with a read in flight lets the read finish; after that nothing is read from it", async () => {
 	const file = write("one\ntwo\nthree\n");

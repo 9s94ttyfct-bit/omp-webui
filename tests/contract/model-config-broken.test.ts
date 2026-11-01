@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { existsSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { ModelConfig } from "../../shared/model-config.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 
@@ -74,7 +74,7 @@ test("a config.yml another omp moved aside is reported too, until a valid one is
 	const after = await get();
 	expect(after.status).toBe(200);
 	expect(after.body.roles).toEqual({});
-	expect(after.body.movedAside).toEndWith(`/${backups()[0]}`);
+	expect(basename(after.body.movedAside as string)).toBe(backups()[0]);
 	expect(existsSync(after.body.movedAside as string)).toBe(true);
 
 	// The person writes a valid config.yml and keeps the copy: what is shown is theirs again, and nothing is said.

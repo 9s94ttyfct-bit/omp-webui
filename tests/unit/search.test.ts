@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionStore } from "../../server/sessions/store.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ompw-search-"));
 const bucket = join(root, "sessions", "-tmp-search");
@@ -43,7 +44,7 @@ beforeAll(async () => {
 });
 afterAll(() => {
 	store.close();
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 const files = (hits: { file: string }[]) => [...new Set(hits.map((h) => h.file))];

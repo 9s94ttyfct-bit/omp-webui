@@ -3,6 +3,7 @@ import { lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expectMode } from "../support/modes.ts";
+import { has } from "../support/needs.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -140,49 +141,52 @@ function reachable(dir: string): string[] {
 	return found;
 }
 
-test("the data dir is 0700 and everything the server keeps in it is 0600 or 0700, after start and after writes", async () => {
-	const data = join(s.root, "data");
-	const post = (path: string, body: unknown) =>
-		fetch(`${s.url}${path}`, {
-			method: "POST",
-			headers: { ...authed(), "x-omp-webui": "1", "content-type": "application/json" },
-			body: JSON.stringify(body),
-		});
-	expectMode(data, 0o700);
-	// The index is there from the start, with the journal files SQLite keeps beside it.
-	for (const name of ["index.db", "index.db-wal", "index.db-shm", "ui-prefs.json", "server.pid"]) {
-		expectMode(join(data, name), 0o600, name);
-	}
+test.skipIf(!has.posixModes)(
+	"the data dir is 0700 and everything the server keeps in it is 0600 or 0700, after start and after writes",
+	async () => {
+		const data = join(s.root, "data");
+		const post = (path: string, body: unknown) =>
+			fetch(`${s.url}${path}`, {
+				method: "POST",
+				headers: { ...authed(), "x-omp-webui": "1", "content-type": "application/json" },
+				body: JSON.stringify(body),
+			});
+		expectMode(data, 0o700);
+		// The index is there from the start, with the journal files SQLite keeps beside it.
+		for (const name of ["index.db", "index.db-wal", "index.db-shm", "ui-prefs.json", "server.pid"]) {
+			expectMode(join(data, name), 0o600, name);
+		}
 
-	// Every store the page writes.
-	expect((await post("/api/archive", { files: [s.fixtures.beta], archived: true })).status).toBe(200);
-	expect((await post("/api/favorite-models", { model: "anthropic/claude-haiku-5-5", on: true })).status).toBe(200);
-	expect((await post("/api/approval", { mode: "write" })).status).toBe(200);
-	expect((await post("/api/prefs", { changes: { "ompw.theme": "dark" } })).status).toBe(200);
-	// The model guidance templates (#641): a change of them is a file in the data dir like any other store's.
-	expect(
-		(
-			await post("/api/model-guidance", {
-				template: { id: "hardening-template", name: "Hardening", text: "One at a time." },
-			})
-		).status,
-	).toBe(200);
-	// Unattended mode (#646): what the person set is a file in the data dir like any other store's (the questions the agents
-	// file are checked against a real conversation, in `unattended-answer.test.ts`).
-	expect((await post("/api/unattended", { instruction: "Hardening: file everything." })).status).toBe(200);
-	await fetch(`${s.url}/api/search?q=fixture`, { headers: authed() });
-	for (const name of [
-		"archived.json",
-		"favorite-models.json",
-		"approval.json",
-		"ui-prefs.json",
-		"model-guidance.json",
-		"unattended.json",
-	]) {
-		expectMode(join(data, name), 0o600, name);
-	}
-	expect(reachable(data)).toEqual([]);
-});
+		// Every store the page writes.
+		expect((await post("/api/archive", { files: [s.fixtures.beta], archived: true })).status).toBe(200);
+		expect((await post("/api/favorite-models", { model: "anthropic/claude-haiku-5-5", on: true })).status).toBe(200);
+		expect((await post("/api/approval", { mode: "write" })).status).toBe(200);
+		expect((await post("/api/prefs", { changes: { "ompw.theme": "dark" } })).status).toBe(200);
+		// The model guidance templates (#641): a change of them is a file in the data dir like any other store's.
+		expect(
+			(
+				await post("/api/model-guidance", {
+					template: { id: "hardening-template", name: "Hardening", text: "One at a time." },
+				})
+			).status,
+		).toBe(200);
+		// Unattended mode (#646): what the person set is a file in the data dir like any other store's (the questions the agents
+		// file are checked against a real conversation, in `unattended-answer.test.ts`).
+		expect((await post("/api/unattended", { instruction: "Hardening: file everything." })).status).toBe(200);
+		await fetch(`${s.url}/api/search?q=fixture`, { headers: authed() });
+		for (const name of [
+			"archived.json",
+			"favorite-models.json",
+			"approval.json",
+			"ui-prefs.json",
+			"model-guidance.json",
+			"unattended.json",
+		]) {
+			expectMode(join(data, name), 0o600, name);
+		}
+		expect(reachable(data)).toEqual([]);
+	},
+);
 
 const siteHeader = (site: string) => ({ ...authed(), "sec-fetch-site": site });
 

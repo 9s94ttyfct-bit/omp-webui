@@ -2,8 +2,8 @@ import "../unit/browser-globals.ts";
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { type Goal, goalHeld } from "../../shared/goal.ts";
-
 import type { LiveAttached, SessionEntry } from "../../shared/protocol.ts";
 import { attentionChanges } from "../../web/src/lib/attention.ts";
 import { createGoal, type GoalWait, goalOp, goalWait } from "../../web/src/lib/goal.ts";
@@ -327,32 +327,36 @@ function showGoalPaused(): void {
 	});
 }
 
-test("a page that opens a paused conversation shows the goal omp holds, not the one its transcript leaves", async () => {
-	plan = () => ({ text: "What do you want to do first?" });
-	const c = await conversation();
-	await createGoal(liveId, "Ask me one question, then wait", undefined);
-	await c.settled();
-	expect(await c.goal()).toMatchObject({ status: "active" });
-	// What the saved transcript leaves of an active goal is a paused one: omp reopens it that way after a restart.
-	await pollUntil(() => savedGoal(c.records()) !== null, "the goal to be journaled");
-	expect(savedGoal(c.records())?.status).toBe("paused");
+test.skipIf(!capabilities.pauseResume)(
+	"a page that opens a paused conversation shows the goal omp holds, not the one its transcript leaves",
+	async () => {
+		plan = () => ({ text: "What do you want to do first?" });
+		const c = await conversation();
+		await createGoal(liveId, "Ask me one question, then wait", undefined);
+		await c.settled();
+		expect(await c.goal()).toMatchObject({ status: "active" });
+		// What the saved transcript leaves of an active goal is a paused one: omp reopens it that way after a restart.
+		await pollUntil(() => savedGoal(c.records()) !== null, "the goal to be journaled");
+		expect(savedGoal(c.records())?.status).toBe("paused");
 
-	await setPaused(liveId, true);
-	// A frozen omp refuses every read the page makes by itself.
-	await expect(c.rpc({ type: "goal", op: "get" })).rejects.toThrow(/paused/);
+		await setPaused(liveId, true);
+		// A frozen omp refuses every read the page makes by itself.
+		await expect(c.rpc({ type: "goal", op: "get" })).rejects.toThrow(/paused/);
 
-	// A reload: the page attaches to the frozen process and shows the goal the server heard of, which is omp's.
-	useApp.setState({ lives: {} });
-	expect(await attachLive(liveId)).toBe(true);
-	expect(c.live().info.pausedAt).not.toBeNull();
-	expect(c.live().goal).toMatchObject({ status: "active", objective: "Ask me one question, then wait" });
+		// A reload: the page attaches to the frozen process and shows the goal the server heard of, which is omp's.
+		useApp.setState({ lives: {} });
+		expect(await attachLive(liveId)).toBe(true);
+		expect(c.live().info.pausedAt).not.toBeNull();
+		expect(c.live().goal).toMatchObject({ status: "active", objective: "Ask me one question, then wait" });
 
-	// Resuming reads the goal from omp again, whatever the page showed.
-	showGoalPaused();
-	await setPaused(liveId, false);
-	await pollUntil(() => c.live().goal?.status === "active", "the page to read the goal again once omp runs");
-	expect(c.live().goal).toEqual(await c.goal());
-}, 90_000);
+		// Resuming reads the goal from omp again, whatever the page showed.
+		showGoalPaused();
+		await setPaused(liveId, false);
+		await pollUntil(() => c.live().goal?.status === "active", "the page to read the goal again once omp runs");
+		expect(c.live().goal).toEqual(await c.goal());
+	},
+	90_000,
+);
 
 test("Resume goal on a goal that is already active corrects the bar from omp's answer, which comes with no frame", async () => {
 	plan = () => ({ text: "What do you want to do first?" });

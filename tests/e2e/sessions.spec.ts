@@ -158,5 +158,5 @@ test("delete a conversation through omp", async ({ page }) => {
 	await expect(page.getByRole("dialog")).toContainText("cannot be undone");
 	await page.getByTestId("confirm-session-action").click();
 	await expect(row(page, DELETE)).toHaveCount(0, { timeout: 60_000 });
-	expect(existsSync(file)).toBe(false);
+	await expect.poll(() => existsSync(file), { timeout: 15_000 }).toBe(false);
 });

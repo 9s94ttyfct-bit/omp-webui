@@ -9,6 +9,7 @@ import {
 	stripApprovalFlags,
 } from "../../server/omp/approval.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
+import { has } from "../support/needs.ts";
 import { setTempDir } from "../support/tmp.ts";
 
 /** Per-conversation tool approval: the overlay omp reloads, the user's choices, and what a conversation starts in. */
@@ -269,32 +270,35 @@ test("a server's overlays live in a directory of its own, and the one a dead ser
 	rmSync(dirname(overlay.file), { recursive: true, force: true });
 });
 
-test("a dead server's overlay directory that cannot be removed is skipped with a note, and a conversation still starts", async () => {
-	// root removes anything: there would be nothing to skip.
-	if (process.getuid?.() === 0) return;
-	const dir = scratch();
-	const dead = Bun.spawn(["true"]);
-	await dead.exited;
-	const stuck = join(tmpdir(), `ompw-live-${dead.pid}-stuck`);
-	const removable = join(tmpdir(), `ompw-live-${dead.pid}-removable`);
-	mkdirSync(join(stuck, "inner"), { recursive: true });
-	mkdirSync(removable, { recursive: true });
-	// A mode-000 directory: its contents cannot even be listed, so removing it fails with EACCES.
-	chmodSync(stuck, 0o000);
-	const warn = spyOn(console, "warn").mockImplementation(() => {});
-	let overlayFile: string | null = null;
-	try {
-		overlayFile = (await new ApprovalStore(ompPrinting(dir), dir).create("L10", "yolo")).file;
-		expect(existsSync(overlayFile)).toBe(true);
-		// The one that could be removed still was, and the one that could not is left where it is, with its name in the log.
-		expect(existsSync(removable)).toBe(false);
-		expect(existsSync(stuck)).toBe(true);
-		expect(warn.mock.calls.some(([line]) => String(line).includes(stuck))).toBe(true);
-	} finally {
-		warn.mockRestore();
-		chmodSync(stuck, 0o700);
-		rmSync(stuck, { recursive: true, force: true });
-		rmSync(removable, { recursive: true, force: true });
-		if (overlayFile) rmSync(dirname(overlayFile), { recursive: true, force: true });
-	}
-});
+test.skipIf(!has.posixModes)(
+	"a dead server's overlay directory that cannot be removed is skipped with a note, and a conversation still starts",
+	async () => {
+		// root removes anything: there would be nothing to skip.
+		if (process.getuid?.() === 0) return;
+		const dir = scratch();
+		const dead = Bun.spawn(["true"]);
+		await dead.exited;
+		const stuck = join(tmpdir(), `ompw-live-${dead.pid}-stuck`);
+		const removable = join(tmpdir(), `ompw-live-${dead.pid}-removable`);
+		mkdirSync(join(stuck, "inner"), { recursive: true });
+		mkdirSync(removable, { recursive: true });
+		// A mode-000 directory: its contents cannot even be listed, so removing it fails with EACCES.
+		chmodSync(stuck, 0o000);
+		const warn = spyOn(console, "warn").mockImplementation(() => {});
+		let overlayFile: string | null = null;
+		try {
+			overlayFile = (await new ApprovalStore(ompPrinting(dir), dir).create("L10", "yolo")).file;
+			expect(existsSync(overlayFile)).toBe(true);
+			// The one that could be removed still was, and the one that could not is left where it is, with its name in the log.
+			expect(existsSync(removable)).toBe(false);
+			expect(existsSync(stuck)).toBe(true);
+			expect(warn.mock.calls.some(([line]) => String(line).includes(stuck))).toBe(true);
+		} finally {
+			warn.mockRestore();
+			chmodSync(stuck, 0o700);
+			rmSync(stuck, { recursive: true, force: true });
+			rmSync(removable, { recursive: true, force: true });
+			if (overlayFile) rmSync(dirname(overlayFile), { recursive: true, force: true });
+		}
+	},
+);

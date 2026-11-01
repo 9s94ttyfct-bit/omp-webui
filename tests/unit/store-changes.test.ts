@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionStore } from "../../server/sessions/store.ts";
 import { seedFixtures } from "../support/fixtures.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * The sessions list as a client that already has one needs it: what changed since the cursor of its last answer.
@@ -26,7 +27,7 @@ beforeAll(() => {
 });
 afterAll(() => {
 	store.close();
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 const reply = (id: string) =>

@@ -2,9 +2,11 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { join, sep } from "node:path";
+import { isFailure, type LoadedData, type LoadedTools } from "../../shared/loaded.ts";
 import { CORE_TOOLS, type ContextReport, type ModeState, OFFLINE_TOOLS } from "../../shared/offline.ts";
 import type { LiveInfo, SessionSummary } from "../../shared/protocol.ts";
 import { newestOfflineAgent } from "../support/offline-agent.ts";
+import { pollUntil } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type StubChat, type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
 import { connect, request } from "../support/ws.ts";
@@ -75,8 +77,24 @@ async function open(target: object) {
 		until,
 		/** Prompt (once the MCP server `mounted` has registered its tools) and wait for the turn to end. */
 		async ask(message: string, mounted: string) {
-			await until(`${mounted} to mount`, () =>
-				frames().some((f) => f.type === "notice" && String(f.message).includes(`mcp__${mounted}_`)),
+			// The notice of the mount, or the tools themselves in what the controls list: a notice omp gave before this socket
+			// was attached to the process (it is attached once omp answers) is not sent again.
+			const listed = async () => {
+				const res = await http(`/api/loaded?live=${info.liveId}`);
+				if (res.status !== 200) return false;
+				const tools = ((await res.json()) as LoadedData).tools;
+				return (
+					tools !== null &&
+					!isFailure(tools) &&
+					(tools as LoadedTools).servers.some((x) => x.name === mounted && x.tools.length > 0)
+				);
+			};
+			await pollUntil(
+				async () =>
+					frames().some((f) => f.type === "notice" && String(f.message).includes(`mcp__${mounted}_`)) ||
+					(await listed()),
+				`${mounted} to mount`,
+				60_000,
 			);
 			const turns = frames().filter((f) => f.type === "agent_end").length;
 			await rpc({ type: "prompt", message });
