@@ -96,6 +96,7 @@
     "tests/unit/memory-store.test.ts": 4033,
     "tests/contract/guard-inherited.test.ts": 3902,
     "tests/contract/slow-mode-scope.test.ts": 3889,
+    "tests/contract/launcher.test.ts": 3880,
     "tests/contract/offline-spare.test.ts": 3866,
     "tests/unit/migrate-pick.test.ts": 3857,
     "tests/contract/subagent-concurrency.test.ts": 3818,
