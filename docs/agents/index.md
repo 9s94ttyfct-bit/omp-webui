@@ -55,6 +55,7 @@ They are written in English only, by choice: one language keeps them exact and s
 - [Move to another computer](migration.md)
 - [The server and its security](server-and-security.md)
 - [The webui_docs tool](webui-docs-tool.md)
+- [Restarting a wedged conversation (restart_session)](restart-session.md)
 - [Ask agent for help](settings-help.md)
 
 ## Rules for an agent
