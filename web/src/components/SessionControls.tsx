@@ -53,6 +53,8 @@ registerStrings("controlsHelp", helpEn);
 const SessionGuard = lazy(() => import("./SessionGuard.tsx"));
 // Full or Light for this conversation: restarts its omp, so it is a chunk of its own, loaded with the panel.
 const SessionMode = lazy(() => import("./SessionMode.tsx"));
+// Force restart: ends the conversation's omp with everything it started and goes on in a fresh one (`restart_session`'s path).
+const SessionRestart = lazy(() => import("./SessionRestart.tsx"));
 
 type Choice = { value: string; label: string };
 
@@ -976,6 +978,11 @@ export function SessionControls({
 					{id ? (
 						<Suspense fallback={null}>
 							<SessionMode liveId={id} />
+						</Suspense>
+					) : null}
+					{id ? (
+						<Suspense fallback={null}>
+							<SessionRestart liveId={id} />
 						</Suspense>
 					) : null}
 					<form

@@ -1,5 +1,5 @@
 import type { CompactQueued } from "@shared/compact-queue.ts";
-import { Archive, CircleAlert, CircleCheck, Hand, Hourglass, Info, X } from "lucide-react";
+import { Archive, CircleAlert, CircleCheck, Hand, Hourglass, Info, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
 import "../i18n/later.ts";
 import { type MessageKey, useT } from "../i18n/index.ts";
@@ -311,13 +311,21 @@ export function RetryStatus({ live }: { live: LiveState }) {
 	const { retry, compacting, compactionOutcome } = live;
 	const queued = live.info.compactQueued;
 	const softStop = live.info.softStop && !live.exited;
-	if (!retry && !compacting && !compactionOutcome && !queued && !softStop) return null;
+	// The agent asked for `restart_session`: the process is restarted when its turn ends (held by the server, so every page says it).
+	const restartPending = live.exited ? undefined : live.info.restartPending;
+	if (!retry && !compacting && !compactionOutcome && !queued && !softStop && !restartPending) return null;
 	return (
 		<>
-			{retry || compacting || queued || softStop ? (
+			{retry || compacting || queued || softStop || restartPending ? (
 				<div className="mb-2 flex flex-col gap-1 text-xs text-muted" data-testid="retry-status">
 					{retry?.phase === "waiting" ? <RetryWaiting live={live} wait={retry} /> : null}
 					{softStop ? <SoftStopLine live={live} /> : null}
+					{restartPending ? (
+						<div className="flex items-start gap-2" role="status" data-testid="restart-pending">
+							<RotateCcw size={13} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+							<span className="min-w-0 break-words">{t("chat.restartPending", { reason: restartPending.reason })}</span>
+						</div>
+					) : null}
 					{queued ? <QueuedCompactLine live={live} queued={queued} /> : null}
 					{retry?.phase === "failed" ? (
 						<div

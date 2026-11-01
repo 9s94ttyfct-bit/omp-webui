@@ -53,8 +53,8 @@ export interface Bound {
  * but it is what the user typed too, so it is acknowledged as well.
  */
 function replyBound(msg: Outgoing): Bound {
-	// A switch of mode restarts the conversation's omp and resumes it: as long as a start takes.
-	if (msg.t === "open" || msg.t === "set_mode") return { reply: OPEN_MS };
+	// A switch of mode, and a Force restart, end the conversation's omp and resume it: as long as a start takes.
+	if (msg.t === "open" || msg.t === "set_mode" || msg.t === "force_restart") return { reply: OPEN_MS };
 	if (msg.t === "retry_now") return { reply: null };
 	if (msg.t !== "rpc") return { reply: REPLY_MS };
 	const type = String(msg.command.type);

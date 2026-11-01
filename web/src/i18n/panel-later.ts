@@ -221,6 +221,16 @@ export const en = {
 	controlsModeFailed: "Could not switch to {mode}: {error}. The conversation went on in the mode it had.",
 	controlsModeDismiss: "Dismiss",
 	controlsModePaused: "A paused conversation cannot switch mode. Resume it first.",
+	// Force restart: the conversation's omp is ended with everything it started, and the conversation goes on in a fresh one
+	controlsRestartTitle: "Restart the process",
+	controlsRestartHint:
+		"Ends this conversation's omp and everything it started (the turn that runs, background jobs, dev servers, MCP servers), then goes on with the same conversation in a fresh process. For a conversation that hangs.",
+	controlsRestartButton: "Force restart",
+	controlsRestartConfirm: "Restart now? What runs is cut off.",
+	controlsRestartYes: "Restart",
+	controlsRestarting: "Restarting…",
+	controlsRestartFailed: "Could not restart: {error}",
+	controlsRestartPaused: "A paused conversation cannot be restarted. Resume it first.",
 	controlsFastFamily: "Fast mode ({provider})",
 	controlsFastNoTier: "This conversation's model has no service tier for fast mode, so there is no default to set.",
 	controlsHelpCost: "Cost and risk",

@@ -16,6 +16,8 @@ const REASON_KEY: Record<ExitReason, MessageKey> = {
 	server: "chat.endedByServerServer",
 	stopped: "chat.endedByServerStopped",
 	softStop: "chat.endedByServerSoftStop",
+	agentRestart: "chat.endedByServerAgentRestart",
+	forceRestart: "chat.endedByServerForceRestart",
 };
 
 /**

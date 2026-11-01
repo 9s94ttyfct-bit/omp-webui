@@ -1,5 +1,6 @@
 import { type InterviewRequest, parseInterviewPrompt } from "@shared/guided-goal.ts";
 import type { SessionEntry } from "@shared/protocol.ts";
+import { parseRestartMessage } from "@shared/restart.ts";
 import {
 	Brain,
 	ChevronDown,
@@ -31,6 +32,7 @@ import type { ToolExec } from "../store/live.ts";
 import { AssistantError, InterruptedCalls } from "./AssistantError.tsx";
 import { CopyButton, Markdown } from "./Markdown.tsx";
 import { FallbackNote, LiveNoticeRow, NoteRow, RuleNote, TypedNote } from "./NoticeRows.tsx";
+import { RestartDivider } from "./RestartNotes.tsx";
 import { StartTime } from "./StartTime.tsx";
 import { ToolCard } from "./ToolCard.tsx";
 import { TurnStatsLine } from "./TurnStats.tsx";
@@ -554,6 +556,9 @@ export const MessageRow = memo(function MessageRow(props: RowProps) {
 			if (rules.length > 0) return <RuleNote rules={rules} />;
 			return <NoteRow icon={<ScrollText size={14} />} title={t("chat.noteAgentInjected")} text={text} />;
 		}
+		// The server's message about a restart (`restart_session`) is the divider it stands for, not a bubble of the person's.
+		const restart = message.role === "user" ? parseRestartMessage(textOf(message)) : null;
+		if (restart) return <RestartDivider restart={restart} entryId={props.entry?.id} />;
 		return <UserMessage {...props} />;
 	}
 	if (message.role === "assistant") return <AssistantMessage {...props} />;

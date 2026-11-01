@@ -390,6 +390,23 @@ export const en = {
 	endedSoftStopKept: "The handoff is the last message above. Send a message, or reopen it, to carry on from there.",
 	softStopPending: "Soft stop: the agent is writing its handoff; the session stops when this turn ends",
 	softStopCancelFailed: "Couldn't cancel the soft stop: {error}",
+	endedByServerAgentRestart: "the agent asked for a restart; the conversation goes on in a new process",
+	endedByServerForceRestart: "you force-restarted it; the conversation goes on in a new process",
+	/** `restart_session` (shared/restart.ts): the agent ends its own omp and the conversation goes on in a fresh one. */
+	restartPending: "Restart asked for by the agent ({reason}): the process is restarted when this turn ends",
+	restartedByAgent: "Restarted by the agent: {reason}",
+	restartContinueWith: "What the agent asked to do next",
+	restartRefused: "Restart refused: {why}",
+	restartRefusedAsking: "a question or approval was waiting for you",
+	restartRefusedPaused: "the conversation was paused",
+	restartRefusedSubagents: "subagents were still running",
+	restartRefusedSubagentsUnknown: "omp did not say whether subagents were running",
+	restartRefusedRateLimit: "it was restarted 3 times in the last hour already",
+	restartRefusedNoSession: "the conversation had no saved session",
+	restartRefusedWhilePaused:
+		"The agent asked for a restart ({reason}); it was refused because the conversation is paused. The agent is told when you resume it.",
+	restartedByYou: "Force-restarted: the conversation goes on in a new omp process",
+	restartFailed: "The restart could not be made: {message}",
 	endedStoppedKept:
 		"Everything said so far is kept. Send a message, or reopen it, to carry on from there; messages that were still queued are back in the message box.",
 	stoppingSlow:

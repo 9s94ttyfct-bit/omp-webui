@@ -52,6 +52,11 @@ export const en = {
 	modeSwitchPaused: "This conversation is paused; resume it before switching its mode.",
 	modeSwitchUnsaved: "This conversation has no saved session yet; send a message first, then switch its mode.",
 
+	// A Force restart that cannot be made now
+	restartBusy: "This conversation is being restarted already.",
+	restartPaused: "This conversation is paused; resume it before restarting it.",
+	restartUnsaved: "This conversation has no saved session yet; send a message first.",
+
 	// A folder the folder picker cannot list
 	dirRelative: "{path} is not a full path: start it with / or ~.",
 	dirNotFound: "{path} does not exist.",

@@ -34,6 +34,7 @@ import { ErrorBoundary, MessageFailed } from "./ErrorBoundary.tsx";
 import { ExitNotice } from "./ExitNotice.tsx";
 import { EntryNote, type MessageActions, MessageRow, type Siblings, TypingDots } from "./Message.tsx";
 import { QuestionDroppedNote, SleptNote } from "./NoticeRows.tsx";
+import { RestartNote } from "./RestartNotes.tsx";
 import { LiveTurnStats } from "./TurnStats.tsx";
 import { Spinner } from "./ui.tsx";
 
@@ -748,6 +749,7 @@ export function Transcript({
 			) : null}
 			{endShown && live?.info.slept ? <SleptNote note={live.info.slept} /> : null}
 			{endShown && live?.info.questionDropped ? <QuestionDroppedNote note={live.info.questionDropped} /> : null}
+			{endShown && live && !live.exited ? <RestartNote info={live.info} /> : null}
 			{endShown && live?.info.quotaHold ? (
 				// A chunk that is gone leaves the line out (the page stays); it is asked for again when the state changes.
 				<ErrorBoundary fallback={() => null} resetKey={live.info.quotaHold.state} onError={retryQuotaHoldNote}>

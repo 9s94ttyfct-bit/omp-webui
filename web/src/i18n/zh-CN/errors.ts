@@ -43,6 +43,11 @@ export const zh: Record<keyof typeof en, string> = {
 	modeSwitchPaused: "这个对话已暂停；请先继续它，再切换模式。",
 	modeSwitchUnsaved: "这个对话还没有保存的记录；请先发送一条消息，再切换模式。",
 
+	// A Force restart that cannot be made now
+	restartBusy: "这个对话正在重启。",
+	restartPaused: "这个对话已暂停；请先继续它，再重启。",
+	restartUnsaved: "这个对话还没有保存的记录；请先发送一条消息。",
+
 	// A folder the folder picker cannot list
 	dirRelative: "{path} 不是完整路径：请以 / 或 ~ 开头。",
 	dirNotFound: "{path} 不存在。",
