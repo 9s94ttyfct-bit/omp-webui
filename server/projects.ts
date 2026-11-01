@@ -81,11 +81,15 @@ export class ProjectsFolder {
 
 	info(): ProjectsInfo {
 		const chosen = this.chosen();
-		if (chosen !== null) return { folder: chosen, isDefault: false, exists: isFolder(chosen) };
+		if (chosen !== null) {
+			const there = isFolder(chosen);
+			return { folder: chosen, isDefault: false, exists: there, there };
+		}
 		// `~/omp` that is not there yet is shown all the same, and made by the first project; one that is there and not a folder
 		// (a file, a link to nothing) cannot be, and is not made over.
 		const usual = join(this.home, "omp");
-		return { folder: usual, isDefault: true, exists: isFolder(usual) || !isThere(usual) };
+		const there = isFolder(usual);
+		return { folder: usual, isDefault: true, exists: there || !isThere(usual), there };
 	}
 
 	/**

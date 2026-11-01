@@ -63,7 +63,7 @@ const make = (name: unknown, extra: Record<string, string> = {}) =>
 test("nothing chosen is ~/omp, shown while it is not there, and made by the first project folder", async () => {
 	const usual = join(s.home, "omp");
 	expect(existsSync(usual)).toBe(false);
-	expect(await info()).toEqual({ folder: usual, isDefault: true, exists: true });
+	expect(await info()).toEqual({ folder: usual, isDefault: true, exists: true, there: false });
 	// Looking made nothing.
 	expect(existsSync(usual)).toBe(false);
 	const res = await make("first");
@@ -72,7 +72,7 @@ test("nothing chosen is ~/omp, shown while it is not there, and made by the firs
 	expect(made.path).toBe(join(usual, "first"));
 	expect(existsSync(made.path)).toBe(true);
 	expect(made.info.folder).toBe(usual);
-	expect(await info()).toEqual({ folder: usual, isDefault: true, exists: true });
+	expect(await info()).toEqual({ folder: usual, isDefault: true, exists: true, there: true });
 });
 
 test("a null name makes a folder named by the server's time, and a second one beside it", async () => {
@@ -114,12 +114,18 @@ test("the projects folder is chosen by the page on this computer, `~` is the ser
 	mkdirSync(join(s.home, "work"));
 	const chosen = await set("~/work");
 	expect(chosen.status).toBe(200);
-	expect(await chosen.json()).toEqual({ folder: join(s.home, "work"), isDefault: false, exists: true });
+	expect(await chosen.json()).toEqual({ folder: join(s.home, "work"), isDefault: false, exists: true, there: true });
 	expect(JSON.parse(readFileSync(join(s.root, "data", "projects-folder.json"), "utf8"))).toEqual({
 		folder: join(s.home, "work"),
 	});
 	expect(((await (await make("second")).json()) as ProjectCreated).path).toBe(join(s.home, "work", "second"));
-	expect(await (await set(null)).json()).toEqual({ folder: join(s.home, "omp"), isDefault: true, exists: true });
+	// The default again: ~/omp is there since the first project.
+	expect(await (await set(null)).json()).toEqual({
+		folder: join(s.home, "omp"),
+		isDefault: true,
+		exists: true,
+		there: true,
+	});
 });
 
 test("a folder that cannot be the projects folder is refused with the folder picker's codes, and the setting stays", async () => {

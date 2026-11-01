@@ -12,6 +12,8 @@ export interface ProjectsInfo {
 	isDefault: boolean;
 	/** Whether projects can be made in `folder`: it is a folder, or it is `~/omp` and nothing is there yet. A chosen folder may have been moved or replaced since. */
 	exists: boolean;
+	/** Whether `folder` is a folder now: omp can be started in it (New chat warms up there for a new project). */
+	there: boolean;
 }
 
 /** `POST /api/projects/new`: the folder that was made, and the setting it was made in. */

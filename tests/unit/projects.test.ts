@@ -71,14 +71,14 @@ test("a name has at most 100 characters and 255 bytes", () => {
 test("nothing chosen is ~/omp, shown while it is not there, and made by the first project folder", () => {
 	const w = world();
 	const usual = join(w.home, "omp");
-	// Looking does not make it, however often.
-	expect(w.projects.info()).toEqual({ folder: usual, isDefault: true, exists: true });
+	// Looking does not make it, however often; it is not there yet (New chat warms omp up elsewhere: `there`).
+	expect(w.projects.info()).toEqual({ folder: usual, isDefault: true, exists: true, there: false });
 	expect(w.projects.info().folder).toBe(usual);
 	expect(tree(w.home)).toEqual([]);
 	const made = w.projects.create("first");
 	expect(made.path).toBe(join(usual, "first"));
 	expect(tree(w.home)).toEqual(["omp", "omp/first"]);
-	expect(w.projects.info()).toEqual({ folder: usual, isDefault: true, exists: true });
+	expect(w.projects.info()).toEqual({ folder: usual, isDefault: true, exists: true, there: true });
 	// Once there, it is used as it is.
 	expect(w.projects.create("second").path).toBe(join(usual, "second"));
 	expect(tree(w.home)).toEqual(["omp", "omp/first", "omp/second"]);
@@ -94,7 +94,7 @@ test("~/omp is made alone: never its parents, and never over a file or a link th
 	const before = tree(w.base);
 	// A file is at ~/omp, then a link to nothing, then a link to a folder (which is a folder, and is used).
 	writeFileSync(join(w.home, "omp"), "mine");
-	expect(w.projects.info()).toEqual({ folder: join(w.home, "omp"), isDefault: true, exists: false });
+	expect(w.projects.info()).toEqual({ folder: join(w.home, "omp"), isDefault: true, exists: false, there: false });
 	expect(problemOf(() => w.projects.create("x"))).toBe("notFolder");
 	expect(readFileSync(join(w.home, "omp"), "utf8")).toBe("mine");
 	expect(tree(w.base)).toEqual([...before, "home/omp"].sort());
@@ -117,12 +117,17 @@ test("~/omp is made alone: never its parents, and never over a file or a link th
 test("a chosen folder is kept, `~` is the home folder, and null goes back to the default", () => {
 	const w = world();
 	mkdirSync(join(w.home, "work", "apps"), { recursive: true });
-	expect(w.projects.set("~/work")).toEqual({ folder: join(w.home, "work"), isDefault: false, exists: true });
+	expect(w.projects.set("~/work")).toEqual({
+		folder: join(w.home, "work"),
+		isDefault: false,
+		exists: true,
+		there: true,
+	});
 	// Kept by the file, not by the object: a second server on the data dir sees it.
 	expect(new ProjectsFolder(w.data, w.home).info().folder).toBe(join(w.home, "work"));
 	expect(w.projects.set(join(w.home, "work", "apps")).folder).toBe(join(w.home, "work", "apps"));
 	expect(w.projects.set("  ~/work/apps/../  ").folder).toBe(join(w.home, "work"));
-	expect(w.projects.set(null)).toEqual({ folder: join(w.home, "omp"), isDefault: true, exists: true });
+	expect(w.projects.set(null)).toEqual({ folder: join(w.home, "omp"), isDefault: true, exists: true, there: false });
 	expect(w.projects.set("").isDefault).toBe(true);
 });
 
@@ -166,7 +171,7 @@ test("a corrupt or foreign settings file is the default, never an error", () => 
 	const w = world();
 	for (const text of ["{", "[]", "null", '{"folder": 3}', '{"folder": "relative/path"}', '{"folder": ["/x"]}']) {
 		writeFileSync(join(w.data, "projects-folder.json"), text);
-		expect(w.projects.info()).toEqual({ folder: join(w.home, "omp"), isDefault: true, exists: true });
+		expect(w.projects.info()).toEqual({ folder: join(w.home, "omp"), isDefault: true, exists: true, there: false });
 	}
 });
 
@@ -244,7 +249,7 @@ test("a chosen projects folder that has gone is said so, and nothing is made in 
 	// A folder that was chosen and is not there now: the setting is the file's, so it is written as it would stand after
 	// the folder was moved away.
 	writeFileSync(join(w.data, "projects-folder.json"), JSON.stringify({ folder: join(w.home, "work") }));
-	expect(w.projects.info()).toEqual({ folder: join(w.home, "work"), isDefault: false, exists: false });
+	expect(w.projects.info()).toEqual({ folder: join(w.home, "work"), isDefault: false, exists: false, there: false });
 	expect(problemOf(() => w.projects.create("x"))).toBe("folderGone");
 	expect(existsSync(join(w.home, "work"))).toBe(false);
 });

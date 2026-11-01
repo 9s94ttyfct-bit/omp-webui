@@ -294,14 +294,8 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 			const info = await projectsApi.info().catch(() => null);
 			if (!live) return;
 			setRoot(info);
-			const there = info
-				? await api.dirs(info.folder).then(
-						() => true,
-						() => false,
-					)
-				: false;
-			if (!live) return;
-			setRootWarm(there && info ? info.folder : (home ?? ""));
+			// `~/omp` before its first project is not there yet: omp is warmed up in the home folder meanwhile.
+			setRootWarm(info?.there ? info.folder : (home ?? ""));
 		})();
 		return () => {
 			live = false;
