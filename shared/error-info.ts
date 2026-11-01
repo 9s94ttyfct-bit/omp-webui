@@ -43,6 +43,10 @@ export const ERROR_CODES = [
 	// A conversation that cannot be switched to the other mode now (server/live.ts).
 	"modeSwitchPaused",
 	"modeSwitchUnsaved",
+	// A Force restart that cannot be made now (server/omp/restart/coordinator.ts).
+	"restartBusy",
+	"restartPaused",
+	"restartUnsaved",
 	// A folder the folder picker cannot list (server/dirs.ts).
 	"dirRelative",
 	"dirNotFound",

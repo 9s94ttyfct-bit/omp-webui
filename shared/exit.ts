@@ -24,7 +24,11 @@ export type ExitReason =
 	/** Stop: omp did not end the turn in the time it is given, so the server ended its process (the conversation is kept). */
 	| "stopped"
 	/** Soft stop (#658): the turn that wrote the handoff ended, and the server ended the process as asked (the conversation is kept). */
-	| "softStop";
+	| "softStop"
+	/** The agent called `restart_session`: the process was ended and the conversation goes on in a new one (`shared/restart.ts`). */
+	| "agentRestart"
+	/** The person's Force restart: the process was ended whatever it was doing, and the conversation goes on in a new one. */
+	| "forceRestart";
 
 /**
  * Who ended a conversation's omp: the server, or omp itself.

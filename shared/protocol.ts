@@ -24,6 +24,7 @@ import type { PanelState } from "./panel-state.ts";
 import type { PrefsSnapshot } from "./prefs.ts";
 import type { LiveQuotaHold } from "./quota-floor.ts";
 import type { RemoteStatus } from "./remote.ts";
+import type { RestartedNote, RestartFailedNote, RestartPendingNote, RestartRefusedNote } from "./restart.ts";
 import type { SessionSettings } from "./session-defaults.ts";
 import type { SettingsHelpState } from "./settings-help.ts";
 import type { SleepNote } from "./sleep.ts";
@@ -217,6 +218,17 @@ export interface LiveInfo {
 	 */
 	softStop?: { at: number };
 	/**
+	 * The agent called `restart_session` (`shared/restart.ts`) and the restart waits for its turn to end. Held by the server,
+	 * so every page shows it. Absent when none waits.
+	 */
+	restartPending?: RestartPendingNote;
+	/** A restart the agent asked for was refused while the conversation was paused: the agent is told when it runs again. */
+	restartRefused?: RestartRefusedNote;
+	/** This process took over from one the person force-restarted, until its first turn begins. */
+	restarted?: RestartedNote;
+	/** A restart could not be made (the process did not end): this process goes on. */
+	restartFailed?: RestartFailedNote;
+	/**
 	 * What this process was told of the session controls omp cannot report (auto-retry, cache warming: see
 	 * `UNREPORTED`), which it uses over what its configuration says. Only what was told is here, so a control that is
 	 * absent follows the configuration. Every page is told with the rest of the info, so a value chosen on one page
@@ -382,6 +394,12 @@ export type ClientMessage =
 	 * a paused one is refused. Replies with a `ModeSwitchReply`; asking for the mode the process has cancels a switch that waits.
 	 */
 	| { t: "set_mode"; req: string; liveId: string; mode: Mode }
+	/**
+	 * Force restart (This session): the turn that runs is aborted, and the conversation's omp ended with everything it started
+	 * and started again on the same session file, with no message unless the agent had asked for a restart (`shared/restart.ts`).
+	 * A paused one is refused. Replies with the new process's id (`{ liveId }`).
+	 */
+	| { t: "force_restart"; req: string; liveId: string }
 	/**
 	 * Switch this conversation to the global preset `name`: its model and the roles its subagents resolve change for this
 	 * conversation only, and omp's global config is left as it is. Replies with its `LiveInfo`.

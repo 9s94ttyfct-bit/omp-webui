@@ -92,6 +92,8 @@ import { availableModels } from "./omp/models.ts";
 import { writeOverlay } from "./omp/overlay.ts";
 import { QuotaFloorService } from "./omp/quota-floor/service.ts";
 import { FloorError } from "./omp/quota-floor/store.ts";
+import { RestartCoordinator } from "./omp/restart/coordinator.ts";
+import { RestartService } from "./omp/restart/install.ts";
 import { resumedSessions } from "./omp/resumed.ts";
 import { configureConcurrency, readConcurrencyDefault } from "./omp/subagent-concurrency.ts";
 import { QuestionError } from "./omp/unattended/questions.ts";
@@ -382,6 +384,11 @@ pool.compactStep = new CompactStepService(cfg.dataDir);
 // and read omp-webui's agent-facing documentation (`docs/agents/`, compiled into the server), so that a question about the app
 // is answered from its docs. Nothing of it is the person's to set.
 pool.docsTool = new DocsToolService(cfg.dataDir);
+// `restart_session`: an extension of the server's own (`server/omp/restart/`) that lets a conversation's main agent end its own
+// omp, wedged, and go on in a fresh process; the person's Force restart (This session) takes the same path. The requests are
+// `<data dir>/restart/requests/`, so that a server that stops in the middle of one finishes it when it starts again.
+const restarts = new RestartCoordinator(new RestartService(cfg.dataDir), pool);
+pool.restarts = restarts;
 /** The questions being answered now: an answer is sent once, whichever page sent it (two pages cannot both answer one). */
 const answering = new Set<string>();
 const actions = new SessionActions(
@@ -2295,6 +2302,14 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 			touch(live);
 			return reply({ t: "reply", req: msg.req, ok: true, data: await pool.switchMode(live, msg.mode) });
 		}
+		case "force_restart": {
+			const live = pool.get(msg.liveId);
+			if (!live) return reply({ t: "reply", req: msg.req, ok: false, error: "Live session not found" });
+			// As Stop and the mode's switch: a page that is not on this computer may end the turn and restart the process.
+			touch(live);
+			const next = await restarts.forceRestart(live);
+			return reply({ t: "reply", req: msg.req, ok: true, data: { liveId: next.info.liveId } });
+		}
 		case "model_preset": {
 			const live = pool.get(msg.liveId);
 			if (!live) return reply({ t: "reply", req: msg.req, ok: false, error: "Live session not found" });
@@ -2650,6 +2665,8 @@ if (adopted > 0) {
 	// Their presets may have been edited while no server ran (#4).
 	void pool.refreshModelRoles();
 }
+// A restart a former server left in the middle (it crashed between two steps) is finished.
+void restarts.recover();
 /**
  * Bind the preferred port; in app mode, when it is taken (the web version, another program),
  * the next free one of the following 20 — the same port on every launch while the occupant

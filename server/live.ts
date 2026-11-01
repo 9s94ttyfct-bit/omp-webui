@@ -106,6 +106,8 @@ import { QueuedSubagents } from "./omp/queued-subagents.ts";
 import type { QuotaFloorHooks } from "./omp/quota-floor/service.ts";
 import { QuotaTracker } from "./omp/quota-floor/tracker.ts";
 import { pruneRelayDir, relaySocket, runningRelays, sweepRelayDir } from "./omp/relay-client.ts";
+import type { RestartCoordinator, RestartTimings } from "./omp/restart/coordinator.ts";
+import { RESTART_FILE_ENV } from "./omp/restart/extension.ts";
 import type { Resumed } from "./omp/resumed.ts";
 import { RpcClient, type RpcLaunch, type RpcResponse } from "./omp/rpc-client.ts";
 import { QUICK_MS } from "./omp/run.ts";
@@ -556,6 +558,82 @@ export class Live {
 		});
 	}
 
+	/** The process was started with the `restart_session` extension: a call of that name is this server's tool (`shared/restart.ts`). */
+	get restartCarried(): boolean {
+		const restarts = this.pool.restarts;
+		if (!restarts) return false;
+		const args = this.info.args;
+		return args.some((a, i) => a === "--extension" && args[i + 1] === restarts.service.extension);
+	}
+
+	/** A dialog waits for the person (a question, an approval, a tool call of the web UI). */
+	get waitsForPerson(): boolean {
+		return this.pendingUI.size > 0;
+	}
+
+	/** How many of omp's subagents are working now, or null when omp does not say (`get_subagents`). */
+	async workingSubagents(): Promise<number | null> {
+		const listed = await this.listSubagents();
+		return listed === null ? null : listed.filter((s) => isWorkingStatus(String(s.status ?? ""))).length;
+	}
+
+	/** Abort the turn that runs, and wait up to `ms` for omp to say it ended. Never throws: what follows ends the process anyway. */
+	async abortTurn(ms: number): Promise<void> {
+		if (!this.info.streaming || this.info.exited) return;
+		const ended = this.untilFrame("agent_end", ms);
+		try {
+			await this.client.request({ type: "abort" }, ms);
+		} catch {
+			// omp did not answer: the process is ended regardless
+		}
+		await ended;
+	}
+
+	/**
+	 * End omp and everything it started, for a restart (`RestartCoordinator`): unlike `closeBecause`, which closes stdin and
+	 * leaves omp to finish, this does not wait for a turn, a background job or a runaway thread. What runs under omp is listed
+	 * with each process's identity first; omp is closed, then after `closeMs` the tree gets SIGTERM, after `termMs` SIGKILL,
+	 * and omp must have exited within `killMs` more (never two omp on one session file: it throws otherwise). Then what omp
+	 * left running — a tool in a session of its own outlives it — is killed, each process only while it is still the one
+	 * listed (its identity, not its bare pid, which the system reuses).
+	 */
+	async endTree(why: ExitReason, timings: Pick<RestartTimings, "closeMs" | "termMs" | "killMs">): Promise<void> {
+		if (this.info.exited || !this.client.running) return;
+		const pid = this.client.pid;
+		if (pid === null) throw new Error("omp has no process yet");
+		const known = new Map<number, string>();
+		const look = async (): Promise<void> => {
+			try {
+				for (const [p, identity] of await identitiesOf(await processTree(pid))) known.set(p, identity);
+			} catch {
+				// no listing: what was listed before is what there is
+			}
+		};
+		/** The processes listed under omp that are still the ones listed. */
+		const still = async (): Promise<number[]> => {
+			const running = await identitiesOf([...known.keys()].filter((p) => p !== pid));
+			return [...running].filter(([p, identity]) => known.get(p) === identity).map(([p]) => p);
+		};
+		const ended = async (ms: number): Promise<boolean> => {
+			await Promise.race([this.client.whenExited, Bun.sleep(ms)]);
+			return !this.client.running;
+		};
+		await look();
+		const ompIdentity = known.get(pid) ?? null;
+		this.endedBy = why;
+		this.client.close();
+		for (const signal of ["SIGTERM", "SIGKILL"] as const) {
+			if (await ended(signal === "SIGTERM" ? timings.closeMs : timings.termMs)) break;
+			// What it started since the first listing goes too.
+			await look();
+			this.client.kill(signal);
+			signalAll(await still(), signal);
+		}
+		if (!(await ended(timings.killMs)) || (ompIdentity !== null && (await identityOf(pid)) === ompIdentity))
+			throw new Error(`omp (pid ${pid}) is still running`);
+		signalAll(await still(), "SIGKILL");
+	}
+
 	/**
 	 * A line of what this conversation says, for a notification of a device that opted in to a preview (`server/push`): what
 	 * the dialog that waits asks, or the last reply of the turn, cut short. Null when there is nothing to say.
@@ -782,6 +860,8 @@ export class Live {
 	resume(): Promise<void> {
 		return this.shift(() => this.unfreeze()).then(() => {
 			this.compactQueue.resumed();
+			// A restart the agent asked for while it was paused was refused: the agent is told now.
+			this.pool.restarts?.resumed(this);
 			// What became of its preset while it was paused (or while no server ran) is taken now (#4).
 			void this.followPresetAtResume().catch((e: unknown) =>
 				console.error(`omp-webui: could not update the model settings of ${this.info.liveId}: ${(e as Error).message}`),
@@ -1282,6 +1362,11 @@ export class Live {
 	 */
 	private readonly compactStepFile: string | null;
 	private compactStepLoaded = false;
+	/**
+	 * `restart_session` (`shared/restart.ts`): the file the extension reads the conversation's limit from (`OMPW_RESTART_FILE`).
+	 * Null where the server has no restarts.
+	 */
+	private readonly restartFile: string | null;
 	/** The command that moved the process, from the answer to it until its guard is settled (see `settleMove`). */
 	private moving: string | null = null;
 	/** The moves in order: one is sent when the one before has been settled (see `rpc`). */
@@ -1447,6 +1532,8 @@ export class Live {
 		// former server left is rewritten or taken away, whichever the queue says).
 		this.compactStepFile = pool.compactStep ? pool.compactStep.fileFor(liveId, overlay?.file ?? null) : null;
 		this.compactQueue.rearm();
+		// `restart_session`: the limit the extension holds a call to, written before the process starts.
+		this.restartFile = pool.restarts ? pool.restarts.limitFile(liveId, sessionFile) : null;
 		// What a page is told of the work is what the process holds now (a conversation a former server left asking is asking).
 		this.told = { streaming: this.info.streaming, asking: this.pendingUI.size > 0, continuing: false };
 		if (this.told.asking) this.info.asking = true;
@@ -1456,13 +1543,14 @@ export class Live {
 			args: overlay ? [...args, "--config", overlay.file] : args,
 			cwd,
 			env:
-				this.guidanceFile || this.unattendedFile || this.quotaFile || this.compactStepFile
+				this.guidanceFile || this.unattendedFile || this.quotaFile || this.compactStepFile || this.restartFile
 					? {
 							...launch.env,
 							...(this.guidanceFile ? { [GUIDANCE_FILE_ENV]: this.guidanceFile } : {}),
 							...(this.unattendedFile ? { [UNATTENDED_FILE_ENV]: this.unattendedFile } : {}),
 							...(this.quotaFile ? { [QUOTA_FILE_ENV]: this.quotaFile } : {}),
 							...(this.compactStepFile ? { [COMPACT_STEP_FILE_ENV]: this.compactStepFile } : {}),
+							...(this.restartFile ? { [RESTART_FILE_ENV]: this.restartFile } : {}),
 						}
 					: launch.env,
 			via: extra.via,
@@ -1489,6 +1577,11 @@ export class Live {
 				delete this.info.continuing;
 				// A process that ended has no sleep to be told of: the note and its watch go with it (#647).
 				delete this.info.slept;
+				// What it said of a restart is the process's: the conversation's next process says its own.
+				delete this.info.restartPending;
+				delete this.info.restartRefused;
+				delete this.info.restarted;
+				delete this.info.restartFailed;
 				// Nothing holds a process that ended, and nothing is looked at for it (the hold file goes with its folder).
 				this.quota?.end();
 				delete this.info.quotaHold;
@@ -1518,6 +1611,8 @@ export class Live {
 				this.pool.recordExit(this.info, exit);
 				this.broadcast({ t: "live_exit", liveId, ...exit });
 				this.pool.forget(this);
+				// A restart the agent asked for and that waited for this process's turn (see `RestartCoordinator.exited`).
+				this.pool.restarts?.exited(this, this.endedBy);
 			},
 		});
 	}
@@ -2094,6 +2189,11 @@ export class Live {
 				this.sleepFollow = null;
 				this.pool.announce(this);
 			}
+			// A force restart's note is about the start of this process: the first turn is the news now.
+			if (this.info.restarted) {
+				delete this.info.restarted;
+				this.pool.announce(this);
+			}
 			// A turn that omp carries on (`agent_end` with `isTerminal: false`) is the one it continues: its clock goes on, as a page's does.
 			if (!this.partial) this.info.turnStartedAt = Date.now();
 			this.between = false;
@@ -2119,6 +2219,8 @@ export class Live {
 				this.titles.turnEnded();
 				// A soft stop waited for this: the handoff is written, and the process ends (#658).
 				if (this.info.softStop) this.finishSoftStop();
+				// So may a restart the agent asked for (`restart_session`): the turn that asked for it is over.
+				if (this.restartCarried) this.pool.restarts?.turnEnded(this);
 			}
 		}
 		// omp compacts by itself, or because it was asked to (omp 18.13.3: a typed `/compact`, an extension's `ctx.compact()`,
@@ -2144,6 +2246,9 @@ export class Live {
 		// Unattended mode (#646): an `ask` dialog is answered here and filed, and the agent's `file_question` call is filed.
 		if (frame.type === "extension_ui_request" && frame.method === "ask" && this.recordAsk(frame)) return;
 		if (frame.type === "tool_execution_start") this.noteToolCall(frame);
+		// `restart_session`: a call of the main agent's (a subagent's frames come wrapped) becomes a request when it ends.
+		if (this.restartCarried && frame.type === "tool_execution_start") this.pool.restarts?.toolStarted(this, frame);
+		if (this.restartCarried && frame.type === "tool_execution_end") this.pool.restarts?.toolEnded(this, frame);
 		let forwarded = frame;
 		if (frame.type === "extension_ui_request") {
 			if (DIALOG_METHODS[String(frame.method)]) {
@@ -3685,6 +3790,13 @@ export class LivePool {
 	 */
 	docsTool: DocsToolHooks | null = null;
 
+	/**
+	 * `restart_session` (`server/omp/restart/`): the extension omp is started with, which gives the main agent a way to end
+	 * its own process and go on in a fresh one, and what makes those restarts (and the person's Force restart). Null: no
+	 * conversation has the tool, and none can be force-restarted.
+	 */
+	restarts: RestartCoordinator | null = null;
+
 	/** A floor was set, changed or taken away: every conversation that works looks at its provider again. */
 	quotaFloorChanged(): void {
 		for (const live of this.lives.values()) if (!live.info.exited) live.quotaFloorChanged();
@@ -4469,6 +4581,8 @@ export class LivePool {
 		if (this.unattended && !trusted && this.unattended.ensure()) extensions.push(this.unattended.extension);
 		// And the docs tool, read-only, for every conversation: an agent asked about omp-webui looks it up instead of guessing.
 		if (this.docsTool && !trusted && this.docsTool.ensure()) extensions.push(this.docsTool.extension);
+		// And `restart_session`, for every conversation's main agent: a way out of a process that is wedged.
+		if (this.restarts && !trusted && this.restarts.service.ensure()) extensions.push(this.restarts.service.extension);
 		const flags = extensions.flatMap((extension) => ["--extension", extension]);
 		return [...(this.overlay ? ["--config", this.overlay] : []), ...flags, ...launch.args, ...home, ...args];
 	}
@@ -4755,6 +4869,7 @@ export class LivePool {
 	 */
 	async parkKept(): Promise<number> {
 		this.stopping = true;
+		this.restarts?.stopping();
 		this.syncProjectWatches();
 		const parked: Live[] = [];
 		await Promise.all(
@@ -4804,6 +4919,7 @@ export class LivePool {
 	 */
 	async shutdown(closeGraceMs = CLOSE_GRACE_MS, termGraceMs = TERM_GRACE_MS): Promise<void> {
 		this.stopping = true;
+		this.restarts?.stopping();
 		this.syncProjectWatches();
 		const lives = [...this.lives.values()];
 		// What runs under each omp now: its tools start sessions of their own, out of reach of a group signal.
