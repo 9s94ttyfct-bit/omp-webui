@@ -11,7 +11,6 @@ export const en = {
 	greetingAfternoon: "Good afternoon",
 	greetingEvening: "Good evening",
 	newStarting: "omp is still starting…",
-	newChooseFolder: "Choose a folder",
 	newOptions: "Options",
 	newOptionsCount: "Options ({n})",
 	newPlaceholder: "How can omp help you today?",

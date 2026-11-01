@@ -8,7 +8,6 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	greetingAfternoon: "下午好",
 	greetingEvening: "晚上好",
 	newStarting: "omp 仍在启动…",
-	newChooseFolder: "选择文件夹",
 	newOptions: "选项",
 	newOptionsCount: "选项（{n}）",
 	newPlaceholder: "今天想让 omp 帮你做什么？",

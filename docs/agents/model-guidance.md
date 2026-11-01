@@ -29,6 +29,7 @@ Model guidance tells the main agent how to delegate to subagents and which model
 | Key | Values | Default | Effect |
 |---|---|---|---|
 | `ompw.guidanceDefault` | A template id (1–80 non-whitespace characters) | unset (no guidance) | Synced UI preference: the template a conversation started from New chat is given unless the user picks another there. A deleted template stops being the default. |
+| `ompw.guidanceLast` | JSON, exactly one of `{ "template": "<id>" }`, `{ "text": "<guidance>" }` (up to the editor's limit), `{ "none": true }` | unset | Synced UI preference, written when a conversation is started from New chat: the guidance that new chat had. New chat starts with it; unset, or a template deleted since, falls back to `ompw.guidanceDefault`. |
 | `ompw.guidanceCheck` | `on`, `off` | unset (on) | Synced UI preference: whether saving a conversation's guidance (or switching its template) runs the conflict check. Each check is one request to the Guard reviewer's model (the reviewer set in Guard settings, else omp's `reviewer`, `smol`, `slow` or `default` role), with at most about 40,000 characters of files and memories plus the guidance; the same text against the same files is answered from a cache and not asked again. |
 
 Other stored data:
