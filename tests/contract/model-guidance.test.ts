@@ -32,6 +32,15 @@ let seq = 0;
 /** What the scripted subagent reports. The task it is given never says it, so a request that carries it is one made after the report came. */
 const REPORT = "SCOUT-REPORT-648";
 
+/** A second guidance text, for a change between turns. */
+const MARK2 = "GUIDANCE-MARKER-641B: reply in French.";
+/** What the note the extension leaves in the conversation when the guidance changed says (`server/omp/guidance/extension.ts`). */
+const NOTE = "The standing instructions of this conversation are now:";
+const REMOVED = "The standing instructions of this conversation were removed.";
+/** The tags of the tests whose turns are answered at once (no subagent). */
+const NOTE_TAGS = new Set(["prio", "change", "gone"]);
+const count = (text: string, part: string) => text.split(part).length - 1;
+
 /** What a test holds back from the scripted model, by the conversation's tag, until it lets go. */
 const holds = new Map<string, { subagent?: Promise<void>; main?: Promise<void> }>();
 
@@ -44,6 +53,8 @@ const script = async (req: { text: string; tools: string[]; toolResults: number 
 		await holds.get(tag)?.subagent;
 		return { text: REPORT };
 	}
+	// The tests of the note (`NOTE_TAGS`) need no subagent: their turns are answered at once, so each ends before the next prompt.
+	if (NOTE_TAGS.has(tag)) return { text: "Noted." };
 	// A title's request offers no task tool.
 	if (!req.tools.includes("task")) return { text: "A title" };
 	if (req.toolResults === 0)
@@ -249,6 +260,76 @@ test("a template picked by id carries the text it stands for now, and turning it
 	expect((await mainRequestFor(second)).text).not.toContain(MARK);
 	ws.close();
 }, 240_000);
+
+/** Set what a running conversation carries, as its Guidance tab does. */
+async function setGuidance(liveId: string, guidance: { text: string } | null): Promise<void> {
+	const res = await fetch(`${server.url}/api/model-guidance/live`, {
+		method: "POST",
+		headers: { "x-omp-webui-token": server.accessToken, "x-omp-webui": "1", "content-type": "application/json" },
+		body: JSON.stringify({ liveId, guidance }),
+	});
+	expect(res.status).toBe(200);
+}
+
+test("the guidance block says it outranks earlier instructions and recalled memories", async () => {
+	const ws = await connect(server);
+	const info = await request<LiveInfo>(ws, {
+		t: "open",
+		target: { kind: "new", cwd: server.work, guidance: { text: MARK } },
+	});
+	const mark = prompt("prio");
+	await request(ws, { t: "rpc", liveId: info.liveId, command: { type: "prompt", message: mark } });
+	const text = (await mainRequestFor(mark)).text;
+	expect(text).toContain("# Standing instructions for this conversation");
+	expect(text).toContain("They replace any earlier instruction in this conversation, any recalled memory");
+	expect(text).toContain(MARK);
+	// The first turn of a conversation is told nothing more: the system prompt carries the guidance.
+	expect(text).not.toContain(NOTE);
+	ws.close();
+}, 120_000);
+
+test("a change between turns puts one note with the new text in the next request, and none after", async () => {
+	const ws = await connect(server);
+	const info = await request<LiveInfo>(ws, {
+		t: "open",
+		target: { kind: "new", cwd: server.work, guidance: { text: MARK } },
+	});
+	const first = prompt("change");
+	await request(ws, { t: "rpc", liveId: info.liveId, command: { type: "prompt", message: first } });
+	await mainRequestFor(first);
+	await idle(ws, info.liveId);
+	await setGuidance(info.liveId, { text: MARK2 });
+	const second = prompt("change");
+	await request(ws, { t: "rpc", liveId: info.liveId, command: { type: "prompt", message: second } });
+	const told = (await mainRequestFor(second)).text;
+	expect(count(told, NOTE)).toBe(1);
+	expect(told.slice(told.indexOf(NOTE))).toContain(MARK2);
+	await idle(ws, info.liveId);
+	// The next turn, with the guidance as it was: the note of the change is in the history once, and no new one is added.
+	const third = prompt("change");
+	await request(ws, { t: "rpc", liveId: info.liveId, command: { type: "prompt", message: third } });
+	expect(count((await mainRequestFor(third)).text, NOTE)).toBe(1);
+	ws.close();
+}, 180_000);
+
+test("turning the guidance off leaves one removal note", async () => {
+	const ws = await connect(server);
+	const info = await request<LiveInfo>(ws, {
+		t: "open",
+		target: { kind: "new", cwd: server.work, guidance: { text: MARK } },
+	});
+	const first = prompt("gone");
+	await request(ws, { t: "rpc", liveId: info.liveId, command: { type: "prompt", message: first } });
+	await mainRequestFor(first);
+	await idle(ws, info.liveId);
+	await setGuidance(info.liveId, null);
+	const second = prompt("gone");
+	await request(ws, { t: "rpc", liveId: info.liveId, command: { type: "prompt", message: second } });
+	const text = (await mainRequestFor(second)).text;
+	expect(count(text, REMOVED)).toBe(1);
+	expect(text).not.toContain("# Standing instructions for this conversation");
+	ws.close();
+}, 180_000);
 
 test("the guidance file is in the conversation's own folder under the data dir, holds the text, and goes when turned off", async () => {
 	const ws = await connect(server);
