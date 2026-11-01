@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { messageWhere } from "../support/frames.ts";
@@ -84,6 +84,72 @@ test("a saved conversation that is moved shows its new folder, and comes back th
 	});
 	expect(again.cwd).toBe(there);
 	await request(ws, { t: "close", liveId: again.liveId });
+	ws.close();
+}, 90_000);
+
+/** "Change folder…" (v0.17.0): `POST /api/session/move`, which has omp `/move` the conversation. */
+const move = async (body: { file?: string | null; liveId?: string | null; folder: string }) => {
+	const res = await fetch(`${s.url}/api/session/move`, {
+		method: "POST",
+		headers: { "x-omp-webui-token": s.accessToken, "x-omp-webui": "1", "content-type": "application/json" },
+		body: JSON.stringify(body),
+	});
+	return { status: res.status, body: (await res.json()) as { file?: string | null; cwd?: string; error?: string } };
+};
+
+/** What a folder holds, file by file with its text: a move must not touch it. */
+const contents = (dir: string) =>
+	Object.fromEntries(
+		[...new Bun.Glob("**/*").scanSync({ cwd: dir, dot: true })]
+			.sort()
+			.map((f) => [f, readFileSync(join(dir, f), "utf8")]),
+	);
+
+test("Change folder moves a conversation that has no process: omp's /move, no process left after, nothing of the folders touched", async () => {
+	const there = project("changed-saved");
+	writeFileSync(join(there, "notes.txt"), "the project's own file\n");
+	const before = contents(there);
+	const ws = await connect(s);
+	const running = async () => (await request<LiveListing[]>(ws, { t: "list_lives" })).filter((l) => !l.exited);
+	const runningBefore = (await running()).length;
+
+	const r = await move({ file: s.fixtures.beta, folder: there });
+	expect(r.status).toBe(200);
+	expect(r.body.cwd).toBe(there);
+	// omp filed the transcript under the new folder's group of its sessions directory, and the old file is gone.
+	expect(r.body.file).toContain("changed-saved");
+	expect(existsSync(s.fixtures.beta)).toBe(false);
+	expect(contents(there)).toEqual(before);
+	// The process started for the move has ended.
+	await pollUntil(async () => (await running()).length === runningBefore, "the move's process to end");
+	// Opened again, it is in the new folder.
+	const again = await request<LiveInfo>(ws, {
+		t: "open",
+		target: { kind: "resume", sessionFile: r.body.file as string, model: HAIKU },
+	});
+	expect(again.cwd).toBe(there);
+	await request(ws, { t: "close", liveId: again.liveId });
+	ws.close();
+}, 90_000);
+
+test("Change folder moves a running conversation and a new chat with no file yet; a folder that is not there is refused", async () => {
+	const ws = await connect(s);
+	// A name with spaces is one folder to `/move` (it takes the rest of the line).
+	const there = project("changed live");
+	const live = await request<LiveInfo>(ws, { t: "open", target: { kind: "new", cwd: s.work } });
+
+	const missing = await move({ liveId: live.liveId, folder: join(s.root, "not-there") });
+	expect(missing.status).toBe(400);
+	expect((await listing(ws, live.liveId))?.cwd).toBe(s.work);
+
+	const r = await move({ file: null, liveId: live.liveId, folder: there });
+	expect(r.status).toBe(200);
+	expect(r.body.cwd).toBe(there);
+	// The process is the conversation's own: it goes on, in the new folder.
+	const after = await listing(ws, live.liveId);
+	expect(after?.exited).toBeFalsy();
+	expect(after?.cwd).toBe(there);
+	await request(ws, { t: "close", liveId: live.liveId });
 	ws.close();
 }, 90_000);
 

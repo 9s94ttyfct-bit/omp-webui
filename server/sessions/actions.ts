@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Config } from "../config.ts";
-import { type LivePool, refusal } from "../live.ts";
+import { type Live, type LivePool, refusal } from "../live.ts";
 import { hasCommand } from "../omp/loaded.ts";
 import { availableModels } from "../omp/models.ts";
 import { RpcClient } from "../omp/rpc-client.ts";
@@ -25,6 +25,9 @@ export interface SessionTarget {
 
 /** How long omp is given to remove the files after it has answered `/session delete`. */
 const DELETE_SETTLE_MS = 3000;
+
+/** How long omp is given to say it is in the new folder after it has answered `/move`. */
+const MOVE_SETTLE_MS = 15_000;
 
 /** An omp started for a rename or a delete says it is ready within this, or is killed (#319). */
 const START_MS = 60_000;
@@ -208,6 +211,44 @@ export class SessionActions {
 			},
 			"kill",
 		);
+	}
+
+	/**
+	 * omp's `/move <folder>`: the conversation works in `folder` from now on. omp files its transcript under that folder's
+	 * group of its sessions directory and reloads the folder's settings; nothing in the old folder or the new one is
+	 * touched. It is sent through the conversation's process in the pool (`running`, else one `open` starts for the move
+	 * and that is ended after), so that what follows a move of its file follows this one: the folder (`Live.followFolder`)
+	 * and the settings kept by file (`Live.takeMove`). Refused while the conversation works, waits for an answer or is
+	 * paused, and while a terminal's omp has it open for writing (omp would move the file under it). `folder` is a real
+	 * directory: one that is not there makes omp ask whether to create it.
+	 */
+	async move(o: {
+		target: SessionTarget | null;
+		running: Live | undefined;
+		folder: string;
+		open: () => Promise<Live>;
+	}): Promise<{ file: string | null; cwd: string }> {
+		const holding = o.running?.holding;
+		if (holding) throw new SessionBusyError(refusal(holding));
+		if (o.target)
+			await this.refuseWhenHeldElsewhere(
+				o.target,
+				"moving it here would move the file under that process. Move it there (`/move`), or close that omp first.",
+			);
+		const live = o.running ?? (await o.open());
+		try {
+			if (live.info.cwd === o.folder) return { file: live.info.sessionFile, cwd: live.info.cwd };
+			const r = await live.rpc({ type: "prompt", message: `/move ${o.folder}` });
+			if (!r.success) throw new Error(r.error ?? "omp refused /move");
+			// The process says where it is once it has been asked (`/session`), after the answer: wait for that.
+			for (let waited = 0; live.info.cwd !== o.folder; waited += 50) {
+				if (waited >= MOVE_SETTLE_MS || live.info.exited) throw new Error("omp did not move the conversation");
+				await Bun.sleep(50);
+			}
+			return { file: live.info.sessionFile, cwd: live.info.cwd };
+		} finally {
+			if (!o.running) await live.end();
+		}
 	}
 }
 

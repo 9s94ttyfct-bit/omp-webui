@@ -106,6 +106,13 @@ export const en = {
 	sessionUnpin: "Unpin",
 	sessionExportHtml: "Export HTML",
 	sessionOpenTerminal: "Open in terminal",
+	sessionChangeFolder: "Change folder…",
+	changeFolderTitle: "Change the conversation's folder",
+	changeFolderDesc:
+		"omp works in the folder you pick from now on (its own /move). Nothing in either folder is moved or changed.",
+	changeFolderDone: "The conversation now works in {folder}",
+	changeFolderFailed: "Could not change the folder: {error}",
+	changeFolderStatus: "{folder} · Change folder…",
 	sessionDelete: "Delete…",
 	sessionArchive: "Archive",
 	sessionUnarchive: "Unarchive",

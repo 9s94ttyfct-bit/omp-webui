@@ -3,6 +3,7 @@ import { Clock, Cpu, FolderOpen, Target, TriangleAlert, Users, Zap } from "lucid
 import { useEffect, useMemo, useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
+import { askChangeFolder } from "../lib/change-folder.ts";
 import { contextLevel } from "../lib/context-usage.ts";
 import { fmtCost, fmtCostExact, shortPath } from "../lib/format.ts";
 import { useCrampedRow } from "../lib/media.ts";
@@ -103,12 +104,15 @@ export function ChatStatus({
 	entries,
 	stats,
 	cwd,
+	file,
 	cost,
 	agentsRunning,
 	savedThinking,
 	compact,
 }: StatusProps & {
 	cwd: string | undefined;
+	/** The conversation's session file (null before its first reply): what "Change folder…" moves. */
+	file: string | null;
 	/** Only the primary items: the rest are in the header's menu. */
 	compact: boolean;
 }) {
@@ -209,10 +213,18 @@ export function ChatStatus({
 				</span>
 			) : null}
 			{!compact && cwd ? (
-				<span className={cx(ITEM, "min-w-0 max-w-[14rem]")} title={cwd} data-testid="status-cwd">
+				// The folder is also the way to another one (omp's `/move`, see `ChangeFolderDialog`); not while a turn runs.
+				<button
+					type="button"
+					className={cx(ITEM, "min-w-0 max-w-[14rem] rounded-sm hover:text-fg disabled:hover:text-inherit")}
+					title={t("shell.changeFolderStatus", { folder: cwd })}
+					disabled={streaming}
+					onClick={() => askChangeFolder({ file, liveId, cwd })}
+					data-testid="status-cwd"
+				>
 					<FolderOpen size={11} className={ICON} aria-hidden />
 					<span className="truncate">{shortPath(cwd, home)}</span>
-				</span>
+				</button>
 			) : null}
 			{!compact ? <GitChips cwd={cwd} /> : null}
 			{!compact && spent ? (

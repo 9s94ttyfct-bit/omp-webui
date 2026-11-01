@@ -1684,6 +1684,7 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 									entries={fileEntries}
 									stats={figures}
 									cwd={cwd}
+									file={currentFile}
 									cost={{ main: totals.main.cost, subagents: totals.subagents.cost, advisor: totals.advisor.cost }}
 									agentsRunning={totals.subagents.running}
 									savedThinking={saved.thinking}

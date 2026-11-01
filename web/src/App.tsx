@@ -14,6 +14,7 @@ import { cx, IconButton, ignoreToastRegion, Spinner } from "./components/ui.tsx"
 import { useT } from "./i18n/index.ts";
 import { agentFullOpen, isPopOut } from "./lib/agent-full.ts";
 import { startAttention } from "./lib/attention.ts";
+import { useChangeFolder } from "./lib/change-folder.ts";
 import { type ChatKey, nextChatKey } from "./lib/chat-key.ts";
 import { lazyChunk } from "./lib/lazy-chunk.ts";
 import { PANEL_SHEET_QUERY, useMediaQuery } from "./lib/media.ts";
@@ -37,6 +38,9 @@ const AgentGraphPage = lazy(() => import("./components/AgentGraphPage.tsx"));
 const CliPage = lazy(() => import("./components/CliPage.tsx").then((m) => ({ default: m.CliPage })));
 const SettingsPage = lazy(() => import("./components/SettingsPage.tsx").then((m) => ({ default: m.SettingsPage })));
 const Palette = lazy(() => import("./components/Palette.tsx").then((m) => ({ default: m.Palette })));
+const ChangeFolderDialog = lazy(() =>
+	import("./components/ChangeFolderDialog.tsx").then((m) => ({ default: m.ChangeFolderDialog })),
+);
 // A subagent's live view full screen (over the conversation, or as the whole page of a window popped out for it).
 const SubagentFull = lazy(() => import("./components/SubagentFull.tsx").then((m) => ({ default: m.SubagentFull })));
 // Without omp, or right after installing it, these stand in for the whole app.
@@ -127,6 +131,12 @@ export function App() {
 	useEffect(() => {
 		if (feedbackOpen) setFeedbackWanted(true);
 	}, [feedbackOpen]);
+	// "Change folder…" (a conversation's menu, its status line): the picker loads when it is first asked for, and stays.
+	const changeFolderAsked = useChangeFolder((s) => s.ask !== null);
+	const [changeFolderWanted, setChangeFolderWanted] = useState(false);
+	useEffect(() => {
+		if (changeFolderAsked) setChangeFolderWanted(true);
+	}, [changeFolderAsked]);
 
 	// The tab's title counts the conversations waiting for an answer and marks a reply that finished while it was hidden.
 	useEffect(() => (POP_OUT ? undefined : startAttention()), []);
@@ -314,6 +324,13 @@ export function App() {
 				<ErrorBoundary fallback={() => null} onError={() => toast("error", t("shell.errorSearchLoad"))}>
 					<Suspense fallback={null}>
 						<Palette />
+					</Suspense>
+				</ErrorBoundary>
+			) : null}
+			{changeFolderWanted ? (
+				<ErrorBoundary fallback={() => null} onError={() => toast("error", t("shell.errorSessionMenuLoad"))}>
+					<Suspense fallback={null}>
+						<ChangeFolderDialog />
 					</Suspense>
 				</ErrorBoundary>
 			) : null}

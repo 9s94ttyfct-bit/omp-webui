@@ -1,9 +1,20 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import type { SessionSummary } from "@shared/protocol.ts";
-import { Archive, ArchiveRestore, Download, Pencil, Pin, PinOff, SquareTerminal, Trash2 } from "lucide-react";
+import {
+	Archive,
+	ArchiveRestore,
+	Download,
+	FolderInput,
+	Pencil,
+	Pin,
+	PinOff,
+	SquareTerminal,
+	Trash2,
+} from "lucide-react";
 import type { RefObject } from "react";
 import { useT } from "../i18n/index.ts";
 import { downloadExport } from "../lib/api.ts";
+import { askChangeFolder } from "../lib/change-folder.ts";
 import { useApp } from "../store/app.ts";
 import { cx } from "./ui.tsx";
 
@@ -63,6 +74,13 @@ export function SessionMenu({
 				onSelect={() => useApp.getState().setView({ kind: "cli", run: ["--resume", s.file] })}
 			>
 				<SquareTerminal size={14} /> {t("shell.sessionOpenTerminal")}
+			</Menu.Item>
+			<Menu.Item
+				className={itemCls}
+				data-testid="session-change-folder"
+				onSelect={() => askChangeFolder({ file: s.file, liveId: null, cwd: s.cwd })}
+			>
+				<FolderInput size={14} /> {t("shell.sessionChangeFolder")}
 			</Menu.Item>
 			<Menu.Separator className="my-1 h-px bg-border" />
 			<Menu.Item className={cx(itemCls, "text-danger")} onSelect={() => onAction(s, "delete", trigger.current)}>

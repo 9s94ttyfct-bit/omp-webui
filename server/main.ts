@@ -1951,6 +1951,46 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			await store.refresh(true);
 			return json({ ok: true });
 		}
+		case "/api/session/move": {
+			// Another folder for a conversation (omp's `/move`, see `SessionActions.move`): named by its file, or by its process
+			// when it has no file yet (a new chat before its first reply). The project files stay where they are.
+			if (req.method !== "POST") return fail("POST required", 405);
+			const body = (await req.json().catch(() => null)) as {
+				file?: unknown;
+				liveId?: unknown;
+				folder?: unknown;
+			} | null;
+			let folder: string;
+			try {
+				folder = await git.directoryOf(typeof body?.folder === "string" ? body.folder : "");
+			} catch (e) {
+				return fail((e as Error).message);
+			}
+			const file = typeof body?.file === "string" ? store.resolveSessionPath(body.file) : null;
+			const byId = typeof body?.liveId === "string" ? pool.get(body.liveId) : undefined;
+			const listed = file ? pool.list().find((l) => !l.exited && l.sessionFile === file) : undefined;
+			const running = byId && !byId.info.exited ? byId : listed ? pool.get(listed.liveId) : undefined;
+			if (!file && !running) return fail("Unknown session file", 404);
+			const from = running?.info.sessionFile ?? file;
+			try {
+				const moved = await actions.move({
+					target: from ? await sessionTarget(from) : null,
+					running,
+					folder,
+					open: () => pool.open({ kind: "resume", sessionFile: from as string }, cwdOfSessionFile),
+				});
+				// The sidebar's own list is kept by file: an archived conversation stays archived in its new file.
+				if (from && moved.file && moved.file !== from && archived.list().includes(from)) {
+					archived.set([from], false);
+					archived.set([moved.file], true);
+				}
+				await store.refresh(true);
+				return json(moved);
+			} catch (e) {
+				if (e instanceof SessionBusyError || e instanceof SessionOpenElsewhereError) return fail(e.message, 409);
+				return fail((e as Error).message, 500);
+			}
+		}
 		case "/api/sessions/delete": {
 			// Bulk delete through omp, one session at a time; reports per-file failures.
 			if (req.method !== "POST") return fail("POST required", 405);
