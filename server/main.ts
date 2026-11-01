@@ -124,7 +124,7 @@ import { NOTIFY_EVENTS_PATH, SHELL_EVENTS_PATH, ShellEvents } from "./shell-even
 import { KeepAwake, SleepDetector, spawnCaffeinate, workingIds } from "./sleep.ts";
 import { isLocalOnlyRoute, isThisComputer } from "./this-computer.ts";
 import type { TransferEnv } from "./transfer-core.ts";
-import type { AppUpdater, Conversations } from "./update/service.ts";
+import type { AppUpdater, Conversations, InstallTarget } from "./update/service.ts";
 import { APP_VERSION } from "./version.ts";
 import { WorkerDeadlineError } from "./worker-deadline.ts";
 import { WsOutbox } from "./ws-out.ts";
@@ -509,8 +509,13 @@ function modeTooNew(mode: ApprovalMode): string | null {
 
 // ------------------------------------------------------------------ the app's own updates (#571)
 
-// Set by the macOS shell: the app bundle this server belongs to. A server started any other way cannot replace an app.
-const appBundle = process.env.OMP_WEBUI_APP_BUNDLE || null;
+// What an install replaces: the macOS app bundle (`OMP_WEBUI_APP_BUNDLE`, set by the macOS shell) or the Windows launcher's
+// folder (`OMP_WEBUI_APP_FOLDER`, set by `omp-webui.exe`, server/launcher.ts). A server started any other way replaces nothing.
+const appTarget: InstallTarget | null = process.env.OMP_WEBUI_APP_BUNDLE
+	? { kind: "mac", bundle: process.env.OMP_WEBUI_APP_BUNDLE }
+	: process.env.OMP_WEBUI_APP_FOLDER && platform.id === "win32"
+		? { kind: "windows", folder: process.env.OMP_WEBUI_APP_FOLDER }
+		: null;
 const appUpdateApi = process.env.OMP_WEBUI_APP_UPDATE_API || undefined;
 // Looking for a release on its own follows `OMP_WEBUI_UPDATE_CHECK=off` (as the look for a newer omp does), unless a test
 // names a releases server of its own: that one is meant to be looked at.
@@ -546,13 +551,15 @@ function appUpdater(): Promise<AppUpdater> {
 			updater = new AppUpdater({
 				dataDir: cfg.dataDir,
 				installed: SERVER_VERSION,
-				bundle: appBundle,
+				target: appTarget,
 				parentPid: cfg.parentPid,
 				api: appUpdateApi,
 				automatic: automaticAppUpdates,
 				autoChecks: () => uiPrefs.snapshot().values[PREF.appUpdateCheck] !== "off",
 				conversations: conversationsHeld,
 				broadcast: (state) => broadcastLocal({ t: "app_update", state }),
+				// The Windows launcher is this server: after the handover it ends itself, as a quit of the app would.
+				quit: () => void shutdown(),
 			});
 			return updater;
 		})

@@ -41,7 +41,8 @@ export const SCOPE = ["server", "shared", "scripts", "tests/support"];
  */
 export const ALLOWLIST: Record<string, string> = {
 	"server/platform/": "the adapter itself: the one place the system is asked",
-	"server/update/": "the in-app updater, macOS-only (capabilities.appUpdate): disk images, codesign, the bundle swap",
+	"server/update/":
+		"the in-app updater, per system (capabilities.appUpdate): disk images, codesign and the bundle swap on macOS; tar.exe, PowerShell and the folder swap on Windows",
 	"scripts/check-platform.ts": "this check: it lists the names it looks for",
 	"scripts/dmg.ts": "builds the macOS disk image",
 	"scripts/signing-identity.ts": "the macOS signing identity (security, codesign)",

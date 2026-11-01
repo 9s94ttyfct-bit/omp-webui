@@ -279,14 +279,15 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
-  # The Windows launcher (scripts/windows-launcher.ts): built, its contract test run against the built program, and the
-  # folder zipped for a release (scripts/release-local.ts attaches the zip of the commit it releases).
+  # The Windows launcher (scripts/windows-launcher.ts): built, its contract test run against the built program, its update
+  # installed from a fake release (the same launcher built as 99.0.0 and zipped as a release is), and the folder zipped for
+  # a release (scripts/release-local.ts attaches the zip of the commit it releases).
   windows-launcher:
     name: Windows launcher
     needs: changes
     if: needs.changes.outputs.code == 'true' && github.event_name != 'schedule'
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - shell: pwsh
         run: Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:USERPROFILE
@@ -298,6 +299,14 @@ jobs:
       - run: bun test --timeout 120000 tests/contract/launcher.test.ts
         env:
           OMPW_LAUNCHER_EXE: ${{ github.workspace }}\dist\omp-webui-windows-x64\omp-webui.exe
+      # The next release for the updater's test: its folder is named as the release's is, so the zip has the same top folder.
+      - run: bun scripts/windows-launcher.ts --version 99.0.0 --out dist/next/omp-webui-windows-x64
+      - shell: pwsh
+        run: Compress-Archive -Path dist/next/omp-webui-windows-x64 -DestinationPath dist/next/omp-webui-v99.0.0-windows-x64.zip
+      - run: bun test --timeout 300000 tests/contract/windows-update.test.ts
+        env:
+          OMPW_LAUNCHER_EXE: ${{ github.workspace }}\dist\omp-webui-windows-x64\omp-webui.exe
+          OMPW_NEXT_ZIP: ${{ github.workspace }}\dist\next\omp-webui-v99.0.0-windows-x64.zip
       - shell: pwsh
         run: Compress-Archive -Path dist/omp-webui-windows-x64 -DestinationPath dist/omp-webui-windows-x64.zip
       - uses: actions/upload-artifact@v4

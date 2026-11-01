@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
 	closeSync,
@@ -10,7 +11,7 @@ import {
 	rmSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { isRecord } from "../../shared/guards.ts";
 import type {
 	AppRelease,
@@ -35,25 +36,39 @@ import {
 	type UpdatePaths,
 	writeJson,
 } from "./files.ts";
+import helperWindowsScript from "./helper.ps1" with { type: "text" };
 import helperScript from "./helper.sh" with { type: "text" };
 import {
 	DEFAULT_API,
 	type Fetched,
 	fetchLatest,
 	type Installer,
+	type InstallerPlatform,
 	isNewer,
 	type ParsedRelease,
 	parseRelease,
 } from "./release.ts";
 import { attach, detach, download, freeSpace, stage, UpdateCancelled, UpdateError, writable } from "./steps.ts";
 import { designatedRequirementOf, leafOf, refusalOf } from "./verify.ts";
+import { canWriteIn, powershellCommand, stageWindows, WINDOWS_EXE } from "./windows.ts";
 
 /**
  * The app's own updates (#571), as the server runs them: it looks for a newer release (at start and every six hours,
- * cheaply), and on a click downloads the installer, checks it, copies the new app next to the installed one and hands over
- * to a helper that swaps them once the app has quit (`helper.sh`). Created on first use (`server/main.ts` loads this module
- * lazily): a server that is never asked and has no timer due never loads it.
+ * cheaply), and on a click downloads the installer, checks it, puts the new version next to the installed one and hands
+ * over to a helper that swaps them once the app has quit. Two installs: the macOS app's (a signed disk image, `helper.sh`)
+ * and the Windows launcher's (a zip, `windows.ts` and `helper.ps1`), by the `InstallTarget` the server was started as.
+ * Created on first use (`server/main.ts` loads this module lazily): a server that is never asked and has no timer due
+ * never loads it.
  */
+
+/**
+ * What an install replaces: the macOS app bundle (`OMP_WEBUI_APP_BUNDLE`, set by the macOS shell), or the folder of the
+ * Windows launcher (`OMP_WEBUI_APP_FOLDER`, set by `omp-webui.exe`: the folder it is in, holding it and `web/`).
+ */
+export type InstallTarget = { kind: "mac"; bundle: string } | { kind: "windows"; folder: string };
+
+/** The path an install replaces: the bundle, or the folder. */
+const pathOf = (target: InstallTarget): string => (target.kind === "mac" ? target.bundle : target.folder);
 
 /** What the pool of conversations holds, as the page's confirmation needs it (`UpdateRefusal` `replying`). */
 export interface Conversations {
@@ -67,9 +82,9 @@ export interface UpdaterOptions {
 	dataDir: string;
 	/** The version running now. */
 	installed: string;
-	/** The app bundle this server belongs to (`OMP_WEBUI_APP_BUNDLE`, set by the macOS shell), null when it is none. */
-	bundle: string | null;
-	/** The macOS shell that started this server, which is asked to quit for the update. */
+	/** What an install replaces (see `InstallTarget`); null when this server is neither the macOS app nor the Windows launcher. */
+	target: InstallTarget | null;
+	/** The macOS shell that started this server, which is asked to quit for the update (the macOS app only). */
 	parentPid: number | null;
 	/** `OMP_WEBUI_APP_UPDATE_API`: another server that answers like GitHub's API (tests). */
 	api?: string;
@@ -88,14 +103,21 @@ export interface UpdaterOptions {
 	/** For tests. */
 	fetch?: typeof fetch;
 	now?: () => number;
-	/** Quit the shell for the update (`SIGUSR1`). */
+	/** Quit the shell for the update (`SIGUSR1`; the macOS app). */
 	signalParent?: (pid: number) => void;
+	/**
+	 * End this server for the update (the Windows launcher, which is the server: there is no shell to ask). The server's own
+	 * shutdown by default (`server/main.ts`); `process.exit` when none is given.
+	 */
+	quit?: () => void;
 	/** The environment the relaunched app is given what it was started with from (see `RELAUNCH_ENV`). */
 	env?: Record<string, string | undefined>;
 	/** How many bytes of this volume hold: free space in a directory, null where the file system cannot say. For tests. */
 	freeBytes?: (dir: string) => number | null;
 	/** The command that starts the app (`open` with the forwarded environment by default); a test's stand-in for it. */
 	relaunch?: string[];
+	/** The program that runs `helper.ps1` (Windows PowerShell by default); a test's stand-in for it. */
+	powershell?: string;
 }
 
 /** An install that was asked for and will not start: the 409 the page words (`UpdateRefusal`). */
@@ -113,6 +135,21 @@ const ROOM_FACTOR = 3;
 /** A second look is not a second request within this: a double click, a page and a timer at once. */
 const MIN_GAP_MS = 10_000;
 const PROGRESS_MS = 250;
+/** How long the Windows launcher waits after the handover before it exits: the pages are told the phase first. */
+const QUIT_DELAY_MS = 1000;
+
+/** What either helper is started with, besides the install's paths. */
+interface HelperRun {
+	id: string;
+	staged: string;
+	backup: string;
+	quitSecs: number;
+	startSecs: number;
+	/** The version installed. */
+	version: string;
+	/** The helper's log, open for appending: its output and errors. */
+	log: number;
+}
 
 /**
  * What the relaunched app takes from the environment of this one, besides what its shell sets itself (the token, the
@@ -151,18 +188,25 @@ export class AppUpdater {
 	private cancel: AbortController | null = null;
 	private failed: UpdateFailure | null = null;
 	private outcome: UpdateOutcome | null = null;
-	/** The running app has a signature to compare a download with; null until looked at. */
+	/** The running app has a signature to compare a download with; null until looked at (the macOS app). */
 	private signed: boolean | null = null;
+	/** This user can make and rename things beside the install folder; null until looked at (the Windows launcher). */
+	private folderWritable: boolean | null = null;
 	private timers: NodeJS.Timeout[] = [];
 	private lastProgressAt = 0;
+	/** Which of a release's installers is this one's: the Windows launcher's zip, or the macOS app's disk image. */
+	private readonly platform: InstallerPlatform;
 
 	constructor(private readonly opts: UpdaterOptions) {
 		this.api = opts.api ?? DEFAULT_API;
 		this.now = opts.now ?? Date.now;
 		this.paths = ensureUpdateDir(opts.dataDir);
+		// A server that is no app shows the release as it would be installed on this system (its card says to download it).
+		this.platform =
+			opts.target?.kind === "windows" || (opts.target === null && process.platform === "win32") ? "win32" : "darwin";
 		const cached = readJson(this.paths.check);
 		if (isRecord(cached) && typeof cached.checkedAt === "number") {
-			this.parsed = parseRelease(cached.body, this.api);
+			this.parsed = parseRelease(cached.body, this.api, this.platform);
 			if (this.parsed) {
 				this.etag = typeof cached.etag === "string" ? cached.etag : null;
 				this.lastBody = cached.body;
@@ -213,11 +257,17 @@ export class AppUpdater {
 	}
 
 	private installBlock(): InstallBlock | null {
-		const { bundle, parentPid } = this.opts;
+		const { target, parentPid } = this.opts;
+		if (target === null) return "notApp";
+		if (target.kind === "windows") {
+			// The launcher is the server: it hands over and exits itself, with no shell to ask.
+			if (this.folderWritable === false) return "notWritable";
+			return null;
+		}
 		// Without a shell to ask to quit there is nobody to hand the swap to.
-		if (bundle === null || parentPid === null) return "notApp";
-		if (bundle.includes("/AppTranslocation/")) return "translocated";
-		if (!writable(dirname(bundle))) return "notWritable";
+		if (parentPid === null) return "notApp";
+		if (target.bundle.includes("/AppTranslocation/")) return "translocated";
+		if (!writable(dirname(target.bundle))) return "notWritable";
 		if (this.signed === false) return "adHoc";
 		return null;
 	}
@@ -225,10 +275,12 @@ export class AppUpdater {
 	// ------------------------------------------------------------------ start-up
 
 	private async init(): Promise<void> {
-		const { bundle } = this.opts;
-		if (bundle !== null) {
-			const requirement = await designatedRequirementOf(bundle).catch(() => null);
+		const { target } = this.opts;
+		if (target?.kind === "mac") {
+			const requirement = await designatedRequirementOf(target.bundle).catch(() => null);
 			this.signed = requirement !== null && leafOf(requirement) !== null;
+		} else if (target?.kind === "windows") {
+			this.folderWritable = canWriteIn(dirname(target.folder));
 		}
 		await this.sweep();
 		this.outcome = readOutcome(this.paths);
@@ -239,9 +291,10 @@ export class AppUpdater {
 
 	/**
 	 * What an install that was cut short left: it is not stopped by the app quitting or the server dying (`hdiutil` and `ditto`
-	 * run on, detached), so an image can stay mounted at `mount-*`, a download at `*.dmg` or `*.part`, and a partial copy at
-	 * `<app>.updating`. Nothing runs an install at this point (an install waits for `ready`), so all of it is stale — except
-	 * the staged copy of an update whose helper is alive and waiting to swap it in, which is that helper's.
+	 * run on, detached), so an image can stay mounted at `mount-*`, a download at `*.dmg`, `*.zip` or `*.part`, a partial
+	 * copy at `<app>.updating` and a half-unpacked zip at `<folder>.updating.unzip-*`. Nothing runs an install at this point
+	 * (an install waits for `ready`), so all of it is stale — except the staged copy of an update whose helper is alive and
+	 * waiting to swap it in, which is that helper's.
 	 */
 	private async sweep(): Promise<void> {
 		const handover = readHandover(this.paths);
@@ -249,13 +302,24 @@ export class AppUpdater {
 		for (const name of readdirSync(this.paths.dir)) {
 			const path = join(this.paths.dir, name);
 			if (name.startsWith("mount-")) await removeMount(path);
-			else if (name.endsWith(".dmg") || name.endsWith(".part")) rmSync(path, { force: true });
+			else if (name.endsWith(".dmg") || name.endsWith(".zip") || name.endsWith(".part")) rmSync(path, { force: true });
 		}
-		const staged = this.opts.bundle === null ? null : `${this.opts.bundle}.updating`;
-		if (staged !== null && staged !== owned) rmSync(staged, { recursive: true, force: true });
-		// What a helper that died in the middle of a rollback left aside (see helper.sh).
-		if (this.opts.bundle !== null && owned === null)
-			rmSync(`${this.opts.bundle}.failed`, { recursive: true, force: true });
+		if (this.opts.target === null) return;
+		const installed = pathOf(this.opts.target);
+		const staged = `${installed}.updating`;
+		if (staged !== owned) rmSync(staged, { recursive: true, force: true });
+		// What a helper that died in the middle of a rollback left aside (see helper.sh, helper.ps1).
+		if (owned === null) rmSync(`${installed}.failed`, { recursive: true, force: true });
+		if (this.opts.target.kind === "windows") {
+			const unzipping = `${basename(staged)}.unzip-`;
+			try {
+				for (const name of readdirSync(dirname(installed))) {
+					if (name.startsWith(unzipping)) rmSync(join(dirname(installed), name), { recursive: true, force: true });
+				}
+			} catch {
+				// the folder beside it cannot be read: nothing of ours can be in it either
+			}
+		}
 	}
 
 	/**
@@ -265,12 +329,12 @@ export class AppUpdater {
 	private acknowledge(): void {
 		const handover = readHandover(this.paths);
 		if (!handover) return;
-		const { bundle, installed } = this.opts;
+		const { target, installed } = this.opts;
 		let same = false;
 		try {
-			same = bundle !== null && realpathSync(bundle) === realpathSync(handover.installed);
+			same = target !== null && realpathSync(pathOf(target)) === realpathSync(handover.installed);
 		} catch {
-			// a bundle that cannot be resolved is not the installed one
+			// a bundle or folder that cannot be resolved is not the installed one
 		}
 		if (!same || installed !== handover.to) return;
 		writeJson(this.paths.ack, { id: handover.id, version: installed, pid: process.pid });
@@ -358,7 +422,7 @@ export class AppUpdater {
 			return;
 		}
 		if (answer.kind === "release") {
-			const parsed = parseRelease(answer.body, this.api);
+			const parsed = parseRelease(answer.body, this.api, this.platform);
 			if (!parsed) {
 				this.failure = { code: "badAnswer" };
 				return;
@@ -377,6 +441,9 @@ export class AppUpdater {
 
 	/** The refusal of an install that was asked for, or null when it may start. */
 	private refusal(tag: string, anyway: boolean): InstallRefusal | null {
+		// Looked at again now: the folder may have been moved or its permissions changed since the server started.
+		const target = this.opts.target;
+		if (target?.kind === "windows") this.folderWritable = canWriteIn(dirname(target.folder));
 		const block = this.installBlock();
 		if (block !== null) {
 			return {
@@ -448,20 +515,19 @@ export class AppUpdater {
 	}
 
 	private async run(job: UpdateJob, release: AppRelease, installer: Installer, signal: AbortSignal): Promise<void> {
-		const bundle = this.opts.bundle as string;
-		const dmg = join(this.paths.dir, `${release.tag}.dmg`);
-		const part = `${dmg}.part`;
-		const staged = `${bundle}.updating`;
-		let mount: string | null = null;
+		const target = this.opts.target as InstallTarget;
+		const installed = pathOf(target);
+		const file = join(this.paths.dir, `${release.tag}.${target.kind === "mac" ? "dmg" : "zip"}`);
+		const part = `${file}.part`;
+		const staged = `${installed}.updating`;
 		let handedOver = false;
 		let failure: UpdateFailure | null = null;
-		const expected = { running: bundle, version: release.version, installed: this.opts.installed };
 		const checkCancelled = () => {
 			if (signal.aborted) throw new UpdateCancelled();
 		};
 		try {
-			// Before the first byte: the image, the copy of the app out of it and the room the swap needs are all on disk at once.
-			this.ensureRoom(release.asset?.size ?? 0, bundle);
+			// Before the first byte: the installer, the new version out of it and the room the swap needs are all on disk at once.
+			this.ensureRoom(release.asset?.size ?? 0, installed);
 			await download({
 				url: installer.url,
 				dest: part,
@@ -478,31 +544,26 @@ export class AppUpdater {
 					}
 				},
 			});
-			renameOver(part, dmg);
+			renameOver(part, file);
 			checkCancelled();
 
-			// The image's app is looked at before anything is copied; the copy is looked at again, since that is what is installed.
 			this.phase(job, "verifying");
-			mount = mkdtempSync(join(this.paths.dir, "mount-"));
-			await attach(dmg, mount);
-			checkCancelled();
-			if (!existsSync(join(mount, APP_NAME, "Contents", "Info.plist")))
-				throw new UpdateError("noApp", { name: APP_NAME });
-			const inImage = await refusalOf(join(mount, APP_NAME), expected);
-			if (inImage) throw new UpdateError(inImage.code, inImage.params);
-			checkCancelled();
+			if (target.kind === "mac") {
+				await this.stageMac(job, release, target.bundle, file, staged, checkCancelled);
+			} else {
+				// The zip's members are looked at before anything is unpacked; what was unpacked is looked at again.
+				await stageWindows(file, staged, release.version, {
+					freeBytes: this.opts.freeBytes ?? freeSpace,
+					onUnpack: () => {
+						checkCancelled();
+						this.phase(job, "staging");
+					},
+				});
+				removeFiles(file);
+				checkCancelled();
+			}
 
-			this.phase(job, "staging");
-			await stage(mount, APP_NAME, staged);
-			await removeMount(mount);
-			mount = null;
-			removeFiles(dmg);
-			checkCancelled();
-			const inStaged = await refusalOf(staged, expected);
-			if (inStaged) throw new UpdateError(inStaged.code, inStaged.params);
-			checkCancelled();
-
-			this.handOver(job, release, bundle, staged);
+			this.handOver(job, release, target, staged);
 			handedOver = true;
 		} catch (e) {
 			if (!(e instanceof UpdateCancelled)) {
@@ -513,12 +574,9 @@ export class AppUpdater {
 			}
 		}
 		// What was made is removed before the page is told it is over: it never sees a failure with its files still there.
-		if (mount !== null) {
-			await removeMount(mount);
-		}
 		if (!handedOver) {
 			rmSync(staged, { recursive: true, force: true });
-			removeFiles(part, dmg);
+			removeFiles(part, file);
 			this.job = null;
 		}
 		this.failed = failure;
@@ -527,65 +585,76 @@ export class AppUpdater {
 	}
 
 	/**
+	 * The macOS app out of the disk image at `dmg`, copied to `staged`: the image's app is looked at before anything is
+	 * copied, and the copy is looked at again, since that is what is installed. The image is detached whatever happens.
+	 */
+	private async stageMac(
+		job: UpdateJob,
+		release: AppRelease,
+		bundle: string,
+		dmg: string,
+		staged: string,
+		checkCancelled: () => void,
+	): Promise<void> {
+		const expected = { running: bundle, version: release.version, installed: this.opts.installed };
+		const mount = mkdtempSync(join(this.paths.dir, "mount-"));
+		try {
+			await attach(dmg, mount);
+			checkCancelled();
+			if (!existsSync(join(mount, APP_NAME, "Contents", "Info.plist")))
+				throw new UpdateError("noApp", { name: APP_NAME });
+			const inImage = await refusalOf(join(mount, APP_NAME), expected);
+			if (inImage) throw new UpdateError(inImage.code, inImage.params);
+			checkCancelled();
+
+			this.phase(job, "staging");
+			await stage(mount, APP_NAME, staged);
+		} finally {
+			await removeMount(mount);
+		}
+		removeFiles(dmg);
+		checkCancelled();
+		const inStaged = await refusalOf(staged, expected);
+		if (inStaged) throw new UpdateError(inStaged.code, inStaged.params);
+		checkCancelled();
+	}
+
+	/**
 	 * Refuse, before anything is downloaded, an install that the disk cannot hold: three times the installer's size must be free
 	 * on the volume the download is kept on (this server's data folder) and on the volume of the installed app, where the
-	 * new app is copied next to the old one and the old one is kept until the new one is up.
+	 * new version is put next to the old one and the old one is kept until the new one is up.
 	 */
-	private ensureRoom(installerBytes: number, bundle: string): void {
+	private ensureRoom(installerBytes: number, installed: string): void {
 		const needed = installerBytes * ROOM_FACTOR;
 		const free = this.opts.freeBytes ?? freeSpace;
-		for (const dir of [this.paths.dir, dirname(bundle)]) {
+		for (const dir of [this.paths.dir, dirname(installed)]) {
 			const available = free(dir);
 			if (available !== null && available < needed) throw new UpdateError("space", { needed, free: available });
 		}
 	}
 
 	/**
-	 * Everything is staged and checked: start the helper that waits for the app to quit and swaps, ask the shell to quit, and
-	 * wait for the end. The app's own quit stops this server, so what happens next is the helper's; a helper that cannot do
-	 * its part has written why before this server is asked again.
+	 * Everything is staged and checked: start the helper that waits for the app to quit and swaps, then end the app — the
+	 * macOS shell is asked to quit, which stops this server; the Windows launcher is this server, which exits itself — and
+	 * wait for the end. What happens next is the helper's; a helper that cannot do its part has written why before this
+	 * server is asked again.
 	 */
-	private handOver(job: UpdateJob, release: AppRelease, bundle: string, staged: string): void {
-		const parent = this.opts.parentPid as number;
+	private handOver(job: UpdateJob, release: AppRelease, target: InstallTarget, staged: string): void {
+		const installed = pathOf(target);
 		const id = randomUUID();
-		const backup = `${bundle}.previous`;
+		const backup = `${installed}.previous`;
 		const quitSecs = this.opts.quitSecs ?? 90;
 		const startSecs = this.opts.startSecs ?? 60;
 		removeFiles(this.paths.ack, this.paths.result);
-		writeFileSync(this.paths.helper, helperScript, { mode: 0o700 });
 		rotateLog(this.paths.helperLog);
 		const log = openSync(this.paths.helperLog, "a", 0o600);
+		const helper = { id, staged, backup, quitSecs, startSecs, version: release.version, log };
 		let pid: number;
 		try {
-			const proc = Bun.spawn(
-				[
-					"/bin/sh",
-					this.paths.helper,
-					id,
-					String(parent),
-					bundle,
-					staged,
-					backup,
-					this.paths.dir,
-					String(quitSecs),
-					String(startSecs),
-					this.opts.installed,
-					release.version,
-					"--",
-					...(this.opts.relaunch ?? relaunchCommand(bundle, this.opts.env ?? process.env)),
-				],
-				{
-					cwd: "/",
-					env: { PATH: "/usr/bin:/bin:/usr/sbin:/sbin" },
-					stdin: "ignore",
-					stdout: log,
-					stderr: log,
-					// Its own session: it must outlive the app, which ends the process group this server is in.
-					detached: true,
-				},
-			);
-			proc.unref();
-			pid = proc.pid;
+			pid =
+				target.kind === "mac"
+					? this.spawnMacHelper(target.bundle, helper)
+					: this.spawnWindowsHelper(target.folder, helper);
 		} finally {
 			closeSync(log);
 		}
@@ -593,20 +662,116 @@ export class AppUpdater {
 			id,
 			from: this.opts.installed,
 			to: release.version,
-			installed: bundle,
+			installed,
 			staged,
 			backup,
 			helperPid: pid,
 		};
-		// Before the shell is asked: it quits only for an update it can see.
+		// Before the app is ended: the shell quits only for an update it can see, and the next server looks for it.
 		writeJson(this.paths.handover, handover);
 		this.phase(job, "handover");
-		(this.opts.signalParent ?? ((p) => process.kill(p, "SIGUSR1")))(parent);
+		if (target.kind === "mac") {
+			const parent = this.opts.parentPid as number;
+			(this.opts.signalParent ?? ((p) => process.kill(p, "SIGUSR1")))(parent);
+		} else {
+			// A moment for the pages to be told the phase, then the server exits and its console window closes with it.
+			const quit = setTimeout(this.opts.quit ?? (() => process.exit(0)), QUIT_DELAY_MS);
+			this.timers.push(quit);
+		}
 		// Normally the app quits and this server with it. A helper that gave up (the app did not quit in time) has written
 		// why and put nothing in place: this server is still here to say so.
 		const waiting = setTimeout(() => this.handoverEnded(handover), (quitSecs + 20) * 1000);
 		waiting.unref();
 		this.timers.push(waiting);
+	}
+
+	/** `helper.sh`, started in a session of its own; its pid. */
+	private spawnMacHelper(bundle: string, h: HelperRun): number {
+		writeFileSync(this.paths.helper, helperScript, { mode: 0o700 });
+		const proc = Bun.spawn(
+			[
+				"/bin/sh",
+				this.paths.helper,
+				h.id,
+				String(this.opts.parentPid as number),
+				bundle,
+				h.staged,
+				h.backup,
+				this.paths.dir,
+				String(h.quitSecs),
+				String(h.startSecs),
+				this.opts.installed,
+				h.version,
+				"--",
+				...(this.opts.relaunch ?? relaunchCommand(bundle, this.opts.env ?? process.env)),
+			],
+			{
+				cwd: "/",
+				env: { PATH: "/usr/bin:/bin:/usr/sbin:/sbin" },
+				stdin: "ignore",
+				stdout: h.log,
+				stderr: h.log,
+				// Its own session: it must outlive the app, which ends the process group this server is in.
+				detached: true,
+			},
+		);
+		proc.unref();
+		return proc.pid;
+	}
+
+	/**
+	 * `helper.ps1`, started by Windows PowerShell, hidden and detached (it must outlive this server, whose console closes
+	 * when it exits); its pid. It runs from the update folder, never from inside the folder it renames, and with this
+	 * server's environment: the new program it starts is started as this one was (its data folder, a test's settings).
+	 */
+	private spawnWindowsHelper(folder: string, h: HelperRun): number {
+		writeFileSync(this.paths.helperWindows, helperWindowsScript, { mode: 0o700 });
+		const child = spawn(
+			this.opts.powershell ?? powershellCommand(),
+			[
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-WindowStyle",
+				"Hidden",
+				"-File",
+				this.paths.helperWindows,
+				"-Id",
+				h.id,
+				"-AppPid",
+				String(process.pid),
+				"-Installed",
+				folder,
+				"-Staged",
+				h.staged,
+				"-Backup",
+				h.backup,
+				"-StateDir",
+				this.paths.dir,
+				"-QuitSecs",
+				String(h.quitSecs),
+				"-StartSecs",
+				String(h.startSecs),
+				"-From",
+				this.opts.installed,
+				"-To",
+				h.version,
+				"-Exe",
+				join(folder, WINDOWS_EXE),
+			],
+			{
+				cwd: this.paths.dir,
+				env: this.opts.env ?? process.env,
+				stdio: ["ignore", h.log, h.log],
+				detached: true,
+				windowsHide: true,
+			},
+		);
+		// A program that cannot be started says so by an event, after `spawn` returns: without a listener it would end the server.
+		child.on("error", (e) => console.error(`omp-webui: the update helper failed: ${e.message}`));
+		if (child.pid === undefined) throw new UpdateError("stage", { detail: "the update helper could not be started" });
+		child.unref();
+		return child.pid;
 	}
 
 	/** The app did not quit and the helper ended (or died): how it ended is on the page, and what was staged is gone. */

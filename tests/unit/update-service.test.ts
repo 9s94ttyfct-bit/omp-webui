@@ -14,7 +14,13 @@ import { join } from "node:path";
 import pkg from "../../package.json";
 import { capabilities } from "../../server/platform/capabilities.ts";
 import { MAX_LOG_BYTES, rotateLog } from "../../server/update/files.ts";
-import { AppUpdater, type Conversations, relaunchCommand, type UpdaterOptions } from "../../server/update/service.ts";
+import {
+	AppUpdater,
+	type Conversations,
+	type InstallTarget,
+	relaunchCommand,
+	type UpdaterOptions,
+} from "../../server/update/service.ts";
 import { attach, detach } from "../../server/update/steps.ts";
 import { isRecord } from "../../shared/guards.ts";
 import type { AppUpdateState, UpdateSnapshot } from "../../shared/update.ts";
@@ -95,6 +101,9 @@ interface WorldOptions {
 	options?: Partial<UpdaterOptions>;
 }
 
+/** The macOS app at `bundle` as an install's target. */
+const macApp = (bundle: string): InstallTarget => ({ kind: "mac", bundle });
+
 const none: Conversations = { working: 0, asking: 0, paused: 0, waiting: 0 };
 
 function world(o: WorldOptions = {}): World {
@@ -150,7 +159,7 @@ exit 0
 	w.updater = new AppUpdater({
 		dataDir: data,
 		installed: pkg.version,
-		bundle: o.running === null ? null : bundle,
+		target: o.running === null ? null : macApp(bundle),
 		parentPid: app.pid,
 		api: o.api ?? fake.url,
 		automatic: false,
@@ -266,7 +275,7 @@ function optionsOf(w: World): UpdaterOptions {
 	return {
 		dataDir: w.data,
 		installed: pkg.version,
-		bundle: null,
+		target: null,
 		parentPid: null,
 		api: fake.url,
 		automatic: false,
@@ -394,7 +403,8 @@ test.skipIf(!mac)("this copy can replace itself only as a signed app bundle in a
 	await signed.updater.install("v0.0.0", true);
 	expect(state(signed).install).toEqual({ allowed: true });
 	expect(
-		state(world({ options: { bundle: "/private/var/folders/xx/AppTranslocation/ABC/d/omp-webui.app" } })).install,
+		state(world({ options: { target: macApp("/private/var/folders/xx/AppTranslocation/ABC/d/omp-webui.app") } }))
+			.install,
 	).toEqual({
 		allowed: false,
 		reason: "translocated",
@@ -626,7 +636,7 @@ test.skipIf(!mac)(
 		expect(readdirSync(w.installDir)).toEqual(["omp-webui.app"]);
 		expect(existsSync(join(w.data, "update", "handover.json"))).toBe(false);
 		// The next server finds it and shows it.
-		const next = new AppUpdater({ ...optionsOf(w), bundle: w.bundle, broadcast: () => {} });
+		const next = new AppUpdater({ ...optionsOf(w), target: macApp(w.bundle), broadcast: () => {} });
 		await pollUntil(() => next.state().outcome !== null, "the outcome being read");
 		expect(next.state().outcome).toMatchObject({ ok: false, to: NEWER, problem: "didNotStart" });
 		next.dismiss();
@@ -748,7 +758,7 @@ test.skipIf(!mac)(
 			}),
 		);
 		mkdirSync(w.bundle, { recursive: true });
-		const up = new AppUpdater({ ...optionsOf(w), bundle: w.bundle, installed: pkg.version });
+		const up = new AppUpdater({ ...optionsOf(w), target: macApp(w.bundle), installed: pkg.version });
 		await pollUntil(() => up.state().outcome !== null, "the success being noted");
 		expect(JSON.parse(readFileSync(join(update, "ack.json"), "utf8"))).toMatchObject({
 			id: "abc",
@@ -759,7 +769,7 @@ test.skipIf(!mac)(
 		// A server that is not what the helper installed (the old app, after a rollback) does not say so.
 		rmSync(join(update, "ack.json"));
 		rmSync(join(update, "result.json"));
-		const old = new AppUpdater({ ...optionsOf(w), bundle: w.bundle, installed: "0.0.1" });
+		const old = new AppUpdater({ ...optionsOf(w), target: macApp(w.bundle), installed: "0.0.1" });
 		await old.check().catch(() => {});
 		expect(existsSync(join(update, "ack.json"))).toBe(false);
 	},
@@ -865,7 +875,7 @@ test.skipIf(!mac)(
 		writeFileSync(join(`${w.bundle}.updating`, "half"), "x");
 		try {
 			// The next server on this data dir; any request waits for its start-up to end.
-			const next = new AppUpdater({ ...optionsOf(w), bundle: w.bundle, parentPid: 1 });
+			const next = new AppUpdater({ ...optionsOf(w), target: macApp(w.bundle), parentPid: 1 });
 			await next.handle(new Request("http://127.0.0.1/api/update"), new URL("http://127.0.0.1/api/update"));
 			expect(isMounted(mount)).toBe(false);
 			expect(existsSync(mount)).toBe(false);
@@ -891,7 +901,7 @@ test.skipIf(!mac)("the staged copy of an update whose helper is alive is the hel
 	mkdirSync(staged);
 	writeFileSync(join(staged, "ready"), "x");
 	// The helper is `w.app`, a process that runs: this update is handed over and waiting for its app to quit.
-	const server = () => new AppUpdater({ ...optionsOf(w), bundle: w.bundle, parentPid: 1 });
+	const server = () => new AppUpdater({ ...optionsOf(w), target: macApp(w.bundle), parentPid: 1 });
 	writeFileSync(
 		join(update, "handover.json"),
 		JSON.stringify({
@@ -954,7 +964,7 @@ test.skipIf(!mac)(
 		mkdirSync(join(w.data, "update"), { recursive: true });
 		mkdirSync(`${w.bundle}.failed`);
 		writeFileSync(join(`${w.bundle}.failed`, "x"), "x");
-		const next = new AppUpdater({ ...optionsOf(w), bundle: w.bundle, parentPid: 1 });
+		const next = new AppUpdater({ ...optionsOf(w), target: macApp(w.bundle), parentPid: 1 });
 		await next.handle(new Request("http://127.0.0.1/api/update"), new URL("http://127.0.0.1/api/update"));
 		expect(existsSync(`${w.bundle}.failed`)).toBe(false);
 		expect(existsSync(join(w.bundle, "Contents", "Info.plist"))).toBe(true);

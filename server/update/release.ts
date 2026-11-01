@@ -14,8 +14,15 @@ export const DEFAULT_API = "https://api.github.com";
 /** The tag a release of this app has: `vX.Y.Z` (release-local.ts and release.yml refuse anything else). */
 const TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
 
-/** The installer a release carries. */
-export const installerName = (version: string): string => `omp-webui-v${version}.dmg`;
+/**
+ * The systems a release carries an installer for: the macOS app's disk image, and the Windows launcher's zip (one top
+ * folder, `omp-webui-windows-x64/`, with `omp-webui.exe` and `web/`, as CI's windows-launcher job makes it).
+ */
+export type InstallerPlatform = "darwin" | "win32";
+
+/** The installer a release carries for `platform`. */
+export const installerName = (version: string, platform: InstallerPlatform): string =>
+	platform === "win32" ? `omp-webui-v${version}-windows-x64.zip` : `omp-webui-v${version}.dmg`;
 
 /** The largest installer taken at its word (the app's own is about 100 MB): a release that lists more is refused. */
 export const MAX_INSTALLER_BYTES = 500 * 1024 * 1024;
@@ -125,9 +132,11 @@ export function splitNotes(body: string | null): UpdateNotes {
 /**
  * The release in a `releases/latest` answer; null when it is none this app can use: no `vX.Y.Z` tag, a draft or a
  * prerelease (the API never answers one, a stand-in might), or an installer at an address `installerUrlAllowed` refuses.
- * A release without the installer is a release (the notes are shown) with no installer.
+ * A release without the installer for `platform` is a release (the notes are shown) with no installer. On Windows a zip
+ * GitHub lists no SHA-256 for is none either: nothing but that digest says the bytes are the release's (the macOS app's
+ * disk image has its signature, which is checked against the running app's).
  */
-export function parseRelease(json: unknown, api: string): ParsedRelease | null {
+export function parseRelease(json: unknown, api: string, platform: InstallerPlatform): ParsedRelease | null {
 	if (!isRecord(json)) return null;
 	const tag = text(json.tag_name);
 	const m = tag === null ? null : TAG.exec(tag);
@@ -141,7 +150,7 @@ export function parseRelease(json: unknown, api: string): ParsedRelease | null {
 
 	let asset: AppRelease["asset"] = null;
 	let installer: Installer | null = null;
-	const wanted = installerName(version);
+	const wanted = installerName(version, platform);
 	for (const item of Array.isArray(json.assets) ? json.assets : []) {
 		if (!isRecord(item) || item.name !== wanted) continue;
 		// An upload that is not finished is no installer yet.
@@ -152,6 +161,7 @@ export function parseRelease(json: unknown, api: string): ParsedRelease | null {
 		if (downloadUrl === null) return null;
 		if (!installerUrlAllowed(downloadUrl, api)) return null;
 		const digest = /^sha256:([0-9a-fA-F]{64})$/.exec(text(item.digest) ?? "");
+		if (platform === "win32" && !digest) break;
 		asset = { name: wanted, size };
 		installer = { url: downloadUrl, sha256: digest ? (digest[1] as string).toLowerCase() : null };
 		break;

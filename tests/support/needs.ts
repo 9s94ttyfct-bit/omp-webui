@@ -30,6 +30,10 @@ const HARNESS = {
 		has: platformId !== "win32",
 		why: "it checks how a process ended by a signal is told, or a server ended by a signal it did not send; Windows only terminates a process",
 	},
+	windowsLauncher: {
+		has: platformId === "win32" && Boolean(process.env.OMPW_LAUNCHER_EXE) && Boolean(process.env.OMPW_NEXT_ZIP),
+		why: "it installs an update of the built Windows launcher: Windows, with OMPW_LAUNCHER_EXE (the built omp-webui.exe) and OMPW_NEXT_ZIP (a build of it as a later release, zipped), which CI's windows-launcher job sets",
+	},
 	notWindowsYet: {
 		has: platformId !== "win32",
 		why: "it fails on Windows for a cause not found yet (an open issue of the Windows CI legs, see docs/TECHNICAL.md)",

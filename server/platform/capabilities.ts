@@ -44,7 +44,7 @@ const CAPABILITIES: Record<PlatformId, Capabilities> = {
 		gpuLoad: false,
 		loginEnv: false,
 		jobSurvivesServer: false,
-		appUpdate: false,
+		appUpdate: true,
 		appShell: false,
 	},
 };
@@ -84,6 +84,6 @@ export const UNAVAILABLE: Record<Capability, string> = {
 	gpuLoad: "The GPU's load is only read on macOS",
 	loginEnv: "This system does not need the login shell's environment",
 	jobSurvivesServer: "An install that was running when the server ended cannot be followed on this system",
-	appUpdate: "The in-app update is only available in the macOS app",
+	appUpdate: "The in-app update is only available in the macOS app and the Windows launcher",
 	appShell: "The native app shell is only available on macOS",
 };

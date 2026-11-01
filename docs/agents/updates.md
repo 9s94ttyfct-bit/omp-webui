@@ -1,6 +1,6 @@
 ---
 title: Updates of the app and of omp
-summary: How omp-webui updates itself from its GitHub releases (macOS app only), and how it checks for, installs and updates the omp coding agent it drives, by hand or automatically.
+summary: How omp-webui updates itself from its GitHub releases (the macOS app and the Windows launcher), and how it checks for, installs and updates the omp coding agent it drives, by hand or automatically.
 settings: update, omp
 ---
 
@@ -21,6 +21,8 @@ After the restart the card shows how it ended ("Updated to v…", or why it did 
 
 The app can install updates only when it is the macOS app (started by its own shell), not run from a temporary copy macOS made (App Translocation: move it to Applications), in a folder the user can write, and properly signed (an ad-hoc signed copy cannot compare signatures). Otherwise the card says why and links the release page to install by hand.
 
+**The Windows launcher** updates itself the same way, from the release's `omp-webui-vX.Y.Z-windows-x64.zip` (taken only with the SHA-256 GitHub lists for it). The download is checked for size and SHA-256; the zip's members are listed first and a zip with anything that could unpack outside its one top folder `omp-webui-windows-x64/` (an absolute or drive path, `..`, a link) is refused; it is unpacked next to the install folder as `<folder>.updating`, which must hold `omp-webui.exe` and `web/index.html`, and `omp-webui.exe --version` must print the release's version. Then a hidden PowerShell helper waits for the server to exit (the server exits itself and its console window closes), renames the install folder to `<folder>.previous` and the new one into its place, and starts the new `omp-webui.exe` in a console of its own, which opens the page. The old folder is removed once the new version has started; if the new one does not start, it is put aside and the old folder is put back and started. The install folder is the one `omp-webui.exe` is in (`OMP_WEBUI_APP_FOLDER`, set by the launcher when the `web` folder is beside it); the folder that holds it must be writable by the user (not under Program Files), or the card says the update cannot replace it. The data folder is outside the install folder and untouched. Version 0.16.0 has no updater on Windows: from it, update by hand once.
+
 **omp** (Settings › App & system › **omp**). The card shows the installed omp version, its location, how it was installed (Homebrew, Bun, npm, omp's installer, mise, Nix, managed by another tool, or unknown) and what updating does for that method, and the range of omp versions this omp-webui is made for (currently `>=18.12.3 <19.0.0`) with whether the installed version is in it. The server looks up the latest omp release the way `omp update` does (the npm registry for package-manager installs, omp's build service for the standalone binary, on the channel omp's own `update.channel` setting names): about 1.5 s after start and every 6 hours, plus **Check now**.
 
 - **Update omp** runs `omp update`. It waits until no conversation is working, paused or waiting for an answer ("Waiting for N conversations to finish before updating omp…"); **Update anyway** waits only for the working ones. Conversations already open keep the old omp until they are closed. An update cannot be stopped once it runs; a waiting one can be cancelled.
@@ -31,7 +33,7 @@ The app can install updates only when it is the macOS app (started by its own sh
 
 When omp is not found or does not start, the app shows **Install omp to get started** instead of the conversations: choices Homebrew (recommended where present), omp's installer (standalone binary in `~/.local/bin`; on Windows omp's PowerShell installer, into `%LOCALAPPDATA%\omp`) and Bun, each with the command it runs, the installer output, **Cancel**, and **I installed it myself — look again**. After an install the first-time setup follows.
 
-On Windows, omp-webui runs from `omp-webui.exe` (the release's `omp-webui-vX.Y.Z-windows-x64.zip`): a double-click starts the server and opens the page in the default browser; closing its console window stops it. It has no self-update: a new version is a new zip that replaces the folder.
+On Windows, omp-webui runs from `omp-webui.exe` (the release's `omp-webui-vX.Y.Z-windows-x64.zip`): a double-click starts the server and opens the page in the default browser; closing its console window stops it. It updates itself as described above.
 
 ## Where it is
 

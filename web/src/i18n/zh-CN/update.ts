@@ -31,7 +31,8 @@ export const zh: Record<keyof typeof en, string> = {
 	noAsset: "v{version} 已发布，但安装包还没有上传。几分钟后再检查一次。",
 
 	// Why this copy cannot install
-	blockedNotApp: "只有 macOS 应用才能在这里安装更新。请到发布页面下载 v{version}，或者按这份副本原来的安装方式更新。",
+	blockedNotApp:
+		"只有 macOS 应用和 Windows 启动程序（omp-webui.exe）才能在这里安装更新。请到发布页面下载 v{version}，或者按这份副本原来的安装方式更新。",
 	blockedTranslocated:
 		"macOS 正在从一份临时副本运行 omp-webui。请把它移到“应用程序”文件夹，再从那里打开，它才能更新自己。",
 	blockedNotWritable: "当前用户没有 omp-webui 所在文件夹的写入权限，没法替换自己。请到发布页面下载新版本，手动安装。",
@@ -68,7 +69,8 @@ export const zh: Record<keyof typeof en, string> = {
 		"下载下来的文件是 {actual} 字节，而发布页列出的是 {expected} 字节，说明文件不完整，或不是发布的那个文件。没有安装。",
 	failedDigest: "下载文件的校验值（SHA-256 {actual}）和 GitHub 列出的安装包校验值（{expected}）不一致，所以没有安装。",
 	failedMount: "安装包打不开：{detail}",
-	failedNoApp: "安装包里没有 omp-webui.app，所以没有安装。",
+	failedNoApp:
+		"安装包里没有应用（omp-webui.app，或放在同一个顶层文件夹里的 omp-webui.exe 及其 web 文件夹），所以没有安装。",
 	failedSignature: "macOS 不认可新应用的签名，所以没有安装：{detail}",
 	failedBundleId: "安装包里的应用是 `{found}`，不是 `{expected}`，所以没有安装。",
 	failedVersion: "安装包里的应用是 v{found}，而发布的版本是 {tag}，所以没有安装。",

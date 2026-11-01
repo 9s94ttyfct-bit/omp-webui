@@ -32,7 +32,7 @@ export interface Capabilities {
 	loginEnv: boolean;
 	/** An install or update of omp that the server started outlives the server, and the next one learns how it ended. */
 	jobSurvivesServer: boolean;
-	/** The in-app updater (disk image, `codesign`, the app bundle swap). */
+	/** The in-app updater: the macOS app's (disk image, `codesign`, the bundle swap) or the Windows launcher's (zip, folder swap). */
 	appUpdate: boolean;
 	/** The native app shell (Swift): its window, native notifications, file drops, pop-outs, the menu bar's background mode. */
 	appShell: boolean;

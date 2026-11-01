@@ -6,6 +6,8 @@
  * - A taken port is no error: the next free one is taken (`OMP_WEBUI_PORT_WINDOW`).
  * - The page opens in the default browser once the server listens, with the access token in its address.
  * - When this data folder's server already runs (a second double-click), its page is opened and nothing else starts.
+ * - It updates itself from the releases (Settings › Updates): the folder it is in is the one the updater replaces
+ *   (`OMP_WEBUI_APP_FOLDER`, server/update/windows.ts and helper.ps1).
  *
  * Its console window is the server's: it says where the page is, and closing it stops the server. An error while
  * starting is left on the screen until Enter is pressed, rather than closing the window with it.
@@ -28,8 +30,12 @@ if (process.argv.slice(2).includes("--version")) {
 	process.exit(0);
 }
 
-const web = join(dirname(process.execPath), "web");
+const folder = dirname(process.execPath);
+const web = join(folder, "web");
 if (!process.env.OMP_WEBUI_DIST && existsSync(web)) process.env.OMP_WEBUI_DIST = web;
+// The folder this program came in (it and `web/`, as the release's zip holds them) is what the updater replaces. Run from
+// source (`bun server/launcher.ts`) the program is Bun, and nothing beside it is ours.
+if (existsSync(web)) process.env.OMP_WEBUI_APP_FOLDER = folder;
 process.env.OMP_WEBUI_PORT_WINDOW ??= "1";
 
 /** The page of the server on `port`, signed in. */

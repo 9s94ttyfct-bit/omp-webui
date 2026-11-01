@@ -43,16 +43,16 @@ function release(over: Record<string, unknown> = {}, assets?: unknown[]): unknow
 }
 
 test("the installer is the asset named for the version, with its size and the SHA-256 GitHub lists", () => {
-	const parsed = parseRelease(release(), API);
+	const parsed = parseRelease(release(), API, "darwin");
 	expect(parsed?.release.tag).toBe("v0.12.0");
 	expect(parsed?.release.version).toBe("0.12.0");
-	expect(parsed?.release.asset).toEqual({ name: installerName("0.12.0"), size: 4096 });
+	expect(parsed?.release.asset).toEqual({ name: installerName("0.12.0", "darwin"), size: 4096 });
 	expect(parsed?.installer).toEqual({ url: `${API}/download/omp-webui-v0.12.0.dmg`, sha256: SHA });
 });
 
 test("another file in the release is no installer: only the one named for this version is", () => {
 	const other = { name: "omp-webui-v0.11.9.dmg", size: 10, browser_download_url: `${API}/download/x` };
-	const parsed = parseRelease(release({}, [other, { name: "notes.txt", size: 5 }]), API);
+	const parsed = parseRelease(release({}, [other, { name: "notes.txt", size: 5 }]), API, "darwin");
 	expect(parsed?.release.asset).toBeNull();
 	expect(parsed?.installer).toBeNull();
 	// …and the release is still one: its notes are shown, with no install button.
@@ -62,14 +62,52 @@ test("another file in the release is no installer: only the one named for this v
 test("an upload that is not finished is no installer yet; a digest that is not a sha256 is not one either", () => {
 	const url = `${API}/download/omp-webui-v0.12.0.dmg`;
 	const asset = { name: "omp-webui-v0.12.0.dmg", size: 10, browser_download_url: url };
-	expect(parseRelease(release({}, [{ ...asset, state: "starter" }]), API)?.installer).toBeNull();
-	expect(parseRelease(release({}, [{ ...asset, digest: "md5:abc" }]), API)?.installer?.sha256).toBeNull();
+	expect(parseRelease(release({}, [{ ...asset, state: "starter" }]), API, "darwin")?.installer).toBeNull();
+	expect(parseRelease(release({}, [{ ...asset, digest: "md5:abc" }]), API, "darwin")?.installer?.sha256).toBeNull();
 	expect(
-		parseRelease(release({}, [{ ...asset, digest: `SHA256:${SHA.toUpperCase()}` }]), API)?.installer?.sha256,
+		parseRelease(release({}, [{ ...asset, digest: `SHA256:${SHA.toUpperCase()}` }]), API, "darwin")?.installer?.sha256,
 	).toBeNull();
-	expect(parseRelease(release({}, [{ ...asset, digest: `sha256:${SHA.toUpperCase()}` }]), API)?.installer?.sha256).toBe(
-		SHA,
-	);
+	expect(
+		parseRelease(release({}, [{ ...asset, digest: `sha256:${SHA.toUpperCase()}` }]), API, "darwin")?.installer?.sha256,
+	).toBe(SHA);
+});
+
+test("each system takes its own installer: the zip on Windows, the disk image on macOS", () => {
+	const zip = {
+		name: "omp-webui-v0.12.0-windows-x64.zip",
+		state: "uploaded",
+		size: 2048,
+		digest: `sha256:${SHA}`,
+		browser_download_url: `${API}/download/omp-webui-v0.12.0-windows-x64.zip`,
+	};
+	const dmg = {
+		name: "omp-webui-v0.12.0.dmg",
+		state: "uploaded",
+		size: 4096,
+		digest: `sha256:${SHA}`,
+		browser_download_url: `${API}/download/omp-webui-v0.12.0.dmg`,
+	};
+	const both = release({}, [dmg, zip]);
+	const windows = parseRelease(both, API, "win32");
+	expect(installerName("0.12.0", "win32")).toBe("omp-webui-v0.12.0-windows-x64.zip");
+	expect(windows?.release.asset).toEqual({ name: "omp-webui-v0.12.0-windows-x64.zip", size: 2048 });
+	expect(windows?.installer).toEqual({ url: zip.browser_download_url, sha256: SHA });
+	const mac = parseRelease(both, API, "darwin");
+	expect(mac?.release.asset).toEqual({ name: "omp-webui-v0.12.0.dmg", size: 4096 });
+	expect(mac?.installer).toEqual({ url: dmg.browser_download_url, sha256: SHA });
+
+	// A zip GitHub lists no SHA-256 for is not installed: nothing else says the bytes are the release's.
+	const { digest: _, ...bare } = zip;
+	const undigested = parseRelease(release({}, [dmg, bare]), API, "win32");
+	expect(undigested?.installer).toBeNull();
+	expect(undigested?.release.asset).toBeNull();
+	expect(parseRelease(release({}, [{ ...zip, digest: "md5:abc" }]), API, "win32")?.installer).toBeNull();
+	// The disk image is still taken without one (its signature is checked against the running app's).
+	const { digest: __, ...bareDmg } = dmg;
+	expect(parseRelease(release({}, [bareDmg]), API, "darwin")?.installer).toEqual({
+		url: dmg.browser_download_url,
+		sha256: null,
+	});
 });
 
 test("a release this app cannot use is no release: no vX.Y.Z tag, a draft, a prerelease, a size that is no size", () => {
@@ -85,7 +123,7 @@ test("a release this app cannot use is no release: no vX.Y.Z tag, a draft, a pre
 		[],
 		"v0.12.0",
 	]) {
-		expect(parseRelease(bad, API), JSON.stringify(bad)).toBeNull();
+		expect(parseRelease(bad, API, "darwin"), JSON.stringify(bad)).toBeNull();
 	}
 });
 
@@ -110,7 +148,7 @@ test("the installer may only come from this repository's downloads on github.com
 	const elsewhere = [
 		{ name: "omp-webui-v0.12.0.dmg", size: 10, browser_download_url: "https://evil.example/omp-webui-v0.12.0.dmg" },
 	];
-	expect(parseRelease(release({}, elsewhere), DEFAULT_API)).toBeNull();
+	expect(parseRelease(release({}, elsewhere), DEFAULT_API, "darwin")).toBeNull();
 });
 
 test("never a downgrade: only a newer version is newer, a prerelease of the running version is not", () => {
@@ -237,16 +275,21 @@ test("an installer that lists more than 500 MB is refused: the size is the only 
 	const asset = (size: number) => [
 		{ name: "omp-webui-v0.12.0.dmg", size, browser_download_url: `${API}/download/omp-webui-v0.12.0.dmg` },
 	];
-	expect(parseRelease(release({}, asset(500 * 1024 * 1024)), API)?.release.asset?.size).toBe(500 * 1024 * 1024);
-	expect(parseRelease(release({}, asset(500 * 1024 * 1024 + 1)), API)).toBeNull();
-	expect(parseRelease(release({}, asset(Number.MAX_SAFE_INTEGER)), API)).toBeNull();
+	expect(parseRelease(release({}, asset(500 * 1024 * 1024)), API, "darwin")?.release.asset?.size).toBe(
+		500 * 1024 * 1024,
+	);
+	expect(parseRelease(release({}, asset(500 * 1024 * 1024 + 1)), API, "darwin")).toBeNull();
+	expect(parseRelease(release({}, asset(Number.MAX_SAFE_INTEGER)), API, "darwin")).toBeNull();
 });
 
 test("the release page the card links to is GitHub's: another host, or plain http, is replaced by this repository's page for the tag", () => {
 	const own = "https://github.com/9s94ttyfct-bit/omp-webui/releases/tag/v0.12.0";
 	expect(
-		parseRelease(release({ html_url: "https://github.com/9s94ttyfct-bit/omp-webui/releases/tag/v0.12.0" }), API)
-			?.release.url,
+		parseRelease(
+			release({ html_url: "https://github.com/9s94ttyfct-bit/omp-webui/releases/tag/v0.12.0" }),
+			API,
+			"darwin",
+		)?.release.url,
 	).toBe(own);
 	for (const url of [
 		"https://evil.example/releases/tag/v0.12.0",
@@ -257,7 +300,7 @@ test("the release page the card links to is GitHub's: another host, or plain htt
 		42,
 		null,
 	]) {
-		expect(parseRelease(release({ html_url: url }), API)?.release.url, String(url)).toBe(own);
+		expect(parseRelease(release({ html_url: url }), API, "darwin")?.release.url, String(url)).toBe(own);
 	}
 });
 

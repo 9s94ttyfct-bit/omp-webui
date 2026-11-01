@@ -23,6 +23,8 @@ export interface UpdatePaths {
 	ack: string;
 	result: string;
 	helper: string;
+	/** The Windows launcher's helper (`helper.ps1`); `helper` is the macOS app's. */
+	helperWindows: string;
 	helperLog: string;
 }
 
@@ -35,6 +37,7 @@ export function updatePaths(dataDir: string): UpdatePaths {
 		ack: join(dir, "ack.json"),
 		result: join(dir, "result.json"),
 		helper: join(dir, "helper.sh"),
+		helperWindows: join(dir, "helper.ps1"),
 		helperLog: join(dir, "helper.log"),
 	};
 }

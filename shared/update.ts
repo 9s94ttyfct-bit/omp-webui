@@ -30,8 +30,9 @@ export interface AppRelease {
 	url: string;
 	notes: UpdateNotes;
 	/**
-	 * The installer (`omp-webui-vX.Y.Z.dmg`): null while the release has none yet. A tag's release is created by Actions
-	 * first, and the dmg is attached minutes later from the Mac that signs it.
+	 * The installer for this system (`omp-webui-vX.Y.Z.dmg`, or on Windows `omp-webui-vX.Y.Z-windows-x64.zip` with the SHA-256
+	 * GitHub lists): null while the release has none yet. A tag's release is created by Actions first, and the dmg is
+	 * attached minutes later from the Mac that signs it.
 	 */
 	asset: { name: string; size: number } | null;
 }
@@ -51,11 +52,14 @@ export type CheckFailure =
 
 /** Why this copy of the app cannot replace itself. */
 export type InstallBlock =
-	/** Not run as the macOS app bundle (`bun server/main.ts`, the npm package): there is no app to replace. */
+	/**
+	 * Not run as the macOS app bundle or the Windows launcher (`bun server/main.ts`, the npm package, a source checkout): there
+	 * is no app to replace.
+	 */
 	| "notApp"
 	/** macOS runs the app from a read-only, randomized copy (it was opened from the downloaded disk image or folder). */
 	| "translocated"
-	/** The folder the app is in cannot be written by this user. */
+	/** The folder the app is in (the Windows launcher's: the folder that holds that folder) cannot be written by this user. */
 	| "notWritable"
 	/** The running app is signed ad hoc: there is no signature to hold a download against. */
 	| "adHoc";
@@ -87,7 +91,10 @@ export type UpdateFailureCode =
 	| "digest"
 	/** The disk image would not mount: `detail`. */
 	| "mount"
-	/** The image holds no `omp-webui.app`. */
+	/**
+	 * The installer holds no app: no `omp-webui.app` in the disk image, or no `omp-webui.exe` and `web/index.html` in the zip
+	 * (or a zip with a member that could unpack outside its one top folder).
+	 */
 	| "noApp"
 	/** `codesign --verify --deep --strict` refused the app: `detail`. */
 	| "signature"

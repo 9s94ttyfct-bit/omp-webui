@@ -34,7 +34,7 @@ export const en = {
 
 	// Why this copy cannot install
 	blockedNotApp:
-		"Updates install only in the macOS app. Download v{version} from the release page, or update the way this copy was installed.",
+		"Updates install only in the macOS app and the Windows launcher (omp-webui.exe). Download v{version} from the release page, or update the way this copy was installed.",
 	blockedTranslocated:
 		"macOS is running omp-webui from a temporary copy. Move it to the Applications folder and open it from there; then it can update itself.",
 	blockedNotWritable:
@@ -73,7 +73,8 @@ export const en = {
 	failedDigest:
 		"The download's checksum (SHA-256 {actual}) is not the one GitHub lists for the installer ({expected}), so it was not installed.",
 	failedMount: "The installer could not be opened: {detail}",
-	failedNoApp: "The installer does not contain omp-webui.app, so it was not installed.",
+	failedNoApp:
+		"The installer does not contain the app (omp-webui.app, or omp-webui.exe with its web folder, in one top folder), so it was not installed.",
 	failedSignature: "macOS refused the new app's signature, so it was not installed: {detail}",
 	failedBundleId: "The app in the installer is `{found}`, not `{expected}`, so it was not installed.",
 	failedVersion: "The app in the installer is v{found}, but the release is {tag}, so it was not installed.",
