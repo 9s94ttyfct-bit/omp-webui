@@ -1,3 +1,4 @@
+import { newChatIn } from "../support/new-chat.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -114,8 +115,7 @@ test("a sent message counts today once; the fifth day brings the card, a rejecte
 	tap.answer("prompt", () =>
 		reject ? { ok: false, error: "forced prompt failure" } : { ok: true, data: { agentInvoked: true } },
 	);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 
 	// Four days: nothing yet, and the repository was not even asked about.

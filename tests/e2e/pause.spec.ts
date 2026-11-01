@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { newChatIn } from "../support/new-chat.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /** One-click pause freezes omp and what it runs; Resume continues it (no model call). */
@@ -38,8 +39,7 @@ async function lives(page: Page): Promise<Live[]> {
 }
 
 test("Pause freezes a running command and every process under omp; Resume continues it", async ({ page }) => {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	const composer = page.getByTestId("composer");
 	// An external program (omp's built-in shell runs `sleep` in-process; /bin/sleep is a child process).
@@ -83,8 +83,7 @@ test("Pause freezes a running command and every process under omp; Resume contin
 
 test("Pause works on a model turn and Resume finishes it (Claude Haiku 5.5)", async ({ page }) => {
 	test.skip(!process.env.OMPW_E2E_HAS_TOKEN, "needs an Anthropic token (omp token anthropic)");
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toContainText(/haiku/i, { timeout: 60_000 });
 	const composer = page.getByTestId("composer");
 	await composer.fill("Use the bash tool to run `sleep 2`, then reply with exactly: RESUMED-OK");

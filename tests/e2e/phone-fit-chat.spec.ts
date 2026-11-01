@@ -1,4 +1,5 @@
 import { openSidebar, startLive } from "../support/live.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { Chain, writeRenderSession } from "../support/render-fixtures.ts";
 import { rpcState } from "../support/rpc-state.ts";
 import { type Msg, tapSocket } from "../support/socket-tap.ts";
@@ -66,8 +67,7 @@ test("the goal dialog's buttons keep their labels inside them", async ({ page })
 });
 
 test("the paused banner gives its text the width and puts its buttons under it", async ({ page }) => {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	const composer = page.getByTestId("composer");
 	await composer.fill("!/bin/sleep 4 && echo phone-paused-$((1+1))");

@@ -1,3 +1,4 @@
+import { newChatIn } from "../support/new-chat.ts";
 import { type Msg, type SocketTap, tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -35,9 +36,8 @@ async function sendProbe(page: Page, probe: string): Promise<void> {
 /** A new chat started with the `--plan-yolo` option checked, opened on a `!command` (it needs the process, not a model). */
 async function planChat(page: Page, probe: string): Promise<{ tap: SocketTap; liveId: string }> {
 	const tap = await tapSocket(page);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
 	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await page.getByRole("button", { name: /^(Options|选项)/ }).click();
 	await page.getByTestId("flag-form").locator('[data-flag="--plan-yolo"]').check();
 	const opened = () => tap.sent.findLast((m): m is Msg => m.t === "open")?.target;
@@ -77,8 +77,7 @@ test("a --plan-yolo chat shows Plan mode in its header until omp's handoff entry
 
 test("a chat started without --plan-yolo shows no Plan mode", async ({ page }) => {
 	const tap = await tapSocket(page);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect.poll(() => tap.sent.some((m) => m.t === "open")).toBe(true);
 	await sendProbe(page, "no-plan-probe");
 	await expect(page.getByTestId("chat-title")).toBeVisible();
@@ -95,7 +94,7 @@ test("/plan is held back with where plan mode lives, and New chat takes you ther
 	await expect(notice).toContainText("--plan-yolo");
 	await expect(notice.getByTestId("slash-equivalent")).toHaveText("New chat");
 	await notice.getByTestId("slash-equivalent").click();
-	await expect(page.getByTestId("cwd-picker")).toBeVisible();
+	await expect(page.getByTestId("new-project-name")).toBeVisible();
 });
 
 test("the badge and the /plan hint are in Chinese with the interface in Chinese", async ({ page }) => {

@@ -4,6 +4,7 @@ import { DEFAULT_REMOTE_CONFIG, type RemoteConfig, type RemoteSnapshot } from ".
 import { NO_REMOTE_AI } from "../../shared/remote-ai.ts";
 import { zh } from "../../web/src/i18n/zh-CN/remote.ts";
 import { remoteEn as en } from "../support/i18n-en.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { type Msg, type SocketTap, tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -312,7 +313,6 @@ test("on a page that came in through the tunnel the card is refused and never as
 
 /** A new chat in the shared folder; the test omp has no mode configured, so it starts in Auto-approve. */
 async function newChat(page: Page): Promise<SocketTap> {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), WORK());
 	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
 	const tap = await tapSocket(page);
 	await page.route(/\/api\/remote(\/|$)/, (route) => route.fulfill({ status: 403, json: { error: "forbidden" } }));
@@ -330,7 +330,7 @@ test("a remote page shows a conversation's permission mode exactly as a local pa
 }) => {
 	const picker = page.getByTestId("approval-picker");
 	await newChat(page);
-	await page.goto("/");
+	await page.goto(newChatIn(WORK()));
 	await expect(picker).toHaveAttribute("data-mode", "yolo", { timeout: 60_000 });
 	await expect(picker).toContainText("Auto-approve");
 

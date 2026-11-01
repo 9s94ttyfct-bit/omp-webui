@@ -1,3 +1,4 @@
+import { newChatIn } from "../support/new-chat.ts";
 import { expect, test } from "./fixtures.ts";
 
 /** Word-prediction ghost text from omp's `predict_word` (real omp; session model Claude Haiku 5.5). */
@@ -14,8 +15,7 @@ test("ghost text from predict_word: Tab accepts, typing elsewhere rejects, feedb
 			feedback.push({ suggestion: cmd.suggestion, accepted: cmd.accepted });
 		}),
 	);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toContainText(/haiku/i, { timeout: 60_000 });
 
 	const composer = page.getByTestId("composer");

@@ -1,3 +1,4 @@
+import { newChatIn } from "../support/new-chat.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -20,8 +21,7 @@ const search = (page: Page) => page.getByPlaceholder("Search models…");
 async function openPicker(page: Page) {
 	const tap = await tapSocket(page);
 	tap.answer("get_available_models", () => ({ ok: true, data: { models: MODELS } }));
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toContainText("Haiku 5.5", { timeout: 60_000 });
 	await page.getByTestId("model-picker").click();
 	await expect(page.getByRole("option", { name: /Acme gamma/ })).toBeAttached();
@@ -117,8 +117,7 @@ async function openLongList(page: Page) {
 			],
 		},
 	}));
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toContainText("Haiku 5.5", { timeout: 60_000 });
 	await page.getByTestId("model-picker").click();
 	await expect(page.getByRole("option", { name: "Acme model 29", exact: true })).toBeAttached();

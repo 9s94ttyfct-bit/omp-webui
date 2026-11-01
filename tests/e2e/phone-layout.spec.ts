@@ -1,4 +1,5 @@
 import { FIXTURE } from "../support/fixtures.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { boxOf } from "../support/style.ts";
 import { devices, expect, type Locator, type Page, test } from "./fixtures.ts";
 
@@ -41,20 +42,17 @@ const composerCard = (page: Page) =>
 /** Text as it reads, on one line. */
 const words = (text: string) => text.replace(/\s+/g, " ").trim();
 
-// New chat's own folder: left to itself it takes the most recent conversation's, which an earlier spec of the worker may
-// have removed (git-status's, resume-folder's), and New chat then shows that error instead of the model picker.
-test.beforeEach(async ({ page }) => {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-});
+/** New chat in the worker's folder: the existing-folder page these layouts were drawn for, not a new project. */
+const newChat = () => newChatIn(process.env.OMPW_E2E_WORK as string);
 
 test("on a desktop the fields keep their size", async ({ page }) => {
-	await page.goto("/");
+	await page.goto(newChat());
 	expect(await page.getByTestId("composer").evaluate((el) => getComputedStyle(el).fontSize)).toBe("15px");
 	expect(await page.getByTestId("session-filter").evaluate((el) => getComputedStyle(el).fontSize)).toBe("14px");
 });
 
 test("on a desktop the composer has no ⋯: every control is in its row", async ({ page }) => {
-	await page.goto("/");
+	await page.goto(newChat());
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	await expect(page.getByTestId("composer-more")).toBeHidden();
 	for (const id of ["thinking-picker", "guard-picker", "goal-mode"])
@@ -70,8 +68,7 @@ test("on a desktop the composer has no ⋯: every control is in its row", async 
  * words. Returns the text size both share.
  */
 async function ghostMatchesTextarea(page: Page): Promise<string> {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChat());
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 }); // omp is warm: it predicts
 	const composer = page.getByTestId("composer");
 	await composer.pressSequentially("Please refa", { delay: 40 });
@@ -105,7 +102,7 @@ test.describe("phone", () => {
 	test.use(PHONE);
 
 	test("every text field is 16px, so iOS does not zoom into it", async ({ page }) => {
-		await page.goto("/");
+		await page.goto(newChat());
 		expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
 		await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 		expect(await smallFields(page), "new chat").toEqual([]);
@@ -147,7 +144,7 @@ test.describe("phone", () => {
 	});
 
 	test("palette titles keep at least 20 characters", async ({ page }) => {
-		await page.goto("/");
+		await page.goto(newChat());
 		await page.getByRole("button", { name: "Show sidebar" }).click();
 		await page.getByRole("button", { name: SEARCH }).click();
 		// Asked for by title: with no query only the six newest show, and other specs' conversations are newer.
@@ -185,7 +182,7 @@ test.describe("phone", () => {
 	test("the composer footer keeps the main controls in its row and the rest behind ⋯, none behind Send", async ({
 		page,
 	}) => {
-		await page.goto("/");
+		await page.goto(newChat());
 		await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 		await expect(page.getByTestId("guard-picker")).toBeAttached();
 		const card = await boxOf(composerCard(page));
@@ -242,7 +239,7 @@ test.describe("phone", () => {
 
 	test("the ⋯ panel names the settings in Chinese too", async ({ page }) => {
 		await page.addInitScript(() => localStorage.setItem("ompw.lang", "zh-CN"));
-		await page.goto("/");
+		await page.goto(newChat());
 		await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 		await page.getByTestId("composer-more").click();
 		const panel = page.getByTestId("composer-more-panel");
@@ -251,7 +248,7 @@ test.describe("phone", () => {
 	});
 
 	test("the app, the drawer and the composer keep clear of the status bar and the home indicator", async ({ page }) => {
-		await page.goto("/");
+		await page.goto(newChat());
 		await setInsets(page, { top: 47, bottom: 34 });
 		const toggle = page.getByRole("button", { name: "Show sidebar" });
 		expect((await boxOf(toggle)).y).toBeGreaterThanOrEqual(47);
@@ -277,7 +274,7 @@ test.describe("phone", () => {
 		test.use({ viewport: { width: 844, height: 390 } });
 
 		test("content keeps clear of the notch on both sides", async ({ page }) => {
-			await page.goto("/");
+			await page.goto(newChat());
 			await setInsets(page, { left: 47, right: 47, bottom: 21 });
 			const card = await boxOf(composerCard(page));
 			expect(card.x).toBeGreaterThanOrEqual(47);

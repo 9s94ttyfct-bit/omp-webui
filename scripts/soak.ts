@@ -36,6 +36,7 @@ import { type Browser, type BrowserContext, type CDPSession, chromium, type Page
 import { relayDirPath } from "../server/omp/relay-client.ts";
 import { PREFS_SYNC_KEY } from "../shared/prefs.ts";
 import type { LiveListing, SessionSummary } from "../shared/protocol.ts";
+import { newChatIn } from "../tests/support/new-chat.ts";
 import { canCallModel } from "../tests/support/omp-env.ts";
 import { removeRelayDir } from "../tests/support/relay-dirs.ts";
 import { startTestServer, type TestServer } from "../tests/support/server.ts";
@@ -713,14 +714,18 @@ async function openNew(): Promise<Conv | null> {
 	const c = newConv(n, cwd);
 	const first = promptFor(c);
 	const ok = await step(`new conversation ${n}`, async () => {
-		await page.evaluate((dir) => localStorage.setItem("ompw.cwd", dir), cwd);
 		// Leave the new-chat page first, so that it opens afresh on this folder (and gives up the previous warm-up process).
 		await page.evaluate(() => {
 			location.hash = "#/settings";
 		});
 		await page.getByTestId("settings-page").waitFor();
 		const start = performance.now();
-		await page.getByTestId("new-chat").click();
+		await page.evaluate(
+			(hash) => {
+				location.hash = hash;
+			},
+			newChatIn(cwd, ""),
+		);
 		await page.getByTestId("model-picker").filter({ hasText: MODEL }).waitFor({ timeout: 90_000 });
 		lat("newChat", performance.now() - start);
 		const sendStart = performance.now();

@@ -73,7 +73,7 @@ test("a held-back command with a web counterpart takes you there", async ({ page
 	await composer.fill("/new");
 	await composer.press("Enter");
 	await page.getByTestId("slash-equivalent").click();
-	await expect(page.getByTestId("cwd-picker")).toBeVisible();
+	await expect(page.getByTestId("new-project-name")).toBeVisible();
 	expect(tap.commands("prompt")).toHaveLength(0);
 });
 

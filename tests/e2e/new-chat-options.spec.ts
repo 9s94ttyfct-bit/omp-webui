@@ -1,3 +1,4 @@
+import { newChatIn } from "../support/new-chat.ts";
 import { type SocketTap, tapSocket } from "../support/socket-tap.ts";
 import { expect, test } from "./fixtures.ts";
 
@@ -14,8 +15,7 @@ const opens = (tap: SocketTap) => tap.sent.filter((m) => m.t === "open");
 
 test("typing an option's value starts no omp until the field is left or Enter is pressed", async ({ page }) => {
 	const tap = await tapSocket(page);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	expect(opens(tap)).toHaveLength(1);
 
@@ -46,8 +46,7 @@ test("typing an option's value starts no omp until the field is left or Enter is
 
 test("a value typed and not yet applied is applied when focus moves to another field", async ({ page }) => {
 	const tap = await tapSocket(page);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	await page.getByRole("button", { name: /^Options/ }).click();
 	const field = page.locator(`[data-flag="${FLAG}"]`);

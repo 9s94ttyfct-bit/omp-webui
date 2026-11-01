@@ -1,5 +1,6 @@
 import { FIXTURE_FILES } from "../support/fixtures.ts";
 import { openSidebar } from "../support/live.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { devices, expect, type Page, test } from "./fixtures.ts";
 
 /**
@@ -42,8 +43,7 @@ test.describe("touch screen", () => {
 	});
 
 	test("the love button in the model picker is visible without hover", async ({ page }) => {
-		await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-		await page.goto("/");
+		await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 		await page.getByTestId("model-picker").click();
 		// cmdk pre-selects the first row, which shows its button anyway: look at one that isn't selected.
 		const love = page.getByTestId("model-love").last();

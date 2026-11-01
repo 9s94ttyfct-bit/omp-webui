@@ -4,7 +4,7 @@ import type { Page } from "@playwright/test";
 import { writeSimpleSession } from "../support/fixtures.ts";
 import { ownSession, sessionRow, startLive } from "../support/live.ts";
 import { endAllLives } from "../support/lives.ts";
-import { COUNT_RENDERS, countRendersOf, painted, rendersCounted } from "../support/render-count.ts";
+import { COUNT_RENDERS, countRendersOf, type Of, painted, rendersCounted } from "../support/render-count.ts";
 import { assistant } from "../support/session-entries.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { expect, test } from "./fixtures.ts";
@@ -45,15 +45,18 @@ async function quiet(page: Page): Promise<void> {
 
 const WORDS = Array.from({ length: 40 }, (_, i) => `w${i} `);
 
-/** The element the screen draws, which its component is found from. */
-const SCREEN: Record<"New chat" | "Settings", string> = {
-	"New chat": "cwd-picker",
-	Settings: "settings-page",
+/**
+ * An element the screen draws, which its component is found from. New chat opens on a new project, whose name field is
+ * drawn by a part of its own: New chat is the component above it that is given the folder it was opened in (`cwd`).
+ */
+const SCREEN: Record<"New chat" | "Settings", Of> = {
+	"New chat": { element: '[data-testid="new-project-name"]', props: ["cwd"] },
+	Settings: { element: '[data-testid="settings-page"]' },
 };
 
 /** The screen's component is found, and from here on every render of it is counted. */
 async function countRenders(page: Page, screen: keyof typeof SCREEN): Promise<void> {
-	await expect(page.getByTestId(SCREEN[screen])).toBeVisible();
+	await expect(page.locator(SCREEN[screen].element)).toBeVisible();
 	await countRendersOf(page, SCREEN[screen]);
 }
 

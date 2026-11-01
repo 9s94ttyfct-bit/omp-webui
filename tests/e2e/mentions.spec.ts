@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { newChatIn } from "../support/new-chat.ts";
 import { expect, test } from "./fixtures.ts";
 
 /** `@file` mention completion in the composer, expanded by omp (real omp + Claude Haiku 5.5). */
@@ -13,8 +14,7 @@ test("@ completes paths in the working directory and omp reads the mentioned fil
 	mkdirSync(join(work, "node_modules", "pkg"), { recursive: true });
 	writeFileSync(join(work, "node_modules", "pkg", "mention-notes.txt"), "ignored\n");
 
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), work);
-	await page.goto("/");
+	await page.goto(newChatIn(work));
 	await expect(page.getByTestId("model-picker")).toContainText(/haiku/i, { timeout: 60_000 });
 
 	const composer = page.getByTestId("composer");

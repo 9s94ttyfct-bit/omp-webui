@@ -1,4 +1,5 @@
 import { attachPicked } from "../support/drop-files.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { type SocketTap, tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -17,8 +18,7 @@ const PNG_1X1 = Buffer.from(
 async function newChat(page: Page) {
 	const tap = await tapSocket(page);
 	for (const type of ["prompt", "bash", "goal"]) tap.answer(type, () => ({ ok: true, data: {} }));
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	return tap;
 }

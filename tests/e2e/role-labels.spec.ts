@@ -3,6 +3,7 @@ import { zh as panelZh } from "../../web/src/i18n/zh-CN/panel.ts";
 import { zh as shellZh } from "../../web/src/i18n/zh-CN/shell.ts";
 import { panelEn } from "../support/i18n-en.ts";
 import { appReady } from "../support/live.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { readOptions } from "../support/select.ts";
 import { expect, test } from "./fixtures.ts";
 
@@ -37,8 +38,7 @@ for (const { locale, panel, shell } of languages) {
 		});
 
 		test("thinking levels are named, not shown as omp's raw ids", async ({ page }) => {
-			await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-			await page.goto("/");
+			await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 			const picker = page.getByTestId("thinking-picker");
 			await expect(picker).toBeVisible({ timeout: 60_000 });
 			await expect.poll(async () => (await readOptions(picker)).length).toBeGreaterThan(1);

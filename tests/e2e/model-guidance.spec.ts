@@ -33,8 +33,7 @@ const stored = (): { rev: number; templates: { id: string; name: string; text: s
 const opens = (tap: SocketTap) => tap.sent.filter((m) => m.t === "open");
 
 const newChat = async (page: Page, cwd: string): Promise<void> => {
-	await page.addInitScript((dir) => localStorage.setItem("ompw.cwd", dir), cwd);
-	await page.goto("/");
+	await page.goto(newChatIn(cwd));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 };
 
@@ -171,6 +170,9 @@ test("a template made the default in Settings is what New chat starts with, unti
 	).toContainText(en.defaultBadge);
 
 	// New chat starts with it: the first process is started with the template, and the chip names it.
+	// Leave the app first: New chat's address differs from Settings' only after the `#`, and the tap sees the sockets of
+	// a page load, not those of the page already open.
+	await page.goto("about:blank");
 	const tap = await tapSocket(page);
 	await newChat(page, process.env.OMPW_E2E_WORK as string);
 	await expect.poll(() => opens(tap).length).toBeGreaterThan(0);

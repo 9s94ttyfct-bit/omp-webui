@@ -1,3 +1,4 @@
+import { newChatIn } from "../support/new-chat.ts";
 import { expect, test } from "./fixtures.ts";
 
 /** omp writes a session file only with the first assistant message; until then the chat shows the live transcript. */
@@ -5,8 +6,7 @@ import { expect, test } from "./fixtures.ts";
 test("a new chat's first command shows without an error before omp writes the session file (no model call)", async ({
 	page,
 }) => {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	await page.getByTestId("composer").fill("!echo unwritten-$((6*7))");
 	await page.getByTestId("composer").press("Enter");

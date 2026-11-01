@@ -113,7 +113,7 @@ test("a newer release is announced with its version and release notes, and Updat
 		await page.getByTestId("omp-update-done-dismiss").click();
 		await expect(notice(page)).toHaveCount(0);
 		await page.reload();
-		await expect(page.getByTestId("cwd-picker")).toBeVisible();
+		await expect(page.getByTestId("new-project-name")).toBeVisible();
 		await expect(notice(page)).toHaveCount(0);
 	} finally {
 		await run.stop();
@@ -128,7 +128,7 @@ test("Later puts a release away until there is a newer one; Settings looks for o
 		await page.getByTestId("omp-notice-dismiss").click();
 		await expect(notice(page)).toHaveCount(0);
 		await page.reload();
-		await expect(page.getByTestId("cwd-picker")).toBeVisible();
+		await expect(page.getByTestId("new-project-name")).toBeVisible();
 		await expect(notice(page)).toHaveCount(0);
 
 		await page.getByRole("complementary").getByRole("button", { name: "Settings" }).click();
@@ -301,7 +301,7 @@ test("a release outside the supported range asks first, and warns again once ins
 		await page.getByTestId("omp-notice-dismiss").click();
 		await expect(notice(page)).toHaveCount(0);
 		await page.reload();
-		await expect(page.getByTestId("cwd-picker")).toBeVisible();
+		await expect(page.getByTestId("new-project-name")).toBeVisible();
 		await expect(notice(page)).toHaveCount(0);
 		await page.getByRole("complementary").getByRole("button", { name: "Settings" }).click();
 		await page.locator('[data-testid="settings-page-tab"][data-page="app"]').click();

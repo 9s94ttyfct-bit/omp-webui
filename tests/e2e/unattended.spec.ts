@@ -7,6 +7,7 @@ import { en } from "../../web/src/i18n/questions.ts";
 import { zh } from "../../web/src/i18n/zh-CN/questions.ts";
 import { writeSimpleSession } from "../support/fixtures.ts";
 import { openSidebar, startLive } from "../support/live.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { panelTab } from "../support/panel.ts";
 import { choose } from "../support/select.ts";
 import { tapSocket } from "../support/socket-tap.ts";
@@ -264,8 +265,7 @@ test("New chat's switch is off until it is turned on, and what it says is what t
 	page,
 }) => {
 	const tap = await tapSocket(page);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	const toggle = page.getByTestId("unattended-toggle");
 	await expect(toggle).toHaveAttribute("aria-checked", "false");
@@ -314,8 +314,7 @@ for (const lang of ["en", "zh-CN"] as const) {
 
 		// The default: a conversation started from New chat begins unattended, its switch on.
 		await card.getByTestId("unattended-default").check();
-		await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-		await page.goto("/");
+		await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 		await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 		await expect(page.getByTestId("unattended-toggle")).toHaveAttribute("aria-checked", "true", { timeout: 30_000 });
 		expect(tap.sent.findLast((m) => m.t === "open")?.target?.unattended).toBe(true);

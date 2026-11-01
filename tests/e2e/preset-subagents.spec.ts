@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { newChatIn } from "../support/new-chat.ts";
 import { choose } from "../support/select.ts";
 import { type APIRequestContext, expect, type Page, test } from "./fixtures.ts";
 
@@ -193,8 +194,7 @@ test("composer: a switched conversation saves the subagent models it runs on, ke
 }) => {
 	await savePreset(request, "review", { reviewer: HAIKU });
 	await savePreset(request, "bare", {});
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), work);
-	await page.goto("/");
+	await page.goto(newChatIn(work));
 	await expect(page.getByTestId("model-picker")).toContainText("Haiku 5.5", { timeout: 60_000 });
 	const item = (name: string) => page.getByTestId("preset-menu").locator(`[data-preset="${name}"]`);
 
@@ -245,8 +245,7 @@ test("composer: a conversation that follows the config saves the config's subage
 	page,
 	request,
 }) => {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), work);
-	await page.goto("/");
+	await page.goto(newChatIn(work));
 	await expect(page.getByTestId("model-picker")).toContainText("Haiku 5.5", { timeout: 60_000 });
 	await page.getByTestId("preset-picker").click();
 	await page.getByTestId("preset-save-current").click();

@@ -1,10 +1,10 @@
+import { newChatIn } from "../support/new-chat.ts";
 import { expect, test } from "./fixtures.ts";
 
 /** User `!commands` run in the background and can be stopped (omp RPC `bash` / `abort_bash`; no model call). */
 
 test("a long !command leaves the composer usable and Stop cancels it", async ({ page }) => {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	const composer = page.getByTestId("composer");
 	await composer.fill("!sleep 60 && echo never-printed");

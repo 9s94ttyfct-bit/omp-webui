@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
+import { newChatIn } from "../support/new-chat.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /**
@@ -25,14 +26,8 @@ test.beforeEach(async ({ e2eServer }) => {
 });
 
 async function openPicker(page: Page, lang: "en" | "zh-CN" = "en") {
-	await page.addInitScript(
-		([cwd, l]) => {
-			localStorage.setItem("ompw.cwd", cwd);
-			localStorage.setItem("ompw.lang", l);
-		},
-		[work(), lang],
-	);
-	await page.goto("/");
+	await page.addInitScript((l) => localStorage.setItem("ompw.lang", l), lang);
+	await page.goto(newChatIn(work()));
 	await page.getByTestId("cwd-picker").click();
 	const dialog = page.getByRole("dialog");
 	await expect(dialog.getByTestId("dir-up")).toBeVisible();

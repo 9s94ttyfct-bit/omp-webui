@@ -1,3 +1,4 @@
+import { newChatIn } from "../support/new-chat.ts";
 import { expect, test } from "./fixtures.ts";
 
 /** Messages queued while the agent works (real omp + Claude Haiku 5.5). */
@@ -5,8 +6,7 @@ import { expect, test } from "./fixtures.ts";
 test.skip(!process.env.OMPW_E2E_HAS_TOKEN, "needs an Anthropic token (omp token anthropic)");
 
 test("Stop withdraws queued messages back into the composer", async ({ page }) => {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toContainText(/haiku/i, { timeout: 60_000 });
 	const composer = page.getByTestId("composer");
 	await composer.fill("Run `sleep 20` with the bash tool, then reply FINISHED.");

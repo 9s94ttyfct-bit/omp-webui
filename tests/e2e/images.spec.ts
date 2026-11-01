@@ -1,5 +1,6 @@
 import { attachPicked } from "../support/drop-files.ts";
 import { appReady } from "../support/live.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /** Image attachments reach omp and persisted images render (real omp + Claude Haiku 5.5). */
@@ -24,8 +25,7 @@ async function wordPng(page: Page, word: string): Promise<Buffer> {
 }
 
 test("an attached image is sent to the model and shown after reload", async ({ page }) => {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toContainText(/haiku/i, { timeout: 60_000 });
 	const png = await wordPng(page, "PIZZA");
 

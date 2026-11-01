@@ -5,6 +5,7 @@ import { AUD, claims, EMAIL, makeKey, sign, startJwks, TEAM } from "../support/a
 import { ACCESS_COOKIE, startAccessTunnel } from "../support/access-tunnel.ts";
 import { FIXTURE } from "../support/fixtures.ts";
 import { holdState } from "../support/hold-state.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { startTestServer } from "../support/server.ts";
 import { expect, test } from "./fixtures.ts";
 
@@ -48,10 +49,9 @@ test("on a remote page the preset menu names the chosen preset before the conver
 
 		const context = await browser.newContext();
 		await context.addCookies([{ name: ACCESS_COOKIE, value: jwt, url: tunnel.url, httpOnly: true }]);
-		await context.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), server.work);
 		const page = await context.newPage();
 		const state = await holdState(page);
-		await page.goto(tunnel.url);
+		await page.goto(newChatIn(server.work, `${tunnel.url}/`));
 		expect(await page.evaluate(async () => (await (await fetch("/api/meta")).json()).remote)).toBe(true);
 
 		// New chat, before anything is sent: the answer to `get_state` is late, as on a slow connection.

@@ -1,3 +1,4 @@
+import { newChatIn } from "../support/new-chat.ts";
 import { expect, test } from "./fixtures.ts";
 
 /**
@@ -11,8 +12,7 @@ test("a real subagent is listed while it runs, can be watched, and is counted in
 	page,
 }) => {
 	test.setTimeout(300_000);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toContainText(/haiku/i, { timeout: 60_000 });
 	await page
 		.getByTestId("composer")

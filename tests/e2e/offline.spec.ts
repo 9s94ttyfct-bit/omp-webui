@@ -2,6 +2,7 @@ import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModeState } from "../../shared/offline.ts";
 import { ownSession, sessionRow, startLive } from "../support/live.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { choose as chooseOption, readOptions } from "../support/select.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
@@ -518,8 +519,7 @@ test("a new chat runs on the chosen backend, not on an unused process the old ch
 		offline: { backend: "omlx", baseUrls: { ...NO_ADDRESSES, ollama: ollama.url }, model: null },
 	});
 	try {
-		await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-		await page.goto("/");
+		await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 		const picker = page.getByTestId("model-picker");
 		await expect(picker).toContainText("stub-model", { timeout: 60_000 });
 		await page.getByTestId("mode-picker").click();
@@ -543,8 +543,7 @@ test("a new chat runs on the chosen backend, not on an unused process the old ch
 
 test("a new chat starts in the selected mode, again when the mode changes", async ({ page }) => {
 	await api("/api/mode", { mode: "light" });
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	const picker = page.getByTestId("model-picker");
 	// Light on a local server: oMLX's model. Full: the model of the user's own configuration.
 	await expect(picker).toContainText("stub-model", { timeout: 60_000 });
@@ -587,8 +586,7 @@ test("oMLX not answering is said where the user is looking, and the way back is 
 	await api("/api/mode", { mode: "light" });
 	writeFileSync(modelsPath, modelsYml("http://127.0.0.1:1/v1"));
 	try {
-		await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-		await page.goto("/");
+		await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 		await expect(page.getByText(/oMLX is not reachable at http:\/\/127\.0\.0\.1:1\/v1/).first()).toBeVisible({
 			timeout: 30_000,
 		});
@@ -655,8 +653,7 @@ test("a Light conversation on a local server has no presets: the picker is disab
 	page,
 }) => {
 	const tap = await tapSocket(page);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await pick(page, "light");
 	await expect(page.getByTestId("model-picker")).toContainText("stub-model", { timeout: 60_000 });
 	const picker = page.getByTestId("preset-picker");
@@ -719,8 +716,7 @@ test("New chat does not offer model-selecting flags in Light on a local server, 
 	page,
 }) => {
 	const tap = await tapSocket(page);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await pick(page, "full");
 	await page.getByRole("button", { name: /^Options/ }).click();
 	const form = page.getByTestId("flag-form");

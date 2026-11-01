@@ -1,4 +1,5 @@
 import { FIXTURE } from "../support/fixtures.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { expect, test } from "./fixtures.ts";
 
 /** Up and Down in the composer walk through the conversation's earlier prompts (a saved chat; no omp process needed). */
@@ -113,8 +114,7 @@ test("a recall puts the caret at the end of the prompt with the text, not in a l
 });
 
 test("a !command that was run is recalled with its !", async ({ page }) => {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	const composer = page.getByTestId("composer");
 	await composer.fill("!echo recall-me");

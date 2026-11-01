@@ -1,6 +1,7 @@
 import { rmSync } from "node:fs";
 import { attachPicked } from "../support/drop-files.ts";
 import { FIXTURE, writeSimpleSession } from "../support/fixtures.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /** What is typed and not sent stays with its conversation while the user looks at another one (no model call). */
@@ -43,8 +44,7 @@ test("an unsent message and its image stay with their conversation across a swit
 });
 
 test("the new-chat page keeps its unsent message while a conversation is open", async ({ page }) => {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	const sidebar = page.getByRole("complementary");
 	const composer = page.getByTestId("composer");
 	await composer.fill("an idea for later");

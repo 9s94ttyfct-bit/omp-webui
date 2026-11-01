@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { utcDate } from "../../web/src/lib/usage-series.ts";
 import { appReady } from "../support/live.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { topTab } from "../support/panel.ts";
 import { startTestServer } from "../support/server.ts";
 import { expect, type Page, test } from "./fixtures.ts";
@@ -10,9 +11,8 @@ import { expect, type Page, test } from "./fixtures.ts";
 test.describe.configure({ mode: "serial" });
 test.skip(!process.env.OMPW_E2E_HAS_TOKEN, "needs an Anthropic token (omp token anthropic)");
 
-async function startChat(page: Page, prompt: string, at = { url: "/", work: process.env.OMPW_E2E_WORK as string }) {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), at.work);
-	await page.goto(at.url);
+async function startChat(page: Page, prompt: string, at = { base: "/", work: process.env.OMPW_E2E_WORK as string }) {
+	await page.goto(newChatIn(at.work, at.base));
 	await expect(page.getByTestId("model-picker")).toContainText(/haiku/i, { timeout: 60_000 });
 	await page.getByTestId("composer").fill(prompt);
 	await page.getByTestId("send").click();
@@ -48,7 +48,7 @@ test("the server titles a new conversation after its first exchange", async ({ p
 	try {
 		// A real question: omp's title model declines to title trivial exchanges.
 		await startChat(page, "What is the capital of France? Answer in one short sentence.", {
-			url: `${s.url}/?token=${s.accessToken}`,
+			base: `${s.url}/?token=${s.accessToken}`,
 			work: s.work,
 		});
 		await expect(page.getByTestId("msg-assistant").last()).toContainText("Paris", { timeout: 90_000 });

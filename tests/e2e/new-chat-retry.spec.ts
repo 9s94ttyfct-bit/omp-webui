@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { newChatIn } from "../support/new-chat.ts";
 import { type SocketTap, tapSocket } from "../support/socket-tap.ts";
 import { type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
 import { expect, test } from "./fixtures.ts";
@@ -28,8 +29,7 @@ test("a failed start shows its error in full with Retry; Send says why instead o
 }) => {
 	const folder = join(process.env.OMPW_E2E_WORK as string, "not-yet");
 	const tap = await tapSocket(page);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), folder);
-	await page.goto("/");
+	await page.goto(newChatIn(folder));
 	const error = page.getByTestId("new-chat-error");
 	await expect(error).toContainText(/does not exist/i);
 	// The whole text is shown (wrapped), not cut to one line.
@@ -76,8 +76,7 @@ test.describe("a local backend that does not answer", () => {
 			offline: { backend: "ollama", baseUrls: { ollama: "http://127.0.0.1:1/v1" } },
 		});
 		const tap = await tapSocket(page);
-		await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-		await page.goto("/");
+		await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 		await expect(page.getByTestId("new-chat-error")).toBeVisible({ timeout: 30_000 });
 		expect(opens(tap)).toHaveLength(1);
 

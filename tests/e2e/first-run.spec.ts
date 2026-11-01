@@ -1,13 +1,14 @@
-import { rmSync } from "node:fs";
+import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type SocketTap, tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /**
- * A first run: omp's agent dir holds no conversations. The new-chat page waits for a folder to be chosen
- * (omp is not started in `~` on the user's behalf), the sidebar says how to start instead of offering
- * filters, and the usage page greets instead of showing a page of zeros (no model call).
+ * A first run: omp's agent dir holds no conversations. The new-chat page offers a new project, warms omp up in the home
+ * folder while the projects folder (`~/omp`) is not there yet, and makes nothing before the first message; the sidebar
+ * says how to start instead of offering filters, and the usage page greets instead of showing a page of zeros (no model
+ * call).
  */
 
 let s: TestServer;
@@ -27,48 +28,23 @@ const startedIn = (tap: SocketTap) => tap.sent.filter((m) => m.t === "open").map
 
 const start = (page: Page, hash = "") => page.goto(`${s.url}/?token=${s.accessToken}${hash}`);
 
-test("the new-chat page asks for a folder and starts no omp until one is chosen", async ({ page }) => {
+test("the new-chat page offers a new project, warms omp up in the home folder, and makes nothing before the first message", async ({
+	page,
+}) => {
+	const before = readdirSync(s.home).sort();
 	const tap = await tapSocket(page);
 	await start(page);
-	const chip = page.getByTestId("cwd-picker");
-	await expect(chip).toContainText("Choose a folder");
-	await expect(page.getByText("Choose a folder to start omp")).toBeVisible();
-	// The chip is the call to action: accent, unlike the folder chip of a chat that has a folder.
-	const accent = await page.evaluate(() => {
-		const probe = document.createElement("i");
-		probe.style.color = "var(--accent)";
-		document.body.append(probe);
-		const color = getComputedStyle(probe).color;
-		probe.remove();
-		return color;
-	});
-	await expect(chip).toHaveCSS("color", accent);
-	// A folder defaulted to `~` would start omp after the 250 ms start-up debounce.
-	await page.waitForTimeout(800);
-	expect(startedIn(tap)).toEqual([]);
-
-	// Sending without a folder asks for one and keeps the draft.
-	await page.getByTestId("composer").fill("hello");
-	await page.getByTestId("composer").press("Enter");
-	await expect(page.getByRole("dialog", { name: "Choose a working folder" })).toBeVisible();
-	await expect(page.getByTestId("composer")).toHaveValue("hello");
-	expect(startedIn(tap)).toEqual([]);
-
-	// Choosing a folder starts omp there.
-	const dialog = page.getByRole("dialog", { name: "Choose a working folder" });
-	// The dialog lists the home folder first and overwrites the path field when that arrives.
-	await expect(dialog.getByTestId("dir-up")).toBeVisible();
-	const path = dialog.getByRole("textbox", { name: "Path" });
-	await path.fill(`${s.work}/`);
-	await page.getByRole("button", { name: "Go", exact: true }).click();
-	// The listing has arrived once the server has normalized the path (it drops the trailing slash).
-	await expect(path).toHaveValue(s.work);
-	await page.getByRole("button", { name: "Use this folder" }).click();
-	await expect(chip).toContainText("work");
+	const name = page.getByTestId("new-project-name");
+	await expect(name).toBeVisible();
+	await expect(name).toBeFocused();
+	await expect(name).toHaveValue("");
+	await expect(page.getByTestId("cwd-picker")).toHaveCount(0);
+	// `~/omp` is not there before its first project: omp is warmed up in the home folder, for the pickers only.
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
-	const started = startedIn(tap);
-	expect(started).toHaveLength(1);
-	expect(started[0]).toMatch(/[\\/]work$/);
+	expect(startedIn(tap)).toEqual([s.home]);
+	await page.waitForTimeout(500);
+	expect(existsSync(join(s.home, "omp"))).toBe(false);
+	expect(readdirSync(s.home).sort()).toEqual(before);
 });
 
 test("the sidebar says how to start instead of offering filters", async ({ page }) => {
@@ -90,5 +66,5 @@ test("the usage page shows one welcome with a way to start", async ({ page }) =>
 	await expect(page.locator("table")).toHaveCount(0);
 	await expect(page.getByRole("heading", { name: "Most expensive conversations" })).toHaveCount(0);
 	await welcome.getByRole("button", { name: "Start a conversation" }).click();
-	await expect(page.getByTestId("cwd-picker")).toBeVisible();
+	await expect(page.getByTestId("new-project-name")).toBeVisible();
 });

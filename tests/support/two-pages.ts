@@ -9,6 +9,7 @@ import { ACCESS_COOKIE, type AccessTunnel, startAccessTunnel } from "./access-tu
 import { writeChatSession } from "./chat-session.ts";
 import { sessionRow } from "./live.ts";
 import { endAllLives } from "./lives.ts";
+import { newChatIn } from "./new-chat.ts";
 import type { Frame } from "./omp-frames.ts";
 import { startTestServer, type TestServer } from "./server.ts";
 import { writeSyncOmp } from "./sync-omp-bin.ts";
@@ -251,12 +252,9 @@ export async function startWorld(): Promise<World> {
 						}
 					};
 				});
-				await context.addInitScript((cwd) => {
-					localStorage.setItem("ompw.cwd", cwd);
-					localStorage.setItem("ompw.autoTitle", "off");
-				}, server.work);
+				await context.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
 				const page = await context.newPage();
-				await page.goto(url);
+				await page.goto(newChatIn(server.work, url));
 				// New chat's omp is up and has said which model it runs: what is typed now is not lost to a page still loading.
 				await expect(page.getByTestId("model-picker")).toContainText("Opus 5.5");
 				return page;

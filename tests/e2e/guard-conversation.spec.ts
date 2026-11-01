@@ -3,6 +3,7 @@ import type { GuardConfig, LiveGuard } from "../../shared/guard.ts";
 import { en } from "../../web/src/i18n/guard.ts";
 import { zh } from "../../web/src/i18n/zh-CN/guard.ts";
 import { ownSession, sessionRow, startLive } from "../support/live.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -186,8 +187,7 @@ test("New chat lets the guard be picked before the first message, and the proces
 	page,
 }) => {
 	const work = process.env.OMPW_E2E_WORK as string;
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), work);
-	await page.goto("/");
+	await page.goto(newChatIn(work));
 	const picker = page.getByTestId("guard-picker");
 	await expect(picker).toBeVisible({ timeout: 60_000 });
 	await expect(picker).toHaveAttribute("data-mode", "reviewer");

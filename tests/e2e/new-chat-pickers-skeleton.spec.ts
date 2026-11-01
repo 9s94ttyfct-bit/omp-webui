@@ -1,3 +1,4 @@
+import { newChatIn } from "../support/new-chat.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /**
@@ -73,8 +74,7 @@ for (const lang of ["en", "zh-CN"]) {
 test("the placeholder is not in the page's text: nothing announces it, and no translation key is shown for it", async ({
 	page,
 }) => {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	// Once the controls are there the placeholder is gone; what remains is the controls' own words.
 	await expect(page.getByTestId("pickers-skeleton")).toHaveCount(0);

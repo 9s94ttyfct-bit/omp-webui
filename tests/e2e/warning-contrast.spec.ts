@@ -1,4 +1,5 @@
 import { PALETTES } from "../../shared/prefs.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { contrastOf } from "../support/style.ts";
 import { expect, test } from "./fixtures.ts";
 
@@ -10,8 +11,7 @@ import { expect, test } from "./fixtures.ts";
  */
 
 test("the guard picker, off and under the pointer, is at least 4.5:1 in every palette and mode", async ({ page }) => {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	const picker = page.getByTestId("guard-picker");
 	await expect(picker).toContainText("Off", { timeout: 60_000 });
 	// No transition: the colours read are the ones the hover ends at.

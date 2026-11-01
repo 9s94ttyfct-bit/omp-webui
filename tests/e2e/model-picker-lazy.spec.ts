@@ -1,3 +1,4 @@
+import { newChatIn } from "../support/new-chat.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -21,7 +22,6 @@ const LIST_CHUNK = /\/assets\/ModelList-[^/]+\.js$/;
 async function openWithSlowList(page: Page, delayMs: number) {
 	const tap = await tapSocket(page);
 	tap.answer("get_available_models", () => ({ ok: true, data: { models: MODELS } }));
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
 	/** Settles once the chunk has been handed to the page. */
 	const served = Promise.withResolvers<void>();
 	await page.route(LIST_CHUNK, async (route) => {
@@ -29,7 +29,7 @@ async function openWithSlowList(page: Page, delayMs: number) {
 		await route.continue();
 		served.resolve();
 	});
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toContainText("Haiku 5.5", { timeout: 60_000 });
 	return { tap, served: served.promise };
 }

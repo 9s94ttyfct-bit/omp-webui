@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { newChatIn } from "../support/new-chat.ts";
 import { choose } from "../support/select.ts";
 import { type APIRequestContext, expect, type Page, test } from "./fixtures.ts";
 
@@ -89,8 +90,7 @@ test("the composer's menu lists the conversation's active preset first, marked; 
 	request,
 }) => {
 	await seed(request);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), work);
-	await page.goto("/");
+	await page.goto(newChatIn(work));
 	await expect(page.getByTestId("model-picker")).toContainText("Haiku 5.5", { timeout: 60_000 });
 
 	await page.getByTestId("preset-picker").click();
@@ -118,8 +118,7 @@ test("a conversation on no preset (Custom) marks none, and the list stays in its
 		headers: csrf,
 		data: { roles: { default: `${SONNET}:low`, smol: HAIKU }, defaultThinkingLevel: "high" },
 	});
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), work);
-	await page.goto("/");
+	await page.goto(newChatIn(work));
 	await expect(page.getByTestId("preset-picker")).toContainText("Custom", { timeout: 60_000 });
 	await page.getByTestId("preset-picker").click();
 	await expect(page.getByTestId("preset-menu").getByTestId("preset-item")).toHaveCount(2);

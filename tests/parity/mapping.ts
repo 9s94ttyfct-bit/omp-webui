@@ -48,7 +48,12 @@ export const FLAG_SURFACES: Record<string, Surface> = {
 		testid: "session-item",
 		note: "opening an interrupted conversation resumes it",
 	},
-	"--cwd": { kind: "control", route: "/", testid: "cwd-picker", note: "folder picker on the new-chat page" },
+	"--cwd": {
+		kind: "control",
+		route: "/",
+		testid: "use-existing-folder",
+		note: "Use an existing folder on the new-chat page (its folder picker)",
+	},
 	"--export": {
 		kind: "control",
 		route: "fixture-chat",

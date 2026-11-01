@@ -1,4 +1,5 @@
 import { openSidebar, ownSession, startLive } from "../support/live.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { type Msg, type SocketTap, tapSocket } from "../support/socket-tap.ts";
 import { boxOf } from "../support/style.ts";
 import { devices, expect, type Page, test } from "./fixtures.ts";
@@ -290,14 +291,13 @@ test("the shortcut and the palette open the goal dialog from a conversation", as
 // ------------------------------------------------------------------ New chat
 
 async function newChat(page: Page) {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
 	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
 	const tap = await tapSocket(page);
 	tap.answer("prompt", (c) =>
 		String(c.message).startsWith("Help me define a goal") ? { ok: true, data: { agentInvoked: true } } : undefined,
 	);
 	tap.answer("goal", (c) => (c.op === "create" ? { ok: true, data: { goal: null } } : undefined));
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	// The footer's controls appear once the process for the folder is up.
 	await expect(page.getByTestId("goal-mode")).toBeVisible({ timeout: 60_000 });
 	return tap;

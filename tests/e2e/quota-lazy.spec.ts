@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { newChatIn } from "../support/new-chat.ts";
 import { patchReplies } from "../support/state-patch.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -29,7 +30,7 @@ const REPORT = [
 	},
 ];
 
-/** omp only reports its provider after a model call: say it, so the meter has one before any. */
+/** New chat in `cwd`. omp only reports its provider after a model call: say it, so the meter has one before any. */
 async function newChatWithProvider(page: Page, cwd = process.env.OMPW_E2E_WORK as string) {
 	await page.route("**/api/usage**", (route) => route.fulfill({ json: REPORT }));
 	await patchReplies(page, {
@@ -39,7 +40,7 @@ async function newChatWithProvider(page: Page, cwd = process.env.OMPW_E2E_WORK a
 			return { ...state, model: { id: "claude-haiku-5-5", name: "Claude Haiku 5.5", ...model, provider: "anthropic" } };
 		},
 	});
-	await page.addInitScript((folder) => localStorage.setItem("ompw.cwd", folder), cwd);
+	await page.goto(newChatIn(cwd));
 }
 
 test("the page is served without the usage meter's chunk; it is fetched once the warm process exists, and the meter shows", async ({
@@ -56,7 +57,6 @@ test("the page is served without the usage meter's chunk; it is fetched once the
 		if (r.resourceType() === "script" && QUOTA_CHUNK.test(r.url())) fetched.push(r.url());
 	});
 	await newChatWithProvider(page);
-	await page.goto("/");
 	await expect(page.getByTestId("quota").getByTestId("quota-figure")).toHaveText("50% left", { timeout: 60_000 });
 	expect(fetched).toHaveLength(1);
 });
@@ -70,7 +70,6 @@ test("a long folder path leaves the meter on the folder's row, at desktop and ph
 	);
 	mkdirSync(deep, { recursive: true });
 	await newChatWithProvider(page, deep);
-	await page.goto("/");
 	const meter = page.getByTestId("quota");
 	await expect(meter).toBeVisible({ timeout: 60_000 });
 	for (const size of [
@@ -104,7 +103,6 @@ test("a missing usage meter is contained: a toast, the new chat page stays, with
 	await page.addInitScript(() => sessionStorage.setItem("ompw.chunkReloadAt", String(Date.now())));
 	await page.route(QUOTA_CHUNK, (route) => route.fulfill(gone));
 	await newChatWithProvider(page);
-	await page.goto("/");
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	await expect(page.getByTestId("toast").filter({ hasText: /usage meter couldn't load/ })).toBeVisible({
 		timeout: 30_000,

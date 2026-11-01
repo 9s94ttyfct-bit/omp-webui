@@ -1,5 +1,6 @@
 import { attachPicked } from "../support/drop-files.ts";
 import { FIXTURE } from "../support/fixtures.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /** A rejected send keeps the draft and attachments (the server's `prompt` reply is forced to fail; no model call). */
@@ -36,8 +37,7 @@ async function draft(page: Page, text: string) {
 
 test("a failed send in a new chat keeps the draft and stays on the new-chat page", async ({ page }) => {
 	await failPrompts(page);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	await draft(page, "keep me (new chat)");
 	await expect(page.getByTestId("cwd-picker")).toBeVisible();

@@ -1,5 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { newChatIn } from "../support/new-chat.ts";
 import { expect, type Locator, type Page, test } from "./fixtures.ts";
 
 /**
@@ -15,8 +16,7 @@ test.beforeAll(() => {
 test.afterAll(() => rmSync(base, { recursive: true, force: true }));
 
 async function openPicker(page: Page, folder = process.env.OMPW_E2E_WORK as string) {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), folder);
-	await page.goto("/");
+	await page.goto(newChatIn(folder));
 	await page.getByTestId("cwd-picker").click();
 	const dialog = page.getByRole("dialog");
 	await expect(dialog.getByTestId("dir-up")).toBeVisible();

@@ -1,4 +1,5 @@
 import { ownSession, sessionRow, startLive } from "../support/live.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { type Msg, type SocketTap, tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -17,10 +18,9 @@ test.afterEach(async ({ page }) => {
 });
 
 async function newChat(page: Page): Promise<SocketTap> {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), WORK());
 	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
 	const tap = await tapSocket(page);
-	await page.goto("/");
+	await page.goto(newChatIn(WORK()));
 	await expect(page.getByTestId("approval-picker")).toBeVisible({ timeout: 60_000 });
 	return tap;
 }
@@ -102,9 +102,8 @@ test("a mode that only a newer omp has is shown as omp names it, in the switcher
 			return { ...msg, info: named(msg.info as Record<string, unknown>) };
 		return msg;
 	});
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), WORK());
 	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
-	await page.goto("/");
+	await page.goto(newChatIn(WORK()));
 	await expect(picker(page)).toBeVisible({ timeout: 60_000 });
 	await expect(picker(page)).toHaveAttribute("data-mode", "paranoid");
 	await expect(picker(page)).toContainText("omp's setting: paranoid");
@@ -198,8 +197,7 @@ test("a mode the server refuses is reported and the switcher goes back to the mo
 		});
 		server.onMessage((raw) => ws.send(raw));
 	});
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), WORK());
-	await page.goto("/");
+	await page.goto(newChatIn(WORK()));
 	await expect(picker(page)).toBeVisible({ timeout: 60_000 });
 	await picker(page).click();
 	await page.getByTestId("approval-always-ask").click();
@@ -246,8 +244,7 @@ test("the default mode for new conversations is chosen in Settings and applies t
 	await page.getByTestId("approval-default-always-ask").check();
 	await expect.poll(async () => (await (await api(page).get("/api/approval")).json()).mode).toBe("always-ask");
 
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), WORK());
-	await page.goto("/");
+	await page.goto(newChatIn(WORK()));
 	await expect(picker(page)).toHaveAttribute("data-mode", "always-ask", { timeout: 60_000 });
 
 	// Back to following omp.
@@ -369,8 +366,7 @@ test.describe("with a model", () => {
 	test("Ask every time asks before a command, and Auto-approve switched on mid-conversation stops the asking", async ({
 		page,
 	}) => {
-		await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), WORK());
-		await page.goto("/");
+		await page.goto(newChatIn(WORK()));
 		await expect(page.getByTestId("model-picker")).toContainText(/haiku/i, { timeout: 60_000 });
 		await choose(page, "always-ask");
 

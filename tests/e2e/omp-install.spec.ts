@@ -259,7 +259,7 @@ test("installing with Homebrew shows the install as it runs, then the setup, whi
 		await page.getByTestId("setup-finish").click();
 
 		// The new-chat page, with the app around it, and what was chosen is what omp and the web UI keep.
-		await expect(page.getByTestId("cwd-picker")).toBeVisible();
+		await expect(page.getByTestId("new-project-name")).toBeVisible();
 		await expect(page.getByTestId("onboarding")).toHaveCount(0);
 		await expect(page.getByTestId("first-run")).toHaveCount(0);
 		expect(await api<{ mode: string }>(run, "/api/approval")).toMatchObject({ mode: "always-ask" });
@@ -270,7 +270,7 @@ test("installing with Homebrew shows the install as it runs, then the setup, whi
 
 		// And it stays finished.
 		await page.reload();
-		await expect(page.getByTestId("cwd-picker")).toBeVisible();
+		await expect(page.getByTestId("new-project-name")).toBeVisible();
 		await expect(page.getByTestId("onboarding")).toHaveCount(0);
 	} finally {
 		await run.stop();
@@ -340,9 +340,9 @@ test("omp's own installer leaves omp where PATH does not reach, and it is found 
 		expect(state.state.bin).toBe(join(run.server.home, ".local", "bin", "omp"));
 
 		await page.getByTestId("setup-skip").click();
-		await expect(page.getByTestId("cwd-picker")).toBeVisible();
+		await expect(page.getByTestId("new-project-name")).toBeVisible();
 		await page.reload();
-		await expect(page.getByTestId("cwd-picker")).toBeVisible();
+		await expect(page.getByTestId("new-project-name")).toBeVisible();
 		await expect(page.getByTestId("onboarding")).toHaveCount(0);
 	} finally {
 		await run.stop();
@@ -388,7 +388,7 @@ test("omp installed by hand while the screen is open is found by looking again, 
 		// Installed in a terminal: a launcher in a Homebrew layout on PATH.
 		placeBrewOmp(run.world.prefix, run.world.template, "18.12.1");
 		await page.getByTestId("install-recheck").click();
-		await expect(page.getByTestId("cwd-picker")).toBeVisible();
+		await expect(page.getByTestId("new-project-name")).toBeVisible();
 		await expect(page.getByTestId("first-run")).toHaveCount(0);
 		// The user did the install, so there is no first-time setup to walk through.
 		await expect(page.getByTestId("onboarding")).toHaveCount(0);

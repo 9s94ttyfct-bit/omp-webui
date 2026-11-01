@@ -1,3 +1,4 @@
+import { newChatIn } from "../support/new-chat.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { expect, test } from "./fixtures.ts";
 
@@ -12,9 +13,7 @@ test.afterAll(async () => {
 });
 
 test("after a server restart a new chat starts a fresh omp and sends (no model call)", async ({ page }) => {
-	await page.goto(`${s.url}/?token=${s.accessToken}`);
-	await page.evaluate((cwd) => localStorage.setItem("ompw.cwd", cwd), s.work);
-	await page.reload();
+	await page.goto(newChatIn(s.work, `${s.url}/?token=${s.accessToken}`));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 
 	await s.restart();
@@ -29,9 +28,7 @@ test("after a server restart a new chat starts a fresh omp and sends (no model c
 
 test("after a server restart the open chat resumes on the next send", async ({ page }) => {
 	test.skip(!process.env.OMPW_E2E_HAS_TOKEN, "needs an Anthropic token (omp token anthropic)");
-	await page.goto(`${s.url}/?token=${s.accessToken}`);
-	await page.evaluate((cwd) => localStorage.setItem("ompw.cwd", cwd), s.work);
-	await page.reload();
+	await page.goto(newChatIn(s.work, `${s.url}/?token=${s.accessToken}`));
 	await expect(page.getByTestId("model-picker")).toContainText(/haiku/i, { timeout: 60_000 });
 
 	const composer = page.getByTestId("composer");
@@ -56,9 +53,7 @@ test("after a server restart the open chat resumes on the next send", async ({ p
 test("a paused command survives a server restart: still paused, and Resume finishes it (no model call)", async ({
 	page,
 }) => {
-	await page.goto(`${s.url}/?token=${s.accessToken}`);
-	await page.evaluate((cwd) => localStorage.setItem("ompw.cwd", cwd), s.work);
-	await page.reload();
+	await page.goto(newChatIn(s.work, `${s.url}/?token=${s.accessToken}`));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 
 	const composer = page.getByTestId("composer");
@@ -81,9 +76,7 @@ test("a paused command survives a server restart: still paused, and Resume finis
 });
 
 test("after the page loads again, a conversation the server holds paused is listed as paused", async ({ page }) => {
-	await page.goto(`${s.url}/?token=${s.accessToken}`);
-	await page.evaluate((cwd) => localStorage.setItem("ompw.cwd", cwd), s.work);
-	await page.reload();
+	await page.goto(newChatIn(s.work, `${s.url}/?token=${s.accessToken}`));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	const composer = page.getByTestId("composer");
 	await composer.fill("!sleep 20");

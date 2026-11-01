@@ -1,4 +1,5 @@
 import { askForFeedback } from "../support/feedback.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /**
@@ -196,8 +197,7 @@ test("a missing model list is contained: a toast, the popover gone, and every la
 }) => {
 	const documents = countDocuments(page);
 	await page.route(MODEL_LIST_CHUNK, (route) => route.fulfill(gone));
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toContainText("Haiku 5.5", { timeout: 60_000 });
 	await page.getByTestId("model-picker").click();
 	// The first failure reloads the tab once; the chunk is still gone afterwards.
@@ -223,8 +223,7 @@ test("a model list chunk that cannot be fetched ahead of the click does not relo
 }) => {
 	const documents = countDocuments(page);
 	await page.route(MODEL_LIST_CHUNK, (route) => route.fulfill(gone));
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	const picker = page.getByTestId("model-picker");
 	await expect(picker).toContainText("Haiku 5.5", { timeout: 60_000 });
 
@@ -258,8 +257,7 @@ for (const [name, chunk, message] of [
 	}) => {
 		const documents = countDocuments(page);
 		await page.route(chunk, (route) => route.fulfill(gone));
-		await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-		await page.goto("/");
+		await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 		// The first failure reloads the tab once; the chunk is still gone afterwards, so the second one is a toast.
 		await expect.poll(documents, { timeout: 60_000 }).toBe(2);
 		await expect(page.getByTestId("toast").filter({ hasText: message })).toBeVisible({ timeout: 60_000 });

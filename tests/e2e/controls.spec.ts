@@ -1,5 +1,6 @@
 import { unfoldAdvanced } from "../support/controls.ts";
 import { appReady } from "../support/live.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { panelTab } from "../support/panel.ts";
 import { expect, test } from "./fixtures.ts";
 
@@ -9,8 +10,7 @@ test.describe.configure({ mode: "serial" });
 test.skip(!process.env.OMPW_E2E_HAS_TOKEN, "needs an Anthropic token (omp token anthropic)");
 
 test("session settings apply to omp and compaction reports omp's outcome", async ({ page }) => {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toContainText(/haiku/i, { timeout: 60_000 });
 	await page.getByTestId("composer").fill("Name three primary colors, comma separated.");
 	await page.getByTestId("send").click();

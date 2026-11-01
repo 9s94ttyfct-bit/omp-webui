@@ -1,3 +1,4 @@
+import { newChatIn } from "../support/new-chat.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /** Loved models are listed first in the model picker and stay loved after a reload (no model call). */
@@ -11,8 +12,7 @@ async function openPicker(page: Page) {
 }
 
 test("loving a model pins it to the top of the picker without switching to it", async ({ page }) => {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	const picker = page.getByTestId("model-picker");
 	await expect(picker).toBeVisible({ timeout: 60_000 });
 	const before = await picker.textContent();

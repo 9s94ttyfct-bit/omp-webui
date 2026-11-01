@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { FIXTURE_BUCKET, FIXTURE_CWD } from "../support/fixtures.ts";
 import { boxOf } from "../support/geometry.ts";
 import { openSidebar, ownSession, sessionRow, startLive } from "../support/live.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { patchReplies } from "../support/state-patch.ts";
 import { type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
@@ -60,8 +61,7 @@ async function openSaved(page: Page, n: number, title: string) {
 test("the provider's remaining quota is shown in the chat header", async ({ page }) => {
 	let fraction = 0.22;
 	await page.route("**/api/usage**", (route) => route.fulfill({ json: reports(fraction) }));
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	await page.getByTestId("composer").fill("!echo quota");
 	await page.getByTestId("composer").press("Enter");
@@ -93,8 +93,7 @@ test("the provider's remaining quota is shown in the chat header", async ({ page
 test("New chat shows the quota once the warm omp reports its provider", async ({ page }) => {
 	await page.route("**/api/usage**", (route) => route.fulfill({ json: reports(0.5) }));
 	await sayProvider(page);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	await expect(page.getByTestId("quota").getByTestId("quota-figure")).toHaveText("50% left", { timeout: 30_000 });
 });

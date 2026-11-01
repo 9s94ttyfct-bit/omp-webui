@@ -1,3 +1,4 @@
+import { newChatIn } from "../support/new-chat.ts";
 import { type SocketTap, tapSocket } from "../support/socket-tap.ts";
 import { expect, test } from "./fixtures.ts";
 
@@ -14,10 +15,7 @@ const PROFILE = "--profile";
 const opens = (tap: SocketTap) => tap.sent.filter((m) => m.t === "open");
 
 test("the options that keep a conversation's transcript in another folder are offered again", async ({ page }) => {
-	// New chat's own folder: left to itself it takes the most recent conversation's, which an earlier spec of the worker
-	// may have removed (resume-folder's, git-status's), and New chat then shows that error instead of the model picker.
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	await page.getByRole("button", { name: /^Options/ }).click();
 	const form = page.getByTestId("flag-form");
@@ -29,8 +27,7 @@ test("the options that keep a conversation's transcript in another folder are of
 
 test("a conversation started with --session-dir is started with it", async ({ page }) => {
 	const tap = await tapSocket(page);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	await page.getByRole("button", { name: /^Options/ }).click();
 	const field = page.locator(`[data-flag="${FLAG}"]`);

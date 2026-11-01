@@ -68,7 +68,7 @@ test("bulk-deleting the conversation on screen takes the page back to New chat",
 		await page.getByTestId("confirm-bulk-delete").click();
 		await expect.poll(() => existsSync(file), { timeout: 60_000 }).toBe(false);
 		await expect(page.getByTestId("chat-title")).toHaveCount(0);
-		await expect(page.getByTestId("cwd-picker")).toBeVisible();
+		await expect(page.getByTestId("new-project-name")).toBeVisible();
 	} finally {
 		rmSync(file, { force: true });
 	}

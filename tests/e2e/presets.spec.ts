@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { holdState } from "../support/hold-state.ts";
 import { ownSession, sessionRow, startLive } from "../support/live.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { choose } from "../support/select.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { type APIRequestContext, expect, type Page, test } from "./fixtures.ts";
@@ -78,8 +79,7 @@ async function seed(request: APIRequestContext) {
 }
 
 async function openNewChat(page: Page) {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), work);
-	await page.goto("/");
+	await page.goto(newChatIn(work));
 	await expect(page.getByTestId("model-picker")).toContainText("Haiku 5.5", { timeout: 60_000 });
 }
 
@@ -557,7 +557,7 @@ test("presets a project defines are read-only in Settings, and still switch in t
 		page.getByTestId("model-presets").locator('[data-testid="preset-row"][data-preset="projonly"]'),
 	).toHaveCount(0);
 
-	await page.goto("/#/");
+	await page.goto(newChatIn(work));
 	await expect(page.getByTestId("model-picker")).toContainText("Haiku 5.5", { timeout: 60_000 });
 	await page.getByTestId("preset-picker").click();
 	await expect(item(page, "projonly")).toContainText("Project");

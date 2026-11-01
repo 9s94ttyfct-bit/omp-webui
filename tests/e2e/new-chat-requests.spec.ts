@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeChatSession } from "../support/chat-session.ts";
 import { writeLongFakeOmp } from "../support/long-fake-omp-bin.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { expect, test } from "./fixtures.ts";
 
@@ -44,11 +45,8 @@ test("a new chat asks for no file omp has not written: no 404, no console error,
 		const { url } = m.location();
 		if (m.type() === "error" && /\/api\/(family|subagents)\?/.test(url)) errors.push(`${m.text()} (${url})`);
 	});
-	await page.addInitScript((cwd) => {
-		localStorage.setItem("ompw.cwd", cwd);
-		localStorage.setItem("ompw.autoTitle", "off");
-	}, s.work);
-	await page.goto(`${s.url}/?token=${s.accessToken}`);
+	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
+	await page.goto(newChatIn(s.work, `${s.url}/?token=${s.accessToken}`));
 	const composer = page.getByTestId("composer");
 	await expect(composer).toBeVisible();
 	// The page starts omp for the folder a moment after it opens; a prompt sent before that is kept as a draft.

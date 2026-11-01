@@ -75,7 +75,9 @@ test("every control still shows some focus cue", async ({ page }) => {
 	await check("thinking select", page.getByTestId("thinking-picker"));
 	await check("goal toggle", page.getByTestId("goal-mode"));
 	await check("send", page.getByTestId("send"));
-	await check("folder", page.getByTestId("cwd-picker"));
+	await check("project name", page.getByTestId("new-project-name"));
+	await check("existing folder", page.getByTestId("use-existing-folder"));
+	await check("projects folder", page.getByTestId("new-project-root-change"));
 	await check("options", page.getByRole("button", { name: /^Options/ }));
 	await check("sidebar filter", page.getByTestId("session-filter"));
 	await check("project list", page.getByLabel("Project"));

@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import { openSidebar, startLive } from "../support/live.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { rpcState } from "../support/rpc-state.ts";
 import { type Msg, tapSocket } from "../support/socket-tap.ts";
 import { sessionWithSubagents } from "../support/subagent-fixtures.ts";
@@ -71,8 +72,7 @@ test("the goal bar's toggle and a job's row are named by what they show", async 
 });
 
 test("New chat's guard picker is named by what it shows", async ({ page }) => {
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	const picker = page.getByTestId("guard-picker");
 	await expect(picker).toBeVisible({ timeout: 60_000 });
 	expect(await mismatches(page, '[data-testid="guard-picker"]')).toEqual([]);
@@ -82,8 +82,7 @@ test("New chat's guard picker is named by what it shows", async ({ page }) => {
 
 test("New chat's Mode chip in the phone's ⋯ panel is named by what it shows (#788)", async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await page.getByTestId("composer-more").click({ timeout: 60_000 });
 	const panel = page.getByTestId("composer-more-panel");
 	const chip = panel.getByTestId("mode-picker");

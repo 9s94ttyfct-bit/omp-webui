@@ -2,6 +2,7 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { writeChatSession } from "../support/chat-session.ts";
 import { appReady } from "../support/live.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { choose, readOptions } from "../support/select.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
@@ -25,8 +26,7 @@ function levelsOf(reply: unknown): string[] {
 
 test("levels are listed without focusing the picker and follow the model", async ({ page }) => {
 	const tap = await tapSocket(page);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	const picker = page.getByTestId("thinking-picker");
 	await expect(picker).toBeVisible({ timeout: 60_000 });
 
@@ -67,8 +67,7 @@ test("levels are listed without focusing the picker and follow the model", async
  */
 test("`auto` is offered, shown with the level it resolved to, and left and chosen again", async ({ page }) => {
 	const tap = await tapSocket(page);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	const picker = page.getByTestId("thinking-picker");
 	await expect(picker).toBeVisible({ timeout: 60_000 });
 	await expect.poll(() => tap.commands(LEVELS).length).toBeGreaterThanOrEqual(1);
@@ -139,8 +138,7 @@ test("a conversation omp starts on `auto` by its config shows Auto", async ({ pa
 				timeout: 15_000,
 			})
 			.toBe("anthropic/claude-haiku-5-5:auto");
-		await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-		await page.goto("/");
+		await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 		const picker = page.getByTestId("thinking-picker");
 		await expect(picker).toBeVisible({ timeout: 60_000 });
 		await expect(picker).toHaveAttribute("data-value", "auto", { timeout: 15_000 });
@@ -157,8 +155,7 @@ test("a conversation omp starts on `auto` by its config shows Auto", async ({ pa
 test("choosing Auto keeps it selected when omp accepts it without announcing a change", async ({ page }) => {
 	const tap = await tapSocket(page);
 	tap.answer("set_thinking_level", () => ({ ok: true }));
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	const picker = page.getByTestId("thinking-picker");
 	await expect(picker).toBeVisible({ timeout: 60_000 });
 	await expect.poll(() => levelsShown(page)).toContain("auto");

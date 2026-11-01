@@ -1,4 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
+import { newChatIn } from "../support/new-chat.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -22,8 +23,7 @@ const MODELS = [
 async function openPicker(page: Page) {
 	const tap = await tapSocket(page);
 	tap.answer("get_available_models", () => ({ ok: true, data: { models: MODELS } }));
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toContainText("Haiku 5.5", { timeout: 60_000 });
 	await page.getByTestId("model-picker").click();
 	await expect(page.getByRole("option", { name: /Claude Haiku 5\.5/ })).toBeAttached();
@@ -82,8 +82,7 @@ test("a list omp answered empty is not kept: the picker asks again the next time
 	// Seen on CI: omp's first answer was an empty list for a process that had a model (#208).
 	let answers = 0;
 	tap.answer("get_available_models", () => ({ ok: true, data: { models: answers++ === 0 ? [] : MODELS } }));
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	const picker = page.getByTestId("model-picker");
 	await expect(picker).toContainText("Haiku 5.5", { timeout: 60_000 });
 	const dialog = page.getByRole("dialog", { name: "Choose model" });

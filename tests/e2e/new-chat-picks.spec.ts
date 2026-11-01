@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { newChatIn } from "../support/new-chat.ts";
 import { choose, readOptions } from "../support/select.ts";
 import { type SocketTap, tapSocket } from "../support/socket-tap.ts";
 import { type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
@@ -27,8 +28,7 @@ const OPTION = '[data-flag="--append-system-prompt"]';
 
 async function newChat(page: Page) {
 	const tap = await tapSocket(page);
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("thinking-picker")).toBeVisible({ timeout: 60_000 });
 	return tap;
 }
@@ -104,8 +104,7 @@ test("a choice the new process refuses is dropped with a warning, and the proces
 	// The first set_model (the user's) is the real omp's; the one for the restarted process is refused.
 	let sets = 0;
 	tap.answer("set_model", () => (sets++ === 0 ? undefined : { ok: false, error: "Model not found: gone" }));
-	await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-	await page.goto("/");
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toContainText("Haiku 5.5", { timeout: 60_000 });
 	await pickOtherModel(page, tap);
 

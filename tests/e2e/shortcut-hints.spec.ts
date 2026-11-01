@@ -1,3 +1,4 @@
+import { newChatIn } from "../support/new-chat.ts";
 import { expect, test } from "./fixtures.ts";
 
 /**
@@ -24,8 +25,7 @@ for (const p of platforms) {
 			(platform) => Object.defineProperty(navigator, "platform", { get: () => platform }),
 			p.platform,
 		);
-		await page.addInitScript((cwd) => localStorage.setItem("ompw.cwd", cwd), process.env.OMPW_E2E_WORK as string);
-		await page.goto("/");
+		await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 
 		const side = page.getByRole("complementary");
 		await expect(side.getByTestId("new-chat")).toContainText(p.newChat);
