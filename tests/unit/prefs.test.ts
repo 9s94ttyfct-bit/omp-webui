@@ -86,6 +86,10 @@ describe("the server's store", () => {
 			{ [PREF.usageDays]: "{}" },
 			{ [PREF.star]: "[1]" },
 			{ [PREF.dismissed]: "not json" },
+			{ [PREF.animations]: "yes" },
+			{ [PREF.animations]: "" },
+			{ [PREF.animationIntensity]: "wild" },
+			{ [PREF.animationIntensity]: "Normal" },
 		];
 		for (const changes of bad) expect(() => prefs.apply(changes), JSON.stringify(changes)).toThrow(PrefsError);
 		expect(prefs.snapshot()).toEqual(good);
@@ -103,6 +107,8 @@ describe("the server's store", () => {
 			[PREF.usageDays]: '["2026-10-18"]',
 			[PREF.star]: '{"never":true}',
 			[PREF.dismissed]: "{}",
+			[PREF.animations]: "on",
+			[PREF.animationIntensity]: "lively",
 			[PREF.cwd]: "anything at all",
 		});
 		expect(fine.values[PREF.theme]).toBe("system");

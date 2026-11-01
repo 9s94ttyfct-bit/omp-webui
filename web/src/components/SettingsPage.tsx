@@ -16,6 +16,7 @@ import { inShell } from "../lib/shell-notify.ts";
 import { applyTheme } from "../lib/theme.ts";
 import { autoTitleEnabled, closeLive, useApp } from "../store/app.ts";
 import { Accounts, isAccountsHelper } from "./Accounts.tsx";
+import { AnimationSettings } from "./AnimationSettings.tsx";
 import { ApprovalSettings } from "./ApprovalSettings.tsx";
 import { CompactAtSettings } from "./CompactAtSettings.tsx";
 import { CompactWhereSettings } from "./CompactWhereSettings.tsx";
@@ -270,6 +271,7 @@ export function SettingsPage() {
 								))}
 							</fieldset>
 							<PalettePicker />
+							<AnimationSettings />
 							<div className="mt-3 flex flex-wrap items-center gap-3">
 								<Button data-testid="reset-layout" className="shrink-0 whitespace-nowrap" onClick={resetAllWidths}>
 									{t("pages.settingsResetLayout")}

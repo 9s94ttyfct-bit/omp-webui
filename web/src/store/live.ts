@@ -706,7 +706,7 @@ function hasResult(s: LiveState, id: string): boolean {
 }
 
 /** The newest message of the conversation: the one still streaming in, else the last saved one. */
-function newestMessage(s: LiveState): AgentMessage | null {
+export function newestMessage(s: Pick<LiveState, "overlay" | "entries">): AgentMessage | null {
 	const streamed = s.overlay.at(-1)?.message;
 	if (streamed) return streamed;
 	for (let i = s.entries.length - 1; i >= 0; i--) {
