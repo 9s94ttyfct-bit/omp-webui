@@ -31,10 +31,30 @@ Renderer raster time was 140–176 ms in every run (raster done in the GPU proce
   painted again as the reply grew. The caret and the glow cost about **60–90 more (+1–2 %)**.
 - **No dropped frames could be attributed to the animations**, before or after: 0–2 frames of 4 226 in every configuration,
   animations off included. The main thread's time is within the noise of the machine.
-- So the stutter the person sees was not reproduced here. What differs from this trace: a headed window on a real display
-  (and its refresh rate), the person's own conversations (longer histories, the agent graph open beside them), and a machine
-  doing other work. If it comes back, `--headed` and the person's session (`--session <file>`, the goal scenario) are the
-  next things to trace.
+
+**Headed** (`--headed`, a window on the Mac's own display at 120 Hz, 1440 × 900; one run each, alternating; dropped frames
+counted against the display's own frame interval):
+
+| Build | Animations | Frames | Dropped | Paints | Main thread (s) |
+| --- | --- | ---: | ---: | ---: | ---: |
+| before | off | 8411 | 37 | 5736 | 13.2 |
+| after | off | 8411 | 34 | 5714 | 13.8 |
+| before | on, Normal | 8410 | 37 | 7351 | 15.8 |
+| after | on, Normal | 8404 | 41 | 5726 | 14.1 |
+| before | on, Lively | 8405 | 47 | 7421 | 17.5 |
+| after | on, Lively | 8401 | 45 | 5742 | 15.1 |
+
+- On a real display the shimmer cost +28 % paints and 2.6–4.3 s more main-thread time per turn; the caret and glow cost
+  about as much as no animations (within one run's noise).
+- Frames are dropped, 0.4–0.6 % of them, **with the animations off as much as on**, and almost all in the last 20 s of the
+  reply (windows 51–69 s): the main thread's time per 3 s window grows from about 0.5 s to 1 s as the reply grows to
+  122 000 px, and frames start to go once it passes about 0.9 s.
+- A CPU profile of 6 s late in the reply (animations off, `--profile`): 2.4 s busy, of it 1.4 s the browser's own work
+  (style, layout, paint) and 0.3 s in `useFollowEnd`'s `pin` (`lib/follow-end.ts`): putting the view at the end of the
+  transcript sets `scrollTop` and reads `scrollHeight` after each update, a layout of the whole page each time. So the
+  stutter late in a long reply is the transcript's own cost of following a growing reply, not the animations. That is
+  not changed in v0.17.0; it is the next thing to look at (a pin once per frame instead of once per update, or the browser's
+  own scroll anchoring at the end).
 
 **Changed.** The shimmer band is gone (v0.17.0): a caret breathes at the end of the text being written (a pseudo-element of
 2 × 16 px, opacity only), and the running time glows (an accent copy of the label over it, opacity only).

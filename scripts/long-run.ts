@@ -992,9 +992,6 @@ async function traced(cdp: CDPSession, path: string, during: () => Promise<void>
 	return Array.isArray(parsed) ? parsed : (parsed.traceEvents ?? []);
 }
 
-/** At 60 Hz: a gap between two animation frames longer than this missed at least one. */
-const FRAME_MS = 1000 / 60;
-
 async function runMotion(page: Page, cdp: CDPSession, conversation: string): Promise<void> {
 	const lines = Number(opt("lines", "3000"));
 	const streamMs = Number(opt("stream-s", "40")) * 1000;
@@ -1048,6 +1045,11 @@ async function runMotion(page: Page, cdp: CDPSession, conversation: string): Pro
 				`writing: ${await page.evaluate(() => JSON.stringify({ carets: document.querySelectorAll(".live-caret").length, motion: document.querySelectorAll("[data-motion]").length, animations: localStorage.getItem("ompw.animations"), digits: document.querySelectorAll(".live-digits").length }))}`,
 			);
 		}
+		// `--profile`: a CPU profile of 6 s late in the text, where the reply is longest (not for the measured runs).
+		else if (wantProfile) {
+			await sleep(3000 + streamMs * 0.6 + streamMs * 0.7);
+			await cpuProfile(cdp, 6000, join(outDir, "late.cpuprofile"));
+		}
 		await page.getByTestId("stop").waitFor({ state: "detached", timeout: streamMs * 3 + 60_000 });
 		const ranMs = Date.now() - ranFrom;
 		if (ranMs < streamMs / 2) throw new Error(`the turn ran ${ranMs} ms, not the reply's ${streamMs} ms`);
@@ -1090,15 +1092,14 @@ async function runMotion(page: Page, cdp: CDPSession, conversation: string): Pro
 		else if (e.name === "RasterTask" && e.ph === "X") row.rasterMs += (e.dur ?? 0) / 1000;
 		else if (e.name === "RunTask" && e.tid === mainTid && e.ph === "X") row.mainMs += (e.dur ?? 0) / 1000;
 	}
+	// The display's own frame interval (60 Hz headless, 120 Hz on a ProMotion screen): the median gap.
+	const gaps = frameTimes.slice(1).map((t, i) => t - (frameTimes[i] as number));
+	const frameMs = percentile(gaps, 50) || 1000 / 60;
 	for (let i = 0; i < frameTimes.length; i++) {
 		const row = rows[Math.floor(((frameTimes[i] as number) - startedAt) / windowMs)];
 		if (!row) continue;
 		row.frames++;
-		if (i > 0)
-			row.dropped += Math.max(
-				0,
-				Math.round(((frameTimes[i] as number) - (frameTimes[i - 1] as number)) / FRAME_MS) - 1,
-			);
+		if (i > 0) row.dropped += Math.max(0, Math.round((gaps[i - 1] as number) / frameMs) - 1);
 	}
 	const out = rows.map((r) => ({ ...r, rasterMs: Math.round(r.rasterMs), mainMs: Math.round(r.mainMs) }));
 	const total = out.reduce(
