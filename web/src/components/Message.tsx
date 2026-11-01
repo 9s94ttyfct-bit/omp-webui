@@ -375,12 +375,12 @@ function AssistantMessage({ entry, message, toolResults, tools, actions, streami
 	const bs = blocks(message);
 	const text = textOf(message);
 	const motion = useLiveMotion();
-	// While the model writes this reply, with live animations on: a band of light goes over it. Not once no turn runs (a
-	// reply omp never ended is not being written).
-	const shimmer = streaming && !idle && motion !== null;
+	// While the model writes this reply, with live animations on: a caret that breathes at the end of its text (the last
+	// block, when that is text). Not once no turn runs (a reply omp never ended is not being written).
+	const writing = streaming && !idle && motion !== null;
+	const lastBlock = bs.length - 1;
 	return (
-		<div className={cx("fade-in", shimmer && "relative")} data-testid="msg-assistant" data-entry-id={entry?.id}>
-			{shimmer ? <span className="live-shimmer" data-motion={motion} data-testid="live-shimmer" aria-hidden /> : null}
+		<div className="fade-in" data-testid="msg-assistant" data-entry-id={entry?.id}>
 			{/* The clock time the reply started (#691): its own short line, there from the reply's first frame. */}
 			{message.timestamp ? (
 				<div className="flex h-4 items-center">
@@ -394,7 +394,8 @@ function AssistantMessage({ entry, message, toolResults, tools, actions, streami
 					return b.thinking?.trim() ? <Markdown key={key} text={b.thinking} /> : null;
 				if (b.type === "thinking" && b.thinking?.trim())
 					return <Thinking key={key} text={b.thinking} streaming={streaming && i === bs.length - 1} />;
-				if (b.type === "text" && b.text) return <Markdown key={key} text={b.text} />;
+				if (b.type === "text" && b.text)
+					return <Markdown key={key} text={b.text} caret={writing && i === lastBlock ? motion : null} />;
 				if (b.type === "toolCall" && b.id) {
 					// Keyed by its place, like the other blocks: while the arguments stream the call has a stand-in id
 					// (`pending-<i>`, see `applyDelta`), and a key that changed with it would remount the running card,

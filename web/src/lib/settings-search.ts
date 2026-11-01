@@ -91,7 +91,7 @@ export const SETTINGS: readonly SettingEntry[] = [
 		aliases: [
 			"animation",
 			"motion",
-			"shimmer",
+			"caret",
 			"particles",
 			"confetti",
 			"celebration",

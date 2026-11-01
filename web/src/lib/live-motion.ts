@@ -4,8 +4,8 @@ import { type LiveState, newestMessage } from "../store/live.ts";
 import { onPrefsChanged, setPref } from "./prefs.ts";
 
 /**
- * Live animations (v0.15.0): motion that follows what the agent does. A shimmer over the reply being written and the turn's
- * running figures, a moving bar on a running tool card, particles along the agent graph's lines when agents start one
+ * Live animations (v0.15.0; caret and glow v0.17.0): motion that follows what the agent does. A caret that breathes at the
+ * end of the reply being written and a glow on the turn's running time, a moving bar on a running tool card, particles along the agent graph's lines when agents start one
  * another, write to one another or hand back a result, and a short burst when a turn or a goal ends well.
  *
  * Off unless the person turns them on (`ompw.animations`), at the intensity they chose (`ompw.animationIntensity`), and off

@@ -180,14 +180,33 @@ export function LiveTurnStats({ live }: { live: LiveState }) {
 	return (
 		<div className={ROW} data-testid="turn-stats-live">
 			{clock ? (
-				<span className={motion ? `${ITEM} relative rounded` : ITEM} data-stat="running">
+				<span className={motion ? `${ITEM} relative` : ITEM} data-stat="running">
 					{t("chat.statRunning", { value: fmtElapsed(now - clock.startedAt) })}
 					{motion ? (
-						<span className="live-shimmer" data-motion={motion} data-testid="live-shimmer" aria-hidden />
+						<RunningGlow
+							label={t("chat.statRunning", { value: "\u0000" })}
+							value={fmtElapsed(now - clock.startedAt)}
+							motion={motion}
+						/>
 					) : null}
 				</span>
 			) : null}
 			<Figures tokens={stats ?? undefined} ttftMs={ttftMs} tokensPerSecond={stats?.tokensPerSecond} />
 		</div>
+	);
+}
+
+/**
+ * The running time's glow (live animations): the same words over them, transparent but for the time, which is in the
+ * accent, its opacity breathing. Drawn once per tick of the clock; only its opacity moves.
+ */
+function RunningGlow({ label, value, motion }: { label: string; value: string; motion: string }) {
+	const [before = "", after = ""] = label.split("\u0000");
+	return (
+		<span className="live-digits" data-motion={motion} data-testid="live-digits" aria-hidden>
+			<span className="text-transparent">{before}</span>
+			{value}
+			<span className="text-transparent">{after}</span>
+		</span>
 	);
 }

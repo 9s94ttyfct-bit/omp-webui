@@ -16,7 +16,8 @@ import { tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /**
- * Live animations (v0.15.0): off by default; turned on in Settings › Appearance, a shimmer over the reply being written, a
+ * Live animations (v0.15.0; v0.17.0 caret): off by default; turned on in Settings › Appearance, a caret that breathes at
+ * the end of the reply being written and a glow on the turn's running time, a
  * bar on a running tool card, a burst when the turn ends well, particles along the agent graph's lines; none under the
  * system's reduced motion. Once the agent is idle nothing is left: no running animation and no animation frame asked for
  * over two seconds (`requestAnimationFrame` is counted from before the page's own scripts run). Frames are pushed over the
@@ -111,7 +112,7 @@ test("off by default: Settings shows it off, and a turn draws no animation of it
 	const frame = await chat(page, 0xa0, "Motion off probe");
 	const none = async () => {
 		await expect(page.locator("[data-motion]")).toHaveCount(0);
-		await expect(page.locator(".live-shimmer, .live-progress, .graph-particle")).toHaveCount(0);
+		await expect(page.locator(".live-caret, .live-digits, .live-progress, .graph-particle")).toHaveCount(0);
 	};
 	await runTurn(page, frame, "off", { writing: none, tool: none });
 	await page.waitForTimeout(300);
@@ -119,7 +120,7 @@ test("off by default: Settings shows it off, and a turn draws no animation of it
 	await none();
 });
 
-test("on: a shimmer while the model writes, a bar on the running tool, a burst at the end, then nothing moves; a goal's burst", async ({
+test("on: a caret while the model writes, a bar on the running tool, a burst at the end, then nothing moves; a goal's burst", async ({
 	page,
 }) => {
 	await countFrames(page);
@@ -133,14 +134,24 @@ test("on: a shimmer while the model writes, a bar on the running tool, a burst a
 	const frame = await chat(page, 0xa1, "Motion on probe");
 	await runTurn(page, frame, "on", {
 		writing: async () => {
-			const shimmer = assistant(page).last().getByTestId("live-shimmer");
-			await expect(shimmer).toHaveAttribute("data-motion", "lively");
-			// The turn's running figures shimmer too.
-			await expect(page.getByTestId("turn-stats-live").getByTestId("live-shimmer")).toHaveCount(1);
-			const names = await shimmer.evaluate((el) =>
+			// One caret, at the end of the reply being written, breathing; no band of light over it any more.
+			await expect(page.getByTestId("live-caret")).toHaveCount(1);
+			const caret = assistant(page).last().getByTestId("live-caret");
+			await expect(caret).toHaveAttribute("data-motion", "lively");
+			const names = await caret.evaluate((el) =>
 				el.getAnimations({ subtree: true }).map((a) => (a as CSSAnimation).animationName),
 			);
-			expect(names).toEqual(["live-sweep"]);
+			expect(names).toEqual(["live-caret"]);
+			expect(await caret.evaluate((el) => getComputedStyle(el.lastElementChild as Element, "::after").content)).toBe(
+				'""',
+			);
+			await expect(page.locator('.live-shimmer, [data-testid="live-shimmer"]')).toHaveCount(0);
+			// The running time glows: the digits, not a box.
+			const digits = page.getByTestId("turn-stats-live").getByTestId("live-digits");
+			await expect(digits).toHaveCount(1);
+			expect(await digits.evaluate((el) => el.getAnimations().map((a) => (a as CSSAnimation).animationName))).toEqual([
+				"live-glow",
+			]);
 		},
 		tool: async () => {
 			const card = page.locator('[data-testid="tool-card"][data-tool="bash"]').last();
@@ -156,6 +167,7 @@ test("on: a shimmer while the model writes, a bar on the running tool, a burst a
 	// It lasts a moment, and goes.
 	await expect(burst).toHaveCount(0, { timeout: 5000 });
 	await expect(page.locator("[data-motion]")).toHaveCount(0);
+	await expect(page.getByTestId("live-caret")).toHaveCount(0);
 
 	// Idle: nothing is animated and no frame is asked for.
 	const idle = await idleFor(page, 2000);
@@ -191,7 +203,7 @@ test("the system's reduced motion turns them off, and Settings says so", async (
 	await page.emulateMedia({ reducedMotion: "no-preference" });
 	await runTurn(page, frame, "again", {
 		writing: async () => {
-			await expect(assistant(page).last().getByTestId("live-shimmer")).toHaveAttribute("data-motion", "normal");
+			await expect(assistant(page).last().getByTestId("live-caret")).toHaveAttribute("data-motion", "normal");
 		},
 		tool: async () => {
 			await expect(page.getByTestId("live-tool-progress")).toHaveCount(1);

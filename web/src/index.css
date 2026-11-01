@@ -786,27 +786,22 @@ html[data-agent-full] .app-shell {
  * intensity in `data-motion`. Only `transform` and `opacity` move, so the compositor runs them without a layout or a paint.
  */
 [data-motion] {
-	--lm-glow: 14%;
+	--lm-caret-low: 0.25;
+	--lm-glow-peak: 0.55;
 	--lm-bar: 0.6;
 	--lm-sweep: 1.8s;
 }
 [data-motion="subtle"] {
-	--lm-glow: 8%;
+	--lm-caret-low: 0.45;
+	--lm-glow-peak: 0.35;
 	--lm-bar: 0.35;
 	--lm-sweep: 2.6s;
 }
 [data-motion="lively"] {
-	--lm-glow: 24%;
+	--lm-caret-low: 0.1;
+	--lm-glow-peak: 0.8;
 	--lm-bar: 0.9;
 	--lm-sweep: 1.3s;
-}
-@keyframes live-sweep {
-	from {
-		transform: translateX(-100%);
-	}
-	to {
-		transform: translateX(100%);
-	}
 }
 @keyframes live-progress {
 	from {
@@ -816,25 +811,57 @@ html[data-agent-full] .app-shell {
 		transform: translateX(250%);
 	}
 }
-/* A band of light over the reply being written and the turn's running figures. */
-.live-shimmer {
-	position: absolute;
-	inset: 0;
-	overflow: hidden;
-	border-radius: inherit;
-	pointer-events: none;
+@keyframes live-caret {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: var(--lm-caret-low);
+	}
 }
-.live-shimmer::after {
+@keyframes live-glow {
+	0%,
+	100% {
+		opacity: 0;
+	}
+	50% {
+		opacity: var(--lm-glow-peak);
+	}
+}
+/*
+ * A caret that breathes at the end of the reply being written (`Markdown`'s `caret`): after the last line of text, inside
+ * the last paragraph, heading or list item; under the last block when that is code, a table or a rule. A pseudo-element of
+ * a few pixels: its box is all that is ever drawn again.
+ */
+.live-caret > blockquote:last-child > p:last-child::after,
+.live-caret > :last-child:is(p, h1, h2, h3, h4, h5, h6)::after,
+.live-caret > :last-child:is(ul, ol) > li:last-child:not(:has(> p, > ul, > ol))::after,
+.live-caret > :last-child:is(ul, ol) > li:last-child > p:last-child::after,
+.live-caret:not(:has(> :last-child:is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote)))::after {
 	content: "";
+	display: inline-block;
+	width: 2px;
+	height: 1em;
+	margin-left: 2px;
+	vertical-align: -0.15em;
+	border-radius: 1px;
+	background: var(--accent);
+	animation: live-caret var(--lm-sweep) ease-in-out infinite;
+	will-change: opacity;
+}
+/*
+ * The turn's running time glows: a copy of the label over it, transparent but for the time, in the accent; only its
+ * opacity moves (no shadow: one would also draw around the transparent words).
+ */
+.live-digits {
 	position: absolute;
 	inset: 0;
-	background: linear-gradient(
-		105deg,
-		transparent 30%,
-		color-mix(in srgb, var(--accent) var(--lm-glow), transparent) 50%,
-		transparent 70%
-	);
-	animation: live-sweep var(--lm-sweep) ease-in-out infinite;
+	color: var(--accent);
+	pointer-events: none;
+	white-space: nowrap;
+	animation: live-glow calc(var(--lm-sweep) * 1.4) ease-in-out infinite;
+	will-change: opacity;
 }
 /* A running tool card's bar along its bottom edge. */
 .live-progress {

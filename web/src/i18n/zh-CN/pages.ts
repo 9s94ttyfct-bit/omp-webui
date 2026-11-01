@@ -60,7 +60,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	settingsResetLayoutHint: "拖动侧边栏或侧边面板的边缘即可调整大小，大小会被记住。这里可以把两者都恢复为默认大小。",
 	settingsAnimations: "实时动画",
 	settingsAnimationsHint:
-		"跟随智能体工作的动效：模型输出时的一道微光、运行中工具卡片底部的进度条、代理图上子代理被启动、互发消息或交回结果时沿连线流动的粒子，以及一轮对话或一个目标顺利完成时的短暂庆祝。智能体空闲时没有任何动画在运行。",
+		"跟随智能体工作的动效：模型输出时文字末尾一个明暗呼吸的光标、运行时间数字的柔光、运行中工具卡片底部的进度条、代理图上子代理被启动、互发消息或交回结果时沿连线流动的粒子，以及一轮对话或一个目标顺利完成时的短暂庆祝。智能体空闲时没有任何动画在运行。",
 	settingsAnimationIntensity: "强度",
 	settingsAnimationSubtle: "轻微",
 	settingsAnimationNormal: "正常",

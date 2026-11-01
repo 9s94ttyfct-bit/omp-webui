@@ -433,10 +433,19 @@ const MarkdownGroup = memo(function MarkdownGroup({ group }: { group: Group }) {
 	);
 });
 
-/** Blocks cut from one text (see `splitBlocks`), rendered as that text renders whole: react-markdown puts a newline between top-level nodes, and so does this between blocks. */
-export function MarkdownBlocks({ blocks }: { blocks: readonly Block[] }) {
+/**
+ * Blocks cut from one text (see `splitBlocks`), rendered as that text renders whole: react-markdown puts a newline between
+ * top-level nodes, and so does this between blocks. `caret`: the live animations' intensity while this text is being
+ * written, which puts a caret that breathes at its end (`.live-caret` in index.css); the blocks themselves do not render
+ * again for it.
+ */
+export function MarkdownBlocks({ blocks, caret = null }: { blocks: readonly Block[]; caret?: string | null }) {
 	return (
-		<div className="prose-omp">
+		<div
+			className={caret ? "prose-omp live-caret" : "prose-omp"}
+			data-motion={caret ?? undefined}
+			data-testid={caret ? "live-caret" : undefined}
+		>
 			{blocks.map((block, i) => (
 				// biome-ignore lint/suspicious/noArrayIndexKey: a block is identified by its place; the text only grows at the end
 				<Fragment key={i}>
@@ -450,9 +459,9 @@ export function MarkdownBlocks({ blocks }: { blocks: readonly Block[] }) {
 
 /**
  * The text as Markdown. An answer streams in at its end: it is cut into blocks and each token renders and parses only
- * the last one, instead of everything written so far.
+ * the last one, instead of everything written so far. `caret`: see `MarkdownBlocks`.
  */
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+export const Markdown = memo(function Markdown({ text, caret = null }: { text: string; caret?: string | null }) {
 	const t = useT();
 	const nesting = useRef<Nesting | undefined>(undefined);
 	const last = useRef<Blocks | undefined>(undefined);
@@ -470,5 +479,5 @@ export const Markdown = memo(function Markdown({ text }: { text: string }) {
 	}
 	const split = splitBlocks(text, last.current);
 	last.current = split;
-	return <MarkdownBlocks blocks={split.blocks} />;
+	return <MarkdownBlocks blocks={split.blocks} caret={caret} />;
 });
