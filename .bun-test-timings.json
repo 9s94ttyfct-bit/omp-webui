@@ -380,6 +380,7 @@
     "tests/unit/transfer-items.test.ts": 12,
     "tests/unit/feedback.test.ts": 11,
     "tests/unit/file-edit.test.ts": 11,
+    "tests/unit/guidance-start.test.ts": 11,
     "tests/unit/instance-ports.test.ts": 11,
     "tests/unit/loaded.test.ts": 11,
     "tests/unit/model-catalog.test.ts": 11,
