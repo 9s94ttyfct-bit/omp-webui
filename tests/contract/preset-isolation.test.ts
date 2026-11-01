@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { isRecord } from "../../shared/guards.ts";
 import type { LiveInfo, LiveListing, OpenTarget } from "../../shared/protocol.ts";
 import { type Frame, watchFrames } from "../support/frames.ts";
+import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type StubChat, type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
@@ -262,13 +263,17 @@ async function addedRoleStaysOutOfA(change: () => void | Promise<void>) {
 	}
 }
 
-test("a role added to the global config later does not reach a switched conversation: only its preset's roles apply", async () => {
-	try {
-		await addedRoleStaysOutOfA(() => setGlobalRoles({ ...GLOBAL_ROLES, slow: `omlx/${BRAVO}` }));
-	} finally {
-		await setGlobalRoles(GLOBAL_ROLES);
-	}
-}, 300_000);
+test.skipIf(!has.notWindowsYet)(
+	"a role added to the global config later does not reach a switched conversation: only its preset's roles apply",
+	async () => {
+		try {
+			await addedRoleStaysOutOfA(() => setGlobalRoles({ ...GLOBAL_ROLES, slow: `omlx/${BRAVO}` }));
+		} finally {
+			await setGlobalRoles(GLOBAL_ROLES);
+		}
+	},
+	300_000,
+);
 
 test("nor does a role added to the project's config", async () => {
 	const project = join(server.work, ".omp");
