@@ -6,6 +6,7 @@ import { isRecord } from "../../shared/guards.ts";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { STOP_GRACE_MS } from "../../shared/stop.ts";
 import { type Frame, messageWhere, type ServerMsg, watchFrames } from "../support/frames.ts";
+import { has } from "../support/needs.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import {
@@ -389,43 +390,47 @@ test("(d) a tool that does not end (sleep 600): Stop ends the turn within the bo
  * Measured against omp 18.12.6: its abort ends the turn and the tool's process with it (gone within a few seconds), and omp is
  * not ended: Stop has nothing to add here, so the conversation is idle on the same process.
  */
-test("(d) a tool that ignores TERM, INT and HUP: Stop ends the turn within the bound and the conversation is idle", async () => {
-	const { chat } = await stuck("tool-trap", (f) => f.type === "tool_execution_start");
-	let tool = 0;
-	try {
-		await pollUntil(() => existsSync(pidFile), "the stuck tool to write its pid");
-		tool = Number(readFileSync(pidFile, "utf8").trim());
-		const omp = (await chat.listing())?.pid;
-		expect(tool).not.toBe(omp);
-		expect(processExists(tool)).toBe(true);
-		const { ms } = await chat.stop(3);
-		expect(ms).toBeLessThan(allowed(chat, ENDED_BY_SERVER_MS));
-		// omp ended the turn, or the server ended omp: no stream and no retry at the answer.
-		const left = await chat.listing();
-		expect(left === undefined || (left.streaming === false && left.retry === undefined)).toBe(true);
-		// Nothing holds it busy a moment after: omp says the session is settled with a frame of its own, behind the answer (on a
-		// slow machine well behind it), as `expectIdleAndUsable` waits for too.
-		await pollUntil(
-			async () => {
-				const now = await chat.listing();
-				return now === undefined || now.busy === false;
-			},
-			"the conversation to be idle",
-			allowed(chat, ENDS_BY_ITSELF_MS),
-		);
-		await pollUntil(() => !processExists(tool), "omp to end the stuck tool", 10_000);
-	} finally {
-		// The tool is this test's own process: it does not outlive the test, whatever happened to it.
-		if (tool > 0) {
-			try {
-				process.kill(tool, "SIGKILL");
-			} catch {
-				// already gone
+test.skipIf(!has.posixSignals)(
+	"(d) a tool that ignores TERM, INT and HUP: Stop ends the turn within the bound and the conversation is idle",
+	async () => {
+		const { chat } = await stuck("tool-trap", (f) => f.type === "tool_execution_start");
+		let tool = 0;
+		try {
+			await pollUntil(() => existsSync(pidFile), "the stuck tool to write its pid");
+			tool = Number(readFileSync(pidFile, "utf8").trim());
+			const omp = (await chat.listing())?.pid;
+			expect(tool).not.toBe(omp);
+			expect(processExists(tool)).toBe(true);
+			const { ms } = await chat.stop(3);
+			expect(ms).toBeLessThan(allowed(chat, ENDED_BY_SERVER_MS));
+			// omp ended the turn, or the server ended omp: no stream and no retry at the answer.
+			const left = await chat.listing();
+			expect(left === undefined || (left.streaming === false && left.retry === undefined)).toBe(true);
+			// Nothing holds it busy a moment after: omp says the session is settled with a frame of its own, behind the answer (on a
+			// slow machine well behind it), as `expectIdleAndUsable` waits for too.
+			await pollUntil(
+				async () => {
+					const now = await chat.listing();
+					return now === undefined || now.busy === false;
+				},
+				"the conversation to be idle",
+				allowed(chat, ENDS_BY_ITSELF_MS),
+			);
+			await pollUntil(() => !processExists(tool), "omp to end the stuck tool", 10_000);
+		} finally {
+			// The tool is this test's own process: it does not outlive the test, whatever happened to it.
+			if (tool > 0) {
+				try {
+					process.kill(tool, "SIGKILL");
+				} catch {
+					// already gone
+				}
 			}
+			chat.close();
 		}
-		chat.close();
-	}
-}, 120_000);
+	},
+	120_000,
+);
 
 test.skipIf(!capabilities.pauseResume)(
 	"a paused conversation that is mid-turn is stopped: it runs again, and the turn ends",
@@ -461,39 +466,43 @@ test.skipIf(!capabilities.pauseResume)(
 	90_000,
 );
 
-test("(e) a background job of the session that is not a subagent is left running by Stop: Stop answers, omp and the job are not ended", async () => {
-	const { chat } = await stuck("bg-job", (f) => f.type === "tool_execution_end");
-	let job = 0;
-	try {
-		await pollUntil(() => existsSync(jobFile), "the background job to write its pid");
-		job = Number(readFileSync(jobFile, "utf8").trim());
-		const omp = (await chat.listing())?.pid as number;
-		expect(job).not.toBe(omp);
-		// The turn is over, and the job keeps the session busy for as long as it runs (omp's `isSettled: false`).
-		await pollUntil(async () => {
-			const l = await chat.listing();
-			return l?.streaming === false && l.busy === true;
-		}, "the turn to end with the job still running");
-		const { ms, answers } = await chat.stop(3);
-		expect(ms).toBeLessThan(allowed(chat, ENDS_BY_ITSELF_MS));
-		expect(answers.some((a) => a.ended !== undefined)).toBe(false);
-		// Stop is for the turn: omp keeps its job, and omp is not ended for it.
-		expect((await chat.listing())?.pid).toBe(omp);
-		expect(processExists(omp)).toBe(true);
-		expect(processExists(job)).toBe(true);
-		mode = "ok";
-		await chat.say("NEXT MARK-NEXT");
-	} finally {
-		if (job > 0) {
-			try {
-				process.kill(job, "SIGKILL");
-			} catch {
-				// already gone
+test.skipIf(!has.posixSignals)(
+	"(e) a background job of the session that is not a subagent is left running by Stop: Stop answers, omp and the job are not ended",
+	async () => {
+		const { chat } = await stuck("bg-job", (f) => f.type === "tool_execution_end");
+		let job = 0;
+		try {
+			await pollUntil(() => existsSync(jobFile), "the background job to write its pid");
+			job = Number(readFileSync(jobFile, "utf8").trim());
+			const omp = (await chat.listing())?.pid as number;
+			expect(job).not.toBe(omp);
+			// The turn is over, and the job keeps the session busy for as long as it runs (omp's `isSettled: false`).
+			await pollUntil(async () => {
+				const l = await chat.listing();
+				return l?.streaming === false && l.busy === true;
+			}, "the turn to end with the job still running");
+			const { ms, answers } = await chat.stop(3);
+			expect(ms).toBeLessThan(allowed(chat, ENDS_BY_ITSELF_MS));
+			expect(answers.some((a) => a.ended !== undefined)).toBe(false);
+			// Stop is for the turn: omp keeps its job, and omp is not ended for it.
+			expect((await chat.listing())?.pid).toBe(omp);
+			expect(processExists(omp)).toBe(true);
+			expect(processExists(job)).toBe(true);
+			mode = "ok";
+			await chat.say("NEXT MARK-NEXT");
+		} finally {
+			if (job > 0) {
+				try {
+					process.kill(job, "SIGKILL");
+				} catch {
+					// already gone
+				}
 			}
+			chat.close();
 		}
-		chat.close();
-	}
-}, 120_000);
+	},
+	120_000,
+);
 
 test("an abort without the Stop marker (cancelling an interview) is omp's plain command: no subagent is cancelled and omp is not ended", async () => {
 	const { chat } = await stuck("sub-limit", subagentRetry);

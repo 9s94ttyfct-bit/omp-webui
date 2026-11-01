@@ -1,3 +1,4 @@
+// needs: posixFiles
 import { afterAll, afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

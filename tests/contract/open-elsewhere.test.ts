@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { RpcClient } from "../../server/omp/rpc-client.ts";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { platform } from "../../server/platform/index.ts";
 import { type LeaseSystem, leaseHeldElsewhere, SESSION_LEASE_SINCE } from "../../server/sessions/lease.ts";
 import { compareVersions, parseVersion } from "../../shared/omp-install.ts";
@@ -113,78 +114,90 @@ test("renaming or deleting a conversation that a terminal's omp has open is refu
 	expect(existsSync(file)).toBe(false);
 }, 120_000);
 
-test("a conversation open here too: refused while a terminal's omp holds it, not while the server's own process does", async () => {
-	// omp says only that the lease is held, and the server's process holds it only once it has written: an idle one
-	// opened before the terminal wrote does not, and the rename it would carry out would go to a copy.
-	const file = realpathSync(writeSimpleSession(s.agentDir, 0x62, "Open here and in a terminal"));
-	const files = () => readdirSync(dirname(file)).filter((f) => f.endsWith(".jsonl"));
-	const before = files();
-	const ws = await connect(s);
-	try {
-		const live = await request<LiveInfo>(ws, { t: "open", target: { kind: "resume", sessionFile: file } });
-		const terminal = await terminalOn(file);
-		const rename = await post("/api/session/rename", { file, title: "Renamed in the web UI" });
+test.skipIf(!capabilities.leaseHolders)(
+	"a conversation open here too: refused while a terminal's omp holds it, not while the server's own process does",
+	async () => {
+		// omp says only that the lease is held, and the server's process holds it only once it has written: an idle one
+		// opened before the terminal wrote does not, and the rename it would carry out would go to a copy.
+		const file = realpathSync(writeSimpleSession(s.agentDir, 0x62, "Open here and in a terminal"));
+		const files = () => readdirSync(dirname(file)).filter((f) => f.endsWith(".jsonl"));
+		const before = files();
+		const ws = await connect(s);
+		try {
+			const live = await request<LiveInfo>(ws, { t: "open", target: { kind: "resume", sessionFile: file } });
+			const terminal = await terminalOn(file);
+			const rename = await post("/api/session/rename", { file, title: "Renamed in the web UI" });
+			expect(rename.status).toBe(409);
+			expect(String(rename.body.error)).toMatch(/another omp process/);
+			expect(files()).toEqual(before);
+			terminal.kill("SIGKILL");
+			await terminal.whenExited;
+
+			// The server's process writes the name: the lease is its own from then on, and it renames it again.
+			const first = await post("/api/session/rename", { file, title: "Renamed in the web UI" });
+			expect(first.status).toBe(200);
+			const again = await post("/api/session/rename", { file, title: "Renamed again" });
+			expect(again.status).toBe(200);
+			await pollUntil(async () => (await titleOf(file)) === "Renamed again", "the new name to be listed");
+			expect(files()).toEqual(before);
+			await request(ws, { t: "close", liveId: live.liveId });
+		} finally {
+			ws.close();
+		}
+	},
+	120_000,
+);
+
+test.skipIf(!capabilities.leaseHolders)(
+	"with PI_CONFIG_DIR set, a conversation a terminal's omp holds is refused as well",
+	async () => {
+		// The server and the terminal's omp run with the same PI_CONFIG_DIR; omp keeps the lease under it, not under ~/.omp.
+		const file = realpathSync(writeSimpleSession(alt.agentDir, 0x63, "Held under another config root"));
+		const files = () => readdirSync(dirname(file)).filter((f) => f.endsWith(".jsonl"));
+		const before = files();
+		const terminal = await terminalOn(file, alt, await terminalEnv(alt, { PI_CONFIG_DIR: ALT }));
+		const rename = await post("/api/session/rename", { file, title: "Renamed in the web UI" }, alt);
 		expect(rename.status).toBe(409);
 		expect(String(rename.body.error)).toMatch(/another omp process/);
 		expect(files()).toEqual(before);
 		terminal.kill("SIGKILL");
 		await terminal.whenExited;
+	},
+	120_000,
+);
 
-		// The server's process writes the name: the lease is its own from then on, and it renames it again.
-		const first = await post("/api/session/rename", { file, title: "Renamed in the web UI" });
-		expect(first.status).toBe(200);
-		const again = await post("/api/session/rename", { file, title: "Renamed again" });
-		expect(again.status).toBe(200);
-		await pollUntil(async () => (await titleOf(file)) === "Renamed again", "the new name to be listed");
-		expect(files()).toEqual(before);
-		await request(ws, { t: "close", liveId: live.liveId });
-	} finally {
-		ws.close();
-	}
-}, 120_000);
-
-test("with PI_CONFIG_DIR set, a conversation a terminal's omp holds is refused as well", async () => {
-	// The server and the terminal's omp run with the same PI_CONFIG_DIR; omp keeps the lease under it, not under ~/.omp.
-	const file = realpathSync(writeSimpleSession(alt.agentDir, 0x63, "Held under another config root"));
-	const files = () => readdirSync(dirname(file)).filter((f) => f.endsWith(".jsonl"));
-	const before = files();
-	const terminal = await terminalOn(file, alt, await terminalEnv(alt, { PI_CONFIG_DIR: ALT }));
-	const rename = await post("/api/session/rename", { file, title: "Renamed in the web UI" }, alt);
-	expect(rename.status).toBe(409);
-	expect(String(rename.body.error)).toMatch(/another omp process/);
-	expect(files()).toEqual(before);
-	terminal.kill("SIGKILL");
-	await terminal.whenExited;
-}, 120_000);
-
-test("the real omp's lease under PI_CONFIG_DIR: omp says it is held, and the system read finds it where omp keeps it", async () => {
-	const file = realpathSync(writeSimpleSession(s.agentDir, 0x64, "Held, read both ways"));
-	const id = basename(file, ".jsonl").split("_")[1];
-	const env = await terminalEnv(s, { PI_CONFIG_DIR: ALT });
-	const terminal = await terminalOn(file, s, env);
-	const { PI_CONFIG_DIR: _, ...withoutConfigDir } = env;
-	const system = (extra: Record<string, string>): LeaseSystem => ({
-		env: { ...process.env, ...extra },
-		home: env.HOME,
-		platform: platform.id,
-		proc: "/proc",
-	});
-	// An omp older than `omp session lease`: the system is read, which names the holder.
-	const older = { bin: "omp", version: "18.13.3" };
-	const read = await leaseHeldElsewhere(id, null, older, system(env));
-	expect(read?.pids.length).toBeGreaterThan(0);
-	expect(read?.pids).not.toContain(process.pid);
-	// Under the default config root nobody holds it.
-	expect(await leaseHeldElsewhere(id, null, older, system(withoutConfigDir))).toBeNull();
-	if (ompAnswers) {
-		// omp itself is asked, which names no process.
-		const current = { bin: "omp", version: installed };
-		expect(await leaseHeldElsewhere(id, null, current, system(env))).toEqual({ pids: [] });
-		expect(await leaseHeldElsewhere(id, null, current, system(withoutConfigDir))).toBeNull();
-	}
-	terminal.kill("SIGKILL");
-	await terminal.whenExited;
-	expect(await leaseHeldElsewhere(id, null, older, system(env))).toBeNull();
-	if (ompAnswers)
-		expect(await leaseHeldElsewhere(id, null, { bin: "omp", version: installed }, system(env))).toBeNull();
-}, 120_000);
+test.skipIf(!capabilities.leaseHolders)(
+	"the real omp's lease under PI_CONFIG_DIR: omp says it is held, and the system read finds it where omp keeps it",
+	async () => {
+		const file = realpathSync(writeSimpleSession(s.agentDir, 0x64, "Held, read both ways"));
+		const id = basename(file, ".jsonl").split("_")[1];
+		const env = await terminalEnv(s, { PI_CONFIG_DIR: ALT });
+		const terminal = await terminalOn(file, s, env);
+		const { PI_CONFIG_DIR: _, ...withoutConfigDir } = env;
+		const system = (extra: Record<string, string>): LeaseSystem => ({
+			env: { ...process.env, ...extra },
+			home: env.HOME,
+			platform: platform.id,
+			proc: "/proc",
+		});
+		// An omp older than `omp session lease`: the system is read, which names the holder.
+		const older = { bin: "omp", version: "18.13.3" };
+		const read = await leaseHeldElsewhere(id, null, older, system(env));
+		expect(read?.pids.length).toBeGreaterThan(0);
+		expect(read?.pids).not.toContain(process.pid);
+		// Under the default config root nobody holds it.
+		expect(await leaseHeldElsewhere(id, null, older, system(withoutConfigDir))).toBeNull();
+		if (ompAnswers) {
+			// omp itself is asked, which names no process.
+			const current = { bin: "omp", version: installed };
+			expect(await leaseHeldElsewhere(id, null, current, system(env))).toEqual({ pids: [] });
+			expect(await leaseHeldElsewhere(id, null, current, system(withoutConfigDir))).toBeNull();
+		}
+		terminal.kill("SIGKILL");
+		await terminal.whenExited;
+		expect(await leaseHeldElsewhere(id, null, older, system(env))).toBeNull();
+		if (ompAnswers)
+			expect(await leaseHeldElsewhere(id, null, { bin: "omp", version: installed }, system(env))).toBeNull();
+	},
+	120_000,
+);

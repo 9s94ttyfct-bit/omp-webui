@@ -33,3 +33,13 @@ export function serverTmp(base: string, dataDir: string): string {
 	mkdirSync(dir, { recursive: true, mode: 0o700 });
 	return dir;
 }
+
+/** The environment that makes `dir` a process's temp dir: `TMPDIR` on macOS and Linux, `TEMP` and `TMP` on Windows. */
+export function tempDirEnv(dir: string): { TMPDIR: string; TEMP: string; TMP: string } {
+	return { TMPDIR: dir, TEMP: dir, TMP: dir };
+}
+
+/** Make `dir` this process's temp dir (`os.tmpdir()`), on every system (see `tempDirEnv`). */
+export function setTempDir(dir: string): void {
+	Object.assign(process.env, tempDirEnv(dir));
+}

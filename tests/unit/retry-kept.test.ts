@@ -64,62 +64,68 @@ const stopped = (pid: number | null): boolean =>
 		.trim()
 		.startsWith("T");
 
-test("a usage-limit wait is written down when it begins, adopted running by the next server, and let go when omp starts the retried turn", async () => {
-	const { first, live, next } = await start();
-	await emit(live, { type: "agent_start" }, usageLimitWait);
-	const held: LiveRetry = { ...(live.info.retry as LiveRetry) };
-	expect(held).toMatchObject({ attempt: 1, delayMs: 3_600_000, usageLimit: true, resumed: false });
+test.skipIf(!capabilities.relay)(
+	"a usage-limit wait is written down when it begins, adopted running by the next server, and let go when omp starts the retried turn",
+	async () => {
+		const { first, live, next } = await start();
+		await emit(live, { type: "agent_start" }, usageLimitWait);
+		const held: LiveRetry = { ...(live.info.retry as LiveRetry) };
+		expect(held).toMatchObject({ attempt: 1, delayMs: 3_600_000, usageLimit: true, resumed: false });
 
-	// Written down when it begins, as a conversation that is not paused: whichever server comes next can take it, a
-	// crash included.
-	await pollUntil(() => first.parked.list().length === 1, "the wait to be written down");
-	expect(live.kept).toBe(true);
-	expect(first.parked.list().map((r) => ({ pausedAt: r.pausedAt, retry: r.retry, owner: r.owner !== null }))).toEqual([
-		{ pausedAt: null, retry: held, owner: true },
-	]);
+		// Written down when it begins, as a conversation that is not paused: whichever server comes next can take it, a
+		// crash included.
+		await pollUntil(() => first.parked.list().length === 1, "the wait to be written down");
+		expect(live.kept).toBe(true);
+		expect(first.parked.list().map((r) => ({ pausedAt: r.pausedAt, retry: r.retry, owner: r.owner !== null }))).toEqual(
+			[{ pausedAt: null, retry: held, owner: true }],
+		);
 
-	// The server goes, the conversation stays: omp is not frozen, its timer is the point.
-	expect(await first.parkKept()).toBe(1);
-	const second = next();
-	const announced: LiveInfo[] = [];
-	second.onAnnounce((info) => announced.push(info));
-	expect(await second.adopt()).toBe(1);
+		// The server goes, the conversation stays: omp is not frozen, its timer is the point.
+		expect(await first.parkKept()).toBe(1);
+		const second = next();
+		const announced: LiveInfo[] = [];
+		second.onAnnounce((info) => announced.push(info));
+		expect(await second.adopt()).toBe(1);
 
-	const adopted = second.get(live.info.liveId) as Live;
-	expect(adopted.info.pausedAt).toBeNull();
-	expect(stopped(adopted.info.pid)).toBe(false);
-	// The wait is the one omp announced, the tabs are told of it, and the conversation counts as working: not reaped, not closed for.
-	expect(adopted.info.retry).toEqual(held);
-	expect(announced.some((i) => i.liveId === adopted.info.liveId && i.retry?.startedAt === held.startedAt)).toBe(true);
-	expect(adopted.holding).toBe("working");
-	expect(adopted.kept).toBe(true);
-	// Nothing is refused to a conversation that runs: no "paused", whatever the page asks.
-	expect((await adopted.rpc({ type: "get_state" })).success).toBe(true);
+		const adopted = second.get(live.info.liveId) as Live;
+		expect(adopted.info.pausedAt).toBeNull();
+		expect(stopped(adopted.info.pid)).toBe(false);
+		// The wait is the one omp announced, the tabs are told of it, and the conversation counts as working: not reaped, not closed for.
+		expect(adopted.info.retry).toEqual(held);
+		expect(announced.some((i) => i.liveId === adopted.info.liveId && i.retry?.startedAt === held.startedAt)).toBe(true);
+		expect(adopted.holding).toBe("working");
+		expect(adopted.kept).toBe(true);
+		// Nothing is refused to a conversation that runs: no "paused", whatever the page asks.
+		expect((await adopted.rpc({ type: "get_state" })).success).toBe(true);
 
-	// omp's own timer fired while this server ran: the wait is over, and there is nothing to keep it for.
-	await emit(adopted, { type: "agent_start" });
-	expect(adopted.info.retry?.resumed).toBe(true);
-	expect(adopted.kept).toBe(false);
-	await pollUntil(() => second.parked.list().length === 0, "the record to go with the wait");
-});
+		// omp's own timer fired while this server ran: the wait is over, and there is nothing to keep it for.
+		await emit(adopted, { type: "agent_start" });
+		expect(adopted.info.retry?.resumed).toBe(true);
+		expect(adopted.kept).toBe(false);
+		await pollUntil(() => second.parked.list().length === 0, "the record to go with the wait");
+	},
+);
 
-test("a wait that ended while no server was there is not shown by the one that takes the conversation over", async () => {
-	// omp reports a turn in progress for the whole backoff; this one reports none, as one whose retry is over.
-	const { first, live, next } = await start({ streaming: false });
-	await emit(live, { type: "agent_start" }, usageLimitWait);
-	expect(live.info.retry).toBeDefined();
-	await pollUntil(() => first.parked.list().length === 1, "the wait to be written down");
-	expect(await first.parkKept()).toBe(1);
+test.skipIf(!capabilities.relay)(
+	"a wait that ended while no server was there is not shown by the one that takes the conversation over",
+	async () => {
+		// omp reports a turn in progress for the whole backoff; this one reports none, as one whose retry is over.
+		const { first, live, next } = await start({ streaming: false });
+		await emit(live, { type: "agent_start" }, usageLimitWait);
+		expect(live.info.retry).toBeDefined();
+		await pollUntil(() => first.parked.list().length === 1, "the wait to be written down");
+		expect(await first.parkKept()).toBe(1);
 
-	const second = next();
-	expect(await second.adopt()).toBe(1);
-	const adopted = second.get(live.info.liveId) as Live;
-	expect(adopted.info.retry).toBeUndefined();
-	expect(adopted.holding).toBeNull();
-	// Nothing is left to keep: the process is let go, and the next server finds no record.
-	expect(adopted.kept).toBe(false);
-	await pollUntil(() => second.parked.list().length === 0, "the record to go");
-});
+		const second = next();
+		expect(await second.adopt()).toBe(1);
+		const adopted = second.get(live.info.liveId) as Live;
+		expect(adopted.info.retry).toBeUndefined();
+		expect(adopted.holding).toBeNull();
+		// Nothing is left to keep: the process is let go, and the next server finds no record.
+		expect(adopted.kept).toBe(false);
+		await pollUntil(() => second.parked.list().length === 0, "the record to go");
+	},
+);
 
 test("a backoff that is not a usage limit is not kept: it is minutes at most, and ends with the server like any turn", async () => {
 	const { first, live } = await start();

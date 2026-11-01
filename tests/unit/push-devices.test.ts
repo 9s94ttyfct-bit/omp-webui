@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { createECDH } from "node:crypto";
-import { chmodSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { b64u, generateVapidKey } from "../../server/push/crypto.ts";
 import { DEVICES_FILE, DeviceError, type NewDevice, PushDevices } from "../../server/push/devices.ts";
 import { allowedEndpoint, extraOrigins } from "../../server/push/endpoint.ts";
 import { loadVapid, VAPID_FILE } from "../../server/push/vapid.ts";
 import { MAX_PUSH_DEVICES } from "../../shared/push.ts";
+import { expectMode } from "../support/modes.ts";
 import { tempDir } from "../support/temp-dirs.ts";
 
 /** What the server keeps of the devices and of its own key: for its user alone, and nothing a page can make it send to. */
@@ -36,7 +37,6 @@ const device = (over: Partial<NewDevice> = {}): NewDevice => {
 		...over,
 	};
 };
-const mode = (path: string) => statSync(path).mode & 0o777;
 
 describe("which endpoints are sent to", () => {
 	test("the browsers' own push services, over https on their own port", () => {
@@ -97,7 +97,7 @@ describe("the key", () => {
 	test("is made once, for its user alone, and is the same key the next time", async () => {
 		const data = dir();
 		const first = await loadVapid(data);
-		expect(mode(join(data, VAPID_FILE))).toBe(0o600);
+		expectMode(join(data, VAPID_FILE), 0o600);
 		const again = await loadVapid(data);
 		expect(again.publicKey).toBe(first.publicKey);
 	});
@@ -107,14 +107,14 @@ describe("the key", () => {
 		const first = await loadVapid(data);
 		chmodSync(join(data, VAPID_FILE), 0o644);
 		expect((await loadVapid(data)).publicKey).toBe(first.publicKey);
-		expect(mode(join(data, VAPID_FILE))).toBe(0o600);
+		expectMode(join(data, VAPID_FILE), 0o600);
 		writeFileSync(join(data, VAPID_FILE), '{"v":1,"jwk":{"kty":"EC"');
 		const warn = console.warn;
 		console.warn = () => {};
 		try {
 			const replaced = await loadVapid(data);
 			expect(replaced.publicKey).not.toBe(first.publicKey);
-			expect(mode(join(data, VAPID_FILE))).toBe(0o600);
+			expectMode(join(data, VAPID_FILE), 0o600);
 			expect((await loadVapid(data)).publicKey).toBe(replaced.publicKey);
 		} finally {
 			console.warn = warn;
@@ -143,7 +143,7 @@ describe("the devices", () => {
 		const key = await generateVapidKey();
 		const store = new PushDevices(data, key.publicKey);
 		const record = store.upsert(device(), 1000);
-		expect(mode(join(data, DEVICES_FILE))).toBe(0o600);
+		expectMode(join(data, DEVICES_FILE), 0o600);
 		const reread = new PushDevices(data, key.publicKey);
 		expect(reread.get(record.id)).toMatchObject({ id: record.id, endpoint: record.endpoint, createdAt: 1000 });
 	});

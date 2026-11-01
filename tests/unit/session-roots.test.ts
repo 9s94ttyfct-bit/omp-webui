@@ -1,3 +1,4 @@
+// needs: posixPaths
 import { afterAll, afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import {
 	appendFileSync,

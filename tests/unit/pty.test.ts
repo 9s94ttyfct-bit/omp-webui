@@ -1,3 +1,4 @@
+// needs: posixShell
 import { expect } from "bun:test";
 import { fstatSync, readdirSync } from "node:fs";
 import { PtyManager } from "../../server/pty.ts";

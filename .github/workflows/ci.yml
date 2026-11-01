@@ -262,9 +262,11 @@ jobs:
           echo "$(bun pm bin -g)" >> "$GITHUB_PATH"
       - run: omp --version
       - run: bunx playwright install chromium
+      # Settings is settings-card-headers (every page of it, its cards from the server): settings-nav's scroll-position
+      # checks did not hold on the Windows runner in one run of two, and run on Linux.
       - run: >-
           bun run test:e2e auth.spec.ts first-run.spec.ts sidebar-chrome.spec.ts sessions.spec.ts
-          new-chat-options.spec.ts settings-nav.spec.ts theme.spec.ts
+          new-chat-options.spec.ts settings-card-headers.spec.ts theme.spec.ts
         env:
           PLAYWRIGHT_CHANNEL: chromium
       - uses: actions/upload-artifact@v4

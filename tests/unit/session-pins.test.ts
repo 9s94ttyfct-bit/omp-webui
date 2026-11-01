@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { SessionPins } from "../../server/sessions/pins.ts";
 import { SessionStore } from "../../server/sessions/store.ts";
 import { type SeededFixtures, seedFixtures } from "../support/fixtures.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * The sidebar's pins are omp's own list (`session-pins.json`, session ids, oldest pin first). Changing it is omp's `/pin`
@@ -36,7 +37,7 @@ beforeAll(async () => {
 afterAll(() => {
 	pins.close();
 	store.close();
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 const idOf = async (file: string) => (await store.get(file))?.id as string;

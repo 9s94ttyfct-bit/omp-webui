@@ -1,3 +1,4 @@
+// needs: posixPaths
 import { expect, test } from "bun:test";
 import { resumedSessions } from "../../server/omp/resumed.ts";
 

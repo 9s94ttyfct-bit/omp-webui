@@ -6,6 +6,7 @@ import { LivePool } from "../../server/live.ts";
 import type { Resumed } from "../../server/omp/resumed.ts";
 import { platform } from "../../server/platform/index.ts";
 import { type FakeOmpOptions, fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
+import { has } from "../support/needs.ts";
 
 /** How the pool opens a session file: one omp process per file, however many opens ask for it. */
 
@@ -108,22 +109,25 @@ test("a failed resume is not remembered: the next open of the file starts afresh
 	expect(await resume()).toBe(live);
 });
 
-test("an omp killed by a signal tells every page which signal, and no made-up exit code", async () => {
-	const { newChat } = setup({});
-	const live = await newChat();
-	const sent: Record<string, unknown>[] = [];
-	live.subscribers.add({ send: (msg) => sent.push(msg as Record<string, unknown>) });
-	process.kill(live.info.pid as number, "SIGKILL");
-	await until(() => sent.some((m) => m.t === "live_exit"));
-	expect(sent.find((m) => m.t === "live_exit")).toEqual({
-		t: "live_exit",
-		liveId: live.info.liveId,
-		code: null,
-		signal: "SIGKILL",
-		stderr: "",
-		by: "omp",
-	});
-});
+test.skipIf(!has.posixSignals)(
+	"an omp killed by a signal tells every page which signal, and no made-up exit code",
+	async () => {
+		const { newChat } = setup({});
+		const live = await newChat();
+		const sent: Record<string, unknown>[] = [];
+		live.subscribers.add({ send: (msg) => sent.push(msg as Record<string, unknown>) });
+		process.kill(live.info.pid as number, "SIGKILL");
+		await until(() => sent.some((m) => m.t === "live_exit"));
+		expect(sent.find((m) => m.t === "live_exit")).toEqual({
+			t: "live_exit",
+			liveId: live.info.liveId,
+			code: null,
+			signal: "SIGKILL",
+			stderr: "",
+			by: "omp",
+		});
+	},
+);
 
 // ------------------------------------------------------------------ new chats
 

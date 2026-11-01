@@ -1,3 +1,4 @@
+// needs: posixFiles
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import {

@@ -1,3 +1,4 @@
+// needs: posixFiles
 import { Database } from "bun:sqlite";
 import { afterAll, afterEach, beforeAll, expect, spyOn, test } from "bun:test";
 import {

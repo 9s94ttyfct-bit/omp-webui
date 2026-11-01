@@ -127,7 +127,7 @@ test("a conversation started with guidance carries it in the main agent's reques
 	// What the page is told: the text, live (its omp runs the extension), and no template (it was typed).
 	expect(info.guidance).toEqual({ template: null, templateName: null, text: MARK, live: true });
 	// And the process says so in its command line.
-	expect(info.args.filter((_, i) => info.args[i - 1] === "--extension").some((a) => a.includes("/guidance/"))).toBe(
+	expect(info.args.filter((_, i) => info.args[i - 1] === "--extension").some((a) => /[\\/]guidance[\\/]/.test(a))).toBe(
 		true,
 	);
 	const mark = prompt("with");
@@ -201,7 +201,7 @@ test("a conversation started without guidance carries none, though its omp was s
 	const info = await request<LiveInfo>(ws, { t: "open", target: { kind: "new", cwd: server.work } });
 	expect(info.guidance).toBeUndefined();
 	// The extension is still started (it adds nothing without a file): one command line for every conversation.
-	expect(info.args.filter((_, i) => info.args[i - 1] === "--extension").some((a) => a.includes("/guidance/"))).toBe(
+	expect(info.args.filter((_, i) => info.args[i - 1] === "--extension").some((a) => /[\\/]guidance[\\/]/.test(a))).toBe(
 		true,
 	);
 	const mark = prompt("without");

@@ -12,15 +12,23 @@ import type { Capability } from "../../shared/platform.ts";
 const HARNESS = {
 	posixShell: {
 		has: platformId !== "win32",
-		why: "its stand-ins for other programs are POSIX shell scripts or POSIX tools, which Windows does not run",
+		why: "its stand-ins for other programs are POSIX shell scripts or POSIX tools (sh, ps, mkfifo), which Windows does not run",
 	},
 	posixModes: {
 		has: platformId !== "win32",
-		why: "it checks POSIX permission bits (0600, 0700), which Windows does not have",
+		why: "it checks POSIX permission bits (0600, 0700, read-only folders), which Windows does not have",
 	},
 	posixPaths: {
 		has: platformId !== "win32",
-		why: "it lays out a Mac's folders with POSIX paths (the move to another Mac), which Windows does not have",
+		why: "its fixtures or the code it checks know POSIX paths only (the guard's risk classifier, the move to another Mac, folders like /tmp/x in omp's sessions)",
+	},
+	posixFiles: {
+		has: platformId !== "win32",
+		why: "it uses what Windows files do not do: named pipes, symbolic links made without privilege, execute bits, or a file replaced or removed while it is open",
+	},
+	posixSignals: {
+		has: platformId !== "win32",
+		why: "it checks how a process ended by a signal is told, or a server ended by a signal it did not send; Windows only terminates a process",
 	},
 } as const;
 

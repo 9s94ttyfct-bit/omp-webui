@@ -32,6 +32,7 @@ import { isRecord } from "../../shared/guards.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
 import { expectMode } from "../support/modes.ts";
+import { setTempDir } from "../support/tmp.ts";
 
 /**
  * "Guard dangerous commands" (#609) on the server's side, with no omp: the settings (which an agent cannot turn off by
@@ -50,11 +51,11 @@ const sharedTmp = process.env.TMPDIR;
 let ownTmp = "";
 beforeAll(() => {
 	ownTmp = mkdtempSync(join(tmpdir(), "ompw-guard-tmp-"));
-	process.env.TMPDIR = ownTmp;
+	setTempDir(ownTmp);
 });
 afterAll(() => {
 	if (sharedTmp === undefined) delete process.env.TMPDIR;
-	else process.env.TMPDIR = sharedTmp;
+	else setTempDir(sharedTmp);
 	rmSync(ownTmp, { recursive: true, force: true });
 });
 const scratch = (): string => {

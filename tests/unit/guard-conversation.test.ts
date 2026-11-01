@@ -38,6 +38,7 @@ import type { LiveInfo } from "../../shared/protocol.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
 import { pollUntil } from "../support/poll.ts";
+import { setTempDir } from "../support/tmp.ts";
 
 /**
  * "Guard dangerous commands" for one conversation (#626), with no omp but a scripted one: how a conversation's own choices
@@ -183,11 +184,11 @@ const sharedTmp = process.env.TMPDIR;
 let ownTmp = "";
 beforeAll(() => {
 	ownTmp = mkdtempSync(join(tmpdir(), "ompw-guard-conv-tmp-"));
-	process.env.TMPDIR = ownTmp;
+	setTempDir(ownTmp);
 });
 afterAll(() => {
 	if (sharedTmp === undefined) delete process.env.TMPDIR;
-	else process.env.TMPDIR = sharedTmp;
+	else setTempDir(sharedTmp);
 	rmSync(ownTmp, { recursive: true, force: true });
 });
 const scratch = (): string => {

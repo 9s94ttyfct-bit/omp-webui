@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { FOLDER_LIMITS, type FolderFile, type FolderSaved } from "../../shared/folder.ts";
 import { CSRF_HEADER, ERROR_HEADER, type FileTransfer, type TransferRecord } from "../../shared/transfer.ts";
 import { type AccessKey, AUD, EMAIL, HOSTNAME, type Jwks, makeKey, startJwks, TEAM } from "../support/access-jwt.ts";
@@ -167,7 +168,7 @@ describe("who may ask", () => {
 		expect(put.status).toBe(405);
 	});
 
-	test("through the tunnel Access is needed as well", async () => {
+	test.skipIf(!capabilities.remoteAccess)("through the tunnel Access is needed as well", async () => {
 		const { etag } = await text(tunnel, "notes.md");
 		const noJwt = await remote.fetch(
 			"/api/folder/file",
@@ -178,58 +179,64 @@ describe("who may ask", () => {
 		expect(onDisk("notes.md")).toBe("# Notes\n\nfirst\n");
 	});
 
-	test("the setting is looked at on every request: a page that may not upload is not offered the editor and is refused", async () => {
-		try {
-			const { etag } = await text(tunnel, "notes.md");
-			for (const [setting, code] of [
-				["download", "uploadOff"],
-				["off", "off"],
-			] as const) {
-				setTransfer(setting);
-				const answer = await read(tunnel, "notes.md");
-				expect(answer.body, setting).toMatchObject({ kind: "text", editable: false });
-				const refused = await save(tunnel, "notes.md", "x", etag);
-				expect([refused.status, refused.code], setting).toEqual([403, code]);
-				expect(onDisk("notes.md")).toBe("# Notes\n\nfirst\n");
-				// This computer's page is not the setting's.
-				expect((await read(here, "notes.md")).body).toMatchObject({ editable: true });
+	test.skipIf(!capabilities.remoteAccess)(
+		"the setting is looked at on every request: a page that may not upload is not offered the editor and is refused",
+		async () => {
+			try {
+				const { etag } = await text(tunnel, "notes.md");
+				for (const [setting, code] of [
+					["download", "uploadOff"],
+					["off", "off"],
+				] as const) {
+					setTransfer(setting);
+					const answer = await read(tunnel, "notes.md");
+					expect(answer.body, setting).toMatchObject({ kind: "text", editable: false });
+					const refused = await save(tunnel, "notes.md", "x", etag);
+					expect([refused.status, refused.code], setting).toEqual([403, code]);
+					expect(onDisk("notes.md")).toBe("# Notes\n\nfirst\n");
+					// This computer's page is not the setting's.
+					expect((await read(here, "notes.md")).body).toMatchObject({ editable: true });
+				}
+				setTransfer("full");
+				expect((await read(tunnel, "notes.md")).body).toMatchObject({ editable: true });
+			} finally {
+				setTransfer("full");
 			}
-			setTransfer("full");
-			expect((await read(tunnel, "notes.md")).body).toMatchObject({ editable: true });
-		} finally {
-			setTransfer("full");
-		}
-	});
+		},
+	);
 });
 
 describe("saving what a page opened", () => {
 	for (const page of [here, tunnel]) {
-		test(`${page.name}: the read gives the etag, a save names it and answers the next, and the log says who`, async () => {
-			const path = `src/saved-by-${page.who === "local" ? "local" : "tunnel"}.ts`;
-			writeFileSync(join(proj, path), "one\n");
-			const first = await text(page, path);
-			expect(first).toMatchObject({ kind: "text", editable: true, text: "one\n", truncated: false });
-			const saved = await save(page, path, "one\ntwo\n", first.etag);
-			expect(saved.status).toBe(200);
-			expect(onDisk(path)).toBe("one\ntwo\n");
-			expect(saved.body).toMatchObject({ size: 8 });
-			// What the next read says is what the save answered, and it is the file the next save is made from.
-			const second = await text(page, path);
-			expect(second).toMatchObject({ text: "one\ntwo\n", etag: saved.body.etag });
-			expect((await save(page, path, "three\n", second.etag)).status).toBe(200);
-			expect(onDisk(path)).toBe("three\n");
-			await pollUntil(
-				() => logged().some((l) => l.kind === "edit" && l.who === page.who && l.path === path && l.size === 6),
-				"the log line of the save",
-			);
-			expect(logged().findLast((l) => l.kind === "edit" && l.path === path)).toMatchObject({
-				kind: "edit",
-				who: page.who,
-				root: proj,
-				size: 6,
-				status: "ok",
-			});
-		});
+		test.skipIf(!capabilities.remoteAccess)(
+			`${page.name}: the read gives the etag, a save names it and answers the next, and the log says who`,
+			async () => {
+				const path = `src/saved-by-${page.who === "local" ? "local" : "tunnel"}.ts`;
+				writeFileSync(join(proj, path), "one\n");
+				const first = await text(page, path);
+				expect(first).toMatchObject({ kind: "text", editable: true, text: "one\n", truncated: false });
+				const saved = await save(page, path, "one\ntwo\n", first.etag);
+				expect(saved.status).toBe(200);
+				expect(onDisk(path)).toBe("one\ntwo\n");
+				expect(saved.body).toMatchObject({ size: 8 });
+				// What the next read says is what the save answered, and it is the file the next save is made from.
+				const second = await text(page, path);
+				expect(second).toMatchObject({ text: "one\ntwo\n", etag: saved.body.etag });
+				expect((await save(page, path, "three\n", second.etag)).status).toBe(200);
+				expect(onDisk(path)).toBe("three\n");
+				await pollUntil(
+					() => logged().some((l) => l.kind === "edit" && l.who === page.who && l.path === path && l.size === 6),
+					"the log line of the save",
+				);
+				expect(logged().findLast((l) => l.kind === "edit" && l.path === path)).toMatchObject({
+					kind: "edit",
+					who: page.who,
+					root: proj,
+					size: 6,
+					status: "ok",
+				});
+			},
+		);
 	}
 
 	test("a file that changed meanwhile is a 409 with the etag it has now; saving again with it overwrites, and nothing else is touched", async () => {

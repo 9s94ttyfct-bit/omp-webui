@@ -1,3 +1,4 @@
+// needs: relay
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,6 +8,7 @@ import { type ParkedRecord, ParkedStore, type ProcessRef, referenceTo, runsAs } 
 import { encodeFrame, FrameDecoder, Outbox } from "../../server/omp/relay-protocol.ts";
 import { type Platform, platform, platformFor } from "../../server/platform/index.ts";
 import type { PlatformId } from "../../shared/platform.ts";
+import { setTempDir } from "../support/tmp.ts";
 
 /**
  * What lets a paused conversation outlive the server: the records of them, the identity that keeps a reused pid
@@ -26,11 +28,11 @@ const sharedTmp = process.env.TMPDIR;
 let ownTmp = "";
 beforeAll(() => {
 	ownTmp = mkdtempSync(join(tmpdir(), "ompw-parked-tmp-"));
-	process.env.TMPDIR = ownTmp;
+	setTempDir(ownTmp);
 });
 afterAll(() => {
 	if (sharedTmp === undefined) delete process.env.TMPDIR;
-	else process.env.TMPDIR = sharedTmp;
+	else setTempDir(sharedTmp);
 	rmSync(ownTmp, { recursive: true, force: true });
 });
 

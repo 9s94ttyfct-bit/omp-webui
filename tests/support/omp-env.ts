@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { tmpBase } from "./tmp.ts";
+import { tempDirEnv, tmpBase } from "./tmp.ts";
 
 /**
  * Environment for an omp process that must not touch the user's ~/.omp.
@@ -34,7 +34,7 @@ export async function isolatedEnv(root: string, opts: { login?: boolean } = {}):
 	// directories of the servers that are gone out of it. Two servers that share one temp dir can take each other's
 	// overlays away — a paused conversation loses the mode its overlay held (#461) — so the servers of a test get
 	// their temp dirs from here: one per data dir (see `serverTmp`).
-	env.TMPDIR = tmpBase(root);
+	Object.assign(env, tempDirEnv(tmpBase(root)));
 	const natives = join(homedir(), ".omp", "natives");
 	if (existsSync(natives)) env.PI_NATIVES_DIR = natives;
 	// `login: false` (the screenshots): no stored login is read and none is handed on; omp boots on the placeholder key.

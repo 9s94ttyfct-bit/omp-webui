@@ -11,7 +11,9 @@ import { isRecord } from "../../shared/guards.ts";
 import { parseRiskTitle, RISK_ALLOW, RISK_DENY } from "../../shared/risk-confirm.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
+import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
+import { setTempDir } from "../support/tmp.ts";
 
 /**
  * The gate of "Confirm risky commands from remote pages" without omp: the extension as it is installed into the data
@@ -30,11 +32,11 @@ const sharedTmp = process.env.TMPDIR;
 let ownTmp = "";
 beforeAll(() => {
 	ownTmp = mkdtempSync(join(tmpdir(), "ompw-gate-tmp-"));
-	process.env.TMPDIR = ownTmp;
+	setTempDir(ownTmp);
 });
 afterAll(() => {
 	if (sharedTmp === undefined) delete process.env.TMPDIR;
-	else process.env.TMPDIR = sharedTmp;
+	else setTempDir(sharedTmp);
 	rmSync(ownTmp, { recursive: true, force: true });
 });
 
@@ -438,34 +440,37 @@ test("a state file that was overwritten is written again whatever its size and t
 	expect(JSON.parse(readFileSync(file, "utf8"))).not.toHaveProperty("hosts");
 });
 
-test("whatever is not a regular file at the state file's path is replaced without being read: a pipe does not block the server", () => {
-	const dir = scratch();
-	const state = new RiskState(join(dir, "L1.yml"), ["/a"]);
-	state.set(true);
-	const file = join(dir, "L1.yml.risk");
-	const word = readFileSync(file, "utf8");
-	const mkfifo = (path: string) => {
-		const made = Bun.spawnSync(["mkfifo", path]);
-		expect(made.exitCode).toBe(0);
-		expect(statSync(path).isFIFO()).toBe(true);
-	};
-	// A pipe where the word was (an agent that could write there): nobody reads it, so a read of it would never return.
-	rmSync(file);
-	mkfifo(file);
-	state.set(true);
-	expect(statSync(file).isFile()).toBe(true);
-	expect(readFileSync(file, "utf8")).toBe(word);
-	// A pipe where the next word is written first: a write to it would block for ever.
-	rmSync(file);
-	mkfifo(`${file}.tmp`);
-	state.set(true);
-	expect(statSync(file).isFile()).toBe(true);
-	expect(readFileSync(file, "utf8")).toBe(word);
-	// A file of another size is not the word, and is not read to find out.
-	writeFileSync(file, `${word} `);
-	state.set(true);
-	expect(readFileSync(file, "utf8")).toBe(word);
-});
+test.skipIf(!has.posixFiles)(
+	"whatever is not a regular file at the state file's path is replaced without being read: a pipe does not block the server",
+	() => {
+		const dir = scratch();
+		const state = new RiskState(join(dir, "L1.yml"), ["/a"]);
+		state.set(true);
+		const file = join(dir, "L1.yml.risk");
+		const word = readFileSync(file, "utf8");
+		const mkfifo = (path: string) => {
+			const made = Bun.spawnSync(["mkfifo", path]);
+			expect(made.exitCode).toBe(0);
+			expect(statSync(path).isFIFO()).toBe(true);
+		};
+		// A pipe where the word was (an agent that could write there): nobody reads it, so a read of it would never return.
+		rmSync(file);
+		mkfifo(file);
+		state.set(true);
+		expect(statSync(file).isFile()).toBe(true);
+		expect(readFileSync(file, "utf8")).toBe(word);
+		// A pipe where the next word is written first: a write to it would block for ever.
+		rmSync(file);
+		mkfifo(`${file}.tmp`);
+		state.set(true);
+		expect(statSync(file).isFile()).toBe(true);
+		expect(readFileSync(file, "utf8")).toBe(word);
+		// A file of another size is not the word, and is not read to find out.
+		writeFileSync(file, `${word} `);
+		state.set(true);
+		expect(readFileSync(file, "utf8")).toBe(word);
+	},
+);
 
 test("a process is told the ports an omp-webui may serve on, so that its gate protects that API and no other", async () => {
 	let ports: number[] | undefined;

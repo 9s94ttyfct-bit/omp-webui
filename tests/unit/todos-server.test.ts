@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { replaceTodos, TodoError, type TodoProcess } from "../../server/omp/todos.ts";
+import { setTempDir } from "../support/tmp.ts";
 
 /**
  * Replacing the todo list asks omp to `/todo import` a file. A line omp does not know goes to the model as a prompt, so
@@ -33,11 +34,11 @@ const realTmp = process.env.TMPDIR;
 beforeEach(() => {
 	// A folder with a space in its name: the path is quoted for omp, which strips one pair of double quotes.
 	tmp = mkdtempSync(join(realTmp ?? tmpdir(), "ompw todo test-"));
-	process.env.TMPDIR = tmp;
+	setTempDir(tmp);
 });
 afterEach(() => {
 	if (realTmp === undefined) delete process.env.TMPDIR;
-	else process.env.TMPDIR = realTmp;
+	else setTempDir(realTmp);
 	rmSync(tmp, { recursive: true, force: true });
 });
 

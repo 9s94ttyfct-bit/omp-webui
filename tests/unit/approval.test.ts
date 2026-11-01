@@ -9,6 +9,7 @@ import {
 	stripApprovalFlags,
 } from "../../server/omp/approval.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
+import { setTempDir } from "../support/tmp.ts";
 
 /** Per-conversation tool approval: the overlay omp reloads, the user's choices, and what a conversation starts in. */
 
@@ -26,11 +27,11 @@ const sharedTmp = process.env.TMPDIR;
 let ownTmp = "";
 beforeAll(() => {
 	ownTmp = mkdtempSync(join(tmpdir(), "ompw-approval-tmp-"));
-	process.env.TMPDIR = ownTmp;
+	setTempDir(ownTmp);
 });
 afterAll(() => {
 	if (sharedTmp === undefined) delete process.env.TMPDIR;
-	else process.env.TMPDIR = sharedTmp;
+	else setTempDir(sharedTmp);
 	rmSync(ownTmp, { recursive: true, force: true });
 });
 

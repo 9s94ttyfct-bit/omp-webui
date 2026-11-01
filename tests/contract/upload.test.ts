@@ -1,3 +1,4 @@
+// needs: posixFiles
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import {
 	chmodSync,

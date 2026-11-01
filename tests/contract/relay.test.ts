@@ -1,3 +1,4 @@
+// needs: relay
 import { afterEach, expect, test } from "bun:test";
 import { once } from "node:events";
 import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";

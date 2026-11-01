@@ -1,3 +1,4 @@
+// needs: relay
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";

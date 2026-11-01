@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { type Socket, connect as tcp } from "node:net";
 import { networkInterfaces } from "node:os";
+import { capabilities } from "../../server/platform/capabilities.ts";
 
 /**
  * A client that is not on the loopback: the requests and the socket of a page on another machine of the network,
@@ -12,8 +13,13 @@ import { networkInterfaces } from "node:os";
  * client on the network says whatever it likes.
  */
 
-/** An IPv4 address of this computer on a network (not 127.x), or undefined when it has none (no network at all). */
+/**
+ * An IPv4 address of this computer on a network (not 127.x), or undefined when it has none (no network at all), or when
+ * a page cannot come from one: on Windows a server listens on loopback only (remote access is off there), and Windows
+ * refuses a connection to 127.0.0.1 made from another address (EADDRNOTAVAIL).
+ */
 export function lanAddress(): string | undefined {
+	if (!capabilities.remoteAccess) return undefined;
 	const found: string[] = [];
 	for (const addresses of Object.values(networkInterfaces()))
 		for (const a of addresses ?? []) if (a.family === "IPv4" && !a.internal) found.push(a.address);

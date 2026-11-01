@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { CORE_TOOLS, type ContextReport, type ModeState, OFFLINE_TOOLS } from "../../shared/offline.ts";
 import type { LiveInfo, SessionSummary } from "../../shared/protocol.ts";
 import { newestOfflineAgent } from "../support/offline-agent.ts";
@@ -208,7 +208,7 @@ test("Light on a local server: every model is oMLX's, only the allowed tools and
 		// The conversation is a file in the user's sessions, so history lists it like any other.
 		const { sessionFile } = await chat.rpc<{ sessionFile: string }>({ type: "get_state" });
 		const file = realpathSync(sessionFile);
-		expect(file.startsWith(`${realpathSync(join(s.agentDir, "sessions"))}/`)).toBe(true);
+		expect(file.startsWith(`${realpathSync(join(s.agentDir, "sessions"))}${sep}`)).toBe(true);
 		await chat.until("the sessions to be indexed", () => chat.messages.some((m) => m.t === "sessions_changed"));
 		const listed = (await (await http("/api/sessions")).json()) as SessionSummary[];
 		expect(listed.some((x) => realpathSync(x.file) === file)).toBe(true);
@@ -398,7 +398,7 @@ test("Light on the person's own models: their models and roles, only the allowed
 		expect(String(turn.body.messages?.find((m) => m.role === "system")?.content)).not.toContain("test server beta");
 		// The conversation is a file in the user's sessions, as in Full.
 		const { sessionFile } = await chat.rpc<{ sessionFile: string }>({ type: "get_state" });
-		expect(realpathSync(sessionFile).startsWith(`${realpathSync(join(s.agentDir, "sessions"))}/`)).toBe(true);
+		expect(realpathSync(sessionFile).startsWith(`${realpathSync(join(s.agentDir, "sessions"))}${sep}`)).toBe(true);
 		// The person's own models.yml is the very file the process reads (no second copy of their keys).
 		const dir = offlineDir();
 		expect(realpathSync(join(dir, "models.yml"))).toBe(realpathSync(join(s.agentDir, "models.yml")));

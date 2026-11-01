@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pollUntil, processExists } from "../support/poll.ts";
 import { startTestServer } from "../support/server.ts";
+import { setTempDir } from "../support/tmp.ts";
 
 /**
  * What the test server leaves behind when it cannot be stopped politely, or never starts: a hung server must not hang
@@ -16,11 +17,11 @@ const realTmp = process.env.TMPDIR;
 beforeEach(() => {
 	scratch = mkdtempSync(join(realTmp ?? tmpdir(), "ompw-teardown-test-"));
 	// Every server directory this file makes is under `scratch`, so that "nothing is left" is about this test alone.
-	process.env.TMPDIR = scratch;
+	setTempDir(scratch);
 });
 afterEach(() => {
 	if (realTmp === undefined) delete process.env.TMPDIR;
-	else process.env.TMPDIR = realTmp;
+	else setTempDir(realTmp);
 	rmSync(scratch, { recursive: true, force: true });
 });
 

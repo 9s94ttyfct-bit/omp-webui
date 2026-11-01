@@ -1,3 +1,4 @@
+// needs: posixPaths
 import { describe, expect, spyOn, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { BenchBusy, benchFolders, GuardBench } from "../../server/guard-bench.ts";

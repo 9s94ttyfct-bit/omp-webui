@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BenchInfo, BenchRun } from "../../shared/guard-bench.ts";
@@ -7,6 +7,7 @@ import { DEFAULT_POLICY, DEFAULT_POLICY_VERSION, type GuardRules } from "../../s
 import { type AccessKey, type Jwks, makeKey, startJwks } from "../support/access-jwt.ts";
 import { writeFakeOmp } from "../support/fake-omp.ts";
 import { messageWhere } from "../support/frames.ts";
+import { expectMode } from "../support/modes.ts";
 import { pollUntil } from "../support/poll.ts";
 import { remoteClient, remoteSettings } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
@@ -45,7 +46,6 @@ const post = (path: string, body: unknown) =>
 const rulesNow = async (): Promise<GuardRules> =>
 	((await (await fetch(`${s.url}/api/guard/rules`, { headers: authed() })).json()) as { rules: GuardRules }).rules;
 const guardFile = () => join(s.root, "guard.json");
-const mode = (path: string) => statSync(path).mode & 0o777;
 /** The command lines the fake reviewer was given, in order. */
 const reviewed = (): { argv: string[]; cwd: string }[] =>
 	existsSync(reviewLog)
@@ -118,7 +118,7 @@ describe("what the person tuned", () => {
 		ws.close();
 
 		// On disk: the rules beside the mode, private to the user, and the same ones read back.
-		expect(mode(guardFile())).toBe(0o600);
+		expectMode(guardFile(), 0o600);
 		const onDisk = JSON.parse(readFileSync(guardFile(), "utf8"));
 		expect(onDisk.thresholds).toEqual({ delete_outside: "block", write_outside: "allow" });
 		expect(onDisk.policy.text).toBe("Reading: allow.\nDeleting outside the project: block.");
@@ -127,7 +127,7 @@ describe("what the person tuned", () => {
 		// The mode is changed by the other route and leaves the rules alone.
 		expect((await post("/api/guard", { mode: "ask" })).status).toBe(200);
 		expect(await rulesNow()).toEqual(kept);
-		expect(mode(guardFile())).toBe(0o600);
+		expectMode(guardFile(), 0o600);
 
 		// What cannot be loosened, an empty rule set, a text that is not text, an unknown kind: refused, nothing changes.
 		for (const bad of [
@@ -153,7 +153,7 @@ describe("what the person tuned", () => {
 		expect((await post("/api/guard/rules", { policy: null })).status).toBe(200);
 		expect(JSON.parse(readFileSync(guardFile(), "utf8")).policy).toBeUndefined();
 		expect((await rulesNow()).thresholds).toEqual({ delete_outside: "block", write_outside: "allow" });
-		expect(mode(guardFile())).toBe(0o600);
+		expectMode(guardFile(), 0o600);
 	}, 60_000);
 
 	test("changed behind the server's back, the file is written again from what the server holds", async () => {
@@ -164,7 +164,7 @@ describe("what the person tuned", () => {
 			"the server to write its settings again",
 		);
 		expect(await rulesNow()).toEqual(before);
-		expect(mode(guardFile())).toBe(0o600);
+		expectMode(guardFile(), 0o600);
 	}, 60_000);
 
 	test("a page that came through the tunnel is refused the rules and the benchmark, and nothing is changed or started", async () => {

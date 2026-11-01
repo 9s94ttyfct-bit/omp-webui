@@ -1,12 +1,13 @@
 import { afterAll, expect, test } from "bun:test";
-import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
+import { appendFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionStore } from "../../server/sessions/store.ts";
 import { seedFixtures } from "../support/fixtures.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ompw-store-"));
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => removeScratch(root));
 
 test("sessions created after start are listed and searchable when the sessions dir did not exist yet", async () => {
 	const agentDir = join(root, "agent");

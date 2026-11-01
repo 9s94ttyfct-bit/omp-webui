@@ -1,3 +1,4 @@
+// needs: posixShell
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import {
 	chmodSync,
