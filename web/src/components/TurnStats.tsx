@@ -124,7 +124,9 @@ export function TurnStatsLine({ entries, messages }: { entries: SessionEntry[]; 
 	const detail = <TurnDetail stats={stats} />;
 	return (
 		// Under the line, not over it: the line ends the message, and a tip that flipped up covered the reply it describes.
-		<Tip label={detail} wide keepSide>
+		// Not on a touch screen: nothing there asks for it, and a mouse event a phone makes up after a scroll opened it over
+		// what was tapped next (an approval's choices).
+		<Tip label={detail} wide keepSide contentClassName="pointer-coarse:hidden">
 			<span
 				className={`${ROW} cursor-default`}
 				data-testid="msg-usage"
