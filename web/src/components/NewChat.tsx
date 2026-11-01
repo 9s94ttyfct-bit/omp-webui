@@ -3,8 +3,9 @@ import type { GuardOverride } from "@shared/guard.ts";
 import type { LiveGuidance, SessionGuidance } from "@shared/model-guidance.ts";
 import { MODEL_FLAGS, runsLocal } from "@shared/offline.ts";
 import { PREF } from "@shared/prefs.ts";
+import type { ProjectsInfo } from "@shared/projects.ts";
 import type { CliFlag } from "@shared/protocol.ts";
-import { ChevronDown, FolderOpen, RotateCw, SlidersHorizontal, Target } from "lucide-react";
+import { ChevronDown, FolderOpen, FolderPlus, RotateCw, SlidersHorizontal, Target } from "lucide-react";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { type MessageKey, useT } from "../i18n/index.ts";
@@ -70,6 +71,9 @@ const {
 const { Chunk: ModeChip, retry: retryModeChip } = lazyChunk(() =>
 	import("./ModePicker.tsx").then((m) => ({ default: m.ModePicker })),
 );
+
+// The new project's name and where it is made: New chat's default, a chunk of its own with the projects folder's strings.
+const { Chunk: ProjectField, retry: retryProjectField } = lazyChunk(() => import("./NewProjectField.tsx"));
 
 /** Flags that make no sense for an interactive web session (handled elsewhere or exit immediately). */
 const EXCLUDED_FLAGS: Record<string, true> = {
@@ -168,10 +172,9 @@ function PickersSkeleton() {
 /** `cwd`: the folder the view opened New chat in (`#/new?cwd=`); none: the page picks. */
 export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 	const t = useT();
-	const { sessions, sessionsLoaded, meta, setView, toast } = useApp(
+	const { sessions, meta, setView, toast } = useApp(
 		useShallow((s) => ({
 			sessions: s.sessions,
-			sessionsLoaded: s.sessionsLoaded,
 			meta: s.meta,
 			setView: s.setView,
 			toast: s.toast,
@@ -188,10 +191,33 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 		}
 		return out.slice(0, 8);
 	}, [sessions]);
-	const [cwd, setCwd] = useState<string>(() => openedIn ?? localStorage.getItem(PREF.cwd) ?? "");
-	const [browse, setBrowse] = useState(false);
+	/**
+	 * An existing folder the conversation starts in: the one the view opened New chat in (`#/new?cwd=`), or one the person
+	 * picked. Null: the default, a new project in the projects folder, made when the first message is sent (v0.17.0).
+	 */
+	const [existing, setExisting] = useState<string | null>(openedIn ?? null);
+	/** The new project's name as typed; empty: named from the time by the server. */
+	const [projectName, setProjectName] = useState("");
+	/** Why the last send could not make the project's folder; cleared by the next edit of the name. */
+	const [projectFailure, setProjectFailure] = useState<unknown>(null);
+	/** The projects folder (Settings › Projects folder); null while it is read. */
+	const [root, setRoot] = useState<ProjectsInfo | null>(null);
+	/** Bumped to read the projects folder again (it was changed from here). */
+	const [rootGen, setRootGen] = useState(0);
+	/**
+	 * Where omp is warmed up for a new project, for the pickers only: the projects folder when it is a folder now, else the
+	 * home folder (`~/omp` before its first project). It is never given the person's input: that goes to the process
+	 * started in the new folder (`send`).
+	 */
+	const [rootWarm, setRootWarm] = useState("");
+	/** The folder the warm-up process runs in. */
+	const cwd = existing ?? rootWarm;
+	/** What the folder picker is open for: an existing folder to start in, or another projects folder. */
+	const [browse, setBrowseFor] = useState<"existing" | "root" | null>(null);
+	const setBrowse = (open: boolean) => setBrowseFor(open ? "existing" : null);
 	const pickerOpened = useRef(false);
-	pickerOpened.current ||= browse;
+	pickerOpened.current ||= browse !== null;
+	const remote = meta?.local !== true;
 	const [showAdvanced, setShowAdvanced] = useState(false);
 	const [flags, setFlags] = useState<CliFlag[]>([]);
 	const [values, setValues] = useState<Record<string, string | boolean>>({});
@@ -234,13 +260,30 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 	const mode = useMode(selectMode);
 	const local = useMode((s) => runsLocal(s.state));
 
-	// The folder defaults to the most recent project once the sessions are known: they arrive after `meta`, so
-	// defaulting earlier is what used to start omp in `~`. With no sessions the folder stays unset and omp is not
-	// started until one is chosen.
+	// The projects folder, and where to warm omp up for a new project: read once, and again after it is changed here.
+	const home = meta?.home;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `rootGen` reads it again.
 	useEffect(() => {
-		if (!cwd && sessionsLoaded && recent[0]) setCwd(recent[0]);
-	}, [cwd, sessionsLoaded, recent]);
-	const needsFolder = !cwd && sessionsLoaded;
+		if (existing !== null) return;
+		let live = true;
+		void (async () => {
+			const { projectsApi } = await import("../lib/projects-api.ts");
+			const info = await projectsApi.info().catch(() => null);
+			if (!live) return;
+			setRoot(info);
+			const there = info
+				? await api.dirs(info.folder).then(
+						() => true,
+						() => false,
+					)
+				: false;
+			if (!live) return;
+			setRootWarm(there && info ? info.folder : (home ?? ""));
+		})();
+		return () => {
+			live = false;
+		};
+	}, [existing, rootGen, home]);
 
 	useEffect(() => {
 		api
@@ -371,10 +414,88 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 		if (failed.current && !sent.current) restartWarmUp();
 	}, [settings]);
 
+	/**
+	 * The new project's folder and the omp started in it by a send that did not get through (omp refused the prompt): the
+	 * next send uses them rather than making another folder.
+	 */
+	const made = useRef<{ path: string; liveId: string } | null>(null);
+	/** Bumped by `dropMade`: a start still on its way when it is bumped closes what it started and gives up. */
+	const madeGen = useRef(0);
+
+	/**
+	 * Make the new project's folder and start omp in it with everything picked here: the options, the mode, the permission
+	 * mode, the guard, the guidance, unattended, and the pickers' choices made on the warm-up process. Null when it could not
+	 * be done: the reason is shown at the name (a folder that could not be made) or as a toast, and nothing was sent.
+	 */
+	const startProject = async (warm: string): Promise<{ path: string; liveId: string } | null> => {
+		if (made.current && !useApp.getState().lives[made.current.liveId]?.info.exited) return made.current;
+		const gen = madeGen.current;
+		const { projectsApi } = await import("../lib/projects-api.ts");
+		let path: string;
+		try {
+			path = (await projectsApi.create(projectName === "" ? null : projectName)).path;
+		} catch (e) {
+			setProjectFailure(e);
+			return null;
+		}
+		let id: string;
+		try {
+			id = await openLive({
+				kind: "new",
+				cwd: path,
+				args: argsKey ? argsKey.split("\u0000") : [],
+				...(useMode.getState().state ? { mode } : {}),
+				approvalMode: approvalAtStart.current,
+				...(guardAtStart.current ? { guard: guardAtStart.current } : {}),
+				...(guidancePick.current ? { guidance: guidancePick.current } : {}),
+				unattended: unattendedPick.current,
+			});
+		} catch (e) {
+			if (gen === madeGen.current) toast("error", errorText(e));
+			return null;
+		}
+		if (gen !== madeGen.current) {
+			closeLive(id);
+			return null;
+		}
+		// The choices belong to the models the warm-up process was started on.
+		const on = runsLocal(useApp.getState().lives[warm]?.info ?? useMode.getState().state) ? "local" : "own";
+		const lost = await applyPicks(picks.current[on], pickIo(id), () => gen === madeGen.current);
+		if (gen !== madeGen.current) {
+			closeLive(id);
+			return null;
+		}
+		for (const l of lost) toast("warning", t("pages.newPickLost", { what: l.what, error: l.error }));
+		made.current = { path, liveId: id };
+		return made.current;
+	};
+
+	/** Close the omp a failed send started in a new project (its folder stays, empty): the name, the folder or the options changed. */
+	const dropMade = () => {
+		madeGen.current++;
+		if (made.current && !sent.current) closeLive(made.current.liveId);
+		made.current = null;
+	};
+	// biome-ignore lint/correctness/useExhaustiveDependencies: what the process was started with; on leaving the page too.
+	useEffect(() => dropMade, [argsKey, mode, local, existing]);
+
+	/** "Change" the projects folder from here: the same setting as Settings › Projects folder. */
+	const changeRoot = async (folder: string) => {
+		const { projectsApi, projectsErrorText } = await import("../lib/projects-api.ts");
+		try {
+			await projectsApi.set(folder);
+			dropMade();
+			setRootGen((g) => g + 1);
+		} catch (e) {
+			toast("error", projectsErrorText(t, e));
+		}
+	};
+
 	const send = async (text: string, images: ImageAttachment[]) => {
 		if (!cwd) {
-			// No folder, so no omp is running yet: ask for one and keep the draft.
-			setBrowse(true);
+			// No folder, so no omp is running yet: ask for one (or wait for the projects folder) and keep the draft.
+			if (existing !== null) setBrowse(true);
+			else toast("warning", t("pages.newStarting"));
 			return false;
 		}
 		if (!warmId) {
@@ -399,25 +520,37 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 			toast("warning", t("pages.newGoalNoImages"));
 			return false;
 		}
-		setPref(PREF.cwd, cwd);
+		// A new project: its folder is made and omp started in it now. The warm-up process in the projects folder is never
+		// given the message, the command or the goal.
+		let target = warmId;
+		let folder = cwd;
+		if (existing === null) {
+			const project = await startProject(warmId);
+			if (!project) return false;
+			target = project.liveId;
+			folder = project.path;
+		}
+		setPref(PREF.cwd, folder);
 		const open = () => {
 			sent.current = true;
-			// omp may have named the conversation's file already, as the warmed-up process started: the address is then its own.
-			setView({ kind: "chat", file: useApp.getState().lives[warmId]?.info.sessionFile ?? null, liveId: warmId });
+			// omp may have named the conversation's file already, as the process started: the address is then its own.
+			setView({ kind: "chat", file: useApp.getState().lives[target]?.info.sessionFile ?? null, liveId: target });
+			// The warm-up process of a new project has done its part (the pickers); it never had a conversation.
+			if (target !== warmId) closeLive(warmId);
 		};
 		try {
 			if (command && imgs.length === 0 && !withFiles) {
 				// Runs in the background (omp replies when it exits); the chat shows it with a Stop.
 				open();
-				runBash(warmId, text.slice(1).trim());
+				runBash(target, text.slice(1).trim());
 				return true;
 			}
 			// Prompts are acknowledged as soon as omp accepts them: switch only then, so a
 			// failure keeps the draft and attachments here. A !command with pictures or files is a message, as in a
 			// conversation (omp's bash takes no images), and never a goal.
-			if (!command && goalMode === "guided") await startGuidedGoal(warmId, text, { images: imgs });
-			else if (!command && goalMode === "direct") await createGoal(warmId, text);
-			else await socket.rpc(warmId, { type: "prompt", message: text, images: imgs });
+			if (!command && goalMode === "guided") await startGuidedGoal(target, text, { images: imgs });
+			else if (!command && goalMode === "direct") await createGoal(target, text);
+			else await socket.rpc(target, { type: "prompt", message: text, images: imgs });
 			open();
 			return true;
 		} catch (e) {
@@ -472,32 +605,63 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 				    its right, however long the path is. The group is as tall as the folder button, so they line up with it. */}
 				<div className="mb-3 flex items-start gap-2">
 					<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-						<button
-							type="button"
-							data-testid="cwd-picker"
-							title={cwd || undefined}
-							className={cx(
-								"inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs",
-								needsFolder
-									? "border-accent/50 bg-accent-soft font-medium text-accent hover:bg-accent/20"
-									: "border-border bg-surface hover:bg-hover",
-							)}
-							onPointerEnter={preloadDirBrowser}
-							onClick={() => setBrowse(true)}
-						>
-							<FolderOpen size={14} className="shrink-0 text-accent" />
-							<span className="truncate">{cwd ? shortPath(cwd, meta?.home) : t("pages.newChooseFolder")}</span>
-							<ChevronDown size={12} className="shrink-0" />
-						</button>
+						{existing === null ? (
+							<ErrorBoundary fallback={() => null} onError={retryProjectField}>
+								<Suspense fallback={null}>
+									<ProjectField
+										name={projectName}
+										onName={(name) => {
+											setProjectName(name);
+											setProjectFailure(null);
+											dropMade();
+										}}
+										root={root}
+										home={meta?.home}
+										failure={projectFailure}
+										remote={remote}
+										onChangeRoot={() => setBrowseFor("root")}
+										onUseExisting={() => setBrowseFor("existing")}
+										onEnter={() => composer.current?.focus()}
+									/>
+								</Suspense>
+							</ErrorBoundary>
+						) : (
+							<>
+								<button
+									type="button"
+									data-testid="cwd-picker"
+									title={cwd || undefined}
+									className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs hover:bg-hover"
+									onPointerEnter={preloadDirBrowser}
+									onClick={() => setBrowse(true)}
+								>
+									<FolderOpen size={14} className="shrink-0 text-accent" />
+									<span className="truncate">{shortPath(cwd, meta?.home)}</span>
+									<ChevronDown size={12} className="shrink-0" />
+								</button>
+								<button
+									type="button"
+									data-testid="back-to-new-project"
+									className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted hover:bg-hover hover:text-fg"
+									onClick={() => {
+										setExisting(null);
+										setRootGen((g) => g + 1);
+									}}
+								>
+									<FolderPlus size={13} /> {t("pages.newBackToProject")}
+								</button>
+							</>
+						)}
 						{recent
-							.filter((r) => r !== cwd)
+							.filter((r) => r !== existing)
 							.slice(0, 4)
 							.map((r) => (
 								<button
 									type="button"
 									key={r}
+									title={r}
 									className="truncate rounded-lg px-2 py-1 text-xs text-muted hover:bg-hover hover:text-fg"
-									onClick={() => setCwd(r)}
+									onClick={() => setExisting(r)}
 								>
 									{shortPath(r, meta?.home).split("/").pop() || r}
 								</button>
@@ -623,11 +787,16 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 				<ErrorBoundary fallback={() => null} onError={retryDirBrowser}>
 					<Suspense fallback={null}>
 						<DirBrowser
-							open={browse}
-							onOpenChange={setBrowse}
-							start={cwd || meta?.home || ""}
-							onPick={(p) => setCwd(p)}
-							creatable
+							open={browse !== null}
+							onOpenChange={(open) => {
+								if (!open) setBrowseFor(null);
+							}}
+							start={(browse === "root" ? root?.folder : cwd) || meta?.home || ""}
+							onPick={(p) => {
+								if (browse === "root") void changeRoot(p);
+								else setExisting(p);
+							}}
+							creatable={browse === "existing"}
 						/>
 					</Suspense>
 				</ErrorBoundary>

@@ -33,6 +33,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	newGo: "前往",
 	newUseFolder: "使用此文件夹",
 	newPickFolder: "选择文件夹后启动 omp",
+	newBackToProject: "改为新建项目",
 	newDirOmitted: "只列出前 {shown} 个，另有 {n} 个未列出：输入路径可直接打开。",
 	newDirUp: "上一级：{name}",
 

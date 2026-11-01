@@ -31,4 +31,5 @@ export const en = {
 	newFilterAria: "Filter options",
 	newFilter: "Filter…",
 	newPickFolder: "Choose a folder to start omp",
+	newBackToProject: "Make a new project instead",
 };
