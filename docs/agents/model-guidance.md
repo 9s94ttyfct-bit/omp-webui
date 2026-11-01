@@ -39,7 +39,8 @@ Other stored data:
 |---|---|---|---|---|
 | `~/.omp-webui/model-guidance.json` | templates | list of `{ id, name, text, builtin? }`; name up to 60 chars, text up to 4,000 chars; at most 50 templates | the two shipped templates | The template set. An unreadable file is kept aside as `model-guidance.json.damaged` and the shipped templates stand in. Moves with Move to another computer. |
 | beside the conversation's settings overlay | `<…>.guidance.md` | text up to 4,000 chars | none | What one conversation carries; read by the extension at each turn. |
-| `~/.omp-webui/model-guidance-sessions.json` | per conversation | template id and/or text | none | What each conversation was given, so it is carried again when the conversation is reopened. |
+| `~/.omp-webui/model-guidance-sessions.json` | per conversation | template id and/or text | none | Which guidance each conversation is set to, so it is carried again when the conversation is reopened. |
+| the conversation's session file (omp's) | entries of custom type `ompw-guidance` | `custom` entry `{ text }` (a first turn) or the delivered note, a `custom_message` with `details: { text }` | none | What each branch of the conversation was last told, compared at each turn to decide whether a note is due. Written by the extension through omp; never edited by the server. |
 
 ## API routes
 
@@ -60,6 +61,6 @@ Other stored data:
 
 ## Security notes
 
-- Every change (templates, restore, a conversation's guidance) is refused (403) to a page not on this computer, because the text goes into the system prompt of every conversation that uses it. A remote page can read the templates and name a template for a new chat, but cannot send custom guidance text ("The model guidance is written on the computer omp-webui runs on").
+- Every change (templates, restore, a conversation's guidance) is refused (403) to a page not on this computer, because the text goes into the system prompt of every conversation that uses it. A remote page can read the templates and name a template for a new chat, but cannot send custom guidance text ("Guidance is written on the computer omp-webui runs on").
 - The conflict check is for this computer only too (it reads the folder's instruction files and omp's memories). It writes nothing by itself: each proposed change is applied only when the user presses Apply, through the same routes and rules as any other change (a file through the Files tab's save with its etag, a memory through the Memory page's retire). The model sees the files and memories as data in a request of its own, with no tools.
 - Agents must not create or edit templates, or change the default, on the user's behalf unless asked.
