@@ -19,8 +19,13 @@ export interface Config {
 	host: string;
 	port: number;
 	distDir: string;
-	/** On a taken port, take a free one instead (and clean up this data dir's own stale server). */
+	/** The macOS app's server: no token printed, a ready line for the app, and its own stale server cleaned up. */
 	autoPort: boolean;
+	/**
+	 * On a taken port, the next free one of the following 20, then any: the Windows launcher, which cannot be told a
+	 * port (`OMP_WEBUI_PORT_WINDOW=1`). The app's server (`autoPort`) does so too.
+	 */
+	portWindow?: boolean;
 	/** Exit when this process (the macOS app shell) is gone. */
 	parentPid: number | null;
 }
@@ -63,6 +68,7 @@ export function loadConfig(
 		// Built web assets; the macOS app ships them inside its bundle and passes the path.
 		distDir: resolve(env.OMP_WEBUI_DIST ?? join(import.meta.dir, "..", "dist", "web")),
 		autoPort: env.OMP_WEBUI_AUTO_PORT === "1",
+		portWindow: env.OMP_WEBUI_PORT_WINDOW === "1",
 		parentPid: env.OMP_WEBUI_PARENT_PID ? Number(env.OMP_WEBUI_PARENT_PID) : null,
 	};
 }

@@ -2668,18 +2668,18 @@ if (adopted > 0) {
 // A restart a former server left in the middle (it crashed between two steps) is finished.
 void restarts.recover();
 /**
- * Bind the preferred port; in app mode, when it is taken (the web version, another program),
- * the next free one of the following 20 — the same port on every launch while the occupant
- * stays, so the app's origin (and its stored preferences) does not change — and only then
- * any free port.
+ * Bind the preferred port; in app mode (and the Windows launcher's), when it is taken (the web version, another
+ * program), the next free one of the following 20 — the same port on every launch while the occupant stays, so the
+ * page's origin (and its stored preferences) does not change — and only then any free port.
  */
 function bind(): ReturnType<typeof listen> {
-	const candidates = cfg.autoPort ? [...Array.from({ length: 21 }, (_, i) => cfg.port + i), 0] : [cfg.port];
+	const windowed = cfg.autoPort || cfg.portWindow === true;
+	const candidates = windowed ? [...Array.from({ length: 21 }, (_, i) => cfg.port + i), 0] : [cfg.port];
 	for (const p of candidates) {
 		try {
 			return listen(cfg.host, p);
 		} catch (e) {
-			if (!cfg.autoPort || (e as { code?: string }).code !== "EADDRINUSE") throw e;
+			if (!windowed || (e as { code?: string }).code !== "EADDRINUSE") throw e;
 		}
 	}
 	throw new Error("No free port");

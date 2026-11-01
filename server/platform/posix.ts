@@ -161,7 +161,11 @@ export function posixShell(deps: SystemDeps): ShellOps {
 		loginEnvArgv: (shell, marker) => [shell, "-ilc", `printf %s ${marker}; /usr/bin/env -0`],
 		privateArgv: (command) => ["/bin/sh", "-c", 'umask 077; exec "$@"', "omp-webui", ...command],
 		jobArgv: (statusFile, command) => ["/bin/sh", "-c", JOB_WRAPPER, "sh", statusFile, ...command],
-		installerArgv: () => ["/bin/sh", "-c", INSTALLER_SCRIPT],
+		installer: () => ({
+			argv: ["/bin/sh", "-c", INSTALLER_SCRIPT],
+			command: "curl -fsSL https://omp.sh/install | sh -s -- --binary",
+			needs: "curl",
+		}),
 		shutdownSignals: ["SIGINT", "SIGTERM", "SIGHUP"],
 		// No terminal: a stray hangup or interrupt is not for the relay.
 		relayIgnored: ["SIGHUP", "SIGINT"],
@@ -191,6 +195,7 @@ export const posixCommands: CommandOps = {
 	installDirs: ["/opt/homebrew/bin", "/usr/local/bin"],
 	brewDirs: ["/home/linuxbrew/.linuxbrew/bin"],
 	fallbackPath: ["/usr/bin", "/bin", "/usr/sbin", "/sbin"],
+	ompInstallDir: (home) => join(home, ".local", "bin"),
 };
 
 /** None of the host's commands takes longer than a few milliseconds; one that has not answered in this time is stuck. */

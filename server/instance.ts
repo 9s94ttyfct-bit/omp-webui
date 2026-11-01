@@ -78,6 +78,18 @@ export function forgetServer(dataDir: string): void {
 	if (existsSync(file(dataDir)) && read(dataDir)?.pid === process.pid) rmSync(file(dataDir), { force: true });
 }
 
+/**
+ * The server this data dir records (this process too, once it has recorded itself), when it is running as recorded:
+ * the loopback port its page on this computer is served on. Null when there is none (or the pid now belongs to
+ * something else).
+ */
+export function runningServer(dataDir: string): { pid: number; port: number } | null {
+	const rec = read(dataDir);
+	if (!rec || !runsAs(rec)) return null;
+	const port = rec.localPort ?? rec.port;
+	return Number.isInteger(port) && port > 0 ? { pid: rec.pid, port } : null;
+}
+
 /** Where an omp-webui keeps its data unless told otherwise: the web version's, and the macOS app's. */
 export function knownDataDirs(home: string = homedir()): string[] {
 	return [join(home, ".omp-webui"), join(home, "Library", "Application Support", "omp-webui")];

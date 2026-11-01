@@ -23,13 +23,14 @@ export const NPM_PACKAGE = "@oh-my-pi/pi-coding-agent";
 
 /**
  * Where an omp may be: the directories of `PATH`, then where omp's own installers put it — its installer's
- * (`$PI_INSTALL_DIR`, else `~/.local/bin`, which the installer leaves off `PATH` and asks the user to add) and
- * bun's global bin (`$BUN_INSTALL/bin`, else `~/.bun/bin`). A macOS app started from Finder has a minimal
- * `PATH`: the server takes its login shell's (`login-env.ts`), and these two cover what that shell does not export.
+ * (`$PI_INSTALL_DIR`, else `~/.local/bin`, which the installer leaves off `PATH` and asks the user to add; Windows:
+ * `%LOCALAPPDATA%\omp`, which it adds to the user's `PATH` for programs started after it) and bun's global bin
+ * (`$BUN_INSTALL/bin`, else `~/.bun/bin`). A macOS app started from Finder has a minimal `PATH`: the server takes its
+ * login shell's (`login-env.ts`), and these two cover what that shell does not export.
  */
 export function searchDirs(env: Env = process.env, home: string = homedir()): string[] {
 	const dirs = (env.PATH ?? "").split(delimiter).filter(Boolean);
-	dirs.push(env.PI_INSTALL_DIR || join(home, ".local", "bin"));
+	dirs.push(env.PI_INSTALL_DIR || platform.commands.ompInstallDir(home));
 	dirs.push(join(env.BUN_INSTALL || join(home, ".bun"), "bin"));
 	return [...new Set(dirs)];
 }
@@ -71,7 +72,7 @@ export async function probeOmp(
 
 // ------------------------------------------------------------------ how it was installed
 
-/** The first bytes of Mach-O and ELF executables: what a standalone omp binary is, unlike a script. */
+/** The first bytes of Mach-O, ELF and Windows (PE, `MZ`) executables: what a standalone omp binary is, unlike a script. */
 function isNativeExecutable(path: string): boolean {
 	let fd: number | null = null;
 	try {
@@ -79,6 +80,7 @@ function isNativeExecutable(path: string): boolean {
 		const head = Buffer.alloc(4);
 		if (readSync(fd, head, 0, 4, 0) < 4) return false;
 		const magic = head.toString("hex");
+		if (magic.startsWith("4d5a")) return true;
 		return magic === "7f454c46" || ["feedface", "feedfacf", "cefaedfe", "cffaedfe", "cafebabe"].includes(magic);
 	} catch {
 		return false;
@@ -137,51 +139,46 @@ interface InstallRecipe {
 	/** What the first-run screen shows. */
 	command: string;
 	/** The program it needs. */
-	needs: string | null;
-	/** What to run, with `tool` the resolved path of `needs`; null where this system cannot run it. */
-	argv(tool: string | null): string[] | null;
+	needs: string;
+	/** What to run, with `tool` the resolved path of `needs`. */
+	argv(tool: string): string[];
 }
 
-/** What the first-run screen says of an install option this system cannot run at all. */
-const NOT_HERE = "omp's installer script does not run on this system";
-
 /**
- * The install commands of omp's README, which the first-run screen offers. The installer's `--binary` always
- * installs the standalone build: its default installs through bun when bun exists, which is the Bun option's job.
+ * The install commands of omp's README, which the first-run screen offers. The installer's `--binary` (`-Binary`)
+ * always installs the standalone build: its default installs through bun when bun exists, which is the Bun option's job.
  */
-const RECIPES: InstallRecipe[] = [
-	{
-		id: "homebrew",
-		command: `brew install ${HOMEBREW_FORMULA}`,
-		needs: "brew",
-		argv: (brew) => [brew ?? "brew", "install", HOMEBREW_FORMULA],
-	},
-	{
-		id: "installer",
-		// What the screen shows (and a terminal can paste) is the README's one-liner; the server runs the same download
-		// and install as two steps (`INSTALLER_SCRIPT`), so that a download that fails is what the job reports.
-		command: "curl -fsSL https://omp.sh/install | sh -s -- --binary",
-		needs: "curl",
-		argv: () => platform.shell.installerArgv(),
-	},
-	{
-		id: "bun",
-		command: `bun install -g ${NPM_PACKAGE}`,
-		needs: "bun",
-		argv: (bun) => [bun ?? "bun", "install", "-g", NPM_PACKAGE],
-	},
-];
+function recipes(): InstallRecipe[] {
+	// What the screen shows (and a terminal can paste) is the README's one-liner for this system; the server runs the same
+	// download and install in a way that reports a download that fails (`ShellOps.installer`).
+	const installer = platform.shell.installer();
+	return [
+		{
+			id: "homebrew",
+			command: `brew install ${HOMEBREW_FORMULA}`,
+			needs: "brew",
+			argv: (brew) => [brew, "install", HOMEBREW_FORMULA],
+		},
+		{ id: "installer", command: installer.command, needs: installer.needs, argv: () => installer.argv },
+		{
+			id: "bun",
+			command: `bun install -g ${NPM_PACKAGE}`,
+			needs: "bun",
+			argv: (bun) => [bun, "install", "-g", NPM_PACKAGE],
+		},
+	];
+}
 
 /** The options the first-run screen lists, which of them can run here, and the one to try first. */
 export function installOptions(env: Env = process.env, home: string = homedir()): InstallOption[] {
 	const dirs = searchDirs(env, home);
-	const options = RECIPES.map((r) => {
-		const tool = r.needs === null ? null : platform.commands.which(r.needs, dirs);
+	const options = recipes().map((r) => {
+		const tool = platform.commands.which(r.needs, dirs);
 		return {
 			id: r.id,
 			command: r.command,
 			needs: r.needs,
-			available: (r.needs === null || tool !== null) && r.argv(tool) !== null,
+			available: tool !== null,
 			recommended: false,
 		};
 	});
@@ -198,13 +195,11 @@ export function installCommand(
 	env: Env = process.env,
 	home: string = homedir(),
 ): { argv: string[]; command: string } | { error: string } {
-	const recipe = RECIPES.find((r) => r.id === id);
+	const recipe = recipes().find((r) => r.id === id);
 	if (!recipe) return { error: `Unknown install method: ${id}` };
-	const tool = recipe.needs ? platform.commands.which(recipe.needs, searchDirs(env, home)) : null;
-	if (recipe.needs && !tool) return { error: `${recipe.needs} was not found on this computer` };
-	const argv = recipe.argv(tool);
-	if (!argv) return { error: NOT_HERE };
-	return { argv, command: recipe.command };
+	const tool = platform.commands.which(recipe.needs, searchDirs(env, home));
+	if (!tool) return { error: `${recipe.needs} was not found on this computer` };
+	return { argv: recipe.argv(tool), command: recipe.command };
 }
 
 /** `PATH` for a command the server runs: where omp and the tools it installs with are (see `searchDirs`). */

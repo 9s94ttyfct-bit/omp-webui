@@ -36,6 +36,8 @@ xattr -dr com.apple.quarantine /Applications/omp-webui.app
 
 应用用自签名证书签名、没有经过 Apple 公证，这条命令去掉隔离标记（也可以在“系统设置 › 隐私与安全性”里点“仍要打开”）。第一次打开时，如果还没有 [omp](https://omp.sh)，应用会提供安装。
 
+**Windows 启动器**（Windows 10 或更高，x64）：从[最新发布](../../releases/latest)下载 `omp-webui-vX.Y.Z-windows-x64.zip`，解压到任意位置，双击解压出的文件夹里的 `omp-webui.exe`（`web` 文件夹要留在它旁边）。它会启动服务器，并在默认浏览器里打开页面；运行期间它的控制台窗口一直开着，关掉这个窗口就停止 omp-webui。运行时再双击一次，只会再打开页面。程序没有签名，第一次运行时 SmartScreen 可能会警告：点“更多信息 › 仍要运行”。第一次打开时，如果还没有 [omp](https://omp.sh)，页面会提供安装。更新时下载新的 zip 替换整个文件夹。
+
 **从源码运行**，供开发使用（任何装有 [Bun](https://bun.sh) ≥ 1.3、且 `omp` 在 `PATH` 里的系统）：
 
 ```sh

@@ -75,7 +75,7 @@ case "$1 $2" in
   while [ $# -gt 0 ]; do if [ "$1" = --notes-file ]; then cp "$2" "${base}/edited-body"; fi; shift; done ;;
 "api repos/9s94ttyfct-bit/omp-webui/actions/workflows/ci.yml/runs?head_sha="*)
   sha=\${2#*head_sha=}; sha=\${sha%%&*}
-  run() { printf '{"head_sha":"%s","event":"%s","status":"%s","conclusion":%s,"created_at":"%s","html_url":"https://github.com/runs/%s"}' "$1" "$2" "$3" "$4" "$5" "$6"; }
+  run() { printf '{"id":%s,"head_sha":"%s","event":"%s","status":"%s","conclusion":%s,"created_at":"%s","html_url":"https://github.com/runs/%s"}' "$6" "$1" "$2" "$3" "$4" "$5" "$6"; }
   case "\${STUB_CI:-success}" in
   none) runs="" ;;
   success) runs=$(run "$sha" push completed '"success"' 2026-01-01T00:00:00Z 1) ;;
@@ -85,6 +85,10 @@ case "$1 $2" in
   elsewhere) runs="$(run 0000000000000000000000000000000000000001 push completed '"success"' 2026-01-01T00:00:00Z 6),$(run "$sha" pull_request completed '"success"' 2026-01-01T00:00:00Z 7)" ;;
   esac
   printf '{"total_count":1,"workflow_runs":[%s]}\\n' "$runs" ;;
+"run download")
+  # The Windows launcher's zip, the artifact of the CI run asked for; STUB_NO_WINDOWS: the run has none.
+  [ -z "$STUB_NO_WINDOWS" ] || { echo "no artifact matches any of the names or patterns provided" >&2; exit 1; }
+  while [ $# -gt 0 ]; do if [ "$1" = -D ]; then : > "$2/omp-webui-windows-x64.zip"; fi; shift; done ;;
 esac`,
 	);
 	// Nothing is published to npm any more: a call to it is only logged, for the tests that say there is none.
@@ -415,7 +419,7 @@ test("--dry-run with no tag runs the macOS and the live tests, the app and the d
 	const r = await finish(release(["--dry-run"], {}, true));
 	expect(r.code).toBe(0);
 	expect(r.out).toContain(
-		`Dry run: CI, the macOS tests, the live tests, the app and the dmg passed on ${main} (origin/main), the commit ${TAG} would be made on`,
+		`Dry run: CI, the macOS tests, the live tests, the app, the dmg and the Windows launcher passed on ${main} (origin/main), the commit ${TAG} would be made on`,
 	);
 	const seen = calls();
 	for (const step of ["bun run test:mac", "bun run test:live", "bun run app", "bun run dmg"])
@@ -478,20 +482,30 @@ test("--dry-run with an existing tag and --skip-tests builds the app and the dmg
 	expect(worktrees()).toHaveLength(1);
 });
 
-test("a release is the signed dmg on a GitHub Release, and nothing is published to npm or GitHub Packages", async () => {
+test("a release is the signed dmg and the Windows launcher of CI's passing run on a GitHub Release, and nothing is published to npm or GitHub Packages", async () => {
 	const r = await finish(release());
 	expect(r.out).toContain(`Released ${TAG}`);
 	expect(r.code).toBe(0);
 	const seen = calls();
+	const tag = TAG.replaceAll(".", "\\.");
+	expect(seen).toContain("gh run download 1 -n omp-webui-windows-x64");
 	expect(seen).toMatch(
-		new RegExp(
-			`gh release create ${TAG.replaceAll(".", "\\.")} \\S+/dist/omp-webui-${TAG.replaceAll(".", "\\.")}\\.dmg `,
-		),
+		new RegExp(`gh release create ${tag} \\S+/dist/omp-webui-${tag}\\.dmg \\S+/omp-webui-${tag}-windows-x64\\.zip `),
 	);
 	for (const never of ["npm ", "gh auth token", "packages", "NODE_AUTH_TOKEN"]) expect(seen).not.toContain(never);
 	expect(leftovers()).toEqual([]);
 	// Visibility was read before anything was built.
 	expect(seen.indexOf("gh api repos")).toBeLessThan(seen.indexOf("bun install"));
+});
+
+test("a CI run without the Windows launcher's zip stops the release before anything is built or tagged", async () => {
+	untag();
+	const r = await finish(release([], { STUB_NO_WINDOWS: "1" }, true));
+	expect(r.code).toBe(1);
+	expect(calls()).not.toContain("bun run");
+	expect(localTag()).toBe("");
+	expect(originTag()).toBe("");
+	expect(leftovers()).toEqual([]);
 });
 
 test("SIGTERM in the middle removes the temporary directory and the worktree", async () => {

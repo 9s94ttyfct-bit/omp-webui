@@ -100,6 +100,7 @@ export function createLinux(deps: SystemDeps): Platform {
 		shell: posixShell(deps),
 		commands: posixCommands,
 		desktop: null,
+		openUrlArgv: (url) => ["xdg-open", url],
 		power: null,
 		host: {
 			processes: posixHostProcesses(deps),

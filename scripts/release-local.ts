@@ -38,11 +38,13 @@
  * never made without them). `--dry-run` does everything but the tag and the publishing (the CI check, the macOS and the
  * live tests, the app and the dmg) and then stops, saying the commit a new tag would be made on.
  *
- * A release is the signed dmg on a GitHub Release with the notes and the install steps, nothing else: no package is
- * published anywhere. SIGINT, SIGTERM and SIGHUP stop the running command and everything it started, then
+ * A release is the signed dmg and the Windows launcher's zip on a GitHub Release with the notes and the install steps,
+ * nothing else: no package is published anywhere. The zip is not built here: it is the `omp-webui-windows-x64` artifact
+ * of the CI run that passed on the released commit (the `windows-launcher` job), downloaded before anything is built.
+ * SIGINT, SIGTERM and SIGHUP stop the running command and everything it started, then
  * remove the temporary worktree and directory too.
  */
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { availableParallelism, tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Needs, type Probe, preflight } from "./lib/release-preflight.ts";
@@ -146,6 +148,7 @@ async function reportVisibility(): Promise<void> {
 }
 
 interface CiRun {
+	id: number;
 	head_sha: string;
 	event: string;
 	status: string;
@@ -158,8 +161,9 @@ interface CiRun {
  * Stop unless CI succeeded on exactly `commit`: a run of the CI workflow for it, started by the push or by hand, that
  * completed with success. A pull request's run does not count: it tested the merge of the pull request into its base,
  * not this commit. One success is enough (a run that failed and then passed on a re-run, or a by-hand run after it).
+ * Returns that run: the Windows launcher's zip is its artifact.
  */
-async function requireCi(commit: string): Promise<void> {
+async function requireCi(commit: string): Promise<CiRun> {
 	const r = await exec(
 		["gh", "api", `repos/${REPO}/actions/workflows/${CI_WORKFLOW}/runs?head_sha=${commit}&per_page=100`],
 		{ quiet: true },
@@ -171,7 +175,7 @@ async function requireCi(commit: string): Promise<void> {
 	const passed = runs.find((ci) => ci.status === "completed" && ci.conclusion === "success");
 	if (passed) {
 		console.log(`CI passed on ${commit}: ${passed.html_url}`);
-		return;
+		return passed;
 	}
 	const latest = runs[0];
 	if (!latest) {
@@ -258,7 +262,7 @@ async function makeTag(commit: string): Promise<void> {
 async function release(): Promise<void> {
 	const { commit, fresh } = await releasedCommit();
 	await reportVisibility();
-	await requireCi(commit);
+	const ci = await requireCi(commit);
 
 	// The steps that follow need this machine to have things CI does not check; find out now, not at the dmg.
 	const needs: Needs = { gui: true, publish: !dryRun, signing: true };
@@ -271,6 +275,13 @@ async function release(): Promise<void> {
 	tree = join(work, "tree");
 	await run(["git", "worktree", "add", "--detach", tree, commit]);
 	await run(["bun", "install", "--frozen-lockfile"], { cwd: tree });
+
+	// The Windows launcher, as CI built and tested it on this commit.
+	const downloaded = join(work, "windows");
+	mkdirSync(downloaded);
+	await run(["gh", "run", "download", String(ci.id), "-n", "omp-webui-windows-x64", "-D", downloaded, "-R", REPO]);
+	const windowsZip = join(work, `omp-webui-${tag}-windows-x64.zip`);
+	renameSync(join(downloaded, "omp-webui-windows-x64.zip"), windowsZip);
 
 	const version = JSON.parse(await Bun.file(join(tree, "package.json")).text()).version as string;
 	if (`v${version}` !== tag) throw new Error(`tag ${tag} != package.json v${version}`);
@@ -290,21 +301,22 @@ async function release(): Promise<void> {
 	await run(["bun", "run", "dmg"], { cwd: tree });
 	const dmg = join(tree, "dist", `omp-webui-${tag}.dmg`);
 	if (!(await Bun.file(dmg).exists())) throw new Error(`${dmg} was not built`);
+	const assets = [dmg, windowsZip];
 
 	if (dryRun) {
 		console.log(
 			fresh
-				? `Dry run: CI, the macOS tests, the live tests, the app and the dmg passed on ${commit} (origin/main), the commit ${tag} would be made on; no tag was made, and nothing was published.`
-				: `Dry run: ${tag} is ready (CI, the macOS tests, the live tests, the app and the dmg passed); nothing was published.`,
+				? `Dry run: CI, the macOS tests, the live tests, the app, the dmg and the Windows launcher passed on ${commit} (origin/main), the commit ${tag} would be made on; no tag was made, and nothing was published.`
+				: `Dry run: ${tag} is ready (CI, the macOS tests, the live tests, the app, the dmg and the Windows launcher passed); nothing was published.`,
 		);
 		return;
 	}
 	if (fresh) await makeTag(commit);
 
-	// The release: the notes plus how to open the app (signed with a local certificate, not notarized). When the Release
-	// workflow was run by hand for this tag first, the release exists (notes and a line that there is no installer yet):
-	// its body is replaced, so that the page has the install steps and no longer says there is no installer. Otherwise
-	// it is created here, with the dmg.
+	// The release: the notes plus how to install the app (signed with a local certificate, not notarized) and the Windows
+	// launcher (not signed). When the Release workflow was run by hand for this tag first, the release exists (notes and
+	// a line that there is no installer yet): its body is replaced, so that the page has the install steps and no longer
+	// says there is no installer. Otherwise it is created here, with the dmg and the zip.
 	const body = join(work, "body.md");
 	const notes = await Bun.file(join(tree, "release-notes", `${tag}.md`)).text();
 	const install = await Bun.file(join(tree, "release-notes", "_install.md")).text();
@@ -312,14 +324,14 @@ async function release(): Promise<void> {
 	const exists = await exec(["gh", "release", "view", tag, "-R", REPO], { quiet: true });
 	if (exists.code === 0) {
 		await run(["gh", "release", "edit", tag, "--notes-file", body, "-R", REPO]);
-		await run(["gh", "release", "upload", tag, dmg, "--clobber", "-R", REPO]);
+		await run(["gh", "release", "upload", tag, ...assets, "--clobber", "-R", REPO]);
 	} else {
 		await run([
 			"gh",
 			"release",
 			"create",
 			tag,
-			dmg,
+			...assets,
 			"--title",
 			`omp-webui ${tag}`,
 			"--notes-file",

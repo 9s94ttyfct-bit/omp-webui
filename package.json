@@ -1,6 +1,6 @@
 {
 	"name": "@9s94ttyfct-bit/omp-webui",
-	"version": "0.15.0",
+	"version": "0.16.0",
 	"private": true,
 	"type": "module",
 	"description": "A modern web UI for the omp coding agent",
@@ -37,6 +37,7 @@
 		"parity": "bun scripts/parity.ts",
 		"lighthouse": "vite build && bun scripts/lighthouse.ts",
 		"app": "bun scripts/app.ts",
+		"windows-launcher": "bun scripts/windows-launcher.ts",
 		"icons": "bun scripts/icons.ts",
 		"dmg": "bun scripts/dmg.ts",
 		"screenshots": "vite build && bun scripts/screenshots.ts",

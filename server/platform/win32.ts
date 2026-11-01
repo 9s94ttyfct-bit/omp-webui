@@ -16,6 +16,8 @@ import type { CommandOps, Platform, ProcessEntry, ProcessOps, ShellOps, SystemDe
 const POWERSHELL = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command"];
 /** A CIM query starts PowerShell: about a second, more on a busy machine. */
 const CIM_MS = 15_000;
+/** omp's README installer for Windows, as its own header gives the standalone-binary form. */
+const PS_INSTALLER = "& ([scriptblock]::Create((irm https://omp.sh/install.ps1))) -Binary";
 
 /** One process as CIM describes it. */
 interface CimProcess extends ProcessEntry {
@@ -205,6 +207,8 @@ function commands(deps: SystemDeps): CommandOps {
 		installDirs: [],
 		brewDirs: [],
 		fallbackPath: [],
+		// omp's `install.ps1`: `%LOCALAPPDATA%\omp\omp.exe`.
+		ompInstallDir: (home) => join(deps.env.LOCALAPPDATA || join(home, "AppData", "Local"), "omp"),
 	};
 }
 
@@ -223,8 +227,13 @@ function shell(deps: SystemDeps, find: CommandOps): ShellOps {
 		privateArgv: (command) => command,
 		// No `/bin/sh` to write the status: the server writes it when the job ends (and a job does not outlive it).
 		jobArgv: () => null,
-		// omp's installer is a POSIX shell script.
-		installerArgv: () => null,
+		// omp's PowerShell installer, its standalone binary (`-Binary`: its default installs through bun when bun is there,
+		// which is the Bun option's job). A failed download is an error PowerShell ends with, so the job reports it.
+		installer: () => ({
+			argv: [...POWERSHELL, `$ErrorActionPreference = 'Stop'; ${PS_INSTALLER}`],
+			command: PS_INSTALLER,
+			needs: "powershell",
+		}),
 		shutdownSignals: ["SIGINT", "SIGTERM", "SIGHUP", "SIGBREAK"],
 		relayIgnored: [],
 	};
@@ -239,6 +248,13 @@ export function createWin32(deps: SystemDeps): Platform {
 		shell: shell(deps, find),
 		commands: find,
 		desktop: null,
+		// The system's own `rundll32` (not one a `PATH` names first) hands the address to the default browser; unlike
+		// `cmd /c start`, nothing in it is read by a shell.
+		openUrlArgv: (url) => [
+			join(deps.env.SystemRoot || "C:\\Windows", "System32", "rundll32.exe"),
+			"url.dll,FileProtocolHandler",
+			url,
+		],
 		power: null,
 		host: {
 			async processes(): Promise<PsRow[]> {

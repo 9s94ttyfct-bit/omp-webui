@@ -29,7 +29,9 @@ The app can install updates only when it is the macOS app (started by its own sh
 - An omp installed with Nix, managed by another tool, or installed in an unknown way is not updated by the app (**Update omp** is not offered and the automatic switch is disabled).
 - **Run the first-time setup again** reopens the setup steps (Sign in, Model, Permissions, Done).
 
-When omp is not found or does not start, the app shows **Install omp to get started** instead of the conversations: choices Homebrew (recommended where present), omp's installer (standalone binary in `~/.local/bin`) and Bun, each with the command it runs, the installer output, **Cancel**, and **I installed it myself — look again**. After an install the first-time setup follows.
+When omp is not found or does not start, the app shows **Install omp to get started** instead of the conversations: choices Homebrew (recommended where present), omp's installer (standalone binary in `~/.local/bin`; on Windows omp's PowerShell installer, into `%LOCALAPPDATA%\omp`) and Bun, each with the command it runs, the installer output, **Cancel**, and **I installed it myself — look again**. After an install the first-time setup follows.
+
+On Windows, omp-webui runs from `omp-webui.exe` (the release's `omp-webui-vX.Y.Z-windows-x64.zip`): a double-click starts the server and opens the page in the default browser; closing its console window stops it. It has no self-update: a new version is a new zip that replaces the folder.
 
 ## Where it is
 

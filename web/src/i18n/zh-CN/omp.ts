@@ -13,7 +13,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	optionHomebrew: "Homebrew",
 	optionHomebrewHint: "用 `brew` 安装 omp，之后由 Homebrew 负责保持最新。",
 	optionInstaller: "omp 安装脚本",
-	optionInstallerHint: "把 omp 的独立可执行文件下载到 `~/.local/bin`，并先校验其校验和。不需要任何其他工具。",
+	optionInstallerHint:
+		"把 omp 的独立可执行文件下载到 `~/.local/bin`（Windows 上是 `%LOCALAPPDATA%\\omp`），并先校验其校验和。不需要任何其他工具。",
 	optionBun: "Bun",
 	optionBunHint: "用 `bun` 全局安装 omp 的软件包。",
 	optionRecommended: "推荐",

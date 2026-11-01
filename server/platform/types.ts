@@ -89,8 +89,11 @@ export interface ShellOps {
 	privateArgv(command: string[]): string[];
 	/** `command` run so that its exit status is written to `statusFile` when it is over; null where the server must write it. */
 	jobArgv(statusFile: string, command: string[]): string[] | null;
-	/** omp's installer as the server runs it (download, then run); null where omp has none this server can run. */
-	installerArgv(): string[] | null;
+	/**
+	 * omp's installer as the server runs it (download, then run), what the first-run screen shows for it (omp's README
+	 * one-liner for this system) and the program it needs.
+	 */
+	installer(): { argv: string[]; command: string; needs: string };
 	/** The signals that ask the server to stop. */
 	readonly shutdownSignals: readonly NodeJS.Signals[];
 	/** Signals a relay ignores: a terminal going away must not end the conversations it holds. */
@@ -108,6 +111,8 @@ export interface CommandOps {
 	readonly brewDirs: readonly string[];
 	/** `PATH` when the environment has none at all. */
 	readonly fallbackPath: readonly string[];
+	/** Where omp's own installer puts omp when `PI_INSTALL_DIR` does not say (`home`: the user's home folder). */
+	ompInstallDir(home: string): string;
 }
 
 /** Hand a file or folder to the desktop: what runs is the system's own `open`, from an argument list. */
@@ -156,6 +161,11 @@ export interface Platform {
 	readonly commands: CommandOps;
 	/** Null where `capabilities.openFiles` is false. */
 	readonly desktop: DesktopOps | null;
+	/**
+	 * The command that opens an `http(s)` address in the person's default browser (the Windows launcher's page). Only
+	 * ever given an address the server made; unlike `desktop`, nothing a page names is opened with it.
+	 */
+	openUrlArgv(url: string): string[];
 	/** Null where `capabilities.keepAwake` is false. */
 	readonly power: PowerOps | null;
 	readonly host: HostOps;

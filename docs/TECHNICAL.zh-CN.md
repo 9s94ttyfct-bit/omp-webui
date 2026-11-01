@@ -213,6 +213,15 @@ omp-webui 是 [omp](https://omp.sh) 编程代理的网页界面，也是一个 m
    或者先打开一次，再到“系统设置 › 隐私与安全性”里点“仍要打开”。
 4. 打开 omp-webui。如果还没有安装 [omp](https://omp.sh)，应用会提供安装（Homebrew、omp 官方安装脚本或 bun），然后引导你登录提供商并选择默认模型；详见英文技术文档的 [Installing and updating omp](TECHNICAL.md#installing-and-updating-omp)。已安装的 omp 会在 Homebrew、`~/.local/bin`、`~/.bun/bin` 和登录 shell 的 `PATH` 里找到。不需要装别的：应用自带运行环境。
 
+**Windows 启动器**（Windows 10 或更高，x64）。
+
+1. 从[最新发布](../../../releases)下载 `omp-webui-vX.Y.Z-windows-x64.zip`，解压到任意位置（用户文件夹、`C:\Tools` 等）。`web` 文件夹要留在 `omp-webui.exe` 旁边。
+2. 双击 `omp-webui.exe`。程序没有签名，第一次运行时 SmartScreen 可能会警告：点“更多信息 › 仍要运行”。
+3. 它会启动服务器，并在默认浏览器里打开已登录的 `http://127.0.0.1:7878/?token=…`。它的控制台窗口就是服务器的窗口：omp-webui 运行期间一直开着，关掉它就停止 omp-webui。运行时再双击一次，只会再打开页面，不会再启动一个。7878 被占用时，它会用往上第一个空闲端口（最多往上 20 个）。
+4. 如果还没有安装 [omp](https://omp.sh)，页面会提供安装（omp 的 PowerShell 安装脚本，装了 bun 时也可以用 bun），装到 `%LOCALAPPDATA%\omp` 并加入用户的 `PATH`。
+
+数据保存在 `%USERPROFILE%\.omp-webui`，和网页版一样。没有自动更新：更新时下载新的 zip，替换整个文件夹（数据文件夹不在里面）。Windows 上缺少的功能（暂停、中继、远程访问等）见英文技术文档的 [Platform adapter, capabilities and check-platform](TECHNICAL.md#platform-adapter-capabilities-and-check-platform)。
+
 **从源码运行**（任何装有 [Bun](https://bun.sh) ≥ 1.3、且 `omp` 在 `PATH` 里的系统）：
 
 ```sh
@@ -540,6 +549,8 @@ bun run start          # http://127.0.0.1:7878
 
 **CI 里的 Windows。** `tests` 矩阵里有三路 `windows-latest` 的单元 + 契约测试（最新的 omp），`e2e smoke (windows-latest)` 在 Chromium 上跑几个离线用例（解锁页、首次运行、侧边栏、通过 omp 重命名、置顶和排序对话、新对话的选项、设置各页的卡片、主题）；`CI ok` 两者都需要。检出保持 LF（`.gitattributes`），Defender 不扫描检出目录、临时目录和主目录，测试交给服务器和 omp 的临时目录也通过 `TEMP` 和 `TMP` 设置（Windows 读这两个，而不是 `TMPDIR`；`tests/support/tmp.ts`）。替身程序（假 omp 之类）是用 Bun 运行的脚本：Windows 不认 `#!` 行，所以在那里 `tests/support/bun-program.ts` 把它做成 `<name>.exe`，一个编译好的小 Bun 启动器，运行旁边的 `<name>.ts`。**测试自己说明它需要机器的什么：**一个文件里所有测试都需要某样东西时，文件里单独一行 `// needs: <名字>[, <名字>…]`，缺这样东西的系统上 `scripts/test-shard.ts` 不跑这个文件，并打印缺的是什么、为什么；单个测试自己跳过（`test.skipIf(!capabilities.<x>)`，或 `tests/support/needs.ts` 的 `!has.<x>`）。用这种方式按 macOS 有、Linux 没有的能力把关的文件或测试，由 `bun run test:mac` 运行（`scripts/mac-tests.ts`）。名字是服务器的能力（`remoteAccess`、`pauseResume`、`relay`、`leaseHolders`、`loginEnv` 等）和只有测试才需要的：`posixShell`（替身是 shell 脚本，或用到 `ps`、`mkfifo` 之类的 POSIX 工具）、`posixModes`（权限位）、`posixPaths`（只认 POSIX 路径的夹具或代码：守卫的风险分类器、迁移到另一台 Mac、`/tmp/x` 下的 omp 会话）、`posixFiles`（命名管道、符号链接、可执行位、打开着时被替换的文件）、`posixSignals`（被信号结束的进程怎么报告）。所以 Windows 上不跑远程访问、暂停、relay、会话租约和登录 shell 的测试，替身是 shell 脚本的测试（git 和 `gh`、安装程序、发布脚本、用量和统计探针），迁移到另一台 Mac 和守卫分类器的测试，权限位检查在那里什么也不查（`expectMode`）；Windows 仍占着的临时目录留给运行器清理（`removeScratch`）。`notWindowsYet` 标记在 Windows 上失败、原因还没找到的测试，每个都是待解决的问题：omp 的 `/session delete` 回答了却留下了对话记录（端到端的删除，以及终端里的 omp 打开着对话时的重命名或删除）、风险分类器在较慢运行器上的两个时间预算、技能开关的耗时、`/wt` 进入工作树、忙碌对话的删除（omp 设不了它的目录）、卡住进程的重启、自己结束的进程、残留服务器的端口、跨重启的 MCP 开关、服务器检查期间导入的守卫设置、目录的上下文文件、本机页面的受保护位置、代理后面的密钥、设置覆盖旁边的指引文件、安装后的离线测量、Windows 自己的进程列表里的本进程、已记录服务器的停止、session-prune 夹具、`/api/loaded`（两个用例）、一个 RpcClient 错误回答、在步骤之间要求、却要等到回合结束的压缩（两个用例：回答时它已经在运行），以及加进全局配置或项目配置的角色到达了已切换到另一个预设的对话（两个用例）。
 
+**CI 里的 Windows 启动器。** `Windows launcher` 任务（`windows-latest`）构建 `dist/omp-webui-windows-x64/`（`bun run windows-launcher`：由 `server/launcher.ts` 连同服务器的 worker 和应用图标（`scripts/lib/ico.ts`）编译出的 `omp-webui.exe`，旁边是构建好的 `web/`；Bun 只有在 Windows 上编译时才写入图标和版本信息），对构建出的程序运行 `tests/contract/launcher.test.ts`（`OMPW_LAUNCHER_EXE`；其他地方同一个测试运行源码），把文件夹打成 zip，作为 `omp-webui-windows-x64` 产物上传；`CI ok` 需要它。启动器把 `OMP_WEBUI_DIST` 设为旁边的 `web` 文件夹，设 `OMP_WEBUI_PORT_WINDOW=1`（端口被占用不算错误：用往上 20 个以内的第一个空闲端口），用 `platform.openUrlArgv` 打开浏览器（Windows 上是 `rundll32 url.dll,FileProtocolHandler`；`BROWSER` 可以指定另一个程序，测试就是这样看到打开了哪个页面），`server.pid` 记录的这个数据文件夹的服务器还在运行时，只打开它的页面然后退出。
+
 **个人信息与提交作者。** 这里发布的任何东西都不能带有维护者的个人信息，而且只有维护者的 GitHub noreply 地址（`273716724+9s94ttyfct-bit@users.noreply.github.com`）可以作为作者或提交者。**`bun install` 会装上 git 钩子**（它的 `prepare` 脚本运行 `scripts/install-hooks.ts`；`bun run hooks` 可以再运行一次）：pre-commit 钩子（`scripts/check-personal.ts --staged`）和 pre-push 钩子（对这次推送新增的提交运行 `scripts/check-authors.ts` 和 `scripts/check-personal.ts`）。它永远不会让 `bun install` 失败：不是它写的钩子原样保留，并给出一行提示（把 `scripts/install-hooks.ts` 里那个钩子的几行加进去）；设置了 `core.hooksPath` 时它一个钩子也不写，并说明原因；不在这个包的 git checkout 里（例如源码压缩包）时什么也不做；在链接的工作树（worktree）里，它装到所有工作树共用的 git 公共目录。它只打印自己写入或更新了的钩子。CI 对每次推送或拉取请求的提交运行同样的检查，另外还有 [gitleaks](https://github.com/gitleaks/gitleaks)（`.gitleaks.toml`：它的默认规则，脱敏和泄漏测试里那些仿造的、长得像密钥的值逐个放行），所以没有装钩子的克隆（`bun install --ignore-scripts`）也会在推送之后被 CI 拦下。
 
 - `scripts/check-authors.ts`（也在 `bun run lint` 里）在提交带有其他作者或提交者邮箱时失败：在 CI 里检查这次推送或拉取请求的提交，在本地检查 `origin` 的分支上还没有的提交（`scripts/lib/push-range.ts`）。
@@ -552,9 +563,9 @@ bun run start          # http://127.0.0.1:7878
 3. 向 GitHub 查询正好这个提交的 CI 运行，只有其中一次（推送触发的，或手动启动的）成功了才继续：CI 还没在这个提交上运行、还在运行或失败了，都会带着那次运行的链接拒绝。拉取请求的运行不算：它测试的是合并提交，不是这个提交；
 4. 检查这台 Mac 具备后续步骤所需的条件（dmg 需要已登录的桌面会话和 Finder 自动化权限，签名需要 `omp-webui local signing` 身份（见“签名与 macOS 权限”），发布需要已登录、带 `repo` 权限的 `gh`），缺哪项一次全部指出；
 5. 在这个提交的临时 worktree 里（Ctrl-C、SIGTERM、SIGHUP 时会删除）先运行 `bun run test:mac`，即只有 macOS 才会跑的单元和契约用例（应用的 Swift 外壳、签名、磁盘映像、更新程序的安装步骤；CI 的 Linux 会跳过它们；`scripts/mac-tests.ts` 找出按 macOS 有而 Linux 没有的能力、或按 `platform.id === "darwin"` 跳过的测试文件，测试里仍然比较 `process.platform` 时 `tests/unit/mac-tests.test.ts` 就会失败；需要 `OMPW_GUI_TESTS=1` 的开窗口测试仍然跳过），再运行 `bun run test:live`，即调用真实模型的测试，它们需要这台 Mac 的 Anthropic 登录，没有登录就拒绝运行；两者都用这台 Mac 一半的核心数作为测试工作进程数（或 `OMPW_TEST_WORKERS`，脚本会打印用的数目）；然后构建并签名应用和 dmg；
-6. 这之后才在那个提交上创建附注标签 `vX.Y.Z` 并推送（#782），再带着发布说明、安装步骤（`release-notes/_install.md`）和 dmg 创建 GitHub Release。
+6. 这之后才在那个提交上创建附注标签 `vX.Y.Z` 并推送（#782），再带着发布说明、安装步骤（`release-notes/_install.md`）、dmg 和 Windows 启动器的 zip（`omp-webui-vX.Y.Z-windows-x64.zip`）创建 GitHub Release。zip 不在 Mac 上构建：它是在这个提交上通过的那次 CI 运行的 `omp-webui-windows-x64` 产物（`Windows launcher` 任务在 `windows-latest` 上用 `bun run windows-launcher` 构建 `dist/omp-webui-windows-x64/`，对构建出的 `omp-webui.exe` 运行 `tests/contract/launcher.test.ts`，再打成 zip），在创建工作树之后立刻用 `gh run download` 下载；那次运行没有这个产物时，发布在构建任何东西之前就停止。
 
-任何一步失败都会在打标签之前停下：修好、推送、等 CI 通过，再运行一次。`--dry-run` 做到打标签之前就停下（不打标签，不发布任何东西）；`--skip-tests` 跳过只有 macOS 才跑的测试和调用真实模型的测试，只用于重新发布已经存在的标签。一次发布就是 GitHub Release 上签好名的 dmg，没有别的：从 v0.12.2 起不再向 npm 或 GitHub Packages 发布任何东西。`.github/workflows/release.yml`（只能手动启动：`gh workflow run Release -f tag=vX.Y.Z`）是后备，为已经存在的标签创建只有发布说明的发布；它从不构建或上传安装包，因为 runner 上没有签名身份，而 ad-hoc 签名的安装包会让应用每次更新都丢失 macOS 权限（#456、#483）。
+任何一步失败都会在打标签之前停下：修好、推送、等 CI 通过，再运行一次。`--dry-run` 做到打标签之前就停下（不打标签，不发布任何东西）；`--skip-tests` 跳过只有 macOS 才跑的测试和调用真实模型的测试，只用于重新发布已经存在的标签。一次发布就是 GitHub Release 上签好名的 dmg 和 Windows 启动器的 zip，没有别的：从 v0.12.2 起不再向 npm 或 GitHub Packages 发布任何东西。`.github/workflows/release.yml`（只能手动启动：`gh workflow run Release -f tag=vX.Y.Z`）是后备，为已经存在的标签创建只有发布说明的发布；它从不构建或上传安装包，因为 runner 上没有签名身份，而 ad-hoc 签名的安装包会让应用每次更新都丢失 macOS 权限（#456、#483）。
 
 **脚本被信号终止。** `dmg`、`app`、`screenshots`、`lighthouse`、`long-run`、`release-local` 会启动服务器和浏览器、挂载磁盘映像或创建临时目录。SIGINT、SIGTERM、SIGHUP 结束进程时，Bun 和 Node 都不会执行 `finally`，所以这些脚本把清理工作注册到 `scripts/lib/shutdown.ts`：收到信号后，先停掉正在运行的命令及其全部子进程（被 SIGSTOP 暂停的进程会先被继续，否则它不会响应 SIGTERM），再卸载磁盘映像、停止服务器、删除临时目录，最后以 128 + 信号编号退出；再收到一次信号则立即退出。测试服务器（`tests/support/server.ts`）对忽略 SIGTERM 的服务器会在五秒后改用 SIGKILL，启动失败时也会删除自己的目录。
 

@@ -18,7 +18,7 @@ export const en = {
 	optionHomebrewHint: "Installs omp with `brew`, and Homebrew keeps it up to date.",
 	optionInstaller: "omp's installer",
 	optionInstallerHint:
-		"Downloads omp's standalone binary into `~/.local/bin` and checks its checksum. Needs nothing else.",
+		"Downloads omp's standalone binary into `~/.local/bin` (on Windows, `%LOCALAPPDATA%\\omp`) and checks its checksum. Needs nothing else.",
 	optionBun: "Bun",
 	optionBunHint: "Installs omp's package globally with `bun`.",
 	optionRecommended: "Recommended",

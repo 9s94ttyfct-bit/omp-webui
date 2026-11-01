@@ -279,12 +279,40 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
+  # The Windows launcher (scripts/windows-launcher.ts): built, its contract test run against the built program, and the
+  # folder zipped for a release (scripts/release-local.ts attaches the zip of the commit it releases).
+  windows-launcher:
+    name: Windows launcher
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && github.event_name != 'schedule'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - shell: pwsh
+        run: Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:USERPROFILE
+      - uses: actions/checkout@v4
+      - run: printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$RUNNER_TEMP" "$RUNNER_TEMP" "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run windows-launcher
+      - run: bun test --timeout 120000 tests/contract/launcher.test.ts
+        env:
+          OMPW_LAUNCHER_EXE: ${{ github.workspace }}\dist\omp-webui-windows-x64\omp-webui.exe
+      - shell: pwsh
+        run: Compress-Archive -Path dist/omp-webui-windows-x64 -DestinationPath dist/omp-webui-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omp-webui-windows-x64
+          path: dist/omp-webui-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 90
+
   # One check that says whether the run passed: every job did, or was not needed (documentation only; the daily run needs
   # no checks or e2e). A matrix job's result is `failure` when any of its legs failed (any omp, any shard), so each counts.
   ci-ok:
     name: CI ok
     if: always()
-    needs: [changes, checks, tests, e2e, e2e-windows]
+    needs: [changes, checks, tests, e2e, e2e-windows, windows-launcher]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
