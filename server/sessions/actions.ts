@@ -228,8 +228,6 @@ export class SessionActions {
 		folder: string;
 		open: () => Promise<Live>;
 	}): Promise<{ file: string | null; cwd: string }> {
-		const holding = o.running?.holding;
-		if (holding) throw new SessionBusyError(refusal(holding));
 		if (o.target)
 			await this.refuseWhenHeldElsewhere(
 				o.target,
@@ -237,6 +235,9 @@ export class SessionActions {
 			);
 		const live = o.running ?? (await o.open());
 		try {
+			// Asked again of the process the move runs in: one `open` found (a page opened the conversation meanwhile) may be at work.
+			const holding = live.holding;
+			if (holding) throw new SessionBusyError(refusal(holding));
 			if (live.info.cwd === o.folder) return { file: live.info.sessionFile, cwd: live.info.cwd };
 			const r = await live.rpc({ type: "prompt", message: `/move ${o.folder}` });
 			if (!r.success) throw new Error(r.error ?? "omp refused /move");
@@ -247,7 +248,9 @@ export class SessionActions {
 			}
 			return { file: live.info.sessionFile, cwd: live.info.cwd };
 		} finally {
-			if (!o.running) await live.end();
+			// A process started for the move is ended after it, unless a page took it up meanwhile (the pool hands a running
+			// process to whoever opens the conversation) or it is at work: the reaper ends it once nobody watches it.
+			if (!o.running && live.subscribers.size === 0 && !live.busy) await live.end();
 		}
 	}
 }
