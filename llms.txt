@@ -7,7 +7,7 @@ The docs are English only, by choice. Agents running inside omp-webui read the s
 ## Docs
 
 - [Index](docs/agents/index.md): what omp-webui is, how the app is laid out, conventions of these docs
-- [Appearance and layout](docs/agents/appearance.md): theme, palette, language, widths, side panel panes, sidebar pages
+- [Appearance and layout](docs/agents/appearance.md): theme, palette, live animations, language, widths, side panel panes, sidebar pages
 - [Keyboard shortcuts](docs/agents/shortcuts.md): every key binding and how to change one
 - [Conversations, sidebar and history](docs/agents/conversations.md): the conversation list, search, pins, archive, branches, export, titles
 - [The message box](docs/agents/composer.md): sending, steering, attachments, quick prompts, side questions, goals
