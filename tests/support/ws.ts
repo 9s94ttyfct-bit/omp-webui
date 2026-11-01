@@ -39,6 +39,9 @@ function dispatcherOf(ws: WebSocket) {
 	ws.addEventListener("message", (ev) => {
 		if (pending.size === 0) return;
 		const text = String(ev.data);
+		// Bun's client WebSocket now and then hands over a message event with no text under load (seen in `test:live`, 2 runs in
+		// 5; the server's outbox was traced and sent no empty message). It carries nothing: it is not a reply to parse.
+		if (text === "") return;
 		const partOfRequest = partOf(text);
 		if (partOfRequest !== null) {
 			const waiting = pending.get(partOfRequest);
