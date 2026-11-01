@@ -31,9 +31,11 @@ const start = (page: Page, hash = "") => page.goto(`${s.url}/?token=${s.accessTo
 test("the new-chat page offers a new project, warms omp up in the home folder, and makes nothing before the first message", async ({
 	page,
 }) => {
-	const before = readdirSync(s.home).sort();
 	const tap = await tapSocket(page);
 	await start(page);
+	// The home folder as the server has it: on Windows that is the profile folder (`USERPROFILE`), not the test's `HOME`.
+	const home = await page.evaluate(async () => ((await (await fetch("/api/meta")).json()) as { home: string }).home);
+	const before = readdirSync(home).sort();
 	const name = page.getByTestId("new-project-name");
 	await expect(name).toBeVisible();
 	await expect(name).toBeFocused();
@@ -41,10 +43,10 @@ test("the new-chat page offers a new project, warms omp up in the home folder, a
 	await expect(page.getByTestId("cwd-picker")).toHaveCount(0);
 	// `~/omp` is not there before its first project: omp is warmed up in the home folder, for the pickers only.
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
-	expect(startedIn(tap)).toEqual([s.home]);
+	expect(startedIn(tap)).toEqual([home]);
 	await page.waitForTimeout(500);
-	expect(existsSync(join(s.home, "omp"))).toBe(false);
-	expect(readdirSync(s.home).sort()).toEqual(before);
+	expect(existsSync(join(home, "omp"))).toBe(false);
+	expect(readdirSync(home).sort()).toEqual(before);
 });
 
 test("the sidebar says how to start instead of offering filters", async ({ page }) => {

@@ -77,6 +77,7 @@ beforeAll(async () => {
 			'case "$1 $2" in',
 			`  "run list") cat '${join(stubs, "runs.json")}';;`,
 			`  "run view") cat '${join(stubs, "jobs.json")}';;`,
+			`  "repo view") echo '{"nameWithOwner":"o/ci-repo","url":"https://github.com/o/ci-repo"}';;`,
 			"  *) echo 'not scripted' >&2; exit 1;;",
 			"esac",
 			"",
@@ -124,7 +125,9 @@ test("asking GitHub is a POST: a GET of either route is refused", async () => {
 });
 
 test("the branch's runs come from gh run list with --branch; pages that ask within the interval share one look", async () => {
-	const before = asked().length;
+	// The repository is asked of gh beside the runs (`gh repo view`), and kept longer: what is counted here is the runs.
+	const runLooks = () => asked().filter((c) => c.startsWith("run "));
+	const before = runLooks().length;
 	const r = await post(withGh, "/api/github/runs", { cwd: repo });
 	expect(r.status).toBe(200);
 	const answer = (await r.json()) as CiAnswer<CiRuns>;
@@ -134,12 +137,13 @@ test("the branch's runs come from gh run list with --branch; pages that ask with
 			scope: "branch",
 			branch: "feat/ci",
 			runs: [{ id: 501, workflow: "CI", title: "Add the CI tab", state: "running", branch: "feat/ci" }],
+			repo: { name: "o/ci-repo", url: "https://github.com/o/ci-repo" },
 		},
 	});
 	// A run is at work: the next look is due in about 10 s.
 	expect(answer.nextMs).toBeGreaterThan(9000);
 	expect(answer.nextMs).toBeLessThanOrEqual(10_250);
-	const calls = asked().slice(before);
+	const calls = runLooks().slice(before);
 	expect(calls).toHaveLength(1);
 	expect(calls[0]).toStartWith("run list --json ");
 	expect(calls[0]).toContain("--branch feat/ci");
@@ -149,14 +153,14 @@ test("the branch's runs come from gh run list with --branch; pages that ask with
 		[1, 2, 3].map(() => post(withGh, "/api/github/runs", { cwd: repo, scope: "branch" })),
 	);
 	for (const a of again) expect(((await a.json()) as CiAnswer<CiRuns>).ok).toBe(true);
-	expect(asked().length).toBe(before + 1);
+	expect(runLooks().length).toBe(before + 1);
 
 	// Every branch is another list; Refresh looks again.
 	const all = (await (await post(withGh, "/api/github/runs", { cwd: repo, scope: "all" })).json()) as CiAnswer<CiRuns>;
 	expect(all).toMatchObject({ ok: true, value: { scope: "all" } });
-	expect(asked().at(-1)).not.toContain("--branch");
+	expect(runLooks().at(-1)).not.toContain("--branch");
 	await post(withGh, "/api/github/runs", { cwd: repo, fresh: true });
-	expect(asked().length).toBe(before + 3);
+	expect(runLooks().length).toBe(before + 3);
 });
 
 test("a run's jobs come from gh run view, with the step that failed and the job's page", async () => {
