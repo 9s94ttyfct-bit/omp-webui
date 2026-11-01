@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
-import { processTree } from "../../server/omp/process-tree.ts";
+import { platform } from "../../server/platform/index.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { startAppServer } from "../support/app-server.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
@@ -76,7 +76,7 @@ async function serverWithConversation(dataDir: string, working: boolean) {
 		);
 		// The tool is the `sleep` itself: omp also starts short-lived helpers that a loaded machine can catch alive.
 		await pollUntil(async () => {
-			tool = (await processTree(omp)).find((p) => p !== omp && commandOf(p).startsWith("/bin/sleep 300")) ?? 0;
+			tool = (await platform.proc.tree(omp)).find((p) => p !== omp && commandOf(p).startsWith("/bin/sleep 300")) ?? 0;
 			return tool > 0;
 		}, "omp's tool process");
 		strays.add(tool);

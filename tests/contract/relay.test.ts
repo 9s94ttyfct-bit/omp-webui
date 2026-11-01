@@ -4,11 +4,11 @@ import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:f
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { processTree } from "../../server/omp/process-tree.ts";
 import { HIGH_WATER } from "../../server/omp/relay.ts";
 import { pruneRelayDir, relaySocket, sweepRelayDir } from "../../server/omp/relay-client.ts";
 import { encodeFrame, FROM_RELAY, FrameDecoder, TO_RELAY } from "../../server/omp/relay-protocol.ts";
 import { RpcClient } from "../../server/omp/rpc-client.ts";
+import { platform } from "../../server/platform/index.ts";
 import type { OmpFrame } from "../../shared/protocol.ts";
 import { writeFakeOmp } from "../support/fake-omp.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
@@ -157,7 +157,7 @@ test("a working omp does not outlive its server: when the connection ends it is 
 	const relay = c.relay?.pid as number;
 	let tool = 0;
 	await pollUntil(async () => {
-		tool = (await processTree(omp)).find((p) => p !== omp) ?? 0;
+		tool = (await platform.proc.tree(omp)).find((p) => p !== omp) ?? 0;
 		return tool > 0;
 	}, "omp's tool");
 	strays.push(tool);
@@ -250,7 +250,7 @@ test("an omp that ends while its conversation is held takes what it started with
 	await c.ready;
 	const omp = c.pid as number;
 	const relay = c.relay?.pid as number;
-	const tool = (await processTree(omp)).find((p) => p !== omp) as number;
+	const tool = (await platform.proc.tree(omp)).find((p) => p !== omp) as number;
 	expect(tool).toBeGreaterThan(0);
 	strays.push(tool);
 	c.hold(true);

@@ -18,9 +18,9 @@ import {
 	sessionSettingsOf,
 } from "../../shared/session-defaults.ts";
 import { concurrencyOf } from "../../shared/subagent-concurrency.ts";
+import { type Platform, platform } from "../platform/index.ts";
 import type { QuotaHold } from "./quota-floor/decide.ts";
 import type { QuotaRecord } from "./quota-floor/tracker.ts";
-import { PS_MS, run } from "./run.ts";
 
 /**
  * Conversations that outlive the server. A paused conversation's omp is frozen (SIGSTOP) behind a relay (relay.ts)
@@ -33,7 +33,7 @@ import { PS_MS, run } from "./run.ts";
  * wait and whenever it changes meanwhile, so that even a server that is killed leaves a record that can be adopted.
  */
 
-/** A process as it was when it was recorded: its id, and what makes that id still the same process (see `identityOf`). */
+/** A process as it was when it was recorded: its id, and what makes that id still the same process (`Platform.proc.identity`). */
 export interface ProcessRef {
 	pid: number;
 	identity: string;
@@ -157,89 +157,9 @@ export interface ParkedRecord {
 	compactQueue?: CompactQueueRecord;
 }
 
-/** What the identity of a process is read from; the system's own unless a test supplies another. */
-export interface ProcessSource {
-	platform: NodeJS.Platform;
-	/** The text of a file under /proc; null when it cannot be read. */
-	proc(path: string): string | null;
-	/** What `ps` prints for `args` (nothing when it matches no process); null when `ps` cannot run or does not answer. */
-	ps(args: string[]): Promise<string | null>;
-}
-
-const systemSource: ProcessSource = {
-	platform: process.platform,
-	proc(path) {
-		try {
-			return readFileSync(path, "utf8");
-		} catch {
-			return null;
-		}
-	},
-	async ps(args) {
-		try {
-			// The locale and zone are pinned: a later server may run in another one.
-			return (await run(["ps", ...args], { timeoutMs: PS_MS, env: { LC_ALL: "C", TZ: "UTC" } })).stdout;
-		} catch {
-			return null;
-		}
-	},
-};
-
-/**
- * Linux: when the process started in the kernel's ticks since boot (`/proc/<pid>/stat`, field 22) and which boot, and
- * its command line. Not `ps -o lstart`, which is the boot time plus those ticks: a suspend or a clock step moves the
- * boot time, and a conversation that is still the recorded one would no longer be recognised.
- */
-function linuxIdentity(pid: number, source: ProcessSource): string | null {
-	const stat = source.proc(`/proc/${pid}/stat`);
-	if (!stat) return null;
-	// `pid (command) state …`: the command may hold spaces and parentheses, so the fields count from the last one.
-	const close = stat.lastIndexOf(")");
-	const started = stat
-		.slice(close + 2)
-		.trim()
-		.split(" ")[19];
-	if (close < 0 || !started || !/^\d+$/.test(started)) return null;
-	const boot = source.proc("/proc/sys/kernel/random/boot_id")?.trim() ?? "";
-	const command = (source.proc(`/proc/${pid}/cmdline`) ?? "").split("\0").join(" ").trim();
-	// A process without a command line (a kernel thread, one that is ending) is named by its own name.
-	return `linux:${boot}:${started} ${command || `[${stat.slice(stat.indexOf("(") + 1, close)}]`}`;
-}
-
-/** What `ps` says of a process when it is asked for its start and command: `lstart` and `command`, as one line. */
-const PS_IDENTITY = "lstart=,command=";
-
-/**
- * What identifies the process `pid` beyond the number, which the system reuses: when it started and its full
- * command line (the relay's names its own socket, omp's its own overlay file). Null when there is no such process.
- */
-export async function identityOf(pid: number, source: ProcessSource = systemSource): Promise<string | null> {
-	if (source.platform === "linux") return linuxIdentity(pid, source);
-	return (await source.ps(["-o", PS_IDENTITY, "-p", String(pid)]))?.trim() || null;
-}
-
-/** `identityOf` for each of `pids` that is running, from one listing where the system gives one. */
-export async function identitiesOf(pids: number[], source: ProcessSource = systemSource): Promise<Map<number, string>> {
-	const found = new Map<number, string>();
-	if (pids.length === 0) return found;
-	if (source.platform === "linux") {
-		for (const pid of pids) {
-			const identity = linuxIdentity(pid, source);
-			if (identity) found.set(pid, identity);
-		}
-		return found;
-	}
-	const listing = (await source.ps(["-o", `pid=,${PS_IDENTITY}`, "-p", pids.join(",")])) ?? "";
-	for (const line of listing.split("\n")) {
-		const m = /^\s*(\d+)\s+(.*\S)\s*$/.exec(line);
-		if (m) found.set(Number(m[1]), m[2]);
-	}
-	return found;
-}
-
-/** The process is running, and is the one that was recorded (its pid was not reused). */
-export async function runsAs(ref: ProcessRef, source: ProcessSource = systemSource): Promise<boolean> {
-	return (await identityOf(ref.pid, source)) === ref.identity;
+/** The process is running, and is the one that was recorded (its pid was not reused; see `Platform.proc.identity`). */
+export async function runsAs(ref: ProcessRef, system: Platform = platform): Promise<boolean> {
+	return (await system.proc.identity(ref.pid)) === ref.identity;
 }
 
 /**
@@ -254,16 +174,13 @@ const EXEC_READ_MS = 5;
  * new name, no command line yet): the name it is recorded by is the one it keeps, so it is read again until it has its
  * command line, or is a process that has none (a kernel thread, one that is ending).
  */
-export async function referenceTo(
-	pid: number | null,
-	source: ProcessSource = systemSource,
-): Promise<ProcessRef | null> {
+export async function referenceTo(pid: number | null, system: Platform = platform): Promise<ProcessRef | null> {
 	if (pid === null) return null;
-	let identity = await identityOf(pid, source);
-	for (let read = 1; read < EXEC_READS && source.platform === "linux" && identity?.endsWith("]"); read++) {
-		if (!/^linux:\S* \[[^\]]*\]$/.test(identity)) break;
+	let identity = await system.proc.identity(pid);
+	// Only Linux's identity (`linux:<boot>:<start> [name]`) names a process by its own name.
+	for (let read = 1; read < EXEC_READS && identity !== null && /^linux:\S* \[[^\]]*\]$/.test(identity); read++) {
 		await Bun.sleep(EXEC_READ_MS);
-		identity = await identityOf(pid, source);
+		identity = await system.proc.identity(pid);
 	}
 	return identity !== null ? { pid, identity } : null;
 }

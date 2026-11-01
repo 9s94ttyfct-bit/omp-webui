@@ -19,6 +19,8 @@ import {
 import { FileIndex, hiddenByDefault, SCAN_LIMITS, scanFiles, skipRepositoryData } from "./files.ts";
 import { type GitMarks, isIgnored, markOf } from "./git-marks.ts";
 import { run } from "./omp/run.ts";
+import { platform } from "./platform/index.ts";
+import type { DesktopOps } from "./platform/types.ts";
 
 /**
  * The files of the folder a conversation works in, for the Files tab, read only. Every path a page names is relative to
@@ -586,8 +588,7 @@ const NEVER_OPENED: readonly string[] = (
 /** Whether a file of this name is never opened by the page (only shown in Finder). */
 export const neverOpened = (name: string): boolean => NEVER_OPENED.includes(extensionOf(name));
 
-/** The system's own `open`, by its full name: the page's `PATH` does not decide what runs. */
-const OPEN = "/usr/bin/open";
+/** How long the system's `open` may take. */
 const OPEN_MS = 15_000;
 
 export type Runner = (argv: string[]) => Promise<number>;
@@ -605,11 +606,11 @@ export async function openFolderFile(
 	root: string,
 	rel: unknown,
 	reveal: boolean,
-	platform: string = process.platform,
+	desktop: DesktopOps | null = platform.desktop,
 	runner: Runner = runOpen,
 	opts: ReadOptions = {},
 ): Promise<void> {
-	if (platform !== "darwin") throw new FolderError("Opening files from the page is only available on macOS", 501);
+	if (!desktop) throw new FolderError("Opening files from the page is only available on macOS", 501);
 	const file = await resolveFor(root, rel, opts.guarded === true);
 	const info = await stat(file.abs);
 	if (!reveal) {
@@ -624,7 +625,7 @@ export async function openFolderFile(
 	// A folder on the way swapped for a link while this looked: what is handed over is not what was checked.
 	await opts.hooks?.beforeOpen?.();
 	if (!(await unchanged(file.abs))) throw new FolderError("Outside the folder", 403);
-	const code = await runner(reveal ? [OPEN, "-R", file.abs] : [OPEN, file.abs]);
+	const code = await runner(reveal ? desktop.revealArgv(file.abs) : desktop.openArgv(file.abs));
 	if (code !== 0) throw new FolderError(`open failed with code ${code}`, 404);
 }
 
@@ -644,49 +645,38 @@ const PACKAGE_DIRS: readonly string[] = (
 /** Whether a folder of this name is a package macOS would start or open in an app rather than show as a folder. */
 export const isPackageDir = (name: string): boolean => PACKAGE_DIRS.includes(extensionOf(name));
 
-/** Whether macOS treats the folder at this real path as one package (`open` would hand it to an app, not to Finder). */
+/** Whether the system treats the folder at this real path as one package (`open` would hand it to an app, not to Finder). */
 export type PackageProbe = (abs: string) => Promise<boolean>;
-
-const PACKAGE_JXA =
-	'function run(a){ObjC.import("AppKit");return $.NSWorkspace.sharedWorkspace.isFilePackageAtPath(a[0])}';
-
-/**
- * LaunchServices' own answer (`NSWorkspace.isFilePackageAtPath`), asked through `osascript` with the path as an argument
- * (never in the script). Anything but a plain `false`, or a failure to ask, counts as a package: the folder is refused.
- */
-export const systemPackageProbe: PackageProbe = async (abs) => {
-	try {
-		const r = await run(["/usr/bin/osascript", "-l", "JavaScript", "-e", PACKAGE_JXA, abs], { timeoutMs: OPEN_MS });
-		return r.code !== 0 || r.stdout.trim() !== "false";
-	} catch {
-		return true;
-	}
-};
 
 /**
  * Open the folder `rel` of `root` (empty: the conversation's folder itself) in Finder. Only a folder that is there is
  * opened: a file (whatever it is called) is refused (400), and so is a folder that macOS would start or open in an app
  * (an application, a plug-in, a project: 403; the folder around it can show it in Finder). What is handed to `open` is
  * the real path from `resolveFor`, one element of an argument list (never a shell), after the same checks as every other
- * path and once more after a look that nothing under it was swapped for a link.
+ * path and once more after a look that nothing under it was swapped for a link. Whether a folder is a package is asked
+ * of the system as well (`DesktopOps.isPackage`: LaunchServices), since apps register package kinds of their own.
  */
 export async function openFolderDir(
 	root: string,
 	rel: unknown,
-	platform: string = process.platform,
+	desktop: DesktopOps | null = platform.desktop,
 	runner: Runner = runOpen,
 	opts: ReadOptions = {},
-	isPackage: PackageProbe = systemPackageProbe,
+	isPackage?: PackageProbe,
 ): Promise<void> {
-	if (platform !== "darwin") throw new FolderError("Opening folders from the page is only available on macOS", 501);
+	if (!desktop) throw new FolderError("Opening folders from the page is only available on macOS", 501);
 	const dir = await resolveFor(root, rel, opts.guarded === true);
 	if (!(await stat(dir.abs)).isDirectory()) throw new FolderError("Only folders are opened", 400);
-	if (isPackageDir(basenameOf(dir.rel)) || isPackageDir(basenameOf(dir.abs)) || (await isPackage(dir.abs))) {
+	if (
+		isPackageDir(basenameOf(dir.rel)) ||
+		isPackageDir(basenameOf(dir.abs)) ||
+		(await (isPackage ?? desktop.isPackage)(dir.abs))
+	) {
 		throw new FolderError("An application or package is never opened: it can be shown in Finder", 403);
 	}
 	// A folder on the way swapped for a link while this looked: what is handed over is not what was checked.
 	await opts.hooks?.beforeOpen?.();
 	if (!(await unchanged(dir.abs))) throw new FolderError("Outside the folder", 403);
-	const code = await runner([OPEN, dir.abs]);
+	const code = await runner(desktop.openArgv(dir.abs));
 	if (code !== 0) throw new FolderError(`open failed with code ${code}`, 404);
 }

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
-import { processTree } from "../../server/omp/process-tree.ts";
+import { platform } from "../../server/platform/index.ts";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { startAppServer } from "../support/app-server.ts";
 import { writeFakeOmp } from "../support/fake-omp.ts";
@@ -64,7 +64,7 @@ async function conversation(name: string, omp: Parameters<typeof writeFakeOmp>[1
 	const live = await request<LiveInfo>(ws, { t: "open", target: { kind: "new", cwd: work } });
 	const pid = live.pid as number;
 	strays.add(pid);
-	const tool = (await processTree(pid)).find((p) => p !== pid) as number;
+	const tool = (await platform.proc.tree(pid)).find((p) => p !== pid) as number;
 	strays.add(tool);
 	const lives = async (): Promise<LiveListing[]> =>
 		(await fetch(`${url}/api/lives`, { headers: { "x-omp-webui-token": server.token } })).json();

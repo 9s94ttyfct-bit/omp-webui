@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, rmdirSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { platform } from "../platform/index.ts";
 import {
 	type ExitInfo,
 	encodeFrame,
@@ -13,7 +14,6 @@ import {
 	TO_RELAY,
 } from "./relay-protocol.ts";
 import type { OmpProcess } from "./rpc-client.ts";
-import { PS_MS, run } from "./run.ts";
 
 /**
  * The server's side of an omp relay (relay.ts): an `OmpProcess` whose pipes run through the relay's unix
@@ -39,7 +39,7 @@ export interface Where {
 	uid: number | undefined;
 }
 
-const HERE: Where = { tmp: "/tmp", uid: process.getuid?.() };
+const HERE: Where = { tmp: platform.socketTemp, uid: platform.proc.uid() };
 
 /** Data dirs whose usual relay directory could not be used, and the directory of their own they got instead. */
 const elsewhere = new Map<string, string>();
@@ -111,16 +111,6 @@ export function pruneRelayDir(dataDir: string, where: Where = HERE): void {
 	}
 }
 
-/** The command line of every process on this machine, from one listing; null when the system cannot give one. */
-export async function processCommands(): Promise<string[] | null> {
-	try {
-		const ran = await run(["ps", "-A", "-ww", "-o", "command="], { timeoutMs: PS_MS });
-		return ran.code === 0 ? ran.stdout.split("\n") : null;
-	} catch {
-		return null;
-	}
-}
-
 /**
  * The sockets in the relay directory, each with whether a relay listens on it. A socket is a relay's while a process has
  * it on its command line (`--ompw-relay <socket>`: a paused conversation's relay, another server's) — read from the
@@ -157,7 +147,7 @@ async function scanRelayDir(
 export async function sweepRelayDir(
 	dataDir: string,
 	where: Where = HERE,
-	commands: () => Promise<string[] | null> = processCommands,
+	commands: () => Promise<string[] | null> = platform.proc.commandLines,
 ): Promise<string[]> {
 	const removed: string[] = [];
 	for (const { socket, listening } of (await scanRelayDir(dataDir, where, commands)) ?? []) {
@@ -178,7 +168,7 @@ export async function sweepRelayDir(
 export async function runningRelays(
 	dataDir: string,
 	where: Where = HERE,
-	commands: () => Promise<string[] | null> = processCommands,
+	commands: () => Promise<string[] | null> = platform.proc.commandLines,
 ): Promise<string[]> {
 	return ((await scanRelayDir(dataDir, where, commands)) ?? []).filter((s) => s.listening).map((s) => s.socket);
 }
@@ -283,7 +273,7 @@ export class RelayProc implements OmpProcess {
 			stdout: "ignore",
 			stderr: "ignore",
 			// Its own session: the server — the app — going away must not signal it.
-			detached: true,
+			...platform.proc.groupSpawn,
 		});
 		// The server may end while the relay lives on.
 		relay.unref();
@@ -423,11 +413,11 @@ export class RelayProc implements OmpProcess {
 	}
 
 	/** Signal omp itself; while it is not known (the relay is still starting), ask the relay to end it. */
-	kill(signal: NodeJS.Signals | number = "SIGTERM"): void {
+	kill(signal: NodeJS.Signals = "SIGTERM"): void {
 		const target = this.pid ?? this.relayPid;
 		if (target === null || this.ended) return;
 		try {
-			process.kill(target, this.pid === null ? "SIGTERM" : signal);
+			platform.proc.signal(target, this.pid === null ? "SIGTERM" : signal);
 		} catch {
 			// gone
 		}

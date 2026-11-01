@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
 import { type ParkedRecord, ParkedStore, referenceTo } from "../../server/omp/parked.ts";
-import { processTree } from "../../server/omp/process-tree.ts";
 import { relayDir } from "../../server/omp/relay-client.ts";
+import { platform } from "../../server/platform/index.ts";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { type AppServer, startAppServer } from "../support/app-server.ts";
 import { writeFakeOmp } from "../support/fake-omp.ts";
@@ -103,7 +103,7 @@ async function openNew(b: Boot, dataDir: string) {
 	const live = await request<LiveInfo>(b.ws, { t: "open", target: { kind: "new", cwd: work } });
 	const omp = live.pid as number;
 	strays.add(omp);
-	const tool = (await processTree(omp)).find((p) => p !== omp) as number;
+	const tool = (await platform.proc.tree(omp)).find((p) => p !== omp) as number;
 	expect(tool).toBeGreaterThan(0);
 	strays.add(tool);
 	const relay = relayPids(dataDir).find((p) => p !== omp) as number;
@@ -170,7 +170,7 @@ test("a paused conversation survives the server, is adopted by the next one, and
 	expect(paused.resumedAt).toBeUndefined();
 	expect(resumed.resumedAt).toBeGreaterThanOrEqual(paused.pausedAt as number);
 	await pollUntil(() => !frozen(omp) && !frozen(tool), "omp and its tool to run again");
-	expect(await processTree(omp)).toContain(tool);
+	expect(await platform.proc.tree(omp)).toContain(tool);
 	expect(await request(b.ws, { t: "rpc", liveId: live.liveId, command: { type: "get_state" } })).toMatchObject({
 		sessionId: "fake",
 	});

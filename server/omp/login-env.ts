@@ -1,7 +1,8 @@
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import { childEnv } from "../env.ts";
-import { isExecutableFile, searchDirs, which } from "./install.ts";
+import { platform } from "../platform/index.ts";
+import { searchDirs } from "./install.ts";
 
 /**
  * The environment of the user's terminal, for a server that was not started from one. An app started from Finder
@@ -41,10 +42,7 @@ const SESSION_VARIABLES = new Set([
 ]);
 
 /** Where omp's installers put it, that a login shell's `PATH` may lack: tried only to find omp (see `importLoginEnv`). */
-const OMP_HOMES = ["/opt/homebrew/bin", "/usr/local/bin"];
-
-/** What a shell is asked to print: the marker (the start-up files may print what they like first), then `env` with NULs. */
-const PRINT_ENVIRONMENT = `printf %s ${MARKER}; /usr/bin/env -0`;
+const OMP_HOMES = platform.commands.installDirs;
 
 /**
  * The variables in what `env -0` printed after the marker: `NAME=value`, NUL-terminated, so a value may hold
@@ -74,15 +72,17 @@ export async function readLoginEnv(
 	env: Env = process.env,
 	timeoutMs = LOGIN_SHELL_TIMEOUT_MS,
 ): Promise<Map<string, string> | null> {
+	const argv = platform.shell.loginEnvArgv(shell, MARKER);
+	if (!argv) return null;
 	let proc: Bun.Subprocess<"ignore", "pipe", "ignore">;
 	try {
-		proc = Bun.spawn([shell, "-ilc", PRINT_ENVIRONMENT], {
+		proc = Bun.spawn(argv, {
 			// What the shell's own files see is the server's environment without the server's settings: never its token.
 			env: childEnv({}, env),
 			stdin: "ignore",
 			stdout: "pipe",
 			stderr: "ignore",
-			detached: true,
+			...platform.proc.groupSpawn,
 		});
 	} catch {
 		return null;
@@ -97,13 +97,7 @@ export async function readLoginEnv(
 	});
 	const login = await Promise.race([answer, late]);
 	clearTimeout(timer);
-	if (login === null) {
-		try {
-			process.kill(-proc.pid, "SIGKILL");
-		} catch {
-			proc.kill("SIGKILL");
-		}
-	}
+	if (login === null) platform.proc.signalChild(proc, "SIGKILL");
 	return login;
 }
 
@@ -145,12 +139,12 @@ export async function importLoginEnv(
 		mergeLoginEnv(env, login);
 	} else {
 		const had = (env.PATH ?? "").split(delimiter).filter(Boolean);
-		const base = had.length > 0 ? had : ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
+		const base = had.length > 0 ? had : platform.commands.fallbackPath;
 		const installers = [...ompHomes, join(home, ".local", "bin"), join(home, ".bun", "bin")];
 		env.PATH = [...new Set([...base, ...installers])].join(delimiter);
 	}
-	if (!which("omp", searchDirs(env, home))) {
-		const found = ompHomes.find((dir) => isExecutableFile(join(dir, "omp")));
+	if (!platform.commands.which("omp", searchDirs(env, home))) {
+		const found = ompHomes.find((dir) => platform.commands.which("omp", [dir]) !== null);
 		if (found) env.PATH = [...(env.PATH ?? "").split(delimiter).filter(Boolean), found].join(delimiter);
 	}
 	return login !== null;

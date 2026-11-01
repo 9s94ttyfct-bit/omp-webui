@@ -3,17 +3,10 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ApprovalStore, ProcessOverlay, removeOverlayFiles } from "../../server/omp/approval.ts";
-import {
-	identitiesOf,
-	identityOf,
-	type ParkedRecord,
-	ParkedStore,
-	type ProcessRef,
-	type ProcessSource,
-	referenceTo,
-	runsAs,
-} from "../../server/omp/parked.ts";
+import { type ParkedRecord, ParkedStore, type ProcessRef, referenceTo, runsAs } from "../../server/omp/parked.ts";
 import { encodeFrame, FrameDecoder, Outbox } from "../../server/omp/relay-protocol.ts";
+import { type Platform, platform, platformFor } from "../../server/platform/index.ts";
+import type { PlatformId } from "../../shared/platform.ts";
 
 /**
  * What lets a paused conversation outlive the server: the records of them, the identity that keeps a reused pid
@@ -239,36 +232,42 @@ test("a process is recognised by its start and command line, not its pid alone",
 		sleeper.kill();
 	}
 	await sleeper.exited;
-	expect(await identityOf(sleeper.pid)).toBeNull();
+	expect(await platform.proc.identity(sleeper.pid)).toBeNull();
 });
 
 test("a Linux process caught inside execve (its new name, no command line yet) is recorded once it has its command line", async () => {
 	const stat = "4242 (sleep) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 98765 0 0";
 	let reads = 0;
-	const source: ProcessSource = {
-		platform: "linux",
-		proc: (path) => {
-			if (path === "/proc/4242/stat") return stat;
-			if (path === "/proc/sys/kernel/random/boot_id") return "boot-1";
-			// The first two reads come before the command line is in place.
-			if (path === "/proc/4242/cmdline") return ++reads > 2 ? "sleep\u000030\u0000" : "";
-			return null;
-		},
-		ps: async () => null,
+	const proc = (path: string): string | null => {
+		if (path === "/proc/4242/stat") return stat;
+		if (path === "/proc/sys/kernel/random/boot_id") return "boot-1";
+		// The first two reads come before the command line is in place.
+		if (path === "/proc/4242/cmdline") return ++reads > 2 ? "sleep\u000030\u0000" : "";
+		return null;
 	};
-	expect(await referenceTo(4242, source)).toEqual({ pid: 4242, identity: "linux:boot-1:98765 sleep 30" });
+	expect(await referenceTo(4242, platformFor("linux", { readFile: proc }))).toEqual({
+		pid: 4242,
+		identity: "linux:boot-1:98765 sleep 30",
+	});
 	// One that never gets a command line (a kernel thread) is named by its own name, after a few reads.
-	const thread: ProcessSource = { ...source, proc: (path) => (path === "/proc/4242/cmdline" ? "" : source.proc(path)) };
+	const thread = platformFor("linux", { readFile: (path) => (path === "/proc/4242/cmdline" ? "" : proc(path)) });
 	expect(await referenceTo(4242, thread)).toEqual({ pid: 4242, identity: "linux:boot-1:98765 [sleep]" });
 });
 
-/** A system as `identityOf` reads it: `/proc` files by path, `ps` by what it is asked for. */
+/** A system's adapter as it identifies a process: `/proc` files by path, `ps` by what it is asked for (null: it fails). */
 function system(
-	platform: NodeJS.Platform,
+	id: PlatformId,
 	files: Record<string, string>,
 	ps: (args: string[]) => string | null = () => null,
-): ProcessSource {
-	return { platform, proc: (path) => files[path] ?? null, ps: async (args) => ps(args) };
+): Platform {
+	return platformFor(id, {
+		readFile: (path) => files[path] ?? null,
+		async run(argv) {
+			const stdout = ps(argv.slice(1));
+			if (stdout === null) throw new Error("ps failed");
+			return { code: 0, stdout, stderr: "" };
+		},
+	});
 }
 
 /** `/proc/<pid>/stat` as Linux writes it: the command in parentheses, then 49 fields of which the 22nd is the start. */
@@ -289,22 +288,22 @@ test("on Linux a process is recognised by its start in the kernel's own ticks an
 	const linux = system("linux", files, () => {
 		throw new Error("ps must not be consulted on Linux");
 	});
-	const identity = await identityOf(42, linux);
+	const identity = await linux.proc.identity(42);
 	expect(identity).toBe("linux:boot-A:123456 /usr/bin/omp --mode rpc-ui");
 	expect(await runsAs({ pid: 42, identity: identity as string }, linux)).toBe(true);
 
 	// The same process after the clock stepped: nothing it is known by changed.
-	expect(await identityOf(42, system("linux", { ...files }))).toBe(identity);
+	expect(await system("linux", { ...files }).proc.identity(42)).toBe(identity);
 	// Another start (the pid was reused), another boot (the same ticks counted again), another command.
-	expect(await identityOf(42, system("linux", { ...files, "/proc/42/stat": stat(42, "omp", 123457) }))).not.toBe(
+	expect(await system("linux", { ...files, "/proc/42/stat": stat(42, "omp", 123457) }).proc.identity(42)).not.toBe(
 		identity,
 	);
-	expect(await identityOf(42, system("linux", { ...files, [BOOT]: "boot-B\n" }))).not.toBe(identity);
+	expect(await system("linux", { ...files, [BOOT]: "boot-B\n" }).proc.identity(42)).not.toBe(identity);
 	expect(
-		await identityOf(42, system("linux", { ...files, "/proc/42/cmdline": "/usr/bin/omp\0--mode\0rpc\0" })),
+		await system("linux", { ...files, "/proc/42/cmdline": "/usr/bin/omp\0--mode\0rpc\0" }).proc.identity(42),
 	).not.toBe(identity);
 	// No such process.
-	expect(await identityOf(43, linux)).toBeNull();
+	expect(await linux.proc.identity(43)).toBeNull();
 	expect(await runsAs({ pid: 43, identity: "linux:boot-A:1 x" }, linux)).toBe(false);
 });
 
@@ -316,16 +315,16 @@ test("a Linux process whose name holds spaces and parentheses is still read righ
 		"/proc/8/stat": stat(8, "kworker/0:1", 5),
 		"/proc/8/cmdline": "",
 	});
-	expect(await identityOf(7, odd)).toBe("linux:b:999 my (odd) proc -x");
-	expect(await identityOf(8, odd)).toBe("linux:b:5 [kworker/0:1]");
+	expect(await odd.proc.identity(7)).toBe("linux:b:999 my (odd) proc -x");
+	expect(await odd.proc.identity(8)).toBe("linux:b:5 [kworker/0:1]");
 });
 
 test("elsewhere the process listing's start and command are the identity, as before", async () => {
 	const listing = (args: string[]) =>
 		args.join(" ") === "-o lstart=,command= -p 42" ? "Thu Jan  1 00:00:00 1970     sleep 30\n" : null;
 	const mac = system("darwin", { "/proc/42/stat": "never read" }, listing);
-	expect(await identityOf(42, mac)).toBe("Thu Jan  1 00:00:00 1970     sleep 30");
-	expect(await identityOf(43, mac)).toBeNull();
+	expect(await mac.proc.identity(42)).toBe("Thu Jan  1 00:00:00 1970     sleep 30");
+	expect(await mac.proc.identity(43)).toBeNull();
 });
 
 test("the identities of several processes come from one listing and are the ones each would have alone", async () => {
@@ -334,13 +333,13 @@ test("the identities of several processes come from one listing and are the ones
 	await gone.exited;
 	try {
 		const pids = [...sleepers.map((s) => s.pid), gone.pid];
-		const together = await identitiesOf(pids);
+		const together = await platform.proc.identities(pids);
 		expect([...together.keys()].sort((a, b) => a - b)).toEqual(sleepers.map((s) => s.pid).sort((a, b) => a - b));
-		for (const s of sleepers) expect(together.get(s.pid)).toBe((await identityOf(s.pid)) ?? undefined);
+		for (const s of sleepers) expect(together.get(s.pid)).toBe((await platform.proc.identity(s.pid)) ?? undefined);
 	} finally {
 		for (const s of sleepers) s.kill();
 	}
-	expect((await identitiesOf([])).size).toBe(0);
+	expect((await platform.proc.identities([])).size).toBe(0);
 });
 
 /** A record of a paused conversation whose omp and relay run (this test process stands for both) and whose overlay is `file`. */

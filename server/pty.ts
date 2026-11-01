@@ -1,26 +1,12 @@
 import { existsSync } from "node:fs";
-import { homedir, userInfo } from "node:os";
+import { homedir } from "node:os";
 import { childEnv } from "./env.ts";
 import type { Subscriber } from "./live.ts";
+import { platform } from "./platform/index.ts";
 
 /** Where a terminal runs: `cwd` when that folder exists, else the home directory. */
 export function terminalDir(cwd: string | undefined): string {
 	return cwd && existsSync(cwd) ? cwd : homedir();
-}
-
-/**
- * The person's login shell: what the system has for the account, else `$SHELL`, else zsh (macOS's own). Only an absolute
- * path to a program that is there counts: Bun answers `"unknown"` for the account's shell where it cannot read it.
- */
-export function loginShell(): string {
-	let account: string | undefined;
-	try {
-		account = userInfo().shell ?? undefined;
-	} catch {
-		// No account entry (a container's user): the environment's.
-	}
-	for (const shell of [account, process.env.SHELL]) if (shell?.startsWith("/") && existsSync(shell)) return shell;
-	return "/bin/zsh";
 }
 
 /**
@@ -34,10 +20,10 @@ export function runsOmpShell(args: readonly string[]): boolean {
 
 /**
  * End a terminal's process. An interactive shell ignores SIGTERM (zsh, bash): it is hung up, as closing a terminal window
- * does, and it hangs up its own jobs in turn.
+ * does, and it hangs up its own jobs in turn (`Platform.shell.hangup`; Windows terminates it).
  */
 function end(s: { proc: Bun.Subprocess; shell: boolean }): void {
-	s.proc.kill(s.shell ? "SIGHUP" : undefined);
+	s.proc.kill(s.shell ? platform.shell.hangup : undefined);
 }
 
 /** How long a terminal that its page left on purpose (Run in Background) is kept for the page that comes back. */
@@ -157,7 +143,7 @@ export class PtyManager {
 		});
 		let proc: Bun.Subprocess;
 		try {
-			proc = Bun.spawn(shell ? [loginShell(), "-l"] : [this.bin, ...args], {
+			proc = Bun.spawn(shell ? platform.shell.interactive() : [this.bin, ...args], {
 				cwd: dir,
 				terminal,
 				env: childEnv({ TERM: "xterm-256color", COLORTERM: "truecolor" }),

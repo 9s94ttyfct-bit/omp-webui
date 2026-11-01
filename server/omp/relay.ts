@@ -1,5 +1,5 @@
 import { rmSync } from "node:fs";
-import { exists, processTree, signalAll } from "./process-tree.ts";
+import { platform } from "../platform/index.ts";
 import { Backlog } from "./relay-backlog.ts";
 import {
 	type ExitInfo,
@@ -275,22 +275,13 @@ export async function runRelay(args: string[]): Promise<never> {
 	};
 
 	const killGroup = (signal: NodeJS.Signals) => {
-		if (!omp) return;
-		try {
-			process.kill(-omp.pid, signal);
-		} catch {
-			try {
-				omp.kill(signal);
-			} catch {
-				// gone
-			}
-		}
+		if (omp) platform.proc.signalChild(omp, signal);
 	};
 
 	/** What omp has started, as far as the system can list it now (not omp itself). */
 	const startedBy = async (pid: number): Promise<number[]> => {
 		try {
-			return (await processTree(pid)).filter((p) => p !== pid);
+			return (await platform.proc.tree(pid)).filter((p) => p !== pid);
 		} catch {
 			return [];
 		}
@@ -305,13 +296,16 @@ export async function runRelay(args: string[]): Promise<never> {
 			const deadline = Date.now() + TERM_GRACE_MS;
 			// A frozen group takes no signal until it runs again.
 			killGroup("SIGCONT");
-			signalAll(started, "SIGCONT");
+			platform.proc.signalTrees(started, "SIGCONT");
 			killGroup("SIGTERM");
-			signalAll(started, "SIGTERM");
+			platform.proc.signalTrees(started, "SIGTERM");
 			await Promise.race([omp.exited, Bun.sleep(TERM_GRACE_MS)]);
 			if (exit === null && omp.exitCode === null) killGroup("SIGKILL");
-			while (started.some(exists) && Date.now() < deadline) await Bun.sleep(20);
-			signalAll(started.filter(exists), "SIGKILL");
+			while (started.some((p) => platform.proc.exists(p)) && Date.now() < deadline) await Bun.sleep(20);
+			platform.proc.signalTrees(
+				started.filter((p) => platform.proc.exists(p)),
+				"SIGKILL",
+			);
 		}
 		cleanup();
 		process.exit(0);
@@ -330,8 +324,7 @@ export async function runRelay(args: string[]): Promise<never> {
 	};
 	process.on("SIGTERM", () => void terminate());
 	// No terminal: a stray hangup or interrupt is not for the relay.
-	process.on("SIGHUP", () => {});
-	process.on("SIGINT", () => {});
+	for (const signal of platform.shell.relayIgnored) process.on(signal, () => {});
 	// The server that started the relay never connected (it died first): there is nobody to serve.
 	setTimeout(() => {
 		if (!link.everAttached) void terminate();
@@ -345,7 +338,7 @@ export async function runRelay(args: string[]): Promise<never> {
 			stdout: "pipe",
 			stderr: "pipe",
 			// Its own session and process group: omp and the helpers it starts there are signalled together.
-			detached: true,
+			...platform.proc.groupSpawn,
 		});
 	} catch (e) {
 		spawnError = e instanceof Error ? e.message : String(e);

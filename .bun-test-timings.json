@@ -345,6 +345,7 @@
     "tests/unit/store-exited.test.ts": 20,
     "tests/unit/ci-notify-shell.test.ts": 18,
     "tests/unit/projects.test.ts": 18,
+    "tests/unit/platform-adapter.test.ts": 18,
     "tests/unit/drop-flow.test.ts": 17,
     "tests/unit/gh-runs.test.ts": 16,
     "tests/unit/guard-usage.test.ts": 16,

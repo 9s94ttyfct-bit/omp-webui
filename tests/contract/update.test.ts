@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
 import pkg from "../../package.json";
-import { processTree } from "../../server/omp/process-tree.ts";
 import { relayDir } from "../../server/omp/relay-client.ts";
+import { platform } from "../../server/platform/index.ts";
 import { isRecord } from "../../shared/guards.ts";
 import type { LiveInfo, LiveListing, ServerMessage } from "../../shared/protocol.ts";
 import type { AppUpdateState, UpdateSnapshot } from "../../shared/update.ts";
@@ -346,7 +346,7 @@ test.skipIf(!mac)(
 		const live = await request<LiveInfo>(a.ws, { t: "open", target: { kind: "new", cwd: join(root, "work") } });
 		const omp = live.pid as number;
 		strays.add(omp);
-		const tool = (await processTree(omp)).find((p) => p !== omp) as number;
+		const tool = (await platform.proc.tree(omp)).find((p) => p !== omp) as number;
 		strays.add(tool);
 		const paused = await request<LiveInfo>(a.ws, { t: "pause", liveId: live.liveId });
 		const frozen = (pid: number) =>

@@ -1,4 +1,5 @@
 import { childEnv } from "../env.ts";
+import { platform } from "../platform/index.ts";
 
 /**
  * Commands the server runs to ask omp something (`omp config get`, `omp stats`, `omp --version`, `omp --export`): each has
@@ -41,15 +42,6 @@ export interface RunOptions {
 
 /** What a command with a `maxBytes` limit keeps of its stderr. */
 const CAPPED_STDERR_BYTES = 64 * 1024;
-
-/** The command's whole process group is ended: what it started would otherwise keep its pipes open, and outlive it. */
-function killGroup(proc: Bun.Subprocess): void {
-	try {
-		process.kill(-proc.pid, "SIGKILL");
-	} catch {
-		proc.kill("SIGKILL");
-	}
-}
 
 /**
  * Up to `max` bytes of `stream` as text. Past the limit `onOver` ends the command and the read stops; without one the rest
@@ -101,12 +93,13 @@ export async function run(argv: string[], opts: RunOptions): Promise<Ran> {
 		stdout: "pipe",
 		stderr: "pipe",
 		// A process group of its own: the kill reaches what the command started.
-		detached: true,
+		...platform.proc.groupSpawn,
 	});
 	let timer: NodeJS.Timeout | undefined;
 	const expired = new Promise<never>((_, reject) => {
 		timer = setTimeout(() => {
-			killGroup(proc);
+			// The whole process group: what the command started would otherwise keep its pipes open, and outlive it.
+			platform.proc.signalChild(proc, "SIGKILL");
 			reject(
 				new RunTimeout(
 					`${argv.slice(1, 3).join(" ") || argv[0]} gave no answer within ${Math.round(opts.timeoutMs / 1000)} s`,
@@ -120,7 +113,7 @@ export async function run(argv: string[], opts: RunOptions): Promise<Ran> {
 					([stdout, stderr, code]): Ran => ({ code, stdout, stderr }),
 				)
 			: Promise.all([
-					readCapped(proc.stdout, opts.maxBytes, () => killGroup(proc)),
+					readCapped(proc.stdout, opts.maxBytes, () => platform.proc.signalChild(proc, "SIGKILL")),
 					readCapped(proc.stderr, CAPPED_STDERR_BYTES),
 					proc.exited,
 				]).then(

@@ -18,6 +18,8 @@ import {
 } from "./folder.ts";
 import { mayEdit } from "./folder-write.ts";
 import type { GitMarks } from "./git-marks.ts";
+import { platform } from "./platform/index.ts";
+import type { DesktopOps } from "./platform/types.ts";
 import type { TransferEnv } from "./transfer-core.ts";
 
 /**
@@ -49,7 +51,8 @@ export interface FolderContext {
 	local: boolean;
 	/** Opens or reveals the file (tests replace the system's `open`). */
 	runner?: Runner;
-	platform?: string;
+	/** What hands a file to the desktop (`Platform.desktop`; null where the system has none: `capabilities.openFiles`). */
+	desktop?: DesktopOps | null;
 	/** Whether macOS takes a folder for a package (tests replace LaunchServices' answer, which only a Mac gives). */
 	isPackage?: PackageProbe;
 	/**
@@ -82,6 +85,11 @@ const IMAGE_CACHE = "private, max-age=60";
 /** The routes of the file transfer (`download`, `archive`, `archive/<ticket>`, `upload`, `upload/state`, `upload/cancel`). */
 const TRANSFER_ROUTE = /^(?:download|archive|upload)(?:\/|$)/;
 
+/** What hands this request's files to the desktop: the context's (a test's), else the system's (null where it has none). */
+function desktopOf(ctx: FolderContext): DesktopOps | null {
+	return ctx.desktop === undefined ? platform.desktop : ctx.desktop;
+}
+
 export async function handleFolder(req: Request, url: URL, ctx: FolderContext): Promise<Response> {
 	const route = url.pathname.slice("/api/folder/".length);
 	const q = url.searchParams;
@@ -101,8 +109,9 @@ export async function handleFolder(req: Request, url: URL, ctx: FolderContext): 
 			if (!cwd) return fail("Unknown conversation", 404);
 			const root = await rootOf(cwd);
 			// `dir`: open the folder itself in Finder (the conversation's own when `path` is empty); otherwise one file.
-			if (body.dir === true) await openFolderDir(root, body.path, ctx.platform, ctx.runner, {}, ctx.isPackage);
-			else await openFolderFile(root, body.path, body.reveal === true, ctx.platform, ctx.runner);
+			const desktop = desktopOf(ctx);
+			if (body.dir === true) await openFolderDir(root, body.path, desktop, ctx.runner, {}, ctx.isPackage);
+			else await openFolderFile(root, body.path, body.reveal === true, desktop, ctx.runner);
 			return json({ ok: true });
 		}
 		// A look at git that skips what is kept (`fresh`) starts work of its own: it is a POST, as it is for `/api/git`.
@@ -119,9 +128,7 @@ export async function handleFolder(req: Request, url: URL, ctx: FolderContext): 
 				const marks = await ctx.marks(root, q.get("fresh") === "1");
 				const listing = await listFolder(root, path, { all, marks, guarded });
 				// Whether this page may ask for the folder to be opened in Finder (as `FolderFile.local` says of a file).
-				return json(
-					ctx.local && (ctx.platform ?? process.platform) === "darwin" ? { ...listing, local: true } : listing,
-				);
+				return json(ctx.local && desktopOf(ctx) ? { ...listing, local: true } : listing);
 			}
 			case "find": {
 				const marks = await ctx.marks(root, fresh);
@@ -132,7 +139,7 @@ export async function handleFolder(req: Request, url: URL, ctx: FolderContext): 
 			case "diff":
 				return json(await diffAnswer(ctx, root, path, guarded));
 			case "file": {
-				const read = await readFolderFile(root, path, ctx.local && (ctx.platform ?? process.platform) === "darwin", {
+				const read = await readFolderFile(root, path, ctx.local && desktopOf(ctx) !== null, {
 					guarded,
 				});
 				// What the text allows is `readFolderFile`'s to say; whether this page and this place allow a write is the transfer's.

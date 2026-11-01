@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Live, LivePool } from "../../server/live.ts";
-import { processTree } from "../../server/omp/process-tree.ts";
+import { platform } from "../../server/platform/index.ts";
 import { errorInfoOf } from "../../shared/error-info.ts";
 import { type FakeOmpOptions, fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
 import { pollUntil } from "../support/poll.ts";
@@ -39,7 +39,7 @@ async function openFake(options: FakeOmpOptions = {}): Promise<Live> {
 }
 
 /** Every process under omp, omp itself first. */
-const tree = (live: Live): Promise<number[]> => processTree(live.info.pid as number);
+const tree = (live: Live): Promise<number[]> => platform.proc.tree(live.info.pid as number);
 /** Whether every one of `pids` is stopped. */
 const frozen = (pids: number[]): boolean => pids.every((p) => stat(p).startsWith("T"));
 
@@ -53,7 +53,7 @@ function stat(pid: number): string {
 test("a child that exits between the process listing and SIGSTOP does not leave omp frozen", async () => {
 	const live = await openFake();
 	const pid = live.info.pid as number;
-	const tool = (await processTree(pid)).find((p) => p !== pid) as number;
+	const tool = (await platform.proc.tree(pid)).find((p) => p !== pid) as number;
 	expect(tool).toBeGreaterThan(0);
 
 	// The listing still shows the child, but it is gone when the signal arrives.

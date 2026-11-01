@@ -1,8 +1,9 @@
-import { accessSync, closeSync, constants, openSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
+import { closeSync, openSync, readFileSync, readSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, dirname, join, sep } from "node:path";
 import type { InstallMethod, InstallOption, InstallOptionId, OmpInstall } from "../../shared/omp-install.ts";
 import { childEnv } from "../env.ts";
+import { platform } from "../platform/index.ts";
 import { run } from "./run.ts";
 
 /**
@@ -33,35 +34,16 @@ export function searchDirs(env: Env = process.env, home: string = homedir()): st
 	return [...new Set(dirs)];
 }
 
-/** A file this process may run. */
-export function isExecutableFile(path: string): boolean {
-	try {
-		if (!statSync(path).isFile()) return false;
-		accessSync(path, constants.X_OK);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-/** The first `name` in `dirs` that can be run. */
-export function which(name: string, dirs: string[]): string | null {
-	for (const dir of dirs) {
-		const candidate = join(dir, name);
-		if (isExecutableFile(candidate)) return candidate;
-	}
-	return null;
-}
-
 /**
  * The omp to run. `configured` is `OMP_BIN`: a path, or a name looked up like `omp`; one that cannot be run is
  * ignored in favour of the search, so a stale setting does not leave the app without omp.
  */
 export function findOmp(env: Env = process.env, configured?: string, home: string = homedir()): string | null {
 	const dirs = searchDirs(env, home);
+	const { which, isExecutable } = platform.commands;
 	if (configured && configured !== "omp") {
 		const explicit = configured.includes(sep) ? configured : which(configured, dirs);
-		if (explicit && isExecutableFile(explicit)) return explicit;
+		if (explicit && isExecutable(explicit)) return explicit;
 	}
 	return which("omp", dirs);
 }
@@ -156,25 +138,12 @@ interface InstallRecipe {
 	command: string;
 	/** The program it needs. */
 	needs: string | null;
-	/** What to run, with `tool` the resolved path of `needs`. */
-	argv(tool: string | null): string[];
+	/** What to run, with `tool` the resolved path of `needs`; null where this system cannot run it. */
+	argv(tool: string | null): string[] | null;
 }
 
-/**
- * omp's installer as two steps. In `curl … | sh` the pipeline's status is `sh`'s, so a failed download ran an empty
- * script, "succeeded", and the job's error was "omp was not found afterwards" while curl's own message (could not
- * resolve host, HTTP 404…) was only in the log. Downloaded to a file first, the job ends with curl's status and
- * the last lines of its output are curl's message. The file goes away however the job ends, cancelling included.
- */
-const INSTALLER_SCRIPT = [
-	"set -e",
-	`tmp=$(mktemp "\${TMPDIR:-/tmp}/omp-install.XXXXXX")`,
-	`trap 'rm -f "$tmp"' EXIT`,
-	"trap 'exit 143' TERM",
-	"trap 'exit 130' INT HUP",
-	'curl -fsSL -o "$tmp" https://omp.sh/install',
-	'sh "$tmp" --binary',
-].join("\n");
+/** What the first-run screen says of an install option this system cannot run at all. */
+const NOT_HERE = "omp's installer script does not run on this system";
 
 /**
  * The install commands of omp's README, which the first-run screen offers. The installer's `--binary` always
@@ -193,7 +162,7 @@ const RECIPES: InstallRecipe[] = [
 		// and install as two steps (`INSTALLER_SCRIPT`), so that a download that fails is what the job reports.
 		command: "curl -fsSL https://omp.sh/install | sh -s -- --binary",
 		needs: "curl",
-		argv: () => ["/bin/sh", "-c", INSTALLER_SCRIPT],
+		argv: () => platform.shell.installerArgv(),
 	},
 	{
 		id: "bun",
@@ -206,13 +175,16 @@ const RECIPES: InstallRecipe[] = [
 /** The options the first-run screen lists, which of them can run here, and the one to try first. */
 export function installOptions(env: Env = process.env, home: string = homedir()): InstallOption[] {
 	const dirs = searchDirs(env, home);
-	const options = RECIPES.map((r) => ({
-		id: r.id,
-		command: r.command,
-		needs: r.needs,
-		available: r.needs === null || which(r.needs, dirs) !== null,
-		recommended: false,
-	}));
+	const options = RECIPES.map((r) => {
+		const tool = r.needs === null ? null : platform.commands.which(r.needs, dirs);
+		return {
+			id: r.id,
+			command: r.command,
+			needs: r.needs,
+			available: (r.needs === null || tool !== null) && r.argv(tool) !== null,
+			recommended: false,
+		};
+	});
 	// Homebrew where it exists (it is what a Mac user expects, and brew keeps omp updated); otherwise the standalone binary.
 	const first =
 		options.find((o) => o.id === "homebrew" && o.available) ?? options.find((o) => o.id === "installer" && o.available);
@@ -228,9 +200,11 @@ export function installCommand(
 ): { argv: string[]; command: string } | { error: string } {
 	const recipe = RECIPES.find((r) => r.id === id);
 	if (!recipe) return { error: `Unknown install method: ${id}` };
-	const tool = recipe.needs ? which(recipe.needs, searchDirs(env, home)) : null;
+	const tool = recipe.needs ? platform.commands.which(recipe.needs, searchDirs(env, home)) : null;
 	if (recipe.needs && !tool) return { error: `${recipe.needs} was not found on this computer` };
-	return { argv: recipe.argv(tool), command: recipe.command };
+	const argv = recipe.argv(tool);
+	if (!argv) return { error: NOT_HERE };
+	return { argv, command: recipe.command };
 }
 
 /** `PATH` for a command the server runs: where omp and the tools it installs with are (see `searchDirs`). */

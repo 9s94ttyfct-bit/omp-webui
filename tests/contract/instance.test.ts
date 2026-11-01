@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
-import { commandOf } from "../../server/instance.ts";
+import { platform } from "../../server/platform/index.ts";
 import { type AppServer, startAppServer } from "../support/app-server.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
 
@@ -111,7 +111,7 @@ test("a leftover server recorded for this data dir is stopped and its port reuse
 	const old = await startServer(dir);
 	expect(JSON.parse(readFileSync(join(dir, "server.pid"), "utf8"))).toMatchObject({
 		pid: old.proc.pid,
-		command: commandOf(old.proc.pid),
+		command: platform.proc.commandLineSync(old.proc.pid),
 	});
 
 	const next = await startServer(dir, old.port);
@@ -138,7 +138,7 @@ test("a recorded server whose app is still running is left alone", async () => {
 	procs.push(app);
 	const dir = dataDir("owned");
 	const first = await startServer(dir, 0, { OMP_WEBUI_PARENT_PID: String(app.pid) });
-	expect(record(dir).parent).toEqual({ pid: app.pid, command: commandOf(app.pid) });
+	expect(record(dir).parent).toEqual({ pid: app.pid, command: platform.proc.commandLineSync(app.pid) });
 
 	// Another start — a second copy of the app — must not take the running one's server away.
 	const second = await startServer(dir, first.port);

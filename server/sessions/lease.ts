@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
-import { readdir, readFile, readlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { compareVersions, parseVersion } from "../../shared/omp-install.ts";
+import type { PlatformId } from "../../shared/platform.ts";
 import { QUICK_MS, run } from "../omp/run.ts";
+import { platform, platformFor } from "../platform/index.ts";
 
 /**
  * omp gives a session one writer: the first omp process that writes to a session holds an operating-system lease on it,
@@ -27,9 +28,6 @@ import { QUICK_MS, run } from "../omp/run.ts";
 /** The first omp with `omp session lease` (and RPC `get_session_lease`). */
 export const SESSION_LEASE_SINCE = "18.14.1";
 
-/** How long asking the system who has the lock may take: `lsof` answers in a fraction of a second. */
-const PROBE_MS = 10_000;
-
 /** The omp the server runs. `version`: what it reports, anything else when it could not report one. */
 export interface LeaseOmp {
 	bin: string;
@@ -41,7 +39,7 @@ export interface LeaseSystem {
 	/** The environment omp runs with (the server's: its omp processes inherit it). */
 	env: Record<string, string | undefined>;
 	home: string;
-	platform: string;
+	platform: PlatformId;
 	/** Linux's `/proc`. */
 	proc: string;
 }
@@ -49,7 +47,7 @@ export interface LeaseSystem {
 export const hostSystem = (): LeaseSystem => ({
 	env: process.env,
 	home: homedir(),
-	platform: process.platform,
+	platform: platform.id,
 	proc: "/proc",
 });
 
@@ -108,70 +106,7 @@ export function leaseLockPath(id: string, system: Pick<LeaseSystem, "env" | "hom
 	return `${resolve(sessionOwnersDir(system), name)}.lock`;
 }
 
-/** The process ids of the omp processes that hold the write lease of session `id`, as the system tells them. */
+/** The process ids of the omp processes that hold the write lease of session `id`, as the system tells them (`Platform.locks`). */
 export async function leaseHolders(id: string, system: LeaseSystem): Promise<number[]> {
-	const lock = leaseLockPath(id, system);
-	if (system.platform === "linux") return socketHolders(`@${abstractLockName(lock)}`, system.proc);
-	// A session nobody has written to has no lock file.
-	if (!existsSync(lock)) return [];
-	// A launch from the macOS app has a short PATH, and `lsof` lives in /usr/sbin there.
-	for (const lsof of ["lsof", "/usr/sbin/lsof"]) {
-		try {
-			// `-t`: process ids only; none, and a failing exit, when nothing has the file open.
-			const { stdout } = await run([lsof, "-t", "--", lock], { timeoutMs: PROBE_MS });
-			return stdout
-				.split("\n")
-				.map((line) => Number(line))
-				.filter((pid) => Number.isInteger(pid) && pid > 0);
-		} catch {
-			// not there (or it hung): the next place
-		}
-	}
-	return [];
-}
-
-/**
- * The abstract socket name omp's native lock binds on Linux for the lock path `path`: two 64-bit xxHashes of the path's
- * UTF-8 bytes under omp's two fixed seeds (`memory_lock_name` in pi-natives' `file_lock`).
- */
-export function abstractLockName(path: string): string {
-	const bytes = Buffer.from(path, "utf8");
-	const high = Bun.hash.xxHash64(bytes, 0x4f4d_502d_4c4f_434bn);
-	const low = Bun.hash.xxHash64(bytes, 0x5049_2d46_494c_454cn);
-	return `omp-file-lock-${high.toString(16).padStart(16, "0")}${low.toString(16).padStart(16, "0")}`;
-}
-
-/**
- * The processes that have the Unix socket bound at `address` (`@name` for an abstract one) open: its inodes from
- * `<proc>/net/unix`, then every process whose open files include one of them. Processes this user cannot look into are
- * skipped (a terminal's omp is the same user's).
- */
-async function socketHolders(address: string, proc: string): Promise<number[]> {
-	let table: string;
-	try {
-		table = await readFile(join(proc, "net", "unix"), "utf8");
-	} catch {
-		return [];
-	}
-	// `Num RefCount Protocol Flags Type St Inode Path`: the path is the eighth column, absent for an unbound socket.
-	const sockets = new Set<string>();
-	for (const line of table.split("\n").slice(1)) {
-		const cols = line.trim().split(/\s+/);
-		if (cols[7] === address && cols[6]) sockets.add(`socket:[${cols[6]}]`);
-	}
-	if (sockets.size === 0) return [];
-	const holders: number[] = [];
-	for (const entry of await readdir(proc).catch(() => [] as string[])) {
-		const pid = Number(entry);
-		if (!Number.isInteger(pid) || pid <= 0) continue;
-		const fdDir = join(proc, entry, "fd");
-		for (const fd of await readdir(fdDir).catch(() => [] as string[])) {
-			const target = await readlink(join(fdDir, fd)).catch(() => null);
-			if (target !== null && sockets.has(target)) {
-				holders.push(pid);
-				break;
-			}
-		}
-	}
-	return holders;
+	return (await platformFor(system.platform).locks?.holders(leaseLockPath(id, system), system.proc)) ?? [];
 }

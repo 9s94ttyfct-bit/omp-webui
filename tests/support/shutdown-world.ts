@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
-import { processTree } from "../../server/omp/process-tree.ts";
+import { platform } from "../../server/platform/index.ts";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { startAppServer } from "./app-server.ts";
 import { writeFakeOmp } from "./fake-omp.ts";
@@ -106,7 +106,7 @@ export class ShutdownWorld {
 		}
 		if (scenario !== "idle") {
 			await pollUntil(async () => {
-				tool = (await processTree(omp)).find((p) => p !== omp) ?? 0;
+				tool = (await platform.proc.tree(omp)).find((p) => p !== omp) ?? 0;
 				return tool > 0;
 			}, "omp's tool process");
 			this.strays.push(tool);

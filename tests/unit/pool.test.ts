@@ -3,8 +3,8 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LivePool } from "../../server/live.ts";
-import { processTree } from "../../server/omp/process-tree.ts";
 import type { Resumed } from "../../server/omp/resumed.ts";
+import { platform } from "../../server/platform/index.ts";
 import { type FakeOmpOptions, fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
 
 /** How the pool opens a session file: one omp process per file, however many opens ask for it. */
@@ -263,7 +263,7 @@ test("shutdown kills a process that ignores both its closed stdin and SIGTERM, w
 	const { pool, newChat } = setup({ ignoreClose: true, ignoreTerm: true, tool: true });
 	const live = await newChat();
 	const pid = live.info.pid as number;
-	const tool = (await processTree(pid)).find((p) => p !== pid) as number;
+	const tool = (await platform.proc.tree(pid)).find((p) => p !== pid) as number;
 	expect(tool).toBeGreaterThan(0);
 	strays.push(tool);
 
@@ -276,7 +276,7 @@ test("shutdown also kills a tool that runs in a session of its own, as omp's too
 	const { pool, newChat } = setup({ ignoreClose: true, ignoreTerm: true, tool: true, toolDetached: true });
 	const live = await newChat();
 	const pid = live.info.pid as number;
-	const tool = (await processTree(pid)).find((p) => p !== pid) as number;
+	const tool = (await platform.proc.tree(pid)).find((p) => p !== pid) as number;
 	expect(tool).toBeGreaterThan(0);
 	strays.push(tool);
 

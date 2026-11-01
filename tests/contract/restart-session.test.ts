@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Live, LivePool } from "../../server/live.ts";
 import { sessionKey } from "../../server/omp/approval.ts";
-import { identitiesOf } from "../../server/omp/parked.ts";
 import { RESTART_TIMINGS, RestartCoordinator } from "../../server/omp/restart/coordinator.ts";
 import { RestartService } from "../../server/omp/restart/install.ts";
 import { RestartStore } from "../../server/omp/restart/store.ts";
+import { platform } from "../../server/platform/index.ts";
 import { isRecord } from "../../shared/guards.ts";
 import { RESTART_TOOL } from "../../shared/restart.ts";
 import { type FakeOmpOptions, fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
@@ -112,7 +112,7 @@ describe("the agent's restart", () => {
 		await pollUntil(() => existsSync(pidsFile), "the wedge");
 		const { children } = JSON.parse(readFileSync(pidsFile, "utf8")) as { children: number[] };
 		for (const pid of children) strays.add(pid);
-		const before = await identitiesOf([ompPid, ...children]);
+		const before = await platform.proc.identities([ompPid, ...children]);
 		expect(before.size).toBe(3);
 		// A background job keeps the session unsettled: the conversation is never idle, and the restart does not wait for that.
 		await live.rpc({ type: "set_state", state: { hasPendingAsyncWork: true } });
@@ -130,7 +130,7 @@ describe("the agent's restart", () => {
 		await pollUntil(() => w.store.get(record.id)?.state === "delivered", "the restart", 30_000);
 
 		// omp (and the thread inside it) and both tools are gone: none of the listed processes is still the one listed.
-		const after = await identitiesOf([ompPid, ...children]);
+		const after = await platform.proc.identities([ompPid, ...children]);
 		for (const [pid, identity] of before) expect(after.get(pid)).not.toBe(identity);
 		expect(live.info.exited).toBe(true);
 		// The spinning thread kept omp alive past its closed stdin: it took a signal to end it.

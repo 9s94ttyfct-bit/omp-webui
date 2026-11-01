@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Subprocess, spawn } from "bun";
-import { commandOf } from "../../server/instance.ts";
+import { platform } from "../../server/platform/index.ts";
 import { RemoteService } from "../../server/remote-routes.ts";
 import type { TunnelTimings } from "../../server/remote-tunnel.ts";
 import { isThisComputer } from "../../server/this-computer.ts";
@@ -457,7 +457,10 @@ describe("a tunnel a crashed server left behind", () => {
 		);
 		strays.push(old);
 		await pollUntil(() => w.fake.runs() === 1, "the leftover to start");
-		writeFileSync(join(data, "cloudflared.pid"), JSON.stringify({ pid: old.pid, command: commandOf(old.pid) }));
+		writeFileSync(
+			join(data, "cloudflared.pid"),
+			JSON.stringify({ pid: old.pid, command: platform.proc.commandLineSync(old.pid) }),
+		);
 		return { w, old };
 	}
 
@@ -494,7 +497,10 @@ describe("a tunnel a crashed server left behind", () => {
 		const other = spawn(["sleep", "30"], { stdout: "ignore", stderr: "ignore", detached: true });
 		strays.push(other);
 		const file = join(w.dir, "data", "cloudflared.pid");
-		writeFileSync(file, JSON.stringify({ pid: old.pid, command: commandOf(old.pid), owner: other.pid }));
+		writeFileSync(
+			file,
+			JSON.stringify({ pid: old.pid, command: platform.proc.commandLineSync(old.pid), owner: other.pid }),
+		);
 		await w.service.autostart();
 		await answer(w, "POST", "/api/remote/stop");
 		expect(processExists(old.pid)).toBe(true);

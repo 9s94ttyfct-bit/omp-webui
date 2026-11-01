@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Subprocess, spawn } from "bun";
-import { commandOf } from "../../server/instance.ts";
+import { platform } from "../../server/platform/index.ts";
 import { RemoteStore } from "../../server/remote-config.ts";
 import { Tunnel, TunnelError, type TunnelTimings } from "../../server/remote-tunnel.ts";
 import type { RemoteStatus } from "../../shared/remote.ts";
@@ -711,7 +711,7 @@ describe("a cloudflared a crashed server left behind", () => {
 		});
 		strays.push(proc);
 		await pollUntil(() => w.fake.runs() === 1, "the leftover to start");
-		const command = commandOf(proc.pid) as string;
+		const command = platform.proc.commandLineSync(proc.pid) as string;
 		writeFileSync(join(w.dataDir, "cloudflared.pid"), JSON.stringify({ pid: proc.pid, command }));
 		return proc;
 	}

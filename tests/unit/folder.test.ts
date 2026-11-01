@@ -31,10 +31,16 @@ import {
 	readFolderImage,
 	resolveInside,
 	rootOf,
-	systemPackageProbe,
 	viewOf,
 } from "../../server/folder.ts";
 import { handleFolder } from "../../server/folder-routes.ts";
+import { platform, platformFor } from "../../server/platform/index.ts";
+import type { DesktopOps } from "../../server/platform/types.ts";
+
+/** The desktop of macOS (`open`, LaunchServices), and Linux's, which has none. */
+const mac = platformFor("darwin").desktop;
+const linux = platformFor("linux").desktop;
+
 import { parseMarks } from "../../server/git-marks.ts";
 import { isThisComputer } from "../../server/this-computer.ts";
 import { FOLDER_LIMITS, mentionOf } from "../../shared/folder.ts";
@@ -528,8 +534,8 @@ describe("open and reveal", () => {
 		calls.push(argv);
 		return 0;
 	};
-	const open = (rel: string, reveal: boolean, platform = "darwin") =>
-		openFolderFile(root, rel, reveal, platform, runner);
+	const open = (rel: string, reveal: boolean, desktop: DesktopOps | null = mac) =>
+		openFolderFile(root, rel, reveal, desktop, runner);
 
 	test("a file is opened by the system's own `open`, and revealed with `-R`, by its real path", async () => {
 		calls.length = 0;
@@ -657,7 +663,7 @@ describe("open and reveal", () => {
 			root,
 			"swap-open/file.txt",
 			false,
-			"darwin",
+			mac,
 			async (argv) => {
 				calls.push(argv);
 				return 0;
@@ -678,14 +684,14 @@ describe("open and reveal", () => {
 
 	test("it is a macOS action", async () => {
 		calls.length = 0;
-		await refused(open("src/app.ts", false, "linux"), 501);
-		await refused(open("src/app.ts", true, "win32"), 501);
+		await refused(open("src/app.ts", false, linux), 501);
+		await refused(open("src/app.ts", true, platformFor("win32").desktop), 501);
 		expect(calls).toEqual([]);
 	});
 
 	test("a failed `open` is an error, not a silent success", async () => {
 		await refused(
-			openFolderFile(root, "src/app.ts", false, "darwin", async () => 1),
+			openFolderFile(root, "src/app.ts", false, mac, async () => 1),
 			404,
 		);
 	});
@@ -704,8 +710,8 @@ describe("open a folder in Finder", () => {
 		probed.push(abs);
 		return packages.has(abs);
 	};
-	const openDir = (rel: unknown, platform = "darwin", opts: Parameters<typeof openFolderDir>[4] = {}) =>
-		openFolderDir(root, rel, platform, runner, opts, probe);
+	const openDir = (rel: unknown, desktop: DesktopOps | null = mac, opts: Parameters<typeof openFolderDir>[4] = {}) =>
+		openFolderDir(root, rel, desktop, runner, opts, probe);
 
 	test("the folder itself and a folder in it are opened with the system's `open`, by their real path, as one argument", async () => {
 		calls.length = 0;
@@ -813,15 +819,15 @@ describe("open a folder in Finder", () => {
 		expect(calls).toEqual([["/usr/bin/open", join(root, "registered")]]);
 	});
 
-	test.if(process.platform === "darwin")(
+	test.if(platform.capabilities.openFiles)(
 		"the system's own answer: a plain folder is not a package, an app's document is",
 		async () => {
 			mkdirSync(join(proj, "probe/plain"), { recursive: true });
 			mkdirSync(join(proj, "probe/Doc.pages"), { recursive: true });
 			mkdirSync(join(proj, "probe/-rf and spaces"), { recursive: true });
-			expect(await systemPackageProbe(join(root, "probe/plain"))).toBe(false);
-			expect(await systemPackageProbe(join(root, "probe/-rf and spaces"))).toBe(false);
-			expect(await systemPackageProbe(join(root, "probe/Doc.pages"))).toBe(true);
+			expect(await (mac as DesktopOps).isPackage(join(root, "probe/plain"))).toBe(false);
+			expect(await (mac as DesktopOps).isPackage(join(root, "probe/-rf and spaces"))).toBe(false);
+			expect(await (mac as DesktopOps).isPackage(join(root, "probe/Doc.pages"))).toBe(true);
 		},
 	);
 
@@ -829,8 +835,8 @@ describe("open a folder in Finder", () => {
 		calls.length = 0;
 		write("guarded-dir/.ssh/id_rsa", "SECRET");
 		write("guarded-dir/.hidden/x", "x");
-		await refused(openDir("guarded-dir/.ssh", "darwin", { guarded: true }), 403);
-		await refused(openDir("guarded-dir/.hidden", "darwin", { guarded: true }), 403);
+		await refused(openDir("guarded-dir/.ssh", mac, { guarded: true }), 403);
+		await refused(openDir("guarded-dir/.hidden", mac, { guarded: true }), 403);
 		expect(calls).toEqual([]);
 		await openDir("guarded-dir/.ssh");
 		expect(calls).toEqual([["/usr/bin/open", join(root, "guarded-dir/.ssh")]]);
@@ -839,7 +845,7 @@ describe("open a folder in Finder", () => {
 	test("a folder swapped for a link just before it is handed over is refused", async () => {
 		calls.length = 0;
 		mkdirSync(join(proj, "swap-dir/inner"), { recursive: true });
-		const swapped = openDir("swap-dir/inner", "darwin", {
+		const swapped = openDir("swap-dir/inner", mac, {
 			hooks: {
 				// The checks have passed: now the folder on the way becomes a link to the outside.
 				beforeOpen: () => {
@@ -854,11 +860,11 @@ describe("open a folder in Finder", () => {
 
 	test("it is a macOS action, and a failed `open` is an error, not a silent success", async () => {
 		calls.length = 0;
-		await refused(openDir("", "linux"), 501);
-		await refused(openDir("", "win32"), 501);
+		await refused(openDir("", linux), 501);
+		await refused(openDir("", platformFor("win32").desktop), 501);
 		expect(calls).toEqual([]);
 		await refused(
-			openFolderDir(root, "", "darwin", async () => 1, {}, probe),
+			openFolderDir(root, "", mac, async () => 1, {}, probe),
 			404,
 		);
 	});
@@ -912,7 +918,7 @@ describe("the page on this computer", () => {
 		changes: async () => ({ root: proj, state: "none" as const, branch: "", files: [], truncated: false, omitted: 0 }),
 		diff: async () => null,
 		local,
-		platform: "darwin",
+		desktop: mac,
 		// LaunchServices answers on a Mac only; what it says is "the system's own answer" above. Here nothing is a package.
 		isPackage: async () => false,
 		runner: async (argv: string[]) => {
@@ -981,14 +987,14 @@ describe("the page on this computer", () => {
 	});
 
 	test("the listing says whether this page may open folders: this computer's page on macOS, no other", async () => {
-		const listed = async (local: boolean, platform = "darwin") => {
+		const listed = async (local: boolean, desktop: DesktopOps | null = mac) => {
 			const req = new Request("http://127.0.0.1/api/folder/list?file=conversation&path=");
-			const res = await handleFolder(req, new URL(req.url), { ...mounted(local), platform });
+			const res = await handleFolder(req, new URL(req.url), { ...mounted(local), desktop });
 			return (await res.json()) as { local?: true };
 		};
 		expect((await listed(true)).local).toBe(true);
 		expect((await listed(false)).local).toBeUndefined();
-		expect((await listed(true, "linux")).local).toBeUndefined();
+		expect((await listed(true, linux)).local).toBeUndefined();
 	});
 
 	test("the file a page reads is told whether this page may open it", async () => {
@@ -1237,7 +1243,7 @@ describe("a page that is not this computer's (guarded)", () => {
 			return 0;
 		};
 		for (const reveal of [false, true])
-			await refused(openFolderFile(root, "guard/.env", reveal, "darwin", runner, { guarded: true }), 403);
+			await refused(openFolderFile(root, "guard/.env", reveal, mac, runner, { guarded: true }), 403);
 		expect(calls).toEqual([]);
 	});
 });

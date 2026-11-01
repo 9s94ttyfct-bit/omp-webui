@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { RpcClient } from "../../server/omp/rpc-client.ts";
+import { platform } from "../../server/platform/index.ts";
 import { type LeaseSystem, leaseHeldElsewhere, SESSION_LEASE_SINCE } from "../../server/sessions/lease.ts";
 import { compareVersions, parseVersion } from "../../shared/omp-install.ts";
 import type { LiveInfo, SessionSummary } from "../../shared/protocol.ts";
@@ -165,7 +166,7 @@ test("the real omp's lease under PI_CONFIG_DIR: omp says it is held, and the sys
 	const system = (extra: Record<string, string>): LeaseSystem => ({
 		env: { ...process.env, ...extra },
 		home: env.HOME,
-		platform: process.platform,
+		platform: platform.id,
 		proc: "/proc",
 	});
 	// An omp older than `omp session lease`: the system is read, which names the holder.

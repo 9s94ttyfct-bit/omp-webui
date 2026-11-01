@@ -29,8 +29,9 @@ import {
 } from "../../shared/omp-install.ts";
 import type { ServerMessage } from "../../shared/protocol.ts";
 import type { Config } from "../config.ts";
+import { platform } from "../platform/index.ts";
 import { detectInstall, findOmp, installCommand, installOptions, jobEnv, probeOmp, searchDirs } from "./install.ts";
-import { PS_MS, RunTimeout, run } from "./run.ts";
+import { RunTimeout } from "./run.ts";
 import { configuredUpdateChannel, latestRelease } from "./update.ts";
 
 type Env = Record<string, string | undefined>;
@@ -115,40 +116,6 @@ interface JobProcess {
 	marker: string;
 }
 
-/**
- * When the process `pid` started, as `ps` says it; null when there is no such process. Only the start time:
- * the command line is not what it is until the process has been `exec`ed, so it would differ from one look to the next.
- * Awaited, not waited for (`run`): a job taken over is looked at every `JOB_POLL_MS` for as long as it runs, and the
- * server's single thread serves everyone else meanwhile (#460). Rejects when `ps` gives no answer in time (`RunTimeout`).
- */
-async function startOf(pid: number): Promise<string | null> {
-	// A later server may run in another locale or zone.
-	const r = await run(["ps", "-o", "lstart=", "-p", String(pid)], {
-		timeoutMs: PS_MS,
-		env: { LC_ALL: "C", TZ: "UTC" },
-	});
-	return r.code === 0 ? r.stdout.trim() || null : null;
-}
-
-/**
- * The command line of the process `pid`, as `ps` says it; null when there is no such process (`ps` ran and found
- * none). Rejects when `ps` could not answer (`RunTimeout`, or a `ps` that cannot be started or failed otherwise): that
- * says nothing about the process, and must not be read as "it is gone" (#561).
- * The job's own status file is in the command line of the job's process (see `JOB_WRAPPER`), and that is what tells
- * it from a stranger the system has given the same id to (#543).
- */
-async function commandOf(pid: number, timeoutMs = PS_MS): Promise<string | null> {
-	const r = await run(["ps", "-o", "command=", "-p", String(pid)], {
-		timeoutMs,
-		env: { LC_ALL: "C", TZ: "UTC" },
-	});
-	const command = r.stdout.trim();
-	if (r.code === 0 && command) return command;
-	// `ps -p` exits 1 and prints nothing for an id no process has; any other failure is a `ps` that could not say.
-	if (r.code === 1 && !command) return null;
-	throw new Error(`ps gave no answer for process ${pid}: exit ${r.code}`);
-}
-
 /** What `<data dir>/omp-job/job.json` says of a running job, for the server that takes it over (`resume`). */
 interface JobRecord {
 	version: 1;
@@ -188,13 +155,6 @@ const UNCONFIRMED_MS = 60_000;
  * answer at all on that machine, and the job's own loop must not stand still for it (#460).
  */
 const COMMAND_MS = 2000;
-
-/**
- * What every job runs as, with its command as the arguments after the status file's path: the command, then its exit
- * status written to that file, so that a server that did not start the job — or was not there when it ended — can
- * tell how it ended. The status is written after the command is over and before this shell is.
- */
-const JOB_WRAPPER = 'status=$1; shift; "$@"; code=$?; printf %s "$code" > "$status"; exit "$code"';
 
 const json = (data: unknown, status = 200) =>
 	new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
@@ -574,7 +534,7 @@ export class OmpLifecycle {
 			// (`detached`) is signalled, so that the shell's pipeline dies with it.
 			if (run.proc !== null && run.pid !== null) {
 				try {
-					process.kill(-run.pid, "SIGTERM");
+					platform.proc.signalGroup(run.pid, "SIGTERM");
 				} catch {
 					run.proc.kill();
 				}
@@ -597,12 +557,12 @@ export class OmpLifecycle {
 	 */
 	private async stopTakenOver(run: JobRun, pid: number): Promise<void> {
 		const marker = run.ref?.marker;
-		const command = marker ? await commandOf(pid, COMMAND_MS).catch(() => null) : null;
+		const command = marker ? await platform.proc.commandLine(pid, COMMAND_MS).catch(() => null) : null;
 		// The job ended while `ps` was asked: there is nothing to stop, and it is settled already.
 		if (this.run !== run || run.job.state !== "running" || run.pid !== pid) return;
 		if (!marker || !command?.includes(marker)) return this.settle(run, null);
 		try {
-			process.kill(-pid, "SIGTERM");
+			platform.proc.signalGroup(pid, "SIGTERM");
 		} catch {
 			// Gone since: `follow` settles the job.
 		}
@@ -745,7 +705,7 @@ export class OmpLifecycle {
 		}
 	}
 
-	/** The status the job's wrapper wrote when its command ended (see `JOB_WRAPPER`); null while there is none. */
+	/** The status the job's wrapper wrote when its command ended (see `Platform.shell.jobArgv`); null while there is none. */
 	private exitStatus(): number | null {
 		try {
 			const text = readFileSync(this.jobFile("exit"), "utf8").trim();
@@ -779,7 +739,7 @@ export class OmpLifecycle {
 		// a job that ended while `ps` was asked has said how, and "gone" alone would read as "killed" (#566).
 		if (!run.ref.started) return (await this.ownsPid(run)) ? null : { code: this.exitStatus() };
 		try {
-			return (await startOf(run.ref.pid)) === run.ref.started ? null : { code: this.exitStatus() };
+			return (await platform.proc.startTime(run.ref.pid)) === run.ref.started ? null : { code: this.exitStatus() };
 		} catch (e) {
 			// A `ps` that gave no answer (a busy machine) does not say the job is gone: the next look asks again.
 			if (e instanceof RunTimeout) return null;
@@ -806,7 +766,7 @@ export class OmpLifecycle {
 		if (run.confirmed === false) return false;
 		let command: string | null;
 		try {
-			command = await commandOf(run.ref?.pid ?? 0, COMMAND_MS);
+			command = await platform.proc.commandLine(run.ref?.pid ?? 0, COMMAND_MS);
 		} catch {
 			// The `ps` could not say: the process is not said to be gone or a stranger, and the job keeps waiting.
 			return true;
@@ -827,14 +787,15 @@ export class OmpLifecycle {
 		const pid = run.ref.pid;
 		const marker = run.ref.marker;
 		run.askingStart = true;
-		void startOf(pid)
+		void platform.proc
+			.startTime(pid)
 			.then(async (started) => {
 				if (!started || !run.ref || run.ref.pid !== pid || run.ref.started) return;
 				// The start time is only the job's when the process is the job's: a stranger's start time would
 				// confirm a stranger, and the job would then be held for ever by a process that is not it (#543).
 				if (marker) {
 					// A `ps` that cannot answer leaves the process unconfirmed: it is still the job's, as far as is known.
-					const command = await commandOf(pid).catch(() => undefined);
+					const command = await platform.proc.commandLine(pid).catch(() => undefined);
 					if (command && !command.includes(marker)) {
 						run.confirmed = false;
 						return;
@@ -982,7 +943,7 @@ export class OmpLifecycle {
 	 * Run a job, and see it through. It is started so that it does not depend on this server: in a session of its own,
 	 * writing to a file (`output.log`) instead of pipes — a pipe whose reader has gone makes the next write end the
 	 * writer, which is what quitting the app did to an install half way — and its exit status goes to a file as well
-	 * (`JOB_WRAPPER`). `job.json` says what runs, so that a server started later takes the job over (`resume`).
+	 * (`Platform.shell.jobArgv`). `job.json` says what runs, so that a server started later takes the job over (`resume`).
 	 */
 	private async execute(run: JobRun): Promise<void> {
 		run.job.state = "running";
@@ -993,15 +954,20 @@ export class OmpLifecycle {
 			rmSync(this.jobDir, { recursive: true, force: true });
 			mkdirSync(this.jobDir, { recursive: true, mode: 0o700 });
 			const out = openSync(this.jobFile("output.log"), "a", 0o600);
+			const status = this.jobFile("exit");
+			// Where the system has no wrapper to write the status (`capabilities.jobSurvivesServer`), the command runs as it
+			// is and this server writes the status when it ends: a server started later cannot tell how such a job ended.
+			const wrapped = platform.shell.jobArgv(status, run.argv);
 			try {
-				const proc = Bun.spawn(["/bin/sh", "-c", JOB_WRAPPER, "sh", this.jobFile("exit"), ...run.argv], {
+				const proc = Bun.spawn(wrapped ?? run.argv, {
 					cwd: this.home,
 					env: run.env,
 					stdin: "ignore",
 					stdout: out,
 					stderr: out,
-					detached: true,
+					...platform.proc.groupSpawn,
 				});
+				if (!wrapped) void proc.exited.then((code) => writeFileSync(status, String(code), { mode: 0o600 }));
 				// A job still running must not keep this process from ending.
 				proc.unref();
 				run.proc = proc;
@@ -1012,7 +978,7 @@ export class OmpLifecycle {
 			// The record is written at once, with the process's id: a server that takes the job over must find it
 			// there, and a `ps` that cannot answer in time (a loaded machine) must not hold the record back (#536).
 			// The status file's path is what the process carries, and what tells it from a stranger with the same id (#543).
-			run.ref = run.pid === null ? null : { pid: run.pid, started: "", marker: this.jobFile("exit") };
+			run.ref = run.pid === null ? null : { pid: run.pid, started: "", marker: wrapped ? status : "" };
 			this.saveRecord(run);
 		} catch (e) {
 			run.job.endedAt = Date.now();

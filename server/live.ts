@@ -92,16 +92,7 @@ import { InFlightMessage, mayRewriteEntries } from "./omp/in-flight.ts";
 import { InterviewStore } from "./omp/interviews.ts";
 import { hasCommand } from "./omp/loaded.ts";
 import { type Absent, absentModels, conversationPreset, presetAsDefined } from "./omp/model-config.ts";
-import {
-	identitiesOf,
-	identityOf,
-	type ParkedRecord,
-	ParkedStore,
-	type ProcessRef,
-	referenceTo,
-	runsAs,
-} from "./omp/parked.ts";
-import { exists, processTree, processTrees, signalAll } from "./omp/process-tree.ts";
+import { type ParkedRecord, ParkedStore, type ProcessRef, referenceTo, runsAs } from "./omp/parked.ts";
 import { QueuedSubagents } from "./omp/queued-subagents.ts";
 import type { QuotaFloorHooks } from "./omp/quota-floor/service.ts";
 import { QuotaTracker } from "./omp/quota-floor/tracker.ts";
@@ -114,6 +105,8 @@ import { QUICK_MS } from "./omp/run.ts";
 import { UNATTENDED_FILE_ENV, UNATTENDED_LOADED_SUFFIX } from "./omp/unattended/extension.ts";
 import type { FileResult } from "./omp/unattended/questions.ts";
 import type { UnattendedHooks } from "./omp/unattended/service.ts";
+import { UNAVAILABLE } from "./platform/capabilities.ts";
+import { platform } from "./platform/index.ts";
 import { dialogLine, replyLine } from "./push/preview.ts";
 import { SLEEP_FOLLOW_MS, sleepAftermath } from "./sleep.ts";
 
@@ -604,14 +597,15 @@ export class Live {
 		const known = new Map<number, string>();
 		const look = async (): Promise<void> => {
 			try {
-				for (const [p, identity] of await identitiesOf(await processTree(pid))) known.set(p, identity);
+				for (const [p, identity] of await platform.proc.identities(await platform.proc.tree(pid)))
+					known.set(p, identity);
 			} catch {
 				// no listing: what was listed before is what there is
 			}
 		};
 		/** The processes listed under omp that are still the ones listed. */
 		const still = async (): Promise<number[]> => {
-			const running = await identitiesOf([...known.keys()].filter((p) => p !== pid));
+			const running = await platform.proc.identities([...known.keys()].filter((p) => p !== pid));
 			return [...running].filter(([p, identity]) => known.get(p) === identity).map(([p]) => p);
 		};
 		const ended = async (ms: number): Promise<boolean> => {
@@ -627,11 +621,11 @@ export class Live {
 			// What it started since the first listing goes too.
 			await look();
 			this.client.kill(signal);
-			signalAll(await still(), signal);
+			platform.proc.signalTrees(await still(), signal);
 		}
-		if (!(await ended(timings.killMs)) || (ompIdentity !== null && (await identityOf(pid)) === ompIdentity))
+		if (!(await ended(timings.killMs)) || (ompIdentity !== null && (await platform.proc.identity(pid)) === ompIdentity))
 			throw new Error(`omp (pid ${pid}) is still running`);
-		signalAll(await still(), "SIGKILL");
+		platform.proc.signalTrees(await still(), "SIGKILL");
 	}
 
 	/**
@@ -764,6 +758,7 @@ export class Live {
 	 * What omp started is listed by the system, which is awaited: the server serves everyone else meanwhile (#355).
 	 */
 	pause(): Promise<void> {
+		if (!platform.capabilities.pauseResume) return Promise.reject(new Error(UNAVAILABLE.pauseResume));
 		return this.shift(() => this.freeze());
 	}
 
@@ -802,7 +797,7 @@ export class Live {
 		else if (!held) this.client.hold(false);
 		try {
 			// The parent first, so it cannot start anything new while its children are being stopped.
-			process.kill(pid, "SIGSTOP");
+			platform.proc.signal(pid, "SIGSTOP");
 		} catch (e) {
 			this.subagents = null;
 			this.persist();
@@ -814,7 +809,7 @@ export class Live {
 		this.epoch++;
 		let tree: number[];
 		try {
-			tree = await processTree(pid);
+			tree = await platform.proc.tree(pid);
 		} catch (e) {
 			await this.unfreeze();
 			throw e;
@@ -1074,7 +1069,7 @@ export class Live {
 	private async identify(pid: number): Promise<{ omp: ProcessRef; relay: ProcessRef } | null> {
 		const relayPid = this.client.relay?.pid ?? null;
 		if (relayPid === null) return null;
-		const found = await identitiesOf([pid, relayPid]);
+		const found = await platform.proc.identities([pid, relayPid]);
 		const omp = found.get(pid);
 		const relay = found.get(relayPid);
 		return omp && relay ? { omp: { pid, identity: omp }, relay: { pid: relayPid, identity: relay } } : null;
@@ -1211,13 +1206,13 @@ export class Live {
 	private async continueTree(pid: number): Promise<number[]> {
 		let tree = [pid];
 		try {
-			tree = await processTree(pid);
+			tree = await platform.proc.tree(pid);
 		} catch {
 			// no process listing: omp itself must run again regardless
 		}
 		for (const p of [...tree].reverse()) {
 			try {
-				process.kill(p, "SIGCONT");
+				platform.proc.signal(p, "SIGCONT");
 			} catch {
 				// already gone
 			}
@@ -1234,13 +1229,13 @@ export class Live {
 		const over = () => this.epoch !== epoch || this.info.pausedAt === null || this.info.exited || this.parked;
 		if (over()) return;
 		try {
-			process.kill(pid, "SIGSTOP");
+			platform.proc.signal(pid, "SIGSTOP");
 		} catch {
 			return; // omp is gone
 		}
 		let tree = this.thawedTree;
 		try {
-			tree = await processTree(pid);
+			tree = await platform.proc.tree(pid);
 		} catch {
 			// no listing: what ran when the thaw began is what there is to stop
 		}
@@ -1251,7 +1246,7 @@ export class Live {
 
 	/** Write down what omp has started, to be ended with it if it goes while paused (see `ParkedRecord.descendants`). */
 	private async noteDescendants(tree: number[], pid: number): Promise<void> {
-		const found = await identitiesOf(tree.filter((p) => p !== pid));
+		const found = await platform.proc.identities(tree.filter((p) => p !== pid));
 		this.descendants = [...found].map(([child, identity]) => ({ pid: child, identity }));
 	}
 
@@ -2125,8 +2120,8 @@ export class Live {
 		let listed = false;
 		if (pid !== null) {
 			try {
-				tree = await processTree(pid);
-				known = await identitiesOf(tree);
+				tree = await platform.proc.tree(pid);
+				known = await platform.proc.identities(tree);
 				listed = true;
 			} catch {
 				// No process listing: omp and its group are ended all the same.
@@ -2135,7 +2130,7 @@ export class Live {
 		// What froze it (a stop this server did not make) would hold back the signal: it runs for it.
 		for (const p of [...tree].reverse()) {
 			try {
-				process.kill(p, "SIGCONT");
+				platform.proc.signal(p, "SIGCONT");
 			} catch {
 				// already gone
 			}
@@ -2145,7 +2140,7 @@ export class Live {
 		if (this.client.running) this.client.kill("SIGKILL");
 		let now = new Map<number, string>();
 		try {
-			now = await identitiesOf(tree);
+			now = await platform.proc.identities(tree);
 		} catch {
 			// No listing now: what was listed is what there is to compare with.
 			now = known;
@@ -2157,7 +2152,7 @@ export class Live {
 			: this.client.running
 				? tree
 				: [];
-		signalAll(doomed, "SIGKILL");
+		platform.proc.signalTrees(doomed, "SIGKILL");
 		await Promise.race([this.client.whenExited, Bun.sleep(STOP_KILL_MS)]);
 		if (!this.info.exited) return { type: "response", command: type, success: false, error: "omp did not end" };
 		return this.endedAnswer(type);
@@ -3633,25 +3628,25 @@ const ORPHAN_WAIT_MS = 6_000;
  * found below omp once omp is gone.
  */
 async function endRemnants(omp: ProcessRef, descendants: ProcessRef[]): Promise<void> {
-	const found = await identityOf(omp.pid);
+	const found = await platform.proc.identity(omp.pid);
 	const doomed: number[] = [];
 	if (found === omp.identity) {
 		try {
-			doomed.push(...(await processTree(omp.pid)));
+			doomed.push(...(await platform.proc.tree(omp.pid)));
 		} catch {
 			// no listing: omp itself
 			doomed.push(omp.pid);
 		}
 	} else if (found === null) {
 		try {
-			process.kill(-omp.pid, "SIGKILL");
+			platform.proc.signalGroup(omp.pid, "SIGKILL");
 		} catch {
 			// no member left
 		}
 	}
-	const running = await identitiesOf(descendants.map((d) => d.pid));
+	const running = await platform.proc.identities(descendants.map((d) => d.pid));
 	for (const d of descendants) if (running.get(d.pid) === d.identity) doomed.push(d.pid);
-	signalAll(doomed, "SIGKILL");
+	platform.proc.signalTrees(doomed, "SIGKILL");
 }
 
 /** SIGSTOP what is below omp (`pid`) in a listing of its tree; what has exited since the listing is not there to stop. */
@@ -3659,7 +3654,7 @@ function stopBelow(tree: number[], pid: number): void {
 	for (const p of tree) {
 		if (p === pid) continue;
 		try {
-			process.kill(p, "SIGSTOP");
+			platform.proc.signal(p, "SIGSTOP");
 		} catch {
 			// exited since the listing: nothing left to freeze
 		}
@@ -4655,9 +4650,12 @@ export class LivePool {
 			newChat,
 			launch,
 			overlay,
-			// Every process is started behind a relay, so that a paused one can outlive the server.
+			// Every process is started behind a relay, so that a paused one can outlive the server; where the system has no
+			// relay (`capabilities.relay`), it is the server's own child and ends with it.
 			{
-				via: { kind: "relay", socket: relaySocket(this.cfg.dataDir, liveId) },
+				via: platform.capabilities.relay
+					? { kind: "relay", socket: relaySocket(this.cfg.dataDir, liveId) }
+					: { kind: "direct" },
 				approvalOmp: start?.omp,
 				// The flags of the user's own, without the server's overlay and the mode's flags.
 				ownArgs: args,
@@ -4852,7 +4850,7 @@ export class LivePool {
 		await endRemnants(record.omp, record.descendants);
 		if (await runsAs(record.relay)) {
 			try {
-				process.kill(record.relay.pid, "SIGTERM");
+				platform.proc.signal(record.relay.pid, "SIGTERM");
 			} catch {
 				// already gone
 			}
@@ -4925,7 +4923,7 @@ export class LivePool {
 		// What runs under each omp now: its tools start sessions of their own, out of reach of a group signal.
 		let trees = new Map<number, number[]>();
 		try {
-			trees = await processTrees(lives.flatMap((l) => l.client.pid ?? []));
+			trees = await platform.proc.trees(lives.flatMap((l) => l.client.pid ?? []));
 		} catch {
 			// No process listing: the process groups are still stopped.
 		}
@@ -4944,7 +4942,11 @@ export class LivePool {
 
 		const left = (l: Live): boolean => {
 			const pid = l.client.pid;
-			return l.client.running || (pid !== null && (exists(-pid) || (trees.get(pid) ?? []).some(exists)));
+			return (
+				l.client.running ||
+				(pid !== null &&
+					(platform.proc.groupExists(pid) || (trees.get(pid) ?? []).some((p) => platform.proc.exists(p))))
+			);
 		};
 		const deadline = Date.now() + termGraceMs;
 		while (lives.some(left) && Date.now() < deadline) await Bun.sleep(20);
@@ -4952,7 +4954,7 @@ export class LivePool {
 		// Still there: they may have started more since the listing.
 		let fresh = new Map<number, number[]>();
 		try {
-			fresh = await processTrees(stragglers.flatMap((l) => (l.client.running ? (l.client.pid ?? []) : [])));
+			fresh = await platform.proc.trees(stragglers.flatMap((l) => (l.client.running ? (l.client.pid ?? []) : [])));
 		} catch {
 			// keep the earlier listing
 		}
@@ -4960,7 +4962,7 @@ export class LivePool {
 			const pid = l.client.pid;
 			const tree = pid === null ? [] : [...new Set([...(trees.get(pid) ?? [pid]), ...(fresh.get(pid) ?? [])])];
 			l.client.kill("SIGKILL");
-			signalAll(tree, "SIGKILL");
+			platform.proc.signalTrees(tree, "SIGKILL");
 		}
 		// The relays remove their sockets as they go (one that was killed cannot: `sweepRelayDir`); a directory left empty is not kept.
 		if (lives.length) await Bun.sleep(100);

@@ -32,8 +32,9 @@ import { RISK_LOADED_SUFFIX, RISK_SUFFIX } from "../../shared/risk-confirm.ts";
 import type { ConfigValue } from "../../shared/session-defaults.ts";
 import { CONCURRENCY_KEY, concurrencyOf } from "../../shared/subagent-concurrency.ts";
 import { UNATTENDED_SUFFIX } from "../../shared/unattended.ts";
+import { platform } from "../platform/index.ts";
 import { GUIDANCE_LOADED_SUFFIX } from "./guidance/extension.ts";
-import { identitiesOf, ParkedStore } from "./parked.ts";
+import { ParkedStore } from "./parked.ts";
 import { QUICK_MS, run } from "./run.ts";
 import { UNATTENDED_LOADED_SUFFIX } from "./unattended/extension.ts";
 
@@ -468,15 +469,9 @@ export function removeOverlayFiles(file: string): void {
 	}
 }
 
-/** The process `pid` exists. EPERM means it does, owned by someone else; ESRCH, that there is no such process. */
+/** The process `pid` exists (a positive id only: 0 and below name groups). */
 function alive(pid: number): boolean {
-	if (!Number.isInteger(pid) || pid <= 0) return false;
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch (e) {
-		return (e as NodeJS.ErrnoException).code === "EPERM";
-	}
+	return Number.isInteger(pid) && pid > 0 && platform.proc.exists(pid);
 }
 
 /**
@@ -534,7 +529,7 @@ interface Prefs {
  */
 async function runningParkedOverlays(dataDir: string): Promise<Set<string>> {
 	const records = new ParkedStore(dataDir).list().filter((r) => r.overlay);
-	const running = await identitiesOf(records.flatMap((r) => [r.relay.pid, r.omp.pid]));
+	const running = await platform.proc.identities(records.flatMap((r) => [r.relay.pid, r.omp.pid]));
 	const files = new Set<string>();
 	for (const r of records) {
 		if (r.overlay && running.get(r.relay.pid) === r.relay.identity && running.get(r.omp.pid) === r.omp.identity)

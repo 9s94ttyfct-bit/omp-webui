@@ -2,6 +2,7 @@ import { existsSync, realpathSync, statSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { platform } from "./platform/index.ts";
 
 /**
  * File paths under a working directory for `@file` mention completion. omp
@@ -55,8 +56,8 @@ function canonical(p: string): string {
 	}
 }
 
-/** `~/Library` (macOS) holds caches and app data by the hundred thousand; none of it is a project file. */
-const SKIP_PATHS = new Set(process.platform === "darwin" ? [join(canonical(homedir()), "Library")] : []);
+/** Folders of the home directory that hold caches and app data by the hundred thousand (macOS's `~/Library`); none of it is a project file. */
+const SKIP_PATHS = new Set(platform.skipPaths(canonical(homedir())));
 
 function skipped(name: string, path: string): boolean {
 	if (SKIP_DIRS.has(name) || SKIP_PATHS.has(path)) return true;

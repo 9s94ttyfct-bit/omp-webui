@@ -1,6 +1,7 @@
 import { isRecord } from "../../shared/guards.ts";
 import type { OmpFrame } from "../../shared/protocol.ts";
 import { childEnv } from "../env.ts";
+import { platform } from "../platform/index.ts";
 import { RelayProc } from "./relay-client.ts";
 
 /**
@@ -203,19 +204,16 @@ export class RpcClient {
 		this.idPrefix = via.kind === "adopt" ? `a${Date.now().toString(36)}-` : "w";
 		if (via.kind === "direct") {
 			const command = [opts.bin, "--mode", opts.mode ?? "rpc-ui", ...opts.args];
-			this.proc = Bun.spawn(
-				opts.private ? ["/bin/sh", "-c", 'umask 077; exec "$@"', "omp-webui", ...command] : command,
-				{
-					cwd: opts.cwd,
-					env: childEnv(opts.env),
-					stdin: "pipe",
-					stdout: "pipe",
-					stderr: "pipe",
-					// Its own process group (and session): omp and the helpers it starts there can be signalled together,
-					// and a Ctrl-C in the terminal the server runs in reaches the server, which stops its omps in order.
-					detached: true,
-				},
-			);
+			this.proc = Bun.spawn(opts.private ? platform.shell.privateArgv(command) : command, {
+				cwd: opts.cwd,
+				env: childEnv(opts.env),
+				stdin: "pipe",
+				stdout: "pipe",
+				stderr: "pipe",
+				// Its own process group (and session): omp and the helpers it starts there can be signalled together,
+				// and a Ctrl-C in the terminal the server runs in reaches the server, which stops its omps in order.
+				...platform.proc.groupSpawn,
+			});
 			this.started = Promise.resolve();
 		} else {
 			const proc =
@@ -421,7 +419,7 @@ export class RpcClient {
 			return;
 		}
 		try {
-			process.kill(-pid, signal);
+			platform.proc.signalGroup(pid, signal);
 		} catch {
 			// No such group (omp is gone): the process itself, if it is still there.
 			this.proc.kill(signal);

@@ -11,9 +11,8 @@ import {
 	withoutLinks,
 } from "../shared/remote.ts";
 import { childEnv } from "./env.ts";
-import { commandOf } from "./instance.ts";
-import { isExecutableFile, which } from "./omp/install.ts";
 import { type Ran, RunTimeout, run } from "./omp/run.ts";
+import { platform } from "./platform/index.ts";
 import type { RemoteStore } from "./remote-config.ts";
 
 /**
@@ -113,20 +112,7 @@ const MESSAGE_MAX = 300;
 /** The status line is updated at most this often while a command prints (brew prints many lines a second). */
 const NOTE_PUSH_MS = 250;
 /** Where Homebrew installs, which a program started from Finder has no `PATH` for. */
-const HOMEBREW_DIRS = ["/opt/homebrew/bin", "/usr/local/bin"];
-
-/** `signal` to the process group `proc` leads (it was started `detached`), or to the process when it is not one. */
-function signalGroup(proc: Bun.Subprocess, signal: NodeJS.Signals): void {
-	try {
-		process.kill(-proc.pid, signal);
-	} catch {
-		try {
-			proc.kill(signal);
-		} catch {
-			// already gone
-		}
-	}
-}
+const HOMEBREW_DIRS = platform.commands.installDirs;
 
 /** The lines of a text, split on every kind of line end (a progress bar redraws with `\r`). */
 const LINE_END = /\r\n|\n|\r/;
@@ -146,7 +132,7 @@ function spawnStreamed(
 			stdin: "ignore",
 			stdout: "pipe",
 			stderr: "pipe",
-			detached: true,
+			...platform.proc.groupSpawn,
 		});
 	} catch (e) {
 		throw new TunnelError(`${argv[0]} could not be run: ${(e as Error).message}`, 502);
@@ -179,7 +165,7 @@ function spawnStreamed(
 			? undefined
 			: setTimeout(() => {
 					timedOut = true;
-					signalGroup(proc, "SIGKILL");
+					platform.proc.signalChild(proc, "SIGKILL");
 				}, opts.timeoutMs);
 	const done = (async (): Promise<Outcome> => {
 		await proc.exited;
@@ -258,14 +244,14 @@ export class Tunnel {
 	 */
 	private find(): string | null {
 		const override = this.env.OMP_WEBUI_CLOUDFLARED;
-		if (override) return isExecutableFile(override) ? override : null;
-		return which("cloudflared", this.dirs);
+		if (override) return platform.commands.isExecutable(override) ? override : null;
+		return platform.commands.which("cloudflared", this.dirs);
 	}
 
 	private findBrew(): string | null {
 		const override = this.env.OMP_WEBUI_BREW;
-		if (override) return isExecutableFile(override) ? override : null;
-		return which("brew", [...this.dirs, "/home/linuxbrew/.linuxbrew/bin"]);
+		if (override) return platform.commands.isExecutable(override) ? override : null;
+		return platform.commands.which("brew", [...this.dirs, ...platform.commands.brewDirs]);
 	}
 
 	installed(): boolean {
@@ -435,7 +421,7 @@ export class Tunnel {
 		);
 		const urlTimer = setTimeout(() => {
 			fail(new TunnelError(`cloudflared printed no login URL within ${seconds(this.timings.loginUrlMs)}`, 504));
-			signalGroup(login.proc, "SIGKILL");
+			platform.proc.signalChild(login.proc, "SIGKILL");
 		}, this.timings.loginUrlMs);
 		void login.done.then((outcome) => {
 			if (this.loginAsk === promise) this.loginAsk = null;
@@ -723,18 +709,18 @@ export class Tunnel {
 		this.closing = true;
 		clearTimeout(this.noteTimer);
 		const others = [...this.streams];
-		for (const s of others) signalGroup(s.proc, "SIGTERM");
+		for (const s of others) platform.proc.signalChild(s.proc, "SIGTERM");
 		await this.stop();
 		await Promise.all(others.map((s) => s.done));
 	}
 
 	/** SIGTERM to the process and what it started; SIGKILL when it has not ended within the grace. */
 	private async end(child: Streamed): Promise<void> {
-		signalGroup(child.proc, "SIGTERM");
+		platform.proc.signalChild(child.proc, "SIGTERM");
 		const grace = Symbol("grace");
 		const ended = await Promise.race([child.done, Bun.sleep(this.timings.stopGraceMs).then(() => grace)]);
 		if (ended === grace) {
-			signalGroup(child.proc, "SIGKILL");
+			platform.proc.signalChild(child.proc, "SIGKILL");
 			await child.done;
 		}
 	}
@@ -743,7 +729,7 @@ export class Tunnel {
 
 	/** Record the tunnel's process so that a later server can tell it from another program with the same pid. */
 	private recordProcess(pid: number): void {
-		const command = commandOf(pid);
+		const command = platform.proc.commandLineSync(pid);
 		if (!command) return;
 		try {
 			writeFileSync(this.pidFile, JSON.stringify({ pid, command, owner: process.pid }), { mode: 0o600 });
@@ -761,17 +747,12 @@ export class Tunnel {
 	 */
 	async reapLeftover(): Promise<void> {
 		const record = this.recordedProcess();
-		if (record?.owner !== undefined && record.owner !== process.pid && isAlive(record.owner)) return;
-		if (record && commandOf(record.pid) === record.command) {
-			const running = () => commandOf(record.pid) === record.command;
+		if (record?.owner !== undefined && record.owner !== process.pid && platform.proc.exists(record.owner)) return;
+		if (record && platform.proc.commandLineSync(record.pid) === record.command) {
+			const running = () => platform.proc.commandLineSync(record.pid) === record.command;
 			for (const signal of ["SIGTERM", "SIGKILL"] as const) {
-				for (const target of [-record.pid, record.pid]) {
-					try {
-						process.kill(target, signal);
-					} catch {
-						// gone
-					}
-				}
+				// The process and the group it leads.
+				platform.proc.signalTrees([record.pid], signal);
 				const until = Date.now() + (signal === "SIGTERM" ? this.timings.stopGraceMs : 1000);
 				while (running() && Date.now() < until) await Bun.sleep(20);
 				if (!running()) break;
@@ -791,15 +772,5 @@ export class Tunnel {
 		} catch {
 			return null;
 		}
-	}
-}
-
-/** Whether a process with this id exists (one that is not ours may answer EPERM: it is there). */
-function isAlive(pid: number): boolean {
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch (e) {
-		return (e as NodeJS.ErrnoException).code === "EPERM";
 	}
 }

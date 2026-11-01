@@ -1,4 +1,5 @@
 import { dlopen, type Pointer, ptr } from "bun:ffi";
+import { platform } from "./platform/index.ts";
 
 /** What a `ptr` of the libraries is, as Bun types it: an address that is handed back to them and never read here. */
 type Handle = bigint | Pointer | null;
@@ -41,9 +42,9 @@ const SINT64 = 4;
 /** A GPU's name is a few words; this is room for far more. */
 const NAME_BYTES = 256;
 
-/** IOKit's and CoreFoundation's functions this reads with; null when this is not macOS or they cannot be loaded. */
+/** IOKit's and CoreFoundation's functions this reads with; null where the platform has no GPU figure (`capabilities.gpuLoad`) or they cannot be loaded. */
 function loadLibraries() {
-	if (process.platform !== "darwin") return null;
+	if (!platform.capabilities.gpuLoad) return null;
 	try {
 		return {
 			io: dlopen(IOKIT, {

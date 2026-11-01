@@ -11,8 +11,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { abstractLockName } from "../../server/platform/linux.ts";
 import {
-	abstractLockName,
 	type LeaseSystem,
 	leaseHeldElsewhere,
 	leaseHolders,
@@ -109,7 +109,7 @@ test("the lease is looked for where omp keeps it: under PI_CONFIG_DIR when it is
 
 test("the lease directory follows omp's rules: XDG_STATE_HOME once omp has a folder there, on Linux and macOS", () => {
 	const xdg = join(root, "state");
-	const sys = { env: { XDG_STATE_HOME: xdg }, home: HOME, platform: "linux" };
+	const sys = { env: { XDG_STATE_HOME: xdg }, home: HOME, platform: "linux" as const };
 	// No `omp` folder there yet: omp stays in its config root.
 	expect(sessionOwnersDir(sys)).toBe(`${HOME}/.omp/run/session-owners`);
 	mkdirSync(join(xdg, "omp"), { recursive: true });
