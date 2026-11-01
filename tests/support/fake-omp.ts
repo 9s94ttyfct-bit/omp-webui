@@ -58,6 +58,11 @@ export interface FakeOmpOptions {
 	 * (18.14) continues the turn that waited for it; `marker`: a file created once they are written.
 	 */
 	onCancelSubagent?: { frames: Record<string, unknown>[]; afterMs: number; marker?: string };
+	/**
+	 * What becomes of a `prompt`: appended to `log` (one JSON line `{ message }` each: what reached omp), and, with `write`,
+	 * written to the session file as omp writes a user message (what a later look at the file finds).
+	 */
+	prompts?: { log?: string; write?: boolean };
 }
 
 /** Write the fake into `dir` and return its path (usable as `OMP_BIN`). */
@@ -159,6 +164,22 @@ for await (const chunk of Bun.stdin.stream()) {
         if (follow.marker) require("node:fs").writeFileSync(follow.marker, "");
       }, follow.afterMs);
     }
+    // wedge: omp as a process that hangs (what restart_session is for): a thread of its own that spins forever (it keeps omp alive when
+    // its stdin closes), a tool in a session of its own and one in omp's group, as a background job leaves them. Their pids
+    // go to \`file\` as { children }.
+    if (cmd.type === "wedge") {
+      const path = require("node:path");
+      new Worker(path.join(path.dirname(process.argv[1]), "fake-omp-busy.js"));
+      const own = Bun.spawn(["sleep", "602"], { stdio: ["ignore", "ignore", "ignore"], detached: true });
+      const grouped = Bun.spawn(["sleep", "603"], { stdio: ["ignore", "ignore", "ignore"] });
+      require("node:fs").writeFileSync(cmd.file, JSON.stringify({ children: [own.pid, grouped.pid] }));
+    }
+    if (cmd.type === "prompt" && options.prompts) {
+      const fs = require("node:fs");
+      if (options.prompts.log) fs.appendFileSync(options.prompts.log, JSON.stringify({ message: cmd.message }) + "\\n");
+      if (options.prompts.write && fs.existsSync(sessionFile))
+        fs.appendFileSync(sessionFile, JSON.stringify({ type: "message", message: { role: "user", content: cmd.message } }) + "\\n");
+    }
     // set_model switches the model get_state reports from then on, and is answered with the model, as omp does.
     if (cmd.type === "set_model") reported.model = { id: cmd.modelId, name: cmd.modelId, provider: cmd.provider, api: "anthropic-messages", reasoning: true, contextWindow: 200000 };
     // omp answers set_cache_warming with the mode the process runs in, and get_entries with the conversation's entries (none yet).
@@ -177,6 +198,8 @@ tool?.kill();
 	const bin = join(dir, "omp");
 	writeFileSync(bin, script);
 	chmodSync(bin, 0o755);
+	// The thread `wedge` starts: it spins until its process is killed.
+	writeFileSync(join(dir, "fake-omp-busy.js"), "for (;;) {}\n");
 	return bin;
 }
 

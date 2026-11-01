@@ -1627,6 +1627,8 @@
 		"resizable-panels.spec.ts › phone layout is unchanged › Settings' reset button keeps its label on one line, in English and in Chinese": 2.3,
 		"resizable-panels.spec.ts › phone layout is unchanged › the side panel is a sheet of its usual size with no handle": 2.1,
 		"resizable-panels.spec.ts › phone layout is unchanged › the sidebar drawer keeps its width and shows no handle, whatever was remembered": 1.5,
+		"restart-session.spec.ts › Force restart in This session ends the turn and the process, and the page follows to the new one": 3.8,
+		"restart-session.spec.ts › the agent's restart: pending above the message box, then a divider where the conversation went on in a new process": 4.6,
 		"restart.spec.ts › a paused command survives a server restart: still paused, and Resume finishes it (no model call)": 9.1,
 		"restart.spec.ts › after a server restart a new chat starts a fresh omp and sends (no model call)": 9.8,
 		"restart.spec.ts › after a server restart the open chat resumes on the next send": 0.8,
