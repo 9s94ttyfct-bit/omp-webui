@@ -48,6 +48,7 @@ import {
 import { loadGuardDecisions } from "../lib/guard-decisions.ts";
 import { Carried, figuresOf, joinPrompts, NO_ABOVE, needsStats } from "../lib/history.ts";
 import { attachedBytes, MAX_TOTAL_IMAGE_BYTES } from "../lib/images.ts";
+import { endedWell } from "../lib/live-motion.ts";
 import { openLoaded } from "../lib/loaded.ts";
 import { MdOpenContext } from "../lib/md-open.ts";
 import { useNarrowerThan } from "../lib/media.ts";
@@ -100,6 +101,7 @@ import { ErrorBoundary, ErrorScreen } from "./ErrorBoundary.tsx";
 import { GoalBar, GoalDialog } from "./Goal.tsx";
 import { GuidedGoalBar } from "./GuidedGoal.tsx";
 import { JobsBlock } from "./JobsBlock.tsx";
+import { LiveCelebration } from "./LiveCelebration.tsx";
 import { LoadError } from "./LoadError.tsx";
 import { LoadedDialog } from "./LoadedPanel.tsx";
 import type { MessageActions } from "./Message.tsx";
@@ -1453,6 +1455,17 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 									<ArrowDown size={16} />
 									<span className="sm:hidden">{t("chat.scrollToBottom")}</span>
 								</button>
+							) : null}
+							{/* Live animations: a burst over the end of the transcript when a turn or a goal ends well. */}
+							{live ? (
+								<LiveCelebration
+									liveId={live.info.liveId}
+									streaming={live.streaming}
+									continuing={live.continuing}
+									goalId={live.goal?.id ?? null}
+									goalStatus={live.goal?.status ?? null}
+									well={endedWell(live)}
+								/>
 							) : null}
 						</div>
 

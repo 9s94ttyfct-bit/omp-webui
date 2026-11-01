@@ -26,6 +26,7 @@ import {
 	type ToolChanges,
 	toolChanges,
 } from "../lib/diff.ts";
+import { useLiveMotion } from "../lib/live-motion.ts";
 import { type AgentMessage, imagesOf, textOf } from "../lib/messages.ts";
 import { useScrolls } from "../lib/scrolls.ts";
 import { serverOffsetMs } from "../lib/server-clock.ts";
@@ -177,6 +178,10 @@ export function ToolCard({
 	const interrupted = unanswered && !!idle;
 	// How long it ran, when the setting wants it for this tool: a card that is frozen (the conversation is paused) has no clock to show.
 	const timerMode = useToolTimerMode();
+	// With live animations on, a bar runs along the bottom of the card while the tool runs (and a turn does: a call omp
+	// never ended is not running).
+	const motion = useLiveMotion();
+	const progress = running && !idle && motion !== null;
 	const offsetMs = serverOffsetMs();
 	const timer = timerWanted(timerMode, name) && !frozen ? toolTimer({ result, exec, calledAt, offsetMs }) : null;
 	// The clock time it started (#691), whatever the timer setting.
@@ -233,7 +238,11 @@ export function ToolCard({
 	);
 	return (
 		<div
-			className={cx("my-1.5 rounded-xl border bg-bg-soft text-sm", isError ? "border-danger/40" : "border-border")}
+			className={cx(
+				"my-1.5 rounded-xl border bg-bg-soft text-sm",
+				isError ? "border-danger/40" : "border-border",
+				progress && "relative",
+			)}
 			data-testid="tool-card"
 			data-tool={name}
 		>
@@ -366,6 +375,9 @@ export function ToolCard({
 					)}
 					{images.length > 0 ? <ToolImages images={images} tool={name} /> : null}
 				</div>
+			) : null}
+			{progress ? (
+				<span className="live-progress" data-motion={motion} data-testid="live-tool-progress" aria-hidden />
 			) : null}
 		</div>
 	);

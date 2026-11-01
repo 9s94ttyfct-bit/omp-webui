@@ -22,6 +22,7 @@ import { useT } from "../i18n/index.ts";
 import { useBashDuration } from "../lib/bash-times.ts";
 import { fmtBytes } from "../lib/files-rows.ts";
 import { fmtDuration, fmtTokens } from "../lib/format.ts";
+import { useLiveMotion } from "../lib/live-motion.ts";
 import { type AgentMessage, blocks, imageSrc, resultsAdded, type ToolResults, textOf } from "../lib/messages.ts";
 import { classifyCustom, contentText, noticeOf, ruleReminders } from "../lib/notices.ts";
 import { serverOffsetMs } from "../lib/server-clock.ts";
@@ -373,8 +374,13 @@ export function TurnFooter({
 function AssistantMessage({ entry, message, toolResults, tools, actions, streaming, idle }: RowProps) {
 	const bs = blocks(message);
 	const text = textOf(message);
+	const motion = useLiveMotion();
+	// While the model writes this reply, with live animations on: a band of light goes over it. Not once no turn runs (a
+	// reply omp never ended is not being written).
+	const shimmer = streaming && !idle && motion !== null;
 	return (
-		<div className="fade-in" data-testid="msg-assistant" data-entry-id={entry?.id}>
+		<div className={cx("fade-in", shimmer && "relative")} data-testid="msg-assistant" data-entry-id={entry?.id}>
+			{shimmer ? <span className="live-shimmer" data-motion={motion} data-testid="live-shimmer" aria-hidden /> : null}
 			{/* The clock time the reply started (#691): its own short line, there from the reply's first frame. */}
 			{message.timestamp ? (
 				<div className="flex h-4 items-center">
