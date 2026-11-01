@@ -172,6 +172,10 @@ test("a clean repository shows its branch and no counts; a folder outside any re
 	await expect(line(page, "status-cwd")).toContainText("plain");
 	await expect(page.getByTestId("status-git")).toHaveCount(0);
 	await expect(page).toHaveTitle("omp");
+	// Outside git the header keeps the path: there is no repository to name.
+	const header = page.getByTestId("chat-cwd");
+	await expect(header).not.toHaveAttribute("data-repo", "");
+	await expect(header).toHaveText(/plain$/);
 
 	const fresh = join(root, "clean");
 	mkdirSync(fresh);
@@ -187,6 +191,9 @@ test("a clean repository shows its branch and no counts; a folder outside any re
 	await expect(chip).toHaveAttribute("data-clean", "true");
 	await expect(page.getByTestId("status-git-staged")).toHaveCount(0);
 	await expect(page).toHaveTitle("omp-webui-demo · omp");
+	// The header names the repository, not the path the status line already shows; the path is its tooltip.
+	await expect(page.getByTestId("chat-cwd")).toHaveText("omp-webui-demo");
+	await expect(page.getByTestId("chat-cwd")).toHaveAttribute("title", fresh);
 	// Another page than a conversation has no repository.
 	await page.getByTestId("new-chat").click();
 	await expect(page).toHaveTitle("omp");

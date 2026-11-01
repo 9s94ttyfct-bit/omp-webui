@@ -6,6 +6,7 @@ import type { OpenTarget, PathAbove, SessionEntry, SessionFileData } from "@shar
 import {
 	ArrowDown,
 	Download,
+	FolderGit2,
 	FolderOpen,
 	Layers,
 	MoreHorizontal,
@@ -1223,6 +1224,10 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 		if (currentFile) void downloadExport(currentFile).catch((e) => toast("error", e.message));
 	};
 	// Long titles and paths end in an ellipsis; hovering shows them in full.
+	// The status line under the composer shows the folder (a wide column: a narrow one folds the status line into the menu,
+	// without it), so the header names the folder's repository there and the path is not said twice. A folder outside git
+	// has no repository, and a narrow column has no other place for the path: the header shows the path then.
+	const repoInHeader = !compact && repoName !== null;
 	const titleBlock = (
 		<div className="min-w-0 flex-1">
 			<div className="flex items-center gap-2">
@@ -1242,9 +1247,18 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 					{isArchived && currentFile ? <ArchivedMark file={currentFile} /> : null}
 					{cwd ? (
 						<>
-							<FolderOpen size={11} className="shrink-0" />
-							<span className="truncate" title={cwd} data-testid="chat-cwd">
-								{shortPath(cwd, meta?.home)}
+							{repoInHeader ? (
+								<FolderGit2 size={11} className="shrink-0" />
+							) : (
+								<FolderOpen size={11} className="shrink-0" />
+							)}
+							<span
+								className="truncate"
+								title={cwd}
+								data-testid="chat-cwd"
+								data-repo={repoInHeader ? "" : undefined}
+							>
+								{repoInHeader ? repoName : shortPath(cwd, meta?.home)}
 							</span>
 						</>
 					) : null}
