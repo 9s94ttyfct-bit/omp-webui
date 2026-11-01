@@ -1970,6 +1970,10 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			const byId = typeof body?.liveId === "string" ? pool.get(body.liveId) : undefined;
 			const listed = file ? pool.list().find((l) => !l.exited && l.sessionFile === file) : undefined;
 			const running = byId && !byId.info.exited ? byId : listed ? pool.get(listed.liveId) : undefined;
+			// Both named, they must be one conversation: a process that is on another file now (it moved since the page asked)
+			// is not the conversation the page meant.
+			if (byId && !byId.info.exited && file && byId.info.sessionFile !== file)
+				return fail("This conversation is no longer in that file; look again and retry", 409);
 			if (!file && !running) return fail("Unknown session file", 404);
 			const from = running?.info.sessionFile ?? file;
 			try {

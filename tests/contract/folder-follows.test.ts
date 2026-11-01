@@ -141,6 +141,11 @@ test("Change folder moves a running conversation and a new chat with no file yet
 	const missing = await move({ liveId: live.liveId, folder: join(s.root, "not-there") });
 	expect(missing.status).toBe(400);
 	expect((await listing(ws, live.liveId))?.cwd).toBe(s.work);
+	// A process and a file that are not one conversation: neither is moved.
+	const mismatched = await move({ file: s.fixtures.alpha, liveId: live.liveId, folder: there });
+	expect(mismatched.status).toBe(409);
+	expect((await listing(ws, live.liveId))?.cwd).toBe(s.work);
+	expect(existsSync(s.fixtures.alpha)).toBe(true);
 
 	const r = await move({ file: null, liveId: live.liveId, folder: there });
 	expect(r.status).toBe(200);
