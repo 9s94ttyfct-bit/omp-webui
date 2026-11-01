@@ -1,3 +1,4 @@
+// needs: posixShell
 import { describe, expect, test } from "bun:test";
 import {
 	EMPTY_TREE,

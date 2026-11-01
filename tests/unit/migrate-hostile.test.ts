@@ -1,3 +1,4 @@
+// needs: posixPaths
 import { afterAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {

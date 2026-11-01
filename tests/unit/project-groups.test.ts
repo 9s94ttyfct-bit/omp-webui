@@ -1,14 +1,5 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
-import {
-	existsSync,
-	mkdirSync,
-	mkdtempSync,
-	readdirSync,
-	readFileSync,
-	rmSync,
-	statSync,
-	writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProjectGroupError, ProjectGroupStore } from "../../server/project-groups.ts";
@@ -20,6 +11,7 @@ import {
 	parseGroups,
 	serializeGroups,
 } from "../../shared/project-groups.ts";
+import { expectMode } from "../support/modes.ts";
 
 /**
  * The sidebar's project groups (#636): one file of this app's own, `<data dir>/project-groups.json`, written whole and
@@ -74,7 +66,7 @@ test("a change is a whole file or none: the file is replaced, never written in p
 test("the file is private: 0600, whatever the umask", async () => {
 	const store = new ProjectGroupStore(dir);
 	await store.create("Work");
-	expect(statSync(file()).mode & 0o777).toBe(0o600);
+	expectMode(file(), 0o600);
 });
 
 test("a name is trimmed, and two names that read the same are one name", async () => {

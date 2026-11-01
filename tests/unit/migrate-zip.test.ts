@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { crc32 } from "node:zlib";
 import { ZipError, type ZipErrorCode, ZipReader, ZipWriter } from "../../server/migrate/zip.ts";
+import { expectMode } from "../support/modes.ts";
 
 /**
  * The migration archive is a ZIP written as a stream and read by random access. These cover the container itself:
@@ -709,7 +710,7 @@ describe("abort and misuse", () => {
 		const other = fresh();
 		const w = await ZipWriter.create(other);
 		await w.finish();
-		expect(statSync(other).mode & 0o777).toBe(0o600);
+		expectMode(other, 0o600);
 	});
 
 	test("entry names are validated", async () => {

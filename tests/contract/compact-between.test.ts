@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { COMPACT_STEP_DIALOG_TITLE } from "../../shared/compact-step.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { type Frame, watchFrames } from "../support/frames.ts";
+import { has } from "../support/needs.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import {
 	type ScriptedRequest,
@@ -220,34 +221,42 @@ test("cancelled before its boundary: the turn goes on as if nothing was asked, a
 	c.close();
 }, 180_000);
 
-test("a conversation started with the person's own --trusted-extension is compacted at the end of the turn, and says so", async () => {
-	const own = join(root, "own-extension.ts");
-	writeFileSync(own, "export default function () {}\n");
-	const c = await scenario({ args: ["--trusted-extension", own] });
-	const queued = await request<LiveInfo>(c.ws, {
-		t: "compact_queue",
-		liveId: c.liveId,
-		where: "step",
-		customInstructions: "keep the steps",
-	});
-	expect(queued.compactQueued).toMatchObject({ phase: "queued", where: "turn", stepUnavailable: "trustedExtension" });
-	c.open();
-	await c.finished();
-	// Both model requests of the turn, and only then the summary.
-	expect(c.kinds()).toEqual(["main", "main", "summary"]);
-	expect((await c.info()).compactEnded).toMatchObject({ ok: true });
-	c.close();
-}, 180_000);
+test.skipIf(!has.notWindowsYet)(
+	"a conversation started with the person's own --trusted-extension is compacted at the end of the turn, and says so",
+	async () => {
+		const own = join(root, "own-extension.ts");
+		writeFileSync(own, "export default function () {}\n");
+		const c = await scenario({ args: ["--trusted-extension", own] });
+		const queued = await request<LiveInfo>(c.ws, {
+			t: "compact_queue",
+			liveId: c.liveId,
+			where: "step",
+			customInstructions: "keep the steps",
+		});
+		expect(queued.compactQueued).toMatchObject({ phase: "queued", where: "turn", stepUnavailable: "trustedExtension" });
+		c.open();
+		await c.finished();
+		// Both model requests of the turn, and only then the summary.
+		expect(c.kinds()).toEqual(["main", "main", "summary"]);
+		expect((await c.info()).compactEnded).toMatchObject({ ok: true });
+		c.close();
+	},
+	180_000,
+);
 
-test("with omp set not to carry a turn on after compacting, a compact between steps is for the end of the turn", async () => {
-	const c = await scenario({ config: ["autoContinue: false"] });
-	const queued = await request<LiveInfo>(c.ws, { t: "compact_queue", liveId: c.liveId, where: "step" });
-	expect(queued.compactQueued).toMatchObject({ phase: "queued", where: "turn", stepUnavailable: "noContinue" });
-	c.open();
-	await c.finished();
-	expect(c.kinds()).toEqual(["main", "main", "summary"]);
-	c.close();
-}, 180_000);
+test.skipIf(!has.notWindowsYet)(
+	"with omp set not to carry a turn on after compacting, a compact between steps is for the end of the turn",
+	async () => {
+		const c = await scenario({ config: ["autoContinue: false"] });
+		const queued = await request<LiveInfo>(c.ws, { t: "compact_queue", liveId: c.liveId, where: "step" });
+		expect(queued.compactQueued).toMatchObject({ phase: "queued", where: "turn", stepUnavailable: "noContinue" });
+		c.open();
+		await c.finished();
+		expect(c.kinds()).toEqual(["main", "main", "summary"]);
+		c.close();
+	},
+	180_000,
+);
 
 test("a turn with no step to hold is compacted at its end", async () => {
 	const c = await scenario({ tools: false });

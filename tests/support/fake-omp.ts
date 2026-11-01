@@ -1,6 +1,8 @@
-import { chmodSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Config } from "../../server/config.ts";
+import { platformId } from "../../server/platform/capabilities.ts";
+import { writeBunProgram } from "./bun-program.ts";
 import { trackRelayDir } from "./relay-dirs.ts";
 
 /**
@@ -102,7 +104,9 @@ if (failing) {
   process.exit(1);
 }
 if (options.ignoreTerm) process.on("SIGTERM", () => {});
-const tool = options.tool ? Bun.spawn(["sleep", "600"], { stdio: ["ignore", "ignore", "ignore"], detached: Boolean(options.toolDetached) }) : null;
+// A program that sleeps for \`s\` seconds: \`sleep\`, which Windows has not; there Bun waits instead.
+const sleeper = (s) => (${platformId === "win32"} ? ["bun", "-e", "setTimeout(() => {}, " + s * 1000 + ")"] : ["sleep", String(s)]);
+const tool = options.tool ? Bun.spawn(sleeper(600), { stdio: ["ignore", "ignore", "ignore"], detached: Boolean(options.toolDetached) }) : null;
 const resumeAt = process.argv.indexOf("--resume");
 const sessionFile = resumeAt >= 0 ? process.argv[resumeAt + 1] : "/nonexistent/fake.jsonl";
 const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
@@ -169,9 +173,9 @@ for await (const chunk of Bun.stdin.stream()) {
     // go to \`file\` as { children }.
     if (cmd.type === "wedge") {
       const path = require("node:path");
-      new Worker(path.join(path.dirname(process.argv[1]), "fake-omp-busy.js"));
-      const own = Bun.spawn(["sleep", "602"], { stdio: ["ignore", "ignore", "ignore"], detached: true });
-      const grouped = Bun.spawn(["sleep", "603"], { stdio: ["ignore", "ignore", "ignore"] });
+      new Worker(path.join(import.meta.dir, "fake-omp-busy.js"));
+      const own = Bun.spawn(sleeper(602), { stdio: ["ignore", "ignore", "ignore"], detached: true });
+      const grouped = Bun.spawn(sleeper(603), { stdio: ["ignore", "ignore", "ignore"] });
       require("node:fs").writeFileSync(cmd.file, JSON.stringify({ children: [own.pid, grouped.pid] }));
     }
     if (cmd.type === "prompt" && options.prompts) {
@@ -185,7 +189,7 @@ for await (const chunk of Bun.stdin.stream()) {
     // omp answers set_cache_warming with the mode the process runs in, and get_entries with the conversation's entries (none yet).
     const data = cmd.type === "get_state" ? { ...(options.state ?? {}), ...reported, sessionFile, sessionId: "fake", isStreaming: Boolean(options.streaming) } : cmd.type === "get_subagents" ? { subagents } : cmd.type === "get_entries" ? { entries: [], leafId: null } : cmd.type === "set_cache_warming" ? { mode: cmd.mode } : cmd.type === "set_model" ? reported.model : {};
     const reply = { id: cmd.id, type: "response", command: cmd.type, success: true, data };
-    if (options.spawnOn === cmd.type) Bun.spawn(["sleep", "600"], { stdio: ["ignore", "ignore", "ignore"] });
+    if (options.spawnOn === cmd.type) Bun.spawn(sleeper(600), { stdio: ["ignore", "ignore", "ignore"] });
     const late = (options.delay ?? {})[cmd.type];
     if (late) setTimeout(() => out(reply), late);
     else out(reply);
@@ -195,9 +199,7 @@ if (options.slowClose) await Bun.sleep(options.slowClose);
 if (options.ignoreClose) await Promise.withResolvers().promise;
 tool?.kill();
 `;
-	const bin = join(dir, "omp");
-	writeFileSync(bin, script);
-	chmodSync(bin, 0o755);
+	const bin = writeBunProgram(dir, "omp", script);
 	// The thread `wedge` starts: it spins until its process is killed.
 	writeFileSync(join(dir, "fake-omp-busy.js"), "for (;;) {}\n");
 	return bin;

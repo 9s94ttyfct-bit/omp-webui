@@ -1,10 +1,12 @@
+// needs: posixShell
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LivePool } from "../../server/live.ts";
 import { SessionActions } from "../../server/sessions/actions.ts";
 import { fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * A rename runs through a short-lived omp of the server's own, which holds the conversation's write lease while it lives.
@@ -17,7 +19,7 @@ beforeEach(() => {
 	dir = mkdtempSync(join(tmpdir(), "ompw-actions-end-"));
 });
 afterEach(() => {
-	rmSync(dir, { recursive: true, force: true });
+	removeScratch(dir);
 });
 
 test("a rename answers once its short-lived omp has ended, not once it has answered", async () => {

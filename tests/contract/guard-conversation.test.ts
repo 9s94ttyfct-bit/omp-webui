@@ -15,12 +15,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { type GuardConfig, type GuardWord, type LiveGuard, parseGuardWord } from "../../shared/guard.ts";
 import { type ImportStatus, MIGRATE_API, type MigrateState } from "../../shared/migrate.ts";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { messageWhere } from "../support/frames.ts";
 import { lanAddress, type NetSocket, rawRequest, rawSocket } from "../support/lan-peer.ts";
 import { call, exportTo, state, uploadAndVerify } from "../support/migrate-http.ts";
+import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
@@ -199,42 +201,48 @@ describe("a conversation's own guard", () => {
 // ------------------------------------------------------------------ kept with the conversation
 
 describe("what a conversation chose", () => {
-	test("outlives the server while it is paused: the next server adopts it with its own choices, and the settings do not move them", async () => {
-		await setGlobal(GLOBAL);
-		const a = await openNew();
-		const id = a.live.liveId;
-		await choose(id, { mode: "ask", reviewer: "x/y" });
-		await request(a.ws, { t: "pause", liveId: id });
-		await pollUntil(
-			() => existsSync(join(s.root, "data", "parked", `${id}.json`)),
-			"the record of the paused conversation",
-		);
-		const record: { guard?: unknown } = JSON.parse(readFileSync(join(s.root, "data", "parked", `${id}.json`), "utf8"));
-		expect(record.guard).toEqual({ mode: "ask", reviewer: "x/y" });
-		a.ws.close();
+	test.skipIf(!capabilities.pauseResume)(
+		"outlives the server while it is paused: the next server adopts it with its own choices, and the settings do not move them",
+		async () => {
+			await setGlobal(GLOBAL);
+			const a = await openNew();
+			const id = a.live.liveId;
+			await choose(id, { mode: "ask", reviewer: "x/y" });
+			await request(a.ws, { t: "pause", liveId: id });
+			await pollUntil(
+				() => existsSync(join(s.root, "data", "parked", `${id}.json`)),
+				"the record of the paused conversation",
+			);
+			const record: { guard?: unknown } = JSON.parse(
+				readFileSync(join(s.root, "data", "parked", `${id}.json`), "utf8"),
+			);
+			expect(record.guard).toEqual({ mode: "ask", reviewer: "x/y" });
+			a.ws.close();
 
-		await s.restart();
-		const adopted = await listed(id);
-		expect(adopted).toMatchObject({ liveId: id, exited: false });
-		expect(adopted?.guard).toEqual({
-			config: { ...GLOBAL, mode: "ask", reviewer: "x/y" },
-			own: { mode: "ask", reviewer: "x/y" },
-		});
-		// The word is the new server's: its gate reads the conversation's own choices over the settings.
-		await pollUntil(() => wordOf(id)?.mode === "ask", "the new server's word to the adopted gate");
-		expect(wordOf(id)).toMatchObject({ mode: "ask", reviewers: ["x/y"], askWhenUnavailable: true });
-		// The settings move; what it chose stays, and it takes the rest from them.
-		await setGlobal({ mode: "off", askWhenUnavailable: false });
-		await pollUntil(() => wordOf(id)?.askWhenUnavailable === false, "the adopted gate to follow the settings");
-		expect(wordOf(id)).toMatchObject({ mode: "ask", reviewers: ["x/y"] });
+			await s.restart();
+			const adopted = await listed(id);
+			expect(adopted).toMatchObject({ liveId: id, exited: false });
+			expect(adopted?.guard).toEqual({
+				config: { ...GLOBAL, mode: "ask", reviewer: "x/y" },
+				own: { mode: "ask", reviewer: "x/y" },
+			});
+			// The word is the new server's: its gate reads the conversation's own choices over the settings.
+			await pollUntil(() => wordOf(id)?.mode === "ask", "the new server's word to the adopted gate");
+			expect(wordOf(id)).toMatchObject({ mode: "ask", reviewers: ["x/y"], askWhenUnavailable: true });
+			// The settings move; what it chose stays, and it takes the rest from them.
+			await setGlobal({ mode: "off", askWhenUnavailable: false });
+			await pollUntil(() => wordOf(id)?.askWhenUnavailable === false, "the adopted gate to follow the settings");
+			expect(wordOf(id)).toMatchObject({ mode: "ask", reviewers: ["x/y"] });
 
-		// Resumed, it is the same: the choice is the conversation's, not the pause's.
-		const ws = await connect(s);
-		await request(ws, { t: "attach", liveId: id });
-		await request(ws, { t: "resume", liveId: id });
-		expect((await guardOf(id))?.own).toEqual({ mode: "ask", reviewer: "x/y" });
-		await closeAndWait(ws, id);
-	}, 180_000);
+			// Resumed, it is the same: the choice is the conversation's, not the pause's.
+			const ws = await connect(s);
+			await request(ws, { t: "attach", liveId: id });
+			await request(ws, { t: "resume", liveId: id });
+			expect((await guardOf(id))?.own).toEqual({ mode: "ask", reviewer: "x/y" });
+			await closeAndWait(ws, id);
+		},
+		180_000,
+	);
 
 	test("goes with the file: the conversation opened again, by this server or by the next, is under it, until it follows the settings again", async () => {
 		await setGlobal(GLOBAL);
@@ -307,52 +315,56 @@ describe("what an agent plants in the files that keep a conversation's choices",
 		90_000,
 	);
 
-	test("an Off planted in the record of a paused conversation and in the file is written over, and the next server adopts the conversation under what it chose", async () => {
-		await setGlobal(GLOBAL);
-		const a = await openNew();
-		const id = a.live.liveId;
-		await choose(id, { mode: "ask" });
-		const key = (await listed(id))?.sessionFile ?? "";
-		expect(key).not.toBe("");
-		await request(a.ws, { t: "pause", liveId: id });
-		const recordFile = join(s.root, "data", "parked", `${id}.json`);
-		await pollUntil(() => existsSync(recordFile), "the record of the paused conversation");
-		const recordedGuard = (): unknown => (JSON.parse(readFileSync(recordFile, "utf8")) as { guard?: unknown }).guard;
-		expect(recordedGuard()).toEqual({ mode: "ask" });
+	test.skipIf(!capabilities.pauseResume)(
+		"an Off planted in the record of a paused conversation and in the file is written over, and the next server adopts the conversation under what it chose",
+		async () => {
+			await setGlobal(GLOBAL);
+			const a = await openNew();
+			const id = a.live.liveId;
+			await choose(id, { mode: "ask" });
+			const key = (await listed(id))?.sessionFile ?? "";
+			expect(key).not.toBe("");
+			await request(a.ws, { t: "pause", liveId: id });
+			const recordFile = join(s.root, "data", "parked", `${id}.json`);
+			await pollUntil(() => existsSync(recordFile), "the record of the paused conversation");
+			const recordedGuard = (): unknown => (JSON.parse(readFileSync(recordFile, "utf8")) as { guard?: unknown }).guard;
+			expect(recordedGuard()).toEqual({ mode: "ask" });
 
-		// An Off in both places the conversation's choice is kept in.
-		const record: Record<string, unknown> = JSON.parse(readFileSync(recordFile, "utf8"));
-		writeFileSync(recordFile, JSON.stringify({ ...record, guard: { mode: "off" } }));
-		writeFileSync(
-			approvalFile(),
-			JSON.stringify({
-				default: null,
-				sessions: {},
-				usageWait: {},
-				models: {},
-				guard: { ...keptInFile(), [key]: { mode: "off" } },
-			}),
-		);
-		await pollUntil(
-			() => JSON.stringify(recordedGuard()) === JSON.stringify({ mode: "ask" }),
-			"the record to be written again",
-		);
-		await pollUntil(
-			() => JSON.stringify(keptInFile()[key]) === JSON.stringify({ mode: "ask" }),
-			"the file to be written again",
-		);
-		a.ws.close();
+			// An Off in both places the conversation's choice is kept in.
+			const record: Record<string, unknown> = JSON.parse(readFileSync(recordFile, "utf8"));
+			writeFileSync(recordFile, JSON.stringify({ ...record, guard: { mode: "off" } }));
+			writeFileSync(
+				approvalFile(),
+				JSON.stringify({
+					default: null,
+					sessions: {},
+					usageWait: {},
+					models: {},
+					guard: { ...keptInFile(), [key]: { mode: "off" } },
+				}),
+			);
+			await pollUntil(
+				() => JSON.stringify(recordedGuard()) === JSON.stringify({ mode: "ask" }),
+				"the record to be written again",
+			);
+			await pollUntil(
+				() => JSON.stringify(keptInFile()[key]) === JSON.stringify({ mode: "ask" }),
+				"the file to be written again",
+			);
+			a.ws.close();
 
-		// A crash: the server does not get to write its conversations down as it leaves.
-		await s.restart(undefined, { signal: "SIGKILL" });
-		expect(await listed(id)).toMatchObject({ liveId: id, exited: false });
-		expect((await guardOf(id))?.own).toEqual({ mode: "ask" });
-		await pollUntil(() => wordOf(id)?.mode === "ask", "the adopted gate to be told what the conversation chose");
-		const ws = await connect(s);
-		await request(ws, { t: "attach", liveId: id });
-		await request(ws, { t: "resume", liveId: id });
-		await closeAndWait(ws, id);
-	}, 180_000);
+			// A crash: the server does not get to write its conversations down as it leaves.
+			await s.restart(undefined, { signal: "SIGKILL" });
+			expect(await listed(id)).toMatchObject({ liveId: id, exited: false });
+			expect((await guardOf(id))?.own).toEqual({ mode: "ask" });
+			await pollUntil(() => wordOf(id)?.mode === "ask", "the adopted gate to be told what the conversation chose");
+			const ws = await connect(s);
+			await request(ws, { t: "attach", liveId: id });
+			await request(ws, { t: "resume", liveId: id });
+			await closeAndWait(ws, id);
+		},
+		180_000,
+	);
 });
 
 // ------------------------------------------------------------------ a page that is not this computer's
@@ -478,136 +490,144 @@ describe("a page on this computer", () => {
 // ------------------------------------------------------------------ moved to another computer
 
 describe("a conversation's guard moved to another computer", () => {
-	test("survives an import that takes longer than the server's look at the file: it is the person's act, and the conversation opens under it there", async () => {
-		await setGlobal(GLOBAL);
-		const file = s.fixtures.beta;
-		const first = await openFile(file);
-		await choose(first.live.liveId, { mode: "ask", reviewer: "moved/one" });
-		await closeAndWait(first.ws, first.live.liveId);
-		// A file that sorts after `approval.json` in the archive, for the import to stand still at once approval.json is written.
-		writeFileSync(join(s.root, "data", "favorite-models.json"), JSON.stringify(["moved/model"]));
+	test.skipIf(!has.notWindowsYet)(
+		"survives an import that takes longer than the server's look at the file: it is the person's act, and the conversation opens under it there",
+		async () => {
+			await setGlobal(GLOBAL);
+			const file = s.fixtures.beta;
+			const first = await openFile(file);
+			await choose(first.live.liveId, { mode: "ask", reviewer: "moved/one" });
+			await closeAndWait(first.ws, first.live.liveId);
+			// A file that sorts after `approval.json` in the archive, for the import to stand still at once approval.json is written.
+			writeFileSync(join(s.root, "data", "favorite-models.json"), JSON.stringify(["moved/model"]));
 
-		const archive = join(root, "moved.ompw");
-		await exportTo(s, archive, { credentials: false });
-		const b = await startTestServer(0, {}, { login: false });
-		const pipe = join(b.root, "data", "favorite-models.json");
-		try {
-			expect((await uploadAndVerify(b, archive)).state).toBe("ready");
-			// What the import reads on this Mac before it decides what to do with it: a pipe, which does not answer until somebody
-			// writes to it. Nothing reads this file but the import.
-			expect(spawnSync("mkfifo", [pipe]).status).toBe(0);
-			const started = await call<ImportStatus>(b, MIGRATE_API.importApply, {
-				method: "POST",
-				body: JSON.stringify({ mode: "merge", credentials: false }),
-			});
-			expect(started.status).toBe(200);
+			const archive = join(root, "moved.ompw");
+			await exportTo(s, archive, { credentials: false });
+			const b = await startTestServer(0, {}, { login: false });
+			const pipe = join(b.root, "data", "favorite-models.json");
+			try {
+				expect((await uploadAndVerify(b, archive)).state).toBe("ready");
+				// What the import reads on this Mac before it decides what to do with it: a pipe, which does not answer until somebody
+				// writes to it. Nothing reads this file but the import.
+				expect(spawnSync("mkfifo", [pipe]).status).toBe(0);
+				const started = await call<ImportStatus>(b, MIGRATE_API.importApply, {
+					method: "POST",
+					body: JSON.stringify({ mode: "merge", credentials: false }),
+				});
+				expect(started.status).toBe(200);
 
-			const approvalFile = join(b.root, "data", "approval.json");
-			const kept = (): Record<string, unknown> => {
-				const stored: { guard?: Record<string, unknown> } = JSON.parse(readFileSync(approvalFile, "utf8"));
-				return stored.guard ?? {};
-			};
-			const brought = () => Object.entries(kept()).find(([key]) => key.endsWith(basename(file)));
-			await pollUntil(
-				() => existsSync(approvalFile) && brought() !== undefined,
-				"the import to have written approval.json",
-			);
-			expect(((await state(b)).body as MigrateState).import?.state).toBe("applying");
-			// A real wait, for a real timer: the server looks at the file once a second and writes over what it did not write
-			// itself. The import is still writing, and must be left alone for three looks.
-			await Bun.sleep(3_500);
-			expect(((await state(b)).body as MigrateState).import?.state).toBe("applying");
-			expect(brought()?.[1]).toEqual({ mode: "ask", reviewer: "moved/one" });
+				const approvalFile = join(b.root, "data", "approval.json");
+				const kept = (): Record<string, unknown> => {
+					const stored: { guard?: Record<string, unknown> } = JSON.parse(readFileSync(approvalFile, "utf8"));
+					return stored.guard ?? {};
+				};
+				const brought = () => Object.entries(kept()).find(([key]) => key.endsWith(basename(file)));
+				await pollUntil(
+					() => existsSync(approvalFile) && brought() !== undefined,
+					"the import to have written approval.json",
+				);
+				expect(((await state(b)).body as MigrateState).import?.state).toBe("applying");
+				// A real wait, for a real timer: the server looks at the file once a second and writes over what it did not write
+				// itself. The import is still writing, and must be left alone for three looks.
+				await Bun.sleep(3_500);
+				expect(((await state(b)).body as MigrateState).import?.state).toBe("applying");
+				expect(brought()?.[1]).toEqual({ mode: "ask", reviewer: "moved/one" });
 
-			// The pipe answers, and the import goes on to its end.
-			const fd = openSync(pipe, "w");
-			writeSync(fd, "[]");
-			closeSync(fd);
-			await pollUntil(
-				async () => ((await state(b)).body as MigrateState).import?.state === "done",
-				"the import to end",
-			);
-			expect(brought()?.[1]).toEqual({ mode: "ask", reviewer: "moved/one" });
+				// The pipe answers, and the import goes on to its end.
+				const fd = openSync(pipe, "w");
+				writeSync(fd, "[]");
+				closeSync(fd);
+				await pollUntil(
+					async () => ((await state(b)).body as MigrateState).import?.state === "done",
+					"the import to end",
+				);
+				expect(brought()?.[1]).toEqual({ mode: "ask", reviewer: "moved/one" });
 
-			// What the server took from the file is its own now: the next looks leave it, and the conversation opens under it.
-			await Bun.sleep(2_500);
-			expect(brought()?.[1]).toEqual({ mode: "ask", reviewer: "moved/one" });
-			const ws = await connect(b);
-			const there = await request<LiveInfo>(ws, {
-				t: "open",
-				target: { kind: "resume", sessionFile: brought()?.[0] ?? "" },
-			});
-			expect(there.guard?.own).toEqual({ mode: "ask", reviewer: "moved/one" });
-			await closeAndWait(ws, there.liveId);
-		} finally {
-			await b.stop();
-		}
-	}, 240_000);
+				// What the server took from the file is its own now: the next looks leave it, and the conversation opens under it.
+				await Bun.sleep(2_500);
+				expect(brought()?.[1]).toEqual({ mode: "ask", reviewer: "moved/one" });
+				const ws = await connect(b);
+				const there = await request<LiveInfo>(ws, {
+					t: "open",
+					target: { kind: "resume", sessionFile: brought()?.[0] ?? "" },
+				});
+				expect(there.guard?.own).toEqual({ mode: "ask", reviewer: "moved/one" });
+				await closeAndWait(ws, there.liveId);
+			} finally {
+				await b.stop();
+			}
+		},
+		240_000,
+	);
 });
 
 // ------------------------------------------------------------------ the guard's own settings
 
 describe("the guard's settings moved to another computer", () => {
-	test("an import that takes longer than the server's look keeps the file it wrote: the look leaves it alone while the import writes, and takes it when it ends", async () => {
-		// The other Mac's settings, in its data dir (its own guard file is elsewhere: this is the file an archive carries).
-		const imported: GuardConfig = {
-			mode: "ask",
-			reviewer: "moved/one",
-			askWhenUnavailable: false,
-			askWhenDenied: false,
-		};
-		const a = await startTestServer(0, {}, { login: false });
-		const archive = join(root, "guard-settings.ompw");
-		// The server here is told to keep its guard settings where this version does (`<data dir>/guard.json`), as the app does.
-		const b = await startTestServer(0, { OMP_WEBUI_GUARD_CONFIG: "" }, { login: false });
-		// A file of the archive that sorts after `guard.json`, for the import to stand still at once guard.json is written, and
-		// that nothing else here reads while it stands still.
-		const pipe = join(b.root, "data", "interviews.json");
-		try {
-			writeFileSync(join(a.root, "data", "guard.json"), `${JSON.stringify(imported, null, 2)}\n`);
-			// The file the import stands still at is in the archive too (an archive carries only what is there).
-			writeFileSync(join(a.root, "data", "interviews.json"), "[]");
-			await exportTo(a, archive, { credentials: false });
-			expect((await uploadAndVerify(b, archive)).state).toBe("ready");
-			// What the import reads on this Mac before it decides what to do with it: a pipe, which does not answer until
-			// somebody writes to it.
-			expect(spawnSync("mkfifo", [pipe]).status).toBe(0);
-			const started = await call<ImportStatus>(b, MIGRATE_API.importApply, {
-				method: "POST",
-				body: JSON.stringify({ mode: "merge", credentials: false }),
-			});
-			expect(started.status).toBe(200);
+	test.skipIf(!has.notWindowsYet)(
+		"an import that takes longer than the server's look keeps the file it wrote: the look leaves it alone while the import writes, and takes it when it ends",
+		async () => {
+			// The other Mac's settings, in its data dir (its own guard file is elsewhere: this is the file an archive carries).
+			const imported: GuardConfig = {
+				mode: "ask",
+				reviewer: "moved/one",
+				askWhenUnavailable: false,
+				askWhenDenied: false,
+			};
+			const a = await startTestServer(0, {}, { login: false });
+			const archive = join(root, "guard-settings.ompw");
+			// The server here is told to keep its guard settings where this version does (`<data dir>/guard.json`), as the app does.
+			const b = await startTestServer(0, { OMP_WEBUI_GUARD_CONFIG: "" }, { login: false });
+			// A file of the archive that sorts after `guard.json`, for the import to stand still at once guard.json is written, and
+			// that nothing else here reads while it stands still.
+			const pipe = join(b.root, "data", "interviews.json");
+			try {
+				writeFileSync(join(a.root, "data", "guard.json"), `${JSON.stringify(imported, null, 2)}\n`);
+				// The file the import stands still at is in the archive too (an archive carries only what is there).
+				writeFileSync(join(a.root, "data", "interviews.json"), "[]");
+				await exportTo(a, archive, { credentials: false });
+				expect((await uploadAndVerify(b, archive)).state).toBe("ready");
+				// What the import reads on this Mac before it decides what to do with it: a pipe, which does not answer until
+				// somebody writes to it.
+				expect(spawnSync("mkfifo", [pipe]).status).toBe(0);
+				const started = await call<ImportStatus>(b, MIGRATE_API.importApply, {
+					method: "POST",
+					body: JSON.stringify({ mode: "merge", credentials: false }),
+				});
+				expect(started.status).toBe(200);
 
-			const file = join(b.root, "data", "guard.json");
-			const kept = (): GuardConfig => JSON.parse(readFileSync(file, "utf8")) as GuardConfig;
-			await pollUntil(() => existsSync(file) && kept().mode === "ask", "the import to have written guard.json");
-			expect(((await state(b)).body as MigrateState).import?.state).toBe("applying");
-			// A real wait, for a real timer: the server looks at the file once a second and writes its own settings over one it
-			// did not write itself. The import is still writing, and must be left alone for three looks.
-			await Bun.sleep(3_500);
-			expect(((await state(b)).body as MigrateState).import?.state).toBe("applying");
-			expect(kept()).toEqual(imported);
+				const file = join(b.root, "data", "guard.json");
+				const kept = (): GuardConfig => JSON.parse(readFileSync(file, "utf8")) as GuardConfig;
+				await pollUntil(() => existsSync(file) && kept().mode === "ask", "the import to have written guard.json");
+				expect(((await state(b)).body as MigrateState).import?.state).toBe("applying");
+				// A real wait, for a real timer: the server looks at the file once a second and writes its own settings over one it
+				// did not write itself. The import is still writing, and must be left alone for three looks.
+				await Bun.sleep(3_500);
+				expect(((await state(b)).body as MigrateState).import?.state).toBe("applying");
+				expect(kept()).toEqual(imported);
 
-			// The pipe answers, and the import goes on to its end.
-			const fd = openSync(pipe, "w");
-			writeSync(fd, "[]");
-			closeSync(fd);
-			await pollUntil(
-				async () => ((await state(b)).body as MigrateState).import?.state === "done",
-				"the import to end",
-			);
-			// What the import brought is the server's own now: every gate and page is told, and the looks leave the file.
-			const answered = await fetch(`${b.url}/api/guard`, {
-				headers: { "x-omp-webui-token": b.accessToken, "x-omp-webui": "1" },
-			});
-			const body: unknown = await answered.json();
-			expect(typeof body === "object" && body !== null && "config" in body ? body.config : null).toEqual(imported);
-			await Bun.sleep(2_500);
-			expect(kept()).toEqual(imported);
-		} finally {
-			await Promise.all([a.stop(), b.stop()]);
-		}
-	}, 240_000);
+				// The pipe answers, and the import goes on to its end.
+				const fd = openSync(pipe, "w");
+				writeSync(fd, "[]");
+				closeSync(fd);
+				await pollUntil(
+					async () => ((await state(b)).body as MigrateState).import?.state === "done",
+					"the import to end",
+				);
+				// What the import brought is the server's own now: every gate and page is told, and the looks leave the file.
+				const answered = await fetch(`${b.url}/api/guard`, {
+					headers: { "x-omp-webui-token": b.accessToken, "x-omp-webui": "1" },
+				});
+				const body: unknown = await answered.json();
+				expect(typeof body === "object" && body !== null && "config" in body ? body.config : null).toEqual(imported);
+				await Bun.sleep(2_500);
+				expect(kept()).toEqual(imported);
+			} finally {
+				await Promise.all([a.stop(), b.stop()]);
+			}
+		},
+		240_000,
+	);
 });
 
 // ------------------------------------------------------------------ the once-a-second look goes on

@@ -1,11 +1,13 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
 import { platform } from "../../server/platform/index.ts";
 import { type AppServer, startAppServer } from "../support/app-server.ts";
+import { has } from "../support/needs.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * The macOS app's server start (OMP_WEBUI_AUTO_PORT=1): never fails on a taken port,
@@ -23,7 +25,7 @@ beforeAll(async () => {
 afterEach(() => {
 	for (const p of procs.splice(0)) p.kill("SIGKILL");
 });
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => removeScratch(root));
 
 const alive = (pid: number) => {
 	try {
@@ -106,28 +108,36 @@ test("a pid file naming another program is ignored, never acted on", async () =>
 	expect(s.port).not.toBe(d.port);
 }, 60_000);
 
-test("a leftover server recorded for this data dir is stopped and its port reused", async () => {
-	const dir = dataDir("stale");
-	const old = await startServer(dir);
-	expect(JSON.parse(readFileSync(join(dir, "server.pid"), "utf8"))).toMatchObject({
-		pid: old.proc.pid,
-		command: platform.proc.commandLineSync(old.proc.pid),
-	});
+test.skipIf(!has.notWindowsYet)(
+	"a leftover server recorded for this data dir is stopped and its port reused",
+	async () => {
+		const dir = dataDir("stale");
+		const old = await startServer(dir);
+		expect(JSON.parse(readFileSync(join(dir, "server.pid"), "utf8"))).toMatchObject({
+			pid: old.proc.pid,
+			command: platform.proc.commandLineSync(old.proc.pid),
+		});
 
-	const next = await startServer(dir, old.port);
-	expect(await old.proc.exited).toBeDefined();
-	expect(alive(old.proc.pid)).toBe(false);
-	expect(next.port).toBe(old.port);
-	expect(JSON.parse(readFileSync(join(dir, "server.pid"), "utf8")).pid).toBe(next.proc.pid);
-}, 60_000);
+		const next = await startServer(dir, old.port);
+		expect(await old.proc.exited).toBeDefined();
+		expect(alive(old.proc.pid)).toBe(false);
+		expect(next.port).toBe(old.port);
+		expect(JSON.parse(readFileSync(join(dir, "server.pid"), "utf8")).pid).toBe(next.proc.pid);
+	},
+	60_000,
+);
 
-test("stopping the server removes its record", async () => {
-	const dir = dataDir("clean");
-	const s = await startServer(dir);
-	s.proc.kill("SIGTERM");
-	await s.proc.exited;
-	expect(() => readFileSync(join(dir, "server.pid"))).toThrow();
-}, 60_000);
+test.skipIf(!has.posixSignals)(
+	"stopping the server removes its record",
+	async () => {
+		const dir = dataDir("clean");
+		const s = await startServer(dir);
+		s.proc.kill("SIGTERM");
+		await s.proc.exited;
+		expect(() => readFileSync(join(dir, "server.pid"))).toThrow();
+	},
+	60_000,
+);
 
 /** The pid file of a data dir, as the server wrote it. */
 const record = (dir: string) => JSON.parse(readFileSync(join(dir, "server.pid"), "utf8"));
@@ -147,35 +157,39 @@ test("a recorded server whose app is still running is left alone", async () => {
 	expect(second.port).not.toBe(first.port);
 }, 60_000);
 
-test("a recorded server whose app has gone is stopped, also when the app's pid now belongs to another program", async () => {
-	const dir = dataDir("orphaned");
-	const appCommand = "/Applications/omp-webui.app/Contents/MacOS/omp-webui";
-	const old = await startServer(dir);
+test.skipIf(!has.notWindowsYet)(
+	"a recorded server whose app has gone is stopped, also when the app's pid now belongs to another program",
+	async () => {
+		const dir = dataDir("orphaned");
+		const appCommand = "/Applications/omp-webui.app/Contents/MacOS/omp-webui";
+		const old = await startServer(dir);
 
-	// Recorded as started by an app that is gone: a process that has ended.
-	const ended = Bun.spawn(["true"]);
-	await ended.exited;
-	writeFileSync(
-		join(dir, "server.pid"),
-		JSON.stringify({ ...record(dir), parent: { pid: ended.pid, command: appCommand } }),
-	);
-	const next = await startServer(dir, old.port);
-	expect(await old.proc.exited).toBeDefined();
-	expect(alive(old.proc.pid)).toBe(false);
-	expect(next.port).toBe(old.port);
+		// Recorded as started by an app that is gone: a process that has ended.
+		const ended = Bun.spawn(["true"]);
+		await ended.exited;
+		writeFileSync(
+			join(dir, "server.pid"),
+			JSON.stringify({ ...record(dir), parent: { pid: ended.pid, command: appCommand } }),
+		);
+		const next = await startServer(dir, old.port);
+		expect(await old.proc.exited).toBeDefined();
+		expect(alive(old.proc.pid)).toBe(false);
+		expect(next.port).toBe(old.port);
 
-	// The app's pid was reused by another program: that is not the app either.
-	const bystander = Bun.spawn(["sleep", "600"]);
-	procs.push(bystander);
-	writeFileSync(
-		join(dir, "server.pid"),
-		JSON.stringify({ ...record(dir), parent: { pid: bystander.pid, command: appCommand } }),
-	);
-	const last = await startServer(dir, next.port);
-	expect(await next.proc.exited).toBeDefined();
-	expect(alive(bystander.pid)).toBe(true);
-	expect(last.port).toBe(next.port);
-}, 90_000);
+		// The app's pid was reused by another program: that is not the app either.
+		const bystander = Bun.spawn(["sleep", "600"]);
+		procs.push(bystander);
+		writeFileSync(
+			join(dir, "server.pid"),
+			JSON.stringify({ ...record(dir), parent: { pid: bystander.pid, command: appCommand } }),
+		);
+		const last = await startServer(dir, next.port);
+		expect(await next.proc.exited).toBeDefined();
+		expect(alive(bystander.pid)).toBe(true);
+		expect(last.port).toBe(next.port);
+	},
+	90_000,
+);
 
 test("the access token is never printed when the app starts the server", async () => {
 	const server = await startServer(dataDir("quiet"));

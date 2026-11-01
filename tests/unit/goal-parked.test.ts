@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Live, LivePool } from "../../server/live.ts";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import type { Goal } from "../../shared/goal.ts";
 import { fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
 import { pollUntil } from "../support/poll.ts";
@@ -101,60 +102,66 @@ test("omp's state says the goal too: goal mode's state holds it, and a state wit
 	expect(live.attached().goal).toBeUndefined();
 });
 
-test("a paused conversation keeps its goal across a restart of the server, and a change made while it is paused is recorded", async () => {
-	const { dir, bin, cwd } = await conversation();
-	const first = new LivePool(fakeConfig(dir, bin));
-	pools.push(first);
-	const live = await first.open({ kind: "new", cwd }, async () => null);
-	await emit(live, updated(goal()));
-	await pollUntil(() => live.attached().goal !== undefined, "the server to hear of the goal");
+test.skipIf(!capabilities.pauseResume)(
+	"a paused conversation keeps its goal across a restart of the server, and a change made while it is paused is recorded",
+	async () => {
+		const { dir, bin, cwd } = await conversation();
+		const first = new LivePool(fakeConfig(dir, bin));
+		pools.push(first);
+		const live = await first.open({ kind: "new", cwd }, async () => null);
+		await emit(live, updated(goal()));
+		await pollUntil(() => live.attached().goal !== undefined, "the server to hear of the goal");
 
-	await live.pause();
-	expect(first.parked.list().map((r) => r.goal)).toEqual([goal()]);
+		await live.pause();
+		expect(first.parked.list().map((r) => r.goal)).toEqual([goal()]);
 
-	// The server goes, the conversation stays; the next one finds omp frozen, and cannot ask it.
-	expect(await first.parkKept()).toBe(1);
-	const second = new LivePool(fakeConfig(dir, bin));
-	pools.push(second);
-	expect(await second.adopt()).toBe(1);
-	const adopted = second.get(live.info.liveId) as Live;
-	expect(adopted.info.pausedAt).not.toBeNull();
-	expect(adopted.attached().goal).toEqual(goal());
+		// The server goes, the conversation stays; the next one finds omp frozen, and cannot ask it.
+		expect(await first.parkKept()).toBe(1);
+		const second = new LivePool(fakeConfig(dir, bin));
+		pools.push(second);
+		expect(await second.adopt()).toBe(1);
+		const adopted = second.get(live.info.liveId) as Live;
+		expect(adopted.info.pausedAt).not.toBeNull();
+		expect(adopted.attached().goal).toEqual(goal());
 
-	// omp runs for a user's action and the goal changes: the record says so, and so does the reply.
-	await emit(adopted, updated(goal({ status: "paused", tokensUsed: 50 })));
-	await pollUntil(
-		() => second.parked.list().every((r) => r.goal?.status === "paused"),
-		"the record to follow the goal",
-	);
-	expect(adopted.attached().goal).toEqual(goal({ status: "paused", tokensUsed: 50 }));
-	await emit(adopted, updated(goal({ status: "dropped" })));
-	await pollUntil(() => second.parked.list().every((r) => r.goal === undefined), "the record to drop the goal");
-	expect(adopted.attached().goal).toBeUndefined();
-});
+		// omp runs for a user's action and the goal changes: the record says so, and so does the reply.
+		await emit(adopted, updated(goal({ status: "paused", tokensUsed: 50 })));
+		await pollUntil(
+			() => second.parked.list().every((r) => r.goal?.status === "paused"),
+			"the record to follow the goal",
+		);
+		expect(adopted.attached().goal).toEqual(goal({ status: "paused", tokensUsed: 50 }));
+		await emit(adopted, updated(goal({ status: "dropped" })));
+		await pollUntil(() => second.parked.list().every((r) => r.goal === undefined), "the record to drop the goal");
+		expect(adopted.attached().goal).toBeUndefined();
+	},
+);
 
-test("the record of a paused conversation is written again when the file was taken, but not while an import is writing", async () => {
-	const { dir, bin, cwd } = await conversation();
-	const pool = new LivePool(fakeConfig(dir, bin));
-	pools.push(pool);
-	const live = await pool.open({ kind: "new", cwd }, async () => null);
-	await live.pause();
-	const file = join(dir, "parked", `${live.info.liveId}.json`);
-	expect(existsSync(file)).toBe(true);
+test.skipIf(!capabilities.pauseResume)(
+	"the record of a paused conversation is written again when the file was taken, but not while an import is writing",
+	async () => {
+		const { dir, bin, cwd } = await conversation();
+		const pool = new LivePool(fakeConfig(dir, bin));
+		pools.push(pool);
+		const live = await pool.open({ kind: "new", cwd }, async () => null);
+		await live.pause();
+		const file = join(dir, "parked", `${live.info.liveId}.json`);
+		expect(existsSync(file)).toBe(true);
 
-	// An import (Move to another computer) is writing the files conversations run on: the record is the import's to replace,
-	// and the server does not write its own over what it puts there.
-	pool.setHold(() => true);
-	expect(pool.importing).toBe(true);
-	writeFileSync(file, JSON.stringify({ version: 1, liveId: live.info.liveId, imported: true }));
-	pool.syncRisk();
-	expect(JSON.parse(readFileSync(file, "utf8")).imported).toBe(true);
+		// An import (Move to another computer) is writing the files conversations run on: the record is the import's to replace,
+		// and the server does not write its own over what it puts there.
+		pool.setHold(() => true);
+		expect(pool.importing).toBe(true);
+		writeFileSync(file, JSON.stringify({ version: 1, liveId: live.info.liveId, imported: true }));
+		pool.syncRisk();
+		expect(JSON.parse(readFileSync(file, "utf8")).imported).toBe(true);
 
-	// The import has ended: the file is not the server's record, and the next look writes it again.
-	pool.setHold(() => false);
-	expect(pool.importing).toBe(false);
-	pool.syncRisk();
-	expect(JSON.parse(readFileSync(file, "utf8")).imported).toBeUndefined();
-	expect(pool.parked.list().map((r) => r.liveId)).toEqual([live.info.liveId]);
-	await live.resume();
-});
+		// The import has ended: the file is not the server's record, and the next look writes it again.
+		pool.setHold(() => false);
+		expect(pool.importing).toBe(false);
+		pool.syncRisk();
+		expect(JSON.parse(readFileSync(file, "utf8")).imported).toBeUndefined();
+		expect(pool.parked.list().map((r) => r.liveId)).toEqual([live.info.liveId]);
+		await live.resume();
+	},
+);

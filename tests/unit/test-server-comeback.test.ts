@@ -1,3 +1,4 @@
+// needs: posixSignals
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -5,6 +6,7 @@ import { join } from "node:path";
 import { pollUntil, processExists } from "../support/poll.ts";
 import { startTestServer } from "../support/server.ts";
 import { serversAlive } from "../support/test-servers.ts";
+import { setTempDir } from "../support/tmp.ts";
 
 /**
  * A test server that exits by itself is started again (#3, audit A-018). Bun's test runner can send SIGTERM to a file's shared
@@ -17,11 +19,11 @@ const realTmp = process.env.TMPDIR;
 
 beforeEach(() => {
 	scratch = mkdtempSync(join(realTmp ?? tmpdir(), "ompw-comeback-test-"));
-	process.env.TMPDIR = scratch;
+	setTempDir(scratch);
 });
 afterEach(() => {
 	if (realTmp === undefined) delete process.env.TMPDIR;
-	else process.env.TMPDIR = realTmp;
+	else setTempDir(realTmp);
 	rmSync(scratch, { recursive: true, force: true });
 });
 

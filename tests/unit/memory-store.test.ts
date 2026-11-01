@@ -1,3 +1,4 @@
+// needs: posixPaths
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
@@ -8,7 +9,6 @@ import {
 	mkdirSync,
 	readdirSync,
 	readFileSync,
-	statSync,
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -32,6 +32,7 @@ import {
 	type MemoryQuery,
 } from "../../shared/memory.ts";
 import { insertDerived, type MemoryFixture, memoryFixture } from "../support/mnemopi-store.ts";
+import { expectMode } from "../support/modes.ts";
 
 /**
  * omp's long-term memory as the Memory page reads and changes it (`server/memory/store.ts`), against databases that have
@@ -837,8 +838,8 @@ describe("the copy made before a change", () => {
 		expect(result.backedUp).toBe(true);
 		const dir = writer.backupDir("default");
 		expect(readdirSync(dir)).toEqual(["20261023T120000Z.db"]);
-		expect(statSync(dir).mode & 0o777).toBe(0o700);
-		expect(statSync(join(dir, "20261023T120000Z.db")).mode & 0o777).toBe(0o600);
+		expectMode(dir, 0o700);
+		expectMode(join(dir, "20261023T120000Z.db"), 0o600);
 		// The copy is a database of its own, with the old text, and it was taken before the change.
 		expect(
 			rowsOf(join(dir, "20261023T120000Z.db"), "SELECT content FROM working_memory WHERE id = 'g1'")[0].content,

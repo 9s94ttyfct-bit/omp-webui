@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import type { GuardConfig, GuardDecision } from "../../shared/guard.ts";
 import { isRecord } from "../../shared/guards.ts";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
@@ -216,30 +217,34 @@ async function turnAtTheModel(c: UngatedConversation): Promise<() => void> {
 	return release;
 }
 
-test("paused mid-turn: the restart is refused, and the turn is not lost", async () => {
-	const c = await ungated();
-	const release = await turnAtTheModel(c);
-	try {
-		await request(c.ws, { t: "pause", liveId: c.liveId });
-		const refused = await restart(c.liveId);
-		expect(refused.status).toBe(409);
-		expect(refused.error).toMatch(/paused/i);
-		// Nothing was cut off: the process is there, and it is still paused on its turn.
-		const held = await c.listing();
-		expect(held).toMatchObject({ exited: false, holding: "paused", ungated: "chosen" });
-		expect(held?.pausedAt).not.toBeNull();
-		expect(processExists(c.pid)).toBe(true);
+test.skipIf(!capabilities.pauseResume)(
+	"paused mid-turn: the restart is refused, and the turn is not lost",
+	async () => {
+		const c = await ungated();
+		const release = await turnAtTheModel(c);
+		try {
+			await request(c.ws, { t: "pause", liveId: c.liveId });
+			const refused = await restart(c.liveId);
+			expect(refused.status).toBe(409);
+			expect(refused.error).toMatch(/paused/i);
+			// Nothing was cut off: the process is there, and it is still paused on its turn.
+			const held = await c.listing();
+			expect(held).toMatchObject({ exited: false, holding: "paused", ungated: "chosen" });
+			expect(held?.pausedAt).not.toBeNull();
+			expect(processExists(c.pid)).toBe(true);
 
-		await request(c.ws, { t: "resume", liveId: c.liveId });
-		const ended = c.next((f) => f.type === "agent_end");
-		release();
-		await ended;
-		expect(c.answered()).toBe(true);
-	} finally {
-		release();
-		await c.close();
-	}
-}, 120_000);
+			await request(c.ws, { t: "resume", liveId: c.liveId });
+			const ended = c.next((f) => f.type === "agent_end");
+			release();
+			await ended;
+			expect(c.answered()).toBe(true);
+		} finally {
+			release();
+			await c.close();
+		}
+	},
+	120_000,
+);
 
 test("running mid-turn: the restart is refused, and the turn goes on to its end", async () => {
 	const c = await ungated();

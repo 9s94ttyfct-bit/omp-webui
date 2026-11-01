@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import type { LoadedData, LoadedPlugin, LoadedSkill } from "../../shared/loaded.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
+import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
@@ -181,43 +183,47 @@ test("where the folder's own settings decide, the switch is saved but says it ha
 	}
 }, 120_000);
 
-test("turning on a skill that only the folder's own settings turn off says so at once: no wait for a change that cannot happen", async () => {
-	const project = join(s.root, "project-off");
-	mkdirSync(join(project, ".omp"), { recursive: true });
-	writeFileSync(join(project, ".omp", "config.yml"), "disabledExtensions:\n  - skill:user-skill\n");
-	const chat = await open({ kind: "new", cwd: project });
-	try {
-		expect(readFileSync(join(s.agentDir, "config.yml"), "utf8")).not.toContain("skill:user-skill");
-		const timed = async (name: string) => {
-			const started = Date.now();
-			const res = await send("/api/controls/skill", { live: chat.info.liveId, name, enabled: true });
-			return { body: await res.json(), ms: Date.now() - started };
-		};
-		// The control: omp never lists a skill that does not exist, so turning one on waits for it, the whole of what
-		// `skillSettled` gives (4 s). It is taken here, under the load of the moment, and what the switch below is compared
-		// with: a number of seconds that is enough on an idle machine is not on a busy one.
-		const waited = await timed("no-such-skill");
-		expect(waited.body).toEqual({ ok: true, overridden: null });
-		expect(waited.ms).toBeGreaterThanOrEqual(3500);
-		const switched = await timed("user-skill");
-		expect(switched.body).toEqual({ ok: true, overridden: "project" });
-		// What the switch does more than the control is two more of omp's `config` commands (the write, and a read of what
-		// this folder then reads), and no wait. What two such commands take is measured here too, under the same load: a
-		// switch that had waited `skillSettled`'s 4 s would take about that more than the control, one that did not about 4 s
-		// less than that. The bound is halfway: an omp that is slow to start (a CI runner's, over a second each) moves both.
-		const before = Date.now();
-		for (let i = 0; i < 2; i++) omp(["config", "get", "disabledExtensions", "--json"], project);
-		const twoCommands = Date.now() - before;
-		expect(switched.ms).toBeLessThan(waited.ms + twoCommands - 2000);
-		// The global list never had it: nothing to change there.
-		expect(readFileSync(join(s.agentDir, "config.yml"), "utf8")).not.toContain("skill:user-skill");
-		expect(skillsOf(await loaded(`live=${chat.info.liveId}`)).find((k) => k.name === "user-skill")?.enabled).toBe(
-			false,
-		);
-	} finally {
-		await chat.close();
-	}
-}, 120_000);
+test.skipIf(!has.notWindowsYet)(
+	"turning on a skill that only the folder's own settings turn off says so at once: no wait for a change that cannot happen",
+	async () => {
+		const project = join(s.root, "project-off");
+		mkdirSync(join(project, ".omp"), { recursive: true });
+		writeFileSync(join(project, ".omp", "config.yml"), "disabledExtensions:\n  - skill:user-skill\n");
+		const chat = await open({ kind: "new", cwd: project });
+		try {
+			expect(readFileSync(join(s.agentDir, "config.yml"), "utf8")).not.toContain("skill:user-skill");
+			const timed = async (name: string) => {
+				const started = Date.now();
+				const res = await send("/api/controls/skill", { live: chat.info.liveId, name, enabled: true });
+				return { body: await res.json(), ms: Date.now() - started };
+			};
+			// The control: omp never lists a skill that does not exist, so turning one on waits for it, the whole of what
+			// `skillSettled` gives (4 s). It is taken here, under the load of the moment, and what the switch below is compared
+			// with: a number of seconds that is enough on an idle machine is not on a busy one.
+			const waited = await timed("no-such-skill");
+			expect(waited.body).toEqual({ ok: true, overridden: null });
+			expect(waited.ms).toBeGreaterThanOrEqual(3500);
+			const switched = await timed("user-skill");
+			expect(switched.body).toEqual({ ok: true, overridden: "project" });
+			// What the switch does more than the control is two more of omp's `config` commands (the write, and a read of what
+			// this folder then reads), and no wait. What two such commands take is measured here too, under the same load: a
+			// switch that had waited `skillSettled`'s 4 s would take about that more than the control, one that did not about 4 s
+			// less than that. The bound is halfway: an omp that is slow to start (a CI runner's, over a second each) moves both.
+			const before = Date.now();
+			for (let i = 0; i < 2; i++) omp(["config", "get", "disabledExtensions", "--json"], project);
+			const twoCommands = Date.now() - before;
+			expect(switched.ms).toBeLessThan(waited.ms + twoCommands - 2000);
+			// The global list never had it: nothing to change there.
+			expect(readFileSync(join(s.agentDir, "config.yml"), "utf8")).not.toContain("skill:user-skill");
+			expect(skillsOf(await loaded(`live=${chat.info.liveId}`)).find((k) => k.name === "user-skill")?.enabled).toBe(
+				false,
+			);
+		} finally {
+			await chat.close();
+		}
+	},
+	120_000,
+);
 
 test("a plugin installed in both scopes is two rows: the user's is marked shadowed, and a switch takes only its own scope", async () => {
 	const folder = join(s.root, "both-scopes");
@@ -334,27 +340,31 @@ test("a saved conversation without a process can switch a plugin (omp's CLI only
 	expect(pluginsOf(await loaded(`file=${file}`)).find((p) => p.name === "npm-plugin")?.enabled).toBe(true);
 });
 
-test("a paused conversation takes a plugin switch, reloads, and stays paused", async () => {
-	const chat = await open({ kind: "new", cwd: s.work });
-	try {
-		await chat.pause();
-		const pausedAt = (await chat.listing())?.pausedAt;
-		expect(pausedAt).toBeTruthy();
-		const res = await send("/api/controls/plugin", {
-			live: chat.info.liveId,
-			name: "npm-plugin",
-			enabled: false,
-			scope: null,
-		});
-		expect(await res.json()).toEqual({ ok: true, reloaded: true });
-		expect((await chat.listing())?.pausedAt).toBe(pausedAt as number);
-		await chat.resume();
-		expect(await chat.commands()).not.toContain("skill:npm-skill");
-	} finally {
-		await send("/api/controls/plugin", { file: s.fixtures.alpha, name: "npm-plugin", enabled: true, scope: null });
-		await chat.close();
-	}
-}, 120_000);
+test.skipIf(!capabilities.pauseResume)(
+	"a paused conversation takes a plugin switch, reloads, and stays paused",
+	async () => {
+		const chat = await open({ kind: "new", cwd: s.work });
+		try {
+			await chat.pause();
+			const pausedAt = (await chat.listing())?.pausedAt;
+			expect(pausedAt).toBeTruthy();
+			const res = await send("/api/controls/plugin", {
+				live: chat.info.liveId,
+				name: "npm-plugin",
+				enabled: false,
+				scope: null,
+			});
+			expect(await res.json()).toEqual({ ok: true, reloaded: true });
+			expect((await chat.listing())?.pausedAt).toBe(pausedAt as number);
+			await chat.resume();
+			expect(await chat.commands()).not.toContain("skill:npm-skill");
+		} finally {
+			await send("/api/controls/plugin", { file: s.fixtures.alpha, name: "npm-plugin", enabled: true, scope: null });
+			await chat.close();
+		}
+	},
+	120_000,
+);
 
 test("omp's own message comes back for a plugin it does not know; names that could be flags are refused", async () => {
 	const chat = await open({ kind: "new", cwd: s.work });

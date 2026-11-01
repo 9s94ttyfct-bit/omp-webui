@@ -1,3 +1,4 @@
+// needs: posixFiles
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import {
 	chmodSync,
@@ -18,6 +19,7 @@ import { basename, dirname, join } from "node:path";
 import { handleUpload, type UploadContext } from "../../server/upload.ts";
 import { UPLOAD_DIR, type UploadFailure, type UploadResult } from "../../shared/upload.ts";
 import { writeChatSession } from "../support/chat-session.ts";
+import { expectMode } from "../support/modes.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 
 /**
@@ -114,7 +116,7 @@ describe("a file that is saved", () => {
 		expect(text(path)).toBe("hello\nworld\n");
 		expect(names(w.today)).toEqual(["notes.txt"]);
 		expect(lstatSync(path).isFile()).toBe(true);
-		expect(statSync(path).mode & 0o777).toBe(0o644 & ~process.umask());
+		expectMode(path, 0o644 & ~process.umask());
 	});
 
 	test("binary bytes arrive as they were", async () => {

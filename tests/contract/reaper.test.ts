@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadConfig } from "../../server/config.ts";
 import { type Live, LivePool, surplus } from "../../server/live.ts";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import type { OmpFrame } from "../../shared/protocol.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
 
@@ -62,40 +63,46 @@ test("a dialog omp is waiting on keeps the process until it is answered", async 
 	expect(reapable(live)).toBe(true);
 });
 
-test("a paused process is never reaped or released; RPC is refused until it resumes", async () => {
-	await live.pause();
-	live.lastActivity = longAgo();
-	expect(reapable(live)).toBe(false);
-	// What it says is that it is paused, not that it is working or waiting for an answer.
-	await expect(pool.release({ by: "file", file: live.info.sessionFile as string })).rejects.toThrow(
-		"This conversation is paused",
-	);
-	await expect(pool.release({ by: "file", file: live.info.sessionFile as string })).rejects.toThrow(
-		"resume it or end it",
-	);
-	expect(live.holding).toBe("paused");
-	expect(pool.list().find((l) => l.liveId === live.info.liveId)).toMatchObject({ busy: true, holding: "paused" });
-	expect(await pool.endIfIdle(live)).toBe("paused");
-	const refused = await live.rpc({ type: "get_state" });
-	expect(refused).toMatchObject({ success: false, code: "paused" });
+test.skipIf(!capabilities.pauseResume)(
+	"a paused process is never reaped or released; RPC is refused until it resumes",
+	async () => {
+		await live.pause();
+		live.lastActivity = longAgo();
+		expect(reapable(live)).toBe(false);
+		// What it says is that it is paused, not that it is working or waiting for an answer.
+		await expect(pool.release({ by: "file", file: live.info.sessionFile as string })).rejects.toThrow(
+			"This conversation is paused",
+		);
+		await expect(pool.release({ by: "file", file: live.info.sessionFile as string })).rejects.toThrow(
+			"resume it or end it",
+		);
+		expect(live.holding).toBe("paused");
+		expect(pool.list().find((l) => l.liveId === live.info.liveId)).toMatchObject({ busy: true, holding: "paused" });
+		expect(await pool.endIfIdle(live)).toBe("paused");
+		const refused = await live.rpc({ type: "get_state" });
+		expect(refused).toMatchObject({ success: false, code: "paused" });
 
-	await live.resume();
-	expect((await live.rpc({ type: "get_state" })).success).toBe(true);
-});
+		await live.resume();
+		expect((await live.rpc({ type: "get_state" })).success).toBe(true);
+	},
+);
 
-test("a user's action on a paused process is answered by omp itself, and leaves it frozen and still paused", async () => {
-	await live.pause();
-	const pausedAt = live.info.pausedAt;
+test.skipIf(!capabilities.pauseResume)(
+	"a user's action on a paused process is answered by omp itself, and leaves it frozen and still paused",
+	async () => {
+		await live.pause();
+		const pausedAt = live.info.pausedAt;
 
-	const reply = await live.rpc({ type: "set_thinking_level", level: "off" }, { user: true });
+		const reply = await live.rpc({ type: "set_thinking_level", level: "off" }, { user: true });
 
-	expect(reply.success).toBe(true);
-	expect(live.info.pausedAt).toBe(pausedAt);
-	expect(
-		Bun.spawnSync(["ps", "-o", "stat=", "-p", String(live.info.pid)])
-			.stdout.toString()
-			.trim(),
-	).toStartWith("T");
-	expect(await live.rpc({ type: "get_state" })).toMatchObject({ success: false, code: "paused" });
-	await live.resume();
-});
+		expect(reply.success).toBe(true);
+		expect(live.info.pausedAt).toBe(pausedAt);
+		expect(
+			Bun.spawnSync(["ps", "-o", "stat=", "-p", String(live.info.pid)])
+				.stdout.toString()
+				.trim(),
+		).toStartWith("T");
+		expect(await live.rpc({ type: "get_state" })).toMatchObject({ success: false, code: "paused" });
+		await live.resume();
+	},
+);

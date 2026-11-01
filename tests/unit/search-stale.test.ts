@@ -4,6 +4,7 @@ import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionStore } from "../../server/sessions/store.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * The full-text index forgets the files that went, and used to know of them only from what it was told in the same run: a
@@ -17,7 +18,7 @@ let n = 0;
 afterEach(() => {
 	for (const s of stores.splice(0)) s.close();
 });
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => removeScratch(root));
 
 /** A sessions dir with one conversation per word, each saying its word. */
 function library(words: string[]): { sessions: string; files: Record<string, string>; data: string } {

@@ -1,3 +1,4 @@
+// needs: relay
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";

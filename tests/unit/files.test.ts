@@ -1,3 +1,4 @@
+// needs: posixPaths
 import { afterEach, expect, setSystemTime, test, vi } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";

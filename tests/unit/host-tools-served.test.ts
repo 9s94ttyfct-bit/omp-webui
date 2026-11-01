@@ -7,6 +7,7 @@ import { ApprovalStore } from "../../server/omp/approval.ts";
 import type { HostToolCall, HostToolResult, HostToolServer } from "../../server/omp/host-tools.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
+import { setTempDir } from "../support/tmp.ts";
 
 /**
  * Host tools the server answers itself (`Live.serveHostTools`), against a scripted omp: what omp is told, that a call is
@@ -25,11 +26,11 @@ const sharedTmp = process.env.TMPDIR;
 let ownTmp = "";
 beforeAll(() => {
 	ownTmp = mkdtempSync(join(tmpdir(), "ompw-host-served-tmp-"));
-	process.env.TMPDIR = ownTmp;
+	setTempDir(ownTmp);
 });
 afterAll(() => {
 	if (sharedTmp === undefined) delete process.env.TMPDIR;
-	else process.env.TMPDIR = sharedTmp;
+	else setTempDir(sharedTmp);
 	rmSync(ownTmp, { recursive: true, force: true });
 });
 

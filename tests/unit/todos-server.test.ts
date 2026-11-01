@@ -3,6 +3,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { replaceTodos, TodoError, type TodoProcess } from "../../server/omp/todos.ts";
+import { has } from "../support/needs.ts";
+import { setTempDir } from "../support/tmp.ts";
 
 /**
  * Replacing the todo list asks omp to `/todo import` a file. A line omp does not know goes to the model as a prompt, so
@@ -33,28 +35,31 @@ const realTmp = process.env.TMPDIR;
 beforeEach(() => {
 	// A folder with a space in its name: the path is quoted for omp, which strips one pair of double quotes.
 	tmp = mkdtempSync(join(realTmp ?? tmpdir(), "ompw todo test-"));
-	process.env.TMPDIR = tmp;
+	setTempDir(tmp);
 });
 afterEach(() => {
 	if (realTmp === undefined) delete process.env.TMPDIR;
-	else process.env.TMPDIR = realTmp;
+	else setTempDir(realTmp);
 	rmSync(tmp, { recursive: true, force: true });
 });
 
-test("omp is asked to import a file holding the Markdown, and the file is gone afterwards", async () => {
-	let read = "";
-	let file = "";
-	const { omp, sent } = fakeOmp(withImport, (line) => {
-		file = fileOf(line);
-		read = readFileSync(file, "utf8");
-		return `Imported 1 phase(s), 1 task(s) from ${file}.`;
-	});
-	await replaceTodos(omp, "# A\n- [ ] x\n");
-	expect(sent).toHaveLength(1);
-	expect(file).toContain("ompw todo test-");
-	expect(read).toBe("# A\n- [ ] x\n");
-	expect(existsSync(file)).toBe(false);
-});
+test.skipIf(!has.posixFiles)(
+	"omp is asked to import a file holding the Markdown, and the file is gone afterwards",
+	async () => {
+		let read = "";
+		let file = "";
+		const { omp, sent } = fakeOmp(withImport, (line) => {
+			file = fileOf(line);
+			read = readFileSync(file, "utf8");
+			return `Imported 1 phase(s), 1 task(s) from ${file}.`;
+		});
+		await replaceTodos(omp, "# A\n- [ ] x\n");
+		expect(sent).toHaveLength(1);
+		expect(file).toContain("ompw todo test-");
+		expect(read).toBe("# A\n- [ ] x\n");
+		expect(existsSync(file)).toBe(false);
+	},
+);
 
 test("omp's refusal is the error, with the temp file's path replaced, and the file is gone", async () => {
 	let file = "";

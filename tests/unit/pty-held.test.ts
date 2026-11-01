@@ -1,3 +1,4 @@
+// needs: posixShell
 import { expect, test } from "bun:test";
 import { PtyManager } from "../../server/pty.ts";
 import { pollUntil } from "../support/poll.ts";

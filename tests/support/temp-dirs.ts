@@ -1,6 +1,7 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { removeScratch } from "./scratch.ts";
 
 /**
  * Temp directories a test makes and does not remove itself. Each one is made by `mkdtemp` in the system's temp dir and
@@ -19,6 +20,6 @@ export function tempDir(prefix: string): string {
 
 /** Remove every directory `tempDir` made in this process. */
 export function removeTrackedTempDirs(): void {
-	for (const dir of dirs) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+	for (const dir of dirs) removeScratch(dir);
 	dirs.clear();
 }

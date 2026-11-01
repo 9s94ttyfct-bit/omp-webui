@@ -1,8 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Job, type RawHit, type Reply, SearchIndex, type SearchRequest } from "../../server/search-index.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * Typing a query sends one search per pause, and the index worker answers them one after the other: a search that nobody
@@ -18,7 +19,7 @@ const indexes: SearchIndex[] = [];
 afterEach(() => {
 	for (const w of workers.splice(0)) w.terminate();
 	for (const i of indexes.splice(0)) i.close();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 function tempDir(): string {

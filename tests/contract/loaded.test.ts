@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { isFailure, type LoadedData, type LoadedTools } from "../../shared/loaded.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { FIXTURE_CWD, writeSimpleSession } from "../support/fixtures.ts";
+import { has } from "../support/needs.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
 import { connect, request } from "../support/ws.ts";
@@ -119,59 +121,63 @@ afterAll(async () => {
 	await omlx?.stop();
 });
 
-test("a running conversation lists its tools, MCP servers, commands, skills, plugins and rules, and the model is not asked anything", async () => {
-	const chat = await open({ kind: "new", cwd: s.work });
-	try {
-		await chat.mounted("alpha");
-		const data = await loaded(`live=${chat.info.liveId}`);
-		expect(data.mode).toBe("full");
-		expect(data.cwd).toBe(s.work);
+test.skipIf(!has.notWindowsYet)(
+	"a running conversation lists its tools, MCP servers, commands, skills, plugins and rules, and the model is not asked anything",
+	async () => {
+		const chat = await open({ kind: "new", cwd: s.work });
+		try {
+			await chat.mounted("alpha");
+			const data = await loaded(`live=${chat.info.liveId}`);
+			expect(data.mode).toBe("full");
+			expect(data.cwd).toBe(s.work);
 
-		const tools = toolsOf(data);
-		const read = tools.builtin.find((t) => t.name === "read");
-		expect(read?.state).toBe("active");
-		expect(read?.description).toBeTruthy();
-		expect(tools.builtin.find((t) => t.name === "bash")?.state).toBe("active");
-		// MCP tools are mounted as xd:// devices, not offered at the top level, and sit under their servers.
-		const alpha = tools.servers.find((x) => x.name === "alpha");
-		expect(alpha).toMatchObject({ transport: "stdio", enabled: true, scope: "user" });
-		expect(alpha?.tools).toEqual([{ name: "mcp__alpha_ping", label: "ping", state: "mounted" }]);
-		expect(tools.servers.find((x) => x.name === "beta")?.enabled).toBe(true);
-		const resting = tools.servers.find((x) => x.name === "resting");
-		expect(resting).toMatchObject({ enabled: false, tools: [] });
-		expect(tools.builtin.some((t) => t.name.startsWith("mcp__"))).toBe(false);
+			const tools = toolsOf(data);
+			const read = tools.builtin.find((t) => t.name === "read");
+			expect(read?.state).toBe("active");
+			expect(read?.description).toBeTruthy();
+			expect(tools.builtin.find((t) => t.name === "bash")?.state).toBe("active");
+			// MCP tools are mounted as xd:// devices, not offered at the top level, and sit under their servers.
+			const alpha = tools.servers.find((x) => x.name === "alpha");
+			expect(alpha).toMatchObject({ transport: "stdio", enabled: true, scope: "user" });
+			expect(alpha?.tools).toEqual([{ name: "mcp__alpha_ping", label: "ping", state: "mounted" }]);
+			expect(tools.servers.find((x) => x.name === "beta")?.enabled).toBe(true);
+			const resting = tools.servers.find((x) => x.name === "resting");
+			expect(resting).toMatchObject({ enabled: false, tools: [] });
+			expect(tools.builtin.some((t) => t.name.startsWith("mcp__"))).toBe(false);
 
-		// Slash commands with where each comes from; the folder's skill is listed apart from them.
-		expect(isFailure(data.commands) || data.commands === null).toBe(false);
-		const commands = data.commands as { name: string; source: string; subcommands: number }[];
-		expect(commands.find((c) => c.name === "mcp")).toMatchObject({ source: "builtin" });
-		expect(commands.find((c) => c.name === "mcp")?.subcommands).toBeGreaterThan(5);
-		expect(commands.some((c) => c.name.startsWith("skill:"))).toBe(false);
-		expect(data.skills).toEqual([{ name: "demo-skill", description: "A skill of this folder", enabled: true }]);
+			// Slash commands with where each comes from; the folder's skill is listed apart from them.
+			expect(isFailure(data.commands) || data.commands === null).toBe(false);
+			const commands = data.commands as { name: string; source: string; subcommands: number }[];
+			expect(commands.find((c) => c.name === "mcp")).toMatchObject({ source: "builtin" });
+			expect(commands.find((c) => c.name === "mcp")?.subcommands).toBeGreaterThan(5);
+			expect(commands.some((c) => c.name.startsWith("skill:"))).toBe(false);
+			expect(data.skills).toEqual([{ name: "demo-skill", description: "A skill of this folder", enabled: true }]);
 
-		// omp's CLI, in the conversation's folder.
-		expect(isFailure(data.plugins)).toBe(false);
-		expect(data.plugins).toEqual([
-			expect.objectContaining({ name: "demo-plugin", version: "1.2.3", kind: "npm", enabled: true }),
-		]);
-		expect(isFailure(data.rules)).toBe(false);
-		const rules = data.rules as { name: string; provider: string; scope: string[]; triggers: string[] }[];
-		expect(rules.find((r) => r.name === "no-foo")).toMatchObject({
-			provider: "native",
-			scope: ["tool:edit(*.ts)"],
-			triggers: ["\\bfoo\\b"],
-		});
-		expect(rules.some((r) => r.provider === "builtin-defaults")).toBe(true);
+			// omp's CLI, in the conversation's folder.
+			expect(isFailure(data.plugins)).toBe(false);
+			expect(data.plugins).toEqual([
+				expect.objectContaining({ name: "demo-plugin", version: "1.2.3", kind: "npm", enabled: true }),
+			]);
+			expect(isFailure(data.rules)).toBe(false);
+			const rules = data.rules as { name: string; provider: string; scope: string[]; triggers: string[] }[];
+			expect(rules.find((r) => r.name === "no-foo")).toMatchObject({
+				provider: "native",
+				scope: ["tool:edit(*.ts)"],
+				triggers: ["\\bfoo\\b"],
+			});
+			expect(rules.some((r) => r.provider === "builtin-defaults")).toBe(true);
 
-		// Asking changed nothing the conversation can see: the output of /tools and /mcp list never reached its
-		// viewers, and nothing was sent to the model (no message in the session, no request to the stub).
-		expect(chat.frames.filter((f) => f.type === "command_output")).toEqual([]);
-		expect((await chat.rpc<{ messageCount: number }>({ type: "get_state" })).messageCount).toBe(0);
-		expect(omlx.chats).toEqual([]);
-	} finally {
-		await chat.close();
-	}
-}, 120_000);
+			// Asking changed nothing the conversation can see: the output of /tools and /mcp list never reached its
+			// viewers, and nothing was sent to the model (no message in the session, no request to the stub).
+			expect(chat.frames.filter((f) => f.type === "command_output")).toEqual([]);
+			expect((await chat.rpc<{ messageCount: number }>({ type: "get_state" })).messageCount).toBe(0);
+			expect(omlx.chats).toEqual([]);
+		} finally {
+			await chat.close();
+		}
+	},
+	120_000,
+);
 
 test("a saved conversation without a process still has its folder's plugins and rules, and no tools to list", async () => {
 	const data = await loaded(`file=${encodeURIComponent(s.fixtures.alpha)}`);
@@ -202,33 +208,40 @@ test("an offline conversation is asked in its own agent directory: its MCP serve
 	}
 }, 120_000);
 
-test("a conversation whose folder is gone says so for plugins and rules, not that omp is missing", async () => {
-	const gone = join(s.root, "gone-folder");
-	mkdirSync(gone, { recursive: true });
-	const file = writeSimpleSession(s.agentDir, 90, "Folder gone");
-	writeFileSync(file, readFileSync(file, "utf8").replace(FIXTURE_CWD, gone));
-	rmSync(gone, { recursive: true });
-	// The server learns of a new session file from its watcher, a moment later.
-	const query = `file=${encodeURIComponent(file)}`;
-	for (let i = 0; i < 50 && (await http(`/api/loaded?${query}`)).status === 404; i++) await Bun.sleep(100);
-	const data = await loaded(query);
-	expect(data.cwd).toBe(gone);
-	for (const section of [data.plugins, data.rules]) {
-		expect(section).toEqual({ error: `Folder no longer exists: ${gone}`, folderMissing: true });
-	}
-});
+test.skipIf(!has.notWindowsYet)(
+	"a conversation whose folder is gone says so for plugins and rules, not that omp is missing",
+	async () => {
+		const gone = join(s.root, "gone-folder");
+		mkdirSync(gone, { recursive: true });
+		const file = writeSimpleSession(s.agentDir, 90, "Folder gone");
+		writeFileSync(file, readFileSync(file, "utf8").replace(FIXTURE_CWD, gone));
+		rmSync(gone, { recursive: true });
+		// The server learns of a new session file from its watcher, a moment later.
+		const query = `file=${encodeURIComponent(file)}`;
+		for (let i = 0; i < 50 && (await http(`/api/loaded?${query}`)).status === 404; i++) await Bun.sleep(100);
+		const data = await loaded(query);
+		expect(data.cwd).toBe(gone);
+		for (const section of [data.plugins, data.rules]) {
+			expect(section).toEqual({ error: `Folder no longer exists: ${gone}`, folderMissing: true });
+		}
+	},
+);
 
-test("a paused conversation is not asked: not-running, with its folder's plugins and rules, and no failed sections", async () => {
-	const chat = await open({ kind: "new", cwd: s.work });
-	try {
-		await chat.pause();
-		const data = await loaded(`live=${chat.info.liveId}`);
-		expect([data.tools, data.commands, data.skills]).toEqual([null, null, null]);
-		expect(Array.isArray(data.plugins)).toBe(true);
-		expect(Array.isArray(data.rules)).toBe(true);
-		await chat.resume();
-		expect(toolsOf(await loaded(`live=${chat.info.liveId}`)).builtin.length).toBeGreaterThan(0);
-	} finally {
-		await chat.close();
-	}
-}, 120_000);
+test.skipIf(!capabilities.pauseResume)(
+	"a paused conversation is not asked: not-running, with its folder's plugins and rules, and no failed sections",
+	async () => {
+		const chat = await open({ kind: "new", cwd: s.work });
+		try {
+			await chat.pause();
+			const data = await loaded(`live=${chat.info.liveId}`);
+			expect([data.tools, data.commands, data.skills]).toEqual([null, null, null]);
+			expect(Array.isArray(data.plugins)).toBe(true);
+			expect(Array.isArray(data.rules)).toBe(true);
+			await chat.resume();
+			expect(toolsOf(await loaded(`live=${chat.info.liveId}`)).builtin.length).toBeGreaterThan(0);
+		} finally {
+			await chat.close();
+		}
+	},
+	120_000,
+);

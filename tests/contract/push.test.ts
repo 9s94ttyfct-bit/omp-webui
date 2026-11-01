@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { PUSH_API, type PushList } from "../../shared/push.ts";
 import {
@@ -18,6 +19,7 @@ import {
 } from "../support/access-jwt.ts";
 import { writeChatSession } from "../support/chat-session.ts";
 import { watchFrames } from "../support/frames.ts";
+import { expectMode } from "../support/modes.ts";
 import { pollUntil } from "../support/poll.ts";
 import { newReceiver, type Receiver } from "../support/push-receiver.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
@@ -245,7 +247,7 @@ describe("who may subscribe", () => {
 	test("the key and the devices are kept for their user alone, and the list never carries an endpoint or a key", async () => {
 		const d = await subscribe({ device: "k".repeat(24) });
 		for (const name of ["push-vapid.json", "push-devices.json"]) {
-			expect(statSync(join(server.root, "data", name)).mode & 0o777, name).toBe(0o600);
+			expectMode(join(server.root, "data", name), 0o600, name);
 		}
 		const text = await (await fetch(`${server.url}${PUSH_API}`, { headers: authed() })).text();
 		expect(text).not.toContain("/push/");
@@ -270,52 +272,61 @@ describe("a page that is not this computer's", () => {
 	});
 	const tunnelList = async () => fetch(`${server.url}${PUSH_API}`, { headers: await tunnel(), redirect: "manual" });
 
-	test("a phone through the tunnel may subscribe, list and revoke: push is not one of the routes only this computer has", async () => {
-		const headers = await tunnel();
-		const d = await subscribe({}, headers);
-		const res = await fetch(`${server.url}${PUSH_API}`, { headers, redirect: "manual" });
-		expect(res.status).toBe(200);
-		const seen: PushList = await res.json();
-		expect(seen.devices.map((x) => x.id)).toContain(d.id);
-		const gone = await fetch(`${server.url}${PUSH_API}/revoke`, {
-			method: "POST",
-			headers,
-			body: JSON.stringify({ id: d.id }),
-		});
-		expect(gone.status).toBe(200);
-		// Without the Access token it is not let in at all.
-		const anonymous = { ...headers };
-		delete anonymous["cf-access-jwt-assertion"];
-		expect((await fetch(`${server.url}${PUSH_API}`, { headers: anonymous, redirect: "manual" })).status).not.toBe(200);
-	});
+	test.skipIf(!capabilities.remoteAccess)(
+		"a phone through the tunnel may subscribe, list and revoke: push is not one of the routes only this computer has",
+		async () => {
+			const headers = await tunnel();
+			const d = await subscribe({}, headers);
+			const res = await fetch(`${server.url}${PUSH_API}`, { headers, redirect: "manual" });
+			expect(res.status).toBe(200);
+			const seen: PushList = await res.json();
+			expect(seen.devices.map((x) => x.id)).toContain(d.id);
+			const gone = await fetch(`${server.url}${PUSH_API}/revoke`, {
+				method: "POST",
+				headers,
+				body: JSON.stringify({ id: d.id }),
+			});
+			expect(gone.status).toBe(200);
+			// Without the Access token it is not let in at all.
+			const anonymous = { ...headers };
+			delete anonymous["cf-access-jwt-assertion"];
+			expect((await fetch(`${server.url}${PUSH_API}`, { headers: anonymous, redirect: "manual" })).status).not.toBe(
+				200,
+			);
+		},
+	);
 
-	test("a device that subscribed through the tunnel is pushed to only while remote access is on", async () => {
-		await choose({ "ompw.notify": "on", "ompw.lang": "en" });
-		const behindTunnel = await subscribe({}, await tunnel());
-		const control = await subscribe();
-		const from = received.length;
-		const c = await conversation("hello");
-		await c.run();
-		await pollUntil(
-			() => to(behindTunnel.path, from).length === 1 && to(control.path, from).length === 1,
-			"the pushes while remote access is on",
-		);
+	test.skipIf(!capabilities.remoteAccess)(
+		"a device that subscribed through the tunnel is pushed to only while remote access is on",
+		async () => {
+			await choose({ "ompw.notify": "on", "ompw.lang": "en" });
+			const behindTunnel = await subscribe({}, await tunnel());
+			const control = await subscribe();
+			const from = received.length;
+			const c = await conversation("hello");
+			await c.run();
+			await pollUntil(
+				() => to(behindTunnel.path, from).length === 1 && to(control.path, from).length === 1,
+				"the pushes while remote access is on",
+			);
 
-		// Remote access turned off: the device is kept, and told nothing, while a device of this computer still is.
-		writeFileSync(settingsFile, JSON.stringify({ ...GOOD, enabled: false }));
-		await pollUntil(async () => (await tunnelList()).status !== 200, "remote access to be refused");
-		await c.run();
-		await pollUntil(() => to(control.path, from).length === 2, "the push to the device of this computer");
-		expect(to(behindTunnel.path, from)).toHaveLength(1);
+			// Remote access turned off: the device is kept, and told nothing, while a device of this computer still is.
+			writeFileSync(settingsFile, JSON.stringify({ ...GOOD, enabled: false }));
+			await pollUntil(async () => (await tunnelList()).status !== 200, "remote access to be refused");
+			await c.run();
+			await pollUntil(() => to(control.path, from).length === 2, "the push to the device of this computer");
+			expect(to(behindTunnel.path, from)).toHaveLength(1);
 
-		// And it is told again once remote access is on.
-		writeFileSync(settingsFile, JSON.stringify(GOOD));
-		await pollUntil(async () => (await tunnelList()).status === 200, "remote access to be let in again");
-		await c.run();
-		await pollUntil(() => to(behindTunnel.path, from).length === 2, "the push once remote access is on again");
-		await c.close();
-		await revoke(behindTunnel, control);
-	}, 120_000);
+			// And it is told again once remote access is on.
+			writeFileSync(settingsFile, JSON.stringify(GOOD));
+			await pollUntil(async () => (await tunnelList()).status === 200, "remote access to be let in again");
+			await c.run();
+			await pollUntil(() => to(behindTunnel.path, from).length === 2, "the push once remote access is on again");
+			await c.close();
+			await revoke(behindTunnel, control);
+		},
+		120_000,
+	);
 });
 
 describe("a conversation that needs somebody", () => {

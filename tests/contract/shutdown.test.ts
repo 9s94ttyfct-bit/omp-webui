@@ -1,3 +1,4 @@
+// needs: posixSignals
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { ShutdownWorld } from "../support/shutdown-world.ts";
 

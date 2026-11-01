@@ -1,7 +1,7 @@
 import "./browser-globals.ts";
 import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -27,6 +27,7 @@ import type { AgentMessage } from "../../web/src/lib/messages.ts";
 import { rowSpend } from "../../web/src/lib/subagents.ts";
 import { conversationTotals, sumEntries, usageByModel } from "../../web/src/lib/totals.ts";
 import { stepStats, TurnTally } from "../../web/src/lib/turn-stats.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { installGlobals, restoreGlobals } from "./browser-globals.ts";
 
 /**
@@ -365,7 +366,7 @@ describe("the server's totals", () => {
 
 describe("totals an older version kept malformed", () => {
 	const root = mkdtempSync(join(tmpdir(), "ompw-usage-"));
-	afterAll(() => rmSync(root, { recursive: true, force: true }));
+	afterAll(() => removeScratch(root));
 
 	test("a stored summary with malformed totals is summed again from the file; a sound one is kept", async () => {
 		const dir = join(root, "store");

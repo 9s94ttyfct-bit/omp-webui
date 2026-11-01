@@ -7,6 +7,7 @@ import { type Build, buildInWorker, FamilyCache } from "../../server/family.ts";
 import { parseSessionText } from "../../server/sessions/parse.ts";
 import { SessionStore } from "../../server/sessions/store.ts";
 import { FIXTURE, seedFixtures } from "../support/fixtures.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * `/api/family` answers: the gzip-compressed JSON of a conversation's whole lineage, built off the request
@@ -17,7 +18,7 @@ const dirs: string[] = [];
 const stores: SessionStore[] = [];
 afterEach(() => {
 	for (const s of stores.splice(0)) s.close();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 /**

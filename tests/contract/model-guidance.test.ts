@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isRecord } from "../../shared/guards.ts";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { watchFrames } from "../support/frames.ts";
 import { lanAddress, rawSocket } from "../support/lan-peer.ts";
+import { expectMode } from "../support/modes.ts";
 import { pollUntil } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type ScriptedTurn, type StubScripted, startScriptedStub } from "../support/stub-scripted.ts";
@@ -126,7 +127,7 @@ test("a conversation started with guidance carries it in the main agent's reques
 	// What the page is told: the text, live (its omp runs the extension), and no template (it was typed).
 	expect(info.guidance).toEqual({ template: null, templateName: null, text: MARK, live: true });
 	// And the process says so in its command line.
-	expect(info.args.filter((_, i) => info.args[i - 1] === "--extension").some((a) => a.includes("/guidance/"))).toBe(
+	expect(info.args.filter((_, i) => info.args[i - 1] === "--extension").some((a) => /[\\/]guidance[\\/]/.test(a))).toBe(
 		true,
 	);
 	const mark = prompt("with");
@@ -200,7 +201,7 @@ test("a conversation started without guidance carries none, though its omp was s
 	const info = await request<LiveInfo>(ws, { t: "open", target: { kind: "new", cwd: server.work } });
 	expect(info.guidance).toBeUndefined();
 	// The extension is still started (it adds nothing without a file): one command line for every conversation.
-	expect(info.args.filter((_, i) => info.args[i - 1] === "--extension").some((a) => a.includes("/guidance/"))).toBe(
+	expect(info.args.filter((_, i) => info.args[i - 1] === "--extension").some((a) => /[\\/]guidance[\\/]/.test(a))).toBe(
 		true,
 	);
 	const mark = prompt("without");
@@ -263,7 +264,7 @@ test("the guidance file is in the conversation's own folder under the data dir, 
 	expect(found).toHaveLength(1);
 	const file = join(server.tmpDir, found[0] as string);
 	expect(readFileSync(file, "utf8")).toBe(`${MARK}\n`);
-	expect(statSync(file).mode & 0o777).toBe(0o600);
+	expectMode(file, 0o600);
 	// Turned off, the file is taken away: the extension adds nothing at all from the next turn (no empty block).
 	const off = await fetch(`${server.url}/api/model-guidance/live`, {
 		method: "POST",

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { Subprocess } from "bun";
 import { hostEnv } from "./omp-env.ts";
 import { trackRelayDir } from "./relay-dirs.ts";
-import { serverTmp } from "./tmp.ts";
+import { serverTmp, tempDirEnv } from "./tmp.ts";
 
 export interface AppServer {
 	proc: Subprocess;
@@ -43,7 +43,7 @@ export async function startAppServer(
 			...env,
 			// The temp dir of this server: one of its own, so that the server of another data dir (another test file
 			// running in parallel) never sweeps the overlay directories of this one's dead servers (#461).
-			TMPDIR: serverTmp(env.TMPDIR ?? join(dataDir, "tmp"), dataDir),
+			...tempDirEnv(serverTmp(env.TMPDIR ?? join(dataDir, "tmp"), dataDir)),
 			OMP_WEBUI_DATA_DIR: dataDir,
 			OMP_WEBUI_PORT: String(port),
 			OMP_WEBUI_AUTO_PORT: "1",

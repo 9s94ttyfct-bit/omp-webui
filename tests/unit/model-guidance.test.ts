@@ -21,6 +21,8 @@ import {
 	guidanceTextOf,
 	parseSessionGuidance,
 } from "../../shared/model-guidance.ts";
+import { expectMode } from "../support/modes.ts";
+import { has } from "../support/needs.ts";
 import { tempDir } from "../support/temp-dirs.ts";
 
 /**
@@ -53,7 +55,7 @@ describe("the templates", () => {
 			text: "At most one Sonnet subagent.",
 		});
 		const file = join(data, "model-guidance.json");
-		expect(statSync(file).mode & 0o777).toBe(0o600);
+		expectMode(file, 0o600);
 		expect(JSON.parse(readFileSync(file, "utf8")).templates).toHaveLength(BUILTIN_GUIDANCE.length + 1);
 	});
 
@@ -213,19 +215,22 @@ describe("what a page sends as a conversation's guidance", () => {
 });
 
 describe("the file a conversation's omp reads", () => {
-	test("it sits beside the conversation's settings overlay, or in the fallback folder when there is none", () => {
-		expect(guidanceFileFor("L1", "/tmp/ompw-live-1/L1.yml", "/data/guidance/live")).toBe(
-			"/tmp/ompw-live-1/L1.yml.guidance.md",
-		);
-		expect(guidanceFileFor("L1", null, "/data/guidance/live")).toBe("/data/guidance/live/L1.guidance.md");
-	});
+	test.skipIf(!has.notWindowsYet)(
+		"it sits beside the conversation's settings overlay, or in the fallback folder when there is none",
+		() => {
+			expect(guidanceFileFor("L1", "/tmp/ompw-live-1/L1.yml", "/data/guidance/live")).toBe(
+				"/tmp/ompw-live-1/L1.yml.guidance.md",
+			);
+			expect(guidanceFileFor("L1", null, "/data/guidance/live")).toBe("/data/guidance/live/L1.guidance.md");
+		},
+	);
 
 	test("writing it is 0600 and atomic, and no text takes the file away", () => {
 		const data = dir();
 		const file = join(data, "L1.yml.guidance.md");
 		writeGuidanceFile(file, "  ## Model guidance\nOne at a time.  ");
 		expect(readFileSync(file, "utf8")).toBe("## Model guidance\nOne at a time.\n");
-		expect(statSync(file).mode & 0o777).toBe(0o600);
+		expectMode(file, 0o600);
 		writeGuidanceFile(file, "   ");
 		expect(() => statSync(file)).toThrow();
 	});
@@ -241,7 +246,7 @@ describe("the extension omp is started with", () => {
 		expect(text).toContain("before_agent_start");
 		expect(text).toContain("OMPW_GUIDANCE_FILE");
 		expect(text).not.toContain("tool_call");
-		expect(statSync(path).mode & 0o777).toBe(0o600);
+		expectMode(path, 0o600);
 	});
 
 	test("a file already as the server has it is not written again, and one that differs is", () => {
@@ -309,7 +314,7 @@ describe("the extension's own side of the file", () => {
 		expect(await load(file, "main")).toBeUndefined();
 		const note = `${file}${GUIDANCE_LOADED_SUFFIX}`;
 		expect(readFileSync(note, "utf8")).toBe(String(process.pid));
-		expect(statSync(note).mode & 0o777).toBe(0o600);
+		expectMode(note, 0o600);
 	});
 });
 

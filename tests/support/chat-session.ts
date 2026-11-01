@@ -80,7 +80,8 @@ export function writeChatSession(agentDir: string, o: ChatSessionOptions): strin
 		});
 		parent = `t${i}r`;
 	});
-	const bucket = join(agentDir, "sessions", cwd.replaceAll("/", "-"));
+	// A folder name of the path's parts; a Windows path's drive colon and backslashes are separators too.
+	const bucket = join(agentDir, "sessions", cwd.replace(/[\\/:]/g, "-"));
 	mkdirSync(bucket, { recursive: true });
 	const file = join(bucket, `2026-01-09T00-${hex}-00-000Z_${id}.jsonl`);
 	writeFileSync(file, `${lines.map((l) => JSON.stringify(l)).join("\n")}\n`);

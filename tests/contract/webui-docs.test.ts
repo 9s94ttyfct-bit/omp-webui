@@ -116,7 +116,9 @@ const docsCall = (args: Record<string, unknown>): Call => ({
 test("the app starts omp with the docs extension, and the main agent is offered webui_docs", async () => {
 	const c = await conversation();
 	const given = c.live.args.flatMap((arg, i) => (c.live.args[i - 1] === "--extension" ? [arg] : []));
-	const extension = given.find((a) => a.endsWith("/webui-docs/server/omp/docs-tool/extension.ts"));
+	const extension = given.find((a) =>
+		a.split("\\").join("/").endsWith("/webui-docs/server/omp/docs-tool/extension.ts"),
+	);
 	expect(extension).toBeDefined();
 	// The server put the extension, its lookup and the docs in place before it started omp.
 	for (const f of ["extension.ts", "lookup.ts", "docs-data.ts"])

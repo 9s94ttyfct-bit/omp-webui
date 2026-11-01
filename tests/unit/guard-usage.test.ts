@@ -1,9 +1,10 @@
 import { Database } from "bun:sqlite";
 import { afterAll, expect, test } from "bun:test";
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addGuardUsage, GuardUsageIndex, transcriptKind } from "../../server/guard-usage.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * What the guard's reviewer spent, as an agent type of its own on Usage & cost (#689): `omp stats` counts each of its
@@ -12,7 +13,7 @@ import { addGuardUsage, GuardUsageIndex, transcriptKind } from "../../server/gua
  */
 
 const root = mkdtempSync(join(tmpdir(), "ompw-guard-usage-"));
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => removeScratch(root));
 
 const T = Date.UTC(2026, 9, 27, 12);
 const guard = (id: string, at: number, cost: number) =>

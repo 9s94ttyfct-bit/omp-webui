@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { decodeMacs, MacError, SavedMacs } from "../../server/saved-macs.ts";
 import { MAC_LIMIT } from "../../shared/macs.ts";
+import { expectMode } from "../support/modes.ts";
 import { tempDir } from "../support/temp-dirs.ts";
 
 /**
@@ -164,7 +165,7 @@ describe("SavedMacs", () => {
 		);
 		expect(mac.added).toBe("2026-10-25T08:00:00Z");
 		expect(mac.team).toBe("myteam");
-		expect(statSync(path).mode & 0o777).toBe(0o600);
+		expectMode(path, 0o600);
 		expect(changes.length).toBe(1);
 		// No temporary file is left beside it.
 		expect(readdirSync(join(path, "..")).sort()).toEqual(["remote-macs.json"]);

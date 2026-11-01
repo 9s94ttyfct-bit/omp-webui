@@ -1,9 +1,10 @@
 import { Database } from "bun:sqlite";
 import { afterAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { agentTypesOf, entryKey, holdsLatest, statsDbPath, statsFromDb } from "../../server/omp/stats-db.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * Usage & cost over any range (#714) is read from omp's statistics database. These are the figures a page shows; the
@@ -11,7 +12,7 @@ import { agentTypesOf, entryKey, holdsLatest, statsDbPath, statsFromDb } from ".
  */
 
 const root = mkdtempSync(join(tmpdir(), "ompw-stats-db-"));
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => removeScratch(root));
 
 const DAY = 86_400_000;
 const T0 = Date.UTC(2026, 9, 25, 10);

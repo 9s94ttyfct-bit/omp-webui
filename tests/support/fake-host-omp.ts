@@ -1,5 +1,4 @@
-import { chmodSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { writeBunProgram } from "./bun-program.ts";
 
 /**
  * A scripted stand-in for `omp --mode rpc-ui` that serves what the web UI hands omp besides commands: a
@@ -121,8 +120,5 @@ for await (const chunk of Bun.stdin.stream()) {
   }
 }
 `;
-	const bin = join(dir, "omp");
-	writeFileSync(bin, script);
-	chmodSync(bin, 0o755);
-	return bin;
+	return writeBunProgram(dir, "omp", script);
 }

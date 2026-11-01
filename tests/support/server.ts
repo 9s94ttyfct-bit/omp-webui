@@ -1,15 +1,17 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout as sleep } from "node:timers/promises";
+import { platformId } from "../../server/platform/capabilities.ts";
 import { FIXTURE_CWD, type SeededFixtures, seedFixtures } from "./fixtures.ts";
 import { hostEnv, isolatedEnv } from "./omp-env.ts";
 import { removeRelayDir } from "./relay-dirs.ts";
+import { removeScratch } from "./scratch.ts";
 import { trackServer } from "./test-servers.ts";
-import { serverTmp } from "./tmp.ts";
+import { serverTmp, tempDirEnv } from "./tmp.ts";
 
 export interface TestServer {
 	/** Everything the current server has printed so far (after a `restart`: since it). */
@@ -78,9 +80,7 @@ export async function startTestServer(
  * removed (#768).
  */
 function killStrays(root: string): void {
-	// platform-allow: the test servers' strays, by command line, in one synchronous listing; the suites run on macOS and Linux
-	const table = execFileSync("ps", ["-A", "-o", "pid=,command="], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-	for (const line of table.split("\n")) {
+	for (const line of processTable().split(/\r?\n/)) {
 		const [pid] = line.trim().split(/\s+/, 1);
 		if (!line.includes(root) || Number(pid) === process.pid) continue;
 		try {
@@ -89,11 +89,30 @@ function killStrays(root: string): void {
 	}
 }
 
+/** Every process as its pid and command line, a line each, from one synchronous listing (Playwright's runner is not Bun). */
+function processTable(): string {
+	const read = { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 } as const;
+	if (platformId === "win32") {
+		const script = 'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.CommandLine)" }';
+		// By its full path: a test may have narrowed PATH.
+		const powershell = join(
+			process.env.SystemRoot ?? "C:\\Windows",
+			"System32",
+			"WindowsPowerShell",
+			"v1.0",
+			"powershell.exe",
+		);
+		return execFileSync(powershell, ["-NoProfile", "-NonInteractive", "-Command", script], read);
+	}
+	// platform-allow: the test servers' strays, by command line, in one synchronous listing (POSIX; Windows: CIM, above)
+	return execFileSync("ps", ["-A", "-o", "pid=,command="], read);
+}
+
 /** Remove a test server's directory (and its relay directory), unless the run keeps it for inspection. */
 function removeWorld(root: string): void {
 	if (process.env.OMPW_KEEP_E2E) return;
 	removeRelayDir(join(root, "data"));
-	rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+	removeScratch(root);
 }
 
 async function boot(
@@ -166,7 +185,7 @@ async function boot(
 			env: {
 				...hostEnv(),
 				...env,
-				TMPDIR: tmpDir,
+				...tempDirEnv(tmpDir),
 				OMP_WEBUI_DATA_DIR: dataDir,
 				OMP_WEBUI_PORT: String(listening),
 				OMP_WEBUI_TOKEN: accessToken,

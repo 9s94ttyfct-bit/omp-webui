@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BenchInfo, BenchRun } from "../../shared/guard-bench.ts";
@@ -7,6 +7,8 @@ import { DEFAULT_POLICY, DEFAULT_POLICY_VERSION, type GuardRules } from "../../s
 import { type AccessKey, type Jwks, makeKey, startJwks } from "../support/access-jwt.ts";
 import { writeFakeOmp } from "../support/fake-omp.ts";
 import { messageWhere } from "../support/frames.ts";
+import { expectMode } from "../support/modes.ts";
+import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
 import { remoteClient, remoteSettings } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
@@ -45,7 +47,6 @@ const post = (path: string, body: unknown) =>
 const rulesNow = async (): Promise<GuardRules> =>
 	((await (await fetch(`${s.url}/api/guard/rules`, { headers: authed() })).json()) as { rules: GuardRules }).rules;
 const guardFile = () => join(s.root, "guard.json");
-const mode = (path: string) => statSync(path).mode & 0o777;
 /** The command lines the fake reviewer was given, in order. */
 const reviewed = (): { argv: string[]; cwd: string }[] =>
 	existsSync(reviewLog)
@@ -118,7 +119,7 @@ describe("what the person tuned", () => {
 		ws.close();
 
 		// On disk: the rules beside the mode, private to the user, and the same ones read back.
-		expect(mode(guardFile())).toBe(0o600);
+		expectMode(guardFile(), 0o600);
 		const onDisk = JSON.parse(readFileSync(guardFile(), "utf8"));
 		expect(onDisk.thresholds).toEqual({ delete_outside: "block", write_outside: "allow" });
 		expect(onDisk.policy.text).toBe("Reading: allow.\nDeleting outside the project: block.");
@@ -127,7 +128,7 @@ describe("what the person tuned", () => {
 		// The mode is changed by the other route and leaves the rules alone.
 		expect((await post("/api/guard", { mode: "ask" })).status).toBe(200);
 		expect(await rulesNow()).toEqual(kept);
-		expect(mode(guardFile())).toBe(0o600);
+		expectMode(guardFile(), 0o600);
 
 		// What cannot be loosened, an empty rule set, a text that is not text, an unknown kind: refused, nothing changes.
 		for (const bad of [
@@ -153,7 +154,7 @@ describe("what the person tuned", () => {
 		expect((await post("/api/guard/rules", { policy: null })).status).toBe(200);
 		expect(JSON.parse(readFileSync(guardFile(), "utf8")).policy).toBeUndefined();
 		expect((await rulesNow()).thresholds).toEqual({ delete_outside: "block", write_outside: "allow" });
-		expect(mode(guardFile())).toBe(0o600);
+		expectMode(guardFile(), 0o600);
 	}, 60_000);
 
 	test("changed behind the server's back, the file is written again from what the server holds", async () => {
@@ -164,7 +165,7 @@ describe("what the person tuned", () => {
 			"the server to write its settings again",
 		);
 		expect(await rulesNow()).toEqual(before);
-		expect(mode(guardFile())).toBe(0o600);
+		expectMode(guardFile(), 0o600);
 	}, 60_000);
 
 	test("a page that came through the tunnel is refused the rules and the benchmark, and nothing is changed or started", async () => {
@@ -192,36 +193,40 @@ describe("what the person tuned", () => {
 		expect(reviewed()).toEqual([]);
 	}, 60_000);
 
-	test("what an Allow would let through is tried first: the shipped harmful cases that would then run unasked, from the classifier alone", async () => {
-		const none = await post("/api/guard/bench/preview", { thresholds: {} });
-		expect(none.status).toBe(200);
-		const idle = ((await none.json()) as { preview: { now: number; after: number; total: number } }).preview;
-		expect(idle).toMatchObject({ now: 0, after: 0 });
-		expect(idle.total).toBeGreaterThan(15);
-		const res = await post("/api/guard/bench/preview", { thresholds: { delete_outside: "allow" } });
-		expect(res.status).toBe(200);
-		const { preview } = (await res.json()) as { preview: { now: number; after: number; ids: string[] } };
-		expect(preview.now).toBe(0);
-		expect(preview.after).toBeGreaterThan(0);
-		// Only what carries nothing broader: the sweeps, the loops, the home folder stay Ask.
-		expect(preview.ids).toContain("rm_folder");
-		for (const id of ["rm_home_glob", "find_delete", "xargs_rm", "rsync_delete", "truncate_loop"])
-			expect(preview.ids, id).not.toContain(id);
-		// A trial changes nothing, and runs nothing.
-		expect((await rulesNow()).thresholds?.delete_outside).not.toBe("allow");
-		const info = (await (await fetch(`${s.url}/api/guard/bench`, { headers: authed() })).json()) as BenchInfo;
-		expect(info.run).toBeNull();
-		// What cannot be Allow cannot be tried as Allow; a bad body is refused; only POST.
-		for (const bad of [
-			{ thresholds: { mass_delete: "allow" } },
-			{ thresholds: { protected: "allow" } },
-			{ thresholds: { nope: "allow" } },
-			{ thresholds: 5 },
-			{},
-		])
-			expect((await post("/api/guard/bench/preview", bad)).status, JSON.stringify(bad)).toBe(400);
-		expect((await fetch(`${s.url}/api/guard/bench/preview`, { headers: authed() })).status).toBe(405);
-	}, 60_000);
+	test.skipIf(!has.posixPaths)(
+		"what an Allow would let through is tried first: the shipped harmful cases that would then run unasked, from the classifier alone",
+		async () => {
+			const none = await post("/api/guard/bench/preview", { thresholds: {} });
+			expect(none.status).toBe(200);
+			const idle = ((await none.json()) as { preview: { now: number; after: number; total: number } }).preview;
+			expect(idle).toMatchObject({ now: 0, after: 0 });
+			expect(idle.total).toBeGreaterThan(15);
+			const res = await post("/api/guard/bench/preview", { thresholds: { delete_outside: "allow" } });
+			expect(res.status).toBe(200);
+			const { preview } = (await res.json()) as { preview: { now: number; after: number; ids: string[] } };
+			expect(preview.now).toBe(0);
+			expect(preview.after).toBeGreaterThan(0);
+			// Only what carries nothing broader: the sweeps, the loops, the home folder stay Ask.
+			expect(preview.ids).toContain("rm_folder");
+			for (const id of ["rm_home_glob", "find_delete", "xargs_rm", "rsync_delete", "truncate_loop"])
+				expect(preview.ids, id).not.toContain(id);
+			// A trial changes nothing, and runs nothing.
+			expect((await rulesNow()).thresholds?.delete_outside).not.toBe("allow");
+			const info = (await (await fetch(`${s.url}/api/guard/bench`, { headers: authed() })).json()) as BenchInfo;
+			expect(info.run).toBeNull();
+			// What cannot be Allow cannot be tried as Allow; a bad body is refused; only POST.
+			for (const bad of [
+				{ thresholds: { mass_delete: "allow" } },
+				{ thresholds: { protected: "allow" } },
+				{ thresholds: { nope: "allow" } },
+				{ thresholds: 5 },
+				{},
+			])
+				expect((await post("/api/guard/bench/preview", bad)).status, JSON.stringify(bad)).toBe(400);
+			expect((await fetch(`${s.url}/api/guard/bench/preview`, { headers: authed() })).status).toBe(405);
+		},
+		60_000,
+	);
 });
 
 /** Wait for the benchmark's run to be over, and give it. */

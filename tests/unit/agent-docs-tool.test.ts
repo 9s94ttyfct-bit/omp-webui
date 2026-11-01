@@ -6,6 +6,7 @@ import docsData from "../../server/omp/docs-tool/docs-data.ts";
 import webuiDocs, { answer, DOCS_TOOL } from "../../server/omp/docs-tool/extension.ts";
 import { DocsToolService, docsToolPaths, installDocsTool } from "../../server/omp/docs-tool/install.ts";
 import { createLookup, DocsError, READ_MAX, SEARCH_LIMIT_MAX } from "../../server/omp/docs-tool/lookup.ts";
+import { expectMode } from "../support/modes.ts";
 
 /**
  * The `webui_docs` tool (`server/omp/docs-tool/`): the lookup it answers with (list, search, read, and what it refuses), the
@@ -200,7 +201,7 @@ describe("the installed copy", () => {
 		expect(path).toBe(join(data, "webui-docs", "server", "omp", "docs-tool", "extension.ts"));
 		const dir = join(data, "webui-docs", "server", "omp", "docs-tool");
 		expect(readdirSync(dir).sort()).toEqual(["docs-data.ts", "extension.ts", "lookup.ts"]);
-		for (const f of readdirSync(dir)) expect(statSync(join(dir, f)).mode & 0o777).toBe(0o600);
+		for (const f of readdirSync(dir)) expectMode(join(dir, f), 0o600);
 		const installed = (await import(join(dir, "docs-data.ts"))).default as Record<string, string>;
 		const docsDir = join(import.meta.dir, "..", "..", "docs", "agents");
 		const onDisk = Object.fromEntries(

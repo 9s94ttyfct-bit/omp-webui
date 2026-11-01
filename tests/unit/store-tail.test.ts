@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { emptyUsage, parseSessionText, summarize, withDependents } from "../../server/sessions/parse.ts";
 import { SessionStore, type StoreOptions } from "../../server/sessions/store.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * A transcript that grew is summarized and indexed from where the last pass stopped, not from its first byte; one
@@ -24,7 +25,7 @@ const root = mkdtempSync(join(tmpdir(), "ompw-tail-"));
 const stores: SessionStore[] = [];
 afterAll(() => {
 	for (const s of stores) s.close();
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 let cases = 0;

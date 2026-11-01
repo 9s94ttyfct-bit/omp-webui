@@ -7,7 +7,8 @@
  *
  * `MAC_TESTS` is the list, read from the tests themselves: a test file whose cases only a Mac runs gates them on a
  * capability macOS has and Linux has not (`MAC_ONLY`: `capabilities.appShell`, `appUpdate`, `openFiles`, `keepAwake`,
- * `gpuLoad`), or, for a case about the system itself rather than a feature (BSD's `stat`, `~/Library`), on the darwin
+ * `gpuLoad`), as `capabilities.x`, `has.x` or a file's `// needs: x` line (tests/support/needs.ts, which Linux's shards
+ * leave out), or, for a case about the system itself rather than a feature (BSD's `stat`, `~/Library`), on the darwin
  * adapter by its id (`platform.id === "darwin"`). tests/unit/mac-tests.test.ts holds the tests to that: none asks
  * `process.platform`. The tests that open real windows (`OMPW_GUI_TESTS=1`, tests/support/gui-tests.ts) still skip here:
  * they take the focus of whoever uses the Mac, and stay `bun run test:gui`, by hand.
@@ -31,9 +32,10 @@ const linux = capabilitiesFor("linux");
 /** The capabilities macOS has and Linux, where CI runs the suite, has not: what CI's run of a test file skips. */
 export const MAC_ONLY = (Object.keys(mac) as Capability[]).filter((c) => mac[c] && !linux[c]);
 
-/** A gate of a case only a Mac runs: a capability of `MAC_ONLY`, or the darwin adapter by its id. */
+/** A gate of a case only a Mac runs: a capability of `MAC_ONLY` (in code or a `// needs:` line), or the darwin adapter by its id. */
 const MAC_GATE = new RegExp(
-	`\\bcapabilities\\.(?:${MAC_ONLY.join("|")})\\b|\\bplatform\\.id\\s*[!=]==?\\s*["']darwin["']`,
+	`\\b(?:capabilities|has)\\.(?:${MAC_ONLY.join("|")})\\b|^// needs: .*\\b(?:${MAC_ONLY.join("|")})\\b|\\bplatform\\.id\\s*[!=]==?\\s*["']darwin["']`,
+	"m",
 );
 
 /** The test files under `root`'s tests/ with cases that run only on macOS, relative to the checkout, sorted. */

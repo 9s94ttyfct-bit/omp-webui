@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { isRecord } from "../../shared/guards.ts";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { STOP_GRACE_MS } from "../../shared/stop.ts";
 import { type Frame, messageWhere, type ServerMsg, watchFrames } from "../support/frames.ts";
+import { has } from "../support/needs.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import {
@@ -304,21 +306,25 @@ test("(a) omp backs off before a retry of a usage limit: Stop ends the wait, rep
 	}
 }, 90_000);
 
-test("(b) omp does not answer at all (frozen): Stop ends its process within the bound, says why, keeps the file, and the next message reopens it", async () => {
-	const { chat, file } = await stuck("hold", (f) => f.type === "agent_start");
-	try {
-		const pid = (await chat.listing())?.pid as number;
-		expect(processExists(pid)).toBe(true);
-		// Not a pause of the server's: a process that stopped answering, which no abort reaches.
-		process.kill(pid, "SIGSTOP");
-		const { ms, answers } = await chat.stop(10);
-		// Every press got the same outcome: the one Stop that ran.
-		expect(answers.every((a) => a.ended === "stopped")).toBe(true);
-		await expectEndedAndReopens(chat, file, ms, pid);
-	} finally {
-		chat.close();
-	}
-}, 120_000);
+test.skipIf(!capabilities.pauseResume)(
+	"(b) omp does not answer at all (frozen): Stop ends its process within the bound, says why, keeps the file, and the next message reopens it",
+	async () => {
+		const { chat, file } = await stuck("hold", (f) => f.type === "agent_start");
+		try {
+			const pid = (await chat.listing())?.pid as number;
+			expect(processExists(pid)).toBe(true);
+			// Not a pause of the server's: a process that stopped answering, which no abort reaches.
+			process.kill(pid, "SIGSTOP");
+			const { ms, answers } = await chat.stop(10);
+			// Every press got the same outcome: the one Stop that ran.
+			expect(answers.every((a) => a.ended === "stopped")).toBe(true);
+			await expectEndedAndReopens(chat, file, ms, pid);
+		} finally {
+			chat.close();
+		}
+	},
+	120_000,
+);
 
 test("(b2) the provider holds the request open forever: Stop ends the turn itself, and the next message works", async () => {
 	const { chat } = await stuck("hold", (f) => f.type === "agent_start");
@@ -350,20 +356,24 @@ test("(c) a subagent waits out a usage limit for hours after the turn that start
 	}
 }, 90_000);
 
-test("(c) a paused conversation whose subagent waits for a usage limit is stopped too: it runs again for it, and is idle after", async () => {
-	const { chat, turn } = await stuck("sub-limit", subagentRetry);
-	try {
-		// Paused once the turn that started the subagent is over (as above), not while the turn still runs.
-		await chat.frames.next((f) => f.type === "agent_end", turn);
-		await request(chat.ws, { t: "pause", liveId: chat.info.liveId });
-		expect((await chat.listing())?.pausedAt).not.toBeNull();
-		const { ms } = await chat.stop(2, true);
-		expect((await chat.listing())?.pausedAt).toBeNull();
-		await expectIdleAndUsable(chat, ms);
-	} finally {
-		chat.close();
-	}
-}, 90_000);
+test.skipIf(!capabilities.pauseResume)(
+	"(c) a paused conversation whose subagent waits for a usage limit is stopped too: it runs again for it, and is idle after",
+	async () => {
+		const { chat, turn } = await stuck("sub-limit", subagentRetry);
+		try {
+			// Paused once the turn that started the subagent is over (as above), not while the turn still runs.
+			await chat.frames.next((f) => f.type === "agent_end", turn);
+			await request(chat.ws, { t: "pause", liveId: chat.info.liveId });
+			expect((await chat.listing())?.pausedAt).not.toBeNull();
+			const { ms } = await chat.stop(2, true);
+			expect((await chat.listing())?.pausedAt).toBeNull();
+			await expectIdleAndUsable(chat, ms);
+		} finally {
+			chat.close();
+		}
+	},
+	90_000,
+);
 
 test("(d) a tool that does not end (sleep 600): Stop ends the turn within the bound, and the next message works", async () => {
 	const { chat } = await stuck("tool", (f) => f.type === "tool_execution_start");
@@ -380,103 +390,119 @@ test("(d) a tool that does not end (sleep 600): Stop ends the turn within the bo
  * Measured against omp 18.12.6: its abort ends the turn and the tool's process with it (gone within a few seconds), and omp is
  * not ended: Stop has nothing to add here, so the conversation is idle on the same process.
  */
-test("(d) a tool that ignores TERM, INT and HUP: Stop ends the turn within the bound and the conversation is idle", async () => {
-	const { chat } = await stuck("tool-trap", (f) => f.type === "tool_execution_start");
-	let tool = 0;
-	try {
-		await pollUntil(() => existsSync(pidFile), "the stuck tool to write its pid");
-		tool = Number(readFileSync(pidFile, "utf8").trim());
-		const omp = (await chat.listing())?.pid;
-		expect(tool).not.toBe(omp);
-		expect(processExists(tool)).toBe(true);
-		const { ms } = await chat.stop(3);
-		expect(ms).toBeLessThan(allowed(chat, ENDED_BY_SERVER_MS));
-		// omp ended the turn, or the server ended omp: no stream and no retry at the answer.
-		const left = await chat.listing();
-		expect(left === undefined || (left.streaming === false && left.retry === undefined)).toBe(true);
-		// Nothing holds it busy a moment after: omp says the session is settled with a frame of its own, behind the answer (on a
-		// slow machine well behind it), as `expectIdleAndUsable` waits for too.
-		await pollUntil(
-			async () => {
-				const now = await chat.listing();
-				return now === undefined || now.busy === false;
-			},
-			"the conversation to be idle",
-			allowed(chat, ENDS_BY_ITSELF_MS),
-		);
-		await pollUntil(() => !processExists(tool), "omp to end the stuck tool", 10_000);
-	} finally {
-		// The tool is this test's own process: it does not outlive the test, whatever happened to it.
-		if (tool > 0) {
-			try {
-				process.kill(tool, "SIGKILL");
-			} catch {
-				// already gone
+test.skipIf(!has.posixSignals)(
+	"(d) a tool that ignores TERM, INT and HUP: Stop ends the turn within the bound and the conversation is idle",
+	async () => {
+		const { chat } = await stuck("tool-trap", (f) => f.type === "tool_execution_start");
+		let tool = 0;
+		try {
+			await pollUntil(() => existsSync(pidFile), "the stuck tool to write its pid");
+			tool = Number(readFileSync(pidFile, "utf8").trim());
+			const omp = (await chat.listing())?.pid;
+			expect(tool).not.toBe(omp);
+			expect(processExists(tool)).toBe(true);
+			const { ms } = await chat.stop(3);
+			expect(ms).toBeLessThan(allowed(chat, ENDED_BY_SERVER_MS));
+			// omp ended the turn, or the server ended omp: no stream and no retry at the answer.
+			const left = await chat.listing();
+			expect(left === undefined || (left.streaming === false && left.retry === undefined)).toBe(true);
+			// Nothing holds it busy a moment after: omp says the session is settled with a frame of its own, behind the answer (on a
+			// slow machine well behind it), as `expectIdleAndUsable` waits for too.
+			await pollUntil(
+				async () => {
+					const now = await chat.listing();
+					return now === undefined || now.busy === false;
+				},
+				"the conversation to be idle",
+				allowed(chat, ENDS_BY_ITSELF_MS),
+			);
+			await pollUntil(() => !processExists(tool), "omp to end the stuck tool", 10_000);
+		} finally {
+			// The tool is this test's own process: it does not outlive the test, whatever happened to it.
+			if (tool > 0) {
+				try {
+					process.kill(tool, "SIGKILL");
+				} catch {
+					// already gone
+				}
 			}
+			chat.close();
 		}
-		chat.close();
-	}
-}, 120_000);
+	},
+	120_000,
+);
 
-test("a paused conversation that is mid-turn is stopped: it runs again, and the turn ends", async () => {
-	const { chat } = await stuck("hold", (f) => f.type === "agent_start");
-	try {
-		await request(chat.ws, { t: "pause", liveId: chat.info.liveId });
-		expect((await chat.listing())?.pausedAt).not.toBeNull();
-		const { ms } = await chat.stop(2, true);
-		expect((await chat.listing())?.pausedAt).toBeNull();
-		await expectIdleAndUsable(chat, ms);
-	} finally {
-		chat.close();
-	}
-}, 90_000);
+test.skipIf(!capabilities.pauseResume)(
+	"a paused conversation that is mid-turn is stopped: it runs again, and the turn ends",
+	async () => {
+		const { chat } = await stuck("hold", (f) => f.type === "agent_start");
+		try {
+			await request(chat.ws, { t: "pause", liveId: chat.info.liveId });
+			expect((await chat.listing())?.pausedAt).not.toBeNull();
+			const { ms } = await chat.stop(2, true);
+			expect((await chat.listing())?.pausedAt).toBeNull();
+			await expectIdleAndUsable(chat, ms);
+		} finally {
+			chat.close();
+		}
+	},
+	90_000,
+);
 
-test("a Stop with no resume before it (another client's) runs a paused conversation again by itself, and the turn ends", async () => {
-	const { chat } = await stuck("hold", (f) => f.type === "agent_start");
-	try {
-		await request(chat.ws, { t: "pause", liveId: chat.info.liveId });
-		expect((await chat.listing())?.pausedAt).not.toBeNull();
-		const { ms } = await chat.stop(1);
-		expect((await chat.listing())?.pausedAt).toBeNull();
-		await expectIdleAndUsable(chat, ms);
-	} finally {
-		chat.close();
-	}
-}, 90_000);
+test.skipIf(!capabilities.pauseResume)(
+	"a Stop with no resume before it (another client's) runs a paused conversation again by itself, and the turn ends",
+	async () => {
+		const { chat } = await stuck("hold", (f) => f.type === "agent_start");
+		try {
+			await request(chat.ws, { t: "pause", liveId: chat.info.liveId });
+			expect((await chat.listing())?.pausedAt).not.toBeNull();
+			const { ms } = await chat.stop(1);
+			expect((await chat.listing())?.pausedAt).toBeNull();
+			await expectIdleAndUsable(chat, ms);
+		} finally {
+			chat.close();
+		}
+	},
+	90_000,
+);
 
-test("(e) a background job of the session that is not a subagent is left running by Stop: Stop answers, omp and the job are not ended", async () => {
-	const { chat } = await stuck("bg-job", (f) => f.type === "tool_execution_end");
-	let job = 0;
-	try {
-		await pollUntil(() => existsSync(jobFile), "the background job to write its pid");
-		job = Number(readFileSync(jobFile, "utf8").trim());
-		const omp = (await chat.listing())?.pid as number;
-		expect(job).not.toBe(omp);
-		// The turn is over, and the job keeps the session busy for as long as it runs (omp's `isSettled: false`).
-		await pollUntil(async () => {
-			const l = await chat.listing();
-			return l?.streaming === false && l.busy === true;
-		}, "the turn to end with the job still running");
-		const { ms, answers } = await chat.stop(3);
-		expect(ms).toBeLessThan(allowed(chat, ENDS_BY_ITSELF_MS));
-		expect(answers.some((a) => a.ended !== undefined)).toBe(false);
-		// Stop is for the turn: omp keeps its job, and omp is not ended for it.
-		expect((await chat.listing())?.pid).toBe(omp);
-		expect(processExists(omp)).toBe(true);
-		expect(processExists(job)).toBe(true);
-		mode = "ok";
-		await chat.say("NEXT MARK-NEXT");
-	} finally {
-		if (job > 0) {
-			try {
-				process.kill(job, "SIGKILL");
-			} catch {
-				// already gone
+test.skipIf(!has.posixSignals)(
+	"(e) a background job of the session that is not a subagent is left running by Stop: Stop answers, omp and the job are not ended",
+	async () => {
+		const { chat } = await stuck("bg-job", (f) => f.type === "tool_execution_end");
+		let job = 0;
+		try {
+			await pollUntil(() => existsSync(jobFile), "the background job to write its pid");
+			job = Number(readFileSync(jobFile, "utf8").trim());
+			const omp = (await chat.listing())?.pid as number;
+			expect(job).not.toBe(omp);
+			// The turn is over, and the job keeps the session busy for as long as it runs (omp's `isSettled: false`).
+			await pollUntil(async () => {
+				const l = await chat.listing();
+				return l?.streaming === false && l.busy === true;
+			}, "the turn to end with the job still running");
+			const { ms, answers } = await chat.stop(3);
+			expect(ms).toBeLessThan(allowed(chat, ENDS_BY_ITSELF_MS));
+			expect(answers.some((a) => a.ended !== undefined)).toBe(false);
+			// Stop is for the turn: omp keeps its job, and omp is not ended for it.
+			expect((await chat.listing())?.pid).toBe(omp);
+			expect(processExists(omp)).toBe(true);
+			expect(processExists(job)).toBe(true);
+			mode = "ok";
+			await chat.say("NEXT MARK-NEXT");
+		} finally {
+			if (job > 0) {
+				try {
+					process.kill(job, "SIGKILL");
+				} catch {
+					// already gone
+				}
 			}
+			chat.close();
 		}
-		chat.close();
-	}
-}, 120_000);
+	},
+	120_000,
+);
 
 test("an abort without the Stop marker (cancelling an interview) is omp's plain command: no subagent is cancelled and omp is not ended", async () => {
 	const { chat } = await stuck("sub-limit", subagentRetry);
@@ -515,20 +541,24 @@ test("a press that joins a Stop under way is told so and is not given the queue 
 	}
 }, 90_000);
 
-test("omp that ends while Stop waits ends the Stop: no wait for the grace, no signal to a process that is gone", async () => {
-	const { chat } = await stuck("hold", (f) => f.type === "agent_start");
-	try {
-		const pid = (await chat.listing())?.pid as number;
-		// A frozen omp: the abort is never answered, so Stop waits. Then omp is killed by someone else.
-		process.kill(pid, "SIGSTOP");
-		const stopping = chat.stop(1);
-		await Bun.sleep(300);
-		process.kill(pid, "SIGKILL");
-		const { ms, answers } = await stopping;
-		expect(ms).toBeLessThan(STOP_GRACE_MS);
-		expect(answers[0].ended).toBe("exited");
-		expect(processExists(pid)).toBe(false);
-	} finally {
-		chat.close();
-	}
-}, 90_000);
+test.skipIf(!capabilities.pauseResume)(
+	"omp that ends while Stop waits ends the Stop: no wait for the grace, no signal to a process that is gone",
+	async () => {
+		const { chat } = await stuck("hold", (f) => f.type === "agent_start");
+		try {
+			const pid = (await chat.listing())?.pid as number;
+			// A frozen omp: the abort is never answered, so Stop waits. Then omp is killed by someone else.
+			process.kill(pid, "SIGSTOP");
+			const stopping = chat.stop(1);
+			await Bun.sleep(300);
+			process.kill(pid, "SIGKILL");
+			const { ms, answers } = await stopping;
+			expect(ms).toBeLessThan(STOP_GRACE_MS);
+			expect(answers[0].ended).toBe("exited");
+			expect(processExists(pid)).toBe(false);
+		} finally {
+			chat.close();
+		}
+	},
+	90_000,
+);

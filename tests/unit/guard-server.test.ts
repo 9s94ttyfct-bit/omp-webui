@@ -31,6 +31,8 @@ import {
 import { isRecord } from "../../shared/guards.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
+import { expectMode } from "../support/modes.ts";
+import { setTempDir } from "../support/tmp.ts";
 
 /**
  * "Guard dangerous commands" (#609) on the server's side, with no omp: the settings (which an agent cannot turn off by
@@ -49,11 +51,11 @@ const sharedTmp = process.env.TMPDIR;
 let ownTmp = "";
 beforeAll(() => {
 	ownTmp = mkdtempSync(join(tmpdir(), "ompw-guard-tmp-"));
-	process.env.TMPDIR = ownTmp;
+	setTempDir(ownTmp);
 });
 afterAll(() => {
 	if (sharedTmp === undefined) delete process.env.TMPDIR;
-	else process.env.TMPDIR = sharedTmp;
+	else setTempDir(sharedTmp);
 	rmSync(ownTmp, { recursive: true, force: true });
 });
 const scratch = (): string => {
@@ -103,7 +105,7 @@ describe("the settings", () => {
 		});
 		expect(new GuardSettings(dir).get()).toEqual(settings.get());
 		// The file is the server's, not the world's: private to the user.
-		expect(statSync(join(dir, "guard.json")).mode & 0o777).toBe(0o600);
+		expectMode(join(dir, "guard.json"), 0o600);
 	});
 
 	test("what the person tuned is kept in the same file at 0600, read again by the next server, and restored to the default by null", () => {
@@ -120,7 +122,7 @@ describe("the settings", () => {
 			mode: "reviewer",
 			thresholds: { delete_outside: "block" },
 		});
-		expect(statSync(file).mode & 0o777).toBe(0o600);
+		expectMode(file, 0o600);
 		// A change of the mode leaves the rules alone, and the next server reads all of it.
 		settings.set({ mode: "ask" });
 		expect(new GuardSettings(dir).rules()).toEqual(kept);
@@ -129,7 +131,7 @@ describe("the settings", () => {
 		settings.setRules({ policy: null });
 		expect(JSON.parse(readFileSync(file, "utf8")).policy).toBeUndefined();
 		expect(settings.rules().thresholds).toEqual({ delete_outside: "block" });
-		expect(statSync(file).mode & 0o777).toBe(0o600);
+		expectMode(file, 0o600);
 		// Refused: nothing changes and the file is as it was.
 		const before = readFileSync(file, "utf8");
 		expect(() => settings.setRules({ thresholds: { protected: "allow" } })).toThrow(GuardConfigError);

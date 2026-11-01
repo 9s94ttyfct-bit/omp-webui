@@ -11,10 +11,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { platform } from "../../server/platform/index.ts";
 import { FOLDER_LIMITS, type FolderFile, type FolderFound, type FolderListing } from "../../shared/folder.ts";
 import { type AccessKey, AUD, EMAIL, HOSTNAME, type Jwks, makeKey, startJwks, TEAM } from "../support/access-jwt.ts";
 import { writeChatSession } from "../support/chat-session.ts";
+import { has } from "../support/needs.ts";
 import { remoteClient } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect } from "../support/ws.ts";
@@ -397,19 +399,22 @@ describe("open and reveal", () => {
 		expect(noCsrf.status).toBe(403);
 	});
 
-	test("a page that came through the tunnel is refused, with what only this computer's page may do named, and nothing is opened", async () => {
-		// The file is an executable, so that even a server that let this through would run nothing: the refusal is told
-		// from that one by what it says.
-		for (const reveal of [false, true]) {
-			const res = await remote.fetch(
-				"/api/folder/open",
-				{ method: "POST", headers: { "x-omp-webui": "1", "content-type": "application/json" } },
-				JSON.stringify({ file, path: "run.sh", reveal }),
-			);
-			expect(res.status).toBe(403);
-			expect(await res.json()).toEqual({ error: "Opening files is only for the page on this computer" });
-		}
-	});
+	test.skipIf(!capabilities.remoteAccess)(
+		"a page that came through the tunnel is refused, with what only this computer's page may do named, and nothing is opened",
+		async () => {
+			// The file is an executable, so that even a server that let this through would run nothing: the refusal is told
+			// from that one by what it says.
+			for (const reveal of [false, true]) {
+				const res = await remote.fetch(
+					"/api/folder/open",
+					{ method: "POST", headers: { "x-omp-webui": "1", "content-type": "application/json" } },
+					JSON.stringify({ file, path: "run.sh", reveal }),
+				);
+				expect(res.status).toBe(403);
+				expect(await res.json()).toEqual({ error: "Opening files is only for the page on this computer" });
+			}
+		},
+	);
 
 	test("a request that carries what Cloudflare adds is not this computer's, even with a loopback Host", async () => {
 		for (const header of ["cf-ray", "cf-connecting-ip", "cdn-loop"]) {
@@ -436,39 +441,45 @@ describe("open and reveal", () => {
 		}
 	});
 
-	test("the tunnel's page reads what a local page does, and is told it cannot open", async () => {
-		const res = await remote.fetch(`/api/folder/file?file=${encodeURIComponent(file)}&path=README.md`);
-		expect(res.status).toBe(200);
-		expect(((await res.json()) as FolderFile).local).toBe(false);
-		const local = (await read("README.md")).body;
-		expect(local.local).toBe(platform.capabilities.openFiles);
-		// Reading is the conversation's folder for it too, and the same walls stand.
-		const out = await remote.fetch(`/api/folder/file?file=${encodeURIComponent(file)}&path=../outside.txt`);
-		expect(out.status).toBe(403);
-		const link = await remote.fetch(`/api/folder/file?file=${encodeURIComponent(file)}&path=link-file`);
-		expect(link.status).toBe(403);
-	});
+	test.skipIf(!capabilities.remoteAccess)(
+		"the tunnel's page reads what a local page does, and is told it cannot open",
+		async () => {
+			const res = await remote.fetch(`/api/folder/file?file=${encodeURIComponent(file)}&path=README.md`);
+			expect(res.status).toBe(200);
+			expect(((await res.json()) as FolderFile).local).toBe(false);
+			const local = (await read("README.md")).body;
+			expect(local.local).toBe(platform.capabilities.openFiles);
+			// Reading is the conversation's folder for it too, and the same walls stand.
+			const out = await remote.fetch(`/api/folder/file?file=${encodeURIComponent(file)}&path=../outside.txt`);
+			expect(out.status).toBe(403);
+			const link = await remote.fetch(`/api/folder/file?file=${encodeURIComponent(file)}&path=link-file`);
+			expect(link.status).toBe(403);
+		},
+	);
 
 	// The folder action. Nothing here may ever be let through to `open` (it would show a Finder window on the machine that
 	// runs the test): a page that is not this computer's is refused at the gate, and what this computer's page asks for is
 	// outside the folder or a file, so that it is refused before anything is handed over. That the folder itself is opened
 	// by the real path, with the spawn replaced, is tests/unit/folder.test.ts.
-	test("the folder action: a page that came through the tunnel is refused, for the conversation's folder and any other", async () => {
-		for (const path of ["", "src", "src/app.ts", "../secret", "/etc"]) {
-			const res = await remote.fetch(
-				"/api/folder/open",
-				{ method: "POST", headers: { "x-omp-webui": "1", "content-type": "application/json" } },
-				JSON.stringify({ file, path, dir: true }),
-			);
-			expect(res.status, path).toBe(403);
-			expect(await res.json(), path).toEqual({ error: "Opening files is only for the page on this computer" });
-		}
-		for (const header of ["cf-ray", "x-forwarded-for", "forwarded", "via", "x-real-ip"]) {
-			const res = await open({ path: "", dir: true }, { headers: { [header]: "203.0.113.9" } });
-			expect(res.status, header).toBe(403);
-			expect(await res.json(), header).toEqual({ error: "Opening files is only for the page on this computer" });
-		}
-	});
+	test.skipIf(!capabilities.remoteAccess)(
+		"the folder action: a page that came through the tunnel is refused, for the conversation's folder and any other",
+		async () => {
+			for (const path of ["", "src", "src/app.ts", "../secret", "/etc"]) {
+				const res = await remote.fetch(
+					"/api/folder/open",
+					{ method: "POST", headers: { "x-omp-webui": "1", "content-type": "application/json" } },
+					JSON.stringify({ file, path, dir: true }),
+				);
+				expect(res.status, path).toBe(403);
+				expect(await res.json(), path).toEqual({ error: "Opening files is only for the page on this computer" });
+			}
+			for (const header of ["cf-ray", "x-forwarded-for", "forwarded", "via", "x-real-ip"]) {
+				const res = await open({ path: "", dir: true }, { headers: { [header]: "203.0.113.9" } });
+				expect(res.status, header).toBe(403);
+				expect(await res.json(), header).toEqual({ error: "Opening files is only for the page on this computer" });
+			}
+		},
+	);
 
 	test("the folder action: this computer's page is refused a folder outside the conversation's, by `..`, a path or a link", async () => {
 		for (const path of ["..", "../secret", "/", "/etc", "link-dir", "link-dir/key.txt", "link-evil", "link-file"]) {
@@ -487,15 +498,18 @@ describe("open and reveal", () => {
 		expect((await open({ file: "no-such-conversation.jsonl", path: "", dir: true })).status).toBe(404);
 	});
 
-	test("the listing tells this computer's page it may open folders, and the tunnel's page nothing", async () => {
-		const here = await list();
-		expect(here.body.local).toBe(platform.capabilities.openFiles ? true : undefined);
-		const res = await remote.fetch(`/api/folder/list?file=${encodeURIComponent(file)}&path=`);
-		expect(res.status).toBe(200);
-		const there = (await res.json()) as FolderListing;
-		expect(there.guarded).toBe(true);
-		expect(there.local).toBeUndefined();
-	});
+	test.skipIf(!capabilities.remoteAccess)(
+		"the listing tells this computer's page it may open folders, and the tunnel's page nothing",
+		async () => {
+			const here = await list();
+			expect(here.body.local).toBe(platform.capabilities.openFiles ? true : undefined);
+			const res = await remote.fetch(`/api/folder/list?file=${encodeURIComponent(file)}&path=`);
+			expect(res.status).toBe(200);
+			const there = (await res.json()) as FolderListing;
+			expect(there.guarded).toBe(true);
+			expect(there.local).toBeUndefined();
+		},
+	);
 });
 
 describe("a page that is not this computer's", () => {
@@ -529,9 +543,14 @@ describe("a page that is not this computer's", () => {
 
 	const q = (route: string, query: Record<string, string>) =>
 		`/api/folder/${route}?${new URLSearchParams({ file, ...query })}`;
-	/** The page through the tunnel, and the page on this computer behind a proxy that says where the request came from. */
-	const guardedPages: [string, (path: string) => Promise<Response>][] = [
-		["through the tunnel", (path) => remote.fetch(path)],
+	/**
+	 * The page through the tunnel (where remote access is: not on Windows), and the page on this computer behind a proxy
+	 * that says where the request came from.
+	 */
+	type GuardedPage = [string, (path: string) => Promise<Response>];
+	const tunnelPage: GuardedPage = ["through the tunnel", (path) => remote.fetch(path)];
+	const guardedPages: GuardedPage[] = [
+		...(capabilities.remoteAccess ? [tunnelPage] : []),
 		[
 			"behind a proxy",
 			(path) => fetch(`${s.url}${path}`, { headers: { ...headers(), "x-forwarded-for": "203.0.113.9" } }),
@@ -573,36 +592,39 @@ describe("a page that is not this computer's", () => {
 			expect(inDependency.matches).toEqual([]);
 		});
 
-		test(`${who}: what looks like a secret is not read, whatever it is called, nor a link to it, nor a key by its text, nor a picture by such a name`, async () => {
-			const refused = [
-				...SECRETS.map((n) => `probe/${n}`),
-				...KEYS.map((n) => `probe/${n}`),
-				"probe/.ssh/config",
-				"probe/.ssh",
-				"probe/innocent.txt",
-				".git/config",
-			];
-			for (const path of refused) {
-				for (const route of ["file", "list"]) {
-					const res = await get(q(route, { path, all: "1" }));
-					const text = await res.text();
-					// A folder is not a file and a file not a folder: what matters is that no secret comes back.
-					expect(text, `${route} ${path}`).not.toContain("SECRET");
-					if (route === "file") expect(res.status, `${route} ${path}`).toBe(403);
+		test.skipIf(!has.notWindowsYet)(
+			`${who}: what looks like a secret is not read, whatever it is called, nor a link to it, nor a key by its text, nor a picture by such a name`,
+			async () => {
+				const refused = [
+					...SECRETS.map((n) => `probe/${n}`),
+					...KEYS.map((n) => `probe/${n}`),
+					"probe/.ssh/config",
+					"probe/.ssh",
+					"probe/innocent.txt",
+					".git/config",
+				];
+				for (const path of refused) {
+					for (const route of ["file", "list"]) {
+						const res = await get(q(route, { path, all: "1" }));
+						const text = await res.text();
+						// A folder is not a file and a file not a folder: what matters is that no secret comes back.
+						expect(text, `${route} ${path}`).not.toContain("SECRET");
+						if (route === "file") expect(res.status, `${route} ${path}`).toBe(403);
+					}
 				}
-			}
-			expect((await get(q("raw", { path: "probe/id_rsa.png" }))).status).toBe(403);
-			// What its listing leaves out (hidden by default) is not read by its path either, though it is no secret by name.
-			for (const path of [...HIDDEN, ".git/HEAD"].map((n) => (n.startsWith(".git") ? n : `probe/${n}`))) {
-				for (const route of ["file", "list"]) {
-					const res = await get(q(route, { path, all: "1" }));
-					expect(await res.text(), `${route} ${path}`).not.toContain("HIDDEN-ONLY");
-					if (route === "file") expect(res.status, `${route} ${path}`).toBe(403);
+				expect((await get(q("raw", { path: "probe/id_rsa.png" }))).status).toBe(403);
+				// What its listing leaves out (hidden by default) is not read by its path either, though it is no secret by name.
+				for (const path of [...HIDDEN, ".git/HEAD"].map((n) => (n.startsWith(".git") ? n : `probe/${n}`))) {
+					for (const route of ["file", "list"]) {
+						const res = await get(q(route, { path, all: "1" }));
+						expect(await res.text(), `${route} ${path}`).not.toContain("HIDDEN-ONLY");
+						if (route === "file") expect(res.status, `${route} ${path}`).toBe(403);
+					}
 				}
-			}
-			// What is neither is read, whatever its name sounds like.
-			for (const name of PLAIN) expect((await get(q("file", { path: `probe/${name}` }))).status, name).toBe(200);
-		});
+				// What is neither is read, whatever its name sounds like.
+				for (const name of PLAIN) expect((await get(q("file", { path: `probe/${name}` }))).status, name).toBe(200);
+			},
+		);
 	}
 
 	test("the page on this computer is given all of it", async () => {
@@ -653,7 +675,7 @@ describe("hostile files run nothing", () => {
 		}
 	});
 
-	test("through the tunnel it is the same", async () => {
+	test.skipIf(!capabilities.remoteAccess)("through the tunnel it is the same", async () => {
 		const png = await remote.fetch(`/api/folder/raw?file=${encodeURIComponent(file)}&path=hostile/evil.png`);
 		expect(png.headers.get("content-type")).toBe("image/png");
 		expect(png.headers.get("x-content-type-options")).toBe("nosniff");
@@ -663,31 +685,34 @@ describe("hostile files run nothing", () => {
 		}
 	});
 
-	test("the document route serves a PDF or a Word file's bytes as an opaque download, never as a document to open (#697)", async () => {
-		// A page dressed as a PDF: the page reads the bytes with `fetch`, and a browser sent to the address saves them.
-		write("hostile/evil.pdf", HTML);
-		write("hostile/evil.docx", HTML);
-		for (const name of ["evil.pdf", "evil.docx"]) {
-			const res = await ask("doc", { path: `hostile/${name}` });
-			expect(res.status, name).toBe(200);
-			expect(res.headers.get("content-type"), name).toBe("application/octet-stream");
-			expect(res.headers.get("content-disposition"), name).toBe("attachment");
-			expect(res.headers.get("x-content-type-options"), name).toBe("nosniff");
-			expect(await res.text(), name).toBe(HTML);
-			const tunnel = await remote.fetch(`/api/folder/doc?file=${encodeURIComponent(file)}&path=hostile/${name}`);
-			expect(tunnel.status, name).toBe(200);
-			expect(tunnel.headers.get("content-type"), name).toBe("application/octet-stream");
-			expect(tunnel.headers.get("content-disposition"), name).toBe("attachment");
-		}
-		// Nothing else is served by it, whatever it is called or holds.
-		for (const name of ["evil.svg", "evil.md", "evil.html", "evil.png"]) {
-			const res = await ask("doc", { path: `hostile/${name}` });
-			expect(res.status, name).toBe(415);
-			expect(await res.json(), name).toEqual({ error: "Not a PDF or Word document" });
-		}
-		expect((await read("hostile/evil.pdf")).body).toMatchObject({ kind: "document", type: "pdf" });
-		expect((await read("hostile/evil.docx")).body).toMatchObject({ kind: "document", type: "docx" });
-	});
+	test.skipIf(!capabilities.remoteAccess)(
+		"the document route serves a PDF or a Word file's bytes as an opaque download, never as a document to open (#697)",
+		async () => {
+			// A page dressed as a PDF: the page reads the bytes with `fetch`, and a browser sent to the address saves them.
+			write("hostile/evil.pdf", HTML);
+			write("hostile/evil.docx", HTML);
+			for (const name of ["evil.pdf", "evil.docx"]) {
+				const res = await ask("doc", { path: `hostile/${name}` });
+				expect(res.status, name).toBe(200);
+				expect(res.headers.get("content-type"), name).toBe("application/octet-stream");
+				expect(res.headers.get("content-disposition"), name).toBe("attachment");
+				expect(res.headers.get("x-content-type-options"), name).toBe("nosniff");
+				expect(await res.text(), name).toBe(HTML);
+				const tunnel = await remote.fetch(`/api/folder/doc?file=${encodeURIComponent(file)}&path=hostile/${name}`);
+				expect(tunnel.status, name).toBe(200);
+				expect(tunnel.headers.get("content-type"), name).toBe("application/octet-stream");
+				expect(tunnel.headers.get("content-disposition"), name).toBe("attachment");
+			}
+			// Nothing else is served by it, whatever it is called or holds.
+			for (const name of ["evil.svg", "evil.md", "evil.html", "evil.png"]) {
+				const res = await ask("doc", { path: `hostile/${name}` });
+				expect(res.status, name).toBe(415);
+				expect(await res.json(), name).toEqual({ error: "Not a PDF or Word document" });
+			}
+			expect((await read("hostile/evil.pdf")).body).toMatchObject({ kind: "document", type: "pdf" });
+			expect((await read("hostile/evil.docx")).body).toMatchObject({ kind: "document", type: "docx" });
+		},
+	);
 
 	test("the file route gives their text as JSON, which nothing renders on its own", async () => {
 		for (const [name, view] of [

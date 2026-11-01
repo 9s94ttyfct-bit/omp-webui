@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import type { ShellMessage } from "../../server/shell-events.ts";
 import type { AttentionKind } from "../../shared/attention.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
@@ -245,30 +246,34 @@ test("Settings' menu bar icon switch reaches the app at once", async () => {
 	app.close();
 });
 
-test("Pause all freezes the conversation that waits for an answer, Resume all runs it again; both are POSTs only", async () => {
-	const post = (path: string) => fetch(`${server.url}${path}`, { method: "POST", headers: authed() });
-	expect((await fetch(`${server.url}/api/shell/pause-all`, { headers: authed() })).status).toBe(405);
-	const app = await read();
-	await app.message(isState(0, 0));
-	const ws = await connect(server);
-	const live = await request<LiveInfo>(ws, {
-		t: "open",
-		target: { kind: "new", cwd: server.work, approvalMode: "always-ask" },
-	});
-	const frames = watchFrames(ws, live.liveId);
-	const asked = frames.next((f) => f.type === "extension_ui_request" && f.method === "select");
-	await request(ws, { t: "rpc", liveId: live.liveId, command: { type: "prompt", message: RUN } });
-	await asked;
-	await app.message(isState(0, 1));
+test.skipIf(!capabilities.pauseResume)(
+	"Pause all freezes the conversation that waits for an answer, Resume all runs it again; both are POSTs only",
+	async () => {
+		const post = (path: string) => fetch(`${server.url}${path}`, { method: "POST", headers: authed() });
+		expect((await fetch(`${server.url}/api/shell/pause-all`, { headers: authed() })).status).toBe(405);
+		const app = await read();
+		await app.message(isState(0, 0));
+		const ws = await connect(server);
+		const live = await request<LiveInfo>(ws, {
+			t: "open",
+			target: { kind: "new", cwd: server.work, approvalMode: "always-ask" },
+		});
+		const frames = watchFrames(ws, live.liveId);
+		const asked = frames.next((f) => f.type === "extension_ui_request" && f.method === "select");
+		await request(ws, { t: "rpc", liveId: live.liveId, command: { type: "prompt", message: RUN } });
+		await asked;
+		await app.message(isState(0, 1));
 
-	expect(await (await post("/api/shell/pause-all")).json()).toEqual({ changed: 1, of: 1 });
-	await app.message((m) => m.t === "state" && m.paused === 1 && m.asking === 0);
-	// Nothing is left to pause.
-	expect(await (await post("/api/shell/pause-all")).json()).toEqual({ changed: 0, of: 0 });
+		expect(await (await post("/api/shell/pause-all")).json()).toEqual({ changed: 1, of: 1 });
+		await app.message((m) => m.t === "state" && m.paused === 1 && m.asking === 0);
+		// Nothing is left to pause.
+		expect(await (await post("/api/shell/pause-all")).json()).toEqual({ changed: 0, of: 0 });
 
-	expect(await (await post("/api/shell/resume-all")).json()).toEqual({ changed: 1, of: 1 });
-	await app.message((m) => m.t === "state" && m.paused === 0 && m.asking === 1);
-	await request(ws, { t: "close", liveId: live.liveId });
-	ws.close();
-	app.close();
-}, 120_000);
+		expect(await (await post("/api/shell/resume-all")).json()).toEqual({ changed: 1, of: 1 });
+		await app.message((m) => m.t === "state" && m.paused === 0 && m.asking === 1);
+		await request(ws, { t: "close", liveId: live.liveId });
+		ws.close();
+		app.close();
+	},
+	120_000,
+);

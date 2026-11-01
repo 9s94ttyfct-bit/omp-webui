@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Auth } from "../../server/auth.ts";
+import { expectMode } from "../support/modes.ts";
 
 /** The access token: an unusable token file must never switch authentication off. */
 
@@ -31,7 +32,7 @@ describe("a token file with no token in it", () => {
 			expect(token.length).toBeGreaterThanOrEqual(24);
 			expect(auth.enabled).toBe(true);
 			expect(readFileSync(join(dir, "token"), "utf8")).toBe(token);
-			expect(statSync(join(dir, "token")).mode & 0o777).toBe(0o600);
+			expectMode(join(dir, "token"), 0o600);
 
 			expect(auth.allowed(request())).toBe(false);
 			expect(auth.allowed(request(""))).toBe(false);

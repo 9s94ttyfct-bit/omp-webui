@@ -6,10 +6,16 @@
  *
  * The files are what is in the folders now, so a file added since the timings were taken runs too (it weighs as a
  * usual one).
+ *
+ * A file all of whose tests need something this machine lacks says so in a line of its own, `// needs: <name>` (several
+ * by commas: a capability of `server/platform/capabilities.ts`, or what only tests need, `tests/support/needs.ts`):
+ * where one is missing the file is left out, and stderr says which and why. A file of which only some tests need it
+ * skips those itself.
  */
 import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { isRecord } from "../shared/guards.ts";
+import { fileNeeds, has, whyMissing } from "../tests/support/needs.ts";
 import { assignShards, parseShard, weigh } from "./lib/shards.ts";
 
 const root = join(import.meta.dir, "..");
@@ -30,8 +36,13 @@ if (import.meta.main) {
 	const dirs = args.filter((_, i) => i !== at && i !== at + 1);
 	const files: string[] = [];
 	for (const dir of dirs.length ? dirs : ["tests/unit", "tests/contract"])
-		for (const file of new Bun.Glob("**/*.test.ts").scanSync({ cwd: join(root, dir), absolute: true }))
-			files.push(relative(root, file).split("\\").join("/"));
+		for (const file of new Bun.Glob("**/*.test.ts").scanSync({ cwd: join(root, dir), absolute: true })) {
+			const name = relative(root, file).split("\\").join("/");
+			const missing = fileNeeds(readFileSync(file, "utf8")).filter((need) => !has[need]);
+			if (missing.length)
+				console.error(`skipped here: ${name} (${missing.map((need) => `${need}: ${whyMissing(need)}`).join("; ")})`);
+			else files.push(name);
+		}
 	files.sort();
 	const timings = readBunTimings(readFileSync(join(root, ".bun-test-timings.json"), "utf8"));
 	console.log(assignShards(weigh(files, timings), total)[index - 1].join("\n"));

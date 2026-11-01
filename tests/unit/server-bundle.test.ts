@@ -36,7 +36,11 @@ test("every worker the server starts by URL is an entry point of the app's compi
 	for (const file of new Bun.Glob("server/**/*.ts").scanSync({ cwd: root })) {
 		const text = readFileSync(join(root, file), "utf8");
 		for (const m of text.matchAll(/new Worker\(\s*new URL\("\.\/([\w-]+\.ts)"/g)) {
-			started.add(join(dirname(file), m[1] as string));
+			started.add(
+				join(dirname(file), m[1] as string)
+					.split("\\")
+					.join("/"),
+			);
 		}
 	}
 	expect([...started].sort()).toEqual([

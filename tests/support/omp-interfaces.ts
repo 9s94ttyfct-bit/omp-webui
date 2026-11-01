@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 /**
  * What the server and the page ask of omp, read out of their source: the RPC commands sent to a process, the slash
@@ -16,7 +17,7 @@ export interface Found {
 	at: string;
 }
 
-const ROOT = new URL("../../", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const DIRS = ["server", "shared", "web/src"];
 
 /**
@@ -26,7 +27,9 @@ const DIRS = ["server", "shared", "web/src"];
  */
 export function sourceFiles(): string[] {
 	const found = DIRS.flatMap((dir) => [...new Bun.Glob(`${dir}/**/*.{ts,tsx}`).scanSync({ cwd: ROOT })]);
-	return found.filter((f) => !f.startsWith("web/src/i18n/") && f !== "shared/remote-risk.ts").sort();
+	// Glob gives Windows' separator there; the names here are written with `/`.
+	const files = found.map((f) => f.replaceAll("\\", "/"));
+	return files.filter((f) => !f.startsWith("web/src/i18n/") && f !== "shared/remote-risk.ts").sort();
 }
 
 export const read = (file: string): string => readFileSync(`${ROOT}${file}`, "utf8");

@@ -65,6 +65,9 @@ export function platformIdOf(name: string): PlatformId {
  */
 export const capabilities: Capabilities = capabilitiesFor(platformIdOf(process.platform));
 
+/** The adapter's name for the system this process runs on (`platform.id`), for what cannot load the adapter either. */
+export const platformId: PlatformId = platformIdOf(process.platform);
+
 /**
  * Why a capability is off where it is: what an error says when something that needs it is asked for anyway. Every
  * capability that is false somewhere has a reason here (tests/unit/platform-adapter.test.ts keeps the list whole).

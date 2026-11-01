@@ -37,7 +37,9 @@ import { isRecord } from "../../shared/guards.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
+import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
+import { setTempDir } from "../support/tmp.ts";
 
 /**
  * "Guard dangerous commands" for one conversation (#626), with no omp but a scripted one: how a conversation's own choices
@@ -183,11 +185,11 @@ const sharedTmp = process.env.TMPDIR;
 let ownTmp = "";
 beforeAll(() => {
 	ownTmp = mkdtempSync(join(tmpdir(), "ompw-guard-conv-tmp-"));
-	process.env.TMPDIR = ownTmp;
+	setTempDir(ownTmp);
 });
 afterAll(() => {
 	if (sharedTmp === undefined) delete process.env.TMPDIR;
-	else process.env.TMPDIR = sharedTmp;
+	else setTempDir(sharedTmp);
 	rmSync(ownTmp, { recursive: true, force: true });
 });
 const scratch = (): string => {
@@ -334,32 +336,35 @@ describe("the store", () => {
 		expect(ownOf(new ApprovalStore("omp", dir, 0), "/s/a.jsonl")).toEqual({ mode: "ask" });
 	});
 
-	test("never throws when it cannot write: it says so once, goes on, and puts the file right when it can", () => {
-		const dir = scratch();
-		const file = join(dir, "approval.json");
-		const store = new ApprovalStore("omp", dir, 0);
-		store.rememberGuard("/s/a.jsonl", { mode: "ask" });
-		const warn = spyOn(console, "warn").mockImplementation(() => {});
-		try {
-			// An Off planted in the file, and the folder that holds it takes no new file: the write cannot be made.
-			writeFileSync(file, JSON.stringify({ guard: { "/s/a.jsonl": { mode: "off" } } }));
-			chmodSync(dir, 0o500);
+	test.skipIf(!has.posixModes)(
+		"never throws when it cannot write: it says so once, goes on, and puts the file right when it can",
+		() => {
+			const dir = scratch();
+			const file = join(dir, "approval.json");
+			const store = new ApprovalStore("omp", dir, 0);
+			store.rememberGuard("/s/a.jsonl", { mode: "ask" });
+			const warn = spyOn(console, "warn").mockImplementation(() => {});
 			try {
-				expect(store.verify()).toBe(false);
-				expect(store.verify()).toBe(false);
+				// An Off planted in the file, and the folder that holds it takes no new file: the write cannot be made.
+				writeFileSync(file, JSON.stringify({ guard: { "/s/a.jsonl": { mode: "off" } } }));
+				chmodSync(dir, 0o500);
+				try {
+					expect(store.verify()).toBe(false);
+					expect(store.verify()).toBe(false);
+					expect(warn).toHaveBeenCalledTimes(1);
+					expect(ownOf(store, "/s/a.jsonl")).toEqual({ mode: "ask" });
+				} finally {
+					chmodSync(dir, 0o700);
+				}
+				// The folder can be written again: the next look writes the server's own copy over what was planted, and says nothing.
+				expect(store.verify()).toBe(true);
+				expect(JSON.parse(readFileSync(file, "utf8")).guard).toEqual({ "/s/a.jsonl": { mode: "ask" } });
 				expect(warn).toHaveBeenCalledTimes(1);
-				expect(ownOf(store, "/s/a.jsonl")).toEqual({ mode: "ask" });
 			} finally {
-				chmodSync(dir, 0o700);
+				warn.mockRestore();
 			}
-			// The folder can be written again: the next look writes the server's own copy over what was planted, and says nothing.
-			expect(store.verify()).toBe(true);
-			expect(JSON.parse(readFileSync(file, "utf8")).guard).toEqual({ "/s/a.jsonl": { mode: "ask" } });
-			expect(warn).toHaveBeenCalledTimes(1);
-		} finally {
-			warn.mockRestore();
-		}
-	});
+		},
+	);
 });
 
 describe("damage and the records of a conversation", () => {
@@ -557,23 +562,26 @@ describe("a conversation's gate", () => {
 		expect(a.guardChoice).toBeNull();
 	});
 
-	test("is not told a choice it could not be told: nothing changes when the word cannot be written", async () => {
-		const t = setup();
-		const a = await t.open("a");
-		a.changeGuard({ mode: "ask" });
-		const folder = dirname(t.overlays()[0]);
-		// Its folder takes no new file: the word cannot be written.
-		chmodSync(folder, 0o500);
-		try {
-			expect(() => a.changeGuard({ mode: "off" })).toThrow(/could not be told/);
-		} finally {
-			chmodSync(folder, 0o700);
-		}
-		expect(a.guardChoice).toEqual({ mode: "ask" });
-		expect(a.info.guard?.config.mode).toBe("ask");
-		expect(ownOf(t.approval, sessionKey(a.info.sessionFile ?? ""))).toEqual({ mode: "ask" });
-		expect(t.word(0)?.mode).toBe("ask");
-	});
+	test.skipIf(!has.notWindowsYet)(
+		"is not told a choice it could not be told: nothing changes when the word cannot be written",
+		async () => {
+			const t = setup();
+			const a = await t.open("a");
+			a.changeGuard({ mode: "ask" });
+			const folder = dirname(t.overlays()[0]);
+			// Its folder takes no new file: the word cannot be written.
+			chmodSync(folder, 0o500);
+			try {
+				expect(() => a.changeGuard({ mode: "off" })).toThrow(/could not be told/);
+			} finally {
+				chmodSync(folder, 0o700);
+			}
+			expect(a.guardChoice).toEqual({ mode: "ask" });
+			expect(a.info.guard?.config.mode).toBe("ask");
+			expect(ownOf(t.approval, sessionKey(a.info.sessionFile ?? ""))).toEqual({ mode: "ask" });
+			expect(t.word(0)?.mode).toBe("ask");
+		},
+	);
 
 	test("is that of the conversation a process is opened on, by this server again or by the next", async () => {
 		const t = setup();

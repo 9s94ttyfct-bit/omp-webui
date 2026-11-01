@@ -7,6 +7,7 @@ import { ApprovalStore, OMP_RELOAD_MS } from "../../server/omp/approval.ts";
 import type { OpenTarget } from "../../shared/protocol.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
+import { setTempDir } from "../support/tmp.ts";
 
 /**
  * What the server does for tool approval and for host tools, against a scripted omp: the overlay each process gets,
@@ -30,11 +31,11 @@ const sharedTmp = process.env.TMPDIR;
 let ownTmp = "";
 beforeAll(() => {
 	ownTmp = mkdtempSync(join(tmpdir(), "ompw-pool-approval-tmp-"));
-	process.env.TMPDIR = ownTmp;
+	setTempDir(ownTmp);
 });
 afterAll(() => {
 	if (sharedTmp === undefined) delete process.env.TMPDIR;
-	else process.env.TMPDIR = sharedTmp;
+	else setTempDir(sharedTmp);
 	rmSync(ownTmp, { recursive: true, force: true });
 });
 

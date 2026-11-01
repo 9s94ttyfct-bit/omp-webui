@@ -1,18 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import {
-	mkdirSync,
-	mkdtempSync,
-	readdirSync,
-	readFileSync,
-	rmSync,
-	statSync,
-	symlinkSync,
-	writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { forkArgs, routeOf, sameModel, snapshotSession, sweepForkDir, withTopic } from "../../server/omp/btw-fork.ts";
 import { isValidPref, PREF } from "../../shared/prefs.ts";
+import { expectMode } from "../support/modes.ts";
 
 /** The decisions of a side question on another model that need no omp: who answers, how it is started, what it is given. */
 
@@ -130,7 +122,7 @@ describe("the copy of the conversation", () => {
 		const to = join(dir, "torn-copy.jsonl");
 		await snapshotSession(from, to);
 		expect(readFileSync(to, "utf8")).toBe(`${line(1)}${line(2)}`);
-		expect(statSync(to).mode & 0o777).toBe(0o600);
+		expectMode(to, 0o600);
 		// The conversation's own file is not the copy's to change.
 		expect(readFileSync(from, "utf8")).toBe(`${line(1)}${line(2)}{"type":"message","n":3,"te`);
 	});

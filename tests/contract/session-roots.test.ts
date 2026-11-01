@@ -1,3 +1,4 @@
+// needs: posixPaths
 import "../unit/browser-globals.ts";
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";

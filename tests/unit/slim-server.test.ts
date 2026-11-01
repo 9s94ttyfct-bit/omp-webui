@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { type AppServer, startAppServer } from "../support/app-server.ts";
 import { writeFakeOmp } from "../support/fake-omp.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { connect, request } from "../support/ws.ts";
 
 /**
@@ -63,7 +64,7 @@ beforeAll(async () => {
 afterAll(async () => {
 	ws?.close();
 	server?.proc.kill("SIGKILL");
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 test("a slim read is answered without the system prompt and with the tool names alone", async () => {

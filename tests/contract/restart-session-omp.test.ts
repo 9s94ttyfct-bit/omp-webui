@@ -96,7 +96,9 @@ const mark = (what: string) => `PROMPT-RESTART-${what}-${++seq}`;
 test("the main agent is offered restart_session, and a subagent is not", async () => {
 	const c = await conversation();
 	const extension = c.live.args.find(
-		(arg, i) => c.live.args[i - 1] === "--extension" && arg.endsWith("/restart/server/omp/restart/extension.ts"),
+		(arg, i) =>
+			c.live.args[i - 1] === "--extension" &&
+			arg.split("\\").join("/").endsWith("/restart/server/omp/restart/extension.ts"),
 	);
 	expect(extension).toBeDefined();
 	const m = mark("offered");

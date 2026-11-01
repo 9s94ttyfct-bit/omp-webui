@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { isRecord } from "../../shared/guards.ts";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { retryPhase } from "../../web/src/lib/retry-wait.ts";
@@ -151,45 +152,49 @@ async function started(limitMs: number) {
 	};
 }
 
-test("a subagent whose usage-limit wait came due while the conversation was paused retries the moment it is resumed, and the page's view of it follows", async () => {
-	const chat = await started(5000);
-	try {
-		// What the page holds from omp's frames: the wait, counting down.
-		let subs = {};
-		for (const f of chat.frames.seen) subs = applySubagentFrame(subs, f);
-		const wait = (subs as Record<string, { retry?: { phase?: string } | null }>).Sub?.retry;
-		expect(wait).toMatchObject({ phase: "waiting", attempt: 1, usageLimit: true, resumed: false });
+test.skipIf(!capabilities.pauseResume)(
+	"a subagent whose usage-limit wait came due while the conversation was paused retries the moment it is resumed, and the page's view of it follows",
+	async () => {
+		const chat = await started(5000);
+		try {
+			// What the page holds from omp's frames: the wait, counting down.
+			let subs = {};
+			for (const f of chat.frames.seen) subs = applySubagentFrame(subs, f);
+			const wait = (subs as Record<string, { retry?: { phase?: string } | null }>).Sub?.retry;
+			expect(wait).toMatchObject({ phase: "waiting", attempt: 1, usageLimit: true, resumed: false });
 
-		await request(chat.ws, { t: "pause", liveId: chat.liveId });
-		const pid = (await chat.listing())?.pid as number;
-		expect(stopped(pid)).toBe(true);
-		// The wait is over while omp is frozen: its timer is due, and nothing runs. The page does not call that late.
-		const waiting = (wait ?? {}) as Parameters<typeof retryPhase>[0];
-		await pollUntil(() => Date.now() > waiting.startedAt + waiting.delayMs + 500, "the wait to be over");
-		expect(retryPhase(waiting, Date.now(), true)).toBe("due");
-		const before = answered.length;
-		await omissionWindow();
-		expect(answered.length).toBe(before);
-		expect(lastStatus(chat.frames.seen)).toBe("started");
+			await request(chat.ws, { t: "pause", liveId: chat.liveId });
+			const pid = (await chat.listing())?.pid as number;
+			expect(stopped(pid)).toBe(true);
+			// The wait is over while omp is frozen: its timer is due, and nothing runs. The page does not call that late.
+			const waiting = (wait ?? {}) as Parameters<typeof retryPhase>[0];
+			await pollUntil(() => Date.now() > waiting.startedAt + waiting.delayMs + 500, "the wait to be over");
+			expect(retryPhase(waiting, Date.now(), true)).toBe("due");
+			const before = answered.length;
+			await omissionWindow();
+			expect(answered.length).toBe(before);
+			expect(lastStatus(chat.frames.seen)).toBe("started");
 
-		// The limit is over; Resume lets omp run, and its due timer retries the subagent at once (nothing is asked to).
-		lift();
-		const ended = chat.frames.after("subagent_lifecycle");
-		await request(chat.ws, { t: "resume", liveId: chat.liveId });
-		expect(((await ended).payload as Record<string, unknown>).status).toBe("completed");
-		expect(answered.length - before).toBe(1);
-		const [end] = subagentEvents(chat.frames.seen, "auto_retry_end");
-		expect(end).toMatchObject({ success: true, attempt: 1 });
+			// The limit is over; Resume lets omp run, and its due timer retries the subagent at once (nothing is asked to).
+			lift();
+			const ended = chat.frames.after("subagent_lifecycle");
+			await request(chat.ws, { t: "resume", liveId: chat.liveId });
+			expect(((await ended).payload as Record<string, unknown>).status).toBe("completed");
+			expect(answered.length - before).toBe(1);
+			const [end] = subagentEvents(chat.frames.seen, "auto_retry_end");
+			expect(end).toMatchObject({ success: true, attempt: 1 });
 
-		// And the page's state, from the same frames, has no wait left.
-		subs = {};
-		for (const f of chat.frames.seen) subs = applySubagentFrame(subs, f);
-		expect((subs as Record<string, { retry?: unknown }>).Sub.retry).toBeNull();
-	} finally {
-		lift();
-		chat.close();
-	}
-}, 90_000);
+			// And the page's state, from the same frames, has no wait left.
+			subs = {};
+			for (const f of chat.frames.seen) subs = applySubagentFrame(subs, f);
+			expect((subs as Record<string, { retry?: unknown }>).Sub.retry).toBeNull();
+		} finally {
+			lift();
+			chat.close();
+		}
+	},
+	90_000,
+);
 
 test("omp's registry says a subagent is waiting (retryState) and the page can tell it from the frames; omp has no command that retries it now", async () => {
 	const chat = await started(600_000);

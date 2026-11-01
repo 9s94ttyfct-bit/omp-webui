@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { isFailure, type LoadedData, type LoadedMcpServer, type LoadedTools } from "../../shared/loaded.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { FIXTURE_CWD, writeSimpleSession } from "../support/fixtures.ts";
+import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
@@ -140,101 +142,109 @@ afterAll(async () => {
 	await omlx?.stop();
 });
 
-test("a switch writes enabled where the server is configured and nothing else; a restart applies it", async () => {
-	const file = saved(0x70, "MCP restart probe");
-	await known(file);
-	const chat = await open({ kind: "resume", sessionFile: file });
-	try {
-		for (const name of ["alpha", "beta", "proj"]) await chat.mounted(name);
-		const before = await loaded(chat.info.liveId);
-		expect(server(before, "alpha")).toMatchObject({ enabled: true, scope: "user" });
-		expect(server(before, "proj")).toMatchObject({ enabled: true, scope: "project" });
-		expect(server(before, "alpha").tools.map((t) => t.label)).toEqual(["ping"]);
-
-		// A user server: off in the user's mcp.json, the other servers as they were, the project's file untouched.
-		const projectBefore = readFileSync(projectMcp, "utf8");
-		const off = await send("/api/controls/mcp", { live: chat.info.liveId, name: "alpha", enabled: false });
-		expect(off.status).toBe(200);
-		expect(await off.json()).toEqual({ ok: true, changed: true, scope: "user" });
-		const user = readJson(userMcp).mcpServers;
-		expect(user.alpha).toEqual({ ...USER_SERVERS.alpha, enabled: false });
-		expect({ ...user, alpha: undefined }).toEqual({ ...USER_SERVERS, alpha: undefined });
-		expect(readFileSync(projectMcp, "utf8")).toBe(projectBefore);
-
-		// A project server: off in the folder's own file, the user's untouched.
-		const userBefore = readFileSync(userMcp, "utf8");
-		const proj = await send("/api/controls/mcp", { live: chat.info.liveId, name: "proj", enabled: false });
-		expect(await proj.json()).toEqual({ ok: true, changed: true, scope: "project" });
-		expect(readJson(projectMcp).mcpServers.proj).toEqual({ ...stub("proj"), enabled: false });
-		expect(readFileSync(userMcp, "utf8")).toBe(userBefore);
-
-		// omp lists them as off now, but the running process still has their tools: it never drops a server.
-		const during = await loaded(chat.info.liveId);
-		expect(server(during, "alpha").enabled).toBe(false);
-		expect(server(during, "proj").enabled).toBe(false);
-		expect(server(during, "alpha").tools.map((t) => t.label)).toEqual(["ping"]);
-		expect(server(during, "beta").enabled).toBe(true);
-
-		// Already what was asked: said so, and nothing is written again.
-		const again = await send("/api/controls/mcp", { live: chat.info.liveId, name: "alpha", enabled: false });
-		expect(await again.json()).toEqual({ ok: true, changed: false, scope: "user" });
-
-		// The restart ends this omp; the same session file resumed starts one that loads what the config says.
-		const end = await send("/api/controls/restart", { live: chat.info.liveId });
-		expect(end.status).toBe(200);
-		expect(await chat.ended()).toBe(true);
-		const fresh = await open({ kind: "resume", sessionFile: file });
+test.skipIf(!has.notWindowsYet)(
+	"a switch writes enabled where the server is configured and nothing else; a restart applies it",
+	async () => {
+		const file = saved(0x70, "MCP restart probe");
+		await known(file);
+		const chat = await open({ kind: "resume", sessionFile: file });
 		try {
-			expect(fresh.info.liveId).not.toBe(chat.info.liveId);
-			expect(fresh.info.sessionFile).toBe(realpathSync(file));
-			await fresh.mounted("beta");
-			const after = await loaded(fresh.info.liveId);
-			expect(server(after, "alpha")).toMatchObject({ enabled: false, tools: [] });
-			expect(server(after, "proj")).toMatchObject({ enabled: false, tools: [] });
-			expect(server(after, "beta").tools.map((t) => t.label)).toEqual(["ping"]);
+			for (const name of ["alpha", "beta", "proj"]) await chat.mounted(name);
+			const before = await loaded(chat.info.liveId);
+			expect(server(before, "alpha")).toMatchObject({ enabled: true, scope: "user" });
+			expect(server(before, "proj")).toMatchObject({ enabled: true, scope: "project" });
+			expect(server(before, "alpha").tools.map((t) => t.label)).toEqual(["ping"]);
 
-			// On again, the other way round.
-			for (const [name, scope] of [
-				["alpha", "user"],
-				["proj", "project"],
-			]) {
-				const on = await send("/api/controls/mcp", { live: fresh.info.liveId, name, enabled: true });
-				expect(await on.json()).toEqual({ ok: true, changed: true, scope });
+			// A user server: off in the user's mcp.json, the other servers as they were, the project's file untouched.
+			const projectBefore = readFileSync(projectMcp, "utf8");
+			const off = await send("/api/controls/mcp", { live: chat.info.liveId, name: "alpha", enabled: false });
+			expect(off.status).toBe(200);
+			expect(await off.json()).toEqual({ ok: true, changed: true, scope: "user" });
+			const user = readJson(userMcp).mcpServers;
+			expect(user.alpha).toEqual({ ...USER_SERVERS.alpha, enabled: false });
+			expect({ ...user, alpha: undefined }).toEqual({ ...USER_SERVERS, alpha: undefined });
+			expect(readFileSync(projectMcp, "utf8")).toBe(projectBefore);
+
+			// A project server: off in the folder's own file, the user's untouched.
+			const userBefore = readFileSync(userMcp, "utf8");
+			const proj = await send("/api/controls/mcp", { live: chat.info.liveId, name: "proj", enabled: false });
+			expect(await proj.json()).toEqual({ ok: true, changed: true, scope: "project" });
+			expect(readJson(projectMcp).mcpServers.proj).toEqual({ ...stub("proj"), enabled: false });
+			expect(readFileSync(userMcp, "utf8")).toBe(userBefore);
+
+			// omp lists them as off now, but the running process still has their tools: it never drops a server.
+			const during = await loaded(chat.info.liveId);
+			expect(server(during, "alpha").enabled).toBe(false);
+			expect(server(during, "proj").enabled).toBe(false);
+			expect(server(during, "alpha").tools.map((t) => t.label)).toEqual(["ping"]);
+			expect(server(during, "beta").enabled).toBe(true);
+
+			// Already what was asked: said so, and nothing is written again.
+			const again = await send("/api/controls/mcp", { live: chat.info.liveId, name: "alpha", enabled: false });
+			expect(await again.json()).toEqual({ ok: true, changed: false, scope: "user" });
+
+			// The restart ends this omp; the same session file resumed starts one that loads what the config says.
+			const end = await send("/api/controls/restart", { live: chat.info.liveId });
+			expect(end.status).toBe(200);
+			expect(await chat.ended()).toBe(true);
+			const fresh = await open({ kind: "resume", sessionFile: file });
+			try {
+				expect(fresh.info.liveId).not.toBe(chat.info.liveId);
+				expect(fresh.info.sessionFile).toBe(realpathSync(file));
+				await fresh.mounted("beta");
+				const after = await loaded(fresh.info.liveId);
+				expect(server(after, "alpha")).toMatchObject({ enabled: false, tools: [] });
+				expect(server(after, "proj")).toMatchObject({ enabled: false, tools: [] });
+				expect(server(after, "beta").tools.map((t) => t.label)).toEqual(["ping"]);
+
+				// On again, the other way round.
+				for (const [name, scope] of [
+					["alpha", "user"],
+					["proj", "project"],
+				]) {
+					const on = await send("/api/controls/mcp", { live: fresh.info.liveId, name, enabled: true });
+					expect(await on.json()).toEqual({ ok: true, changed: true, scope });
+				}
+				expect(readJson(userMcp).mcpServers.alpha.enabled).toBe(true);
+				expect(readJson(projectMcp).mcpServers.proj.enabled).toBe(true);
+			} finally {
+				await fresh.close();
 			}
-			expect(readJson(userMcp).mcpServers.alpha.enabled).toBe(true);
-			expect(readJson(projectMcp).mcpServers.proj.enabled).toBe(true);
+			// Nothing here asked the model for anything.
+			expect(omlx.chats).toEqual([]);
 		} finally {
-			await fresh.close();
+			await chat.close();
 		}
-		// Nothing here asked the model for anything.
-		expect(omlx.chats).toEqual([]);
-	} finally {
-		await chat.close();
-	}
-}, 180_000);
+	},
+	180_000,
+);
 
-test("a restart is refused while omp is working or paused, and ends nothing; it works once omp is idle", async () => {
-	const chat = await open({ kind: "new", cwd: s.work });
-	try {
-		const running = chat.rpc({ type: "bash", command: "sleep 3" });
-		await pollUntil(async () => (await chat.listing()) !== undefined, "the listing");
-		const busy = await send("/api/controls/restart", { live: chat.info.liveId });
-		expect(busy.status).toBe(409);
-		expect(await chat.ended()).toBe(false);
-		await running;
+test.skipIf(!capabilities.pauseResume)(
+	"a restart is refused while omp is working or paused, and ends nothing; it works once omp is idle",
+	async () => {
+		const chat = await open({ kind: "new", cwd: s.work });
+		try {
+			const running = chat.rpc({ type: "bash", command: "sleep 3" });
+			await pollUntil(async () => (await chat.listing()) !== undefined, "the listing");
+			const busy = await send("/api/controls/restart", { live: chat.info.liveId });
+			expect(busy.status).toBe(409);
+			expect(await chat.ended()).toBe(false);
+			await running;
 
-		await chat.pause();
-		expect((await send("/api/controls/restart", { live: chat.info.liveId })).status).toBe(409);
-		expect((await chat.listing())?.pausedAt).toBeTruthy();
-		await chat.resume();
+			await chat.pause();
+			expect((await send("/api/controls/restart", { live: chat.info.liveId })).status).toBe(409);
+			expect((await chat.listing())?.pausedAt).toBeTruthy();
+			await chat.resume();
 
-		expect((await send("/api/controls/restart", { live: chat.info.liveId })).status).toBe(200);
-		expect(await chat.ended()).toBe(true);
-		expect((await send("/api/controls/restart", { live: chat.info.liveId })).status).toBe(404);
-	} finally {
-		await chat.close();
-	}
-}, 120_000);
+			expect((await send("/api/controls/restart", { live: chat.info.liveId })).status).toBe(200);
+			expect(await chat.ended()).toBe(true);
+			expect((await send("/api/controls/restart", { live: chat.info.liveId })).status).toBe(404);
+		} finally {
+			await chat.close();
+		}
+	},
+	120_000,
+);
 
 test("bad requests change nothing: no process, an unknown server, a name with a space, no boolean", async () => {
 	const userBefore = readFileSync(userMcp, "utf8");

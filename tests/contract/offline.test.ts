@@ -1,10 +1,11 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { isFailure, type LoadedData, type LoadedTools } from "../../shared/loaded.ts";
 import { CORE_TOOLS, type ContextReport, type ModeState, OFFLINE_TOOLS } from "../../shared/offline.ts";
 import type { LiveInfo, SessionSummary } from "../../shared/protocol.ts";
+import { has } from "../support/needs.ts";
 import { newestOfflineAgent } from "../support/offline-agent.ts";
 import { pollUntil } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
@@ -226,7 +227,7 @@ test("Light on a local server: every model is oMLX's, only the allowed tools and
 		// The conversation is a file in the user's sessions, so history lists it like any other.
 		const { sessionFile } = await chat.rpc<{ sessionFile: string }>({ type: "get_state" });
 		const file = realpathSync(sessionFile);
-		expect(file.startsWith(`${realpathSync(join(s.agentDir, "sessions"))}/`)).toBe(true);
+		expect(file.startsWith(`${realpathSync(join(s.agentDir, "sessions"))}${sep}`)).toBe(true);
 		await chat.until("the sessions to be indexed", () => chat.messages.some((m) => m.t === "sessions_changed"));
 		const listed = (await (await http("/api/sessions")).json()) as SessionSummary[];
 		expect(listed.some((x) => realpathSync(x.file) === file)).toBe(true);
@@ -235,38 +236,41 @@ test("Light on a local server: every model is oMLX's, only the allowed tools and
 	}
 }, 120_000);
 
-test("the Light agent directory holds only what Light mode needs, its secrets are private, and the user's files are unchanged", () => {
-	const dir = offlineDir();
-	const mode = (name: string) => statSync(join(dir, name)).mode & 0o777;
-	expect(mode("models.yml")).toBe(0o600);
-	expect(mode("mcp.json")).toBe(0o600);
-	expect(mode("config.yml")).toBe(0o600);
+test.skipIf(!has.posixModes)(
+	"the Light agent directory holds only what Light mode needs, its secrets are private, and the user's files are unchanged",
+	() => {
+		const dir = offlineDir();
+		const mode = (name: string) => statSync(join(dir, name)).mode & 0o777;
+		expect(mode("models.yml")).toBe(0o600);
+		expect(mode("mcp.json")).toBe(0o600);
+		expect(mode("config.yml")).toBe(0o600);
 
-	// Only the oMLX provider, with its key; the other provider (and its key) is not copied.
-	const models = readFileSync(join(dir, "models.yml"), "utf8");
-	expect(models).toContain(omlx.apiKey);
-	expect(models).not.toContain("ollama");
-	expect(models).not.toContain("sk-other-provider-key");
-	// Only the selected server, as the user wrote it.
-	expect(JSON.parse(readFileSync(join(dir, "mcp.json"), "utf8"))).toEqual({
-		mcpServers: { alpha: { type: "stdio", command: "bun", args: [stubMcp, "alpha"] } },
-	});
-	const config = readFileSync(join(dir, "config.yml"), "utf8");
-	for (const role of ["default", "smol", "slow", "vision", "plan", "commit", "tiny", "memory", "task", "advisor"])
-		expect(config).toContain(`${role}: omlx/stub-model`);
-	expect(config).toContain("omlx/**");
-	expect(config).toContain("enableProjectConfig: false");
-	// Nothing the model could read the key from, and no AGENTS.md.
-	expect(config).not.toContain(omlx.apiKey);
-	expect(existsSync(join(dir, "AGENTS.md"))).toBe(false);
-	// Conversations and the images in them are the user's.
-	expect(realpathSync(join(dir, "sessions"))).toBe(realpathSync(join(s.agentDir, "sessions")));
-	expect(realpathSync(join(dir, "blobs"))).toBe(realpathSync(join(s.agentDir, "blobs")));
-	// The prompt history word prediction reads is the user's too.
-	expect(realpathSync(join(dir, "history.db"))).toBe(realpathSync(join(s.agentDir, "history.db")));
+		// Only the oMLX provider, with its key; the other provider (and its key) is not copied.
+		const models = readFileSync(join(dir, "models.yml"), "utf8");
+		expect(models).toContain(omlx.apiKey);
+		expect(models).not.toContain("ollama");
+		expect(models).not.toContain("sk-other-provider-key");
+		// Only the selected server, as the user wrote it.
+		expect(JSON.parse(readFileSync(join(dir, "mcp.json"), "utf8"))).toEqual({
+			mcpServers: { alpha: { type: "stdio", command: "bun", args: [stubMcp, "alpha"] } },
+		});
+		const config = readFileSync(join(dir, "config.yml"), "utf8");
+		for (const role of ["default", "smol", "slow", "vision", "plan", "commit", "tiny", "memory", "task", "advisor"])
+			expect(config).toContain(`${role}: omlx/stub-model`);
+		expect(config).toContain("omlx/**");
+		expect(config).toContain("enableProjectConfig: false");
+		// Nothing the model could read the key from, and no AGENTS.md.
+		expect(config).not.toContain(omlx.apiKey);
+		expect(existsSync(join(dir, "AGENTS.md"))).toBe(false);
+		// Conversations and the images in them are the user's.
+		expect(realpathSync(join(dir, "sessions"))).toBe(realpathSync(join(s.agentDir, "sessions")));
+		expect(realpathSync(join(dir, "blobs"))).toBe(realpathSync(join(s.agentDir, "blobs")));
+		// The prompt history word prediction reads is the user's too.
+		expect(realpathSync(join(dir, "history.db"))).toBe(realpathSync(join(s.agentDir, "history.db")));
 
-	for (const f of userFiles) expect(sha(join(s.agentDir, f))).toBe(before[f]);
-});
+		for (const f of userFiles) expect(sha(join(s.agentDir, f))).toBe(before[f]);
+	},
+);
 
 test("the user's AGENTS.md is loaded when asked for, and left out again when not", async () => {
 	expect((await postMode({ offline: { agentsMd: true } })).status).toBe(200);
@@ -416,7 +420,7 @@ test("Light on the person's own models: their models and roles, only the allowed
 		expect(String(turn.body.messages?.find((m) => m.role === "system")?.content)).not.toContain("test server beta");
 		// The conversation is a file in the user's sessions, as in Full.
 		const { sessionFile } = await chat.rpc<{ sessionFile: string }>({ type: "get_state" });
-		expect(realpathSync(sessionFile).startsWith(`${realpathSync(join(s.agentDir, "sessions"))}/`)).toBe(true);
+		expect(realpathSync(sessionFile).startsWith(`${realpathSync(join(s.agentDir, "sessions"))}${sep}`)).toBe(true);
 		// The person's own models.yml is the very file the process reads (no second copy of their keys).
 		const dir = offlineDir();
 		expect(realpathSync(join(dir, "models.yml"))).toBe(realpathSync(join(s.agentDir, "models.yml")));

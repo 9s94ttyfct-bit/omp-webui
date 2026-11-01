@@ -1,6 +1,7 @@
 import { existsSync, rmSync } from "node:fs";
 import { basename } from "node:path";
 import { writeChatSession } from "../support/chat-session.ts";
+import { has, whyMissing } from "../support/needs.ts";
 import { choose } from "../support/select.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -150,6 +151,8 @@ test("opening a conversation in the terminal releases the web UI's omp for it, s
 });
 
 test("delete a conversation through omp", async ({ page }) => {
+	// On Windows omp answers `/session delete` and the transcript stays (its page row goes): an open issue.
+	test.skip(!has.notWindowsYet, whyMissing("notWindowsYet"));
 	const file = own(0x35, DELETE);
 	expect(existsSync(file)).toBe(true);
 	await page.goto("/");
