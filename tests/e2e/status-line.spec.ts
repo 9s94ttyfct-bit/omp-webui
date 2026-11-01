@@ -139,7 +139,8 @@ test.describe("a wide window", () => {
 		await expect(line(page, "status-thinking")).toHaveText("High");
 		await expect(line(page, "status-goal")).toHaveText("Goal 420k / 1.5M");
 		await expect(line(page, "status-goal")).toHaveAttribute("title", "Ship the release");
-		await expect(line(page, "status-cwd")).toHaveAttribute("title", FIXTURE_CWD);
+		// The folder is also the way to another one (Change folder…).
+		await expect(line(page, "status-cwd")).toHaveAttribute("title", `${FIXTURE_CWD} · Change folder…`);
 		await expect(line(page, "status-cwd")).toContainText("ompw-fixture-project");
 		const cost = line(page, "status-cost");
 		await expect(cost).toContainText("$0.50");
