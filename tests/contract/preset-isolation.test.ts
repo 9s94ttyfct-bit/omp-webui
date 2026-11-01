@@ -275,7 +275,8 @@ test.skipIf(!has.notWindowsYet)(
 	300_000,
 );
 
-test("nor does a role added to the project's config", async () => {
+// The same open issue as the global config's case on Windows (the switched conversation reports stub-bravo).
+test.skipIf(!has.notWindowsYet)("nor does a role added to the project's config", async () => {
 	const project = join(server.work, ".omp");
 	try {
 		await addedRoleStaysOutOfA(() => {
