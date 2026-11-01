@@ -186,7 +186,17 @@ async function expectTappable(page: Page, names: (string | RegExp)[], unscrolled
 				bottom: r.bottom,
 				width: r.width,
 				height: r.height,
-				hit: hit === el || el.contains(hit) ? "itself" : `${hit?.tagName ?? "nothing"} ${hit?.className ?? ""}`,
+				// What covers the control, said so that a failure names it: its tag, test id and attributes, and its parents'.
+				hit:
+					hit === el || el.contains(hit)
+						? "itself"
+						: [hit, hit?.parentElement, hit?.parentElement?.parentElement]
+								.map((n) =>
+									n
+										? `${n.tagName}${n.getAttribute("data-testid") ? `#${n.getAttribute("data-testid")}` : ""}[${[...n.attributes].map((a) => `${a.name}=${a.value.slice(0, 60)}`).join(" ")}]`
+										: "-",
+								)
+								.join(" < "),
 			};
 		});
 		expect(found.hit, `what is at the centre of "${name}"`).toBe("itself");

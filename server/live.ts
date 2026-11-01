@@ -1,6 +1,6 @@
 import { existsSync, realpathSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { type ApprovalMode, isApprovalMode } from "../shared/approval.ts";
 import { COMPACT_KEYS, type CompactAt } from "../shared/compact-at.ts";
 import { compactWhereOf, type HeldPrompt, instructionsOf, type StepUnavailable } from "../shared/compact-queue.ts";
@@ -1679,7 +1679,8 @@ export class Live {
 		}
 		const s = data as StateSnapshot;
 		const from = this.info.sessionFile;
-		this.info.sessionFile = s.sessionFile ? sessionKey(s.sessionFile) : null;
+		// omp 18.12 reports the file of a relative `--session-dir` relative to the folder it runs in; later ones absolute.
+		this.info.sessionFile = s.sessionFile ? sessionKey(resolve(this.info.cwd, s.sessionFile)) : null;
 		this.info.sessionId = s.sessionId ?? null;
 		this.info.streaming = Boolean(s.isStreaming);
 		this.unsettled = s.isSettled === false || s.hasPendingAsyncWork === true || s.isCompacting === true;
