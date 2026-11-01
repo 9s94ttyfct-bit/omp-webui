@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, symlinkSyn
 import { join } from "node:path";
 import { DirError } from "../../server/dirs.ts";
 import { ProjectError, ProjectsFolder } from "../../server/projects.ts";
-import { PROJECT_NAME_MAX, projectNameProblem } from "../../shared/projects.ts";
+import { autoProjectName, PROJECT_NAME_MAX, projectNameProblem } from "../../shared/projects.ts";
 import { tempDir } from "../support/temp-dirs.ts";
 
 /**
@@ -191,8 +191,8 @@ test("a name that is a path, or goes up, makes nothing anywhere", () => {
 	for (const bad of ["../outside/x", "..", ".", "a/b", "/tmp/ompw-escape", "..\\x", ".x", "a/../b"]) {
 		expect(problemOf(() => w.projects.create(bad))).not.toBeNull();
 	}
-	// Not names at all.
-	for (const bad of [undefined, null, 3, ["a"], { toString: () => "a" }]) {
+	// Not names at all (null is not among them: it asks for a name made from the time, see below).
+	for (const bad of [undefined, 3, ["a"], { toString: () => "a" }]) {
 		expect(problemOf(() => w.projects.create(bad))).toBe("invalid");
 	}
 	expect(problemOf(() => w.projects.create(""))).toBe("empty");
@@ -222,6 +222,21 @@ test("the same name twice is made once", () => {
 	const w = world();
 	expect(w.projects.create("once").path).toBe(join(w.home, "omp", "once"));
 	expect(problemOf(() => w.projects.create("once"))).toBe("exists");
+});
+
+test("no name gives a folder named by the time, the first of chat-…, chat-…-2, … that is free", () => {
+	const w = world();
+	const at = new Date(2026, 10, 1, 15, 30, 45);
+	expect(autoProjectName(at)).toBe("chat-2026-11-01-1530");
+	expect(autoProjectName(new Date(2026, 0, 5, 7, 4))).toBe("chat-2026-01-05-0704");
+	const projects = join(w.home, "omp");
+	expect(w.projects.create(null, at).path).toBe(join(projects, "chat-2026-11-01-1530"));
+	expect(w.projects.create(null, at).path).toBe(join(projects, "chat-2026-11-01-1530-2"));
+	// Whatever holds a name is skipped, never overwritten: a file, too.
+	writeFileSync(join(projects, "chat-2026-11-01-1530-3"), "mine");
+	expect(w.projects.create(null, at).path).toBe(join(projects, "chat-2026-11-01-1530-4"));
+	expect(readFileSync(join(projects, "chat-2026-11-01-1530-3"), "utf8")).toBe("mine");
+	expect(existsSync(join(projects, "chat-2026-11-01-1530-2"))).toBe(true);
 });
 
 test("a chosen projects folder that has gone is said so, and nothing is made in its place", () => {

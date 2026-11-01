@@ -10,8 +10,17 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { isRecord } from "../shared/guards.ts";
-import { type ProjectCreated, type ProjectProblem, type ProjectsInfo, projectNameProblem } from "../shared/projects.ts";
+import {
+	autoProjectName,
+	type ProjectCreated,
+	type ProjectProblem,
+	type ProjectsInfo,
+	projectNameProblem,
+} from "../shared/projects.ts";
 import { absolute, DirError } from "./dirs.ts";
+
+/** How many numbered names a folder named by the time tries before it gives up. */
+const AUTO_NAME_TRIES = 99;
 
 /** A project folder that was not made (`problem` says why, `status` is the HTTP answer that fits). */
 export class ProjectError extends Error {
@@ -124,10 +133,13 @@ export class ProjectsFolder {
 		return new ProjectError(`Could not make ${path}${typeof code === "string" ? ` (${code})` : ""}`, "failed", 500);
 	}
 
-	/** Make `<projects folder>/<name>`: a new folder directly in it, never over one that is there. */
-	create(name: unknown): ProjectCreated {
-		const problem = typeof name === "string" ? projectNameProblem(name) : "invalid";
-		if (typeof name !== "string" || problem !== null) {
+	/**
+	 * Make `<projects folder>/<name>`: a new folder directly in it, never over one that is there. `null` names it from the
+	 * time (`autoProjectName`), with `-2`, `-3`, … while that name is taken: the first one free is made.
+	 */
+	create(name: unknown, now: Date = new Date()): ProjectCreated {
+		const problem = typeof name === "string" ? projectNameProblem(name) : name === null ? null : "invalid";
+		if ((typeof name !== "string" && name !== null) || problem !== null) {
 			throw new ProjectError(`${JSON.stringify(name)} cannot be a project folder's name`, problem ?? "invalid", 400);
 		}
 		const info = this.info();
@@ -153,13 +165,28 @@ export class ProjectsFolder {
 				}
 			}
 		}
-		const path = join(info.folder, name);
-		try {
-			// Not `recursive`: that would take an existing folder for success, and the name has no separators to need it.
-			mkdirSync(path);
-		} catch (e) {
-			throw this.refusal(e, path, info.folder);
+		if (name !== null) {
+			const path = join(info.folder, name);
+			try {
+				// Not `recursive`: that would take an existing folder for success, and the name has no separators to need it.
+				mkdirSync(path);
+			} catch (e) {
+				throw this.refusal(e, path, info.folder);
+			}
+			return { path, info };
 		}
-		return { path, info };
+		const base = autoProjectName(now);
+		for (let n = 1; n <= AUTO_NAME_TRIES; n++) {
+			const path = join(info.folder, n === 1 ? base : `${base}-${n}`);
+			try {
+				// Made, or taken (by anything: a file too): the next number. No look first, so two at once never take one name.
+				mkdirSync(path);
+				return { path, info };
+			} catch (e) {
+				const refused = this.refusal(e, path, info.folder);
+				if (refused.problem !== "exists") throw refused;
+			}
+		}
+		throw new ProjectError(`Every name from ${base} to ${base}-${AUTO_NAME_TRIES} is taken`, "exists", 409);
 	}
 }

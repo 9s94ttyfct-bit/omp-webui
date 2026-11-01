@@ -53,6 +53,15 @@ export function projectNameProblem(name: string): ProjectNameProblem | null {
 	return null;
 }
 
+/**
+ * The name of a project folder made with none given (New chat's default, `POST /api/projects/new` with `name: null`):
+ * `chat-YYYY-MM-DD-HHMM` in the local time of `at`. The server adds `-2`, `-3`, … while one of that name is there.
+ */
+export function autoProjectName(at: Date): string {
+	const two = (n: number) => String(n).padStart(2, "0");
+	return `chat-${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())}-${two(at.getHours())}${two(at.getMinutes())}`;
+}
+
 /** What the server refuses besides a bad name: the name is taken, or the projects folder cannot be made in. */
 export type ProjectProblem = ProjectNameProblem | "exists" | "folderGone" | "notFolder" | "noAccess" | "failed";
 

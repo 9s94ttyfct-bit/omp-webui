@@ -75,6 +75,18 @@ test("nothing chosen is ~/omp, shown while it is not there, and made by the firs
 	expect(await info()).toEqual({ folder: usual, isDefault: true, exists: true });
 });
 
+test("a null name makes a folder named by the server's time, and a second one beside it", async () => {
+	const first = await make(null);
+	expect(first.status).toBe(200);
+	const a = ((await first.json()) as ProjectCreated).path;
+	expect(a.startsWith(`${join(s.home, "omp")}/`)).toBe(true);
+	expect(a.split("/").pop()).toMatch(/^chat-\d{4}-\d{2}-\d{2}-\d{4}(-\d+)?$/);
+	expect(existsSync(a)).toBe(true);
+	const b = ((await (await make(null)).json()) as ProjectCreated).path;
+	expect(b).not.toBe(a);
+	expect(existsSync(b)).toBe(true);
+});
+
 test("a name that is taken, or that is a path, is a coded 4xx that changes nothing", async () => {
 	const before = readdirSync(s.home).sort();
 	const inside = readdirSync(join(s.home, "omp")).sort();

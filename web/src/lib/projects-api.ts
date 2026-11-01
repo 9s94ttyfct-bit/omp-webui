@@ -38,7 +38,8 @@ export const projectsApi = {
 	info: () => request<ProjectsInfo>("/api/projects"),
 	/** Choose the folder (this computer only); null: the default. */
 	set: (folder: string | null) => request<ProjectsInfo>("/api/projects", { folder }),
-	create: (name: string) => request<ProjectCreated>("/api/projects/new", { name }),
+	/** Make a project folder; null: one named by the server's time (`chat-YYYY-MM-DD-HHMM`, then `-2`, …). */
+	create: (name: string | null) => request<ProjectCreated>("/api/projects/new", { name }),
 };
 
 type Say = (key: MessageKey, vars?: Vars) => string;
