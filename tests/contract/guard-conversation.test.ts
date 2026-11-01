@@ -15,6 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { type GuardConfig, type GuardWord, type LiveGuard, parseGuardWord } from "../../shared/guard.ts";
 import { type ImportStatus, MIGRATE_API, type MigrateState } from "../../shared/migrate.ts";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
@@ -199,42 +200,48 @@ describe("a conversation's own guard", () => {
 // ------------------------------------------------------------------ kept with the conversation
 
 describe("what a conversation chose", () => {
-	test("outlives the server while it is paused: the next server adopts it with its own choices, and the settings do not move them", async () => {
-		await setGlobal(GLOBAL);
-		const a = await openNew();
-		const id = a.live.liveId;
-		await choose(id, { mode: "ask", reviewer: "x/y" });
-		await request(a.ws, { t: "pause", liveId: id });
-		await pollUntil(
-			() => existsSync(join(s.root, "data", "parked", `${id}.json`)),
-			"the record of the paused conversation",
-		);
-		const record: { guard?: unknown } = JSON.parse(readFileSync(join(s.root, "data", "parked", `${id}.json`), "utf8"));
-		expect(record.guard).toEqual({ mode: "ask", reviewer: "x/y" });
-		a.ws.close();
+	test.skipIf(!capabilities.pauseResume)(
+		"outlives the server while it is paused: the next server adopts it with its own choices, and the settings do not move them",
+		async () => {
+			await setGlobal(GLOBAL);
+			const a = await openNew();
+			const id = a.live.liveId;
+			await choose(id, { mode: "ask", reviewer: "x/y" });
+			await request(a.ws, { t: "pause", liveId: id });
+			await pollUntil(
+				() => existsSync(join(s.root, "data", "parked", `${id}.json`)),
+				"the record of the paused conversation",
+			);
+			const record: { guard?: unknown } = JSON.parse(
+				readFileSync(join(s.root, "data", "parked", `${id}.json`), "utf8"),
+			);
+			expect(record.guard).toEqual({ mode: "ask", reviewer: "x/y" });
+			a.ws.close();
 
-		await s.restart();
-		const adopted = await listed(id);
-		expect(adopted).toMatchObject({ liveId: id, exited: false });
-		expect(adopted?.guard).toEqual({
-			config: { ...GLOBAL, mode: "ask", reviewer: "x/y" },
-			own: { mode: "ask", reviewer: "x/y" },
-		});
-		// The word is the new server's: its gate reads the conversation's own choices over the settings.
-		await pollUntil(() => wordOf(id)?.mode === "ask", "the new server's word to the adopted gate");
-		expect(wordOf(id)).toMatchObject({ mode: "ask", reviewers: ["x/y"], askWhenUnavailable: true });
-		// The settings move; what it chose stays, and it takes the rest from them.
-		await setGlobal({ mode: "off", askWhenUnavailable: false });
-		await pollUntil(() => wordOf(id)?.askWhenUnavailable === false, "the adopted gate to follow the settings");
-		expect(wordOf(id)).toMatchObject({ mode: "ask", reviewers: ["x/y"] });
+			await s.restart();
+			const adopted = await listed(id);
+			expect(adopted).toMatchObject({ liveId: id, exited: false });
+			expect(adopted?.guard).toEqual({
+				config: { ...GLOBAL, mode: "ask", reviewer: "x/y" },
+				own: { mode: "ask", reviewer: "x/y" },
+			});
+			// The word is the new server's: its gate reads the conversation's own choices over the settings.
+			await pollUntil(() => wordOf(id)?.mode === "ask", "the new server's word to the adopted gate");
+			expect(wordOf(id)).toMatchObject({ mode: "ask", reviewers: ["x/y"], askWhenUnavailable: true });
+			// The settings move; what it chose stays, and it takes the rest from them.
+			await setGlobal({ mode: "off", askWhenUnavailable: false });
+			await pollUntil(() => wordOf(id)?.askWhenUnavailable === false, "the adopted gate to follow the settings");
+			expect(wordOf(id)).toMatchObject({ mode: "ask", reviewers: ["x/y"] });
 
-		// Resumed, it is the same: the choice is the conversation's, not the pause's.
-		const ws = await connect(s);
-		await request(ws, { t: "attach", liveId: id });
-		await request(ws, { t: "resume", liveId: id });
-		expect((await guardOf(id))?.own).toEqual({ mode: "ask", reviewer: "x/y" });
-		await closeAndWait(ws, id);
-	}, 180_000);
+			// Resumed, it is the same: the choice is the conversation's, not the pause's.
+			const ws = await connect(s);
+			await request(ws, { t: "attach", liveId: id });
+			await request(ws, { t: "resume", liveId: id });
+			expect((await guardOf(id))?.own).toEqual({ mode: "ask", reviewer: "x/y" });
+			await closeAndWait(ws, id);
+		},
+		180_000,
+	);
 
 	test("goes with the file: the conversation opened again, by this server or by the next, is under it, until it follows the settings again", async () => {
 		await setGlobal(GLOBAL);
@@ -307,52 +314,56 @@ describe("what an agent plants in the files that keep a conversation's choices",
 		90_000,
 	);
 
-	test("an Off planted in the record of a paused conversation and in the file is written over, and the next server adopts the conversation under what it chose", async () => {
-		await setGlobal(GLOBAL);
-		const a = await openNew();
-		const id = a.live.liveId;
-		await choose(id, { mode: "ask" });
-		const key = (await listed(id))?.sessionFile ?? "";
-		expect(key).not.toBe("");
-		await request(a.ws, { t: "pause", liveId: id });
-		const recordFile = join(s.root, "data", "parked", `${id}.json`);
-		await pollUntil(() => existsSync(recordFile), "the record of the paused conversation");
-		const recordedGuard = (): unknown => (JSON.parse(readFileSync(recordFile, "utf8")) as { guard?: unknown }).guard;
-		expect(recordedGuard()).toEqual({ mode: "ask" });
+	test.skipIf(!capabilities.pauseResume)(
+		"an Off planted in the record of a paused conversation and in the file is written over, and the next server adopts the conversation under what it chose",
+		async () => {
+			await setGlobal(GLOBAL);
+			const a = await openNew();
+			const id = a.live.liveId;
+			await choose(id, { mode: "ask" });
+			const key = (await listed(id))?.sessionFile ?? "";
+			expect(key).not.toBe("");
+			await request(a.ws, { t: "pause", liveId: id });
+			const recordFile = join(s.root, "data", "parked", `${id}.json`);
+			await pollUntil(() => existsSync(recordFile), "the record of the paused conversation");
+			const recordedGuard = (): unknown => (JSON.parse(readFileSync(recordFile, "utf8")) as { guard?: unknown }).guard;
+			expect(recordedGuard()).toEqual({ mode: "ask" });
 
-		// An Off in both places the conversation's choice is kept in.
-		const record: Record<string, unknown> = JSON.parse(readFileSync(recordFile, "utf8"));
-		writeFileSync(recordFile, JSON.stringify({ ...record, guard: { mode: "off" } }));
-		writeFileSync(
-			approvalFile(),
-			JSON.stringify({
-				default: null,
-				sessions: {},
-				usageWait: {},
-				models: {},
-				guard: { ...keptInFile(), [key]: { mode: "off" } },
-			}),
-		);
-		await pollUntil(
-			() => JSON.stringify(recordedGuard()) === JSON.stringify({ mode: "ask" }),
-			"the record to be written again",
-		);
-		await pollUntil(
-			() => JSON.stringify(keptInFile()[key]) === JSON.stringify({ mode: "ask" }),
-			"the file to be written again",
-		);
-		a.ws.close();
+			// An Off in both places the conversation's choice is kept in.
+			const record: Record<string, unknown> = JSON.parse(readFileSync(recordFile, "utf8"));
+			writeFileSync(recordFile, JSON.stringify({ ...record, guard: { mode: "off" } }));
+			writeFileSync(
+				approvalFile(),
+				JSON.stringify({
+					default: null,
+					sessions: {},
+					usageWait: {},
+					models: {},
+					guard: { ...keptInFile(), [key]: { mode: "off" } },
+				}),
+			);
+			await pollUntil(
+				() => JSON.stringify(recordedGuard()) === JSON.stringify({ mode: "ask" }),
+				"the record to be written again",
+			);
+			await pollUntil(
+				() => JSON.stringify(keptInFile()[key]) === JSON.stringify({ mode: "ask" }),
+				"the file to be written again",
+			);
+			a.ws.close();
 
-		// A crash: the server does not get to write its conversations down as it leaves.
-		await s.restart(undefined, { signal: "SIGKILL" });
-		expect(await listed(id)).toMatchObject({ liveId: id, exited: false });
-		expect((await guardOf(id))?.own).toEqual({ mode: "ask" });
-		await pollUntil(() => wordOf(id)?.mode === "ask", "the adopted gate to be told what the conversation chose");
-		const ws = await connect(s);
-		await request(ws, { t: "attach", liveId: id });
-		await request(ws, { t: "resume", liveId: id });
-		await closeAndWait(ws, id);
-	}, 180_000);
+			// A crash: the server does not get to write its conversations down as it leaves.
+			await s.restart(undefined, { signal: "SIGKILL" });
+			expect(await listed(id)).toMatchObject({ liveId: id, exited: false });
+			expect((await guardOf(id))?.own).toEqual({ mode: "ask" });
+			await pollUntil(() => wordOf(id)?.mode === "ask", "the adopted gate to be told what the conversation chose");
+			const ws = await connect(s);
+			await request(ws, { t: "attach", liveId: id });
+			await request(ws, { t: "resume", liveId: id });
+			await closeAndWait(ws, id);
+		},
+		180_000,
+	);
 });
 
 // ------------------------------------------------------------------ a page that is not this computer's

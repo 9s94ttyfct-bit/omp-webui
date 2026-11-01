@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { isFailure, type LoadedData, type LoadedTools } from "../../shared/loaded.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { FIXTURE_CWD, writeSimpleSession } from "../support/fixtures.ts";
@@ -218,17 +219,21 @@ test("a conversation whose folder is gone says so for plugins and rules, not tha
 	}
 });
 
-test("a paused conversation is not asked: not-running, with its folder's plugins and rules, and no failed sections", async () => {
-	const chat = await open({ kind: "new", cwd: s.work });
-	try {
-		await chat.pause();
-		const data = await loaded(`live=${chat.info.liveId}`);
-		expect([data.tools, data.commands, data.skills]).toEqual([null, null, null]);
-		expect(Array.isArray(data.plugins)).toBe(true);
-		expect(Array.isArray(data.rules)).toBe(true);
-		await chat.resume();
-		expect(toolsOf(await loaded(`live=${chat.info.liveId}`)).builtin.length).toBeGreaterThan(0);
-	} finally {
-		await chat.close();
-	}
-}, 120_000);
+test.skipIf(!capabilities.pauseResume)(
+	"a paused conversation is not asked: not-running, with its folder's plugins and rules, and no failed sections",
+	async () => {
+		const chat = await open({ kind: "new", cwd: s.work });
+		try {
+			await chat.pause();
+			const data = await loaded(`live=${chat.info.liveId}`);
+			expect([data.tools, data.commands, data.skills]).toEqual([null, null, null]);
+			expect(Array.isArray(data.plugins)).toBe(true);
+			expect(Array.isArray(data.rules)).toBe(true);
+			await chat.resume();
+			expect(toolsOf(await loaded(`live=${chat.info.liveId}`)).builtin.length).toBeGreaterThan(0);
+		} finally {
+			await chat.close();
+		}
+	},
+	120_000,
+);

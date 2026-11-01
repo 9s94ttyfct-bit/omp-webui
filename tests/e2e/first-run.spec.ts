@@ -68,7 +68,7 @@ test("the new-chat page asks for a folder and starts no omp until one is chosen"
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	const started = startedIn(tap);
 	expect(started).toHaveLength(1);
-	expect(started[0]?.endsWith("/work")).toBe(true);
+	expect(started[0]).toMatch(/[\\/]work$/);
 });
 
 test("the sidebar says how to start instead of offering filters", async ({ page }) => {

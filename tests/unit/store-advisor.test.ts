@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { SessionStore } from "../../server/sessions/store.ts";
 import type { SessionSummary } from "../../shared/protocol.ts";
 import { seedFixtures, USAGE_A1 } from "../support/fixtures.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { appendCall, sessionWithSubagents, writeTranscript } from "../support/subagent-fixtures.ts";
 
 /**
@@ -24,7 +25,7 @@ beforeAll(() => {
 });
 afterAll(() => {
 	store.close();
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 /** A conversation of this spec's own: its request costs $0.012345, and each subagent has transcripts worth the listed requests. */

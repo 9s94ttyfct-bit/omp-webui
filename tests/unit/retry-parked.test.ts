@@ -1,3 +1,4 @@
+// needs: pauseResume
 import { afterEach, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

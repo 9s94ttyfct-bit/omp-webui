@@ -1,14 +1,5 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
-import {
-	appendFileSync,
-	mkdirSync,
-	mkdtempSync,
-	readFileSync,
-	renameSync,
-	rmSync,
-	statSync,
-	writeFileSync,
-} from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LineCursor } from "../../server/sessions/lines.ts";
@@ -16,6 +7,7 @@ import { emptyUsage, parseSessionText, summarize, withDependents } from "../../s
 import { SessionStore } from "../../server/sessions/store.ts";
 import { SubagentIndex } from "../../server/sessions/subagents.ts";
 import { writeBigSession } from "../support/big-session.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * omp rewrites a transcript by writing a temporary file and renaming it over the original. A read of a large transcript
@@ -28,7 +20,7 @@ const restore: (() => void)[] = [];
 afterEach(() => {
 	for (const fn of restore.splice(0)) fn();
 });
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => removeScratch(root));
 
 let cases = 0;
 function agentDir(): string {

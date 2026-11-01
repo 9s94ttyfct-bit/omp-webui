@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionStore } from "../../server/sessions/store.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * The search palette marks what matched in each hit, and does it for a query of any length. Trigram full-text search
@@ -52,7 +53,7 @@ beforeAll(async () => {
 });
 afterAll(() => {
 	store.close();
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 /** The pieces of a snippet inside markers, and what is left with the markers taken out. */

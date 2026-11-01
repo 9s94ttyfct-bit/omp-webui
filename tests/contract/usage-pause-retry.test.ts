@@ -1,3 +1,4 @@
+// needs: pauseResume
 import { expect, test } from "bun:test";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { watchFrames } from "../support/frames.ts";

@@ -1,14 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import {
-	mkdirSync,
-	mkdtempSync,
-	readFileSync,
-	realpathSync,
-	rmSync,
-	statSync,
-	utimesSync,
-	writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { gunzipSync } from "node:zlib";
@@ -18,6 +9,7 @@ import { SessionStore } from "../../server/sessions/store.ts";
 import type { FamilyDocument, SessionEntry, SessionFileData } from "../../shared/protocol.ts";
 import { writeBigSession } from "../support/big-session.ts";
 import { restoreMembers } from "../support/family-restore.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * omp's `fork` and `branch` write a new file with the whole path from the root copied (entry ids kept): a family of a
@@ -33,7 +25,7 @@ const root = mkdtempSync(join(tmpdir(), "ompw-family-dedup-"));
 const stores: SessionStore[] = [];
 afterAll(() => {
 	for (const s of stores) s.close();
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 let cases = 0;

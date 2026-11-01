@@ -7,6 +7,7 @@ import { sessionKey } from "../../server/omp/approval.ts";
 import { RESTART_TIMINGS, RestartCoordinator } from "../../server/omp/restart/coordinator.ts";
 import { RestartService } from "../../server/omp/restart/install.ts";
 import { RestartStore } from "../../server/omp/restart/store.ts";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { platform } from "../../server/platform/index.ts";
 import { isRecord } from "../../shared/guards.ts";
 import { RESTART_TOOL } from "../../shared/restart.ts";
@@ -228,25 +229,29 @@ describe("refusals: told to the agent, nothing ended", () => {
 		if (next?.info.pid) strays.add(next.info.pid);
 	}, 60_000);
 
-	test("a paused conversation: the pages say so at once, and the agent is told when it runs again", async () => {
-		const w = world();
-		w.coordinator.timings = { ...FAST, turnEndMs: 400 };
-		const live = await w.open();
-		await emit(live, [{ type: "agent_start" }, ...call(ARGS)]);
-		await pollUntil(() => w.store.list().length === 1, "the request");
-		await live.pause();
-		await pollUntil(() => live.info.restartRefused !== undefined, "the refusal");
-		expect(only(w.store)).toMatchObject({ state: "refused", refusal: "paused" });
-		expect(live.info.restartRefused).toMatchObject({ why: "paused", reason: ARGS.reason });
-		// A frozen omp is sent nothing.
-		expect(sent(w.prompts)).toEqual([]);
-		await live.resume();
-		await pollUntil(() => sent(w.prompts).length > 0, "the refusal told");
-		expect(sent(w.prompts)[0]).toContain("restart-refused");
-		expect(sent(w.prompts)[0]).toContain(" paused] ");
-		expect(live.info.restartRefused).toBeUndefined();
-		expect(live.info.exited).toBe(false);
-	}, 30_000);
+	test.skipIf(!capabilities.pauseResume)(
+		"a paused conversation: the pages say so at once, and the agent is told when it runs again",
+		async () => {
+			const w = world();
+			w.coordinator.timings = { ...FAST, turnEndMs: 400 };
+			const live = await w.open();
+			await emit(live, [{ type: "agent_start" }, ...call(ARGS)]);
+			await pollUntil(() => w.store.list().length === 1, "the request");
+			await live.pause();
+			await pollUntil(() => live.info.restartRefused !== undefined, "the refusal");
+			expect(only(w.store)).toMatchObject({ state: "refused", refusal: "paused" });
+			expect(live.info.restartRefused).toMatchObject({ why: "paused", reason: ARGS.reason });
+			// A frozen omp is sent nothing.
+			expect(sent(w.prompts)).toEqual([]);
+			await live.resume();
+			await pollUntil(() => sent(w.prompts).length > 0, "the refusal told");
+			expect(sent(w.prompts)[0]).toContain("restart-refused");
+			expect(sent(w.prompts)[0]).toContain(" paused] ");
+			expect(live.info.restartRefused).toBeUndefined();
+			expect(live.info.exited).toBe(false);
+		},
+		30_000,
+	);
 });
 
 describe("the limit", () => {
@@ -337,14 +342,18 @@ describe("Force restart", () => {
 		expect(sent(w.prompts).filter((m) => m.includes(record.id))).toHaveLength(1);
 	}, 30_000);
 
-	test("a paused conversation is refused", async () => {
-		const w = world();
-		const live = await w.open();
-		await live.pause();
-		await expect(w.coordinator.forceRestart(live)).rejects.toMatchObject({ code: "restartPaused" });
-		await live.resume();
-		expect(live.info.exited).toBe(false);
-	}, 30_000);
+	test.skipIf(!capabilities.pauseResume)(
+		"a paused conversation is refused",
+		async () => {
+			const w = world();
+			const live = await w.open();
+			await live.pause();
+			await expect(w.coordinator.forceRestart(live)).rejects.toMatchObject({ code: "restartPaused" });
+			await live.resume();
+			expect(live.info.exited).toBe(false);
+		},
+		30_000,
+	);
 });
 
 describe("a server that stopped between two steps finishes the restart when it starts again", () => {

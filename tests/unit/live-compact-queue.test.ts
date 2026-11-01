@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Live, LivePool } from "../../server/live.ts";
 import { CompactStepService } from "../../server/omp/compact-step/service.ts";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { isRecord } from "../../shared/guards.ts";
 import { fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
 import { pollUntil } from "../support/poll.ts";
@@ -261,32 +262,35 @@ test("a handoff, the same conversation in a new file, keeps the request; a move 
 	expect(live.info.compactQueued).toBeUndefined();
 });
 
-test("a paused conversation keeps the waiting compact and the messages held behind it across a restart of the server", async () => {
-	const dir = mkdtempSync(join(tmpdir(), "ompw-live-compact-parked-"));
-	dirs.push(dir);
-	const bin = writeFakeOmp(dir, { streaming: true });
-	const cwd = join(dir, "work");
-	mkdirSync(cwd);
-	const first = new LivePool(fakeConfig(dir, bin));
-	pools.push(first);
-	const live = await first.open({ kind: "new", cwd }, async () => null);
-	await pollUntil(() => live.info.streaming, "the process to say a turn is under way");
-	await live.queueCompact("kept note");
-	await live.rpc({ type: "prompt", message: "held while paused", streamingBehavior: "followUp" });
+test.skipIf(!capabilities.pauseResume)(
+	"a paused conversation keeps the waiting compact and the messages held behind it across a restart of the server",
+	async () => {
+		const dir = mkdtempSync(join(tmpdir(), "ompw-live-compact-parked-"));
+		dirs.push(dir);
+		const bin = writeFakeOmp(dir, { streaming: true });
+		const cwd = join(dir, "work");
+		mkdirSync(cwd);
+		const first = new LivePool(fakeConfig(dir, bin));
+		pools.push(first);
+		const live = await first.open({ kind: "new", cwd }, async () => null);
+		await pollUntil(() => live.info.streaming, "the process to say a turn is under way");
+		await live.queueCompact("kept note");
+		await live.rpc({ type: "prompt", message: "held while paused", streamingBehavior: "followUp" });
 
-	await live.pause();
-	const [record] = first.parked.list();
-	expect(record.compactQueue).toMatchObject({ instructions: "kept note", held: [{ message: "held while paused" }] });
+		await live.pause();
+		const [record] = first.parked.list();
+		expect(record.compactQueue).toMatchObject({ instructions: "kept note", held: [{ message: "held while paused" }] });
 
-	expect(await first.parkKept()).toBe(1);
-	const second = new LivePool(fakeConfig(dir, bin));
-	pools.push(second);
-	expect(await second.adopt()).toBe(1);
-	const adopted = second.get(live.info.liveId) as Live;
-	expect(adopted.info.compactQueued).toMatchObject({
-		phase: "queued",
-		instructions: "kept note",
-		held: ["held while paused"],
-	});
-	expect(adopted.attached().compactQueued?.held).toEqual(["held while paused"]);
-});
+		expect(await first.parkKept()).toBe(1);
+		const second = new LivePool(fakeConfig(dir, bin));
+		pools.push(second);
+		expect(await second.adopt()).toBe(1);
+		const adopted = second.get(live.info.liveId) as Live;
+		expect(adopted.info.compactQueued).toMatchObject({
+			phase: "queued",
+			instructions: "kept note",
+			held: ["held while paused"],
+		});
+		expect(adopted.attached().compactQueued?.held).toEqual(["held while paused"]);
+	},
+);

@@ -1,9 +1,10 @@
 import { heapStats } from "bun:jsc";
 import { afterAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionStore } from "../../server/sessions/store.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * What the list of conversations keeps in the server for as long as it runs: a summary per conversation, not what the
@@ -13,7 +14,7 @@ import { SessionStore } from "../../server/sessions/store.ts";
  */
 
 const root = mkdtempSync(join(tmpdir(), "ompw-store-memory-"));
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => removeScratch(root));
 
 const MESSAGES = 24;
 const MESSAGE_CHARS = 1 << 20;

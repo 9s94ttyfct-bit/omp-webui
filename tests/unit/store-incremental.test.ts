@@ -4,6 +4,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { SessionStore, type StoreOptions } from "../../server/sessions/store.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * A change to one conversation costs what that conversation does, not what the library is: the scan after it looks at the
@@ -14,7 +15,7 @@ const root = mkdtempSync(join(tmpdir(), "ompw-incremental-"));
 const stores: SessionStore[] = [];
 afterAll(() => {
 	for (const s of stores) s.close();
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 const STAMP = "2026-01-09T00:00:00.000Z";

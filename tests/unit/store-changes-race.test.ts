@@ -1,10 +1,11 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionStore } from "../../server/sessions/store.ts";
 import type { SessionSummary } from "../../shared/protocol.ts";
 import { seedFixtures } from "../support/fixtures.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * A session file that is on disk is in the list the next time the page asks for it, whatever the order of the
@@ -22,7 +23,7 @@ import { seedFixtures } from "../support/fixtures.ts";
  */
 
 const root = mkdtempSync(join(tmpdir(), "ompw-store-race-"));
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => removeScratch(root));
 
 /** A watcher that is told what happened, so the test drives the store instead of the operating system. */
 function fakeWatcher() {

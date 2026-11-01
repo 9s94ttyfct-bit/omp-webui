@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { descendants, killTree } from "../../scripts/lib/shutdown.ts";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { processExists, pollUntil as until } from "../support/poll.ts";
 
 /**
@@ -120,16 +121,19 @@ test("killTree ends a tree whose processes ignore SIGTERM, after the grace perio
 	for (const p of [pid, ...below]) expect(gone(p)).toBe(true);
 });
 
-test("killTree ends a stopped process at once: SIGTERM stays pending on it until it is continued", async () => {
-	const proc = Bun.spawn(["sleep", "300"], { stdout: "ignore", stderr: "ignore" });
-	process.kill(proc.pid, "SIGSTOP");
-	await sleep(100);
-	const started = Date.now();
-	await killTree(proc.pid, 8000);
-	expect(Date.now() - started).toBeLessThan(3000);
-	await proc.exited;
-	expect(gone(proc.pid)).toBe(true);
-});
+test.skipIf(!capabilities.pauseResume)(
+	"killTree ends a stopped process at once: SIGTERM stays pending on it until it is continued",
+	async () => {
+		const proc = Bun.spawn(["sleep", "300"], { stdout: "ignore", stderr: "ignore" });
+		process.kill(proc.pid, "SIGSTOP");
+		await sleep(100);
+		const started = Date.now();
+		await killTree(proc.pid, 8000);
+		expect(Date.now() - started).toBeLessThan(3000);
+		await proc.exited;
+		expect(gone(proc.pid)).toBe(true);
+	},
+);
 
 test("descendants lists the deepest first, and none for a process without children", async () => {
 	const top = stubborn();

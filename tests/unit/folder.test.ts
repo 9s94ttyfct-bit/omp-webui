@@ -12,7 +12,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { hiddenByDefault } from "../../server/files.ts";
 import {
 	FolderError,
@@ -109,13 +109,15 @@ describe("the root", () => {
 
 describe("the path guard", () => {
 	test("`inside` is the folder and what is in it, by whole names", () => {
-		expect(inside("/w/proj", "/w/proj")).toBe(true);
-		expect(inside("/w/proj", "/w/proj/a/b")).toBe(true);
-		expect(inside("/w/proj", "/w/proj-evil")).toBe(false);
-		expect(inside("/w/proj", "/w/proj-evil/x")).toBe(false);
-		expect(inside("/w/proj", "/w")).toBe(false);
-		expect(inside("/w/proj", "/w/other")).toBe(false);
-		expect(inside("/", "/anything")).toBe(true);
+		// The real paths `inside` compares are the system's own, with its separator.
+		const p = (path: string) => path.split("/").join(sep);
+		expect(inside(p("/w/proj"), p("/w/proj"))).toBe(true);
+		expect(inside(p("/w/proj"), p("/w/proj/a/b"))).toBe(true);
+		expect(inside(p("/w/proj"), p("/w/proj-evil"))).toBe(false);
+		expect(inside(p("/w/proj"), p("/w/proj-evil/x"))).toBe(false);
+		expect(inside(p("/w/proj"), p("/w"))).toBe(false);
+		expect(inside(p("/w/proj"), p("/w/other"))).toBe(false);
+		expect(inside(p("/"), p("/anything"))).toBe(true);
 	});
 
 	test("`..` is refused wherever it stands, whether or not the path would come back in", async () => {

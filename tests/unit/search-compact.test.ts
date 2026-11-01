@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionStore } from "../../server/sessions/store.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * Deleting rows of the full-text index does not give its file back by itself (FTS5 only marks them). The worker counts what it
@@ -22,7 +23,7 @@ let n = 0;
 afterEach(() => {
 	for (const s of stores.splice(0)) s.close();
 });
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => removeScratch(root));
 
 let seed = 0x2545f491;
 const random = () => {

@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Live, LivePool } from "../../server/live.ts";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import type { LiveInfo, LiveRetry } from "../../shared/protocol.ts";
 import { USAGE_LIMIT_FLAG } from "../../shared/retry.ts";
 import { fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
@@ -129,51 +130,57 @@ test("a backoff that is not a usage limit is not kept: it is minutes at most, an
 	expect(await first.parkKept()).toBe(0);
 });
 
-test("pausing a waiting conversation and resuming it keeps the wait; closing it lets the process go", async () => {
-	const { first, live } = await start();
-	await emit(live, { type: "agent_start" }, usageLimitWait);
-	await pollUntil(() => first.parked.list().length === 1, "the wait to be written down");
-	expect(first.parked.list().map((r) => r.pausedAt)).toEqual([null]);
+test.skipIf(!capabilities.pauseResume)(
+	"pausing a waiting conversation and resuming it keeps the wait; closing it lets the process go",
+	async () => {
+		const { first, live } = await start();
+		await emit(live, { type: "agent_start" }, usageLimitWait);
+		await pollUntil(() => first.parked.list().length === 1, "the wait to be written down");
+		expect(first.parked.list().map((r) => r.pausedAt)).toEqual([null]);
 
-	await live.pause();
-	expect(first.parked.list().map((r) => r.pausedAt !== null)).toEqual([true]);
+		await live.pause();
+		expect(first.parked.list().map((r) => r.pausedAt !== null)).toEqual([true]);
 
-	// The pause is over, the wait is not: the record stays, and says so.
-	await live.resume();
-	expect(live.kept).toBe(true);
-	expect(first.parked.list().map((r) => r.pausedAt)).toEqual([null]);
+		// The pause is over, the wait is not: the record stays, and says so.
+		await live.resume();
+		expect(live.kept).toBe(true);
+		expect(first.parked.list().map((r) => r.pausedAt)).toEqual([null]);
 
-	await live.end();
-	expect(live.kept).toBe(false);
-	expect(first.parked.list()).toEqual([]);
-});
-
-test("closing a conversation paused in a usage-limit wait ends its omp frozen: it is never let run, so a wait that is over cannot start the retried turn", async () => {
-	const { first, live } = await start();
-	await emit(live, { type: "agent_start" }, usageLimitWait);
-	await pollUntil(() => first.parked.list().length === 1, "the wait to be written down");
-	await live.pause();
-	const pid = live.info.pid as number;
-	expect(stopped(pid)).toBe(true);
-	// omp's sleep runs on while it is frozen: whatever lets it run (a SIGCONT, then a closed stdin and a SIGTERM it has
-	// yet to handle) lets the retried turn start first. What the server sends it is what says it never ran.
-	const sent: (string | number | undefined)[] = [];
-	const kill = process.kill;
-	process.kill = ((target: number, signal?: string | number) => {
-		if (Math.abs(target) === pid) sent.push(signal);
-		return kill.call(process, target, signal);
-	}) as typeof process.kill;
-	try {
 		await live.end();
-		await pollUntil(() => live.info.exited, "the paused omp to end");
-	} finally {
-		process.kill = kill;
-	}
-	expect(sent).not.toContain("SIGCONT");
-	expect(sent).toContain("SIGKILL");
-	expect(processExists(pid)).toBe(false);
-	expect(first.parked.list()).toEqual([]);
-});
+		expect(live.kept).toBe(false);
+		expect(first.parked.list()).toEqual([]);
+	},
+);
+
+test.skipIf(!capabilities.pauseResume)(
+	"closing a conversation paused in a usage-limit wait ends its omp frozen: it is never let run, so a wait that is over cannot start the retried turn",
+	async () => {
+		const { first, live } = await start();
+		await emit(live, { type: "agent_start" }, usageLimitWait);
+		await pollUntil(() => first.parked.list().length === 1, "the wait to be written down");
+		await live.pause();
+		const pid = live.info.pid as number;
+		expect(stopped(pid)).toBe(true);
+		// omp's sleep runs on while it is frozen: whatever lets it run (a SIGCONT, then a closed stdin and a SIGTERM it has
+		// yet to handle) lets the retried turn start first. What the server sends it is what says it never ran.
+		const sent: (string | number | undefined)[] = [];
+		const kill = process.kill;
+		process.kill = ((target: number, signal?: string | number) => {
+			if (Math.abs(target) === pid) sent.push(signal);
+			return kill.call(process, target, signal);
+		}) as typeof process.kill;
+		try {
+			await live.end();
+			await pollUntil(() => live.info.exited, "the paused omp to end");
+		} finally {
+			process.kill = kill;
+		}
+		expect(sent).not.toContain("SIGCONT");
+		expect(sent).toContain("SIGKILL");
+		expect(processExists(pid)).toBe(false);
+		expect(first.parked.list()).toEqual([]);
+	},
+);
 
 test("ending what outlives the server stops a waiting conversation's omp: it would sleep through the limit and retry for nobody", async () => {
 	const { first, live } = await start();

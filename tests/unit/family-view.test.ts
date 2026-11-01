@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { appendFileSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { appendFileSync, mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
@@ -8,6 +8,7 @@ import type { ViewRequest } from "../../server/history-request.ts";
 import { SessionStore } from "../../server/sessions/store.ts";
 import type { FamilyDocument, FamilyStatsDocument, SessionFileData } from "../../shared/protocol.ts";
 import { seedFixtures } from "../support/fixtures.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * `/api/family?view=` through the cache: a window of the history is built by the worker (from its indexes, not by reading
@@ -19,7 +20,7 @@ const dirs: string[] = [];
 const stores: SessionStore[] = [];
 afterEach(() => {
 	for (const s of stores.splice(0)) s.close();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 async function setup() {

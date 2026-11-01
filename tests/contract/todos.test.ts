@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
@@ -113,19 +114,23 @@ test("omp's own words come back when it cannot read the list, which stays as it 
 	}
 }, 90_000);
 
-test("a paused conversation takes the edit and stays paused", async () => {
-	const chat = await open({ kind: "new", cwd: s.work });
-	try {
-		await chat.pause();
-		const pausedAt = (await chat.listing())?.pausedAt;
-		expect(pausedAt).toBeTruthy();
-		const res = await putTodos(chat.info.liveId, "# While paused\n- [ ] One\n");
-		expect(res.status).toBe(200);
-		expect((await chat.listing())?.pausedAt).toBe(pausedAt as number);
-	} finally {
-		await chat.close();
-	}
-}, 90_000);
+test.skipIf(!capabilities.pauseResume)(
+	"a paused conversation takes the edit and stays paused",
+	async () => {
+		const chat = await open({ kind: "new", cwd: s.work });
+		try {
+			await chat.pause();
+			const pausedAt = (await chat.listing())?.pausedAt;
+			expect(pausedAt).toBeTruthy();
+			const res = await putTodos(chat.info.liveId, "# While paused\n- [ ] One\n");
+			expect(res.status).toBe(200);
+			expect((await chat.listing())?.pausedAt).toBe(pausedAt as number);
+		} finally {
+			await chat.close();
+		}
+	},
+	90_000,
+);
 
 test("the edit is recorded in the conversation: a resumed one has it", async () => {
 	const target = { kind: "resume", sessionFile: s.fixtures.alpha, model: MODEL };

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionStore } from "../../server/sessions/store.ts";
 import { FIXTURE_BUCKET, FIXTURE_FILES, seedFixtures, USAGE_A1, USAGE_A2, USAGE_A3 } from "../support/fixtures.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * A conversation's cost is its own requests plus its subagents' — the finished ones, the nested ones and the ones
@@ -25,7 +26,7 @@ beforeAll(() => {
 });
 afterAll(() => {
 	store.close();
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 const reply = (id: string, calls: number) => ({

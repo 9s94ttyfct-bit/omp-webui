@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { capabilities } from "../../server/platform/capabilities.ts";
 import { isFailure, type LoadedData, type LoadedMcpServer, type LoadedTools } from "../../shared/loaded.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { FIXTURE_CWD, writeSimpleSession } from "../support/fixtures.ts";
@@ -213,28 +214,32 @@ test("a switch writes enabled where the server is configured and nothing else; a
 	}
 }, 180_000);
 
-test("a restart is refused while omp is working or paused, and ends nothing; it works once omp is idle", async () => {
-	const chat = await open({ kind: "new", cwd: s.work });
-	try {
-		const running = chat.rpc({ type: "bash", command: "sleep 3" });
-		await pollUntil(async () => (await chat.listing()) !== undefined, "the listing");
-		const busy = await send("/api/controls/restart", { live: chat.info.liveId });
-		expect(busy.status).toBe(409);
-		expect(await chat.ended()).toBe(false);
-		await running;
+test.skipIf(!capabilities.pauseResume)(
+	"a restart is refused while omp is working or paused, and ends nothing; it works once omp is idle",
+	async () => {
+		const chat = await open({ kind: "new", cwd: s.work });
+		try {
+			const running = chat.rpc({ type: "bash", command: "sleep 3" });
+			await pollUntil(async () => (await chat.listing()) !== undefined, "the listing");
+			const busy = await send("/api/controls/restart", { live: chat.info.liveId });
+			expect(busy.status).toBe(409);
+			expect(await chat.ended()).toBe(false);
+			await running;
 
-		await chat.pause();
-		expect((await send("/api/controls/restart", { live: chat.info.liveId })).status).toBe(409);
-		expect((await chat.listing())?.pausedAt).toBeTruthy();
-		await chat.resume();
+			await chat.pause();
+			expect((await send("/api/controls/restart", { live: chat.info.liveId })).status).toBe(409);
+			expect((await chat.listing())?.pausedAt).toBeTruthy();
+			await chat.resume();
 
-		expect((await send("/api/controls/restart", { live: chat.info.liveId })).status).toBe(200);
-		expect(await chat.ended()).toBe(true);
-		expect((await send("/api/controls/restart", { live: chat.info.liveId })).status).toBe(404);
-	} finally {
-		await chat.close();
-	}
-}, 120_000);
+			expect((await send("/api/controls/restart", { live: chat.info.liveId })).status).toBe(200);
+			expect(await chat.ended()).toBe(true);
+			expect((await send("/api/controls/restart", { live: chat.info.liveId })).status).toBe(404);
+		} finally {
+			await chat.close();
+		}
+	},
+	120_000,
+);
 
 test("bad requests change nothing: no process, an unknown server, a name with a space, no boolean", async () => {
 	const userBefore = readFileSync(userMcp, "utf8");
