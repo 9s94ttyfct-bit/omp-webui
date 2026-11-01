@@ -20,6 +20,7 @@
  * see exactly what reached omp (and that no `abort` did). Runs under Bun.
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 const argv = process.argv.slice(2);
@@ -84,7 +85,7 @@ const resumed = resumeAt >= 0 ? argv[resumeAt + 1] : null;
 const sessionId = resumed?.match(/_([0-9a-f-]{36})\.jsonl$/)?.[1] ?? crypto.randomUUID();
 // omp keeps a new conversation under its agent dir, in a folder named after the real path of the working folder (a
 // test's temp dir is behind a symlink on macOS: the server compares real paths, so the file is named by its real one).
-const agentDir = realpathSync(process.env.PI_CODING_AGENT_DIR ?? "/tmp");
+const agentDir = realpathSync(process.env.PI_CODING_AGENT_DIR ?? tmpdir());
 const sessionFile =
 	resumed ??
 	join(

@@ -380,6 +380,7 @@ export function seedBenchWorld(agentDir: string, work: string, nowMs = Date.now(
 	const noon = Math.floor(nowSec / 86400) * 86400 + 12 * 3600;
 	for (let i = 0; i < BENCH_SHAPE.bulk; i++) {
 		const day = 1 + Math.floor((i * 380) / BENCH_SHAPE.bulk);
+		// platform-allow: a recorded conversation's folder, text the page shows; no file is used
 		const project = `/tmp/ompw-bench/project-${String(i % BENCH_SHAPE.bulkProjects).padStart(2, "0")}`;
 		const turns = g.int(1, 5);
 		const title = `Bulk ${i}: ${g.words(g.int(2, 5))}`;

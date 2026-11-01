@@ -23,7 +23,7 @@
 		"build": "vite build && bun scripts/check-entry-size.ts",
 		"start": "bun server/main.ts",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
-		"lint": "biome check . && bun scripts/check-type-scale.ts && bun scripts/check-personal.ts && bun scripts/check-authors.ts",
+		"lint": "biome check . && bun scripts/check-type-scale.ts && bun scripts/check-personal.ts && bun scripts/check-authors.ts && bun scripts/check-platform.ts",
 		"format": "biome format --write .",
 		"test": "bun scripts/with-model-login.ts bun test --parallel --timeout 30000 --timings=.bun-test-timings.json tests/unit",
 		"test:contract": "bun scripts/with-model-login.ts sh -c \"bun test --parallel --timeout 30000 --timings=.bun-test-timings.json tests/contract && bun test tests/performance\"",

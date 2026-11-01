@@ -10,11 +10,15 @@
  * `OMPW_GUI_TESTS=1` turns them on, in a window server session with `swiftc`; `bun run test:gui` runs them, one file after the
  * other. Run them on an awake, unlocked Mac with nothing else in front and nobody typing.
  */
-const darwin = process.platform === "darwin";
+import { capabilities } from "../../server/platform/capabilities.ts";
+
+/** The app's native shell is this system's (macOS): its windows are what these tests open. */
+const shell = capabilities.appShell;
 const optedIn = process.env.OMPW_GUI_TESTS === "1";
 const windowServer =
-	darwin &&
+	shell &&
 	Bun.which("swiftc") !== null &&
+	// platform-allow: asked only where the app shell is (macOS): the session's window server
 	Bun.spawnSync(["launchctl", "managername"]).stdout.toString().trim() === "Aqua";
 
 /** Whether the real-window tests run: asked for, and this is a Mac that can show windows. */
@@ -22,7 +26,7 @@ export const guiTests = optedIn && windowServer;
 
 /** Say why a file's real-window tests are skipped, once, on a Mac (where a person runs the suite), so that a skip is never silent. */
 export function guiSkipNotice(file: string): void {
-	if (!darwin || guiTests) return;
+	if (!shell || guiTests) return;
 	const why = optedIn
 		? "this is not a window server session with swiftc"
 		: "OMPW_GUI_TESTS=1 is not set (bun run test:gui)";

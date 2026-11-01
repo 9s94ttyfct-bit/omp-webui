@@ -12,6 +12,7 @@
  * - `prompt` answers at once and the turn goes on in the background; `abort_and_restore_queue` withdraws the queue.
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 export interface Script {
@@ -60,7 +61,7 @@ if (!argv.includes("--mode")) {
 const resumeAt = argv.indexOf("--resume");
 const resumed = resumeAt >= 0 ? argv[resumeAt + 1] : null;
 const sessionId = resumed?.match(/_([0-9a-f-]{36})\.jsonl$/)?.[1] ?? crypto.randomUUID();
-const agentDir = process.env.PI_CODING_AGENT_DIR ?? "/tmp";
+const agentDir = process.env.PI_CODING_AGENT_DIR ?? tmpdir();
 const sessionFile =
 	resumed ??
 	join(

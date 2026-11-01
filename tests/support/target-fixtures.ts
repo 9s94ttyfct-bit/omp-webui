@@ -45,6 +45,7 @@ export function writeTargetsSession(agentDir: string): string {
 			toolCallId: "toolu_g2",
 			toolName: "edit",
 			content: [{ type: "text", text: "[src/rows.ts#1234]\n1:\tconst row1 = 1;" }],
+			// platform-allow: a recorded transcript's path, text the page shows; no file is used
 			details: { diff: DIFF, firstChangedLine: 1, op: "update", path: "/tmp/ompw-fixture-project/src/rows.ts" },
 			isError: false,
 			timestamp: at,

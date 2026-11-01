@@ -96,6 +96,7 @@ export class ShutdownWorld {
 		if (scenario === "working") {
 			// `!command`: omp answers only when the command ends, so it is busy for as long as that takes, and it ignores a
 			// closed stdin meanwhile. omp starts the command in a session of its own.
+			// platform-allow: a command omp's bash tool runs in this POSIX test world; nothing here runs it
 			request(ws, { t: "rpc", liveId: live.liveId, command: { type: "bash", command: "/bin/sleep 300" } }).catch(
 				() => {},
 			);

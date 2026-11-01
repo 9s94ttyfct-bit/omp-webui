@@ -6,6 +6,7 @@ import { join } from "node:path";
  * session.md). Used by E2E tests that must not depend on a model.
  */
 
+// platform-allow: the recorded conversations' folder, text the page shows; no file is used
 export const FIXTURE_CWD = "/tmp/ompw-fixture-project";
 
 export interface FixtureUsage {

@@ -154,6 +154,7 @@ export const NOTES_PROMPT = "Notes probe: advisor, rules, fallback, jobs and IRC
 export function writeNotesSession(agentDir: string): string {
 	const c = new Chain("nt01");
 	c.user(NOTES_PROMPT);
+	// platform-allow: a recorded transcript's path, text the page shows; no file is used
 	c.assistant([{ type: "toolCall", id: "toolu_n1", name: "read", arguments: { path: "/tmp/a.ts" } }]);
 	c.toolResult("toolu_n1", "read", [{ type: "text", text: "contents of a" }]);
 	c.custom(
@@ -189,6 +190,7 @@ export function writeNotesSession(agentDir: string): string {
 		"<irc>\nIncoming IRC message from agent `Main`:\n\nIRC-BODY-TEXT please integrate main.\n</irc>",
 		{ id: "irc-1", from: "Main", message: "IRC-BODY-TEXT please integrate main." },
 	);
+	// platform-allow: a recorded transcript's path, text the page shows; no file is used
 	c.assistant([{ type: "toolCall", id: "toolu_n3", name: "read", arguments: { path: "/tmp/b.ts" } }]);
 	c.toolResult("toolu_n3", "read", [{ type: "text", text: "contents of b" }]);
 	c.assistant([{ type: "text", text: "FINAL-ANSWER: done." }]);

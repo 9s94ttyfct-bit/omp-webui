@@ -78,6 +78,7 @@ export async function startTestServer(
  * removed (#768).
  */
 function killStrays(root: string): void {
+	// platform-allow: the test servers' strays, by command line, in one synchronous listing; the suites run on macOS and Linux
 	const table = execFileSync("ps", ["-A", "-o", "pid=,command="], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 	for (const line of table.split("\n")) {
 		const [pid] = line.trim().split(/\s+/, 1);

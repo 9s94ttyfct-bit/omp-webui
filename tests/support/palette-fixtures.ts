@@ -112,12 +112,14 @@ export function writeShowcaseSession(agentDir: string): string {
 			toolCallId: "toolu_p2",
 			toolName: "edit",
 			content: [{ type: "text", text: "[src/config.ts#1234]\n11:\tconst withProject = [...layers, project];" }],
+			// platform-allow: a recorded transcript's path, text the page shows; no file is used
 			details: { diff: DIFF, firstChangedLine: 11, op: "update", path: "/tmp/ompw-fixture-project/src/config.ts" },
 			isError: false,
 			timestamp: Date.UTC(2026, 0, 9, 10, 20),
 		},
 	});
 	c.assistant([
+		// platform-allow: a recorded transcript's path, text the page shows; no file is used
 		{ type: "toolCall", id: "toolu_p3", name: "read", arguments: { path: "/tmp/ompw-fixture-project/missing.ts" } },
 	]);
 	c.entries.push({

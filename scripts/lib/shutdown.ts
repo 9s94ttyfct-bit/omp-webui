@@ -69,6 +69,7 @@ export function onShutdown(cleanup: Cleanup): () => Promise<void> {
 
 /** The processes below `pid` (children, their children, ...), the deepest first. */
 export function descendants(pid: number): number[] {
+	// platform-allow: the dev scripts' process tree, in one synchronous listing; the scripts run on macOS and Linux
 	const table = execFileSync("ps", ["-A", "-o", "pid=,ppid="], { encoding: "utf8" });
 	const children = new Map<number, number[]>();
 	for (const line of table.split("\n")) {
