@@ -1679,7 +1679,7 @@ export class Live {
 		}
 		const s = data as StateSnapshot;
 		const from = this.info.sessionFile;
-		// omp 18.12 reports the file of a relative `--session-dir` relative to the folder it runs in; later ones absolute.
+		// omp 18.12 reports the file of a relative `--session-dir` relative to the folder it runs in (18.14 reports it absolute).
 		this.info.sessionFile = s.sessionFile ? sessionKey(resolve(this.info.cwd, s.sessionFile)) : null;
 		this.info.sessionId = s.sessionId ?? null;
 		this.info.streaming = Boolean(s.isStreaming);
