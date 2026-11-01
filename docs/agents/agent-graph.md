@@ -45,7 +45,7 @@ omp's main agent can start subagents (omp's `task` tool); a subagent can start i
 | `ompw.agentGraph.time` | `all`, `hour`, `today` | unset: `all` | Synced preference. The graph's *Started* filter (*All*, *Last hour*, *Today*). Any other stored value reads as `all`. |
 | `omp:task.maxConcurrency` | `0` (no limit) or a whole number; the app writes 0–16 | `32` (omp's default) | How many subagents run at once; the rest wait in omp's queue. Written globally with `omp config set` (Settings), or per conversation as a `task.maxConcurrency` line in its process's `--config` overlay (session panel; omp reloads it by itself). |
 
-Which models subagents use is set elsewhere: model roles and presets (`models`) and model guidance (`model-guidance`).
+Which models subagents use is set elsewhere: model roles and presets (`models`) and a conversation's guidance (`model-guidance`).
 
 ## API routes
 

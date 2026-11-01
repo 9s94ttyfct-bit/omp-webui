@@ -1,16 +1,17 @@
 ---
-title: Model guidance
-summary: Standing instructions appended to a conversation's main-agent system prompt about how to hand work to subagents and which models to use, picked from saved templates or written per conversation.
+title: Guidance
+summary: A conversation's standing rules (how to hand work to subagents and which models to use, its language, how it commits, anything else), put into the main agent's system prompt above recalled memories and earlier instructions; picked from saved templates or written per conversation, and a change is noted in the transcript.
 settings: guidance
 ---
 
-# Model guidance
+# Guidance
 
 ## What it does
 
-Model guidance tells the main agent how to delegate to subagents and which models to give them (for example "at most 1 Sonnet subagent at a time"). It is off unless the user picks a template or makes one the default for new chats.
+Guidance is a conversation's standing rules for the main agent: how to delegate to subagents and which models to give them (for example "at most 1 Sonnet subagent at a time"), and anything else the user wants the whole conversation to keep to (reply in Chinese, commit after each change, …). It is off unless the user picks a template or makes one the default for new chats. (Before the next version it was called "Model guidance"; the docs slug `model-guidance` is unchanged.)
 
-- The conversation's omp is started with a small extension that appends the guidance text to the **main agent's** system prompt at each turn. Subagents and title requests do not see it. Because the text is read from a file at each turn, a change reaches the next turn without a restart, and compaction or resuming cannot drop it. It does not appear in the transcript.
+- The conversation's omp is started with a small extension that adds the guidance to the **main agent's** system prompt at each turn, under the heading "# Standing instructions for this conversation" and a sentence saying they replace any earlier instruction, recalled memory or habit of the conversation that disagrees with them. Subagents and title requests do not see it. Because the text is read from a file at each turn, a change reaches the next turn without a restart, and compaction or resuming cannot drop it.
+- **A change is noted in the transcript**: when the guidance a branch of the conversation was last given differs from the current text (changed, switched template, turned off), the next turn carries a note to the model ("The standing instructions of this conversation are now: …" or "… were removed") and the page shows it as a row **Guidance changed** / **Guidance turned off** (zh 指引已更改 / 指引已关闭), kept visible when the turn is folded. The note omp delivered is the record of what the branch was told, so a turn that was aborted before its prompt went out tells it again, and a resumed conversation, another branch or a new process compares with what that branch was told. A first turn records the text without a note; a conversation from before this, with turns and no record, gets the note once.
 - **Templates**: saved name + text pairs. Two ship with the app: "One of each kind at a time" (at most 1 Sonnet, 3 DeepSeek, 2 of any other model at once) and "Simple to DeepSeek, complex to Sonnet". Users can create, edit, rename, duplicate, delete and reset templates; **Restore defaults** puts the shipped templates back as shipped (deleted ones return, edited ones get the shipped text) and leaves user-made templates alone.
 - **Default for new chats**: New chat starts with the guidance the last new chat was started with (a template, text, or None: `ompw.guidanceLast`); with nothing remembered, or that template deleted since, it starts with the template marked as the default (the user can still pick another or None there). Deleting the template clears the default.
 - **Per conversation**: New chat › Options › **Guidance** (None, a template, or Custom… text). Later the conversation's **Guidance** tab in the side panel shows and edits it: **Save for this conversation** (text becomes its own), **Save to template** (writes into the template it came from; if other conversations use it, asks first, and they carry the new text from their next turn), **Create new template**, **Turn off**. A conversation using a template follows edits to that template.
@@ -20,7 +21,7 @@ Model guidance tells the main agent how to delegate to subagents and which model
 
 ## Where it is
 
-- **Settings › Models & accounts › Model guidance** (`#/settings/models`): template list, **New template**, **Edit**, **Duplicate**, **Delete**, **Reset** (shipped ones), **Restore defaults**, **Default for new chats**, and **Check guidance for conflicts** (the conflict check's switch). Read-only on a page that is not on this computer ("Model guidance is changed on the computer omp-webui runs on").
+- **Settings › Models & accounts › Guidance** (`#/settings/models`): template list, **New template**, **Edit**, **Duplicate**, **Delete**, **Reset** (shipped ones), **Restore defaults**, **Default for new chats**, and **Check guidance for conflicts** (the conflict check's switch). Read-only on a page that is not on this computer ("Guidance is changed on the computer omp-webui runs on").
 - **New chat › Options › Guidance**.
 - Conversation side panel › **Guidance** tab; a chip "Guidance: <name>" / "Guidance: off".
 

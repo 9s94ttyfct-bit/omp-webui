@@ -47,7 +47,7 @@ They are written in English only, by choice: one language keeps them exact and s
 - [Remote access](remote-access.md)
 - [Files tab and file transfer](file-transfer.md)
 - [Models, roles, presets and accounts](models.md)
-- [Model guidance](model-guidance.md)
+- [Guidance](model-guidance.md)
 - [Memory](memory.md)
 - [Full / Light mode](light-mode.md)
 - [Updates of the app and of omp](updates.md)

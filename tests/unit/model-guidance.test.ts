@@ -6,6 +6,7 @@ import extension, {
 	GUIDANCE_FILE_ENV,
 	GUIDANCE_HEADING,
 	GUIDANCE_LOADED_SUFFIX,
+	GUIDANCE_NOTE_TYPE,
 	GUIDANCE_READ_MAX,
 } from "../../server/omp/guidance/extension.ts";
 import { guidancePaths, installGuidanceExtension } from "../../server/omp/guidance/install.ts";
@@ -316,6 +317,73 @@ describe("the extension's own side of the file", () => {
 		const note = `${file}${GUIDANCE_LOADED_SUFFIX}`;
 		expect(readFileSync(note, "utf8")).toBe(String(process.pid));
 		expectMode(note, 0o600);
+	});
+
+	describe("what a branch was told", () => {
+		type Entry = Record<string, unknown>;
+		const user: Entry = { type: "message", message: { role: "user" } };
+		/** The note as omp keeps it once it delivered it. */
+		const told = (text: string): Entry => ({
+			type: "custom_message",
+			customType: GUIDANCE_NOTE_TYPE,
+			details: { text },
+		});
+		/** Run the main agent's handler on a branch of `entries`, with `text` as the guidance; what it returns and records. */
+		async function turn(entries: Entry[], text: string): Promise<{ note: string | null; recorded: Entry[] }> {
+			const file = join(dir(), "L1.yml.guidance.md");
+			writeFileSync(file, text);
+			const before = process.env[GUIDANCE_FILE_ENV];
+			process.env[GUIDANCE_FILE_ENV] = file;
+			const recorded: Entry[] = [];
+			try {
+				let handler: ((e: unknown, ctx: unknown) => Promise<unknown>) | undefined;
+				extension({
+					on: (_e, h) => {
+						handler = h as typeof handler;
+					},
+				});
+				const ctx = {
+					agent: { kind: "main" },
+					sessionManager: {
+						getBranch: () => entries,
+						appendCustomEntry: (customType: string, data: unknown) => {
+							recorded.push({ type: "custom", customType, data });
+						},
+					},
+				};
+				const out = (await handler?.({ systemPrompt: [] }, ctx)) as { message?: { content?: string } } | undefined;
+				return { note: out?.message?.content ?? null, recorded };
+			} finally {
+				if (before === undefined) delete process.env[GUIDANCE_FILE_ENV];
+				else process.env[GUIDANCE_FILE_ENV] = before;
+			}
+		}
+
+		test("a note omp never delivered (a prompt dropped, or the hook run again) is given again at the next turn", async () => {
+			const branch = [user, told("Old rule."), user];
+			const first = await turn(branch, "New rule.");
+			expect(first.note).toContain("New rule.");
+			// Nothing was recorded on the strength of a note omp may still drop: the branch is unchanged, so it is told again.
+			expect(first.recorded).toEqual([]);
+			expect((await turn(branch, "New rule.")).note).toContain("New rule.");
+		});
+
+		test("a note omp delivered is the record: the same text is not said again", async () => {
+			expect((await turn([user, told("New rule."), user], "New rule.")).note).toBeNull();
+		});
+
+		test("a conversation from before the note, with turns and no record, is told once what its instructions are", async () => {
+			const { note } = await turn([user, user], "A rule.");
+			expect(note).toContain("The standing instructions of this conversation are now:");
+			expect(note).toContain("A rule.");
+		});
+
+		test("a first turn records what it was given without a note, and the same text later is not a change", async () => {
+			const first = await turn([], "A rule.");
+			expect(first.note).toBeNull();
+			expect(first.recorded).toEqual([{ type: "custom", customType: GUIDANCE_NOTE_TYPE, data: { text: "A rule." } }]);
+			expect((await turn([...first.recorded, user], "  A rule.\n")).note).toBeNull();
+		});
 	});
 });
 

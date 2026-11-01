@@ -37,7 +37,7 @@ The Access application is created by the user in the Cloudflare dashboard (the c
 A page reached through the tunnel (or over a network address, see server-and-security) holding a valid login:
 
 - **Can**: use conversations (read, send, steer, approve), start new chats, read most settings, download/upload files as `fileTransfer` allows (see file-transfer), open a Terminal shell if `remoteShell` is on, receive push notifications.
-- **Cannot**: any `/api/remote*`, `/api/guard*`, `/api/update*`, `/api/migrate*`, `/api/memory*`, `/api/shell*`, `/api/macs*` route (403); change a conversation's guard or see the Guard page; change the projects folder, the model guidance templates, the unattended instruction or "Keep the Mac awake"; use `/?token=` or `/api/auth`. Settings shows "This page is not on the Mac the server runs on, so the tunnel cannot be changed from here."
+- **Cannot**: any `/api/remote*`, `/api/guard*`, `/api/update*`, `/api/migrate*`, `/api/memory*`, `/api/shell*`, `/api/macs*` route (403); change a conversation's guard or see the Guard page; change the projects folder, the guidance templates, the unattended instruction or "Keep the Mac awake"; use `/?token=` or `/api/auth`. Settings shows "This page is not on the Mac the server runs on, so the tunnel cannot be changed from here."
 
 ## Where it is
 

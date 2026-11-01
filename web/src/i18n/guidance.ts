@@ -14,7 +14,7 @@ export const en = {
 	pickPreviewHint: "Point at a template to read what it tells the main agent.",
 	pickCustom: "Custom…",
 	pickTemplateHint: "Sent with this conversation only. You can change it later in its Guidance tab.",
-	empty: "No guidance: the main agent decides by itself.",
+	empty: "No guidance: the conversation has no standing rules of yours.",
 	templateGone:
 		"That template was deleted meanwhile. Save the text for this conversation only, or pick another template.",
 	changeIntro:
@@ -55,7 +55,8 @@ export const en = {
 	restoreHint: "The shipped templates come back as they ship; the ones you made are left alone.",
 	restoreDone: "The shipped templates are back.",
 	namePlaceholder: "A name you will recognise",
-	textPlaceholder: "What the main agent should do, e.g. which model to give a subagent and how many to run at once.",
+	textPlaceholder:
+		"Rules this conversation keeps, e.g. reply in Chinese, commit after each change, at most one subagent at a time.",
 	cancel: "Cancel",
 	nameEmpty: "The template needs a name.",
 	textEmpty: "The template needs some text.",

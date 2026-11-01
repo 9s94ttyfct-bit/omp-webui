@@ -1623,6 +1623,7 @@
 		"render-isolation.spec.ts › Settings does not render for the tokens of a conversation that streams elsewhere": 20.5,
 		"render-isolation.spec.ts › Settings does not render when the list of conversations changes for another conversation": 10.2,
 		"render-notes.spec.ts › a folded turn keeps its advisor card and fallback in view and says it has blockers": 2.8,
+		"render-notes.spec.ts › a guidance note says the guidance changed, and opened shows the new text, not what the model was told around it": 0.8,
 		"render-notes.spec.ts › an advisor card streamed live is a card, and a message omp keeps to itself is not a row": 6.8,
 		"render-notes.spec.ts › opened, the same turn shows rules, jobs, processes and IRC as typed rows, with none of omp's wrapper text": 4.3,
 		"render-notes.spec.ts › rules, fallbacks and IRC messages announced while omp works appear as rows, in order, and merge where omp does": 8,

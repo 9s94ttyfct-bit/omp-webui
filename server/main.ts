@@ -1688,8 +1688,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			// guard's settings are: what a template says is put into the system prompt of every conversation that picks it,
 			// which is the reason omp's memory is changed here too and nowhere else (see `isLocalOnlyRoute`).
 			if (req.method === "POST") {
-				if (!onThisComputer.has(req))
-					return fail("The model guidance is changed on the computer omp-webui runs on", 403);
+				if (!onThisComputer.has(req)) return fail("Guidance is changed on the computer omp-webui runs on", 403);
 				const body = (await req.json().catch(() => null)) as {
 					template?: unknown;
 					remove?: unknown;
@@ -1718,7 +1717,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			// Put the shipped templates back as they ship (the ones the person deleted come back, the ones they edited are
 			// set to the shipped text; templates they made are left alone). This computer only, as a change is.
 			if (req.method !== "POST") return fail("POST required", 405);
-			if (!onThisComputer.has(req)) return fail("The model guidance is changed on the computer omp-webui runs on", 403);
+			if (!onThisComputer.has(req)) return fail("Guidance is changed on the computer omp-webui runs on", 403);
 			try {
 				const set = modelGuidance.restoreDefaults();
 				pool.followGuidanceTemplates();
@@ -1759,7 +1758,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			// opened; one whose process runs is changed in it, as by its live id. This computer only, as the conversation's
 			// own guard settings are: both put words into what its agent is told.
 			if (req.method !== "POST") return fail("POST required", 405);
-			if (!onThisComputer.has(req)) return fail("The model guidance is changed on the computer omp-webui runs on", 403);
+			if (!onThisComputer.has(req)) return fail("Guidance is changed on the computer omp-webui runs on", 403);
 			const body = (await req.json().catch(() => null)) as {
 				liveId?: unknown;
 				file?: unknown;
@@ -1790,7 +1789,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			// writes nothing: the page proposes each change for the person to apply. This computer only, as a change of the
 			// guidance is, and because it reads the folder's files and what omp remembers.
 			if (req.method !== "POST") return fail("POST required", 405);
-			if (!onThisComputer.has(req)) return fail("The model guidance is changed on the computer omp-webui runs on", 403);
+			if (!onThisComputer.has(req)) return fail("Guidance is changed on the computer omp-webui runs on", 403);
 			const body: unknown = await req.json().catch(() => null);
 			if (!isRecord(body) || typeof body.text !== "string" || body.text.length > GUIDANCE_MAX)
 				return fail("Bad value", 422);
@@ -2205,7 +2204,7 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 							t: "reply",
 							req: msg.req,
 							ok: false,
-							error: "The model guidance is written on the computer omp-webui runs on",
+							error: "Guidance is written on the computer omp-webui runs on",
 						});
 					asked = { template: asked.template };
 				}

@@ -9,7 +9,7 @@ export const zh: Record<keyof typeof en, string> = {
 	pickPreviewHint: "把指针移到模板上，可以看到它告诉主代理的内容。",
 	pickCustom: "自定义…",
 	pickTemplateHint: "只随这个对话发送。之后可以在它的「指引」标签里修改。",
-	empty: "没有指引：主代理自己决定。",
+	empty: "没有指引：这个对话没有你定的长期规则。",
 	templateGone: "这个模板已经被删除。可以只为这个对话保存这段文本，或者选择其他模板。",
 	changeIntro: "从下一轮起主代理会遵守它，优先于召回的记忆和之前的指示；改动会在对话里留一条说明。子代理看不到它。",
 	readOnly:
@@ -45,7 +45,7 @@ export const zh: Record<keyof typeof en, string> = {
 	restoreHint: "内置模板会恢复成出厂的样子；你自己新建的模板不受影响。",
 	restoreDone: "内置模板已恢复。",
 	namePlaceholder: "一个你能认出来的名称",
-	textPlaceholder: "主代理该怎么做，例如给子代理用哪个模型、同时最多运行几个。",
+	textPlaceholder: "这个对话一直遵守的规则，例如用中文回复、每次改动后提交、同时最多一个子代理。",
 	cancel: "取消",
 	nameEmpty: "模板需要一个名称。",
 	textEmpty: "模板需要一些内容。",

@@ -35,12 +35,15 @@ import { dirname } from "node:path";
  * followed the new guidance; a memory: 0 of 8). With the note below, 8 of 8 did. An old memory against a guidance that
  * never changed lost 2 of 8 without the priority sentence, and none with it.
  *
- * What the conversation was given is kept in its own session, as a custom entry (`GUIDANCE_NOTE_TYPE`, `{ text }`): entries
- * are not sent to the model, and the branch's own are read (`getBranch`), so a resumed conversation, a new process and
- * a switch to another branch all compare with what that branch was given. When the text differs, a new entry is written,
- * and when the branch already has a message of the person's the handler also returns a message for the conversation
- * (`display: true`, `details: { text }`, the page draws it as "Guidance changed"). Its words are neutral, so a
- * conversation from before this, which has no entry, is told once and truthfully what its standing instructions are.
+ * What the conversation was given is read from its own session, the branch's own entries (`getBranch`), so a resumed
+ * conversation, a new process and a switch to another branch all compare with what that branch was given. The record is
+ * the note itself once omp delivered it (a `custom_message`, `GUIDANCE_NOTE_TYPE`, `details: { text }`, which the page draws
+ * as "Guidance changed"), and, for a branch with no turn yet, a custom entry (`GUIDANCE_NOTE_TYPE`, `{ text }`; entries are
+ * not sent to the model) written with the first turn, which needs no note: the system prompt carries the guidance. Nothing
+ * is written on the strength of a note omp may still drop — omp runs this hook again when the base prompt changed meanwhile,
+ * and drops the prompt and its messages when the turn is aborted or the session switched after it — so such a turn leaves
+ * no record, and the next one tells the model again. The note's words are neutral, so a conversation from before this,
+ * which has no record, is told once and truthfully what its standing instructions are.
  *
  * What it says of itself: once the handler is in, it leaves a note (`<file>.loaded`), as the gate does (`<overlay>.risk.loaded`).
  * omp carries on without an extension it could not load, so the server does not take a command line that names this
@@ -93,12 +96,14 @@ interface Entry {
 	type?: string;
 	customType?: string;
 	data?: { text?: unknown };
+	details?: { text?: unknown };
 	message?: { role?: string };
 }
 
 /**
- * What the branch was last given (empty: nothing, or the guidance was turned off), and whether it has a message of the
- * person's (a turn before this one). Neither can be read: as if nothing was given, in a branch with no turns.
+ * What the branch was last given (empty: nothing, or the guidance was turned off): its latest note or record. And whether
+ * it has a message of the person's (a turn before this one). Neither can be read: as if nothing was given, in a branch
+ * with no turns.
  */
 function branchState(ctx: Context): { given: string; hadTurns: boolean } {
 	let entries: Entry[] = [];
@@ -108,10 +113,10 @@ function branchState(ctx: Context): { given: string; hadTurns: boolean } {
 	let given = "";
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const e = entries[i];
-		if (e?.type === "custom" && e.customType === GUIDANCE_NOTE_TYPE) {
-			given = typeof e.data?.text === "string" ? e.data.text : "";
-			break;
-		}
+		if (e?.customType !== GUIDANCE_NOTE_TYPE || (e.type !== "custom" && e.type !== "custom_message")) continue;
+		const text = e.type === "custom" ? e.data?.text : e.details?.text;
+		given = typeof text === "string" ? text : "";
+		break;
 	}
 	return { given, hadTurns: entries.some((e) => e?.type === "message" && e.message?.role === "user") };
 }
@@ -160,13 +165,14 @@ export default function modelGuidance(pi: {
 		}
 		const { given, hadTurns } = branchState(ctx);
 		if (text !== given) {
-			try {
-				ctx.sessionManager?.appendCustomEntry?.(GUIDANCE_NOTE_TYPE, { text });
-			} catch {
-				// Not recorded: the next turn compares again and says it again, which is the safe side.
-			}
 			if (hadTurns)
 				result.message = { customType: GUIDANCE_NOTE_TYPE, display: true, details: { text }, content: noteFor(text) };
+			else
+				try {
+					ctx.sessionManager?.appendCustomEntry?.(GUIDANCE_NOTE_TYPE, { text });
+				} catch {
+					// Not recorded: the next turn has a turn before it, and says it in a note, which is the safe side.
+				}
 		}
 		return result.systemPrompt || result.message ? result : undefined;
 	});
