@@ -94,10 +94,17 @@ export function units(
 	return out;
 }
 
-/** The suite as `playwright test --list` finds it now: every test of every spec file, none of them run. */
+/**
+ * The suite as `playwright test --list` finds it now: every test of every spec file, none of them run. Run from inside
+ * `bun test --parallel` (the timings-coverage unit test), the child inherits the `JEST_WORKER_ID` Bun's parallel workers
+ * set, and Playwright then refuses every spec file ("needs to be invoked via 'npx playwright test'"): it is left out.
+ */
 export function listSuite(): { rootDir: string; suites: ListSuite[] } {
+	const env = { ...process.env };
+	delete env.JEST_WORKER_ID;
 	const listed = Bun.spawnSync(["bunx", "playwright", "test", "--list", "--reporter=json"], {
 		cwd: root,
+		env,
 		stderr: "inherit",
 	});
 	if (listed.exitCode !== 0) throw new Error(`playwright test --list exited with ${listed.exitCode}`);
