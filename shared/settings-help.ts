@@ -73,6 +73,8 @@ export const PREF_CLASS: Readonly<Record<PrefKey, SettingClass>> = {
 	[PREF.quickPrompts]: "normal",
 	[PREF.quickPromptsSeen]: "unavailable",
 	[PREF.guidanceDefault]: "normal",
+	// What the last new chat was started with: remembered by the app, not a choice in Settings.
+	[PREF.guidanceLast]: "unavailable",
 	[PREF.guidanceCheck]: "normal",
 	[PREF.sessionSort]: "normal",
 	[PREF.pinnedFolded]: "normal",

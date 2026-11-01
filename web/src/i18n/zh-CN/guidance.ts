@@ -55,9 +55,10 @@ export const zh: Record<keyof typeof en, string> = {
 	chipOff: "模型指引：关",
 	defaultBadge: "默认",
 	makeDefault: "新建对话的默认模板",
-	makeDefaultHint: "新建对话会带上这个模板；在新建对话里仍可以改选别的，或者不用。",
-	newChatsGet: "新建对话默认使用：{name}",
-	newChatsNone: "新建对话默认不带指引。打开一个模板，可以把它设为默认。",
+	makeDefaultHint: "新建对话会带上这个模板，直到有一个新对话用别的指引开始；在新建对话里仍可以改选别的，或者不用。",
+	newChatsGet: "新建对话默认使用：{name}，直到有一个新对话用别的指引开始（新建对话会记住上次用的）。",
+	newChatsNone:
+		"新建对话默认不带指引，直到有一个新对话带着指引开始（新建对话会记住上次用的）。打开一个模板，可以把它设为默认。",
 	duplicate: "复制",
 	copyName: "{name}（副本）",
 	reset: "还原",

@@ -5,6 +5,7 @@ import { en } from "../../web/src/i18n/guidance.ts";
 import { zh } from "../../web/src/i18n/zh-CN/guidance.ts";
 import { writeSimpleSession } from "../support/fixtures.ts";
 import { openSidebar, ownSession, sessionRow, startLive } from "../support/live.ts";
+import { newChatIn } from "../support/new-chat.ts";
 import { topTab } from "../support/panel.ts";
 import { choose } from "../support/select.ts";
 import { type SocketTap, tapSocket } from "../support/socket-tap.ts";
@@ -50,19 +51,21 @@ const template = (card: Locator, name: string): Locator =>
 		.filter({ has: card.page().getByText(name, { exact: true }) })
 		.getByRole("button");
 
-test.beforeEach(async () => {
-	// The worker's server is shared with the specs that run after this one: the templates go back to the shipped ones.
-	// (An empty body is a read; the restore is what puts them back.)
-});
+/** Set (or with null forget) synced preferences on the server. (A test's browser starts ahead of them: see `fixtures.ts`.) */
+const putPrefs = async (page: Page, changes: Record<string, string | null>): Promise<void> => {
+	const res = await page.request.post("/api/prefs", { headers: post, data: { changes } });
+	expect(res.status()).toBe(200);
+};
+
+/** What the server holds of a synced preference. */
+const prefOnServer = async (page: Page, key: string): Promise<string | null> =>
+	((await (await page.request.get("/api/prefs")).json()) as { values: Record<string, string | null> }).values[key] ??
+	null;
 
 test.afterEach(async ({ page }) => {
 	const res = await page.request.post("/api/model-guidance/restore", { headers: post });
 	expect(res.status()).toBe(200);
-	const prefs = await page.request.post("/api/prefs", {
-		headers: post,
-		data: { changes: { "ompw.guidanceDefault": null } },
-	});
-	expect(prefs.status()).toBe(200);
+	await putPrefs(page, { "ompw.guidanceDefault": null, "ompw.guidanceLast": null });
 });
 
 test("New chat's Guidance chip is off until something is picked, and the pick is what the next process is started with", async ({
@@ -537,4 +540,66 @@ test("a page in Chinese reads the guidance card in Chinese", async ({ page }) =>
 	const editor = page.getByRole("dialog");
 	await expect(editor).toContainText(zh.nameLabel);
 	await expect(editor).toContainText(zh.bodyLabel);
+});
+
+/** Open New chat in the work folder and wait for its first process. */
+const newChatHere = async (page: Page): Promise<void> => {
+	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
+	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
+};
+
+/** Start the conversation with a command (no model is asked), and wait until the server keeps what New chat remembered. */
+const startWithCommand = async (page: Page): Promise<void> => {
+	const composer = page.getByTestId("composer");
+	await composer.fill("!true");
+	await composer.press("Enter");
+	await expect(page).not.toHaveURL(/#\/new/);
+	await expect.poll(() => prefOnServer(page, "ompw.guidanceLast")).not.toBeNull();
+};
+
+test("New chat starts with the guidance the last new chat was started with: a template, then none over Settings' default", async ({
+	page,
+}) => {
+	const tap = await tapSocket(page);
+	await newChatHere(page);
+	const control = page.getByTestId("guidance-picker");
+	await control.click();
+	await page
+		.getByTestId("guidance-list")
+		.getByTestId("guidance-option")
+		.filter({ hasText: "One of each kind at a time" })
+		.click();
+	await expect(control).toHaveText(en.chip.replace("{name}", "One of each kind at a time"));
+	await startWithCommand(page);
+	expect(await prefOnServer(page, "ompw.guidanceLast")).toBe('{"template":"builtin-one-of-each"}');
+
+	// The next New chat starts with it, though Settings makes no template the default.
+	await newChatHere(page);
+	await expect(control).toHaveText(en.chip.replace("{name}", "One of each kind at a time"));
+	await expect.poll(() => opens(tap).at(-1)?.target?.guidance).toEqual({ template: "builtin-one-of-each" });
+
+	// Started with none, though Settings now has a default: the next starts with none.
+	await page.evaluate(() => localStorage.setItem("ompw.guidanceDefault", "builtin-one-of-each"));
+	await control.click();
+	await page.getByTestId("guidance-list").getByTestId("guidance-option-none").click();
+	await expect(control).toHaveText(en.chipOff);
+	await startWithCommand(page);
+	await expect.poll(() => prefOnServer(page, "ompw.guidanceLast")).toBe('{"none":true}');
+	const before = opens(tap).length;
+	await newChatHere(page);
+	await expect.poll(() => opens(tap).length).toBeGreaterThan(before);
+	expect(opens(tap).at(-1)?.target?.guidance).toBeUndefined();
+	await expect(control).toHaveText(en.chipOff);
+});
+
+test("a remembered template deleted since is not what New chat starts with: Settings' default is", async ({ page }) => {
+	await page.addInitScript(() => {
+		localStorage.setItem("ompw.guidanceLast", '{"template":"deleted-since"}');
+		localStorage.setItem("ompw.guidanceDefault", "builtin-one-of-each");
+	});
+	const tap = await tapSocket(page);
+	await newChatHere(page);
+	await expect.poll(() => opens(tap).length).toBeGreaterThan(0);
+	expect(opens(tap)[0]?.target?.guidance).toEqual({ template: "builtin-one-of-each" });
+	await expect(page.getByTestId("guidance-picker")).toHaveText(en.chip.replace("{name}", "One of each kind at a time"));
 });

@@ -13,6 +13,7 @@ import { api } from "../lib/api.ts";
 import { errorText } from "../lib/error-text.ts";
 import { shortPath } from "../lib/format.ts";
 import { createGoal, startGuidedGoal, useGoalRequest } from "../lib/goal.ts";
+import { guidanceToRemember, initialGuidance } from "../lib/guidance-start.ts";
 import { useImeGuard } from "../lib/ime.ts";
 import { lazyChunk } from "../lib/lazy-chunk.ts";
 import { loadStartConfig, switchPreset, useStartConfig } from "../lib/model-config.ts";
@@ -111,10 +112,27 @@ function greeting(t: (key: MessageKey) => string): string {
 				: t("pages.greetingEvening");
 }
 
-/** The template Settings makes the default for new chats (`ompw.guidanceDefault`), as a pick; null when there is none. */
-function defaultGuidance(): SessionGuidance | null {
-	const id = localStorage.getItem(PREF.guidanceDefault);
-	return id ? { template: id } : null;
+/** The guidance New chat starts with, the templates not known yet: the last new chat's, else Settings' default. */
+function startingGuidance(): SessionGuidance | null {
+	return initialGuidance(localStorage.getItem(PREF.guidanceLast), localStorage.getItem(PREF.guidanceDefault), null);
+}
+
+/**
+ * Settles `pick` when New chat starts from a remembered template: deleted since, it is Settings' default instead (unless the
+ * person picked something meanwhile). Never fails: unknown templates are trusted, as the server reads the text.
+ */
+async function checkRememberedTemplate(pick: { current: SessionGuidance | null }): Promise<void> {
+	const start = pick.current;
+	const last = localStorage.getItem(PREF.guidanceLast);
+	// Only a remembered template can have gone (Settings' default is used as it is, as before).
+	if (!start?.template || !initialGuidance(last, null, null)?.template) return;
+	try {
+		const { guidanceApi } = await import("../lib/guidance-api.ts");
+		const ids = new Set((await guidanceApi.templates()).templates.map((x) => x.id));
+		if (pick.current === start) pick.current = initialGuidance(last, localStorage.getItem(PREF.guidanceDefault), ids);
+	} catch {
+		// The templates could not be read: the id stands.
+	}
 }
 
 /** The warm-up process as the picks see it: what they set, and what it runs. */
@@ -240,11 +258,16 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 	/**
 	 * What was picked of the model guidance here (#641), kept for the processes started after the folder or options change
 	 * (a pick on a running process is applied to it at once, by the picker itself): a template's id and the text it stood
-	 * for when it was picked, or text written here. Null: none. It starts as the template Settings makes the default for new
-	 * chats (by id: the server reads its text; one deleted since carries nothing). A ref, so that a pick costs no render.
+	 * for when it was picked, or text written here. Null: none. It starts as the guidance the last new chat was started
+	 * with, else the template Settings makes the default for new chats (v0.17.0; `lib/guidance-start.ts`). A ref, so that a
+	 * pick costs no render.
 	 */
-	const [startGuidance] = useState(defaultGuidance);
-	const guidancePick = useRef<SessionGuidance | null>(startGuidance);
+	const guidancePick = useRef<SessionGuidance | null>(null);
+	const guidanceChecked = useRef<Promise<void> | null>(null);
+	if (guidanceChecked.current === null) {
+		guidancePick.current = startingGuidance();
+		guidanceChecked.current = checkRememberedTemplate(guidancePick);
+	}
 	/**
 	 * Whether the conversation starts unattended (#646): Settings' default until the person flips the switch here; kept for the
 	 * processes started after the folder or options change (a flip on a running process is applied to it by the switch itself).
@@ -334,6 +357,9 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 			preloadPickers();
 			preloadUIRequests();
 			void (async () => {
+				// A remembered template is checked against the templates before the first start: one deleted since is not it.
+				await guidanceChecked.current;
+				if (cancelled) return;
 				let id: string;
 				try {
 					id = await openLive({
@@ -533,6 +559,8 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 		setPref(PREF.cwd, folder);
 		const open = () => {
 			sent.current = true;
+			// The next New chat starts with the guidance this one was started with (in Light, guidance is not in effect).
+			if (!local) setPref(PREF.guidanceLast, guidanceToRemember(guidancePick.current));
 			// omp may have named the conversation's file already, as the process started: the address is then its own.
 			setView({ kind: "chat", file: useApp.getState().lives[target]?.info.sessionFile ?? null, liveId: target });
 			// The warm-up process of a new project has done its part (the pickers); it never had a conversation.

@@ -64,9 +64,11 @@ export const en = {
 	chipOff: "Guidance: off",
 	defaultBadge: "Default",
 	makeDefault: "Default for new chats",
-	makeDefaultHint: "New chats start with this template; you can still pick another, or none, in New chat.",
-	newChatsGet: "New chats start with: {name}",
-	newChatsNone: "New chats start without guidance. Open a template to make it the default.",
+	makeDefaultHint:
+		"New chats start with this template until one is started with another; you can still pick another, or none, in New chat.",
+	newChatsGet: "New chats start with: {name}, until one is started with other guidance (New chat remembers it).",
+	newChatsNone:
+		"New chats start without guidance, until one is started with some (New chat remembers it). Open a template to make it the default.",
 	duplicate: "Duplicate",
 	copyName: "{name} (copy)",
 	reset: "Reset",

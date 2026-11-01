@@ -10,6 +10,7 @@
  */
 
 import { STATUS_FILTERS, TIME_FILTERS } from "./graph-filter.ts";
+import { GUIDANCE_ID_MAX, GUIDANCE_MAX } from "./model-guidance.ts";
 import { parsePanes } from "./panes.ts";
 import { USAGE_RANGES } from "./usage-range.ts";
 
@@ -75,6 +76,12 @@ export const PREF = {
 	 * id; v0.11.18 §6). Unset: none, as before. A template that is deleted stops being it.
 	 */
 	guidanceDefault: "ompw.guidanceDefault",
+	/**
+	 * The guidance the last conversation started from New chat was started with (v0.17.0): JSON `{"template": id}`,
+	 * `{"text": …}` (written there) or `{"none": true}`. New chat starts from it; unset, or a template deleted since, from
+	 * `guidanceDefault`. See `web/src/lib/guidance-start.ts`.
+	 */
+	guidanceLast: "ompw.guidanceLast",
 	/**
 	 * Whether saving a conversation's guidance (or switching it to another template) checks it for conflicts with the folder's
 	 * AGENTS.md and similar files and with omp's memories of the project (v0.13.0): `on` (the default) or `off`. One request
@@ -145,6 +152,18 @@ const json = (shape: (parsed: unknown) => boolean) => (v: string) => {
 };
 const isRecord = (x: unknown) => typeof x === "object" && x !== null && !Array.isArray(x);
 
+/** A template's id, as the store bounds it. */
+const TEMPLATE_ID = new RegExp(`^[^\\s]{1,${GUIDANCE_ID_MAX}}$`);
+
+/** The shapes `ompw.guidanceLast` holds: exactly one of a template id, text within the editor's bound, or none. */
+export function isRememberedGuidance(v: unknown): v is { template: string } | { text: string } | { none: true } {
+	if (!isRecord(v) || Object.keys(v as object).length !== 1) return false;
+	const r = v as Record<string, unknown>;
+	if ("template" in r) return typeof r.template === "string" && TEMPLATE_ID.test(r.template);
+	if ("text" in r) return typeof r.text === "string" && r.text.length > 0 && r.text.length <= GUIDANCE_MAX;
+	return r.none === true;
+}
+
 /** What each key may hold. A key that is free text (a folder) is not here. */
 const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 	[PREF.theme]: oneOf(THEMES),
@@ -187,6 +206,7 @@ const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 	[PREF.guardBefore]: json(isRecord),
 	// A template's id, as the store bounds it (`GUIDANCE_ID_MAX`).
 	[PREF.guidanceDefault]: (v) => /^[^\s]{1,80}$/.test(v),
+	[PREF.guidanceLast]: json(isRememberedGuidance),
 	[PREF.guidanceCheck]: switchValue,
 	[PREF.animations]: switchValue,
 	[PREF.animationIntensity]: oneOf(ANIMATION_INTENSITIES),
