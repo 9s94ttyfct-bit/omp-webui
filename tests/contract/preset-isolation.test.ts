@@ -276,17 +276,21 @@ test.skipIf(!has.notWindowsYet)(
 );
 
 // The same open issue as the global config's case on Windows (the switched conversation reports stub-bravo).
-test.skipIf(!has.notWindowsYet)("nor does a role added to the project's config", async () => {
-	const project = join(server.work, ".omp");
-	try {
-		await addedRoleStaysOutOfA(() => {
-			mkdirSync(project, { recursive: true });
-			writeFileSync(join(project, "config.yml"), `modelRoles:\n  slow: omlx/${BRAVO}\n`);
-		});
-	} finally {
-		rmSync(project, { recursive: true, force: true });
-	}
-}, 300_000);
+test.skipIf(!has.notWindowsYet)(
+	"nor does a role added to the project's config",
+	async () => {
+		const project = join(server.work, ".omp");
+		try {
+			await addedRoleStaysOutOfA(() => {
+				mkdirSync(project, { recursive: true });
+				writeFileSync(join(project, "config.yml"), `modelRoles:\n  slow: omlx/${BRAVO}\n`);
+			});
+		} finally {
+			rmSync(project, { recursive: true, force: true });
+		}
+	},
+	300_000,
+);
 
 test("a preset typed into the composer is the conversation's switch too", async () => {
 	const a = await conversation();
