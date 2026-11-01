@@ -103,6 +103,13 @@ export const PREF = {
 	 * conversation's session file (or process id) to `reviewer`, `ask` or `follow`, the most recent last; see `web/src/lib/guard-toggle.ts`.
 	 */
 	guardBefore: "ompw.guardBefore",
+	/**
+	 * Live animations that follow what the agent does (v0.15.0): `on` or `off` (the default), and how much of them there is,
+	 * `subtle`, `normal` (the default) or `lively` (`ANIMATION_INTENSITIES`). The system's reduced motion turns them off
+	 * whatever these say; see `web/src/lib/live-motion.ts`.
+	 */
+	animations: "ompw.animations",
+	animationIntensity: "ompw.animationIntensity",
 } as const;
 
 export type PrefKey = (typeof PREF)[keyof typeof PREF];
@@ -124,6 +131,8 @@ export const QUIT_ACTIONS = ["ask", "background", "quit"] as const;
 export type QuitAction = (typeof QUIT_ACTIONS)[number];
 /** The action a stored value names; anything else (not set, a value from another version) asks. */
 export const quitActionOf = (v: string | null): QuitAction => QUIT_ACTIONS.find((a) => a === v) ?? "ask";
+/** How much the live animations move (`ompw.animationIntensity`). Normal is the default. */
+export const ANIMATION_INTENSITIES = ["subtle", "normal", "lively"] as const;
 
 const oneOf = (list: readonly string[]) => (v: string) => list.includes(v);
 const switchValue = oneOf(["on", "off"]);
@@ -179,6 +188,8 @@ const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 	// A template's id, as the store bounds it (`GUIDANCE_ID_MAX`).
 	[PREF.guidanceDefault]: (v) => /^[^\s]{1,80}$/.test(v),
 	[PREF.guidanceCheck]: switchValue,
+	[PREF.animations]: switchValue,
+	[PREF.animationIntensity]: oneOf(ANIMATION_INTENSITIES),
 };
 
 /** Whether `value` is something the app ever writes under `key` (length is checked apart: `MAX_PREF_LENGTH`). */

@@ -781,6 +781,115 @@ html[data-agent-full] .app-shell {
 	content-visibility: auto;
 }
 
+/*
+ * Live animations (v0.15.0, `lib/live-motion.ts`): each element is there only while what it follows runs, and carries the
+ * intensity in `data-motion`. Only `transform` and `opacity` move, so the compositor runs them without a layout or a paint.
+ */
+[data-motion] {
+	--lm-glow: 14%;
+	--lm-bar: 0.6;
+	--lm-sweep: 1.8s;
+}
+[data-motion="subtle"] {
+	--lm-glow: 8%;
+	--lm-bar: 0.35;
+	--lm-sweep: 2.6s;
+}
+[data-motion="lively"] {
+	--lm-glow: 24%;
+	--lm-bar: 0.9;
+	--lm-sweep: 1.3s;
+}
+@keyframes live-sweep {
+	from {
+		transform: translateX(-100%);
+	}
+	to {
+		transform: translateX(100%);
+	}
+}
+@keyframes live-progress {
+	from {
+		transform: translateX(-100%);
+	}
+	to {
+		transform: translateX(250%);
+	}
+}
+/* A band of light over the reply being written and the turn's running figures. */
+.live-shimmer {
+	position: absolute;
+	inset: 0;
+	overflow: hidden;
+	border-radius: inherit;
+	pointer-events: none;
+}
+.live-shimmer::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(
+		105deg,
+		transparent 30%,
+		color-mix(in srgb, var(--accent) var(--lm-glow), transparent) 50%,
+		transparent 70%
+	);
+	animation: live-sweep var(--lm-sweep) ease-in-out infinite;
+}
+/* A running tool card's bar along its bottom edge. */
+.live-progress {
+	position: absolute;
+	right: 12px;
+	bottom: 0;
+	left: 12px;
+	height: 2px;
+	overflow: hidden;
+	border-radius: 9999px;
+	pointer-events: none;
+}
+.live-progress::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	width: 40%;
+	background: linear-gradient(90deg, transparent, var(--accent), transparent);
+	opacity: var(--lm-bar);
+	animation: live-progress calc(var(--lm-sweep) * 0.8) ease-in-out infinite;
+}
+/* What runs along the agent graph's lines (GraphParticles.tsx): an assignment or a message, or a result going back. */
+.graph-particle {
+	position: absolute;
+	top: 0;
+	left: 0;
+	border-radius: 9999px;
+	background: var(--accent);
+	box-shadow: 0 0 6px var(--accent);
+}
+.graph-particle[data-kind="result"] {
+	background: var(--success);
+	box-shadow: 0 0 6px var(--success);
+}
+/* A piece of the burst at the end of a turn or a goal (LiveCelebration.tsx). */
+.live-burst-piece {
+	position: absolute;
+	top: -3px;
+	left: -3px;
+	width: 6px;
+	height: 6px;
+	border-radius: 2px;
+}
+.live-burst-ring {
+	position: absolute;
+	top: -18px;
+	left: -18px;
+	width: 36px;
+	height: 36px;
+	border: 2px solid var(--success);
+	border-radius: 9999px;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,

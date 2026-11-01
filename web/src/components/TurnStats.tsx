@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import "../i18n/later.ts";
 import { useLang, useT } from "../i18n/index.ts";
 import { fmtCost, fmtCostExact, fmtDuration, fmtTime, fmtTokens } from "../lib/format.ts";
+import { useLiveMotion } from "../lib/live-motion.ts";
 import type { AgentMessage } from "../lib/messages.ts";
 import { useNow } from "../lib/now.ts";
 import { fmtElapsed, fmtFinished, fmtRate } from "../lib/stat-format.ts";
@@ -167,6 +168,7 @@ export function LiveTurnStats({ live }: { live: LiveState }) {
 	const t = useT();
 	const now = useNow(1000);
 	const clock = useTurnClocks((s) => s[live.info.liveId]);
+	const motion = useLiveMotion();
 	// What the saved requests of the turn add up to, kept as entries are added: a turn of a goal run has thousands.
 	const saved = useMemo(() => liveTurn(live.entries, live.leafId), [live.entries, live.leafId]);
 	const stats = saved.tally.figures(unsavedSteps(saved.tally.started, live.overlay, saved.promptAt));
@@ -178,8 +180,11 @@ export function LiveTurnStats({ live }: { live: LiveState }) {
 	return (
 		<div className={ROW} data-testid="turn-stats-live">
 			{clock ? (
-				<span className={ITEM} data-stat="running">
+				<span className={motion ? `${ITEM} relative rounded` : ITEM} data-stat="running">
 					{t("chat.statRunning", { value: fmtElapsed(now - clock.startedAt) })}
+					{motion ? (
+						<span className="live-shimmer" data-motion={motion} data-testid="live-shimmer" aria-hidden />
+					) : null}
 				</span>
 			) : null}
 			<Figures tokens={stats ?? undefined} ttftMs={ttftMs} tokensPerSecond={stats?.tokensPerSecond} />

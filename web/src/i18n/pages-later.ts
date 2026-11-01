@@ -37,6 +37,15 @@ export const en = {
 	settingsResetLayout: "Reset to default size",
 	settingsResetLayoutHint:
 		"Drag the edge of the sidebar or the side panel to resize it. The sizes are remembered; this puts both back to their default size.",
+	settingsAnimations: "Live animations",
+	settingsAnimationsHint:
+		"Motion that follows what the agent does: a shimmer while the model writes, a moving bar on a running tool card, particles along the agent graph's lines when agents start, message or report back to each other, and a short burst when a turn or a goal ends well. Nothing moves while the agent is idle.",
+	settingsAnimationIntensity: "Intensity",
+	settingsAnimationSubtle: "Subtle",
+	settingsAnimationNormal: "Normal",
+	settingsAnimationLively: "Lively",
+	settingsAnimationsReduced:
+		"Your system asks for reduced motion, so live animations stay off whatever is chosen here.",
 	settingsPalette: "Palette",
 	settingsPaletteHint: "The look of the whole app. Light, dark and system apply on top of it.",
 	settingsPaletteClaude: "Claude",

@@ -20,6 +20,7 @@ A modern web UI for the [omp](https://omp.sh) coding agent: browse and search ev
   - [Signing and macOS permissions](#signing-and-macos-permissions)
   - [Updating the app](#updating-the-app)
   - [Interface preferences](#interface-preferences)
+  - [Live animations](#live-animations)
   - [Remote access: the tunnel](#remote-access-the-tunnel)
   - [Remote access: the AI help](#remote-access-the-ai-help)
   - [Remote access: confirming risky commands](#remote-access-confirming-risky-commands)
@@ -519,6 +520,25 @@ A browser keeps `localStorage` per origin, `127.0.0.1:<port>`, so a server that 
 The server puts its copy into the page it serves (a `<script type="application/json">` block ahead of the page's own scripts, so the Content Security Policy is untouched), and `index.html` applies it before the first paint: no flash of the wrong theme on another port. Only a request that holds the access token gets it. A browser that chose its preferences before the server kept them hands them over once, on its first visit after the upgrade; from then on the server's copy wins whenever the preferences were changed from another port. The browser's own copy of `ompw.chunkReloadAt` (a reload guard) and unsent composer drafts stay per tab and are not kept.
 
 The file is the truth, not the server's memory: it is read again before every snapshot and every change, and a change is merged into what it holds, so two servers on one data dir (another copy of the app, a server that lingers) keep each other's choices and the revision only goes up. Each key accepts only what the app writes for it (a theme of `dark`, `light` or `system`, a palette from the picker, a whole number of pixels for a width...); anything else is refused whole with a 400, and a stored value that fails the check is dropped when read. A change is also told to every open page over the socket (`prefs`), so a palette, theme, language or panel width chosen in one tab, window or browser shows in the others as it is chosen; tabs of one origin also hear the storage event, and a page asks the server again when it gains focus or its connection returns. Dragging a panel's edge writes the width once, where the drag ends.
+
+### Live animations
+
+Settings › Look & layout › Appearance › *Live animations* (v0.15.0) turns on motion that follows what the agent does; it is **off by default**. Two synced preferences hold the choice: `ompw.animations` (`on` / `off`, unset is off) and `ompw.animationIntensity` (`subtle` / `normal` / `lively`, unset is normal). The system's reduced-motion setting (`prefers-reduced-motion: reduce`) turns every effect off whatever they say, live as it changes, and the card says so under the switch. `web/src/lib/live-motion.ts` reads both and the media query (`useLiveMotion()`: the intensity, or null).
+
+- **Shimmer while generating**: the assistant reply being written (`streaming` and a turn still running) and the turn's running time get an absolutely positioned layer whose `::after` band of `color-mix(--accent)` sweeps across with a CSS animation of `transform` (`.live-shimmer`, `@keyframes live-sweep`).
+- **Running tool card**: a 2 px bar along the card's bottom edge (`.live-progress`), there while the call runs and a turn does.
+- **Agent graph particles** (`GraphParticles.tsx`, `lib/graph-pulses.ts`): each time the graph is drawn anew it is compared with the last one: a spawn or message edge that is new or whose count went up sends particles from its sender to its recipient; a subagent whose status went from running to `completed`/`done` sends one back up its spawn line (from its batch's summary card when the batch folded). At most 12 edges per update. A particle is a `<span>` moved by a Web Animation of `transform` and `opacity` through 17 points of the edge's own Bézier curve (`edgeCurve`, the one the SVG path is drawn with), 900–1400 ms, removed when it finishes. There is no canvas and no `requestAnimationFrame` loop: with nothing to move nothing runs; none is started while `document.visibilityState` is `hidden`, and those on their way are cancelled when the page is hidden.
+- **Completion burst** (`LiveCelebration.tsx`): when a turn the page watched ends well (it was streaming and is no longer, no goal run continues, and its newest message is an assistant reply with `stopReason: "stop"`, with no `lastError`, retry or exit), or a goal the page watched turns `complete`, a ring and a fan of 8 / 14 / 22 pieces (half as many again for a goal) fly up from the bottom of the transcript with Web Animations (900–1400 ms); the element goes when they finish. A turn that ends within 3 s of its goal's burst gets none of its own. Only a transition the page saw counts: opening a finished conversation celebrates nothing.
+
+Everything is drawn with `transform` and `opacity` only, so the compositor runs it without layout or paint. **Idle costs nothing**: each effect is an element that exists only while what it follows runs, or a fixed-length animation removed at its end; nothing loops on its own. `tests/e2e/live-motion.spec.ts` proves it: with animations on (Lively in the chat, Normal on the agent graph), after a fake-omp turn and after the graph's particles `document.getAnimations()` holds nothing running and the page asks for **0** animation frames over 2 s (`requestAnimationFrame` counted from an init script). Measured with Chrome tracing and `Performance.getMetrics` over 3 s windows of a fake-omp turn (headless Chromium, 1400×900, Normal intensity, two runs, animations off / on):
+
+| Window (3 s) | Frames drawn | Paints | Style recalcs | Main-thread task time | Running animations |
+|---|---|---|---|---|---|
+| Idle after the turn | 6 / 6 | 0 / 0 | 0 / 0 | 3–4 ms / 3–5 ms | 0 / 0 |
+| Model writing | 180 / 181 | 11 / 12–13 | 25–26 / 25 | 19–26 ms / 25–32 ms | 2 / 4 |
+| Tool running | 181 / 181 | 18 / 15–18 | 30–34 / 50 | 27–31 ms / 51–55 ms | 3 / 6 |
+
+The page already draws at 60 fps while a turn runs (the typing dots, spinners and running dots); the animations add no paints, about 20 style recalculations and 20–25 ms of main-thread time per 3 s while a tool runs (under 1% of a core), and nothing at all once the agent is idle.
 
 ### Remote access: the tunnel
 

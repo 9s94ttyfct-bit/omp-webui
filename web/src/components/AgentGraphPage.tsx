@@ -19,12 +19,12 @@ import {
 	graphTotals,
 	isStalled,
 	MAIN,
-	MESSAGE_BULGE,
 	NODE_W,
 	type Rect,
 } from "../lib/agent-graph.ts";
 import { fmtElapsed } from "../lib/clock.ts";
 import { fmtClock, fmtCost, fmtTokens } from "../lib/format.ts";
+import { edgeCurve, type Spot } from "../lib/graph-pulses.ts";
 import { setGraphFilter, setGraphFocus, setGraphGrid, useGraphView } from "../lib/graph-view.ts";
 import { useMediaQuery, useNarrowerThan } from "../lib/media.ts";
 import { useNow } from "../lib/now.ts";
@@ -37,6 +37,7 @@ import { GraphControls } from "./AgentGraphControls.tsx";
 import { Minimap } from "./AgentGraphMinimap.tsx";
 import { AgentDetail, StatusIcon, statusLabel } from "./Agents.tsx";
 import { ContextPercent } from "./ContextPercent.tsx";
+import { GraphParticles } from "./GraphParticles.tsx";
 import type { LiveDot } from "./SessionItem.tsx";
 import { liveDotsOf } from "./Sidebar.tsx";
 import { argSummary } from "./ToolCard.tsx";
@@ -423,42 +424,14 @@ function Summary({ totals, children }: { totals: GraphTotals; children?: ReactNo
 /** A point on a cubic curve at its middle: where a count is written. */
 const mid = (a: number, b: number, c: number, d: number) => (a + 3 * b + 3 * c + d) / 8;
 
-/** Where a card is: what an edge needs of it. */
-interface Spot {
-	x: number;
-	y: number;
-}
-
-/**
- * The line of an edge: from the right side of the agent on the left to the left side of the one on the right, or
- * around the right side of one column when both are in it (a message between siblings). `h` is the height of a card.
- */
+/** The line of an edge (`edgeCurve`) as a path, and the middle of it, where a count is written. */
 function edgePath(from: Spot, to: Spot, kind: GraphEdge["kind"], h: number): { d: string; x: number; y: number } {
-	// A message between a parent and its child would lie on the line that says who started whom: it runs a little lower.
-	const shift = kind === "message" ? Math.min(14, h / 4) : 0;
-	const y1 = from.y + h / 2 + shift;
-	const y2 = to.y + h / 2 + shift;
-	let x1: number;
-	let x2: number;
-	let c1: number;
-	let c2: number;
-	if (to.x > from.x) {
-		x1 = from.x + NODE_W;
-		x2 = to.x;
-		c1 = x1 + (x2 - x1) / 2;
-		c2 = x2 - (x2 - x1) / 2;
-	} else if (to.x < from.x) {
-		x1 = from.x;
-		x2 = to.x + NODE_W;
-		c1 = x1 - (x1 - x2) / 2;
-		c2 = x2 + (x1 - x2) / 2;
-	} else {
-		x1 = from.x + NODE_W;
-		x2 = to.x + NODE_W;
-		c1 = x1 + MESSAGE_BULGE;
-		c2 = x2 + MESSAGE_BULGE;
-	}
-	return { d: `M ${x1} ${y1} C ${c1} ${y1}, ${c2} ${y2}, ${x2} ${y2}`, x: mid(x1, c1, c2, x2), y: mid(y1, y1, y2, y2) };
+	const [a, b, c, e] = edgeCurve(from, to, kind, h);
+	return {
+		d: `M ${a.x} ${a.y} C ${b.x} ${b.y}, ${c.x} ${c.y}, ${e.x} ${e.y}`,
+		x: mid(a.x, b.x, c.x, e.x),
+		y: mid(a.y, b.y, c.y, e.y),
+	};
 }
 
 /** What the canvas fits into its window: the whole graph, or in focus mode the part of it that is running. */
@@ -743,6 +716,7 @@ function Canvas({
 								);
 							})}
 						</svg>
+						<GraphParticles graph={graph} spots={spots} />
 						{/* One list in the order the graph is drawn (`items`): Tab goes from an agent to its subagents, and reaches
 						    a frame's Collapse and a batch's card where they are, not after every card of the graph. */}
 						{graph.items.map((item) => {

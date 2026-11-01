@@ -225,7 +225,7 @@ test("the choice is independent of light, dark and system, remembered, and shown
 	);
 	await chosen("terminal").click();
 	await expect(html).not.toHaveClass(/\bdark\b/);
-	await page.locator("label", { hasText: "System" }).click();
+	await page.locator("label", { has: page.locator('input[name="theme"]'), hasText: "System" }).click();
 	await expect(html).toHaveClass(/\bdark\b/);
 	await expect(html).toHaveAttribute("data-palette", "terminal");
 	expect(canon(await html.evaluate((el) => getComputedStyle(el).getPropertyValue("--bg")))).toBe(

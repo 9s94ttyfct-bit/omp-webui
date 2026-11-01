@@ -14,6 +14,7 @@ omp's main agent can start subagents (omp's `task` tool); a subagent can start i
 
 - Status colours (*Legend*): *Running*, *No activity for 2 min* (stalled: a running subagent that has said nothing for 2 minutes; one waiting for a retry is not stalled), *Done*, *Failed or stopped*, *Queued* (dashed: spawned, waiting for a slot under *Parallel subagents*).
 - *Totals*: subagents, how many run, how many are stalled, how many are queued; each card shows tokens and tools.
+- With *Live animations* on (Settings › Look & layout › Appearance; off by default, see the appearance topic), particles run along the lines as this page sees it happen: down a *Started* line when an agent starts another, along a *Message* line when one writes to another, and back up the *Started* line (green) when a subagent finishes well (from a finished batch's card when its batch folds into one). At most 12 lines move per update; nothing moves while nothing happens, and nothing starts while the page is hidden.
 - Large conversations stay readable: a finished batch collapses to one card (*N done*, *N ended*, *N nested*; *Show these subagents* opens it in place, *Collapse N subagents* folds it), a zoomed-out graph draws compact cards, and the toolbar has:
   - **Status** filter: *All* / *Running* / *Failed*; **Started** filter: *All* / *Last hour* / *Today*; **Find a subagent** (*Find by name*, shows "N of M");
   - **Grid siblings**: lay out the subagents of one parent in a grid instead of a row;

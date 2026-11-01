@@ -84,6 +84,8 @@ export const PREF_CLASS: Readonly<Record<PrefKey, SettingClass>> = {
 	[PREF.graphTime]: "normal",
 	// What each conversation's guard was under before the header's switch turned it off.
 	[PREF.guardBefore]: "unavailable",
+	[PREF.animations]: "normal",
+	[PREF.animationIntensity]: "normal",
 };
 
 /** Full / Light (`mode.json`), classified the same way; the Light settings under `offline` are `OFFLINE_CLASS`. */

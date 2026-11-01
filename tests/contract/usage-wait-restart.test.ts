@@ -151,7 +151,8 @@ test("a wait that outlived a restart is still the page's to end: it shows the co
 			() => messageEnds(frames.seen, "assistant").some((m) => JSON.stringify(m.content).includes("STUB-REPLY")),
 			"the retried turn's reply",
 		);
-		expect(answers(file)).toBe(before + 1);
+		// omp writes the reply down after it has sent it.
+		await pollUntil(() => answers(file) === before + 1, "the retried turn to be in the conversation", 30_000);
 	} finally {
 		if (ws) {
 			void request(ws, { t: "close", liveId: chat.liveId }).catch(() => {});
