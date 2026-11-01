@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout as sleep } from "node:timers/promises";
+import { platformId } from "../../server/platform/capabilities.ts";
 import { FIXTURE_CWD, type SeededFixtures, seedFixtures } from "./fixtures.ts";
 import { hostEnv, isolatedEnv } from "./omp-env.ts";
 import { removeRelayDir } from "./relay-dirs.ts";
@@ -78,15 +79,24 @@ export async function startTestServer(
  * removed (#768).
  */
 function killStrays(root: string): void {
-	// platform-allow: the test servers' strays, by command line, in one synchronous listing; the suites run on macOS and Linux
-	const table = execFileSync("ps", ["-A", "-o", "pid=,command="], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-	for (const line of table.split("\n")) {
+	for (const line of processTable().split(/\r?\n/)) {
 		const [pid] = line.trim().split(/\s+/, 1);
 		if (!line.includes(root) || Number(pid) === process.pid) continue;
 		try {
 			process.kill(Number(pid), "SIGKILL");
 		} catch {}
 	}
+}
+
+/** Every process as its pid and command line, a line each, from one synchronous listing (Playwright's runner is not Bun). */
+function processTable(): string {
+	const read = { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 } as const;
+	if (platformId === "win32") {
+		const script = 'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.CommandLine)" }';
+		return execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], read);
+	}
+	// platform-allow: the test servers' strays, by command line, in one synchronous listing (POSIX; Windows: CIM, above)
+	return execFileSync("ps", ["-A", "-o", "pid=,command="], read);
 }
 
 /** Remove a test server's directory (and its relay directory), unless the run keeps it for inspection. */

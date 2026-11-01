@@ -152,6 +152,9 @@ jobs:
       # "outside the project". The tests' own folders (and the home folders they give omp) stand for places outside it, as
       # they are under macOS's per-user TMPDIR; here they go under the runner's temp folder, which is not /tmp.
       - run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      # Windows takes its temp folder from TEMP: the runner's, whose path has no 8.3 short names in it.
+      - if: runner.os == 'Windows'
+        run: printf 'TEMP=%s\nTMP=%s\n' "$RUNNER_TEMP" "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - name: Install omp ${{ matrix.omp }}
@@ -247,7 +250,7 @@ jobs:
       - shell: pwsh
         run: Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:USERPROFILE
       - uses: actions/checkout@v4
-      - run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - run: printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$RUNNER_TEMP" "$RUNNER_TEMP" "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v4
         with:

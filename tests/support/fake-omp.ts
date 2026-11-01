@@ -1,6 +1,7 @@
-import { chmodSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Config } from "../../server/config.ts";
+import { writeBunProgram } from "./bun-program.ts";
 import { trackRelayDir } from "./relay-dirs.ts";
 
 /**
@@ -195,9 +196,7 @@ if (options.slowClose) await Bun.sleep(options.slowClose);
 if (options.ignoreClose) await Promise.withResolvers().promise;
 tool?.kill();
 `;
-	const bin = join(dir, "omp");
-	writeFileSync(bin, script);
-	chmodSync(bin, 0o755);
+	const bin = writeBunProgram(dir, "omp", script);
 	// The thread `wedge` starts: it spins until its process is killed.
 	writeFileSync(join(dir, "fake-omp-busy.js"), "for (;;) {}\n");
 	return bin;
