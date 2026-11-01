@@ -6,6 +6,7 @@ export const zh: Record<keyof typeof en, string> = {
 	scopeBranch: "当前分支",
 	scopeAll: "所有分支",
 	branchIs: "分支 {branch}",
+	repoIs: "GitHub 上 {repo} 的运行",
 	detached: "HEAD 处于分离状态：显示所有分支的运行。",
 	refresh: "刷新",
 	notify: "这个分支的运行结束时通知我",

@@ -58,6 +58,18 @@ export interface CiRuns {
 	branch: string | null;
 	/** Newest first, as GitHub lists them; at most `CI_RUN_LIMIT`. */
 	runs: CiRun[];
+	/**
+	 * The GitHub repository the runs are of, as `gh` picks it for the folder (its default repository, else the remote it
+	 * prefers): a checkout whose remote is another repository than the person thinks shows it here. Null when `gh` did not say.
+	 */
+	repo: CiRepo | null;
+}
+
+export interface CiRepo {
+	/** `owner/name`. */
+	name: string;
+	/** The repository's page. */
+	url: string;
 }
 
 /**

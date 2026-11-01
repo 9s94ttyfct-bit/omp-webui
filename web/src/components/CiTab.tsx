@@ -238,8 +238,25 @@ export function CiTab({ cwd }: { cwd: string | null }) {
 					</IconButton>
 				</div>
 				{list ? (
-					<p className="truncate text-xs text-muted" data-testid="ci-branch">
-						{list.branch === null ? t("ci.detached") : t("ci.branchIs", { branch: list.branch })}
+					<p className="flex min-w-0 items-center gap-1.5 text-xs text-muted">
+						{list.repo ? (
+							<>
+								<a
+									href={`${list.repo.url}/actions`}
+									target="_blank"
+									rel="noreferrer"
+									title={t("ci.repoIs", { repo: list.repo.name })}
+									className="shrink-0 font-medium text-fg hover:underline"
+									data-testid="ci-repo"
+								>
+									{list.repo.name}
+								</a>
+								<span aria-hidden>·</span>
+							</>
+						) : null}
+						<span className="truncate" data-testid="ci-branch">
+							{list.branch === null ? t("ci.detached") : t("ci.branchIs", { branch: list.branch })}
+						</span>
 					</p>
 				) : null}
 			</div>

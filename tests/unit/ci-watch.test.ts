@@ -23,7 +23,7 @@ const run = (id: number, state: CiRun["state"]): CiRun => ({
 
 const answer = (runs: CiRun[], nextMs: number): CiAnswer<CiRuns> => ({
 	ok: true,
-	value: { scope: "branch", branch: "main", runs },
+	value: { scope: "branch", branch: "main", runs, repo: null },
 	nextMs,
 });
 

@@ -59,7 +59,9 @@ function world(gh: (argv: string[]) => GhRan | Promise<GhRan>, opts: { branch?: 
 	const reader = new GhRuns({ run, env: {}, now: () => clock });
 	return {
 		reader,
-		ghCalls: () => ran.filter((a) => a[0] === "gh"),
+		/** The runs' calls: what the tab costs per look (the repository's name is asked once in a while besides). */
+		ghCalls: () => ran.filter((a) => a[0] === "gh" && a[1] === "run"),
+		repoCalls: () => ran.filter((a) => a[0] === "gh" && a[1] === "repo"),
 		advance: (ms: number) => {
 			clock += ms;
 		},
@@ -215,6 +217,7 @@ test("a list is looked at again after 10 s while a run is queued or running, 60 
 		scope: "branch",
 		branch: "main",
 		runs: states.map((state, i) => ({ ...parsedRun(i + 1), state })),
+		repo: null,
 	});
 	expect(ciPollMs({ ok: true, value: runs(["running", "success"]) })).toBe(CI_ACTIVE_MS);
 	expect(ciPollMs({ ok: true, value: runs(["success", "queued"]) })).toBe(10_000);
@@ -251,6 +254,7 @@ test("the badge is of the latest commit's runs on the branch: running before fai
 		scope: "branch",
 		branch: "main",
 		runs,
+		repo: null,
 		...over,
 	});
 	expect(ciBadge(null)).toBeNull();
@@ -327,6 +331,31 @@ test("pages that ask within a look's interval share it: 10 s while a run is at w
 	expect(w.ghCalls()).toHaveLength(4);
 });
 
+test("the list names the repository gh reads, asked of gh, kept for minutes; a failure to say leaves the list as it is", async () => {
+	let repoAnswer: GhRan = ok({ nameWithOwner: "o/r", url: "https://github.com/o/r" });
+	const w = world((argv) => (argv[1] === "repo" ? repoAnswer : ok([RUN])));
+	expect(await w.reader.runs(DIR, "branch")).toMatchObject({
+		ok: true,
+		value: { repo: { name: "o/r", url: "https://github.com/o/r" } },
+	});
+	expect(w.repoCalls()).toEqual([["gh", "repo", "view", "--json", "nameWithOwner,url"]]);
+	// Every branch's list, and the next looks within five minutes, are of the same repository: not asked again.
+	await w.reader.runs(DIR, "all");
+	w.advance(4 * 60_000);
+	await w.reader.runs(DIR, "branch");
+	expect(w.repoCalls()).toHaveLength(1);
+	// Refresh asks again; gh that cannot say leaves the runs, with no name, and is asked again on the next look.
+	repoAnswer = { code: 1, stdout: "", stderr: "HTTP 404: Not Found" };
+	expect(await w.reader.runs(DIR, "branch", { fresh: true })).toMatchObject({
+		ok: true,
+		value: { repo: null, runs: [{ id: 101 }] },
+	});
+	repoAnswer = ok({ nameWithOwner: "someone/else", url: "https://github.com/someone/else" });
+	w.advance(61_000);
+	expect(await w.reader.runs(DIR, "branch")).toMatchObject({ ok: true, value: { repo: { name: "someone/else" } } });
+	expect(w.repoCalls()).toHaveLength(3);
+});
+
 test("a look under way is waited for, not repeated", async () => {
 	const answer = Promise.withResolvers<GhRan>();
 	const asked = Promise.withResolvers<void>();
@@ -360,7 +389,7 @@ test("no gh, a folder that is not a repository, and an unsafe one each say so; g
 	expect(await slow.reader.runs(DIR, "branch")).toMatchObject({ ok: false, problem: "slow" });
 	const plain = world(() => ok([]), { repo: false });
 	expect(await plain.reader.runs(DIR, "branch")).toMatchObject({ ok: false, problem: "no-repo", nextMs: 60_000 });
-	expect(plain.ghCalls()).toHaveLength(0);
+	expect([...plain.ghCalls(), ...plain.repoCalls()]).toHaveLength(0);
 	const garbled = world(() => ({ code: 0, stdout: "<html>", stderr: "" }));
 	expect(await garbled.reader.runs(DIR, "branch")).toMatchObject({ ok: false, problem: "failed" });
 });

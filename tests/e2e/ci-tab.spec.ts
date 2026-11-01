@@ -95,6 +95,7 @@ test.beforeAll(async () => {
 			'case "$1 $2" in',
 			`  "run list") case "$*" in *"--branch"*) cat '${join(binDir, "runs-branch.json")}';; *) cat '${join(binDir, "runs-all.json")}';; esac;;`,
 			`  "run view") cat '${binDir}'/jobs-"$3".json;;`,
+			`  "repo view") echo '{"nameWithOwner":"o/r","url":"https://github.com/o/r"}';;`,
 			"  *) echo 'not scripted' >&2; exit 1;;",
 			"esac",
 			"",
@@ -179,6 +180,9 @@ test("the tab is lazy, lists the branch's runs, unfolds a failed run to its jobs
 	await expect.poll(() => runIds(page)).toEqual(["302", "301"]);
 	expect(chunks).toHaveLength(1);
 	await expect(page.getByTestId("ci-branch")).toHaveText("Branch feat/ci");
+	// The repository the runs are of, as gh reads it: a checkout of another one than meant is plain to see.
+	await expect(page.getByTestId("ci-repo")).toHaveText("o/r");
+	await expect(page.getByTestId("ci-repo")).toHaveAttribute("href", "https://github.com/o/r/actions");
 	expect(asked().some((a) => a.startsWith("run list") && a.includes("--branch feat/ci"))).toBe(true);
 	const failed = page.locator('[data-testid="ci-run"][data-id="302"]');
 	await expect(failed).toHaveAttribute("data-state", "failure");

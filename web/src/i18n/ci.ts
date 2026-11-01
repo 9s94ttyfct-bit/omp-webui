@@ -9,6 +9,7 @@ export const en = {
 	scopeBranch: "This branch",
 	scopeAll: "All branches",
 	branchIs: "Branch {branch}",
+	repoIs: "Runs of {repo} on GitHub",
 	detached: "Detached HEAD: the runs of every branch are shown.",
 	refresh: "Refresh",
 	notify: "Notify when a run of this branch finishes",

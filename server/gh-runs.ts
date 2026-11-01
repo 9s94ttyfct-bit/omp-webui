@@ -4,6 +4,7 @@ import {
 	type CiAnswer,
 	type CiJob,
 	type CiProblem,
+	type CiRepo,
 	type CiRun,
 	type CiRuns,
 	type CiScope,
@@ -36,6 +37,8 @@ const GIT_TIMEOUT_MS = 3000;
 const WHERE_TTL_MS = 5000;
 /** A finished run's jobs do not change. */
 const DONE_JOBS_TTL_MS = 10 * 60_000;
+/** Which repository `gh` reads for a folder: another one is seen within this, or at once with Refresh. */
+const REPO_TTL_MS = 5 * 60_000;
 /** A page asks a little after a look is due, so that it finds the next one and not the last one again. */
 const SLACK_MS = 250;
 /** The shortest wait a page is told. */
@@ -111,6 +114,15 @@ export function parseRunList(text: string): CiRun[] | null {
 		.map(runOf)
 		.filter((r): r is CiRun => r !== null)
 		.slice(0, CI_RUN_LIMIT);
+}
+
+/** `gh repo view --json nameWithOwner,url`: the repository `gh` reads for the folder; null when the text is not that. */
+export function parseRepo(text: string): CiRepo | null {
+	const raw = parseJson(text);
+	if (!isRecord(raw)) return null;
+	const name = str(raw.nameWithOwner);
+	const url = web(raw.url);
+	return name && url && /^[^/\s]+\/[^/\s]+$/.test(name) ? { name, url } : null;
 }
 
 /** `gh run view N --json jobs`: the run's jobs, each with the first step that failed; null when the text is not that. */
@@ -204,6 +216,7 @@ export class GhRuns {
 	readonly #where = new Map<string, { at: number; promise: Promise<Answer<Where>> }>();
 	readonly #watches = new Map<string, Watch>();
 	readonly #jobs = new Map<string, KeptJobs>();
+	readonly #repos = new Map<string, { at: number; promise: Promise<CiRepo | null> }>();
 
 	constructor(opts: GhRunsOptions = {}) {
 		this.#run = opts.run ?? spawnGh;
@@ -230,7 +243,7 @@ export class GhRuns {
 		this.#watches.set(key, watch);
 		bound(this.#watches);
 		const due = watch.answer === null || opts.fresh === true || this.#now() - watch.at >= watch.interval;
-		if (due && watch.pending === null) watch.pending = this.#look(watch, top, listed, branch);
+		if (due && watch.pending === null) watch.pending = this.#look(watch, top, listed, branch, opts.fresh === true);
 		if (watch.pending) await watch.pending;
 		const answer = watch.answer ?? { ok: false, problem: "failed" };
 		const nextMs = Math.max(MIN_NEXT_MS, watch.at + watch.interval - this.#now() + SLACK_MS);
@@ -273,12 +286,12 @@ export class GhRuns {
 		return { ...answer, nextMs };
 	}
 
-	async #look(watch: Watch, top: string, scope: CiScope, branch: string | null): Promise<void> {
+	async #look(watch: Watch, top: string, scope: CiScope, branch: string | null, fresh: boolean): Promise<void> {
 		const argv = ["gh", "run", "list", "--json", RUN_FIELDS, "--limit", String(CI_RUN_LIMIT)];
 		if (scope === "branch" && branch !== null) argv.push("--branch", branch);
 		try {
-			const got = await this.#gh(top, argv, parseRunList);
-			const answer: Answer<CiRuns> = got.ok ? { ok: true, value: { scope, branch, runs: got.value } } : got;
+			const [got, repo] = await Promise.all([this.#gh(top, argv, parseRunList), this.#repo(top, fresh)]);
+			const answer: Answer<CiRuns> = got.ok ? { ok: true, value: { scope, branch, runs: got.value, repo } } : got;
 			watch.failures = answer.ok ? 0 : watch.failures + 1;
 			watch.answer = answer;
 			watch.at = this.#now();
@@ -286,6 +299,25 @@ export class GhRuns {
 		} finally {
 			watch.pending = null;
 		}
+	}
+
+	/**
+	 * The repository `gh` reads in `top`, asked of `gh` itself so that it is the one the runs are of (`gh repo set-default`,
+	 * else the remote `gh` prefers). Kept a few minutes; a failure is not kept, and never fails the list.
+	 */
+	#repo(top: string, fresh: boolean): Promise<CiRepo | null> {
+		const now = this.#now();
+		const kept = this.#repos.get(top);
+		if (kept && !fresh && now - kept.at < REPO_TTL_MS) return kept.promise;
+		const entry = { at: now, promise: Promise.resolve<CiRepo | null>(null) };
+		entry.promise = this.#gh(top, ["gh", "repo", "view", "--json", "nameWithOwner,url"], parseRepo).then((answer) => {
+			if (!answer.ok && this.#repos.get(top) === entry) this.#repos.delete(top);
+			return answer.ok ? answer.value : null;
+		});
+		this.#repos.delete(top);
+		this.#repos.set(top, entry);
+		bound(this.#repos);
+		return entry.promise;
 	}
 
 	/** The folder's repository and branch, vetted first; kept for a few seconds (and shared while it is asked). */
