@@ -17,6 +17,14 @@ export function needsLoopbackListener(host: string): boolean {
 }
 
 /**
+ * Whether a server that listens on `host` (`OMP_WEBUI_HOST`) is reached from this computer alone: the loopback (or what
+ * Bun makes of an empty name, `localhost`). Not a network's address or name, and not one that stands for all of them.
+ */
+export function isLoopbackHost(host: string): boolean {
+	return !WILDCARDS.includes(host) && !needsLoopbackListener(host);
+}
+
+/**
  * The addresses this server answers on besides the loopback, as a gate should treat them (`RiskContext.hosts`): the one
  * `OMP_WEBUI_HOST` names, when it is one address or name a URL could carry (`192.168.1.5`, `mymac.local`, `fe80::1`).
  * None when it is the loopback (`needsLoopbackListener` says so), a wildcard (`0.0.0.0`, `::`), empty, or something no

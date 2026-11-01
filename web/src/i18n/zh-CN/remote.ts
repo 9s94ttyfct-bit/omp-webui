@@ -7,6 +7,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	settingsIntro:
 		"从任何地方打开这个应用：Cloudflare 隧道把 https://{hostname} 连到这台 Mac，Cloudflare Access 在放你进来之前先问你是谁。",
 	settingsRemoteRefused: "这个页面不在运行服务器的这台 Mac 上，所以这里不能改动隧道。",
+	settingsUnavailable:
+		"Windows 上暂时不能使用远程访问：要等风险分类器（检查远程页面的高风险命令）支持 Windows 路径之后才行。",
 
 	// The state of the tunnel
 	stateOff: "已关闭",

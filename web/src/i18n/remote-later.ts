@@ -10,6 +10,8 @@ export const en = {
 	settingsIntro:
 		"Reach this app from anywhere: a Cloudflare tunnel carries https://{hostname} to this Mac, and Cloudflare Access asks who you are before it lets you in.",
 	settingsRemoteRefused: "This page is not on the Mac the server runs on, so the tunnel cannot be changed from here.",
+	settingsUnavailable:
+		"Remote access is not available on Windows yet: it waits for the risk classifier (the check of risky commands from remote pages) to support Windows paths.",
 
 	// The state of the tunnel
 	stateOff: "Off",

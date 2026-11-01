@@ -1,6 +1,9 @@
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { isLoopbackHost } from "./loopback-listener.ts";
+import { UNAVAILABLE } from "./platform/capabilities.ts";
+import { platform } from "./platform/index.ts";
 import { ensurePrivateDir } from "./private.ts";
 
 /**
@@ -30,7 +33,21 @@ function canonical(p: string): string {
 	}
 }
 
-export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
+/**
+ * The configuration, from the environment. `remoteAccess` is the system's capability (a test hands another system's): where
+ * it is off (Windows), an `OMP_WEBUI_HOST` other computers could reach is refused, since their pages would be remote
+ * pages that the check of risky commands cannot judge there.
+ */
+export function loadConfig(
+	env: Record<string, string | undefined> = process.env,
+	remoteAccess: boolean = platform.capabilities.remoteAccess,
+): Config {
+	const host = env.OMP_WEBUI_HOST ?? "127.0.0.1";
+	if (!remoteAccess && !isLoopbackHost(host)) {
+		throw new Error(
+			`OMP_WEBUI_HOST is ${host}, an address other computers can reach: ${UNAVAILABLE.remoteAccess}. Unset it to listen on 127.0.0.1.`,
+		);
+	}
 	const agentDir = canonical(env.PI_CODING_AGENT_DIR ?? join(homedir(), ".omp", "agent"));
 	const dataDir = resolve(env.OMP_WEBUI_DATA_DIR ?? join(homedir(), ".omp-webui"));
 	ensurePrivateDir(dataDir);
@@ -41,7 +58,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 		agentDir,
 		sessionsDir: canonical(sessionsDir),
 		dataDir,
-		host: env.OMP_WEBUI_HOST ?? "127.0.0.1",
+		host,
 		port: Number(env.OMP_WEBUI_PORT ?? 7878),
 		// Built web assets; the macOS app ships them inside its bundle and passes the path.
 		distDir: resolve(env.OMP_WEBUI_DIST ?? join(import.meta.dir, "..", "dist", "web")),
