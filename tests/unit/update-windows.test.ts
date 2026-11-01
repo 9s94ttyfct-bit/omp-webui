@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
+import { spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +12,7 @@ import {
 	memberAllowed,
 	powershellCommand,
 	stageWindows,
+	startHidden,
 	tarCommand,
 	WINDOWS_EXE,
 	ZIP_TOP,
@@ -104,6 +106,24 @@ test.skipIf(platformId !== "win32")("helper.ps1 parses in Windows PowerShell, wh
 	expect(`${ran.stdout}${ran.stderr}`.trim()).toBe("");
 	expect(ran.exitCode).toBe(0);
 });
+
+test.skipIf(platformId !== "win32")(
+	"startHidden runs a PowerShell script apart from this process, with values that hold spaces and quotes",
+	async () => {
+		const dir = mkdtempSync(join(root, "start 'hidden' x-"));
+		const script = join(dir, "write it.ps1");
+		writeFileSync(script, "param([string]$Out, [string]$Text)\n[System.IO.File]::WriteAllText($Out, $Text)\n");
+		const out = join(dir, "out file.txt");
+		const pid = await startHidden(
+			powershellCommand(),
+			["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, "-Out", out, "-Text", "it's here"],
+			{ cwd: dir, env: process.env },
+		);
+		expect(pid).toBeGreaterThan(0);
+		await pollUntil(() => existsSync(out), "the script to write its file", 30_000);
+		expect(readFileSync(out, "utf8")).toBe("it's here");
+	},
+);
 
 test("helper.ps1 is ASCII: Windows PowerShell reads a script without a byte-order mark in the ANSI code page", () => {
 	const script = readFileSync(join(import.meta.dir, "..", "..", "server", "update", "helper.ps1"), "utf8");
@@ -298,7 +318,13 @@ function launcher(
 		autoChecks: () => true,
 		conversations: () => ({ working: 0, asking: 0, paused: 0, waiting: 0 }),
 		broadcast: (s) => l.states.push(s),
-		powershell,
+		// What `startHidden` does on Windows, with the stand-in for PowerShell: started apart from this process, its pid.
+		startHelper: async (args) => {
+			const child = spawn(powershell, args, { detached: true, stdio: "ignore" });
+			child.unref();
+			if (child.pid === undefined) throw new Error("the stand-in did not start");
+			return child.pid;
+		},
 		quit: () => {
 			l.quits++;
 		},

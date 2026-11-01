@@ -50,6 +50,58 @@ export function powershellCommand(): string {
 	return join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 }
 
+/** `text` as a PowerShell string literal (single quotes, a quote in it doubled). */
+const psLiteral = (text: string): string => `'${text.replace(/'/g, "''")}'`;
+
+/**
+ * Start `powershell args…` hidden, so that it outlives this process, and return its pid. Not as a detached child: Windows
+ * PowerShell started without a console (Node's and Bun's `detached`) ends at once, successfully, without running anything
+ * (CI, run 41342601834). And a child that is not detached is in the job object Bun puts its children in, which ends them
+ * all when this process exits. So a short-lived PowerShell, a child of this one, starts the helper with `Start-Process`
+ * (hidden, with a console of its own) and prints its pid: what that one starts is not in the job (it allows its processes'
+ * children to break away, and they do). The command is passed encoded, so that no path in it needs quoting for a shell;
+ * each value is quoted for the command line `Start-Process` makes of the list.
+ */
+export async function startHidden(
+	powershell: string,
+	args: string[],
+	opts: { cwd: string; env: Record<string, string | undefined> },
+): Promise<number> {
+	const list = args.map((a) => psLiteral(/^-[A-Za-z]+$/.test(a) ? a : `"${a}"`)).join(",");
+	const command = [
+		`$p = Start-Process -FilePath ${psLiteral(powershell)} -ArgumentList @(${list})`,
+		`-WorkingDirectory ${psLiteral(opts.cwd)} -WindowStyle Hidden -PassThru;`,
+		"[Console]::Out.Write($p.Id)",
+	].join(" ");
+	const proc = Bun.spawn(
+		[
+			powershell,
+			"-NoProfile",
+			"-NonInteractive",
+			"-ExecutionPolicy",
+			"Bypass",
+			"-EncodedCommand",
+			Buffer.from(command, "utf16le").toString("base64"),
+		],
+		{ cwd: opts.cwd, env: opts.env, stdin: "ignore", stdout: "pipe", stderr: "pipe", windowsHide: true },
+	);
+	const timer = setTimeout(() => proc.kill(), 30_000);
+	try {
+		const [out, err, code] = await Promise.all([
+			new Response(proc.stdout).text(),
+			new Response(proc.stderr).text(),
+			proc.exited,
+		]);
+		const pid = Number(out.trim());
+		if (code !== 0 || !Number.isSafeInteger(pid) || pid <= 0) {
+			throw new Error(`exit ${code}: ${`${err}\n${out}`.trim().slice(0, 300)}`);
+		}
+		return pid;
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
 export interface StageWindowsOptions {
 	/** The `tar` to list and unpack with (`tarCommand()` by default). */
 	tar?: string;

@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
 	closeSync,
@@ -50,7 +49,7 @@ import {
 } from "./release.ts";
 import { attach, detach, download, freeSpace, stage, UpdateCancelled, UpdateError, writable } from "./steps.ts";
 import { designatedRequirementOf, leafOf, refusalOf } from "./verify.ts";
-import { canWriteIn, powershellCommand, stageWindows, WINDOWS_EXE } from "./windows.ts";
+import { canWriteIn, powershellCommand, stageWindows, startHidden, WINDOWS_EXE } from "./windows.ts";
 
 /**
  * The app's own updates (#571), as the server runs them: it looks for a newer release (at start and every six hours,
@@ -116,8 +115,8 @@ export interface UpdaterOptions {
 	freeBytes?: (dir: string) => number | null;
 	/** The command that starts the app (`open` with the forwarded environment by default); a test's stand-in for it. */
 	relaunch?: string[];
-	/** The program that runs `helper.ps1` (Windows PowerShell by default); a test's stand-in for it. */
-	powershell?: string;
+	/** How `helper.ps1` is started, given its arguments to Windows PowerShell; its pid (`startHidden`). A test's stand-in. */
+	startHelper?: (args: string[]) => Promise<number>;
 	/** How long the Windows launcher waits for `helper.ps1` to say it runs (`HELPER_START_MS`); a test's shorter one. */
 	helperStartMs?: number;
 }
@@ -151,8 +150,6 @@ interface HelperRun {
 	startSecs: number;
 	/** The version installed. */
 	version: string;
-	/** The helper's log, open for appending: `helper.sh`'s output and errors (`helper.ps1` appends to the file itself). */
-	log: number;
 }
 
 /**
@@ -653,18 +650,19 @@ export class AppUpdater {
 		const startSecs = this.opts.startSecs ?? 60;
 		removeFiles(this.paths.ack, this.paths.result);
 		rotateLog(this.paths.helperLog);
-		const log = openSync(this.paths.helperLog, "a", 0o600);
-		const helper = { id, staged, backup, quitSecs, startSecs, version: release.version, log };
+		const helper = { id, staged, backup, quitSecs, startSecs, version: release.version };
 		let pid: number;
-		try {
-			pid =
-				target.kind === "mac"
-					? this.spawnMacHelper(target.bundle, helper)
-					: this.spawnWindowsHelper(target.folder, helper);
-		} finally {
-			closeSync(log);
+		if (target.kind === "mac") {
+			const log = openSync(this.paths.helperLog, "a", 0o600);
+			try {
+				pid = this.spawnMacHelper(target.bundle, helper, log);
+			} finally {
+				closeSync(log);
+			}
+		} else {
+			pid = await this.spawnWindowsHelper(target.folder, helper);
+			await this.helperStarted(id, pid);
 		}
-		if (target.kind === "windows") await this.helperStarted(id, pid);
 		const handover: Handover = {
 			id,
 			from: this.opts.installed,
@@ -719,8 +717,8 @@ export class AppUpdater {
 		throw new UpdateError("helper");
 	}
 
-	/** `helper.sh`, started in a session of its own; its pid. */
-	private spawnMacHelper(bundle: string, h: HelperRun): number {
+	/** `helper.sh`, started in a session of its own with its output to `log` (open for appending); its pid. */
+	private spawnMacHelper(bundle: string, h: HelperRun, log: number): number {
 		writeFileSync(this.paths.helper, helperScript, { mode: 0o700 });
 		const proc = Bun.spawn(
 			[
@@ -743,8 +741,8 @@ export class AppUpdater {
 				cwd: "/",
 				env: { PATH: "/usr/bin:/bin:/usr/sbin:/sbin" },
 				stdin: "ignore",
-				stdout: h.log,
-				stderr: h.log,
+				stdout: log,
+				stderr: log,
 				// Its own session: it must outlive the app, which ends the process group this server is in.
 				detached: true,
 			},
@@ -754,62 +752,53 @@ export class AppUpdater {
 	}
 
 	/**
-	 * `helper.ps1`, started by Windows PowerShell, hidden and detached (it must outlive this server, whose console closes
-	 * when it exits); its pid. It runs from the update folder, never from inside the folder it renames, and with this
-	 * server's environment: the new program it starts is started as this one was (its data folder, a test's settings). It
-	 * writes its log itself: a process started detached has no console, and the output handles it is given are not to be
-	 * relied on.
+	 * `helper.ps1`, started by Windows PowerShell, hidden (it must outlive this server, whose console closes when it exits);
+	 * its pid. It runs from the update folder, never from inside the folder it renames, and with this server's environment:
+	 * the new program it starts is started as this one was (its data folder, a test's settings). It writes its log itself.
 	 */
-	private spawnWindowsHelper(folder: string, h: HelperRun): number {
+	private async spawnWindowsHelper(folder: string, h: HelperRun): Promise<number> {
 		writeFileSync(this.paths.helperWindows, helperWindowsScript, { mode: 0o700 });
-		const child = spawn(
-			this.opts.powershell ?? powershellCommand(),
-			[
-				"-NoProfile",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-WindowStyle",
-				"Hidden",
-				"-File",
-				this.paths.helperWindows,
-				"-Id",
-				h.id,
-				"-AppPid",
-				String(process.pid),
-				"-Installed",
-				folder,
-				"-Staged",
-				h.staged,
-				"-Backup",
-				h.backup,
-				"-StateDir",
-				this.paths.dir,
-				"-QuitSecs",
-				String(h.quitSecs),
-				"-StartSecs",
-				String(h.startSecs),
-				"-From",
-				this.opts.installed,
-				"-To",
-				h.version,
-				"-Exe",
-				join(folder, WINDOWS_EXE),
-			],
-			{
-				cwd: this.paths.dir,
-				env: this.opts.env ?? process.env,
-				stdio: "ignore",
-				detached: true,
-				windowsHide: true,
-			},
-		);
-		// A program that cannot be started says so by an event, after `spawn` returns: without a listener it would end the server.
-		child.on("error", (e) => console.error(`omp-webui: the update helper failed: ${e.message}`));
-		// What the server can see of a helper that ended while it still runs (one that never ran the script ends at once).
-		child.on("exit", (code) => console.log(`omp-webui: the update helper ${child.pid} ended (exit ${code})`));
-		if (child.pid === undefined) throw new UpdateError("helper");
-		child.unref();
-		return child.pid;
+		const args = [
+			"-NoProfile",
+			"-ExecutionPolicy",
+			"Bypass",
+			"-WindowStyle",
+			"Hidden",
+			"-File",
+			this.paths.helperWindows,
+			"-Id",
+			h.id,
+			"-AppPid",
+			String(process.pid),
+			"-Installed",
+			folder,
+			"-Staged",
+			h.staged,
+			"-Backup",
+			h.backup,
+			"-StateDir",
+			this.paths.dir,
+			"-QuitSecs",
+			String(h.quitSecs),
+			"-StartSecs",
+			String(h.startSecs),
+			"-From",
+			this.opts.installed,
+			"-To",
+			h.version,
+			"-Exe",
+			join(folder, WINDOWS_EXE),
+		];
+		const start =
+			this.opts.startHelper ??
+			((a: string[]) =>
+				startHidden(powershellCommand(), a, { cwd: this.paths.dir, env: this.opts.env ?? process.env }));
+		try {
+			return await start(args);
+		} catch (e) {
+			console.warn(`omp-webui: the update helper could not be started: ${(e as Error).message}`);
+			throw new UpdateError("helper");
+		}
 	}
 
 	/** The app did not quit and the helper ended (or died): how it ended is on the page, and what was staged is gone. */
