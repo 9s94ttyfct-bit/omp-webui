@@ -37,6 +37,10 @@ export interface Script {
 	reminderEvery?: number;
 	/** The run begins with a message of the agent's own (a goal continuing) instead of the user's prompt, so a turn that goes on stays one turn. */
 	asAgent?: boolean;
+	/** Characters of the final answer's text (a long reply: `scripts/long-run.ts --scenario motion`). */
+	finalChars?: number;
+	/** Wall-clock milliseconds the final answer takes; 0: `stepMs`. */
+	finalMs?: number;
 }
 
 const DEFAULTS: Required<Script> = {
@@ -51,6 +55,8 @@ const DEFAULTS: Required<Script> = {
 	subagentUpdates: 30,
 	reminderEvery: 0,
 	asAgent: false,
+	finalChars: 900,
+	finalMs: 0,
 };
 
 const argv = process.argv.slice(2);
@@ -241,9 +247,9 @@ function chunks(text: string, n: number): string[] {
 
 async function assistantStep(s: Required<Script>, step: number, last: boolean): Promise<void> {
 	const id = messageId();
-	const phase = (share: number) => s.stepMs * share;
+	const phase = (share: number) => (last && s.finalMs > 0 ? s.finalMs : s.stepMs) * share;
 	const thinking = words(40);
-	const text = prose(last ? 900 : 380);
+	const text = prose(last ? s.finalChars : 380);
 	const toolId = `toolu_${hex(20)}`;
 	const subagentStep = !last && s.subagentEvery > 0 && step % s.subagentEvery === s.subagentEvery - 1;
 	const toolName = last ? null : subagentStep ? "task" : step % 3 === 0 ? "read" : step % 3 === 1 ? "edit" : "bash";

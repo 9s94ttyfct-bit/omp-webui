@@ -10,6 +10,8 @@
  *   multi   several conversations stream at once; the page switches between them
  *   hidden  the page is hidden (no paint, throttled timers) while omp streams, then shown again
  *   dead    requests that never get an answer: the connection drops what it carries for a while, or the server stops
+ *   motion  one long reply streamed into a small conversation (with a subagent step and the end burst), traced: per window,
+ *           frames drawn and dropped, paints, layouts, raster and main-thread time, for the live animations on or off
  *
  * Nothing here calls a model, and nothing touches ~/.omp or a running omp-webui: a session file given with
  * `--session` is copied into the harness's own directory, which is removed at the end.
@@ -32,9 +34,10 @@ const opt = (name: string, fallback: string): string => {
 	return i >= 0 && args[i + 1] !== undefined ? args[i + 1] : fallback;
 };
 if (args.includes("--help")) {
-	console.log(`options: --scenario goal|multi|hidden|dead  --label <name>  --dist <dir>  --port 7601  --minutes 10
+	console.log(`options: --scenario goal|multi|hidden|dead|motion  --label <name>  --dist <dir>  --port 7601  --minutes 10
   --interval 30 (seconds between samples)  --session <jsonl to copy> | --generate-mb 58
-  --steps 6000 --step-ms 150 (script)  --out .tmp/long-run  --heap (heap snapshot at start and end)  --profile (CPU profile of 10 s in each sample round of --profile-round 3,20)\n  --ws-limit (the server may buffer a big reply: isolates the page's own cost from the server dropping messages)`);
+  --steps 6000 --step-ms 150 (script)  --out .tmp/long-run  --heap (heap snapshot at start and end)  --profile (CPU profile of 10 s in each sample round of --profile-round 3,20)\n  --ws-limit (the server may buffer a big reply: isolates the page's own cost from the server dropping messages)
+  motion: --lines 3000 (of the reply, about 80 characters each) --stream-s 40 --window-s 3 --animations on|off --intensity subtle|normal|lively --headed`);
 	process.exit(0);
 }
 const scenario = opt("scenario", "goal");
@@ -134,6 +137,8 @@ writeFileSync(
 	"modelRoles:\n  default: anthropic/claude-haiku-5-5:low\n  smol: anthropic/claude-haiku-5-5\n  slow: anthropic/claude-haiku-5-5\n  tiny: anthropic/claude-haiku-5-5:low\n  commit: anthropic/claude-haiku-5-5\nspelling:\n  autocomplete: ngram\n",
 );
 const wrapper = writeLongFakeOmp(workdir);
+const guardFile = join(workdir, "guard.json");
+writeFileSync(guardFile, JSON.stringify({ mode: "off" }));
 
 // ------------------------------------------------------------------ server, and the connection the page uses
 let server: ChildProcess | null = null;
@@ -156,6 +161,8 @@ async function startServer(): Promise<void> {
 			OMP_WEBUI_TOKEN: token,
 			OMP_WEBUI_UPDATE_CHECK: "off",
 			OMP_WEBUI_AUTO_TITLE: "off",
+			// The guard is on by default, and refuses turns of a conversation the fake omp started without its check.
+			OMP_WEBUI_GUARD_CONFIG: guardFile,
 		},
 		stdio: ["ignore", "pipe", "pipe"],
 	});
@@ -942,6 +949,183 @@ async function runDead(page: Page, cdp: CDPSession, main: string, wire: { mode: 
 	writeFileSync(join(outDir, "outcomes.json"), JSON.stringify(outcomes, null, 1));
 }
 
+// ------------------------------------------------------------------ motion: a long reply, traced
+interface TraceEvent {
+	name: string;
+	ph: string;
+	pid: number;
+	tid: number;
+	ts: number;
+	dur?: number;
+	args?: { name?: string; data?: { message?: string } };
+}
+
+/** Record a Chrome trace while `during` runs; the events, and the file they are kept in. */
+async function traced(cdp: CDPSession, path: string, during: () => Promise<void>): Promise<TraceEvent[]> {
+	await cdp.send("Tracing.start", {
+		transferMode: "ReturnAsStream",
+		traceConfig: {
+			includedCategories: [
+				"devtools.timeline",
+				"disabled-by-default-devtools.timeline",
+				"disabled-by-default-devtools.timeline.frame",
+				"toplevel",
+				"blink.console",
+			],
+		},
+	});
+	await during();
+	const done = new Promise<string>((resolveStream) =>
+		cdp.once("Tracing.tracingComplete", (e: { stream?: string }) => resolveStream(e.stream as string)),
+	);
+	await cdp.send("Tracing.end");
+	const stream = await done;
+	let text = "";
+	for (;;) {
+		const chunk = (await cdp.send("IO.read", { handle: stream })) as { data: string; eof: boolean };
+		text += chunk.data;
+		if (chunk.eof) break;
+	}
+	await cdp.send("IO.close", { handle: stream });
+	writeFileSync(path, text);
+	const parsed = JSON.parse(text) as { traceEvents?: TraceEvent[] } | TraceEvent[];
+	return Array.isArray(parsed) ? parsed : (parsed.traceEvents ?? []);
+}
+
+/** At 60 Hz: a gap between two animation frames longer than this missed at least one. */
+const FRAME_MS = 1000 / 60;
+
+async function runMotion(page: Page, cdp: CDPSession, conversation: string): Promise<void> {
+	const lines = Number(opt("lines", "3000"));
+	const streamMs = Number(opt("stream-s", "40")) * 1000;
+	const windowMs = Number(opt("window-s", "3")) * 1000;
+	await openConversation(page, conversation);
+	// One subagent step (a task card with three subagents) first, then the long answer: it streams over `streamMs` (the
+	// final step's text is half of it, `long-fake-omp.ts`), then the turn ends (the burst).
+	const script = `@@fake ${JSON.stringify({
+		steps: 1,
+		stepMs: 3000,
+		subagentEvery: 1,
+		subagents: 3,
+		finalChars: lines * 80,
+		finalMs: streamMs * 2,
+		textDeltas: Math.round(streamMs / 25),
+	})}`;
+	const frames = () =>
+		page.evaluate(() => {
+			const w = window as unknown as { __mt?: number[] };
+			const ts = w.__mt ?? [];
+			w.__mt = undefined;
+			return ts;
+		});
+	let frameTimes: number[] = [];
+	let startedAt = 0;
+	const events = await traced(cdp, join(outDir, "trace.json"), async () => {
+		startedAt = await page.evaluate(() => {
+			const w = window as unknown as { __mt?: number[] };
+			w.__mt = [];
+			const tick = (t: number) => {
+				if (!w.__mt) return;
+				w.__mt.push(t);
+				requestAnimationFrame(tick);
+			};
+			requestAnimationFrame(tick);
+			console.timeStamp("motion-start");
+			return performance.now();
+		});
+		const sent = await sendProbe(page, script);
+		log(`sent: ${JSON.stringify(sent)}`);
+		if (sent.stuck) throw new Error("the long reply was not sent");
+		// A turn runs (Stop shows) and ends once Stop is gone; then the burst plays out. A turn that never ran is no trace.
+		await page.getByTestId("stop").waitFor({ state: "visible", timeout: 30_000 });
+		const ranFrom = Date.now();
+		// `--shot`: what the reply looks like while it is written (it costs a frame or two: not for the measured runs).
+		if (args.includes("--shot")) {
+			// The subagent step (3 s), the answer's thinking (0.6 × the stream), then halfway through its text.
+			await sleep(3000 + streamMs * 0.6 + streamMs / 2);
+			await page.screenshot({ path: join(outDir, "writing.png") });
+			log(
+				`writing: ${await page.evaluate(() => JSON.stringify({ carets: document.querySelectorAll(".live-caret").length, motion: document.querySelectorAll("[data-motion]").length, animations: localStorage.getItem("ompw.animations"), digits: document.querySelectorAll(".live-digits").length }))}`,
+			);
+		}
+		await page.getByTestId("stop").waitFor({ state: "detached", timeout: streamMs * 3 + 60_000 });
+		const ranMs = Date.now() - ranFrom;
+		if (ranMs < streamMs / 2) throw new Error(`the turn ran ${ranMs} ms, not the reply's ${streamMs} ms`);
+		await sleep(2500);
+		await page.evaluate(() => console.timeStamp("motion-end"));
+		frameTimes = await frames();
+		await page.screenshot({ path: join(outDir, "end.png") });
+	});
+	const height = await page.evaluate(() => {
+		const all = document.querySelectorAll('[data-testid="msg-assistant"]');
+		return Math.round(all[all.length - 1]?.getBoundingClientRect().height ?? 0);
+	});
+	// About 80 characters a line wrap to at least one line each: a reply much shorter than that did not stream.
+	if (height < lines * 10) throw new Error(`the reply is ${height}px high, short of ${lines} lines`);
+
+	// The page's renderer: the process whose main thread logged the marks.
+	const marks = events.filter((e) => e.name === "TimeStamp" && e.args?.data?.message?.startsWith("motion-"));
+	const start = marks.find((e) => e.args?.data?.message === "motion-start");
+	const end = marks.find((e) => e.args?.data?.message === "motion-end");
+	if (!start || !end) throw new Error("the trace has no motion marks");
+	const pid = start.pid;
+	const mainTid = start.tid;
+	const windows = Math.ceil((end.ts - start.ts) / 1000 / windowMs);
+	const rows = Array.from({ length: windows }, (_, i) => ({
+		window: `${(i * windowMs) / 1000}-${((i + 1) * windowMs) / 1000}s`,
+		frames: 0,
+		dropped: 0,
+		paints: 0,
+		layouts: 0,
+		rasterMs: 0,
+		mainMs: 0,
+	}));
+	const at = (tsMicros: number) => Math.floor((tsMicros - start.ts) / 1000 / windowMs);
+	for (const e of events) {
+		if (e.pid !== pid || e.ts < start.ts || e.ts > end.ts) continue;
+		const row = rows[at(e.ts)];
+		if (!row) continue;
+		if (e.name === "Paint" && e.tid === mainTid) row.paints++;
+		else if (e.name === "Layout" && e.tid === mainTid && e.ph === "X") row.layouts++;
+		else if (e.name === "RasterTask" && e.ph === "X") row.rasterMs += (e.dur ?? 0) / 1000;
+		else if (e.name === "RunTask" && e.tid === mainTid && e.ph === "X") row.mainMs += (e.dur ?? 0) / 1000;
+	}
+	for (let i = 0; i < frameTimes.length; i++) {
+		const row = rows[Math.floor(((frameTimes[i] as number) - startedAt) / windowMs)];
+		if (!row) continue;
+		row.frames++;
+		if (i > 0)
+			row.dropped += Math.max(
+				0,
+				Math.round(((frameTimes[i] as number) - (frameTimes[i - 1] as number)) / FRAME_MS) - 1,
+			);
+	}
+	const out = rows.map((r) => ({ ...r, rasterMs: Math.round(r.rasterMs), mainMs: Math.round(r.mainMs) }));
+	const total = out.reduce(
+		(s, r) => ({
+			frames: s.frames + r.frames,
+			dropped: s.dropped + r.dropped,
+			paints: s.paints + r.paints,
+			layouts: s.layouts + r.layouts,
+			rasterMs: s.rasterMs + r.rasterMs,
+			mainMs: s.mainMs + r.mainMs,
+		}),
+		{ frames: 0, dropped: 0, paints: 0, layouts: 0, rasterMs: 0, mainMs: 0 },
+	);
+	const summary = {
+		label,
+		animations: opt("animations", "on"),
+		intensity: opt("intensity", "normal"),
+		headed: args.includes("--headed"),
+		replyPx: height,
+		windows: out,
+		total,
+	};
+	writeFileSync(join(outDir, "motion.json"), JSON.stringify(summary, null, 2));
+	console.table(out);
+	console.log(JSON.stringify({ label, replyPx: height, total }));
+}
+
 // ------------------------------------------------------------------ main
 async function main(): Promise<void> {
 	const wire = startProxy();
@@ -964,7 +1148,8 @@ async function main(): Promise<void> {
 	});
 	try {
 		log(`workdir ${workdir}; dist ${dist}`);
-		const mainSession = seedMain();
+		// The motion scenario's conversation is small: what is measured is the reply being written into it.
+		const mainSession = scenario === "motion" ? { file: seedMid(9, "Motion", 3), entries: 0 } : seedMain();
 		const mids =
 			scenario === "multi"
 				? [seedMid(1, "Mid one", 150), seedMid(2, "Mid two", 150), seedMid(3, "Mid three", 150)]
@@ -977,15 +1162,24 @@ async function main(): Promise<void> {
 		// Playwright would handle the signals itself (close the browser, exit) and race `cleanup` above, which does both.
 		browser = await chromium.launch({
 			channel: "chromium",
-			headless: true,
+			headless: !args.includes("--headed"),
 			handleSIGINT: false,
 			handleSIGTERM: false,
 			handleSIGHUP: false,
 		});
 		const context: BrowserContext = await browser.newContext({
-			viewport: { width: 1400, height: 900 },
+			viewport: scenario === "motion" ? { width: 1440, height: 900 } : { width: 1400, height: 900 },
 			locale: "en-US",
 		});
+		if (scenario === "motion") {
+			await context.addInitScript(
+				([on, level]) => {
+					localStorage.setItem("ompw.animations", on);
+					localStorage.setItem("ompw.animationIntensity", level);
+				},
+				[opt("animations", "on"), opt("intensity", "normal")],
+			);
+		}
 		await context.addCookies([
 			{
 				name: "ompw_token",
@@ -1007,6 +1201,7 @@ async function main(): Promise<void> {
 			console.log(JSON.stringify({ url: `http://127.0.0.1:${port}`, token, session: mainSession.file, agentDir }));
 			await sleep(minutes * 60_000);
 		} else if (scenario === "goal") await runGoal(page, cdp, mainSession.file);
+		else if (scenario === "motion") await runMotion(page, cdp, mainSession.file);
 		else if (scenario === "multi") await runMulti(page, cdp, mainSession.file, mids);
 		else if (scenario === "hidden") await runHidden(page, cdp, mainSession.file);
 		else if (scenario === "dead") await runDead(page, cdp, mainSession.file, wire);
