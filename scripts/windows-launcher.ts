@@ -10,10 +10,13 @@
  *
  * It runs on Windows only: Bun writes the icon and the version details into the program only when it compiles on
  * Windows (a cross-compile refuses the `--windows-*` options).
+ *
+ * `--out <dir>` builds into another folder, and `--version <x.y.z>` builds a program that says it is that version
+ * (`omp-webui.exe --version`, the server's own): the updater's tests install it as a later release.
  */
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import pkg from "../package.json";
 import { readMaster, renderIcon } from "./icons.ts";
 import { encodeIco } from "./lib/ico.ts";
@@ -26,7 +29,18 @@ if (process.platform !== "win32") {
 }
 
 const root = join(import.meta.dir, "..");
-const out = join(root, "dist", "omp-webui-windows-x64");
+const argv = process.argv.slice(2);
+const arg = (name: string): string | undefined => {
+	const i = argv.indexOf(`--${name}`);
+	return i >= 0 ? argv[i + 1] : undefined;
+};
+const version = arg("version") ?? pkg.version;
+if (!/^\d+\.\d+\.\d+$/.test(version)) {
+	console.error(`--version wants x.y.z, not ${version}`);
+	process.exit(1);
+}
+const outArg = arg("out");
+const out = outArg ? resolve(root, outArg) : join(root, "dist", "omp-webui-windows-x64");
 const stage = mkdtempSync(join(tmpdir(), "ompw-win-"));
 
 async function run(cmd: string[], cwd = root): Promise<void> {
@@ -63,7 +77,8 @@ try {
 			`--windows-icon=${icon}`,
 			"--windows-title=omp-webui",
 			"--windows-description=omp-webui",
-			`--windows-version=${pkg.version}.0`,
+			`--windows-version=${version}.0`,
+			...(version === pkg.version ? [] : [`--define=OMPW_BUILD_VERSION=${JSON.stringify(version)}`]),
 			join(root, "server", "launcher.ts"),
 			// The workers the server starts by relative URLs (see scripts/app.ts): entry points of their own.
 			join(root, "server", "family-worker.ts"),

@@ -12,6 +12,8 @@
  *
  * `BROWSER` names another program to open the page with (it is given the address); it is also how the tests see
  * which page was opened.
+ *
+ * `omp-webui.exe --version` prints the version and ends (no server, no page): the updater checks a staged program with it.
  */
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -19,6 +21,12 @@ import { Auth } from "./auth.ts";
 import { loadConfig } from "./config.ts";
 import { runningServer } from "./instance.ts";
 import { platform } from "./platform/index.ts";
+import { APP_VERSION } from "./version.ts";
+
+if (process.argv.slice(2).includes("--version")) {
+	console.log(APP_VERSION);
+	process.exit(0);
+}
 
 const web = join(dirname(process.execPath), "web");
 if (!process.env.OMP_WEBUI_DIST && existsSync(web)) process.env.OMP_WEBUI_DIST = web;

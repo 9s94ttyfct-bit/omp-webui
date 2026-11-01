@@ -3,6 +3,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import pkg from "../../package.json";
 import { writeBunProgram } from "../support/bun-program.ts";
 import { hostEnv, isolatedEnv } from "../support/omp-env.ts";
 import { pollUntil } from "../support/poll.ts";
@@ -32,9 +33,9 @@ afterAll(async () => {
 	removeScratch(root);
 });
 
-async function launch(extra: Record<string, string>) {
+async function launch(extra: Record<string, string>, args: string[] = []) {
 	const env = await isolatedEnv(join(root, "world"), { login: false });
-	const child = spawn(command[0], command.slice(1), {
+	const child = spawn(command[0], [...command.slice(1), ...args], {
 		env: {
 			...hostEnv(),
 			...env,
@@ -104,4 +105,14 @@ test("a server that cannot start says why and ends, without waiting for a key no
 	const run = await launch({ OMP_WEBUI_DATA_DIR: file });
 	expect(await run.exited).toBe(1);
 	expect(run.output()).toContain("omp-webui could not start:");
+}, 60_000);
+
+test("--version prints the version and ends: no server, no page, no data folder", async () => {
+	const folder = join(root, "version-data");
+	const before = pages().length;
+	const run = await launch({ OMP_WEBUI_DATA_DIR: folder }, ["--version"]);
+	expect(await run.exited).toBe(0);
+	expect(run.output()).toBe(`${pkg.version}\n`);
+	expect(existsSync(folder)).toBe(false);
+	expect(pages()).toHaveLength(before);
 }, 60_000);

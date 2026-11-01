@@ -3,7 +3,6 @@ import "./omp/relay-main.ts";
 import { closeSync, existsSync, openSync, readSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import pkg from "../package.json";
 import { type ApprovalMode, approvalModeNeeds, isApprovalMode } from "../shared/approval.ts";
 import { factsOf, noticeLang, working } from "../shared/attention.ts";
 import { CI_SCOPES } from "../shared/ci.ts";
@@ -126,6 +125,7 @@ import { KeepAwake, SleepDetector, spawnCaffeinate, workingIds } from "./sleep.t
 import { isLocalOnlyRoute, isThisComputer } from "./this-computer.ts";
 import type { TransferEnv } from "./transfer-core.ts";
 import type { AppUpdater, Conversations } from "./update/service.ts";
+import { APP_VERSION } from "./version.ts";
 import { WorkerDeadlineError } from "./worker-deadline.ts";
 import { WsOutbox } from "./ws-out.ts";
 
@@ -172,7 +172,7 @@ function turnRefusal(live: Live, remote: boolean): string | null {
 	return null;
 }
 
-const SERVER_VERSION = pkg.version;
+const SERVER_VERSION = APP_VERSION;
 // The macOS app names the user's login shell: its environment (`PATH` first) is what omp and its tools run in, as
 // they do in a terminal; a Finder launch has none of it. A shell that does not answer in time leaves the server's own.
 const loginShell = process.env.OMP_WEBUI_LOGIN_SHELL || null;
