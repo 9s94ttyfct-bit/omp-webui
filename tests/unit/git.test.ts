@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { directoryOf, GitProbe, parsePullRequest, parseStatus, type Run } from "../../server/git.ts";
+import { directoryOf, GitProbe, parsePullRequest, parseStatus, type Run, repositoryName } from "../../server/git.ts";
 import { commandAttributes, commandKeys } from "../../server/git-vet.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
 
@@ -124,6 +124,29 @@ test("a detached HEAD is its short commit; a repository without a commit still n
 	expect(parseStatus("")).toBeNull();
 });
 
+/** `git config --list --show-scope -z` text: `scope NUL key LF value NUL` per entry. */
+const listing = (...entries: [string, string][]) => entries.map(([key, value]) => `local\0${key}\n${value}\0`).join("");
+
+test("a repository is named by its remote: the one gh chose, else the branch's, else origin, else the first", () => {
+	const fork: [string, string] = ["remote.fork.url", "https://github.com/me/fork-of-it.git"];
+	const origin: [string, string] = ["remote.origin.url", "git@github.com:me/omp-webui.git"];
+	const upstream: [string, string] = ["remote.upstream.url", "ssh://git@github.com/them/upstream-name/"];
+	expect(repositoryName(listing(fork, origin, upstream), "main")).toBe("omp-webui");
+	const tracks: [string, string] = ["branch.main.remote", "upstream"];
+	expect(repositoryName(listing(fork, origin, upstream, tracks), "main")).toBe("upstream-name");
+	// Another branch's remote is not this one's; a detached HEAD has none.
+	expect(repositoryName(listing(origin, upstream, ["branch.other.remote", "upstream"]), "main")).toBe("omp-webui");
+	expect(repositoryName(listing(origin, upstream, tracks), null)).toBe("omp-webui");
+	// `gh repo set-default` comes first; a branch that tracks a local branch (`.`) has no remote of its own.
+	const chosen: [string, string] = ["remote.upstream.gh-resolved", "base"];
+	expect(repositoryName(listing(origin, upstream, chosen, ["branch.main.remote", "origin"]), "main")).toBe(
+		"upstream-name",
+	);
+	expect(repositoryName(listing(fork, ["branch.main.remote", "."]), "main")).toBe("fork-of-it");
+	expect(repositoryName(listing(["remote.local.url", "/srv/git/project.git"]), "main")).toBe("project");
+	expect(repositoryName(listing(["user.name", "Me"]), "main")).toBeNull();
+});
+
 test("a pull request is a number and a web address; anything else is none", () => {
 	expect(parsePullRequest('{"number":42,"url":"https://github.com/o/r/pull/42"}')).toEqual({
 		number: 42,
@@ -156,8 +179,9 @@ test("a folder that is not there, is a file or is not absolute is refused like t
 test("a real repository reports its branch and counts; a folder outside any repository reports none", async () => {
 	stubGh("exit 1");
 	const probe = new GitProbe({ env: withStub });
+	// Without a remote, a repository is named by its top folder.
 	expect(await probe.report(repo)).toEqual({
-		git: { branch: "feature/status", detached: false, staged: 2, unstaged: 2, untracked: 2 },
+		git: { branch: "feature/status", detached: false, staged: 2, unstaged: 2, untracked: 2, repo: "repo" },
 	});
 	const plain = join(root, "plain");
 	mkdirSync(plain);
@@ -524,7 +548,7 @@ test("what a repository's own .gitattributes asks for is not read: a filter of t
 		const report = await new GitProbe({ env: withStub }).report(dir);
 		expect(existsSync(marker), "the look does not").toBe(false);
 		// And it still answers: the file is the same, so nothing is changed.
-		expect(report.git).toEqual({ branch: "main", detached: false, staged: 0, unstaged: 0, untracked: 1 });
+		expect(report.git).toMatchObject({ branch: "main", detached: false, staged: 0, unstaged: 0, untracked: 1 });
 	} finally {
 		rmSync(global, { force: true });
 	}

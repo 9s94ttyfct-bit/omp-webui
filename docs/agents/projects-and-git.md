@@ -61,7 +61,7 @@ Other stored data (in the data folder, `~/.omp-webui`):
 | `/api/project-groups/move` | POST | token | `{ cwd, group, at }`: move a project (folder) into a group (`group` null: the top level) at a position. |
 | `/api/project-groups/reorder` | POST | token | `{ id, delta }`: move a group up (`delta` < 0) or down. |
 | `/api/project-groups/delete` | POST | token | `{ id }`: delete a group; its projects stay. |
-| `/api/git?cwd=<folder>` | GET | token | The status line's git report: branch, change counts; `pr=1` adds the pull request, `fresh=1` looks again instead of using a recent answer. |
+| `/api/git?cwd=<folder>` | GET | token | The status line's git report: branch, change counts and the repository's name (`repo`, which the tab's title shows); `pr=1` adds the pull request, `fresh=1` looks again instead of using a recent answer. |
 | `/api/git/worktrees?cwd=<folder>` | GET | token | The Worktrees tab: the repository's worktrees and their state; `fresh=1` looks again. |
 | `/api/github/issues` | POST | token | `{ cwd, state?, search?, fresh? }` (`state` `open` default, `closed`, `all`): the folder's issues via `gh issue list` (up to 100; search up to 200 characters). Answers `{ ok, value }` or `{ ok: false, problem }`. |
 | `/api/github/issue` | POST | token | `{ cwd, number, fresh? }`: one issue with its comments via `gh issue view`. |

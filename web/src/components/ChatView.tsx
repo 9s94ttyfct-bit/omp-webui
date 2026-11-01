@@ -29,6 +29,7 @@ import "../i18n/later.ts";
 import { t as translate, useT } from "../i18n/index.ts";
 import { blobBase64, controls, downloadExport, sessionActions } from "../lib/api.ts";
 import { unarchiveOnSend } from "../lib/archive.ts";
+import { useShownRepo } from "../lib/attention.ts";
 import { conversationBusy } from "../lib/busy.ts";
 import { useChatBottom } from "../lib/chat-bottom.ts";
 import { loadCommandNotes } from "../lib/command-notes.ts";
@@ -87,6 +88,7 @@ import {
 	useApp,
 } from "../store/app.ts";
 import { closeBig, useBig } from "../store/big.ts";
+import { useGit } from "../store/git.ts";
 import { conversationOf, useGuard } from "../store/guard.ts";
 import { useHistory } from "../store/history.ts";
 import { isApproval, type LiveState, type OverlayMessage } from "../store/live.ts";
@@ -1184,6 +1186,12 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 		summary?.preview ||
 		(currentFile ? t("chat.untitledSession") : t("chat.newConversation"));
 	const cwd = live?.info.cwd ?? summary?.cwd;
+	// The tab's title names the folder's repository (see `tabTitle`), as git reports it to the status line.
+	const repoName = useGit((s) => (cwd ? s.byCwd[cwd]?.git?.repo : undefined)) ?? null;
+	useEffect(() => {
+		useShownRepo.setState({ repo: repoName });
+		return () => useShownRepo.setState({ repo: null });
+	}, [repoName]);
 
 	const ready = !currentFile || family !== null;
 	// The scroller's size and its content's change without a render (a picture decodes, a long draft makes the composer

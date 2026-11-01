@@ -35,6 +35,7 @@ beforeAll(async () => {
 	writeFileSync(join(repo, "tracked.txt"), "one\n");
 	git("add", ".");
 	git("commit", "-q", "-m", "first");
+	git("remote", "add", "origin", "git@github.com:o/r.git");
 	git("checkout", "-q", "-b", "fix/status-line");
 	writeFileSync(join(repo, "tracked.txt"), "two\n");
 	writeFileSync(join(repo, "untracked.txt"), "x\n");
@@ -77,9 +78,11 @@ test("asking for the pull request or a fresh look is a POST: a GET of it is refu
 	}
 });
 
-test("the branch and the change counts come without waiting for the pull request", async () => {
+test("the branch, the change counts and the repository's name come without waiting for the pull request", async () => {
 	const r = await report(withGh, `cwd=${encodeURIComponent(repo)}`);
-	expect(r).toEqual({ git: { branch: "fix/status-line", detached: false, staged: 0, unstaged: 1, untracked: 1 } });
+	expect(r).toEqual({
+		git: { branch: "fix/status-line", detached: false, staged: 0, unstaged: 1, untracked: 1, repo: "r" },
+	});
 });
 
 test("the pull request is asked for with pr=1 and comes from gh", async () => {

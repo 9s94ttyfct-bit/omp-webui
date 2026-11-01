@@ -1,5 +1,5 @@
 import { realpathSync, statSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import { basename, isAbsolute } from "node:path";
 import type { ChangedFile, FileDiff, FolderChanges } from "../shared/changes.ts";
 import type { GitReport, GitStatus, PullRequest, WorktreeList } from "../shared/git.ts";
 import { childEnv } from "./env.ts";
@@ -49,7 +49,7 @@ const MAX_MARKS_TEXT = 4 * 1024 * 1024;
  * detached HEAD), and one count per kind of change. A file changed in both the index and the working tree counts in
  * both, as a prompt's `+1 ~1` does. Null for text that has no branch header: it is not git's answer.
  */
-export function parseStatus(text: string): GitStatus | null {
+export function parseStatus(text: string): Omit<GitStatus, "repo"> | null {
 	let head: string | null = null;
 	let oid = "";
 	let staged = 0;
@@ -70,6 +70,42 @@ export function parseStatus(text: string): GitStatus | null {
 	const branch = detached ? oid.slice(0, 7) : head;
 	if (!branch) return null;
 	return { branch, detached, staged, unstaged, untracked };
+}
+
+/** The last part of a remote's address, `.git` left off: `omp-webui` of `git@github.com:me/omp-webui.git` or of a path. */
+function nameInAddress(url: string): string | null {
+	const name = url
+		.trim()
+		.replace(/[/\\]+$/, "")
+		.replace(/\.git$/i, "")
+		.split(/[/\\:]/)
+		.at(-1);
+	return name ? name : null;
+}
+
+/**
+ * The repository's name from its configuration (`git config --list --show-scope -z`, as `vetRepository` read it): of the
+ * remote `gh repo set-default` marked (`remote.<name>.gh-resolved`), else the one `branch` tracks, else `origin`, else
+ * the first that has an address. Null without a remote.
+ */
+export function repositoryName(config: string, branch: string | null): string | null {
+	const urls = new Map<string, string>();
+	const resolved: string[] = [];
+	let tracked: string | null = null;
+	const parts = config.split("\0");
+	for (let i = 1; i < parts.length; i += 2) {
+		const entry = parts[i] as string;
+		const lf = entry.indexOf("\n");
+		if (lf < 0) continue;
+		const key = entry.slice(0, lf);
+		const value = entry.slice(lf + 1);
+		const remote = /^remote\.(.+)\.(url|gh-resolved)$/.exec(key);
+		if (remote?.[2] === "url") urls.set(remote[1] as string, value);
+		else if (remote) resolved.push(remote[1] as string);
+		else if (branch !== null && key === `branch.${branch}.remote`) tracked = value;
+	}
+	const pick = [...resolved, tracked, "origin"].find((r) => r !== null && urls.has(r)) ?? urls.keys().next().value;
+	return pick === undefined ? null : nameInAddress(urls.get(pick) as string);
 }
 
 /** The `gh pr view --json number,url` answer: null for anything but a pull request with a web address. */
@@ -389,7 +425,17 @@ export class GitProbe {
 			this.#timeouts.status,
 			this.#env,
 		);
-		return { value: ran && ran.code === 0 ? parseStatus(ran.stdout) : null, slow: ran === null };
+		const status = ran && ran.code === 0 ? parseStatus(ran.stdout) : null;
+		if (!status) return { value: null, slow: ran === null };
+		const named = repositoryName(vetting.config, status.detached ? null : status.branch);
+		return { value: { ...status, repo: named ?? (await this.#topName(dir)) }, slow: false };
+	}
+
+	/** The name of the repository's top folder, for one without a remote; null when git did not say in time. */
+	async #topName(dir: string): Promise<string | null> {
+		const ran = await this.#run(["git", "rev-parse", "--show-toplevel"], dir, this.#timeouts.status, this.#env);
+		const top = ran && ran.code === 0 ? ran.stdout.trim() : "";
+		return isAbsolute(top) ? basename(top) || null : null;
 	}
 
 	/** A folder that is not looked at says why once, not at every look: the status line asks every few seconds. */

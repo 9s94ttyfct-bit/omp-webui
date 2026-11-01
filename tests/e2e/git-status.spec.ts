@@ -118,6 +118,8 @@ test("the line shows the branch with its staged, changed and untracked counts", 
 	await expect(chip).toHaveAttribute("data-branch", "fix/status-line");
 	await expect(chip).toContainText("fix/status-line");
 	await expect(chip).toHaveAttribute("data-clean", "false");
+	// The tab's title names the repository: without a remote, by its folder.
+	await expect(page).toHaveTitle("repo · omp");
 	// staged.txt and b.txt; a.txt and b.txt; new1.txt and new2.txt.
 	await expect(line(page, "status-git-staged")).toHaveAttribute("data-count", "2");
 	await expect(line(page, "status-git-staged")).toContainText("+2");
@@ -169,10 +171,13 @@ test("a clean repository shows its branch and no counts; a folder outside any re
 	// The folder is there (its name is on the line), and there is nothing to say about git.
 	await expect(line(page, "status-cwd")).toContainText("plain");
 	await expect(page.getByTestId("status-git")).toHaveCount(0);
+	await expect(page).toHaveTitle("omp");
 
 	const fresh = join(root, "clean");
 	mkdirSync(fresh);
 	runGit(fresh, "init", "-q", "-b", "trunk");
+	// A remote names the repository, whatever its folder is called (an address `gh` does not know: no network).
+	runGit(fresh, "remote", "add", "origin", "/srv/git/omp-webui-demo.git");
 	const cleanTitle = writeSession(5, fresh);
 	await page.reload();
 	await expect(sessionRow(page, cleanTitle)).toHaveCount(1, { timeout: 15_000 });
@@ -181,6 +186,10 @@ test("a clean repository shows its branch and no counts; a folder outside any re
 	await expect(chip).toHaveAttribute("data-branch", "trunk");
 	await expect(chip).toHaveAttribute("data-clean", "true");
 	await expect(page.getByTestId("status-git-staged")).toHaveCount(0);
+	await expect(page).toHaveTitle("omp-webui-demo · omp");
+	// Another page than a conversation has no repository.
+	await page.getByTestId("new-chat").click();
+	await expect(page).toHaveTitle("omp");
 });
 
 test("a folder that is gone costs the page nothing", async ({ page }) => {

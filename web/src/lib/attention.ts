@@ -25,10 +25,16 @@ import {
  * that may not exist (Run in Background closes the window); the page only tells the shell which conversation it shows.
  */
 
-/** The tab title: `(2) omp` for two conversations waiting for an answer, `✓ omp` once a turn finished unseen, or both. */
-export function tabTitle(base: string, asking: number, finished: boolean): string {
-	return `${asking > 0 ? `(${asking}) ` : ""}${finished ? "✓ " : ""}${base}`;
+/**
+ * The tab title: the repository of the conversation on screen before the app's name (`omp-webui · omp`), with `(2)` in
+ * front for two conversations waiting for an answer and `✓` once a turn finished unseen.
+ */
+export function tabTitle(base: string, asking: number, finished: boolean, repo: string | null = null): string {
+	return `${asking > 0 ? `(${asking}) ` : ""}${finished ? "✓ " : ""}${repo ? `${repo} · ` : ""}${base}`;
 }
+
+/** The repository of the conversation on screen (its folder's, `GitStatus.repo`), which its page sets; null for none. */
+export const useShownRepo = create<{ repo: string | null }>(() => ({ repo: null }));
 
 type Lives = Record<string, LiveState>;
 
@@ -230,16 +236,18 @@ function tellShellWhatIsShown(): () => void {
 // ------------------------------------------------------------------ the page
 
 /**
- * Keep the tab's title and the notifications up to date with the processes in the store; returns the way to stop.
- * A turn that ends while the tab is hidden marks the title until the tab is shown again.
+ * Keep the tab's title (the repository on screen, see `tabTitle`) and the notifications up to date with the processes in the
+ * store; returns the way to stop. A turn that ends while the tab is hidden marks the title until the tab is shown again.
  */
 export function startAttention(): () => void {
 	const base = document.title;
 	const unseen = new Set<string>();
 	const show = () => {
-		const title = tabTitle(base, askingCount(useApp.getState().lives), unseen.size > 0);
+		const repo = useShownRepo.getState().repo;
+		const title = tabTitle(base, askingCount(useApp.getState().lives), unseen.size > 0, repo);
 		if (document.title !== title) document.title = title;
 	};
+	const stopRepo = useShownRepo.subscribe(show);
 	const stopShell = inShell() ? followShell() : inRemoteShell() ? followRemoteShell() : undefined;
 	// The shell shows the notifications; what it cannot know is which conversation this page shows.
 	const stopTelling = stopShell ? tellShellWhatIsShown() : undefined;
@@ -266,6 +274,7 @@ export function startAttention(): () => void {
 	show();
 	return () => {
 		stop();
+		stopRepo();
 		stopShell?.();
 		stopTelling?.();
 		closed = true;

@@ -7,7 +7,14 @@ afterEach(() => {
 	globalThis.fetch = realFetch;
 });
 
-const status = (branch: string): GitStatus => ({ branch, detached: false, staged: 0, unstaged: 0, untracked: 0 });
+const status = (branch: string): GitStatus => ({
+	branch,
+	detached: false,
+	staged: 0,
+	unstaged: 0,
+	untracked: 0,
+	repo: null,
+});
 const pull = (n: number) => ({ number: n, url: `https://github.com/o/r/pull/${n}` });
 
 /**

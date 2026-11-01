@@ -45,11 +45,13 @@ const died = (s: LiveState): LiveState => ({
 	info: { ...s.info, exited: true },
 });
 
-test("the title counts the conversations waiting for an answer and marks a finished reply", () => {
+test("the title names the repository on screen, counts the conversations waiting for an answer and marks a finished reply", () => {
 	expect(tabTitle("omp", 0, false)).toBe("omp");
 	expect(tabTitle("omp", 2, false)).toBe("(2) omp");
 	expect(tabTitle("omp", 0, true)).toBe("✓ omp");
 	expect(tabTitle("omp", 1, true)).toBe("(1) ✓ omp");
+	expect(tabTitle("omp", 0, false, "omp-webui")).toBe("omp-webui · omp");
+	expect(tabTitle("omp", 1, true, "omp-webui")).toBe("(1) ✓ omp-webui · omp");
 });
 
 test("a process asking for an answer, and one whose reply ended, are what changed; a process that died is neither", () => {

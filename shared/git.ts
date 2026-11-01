@@ -10,6 +10,12 @@ export interface GitStatus {
 	/** Files with a change in the working tree, merge conflicts included. */
 	unstaged: number;
 	untracked: number;
+	/**
+	 * The repository's name (`omp-webui`), for the tab's title: the last part of the address of its remote (the one
+	 * `gh repo set-default` chose, else the branch's, else `origin`, else the first), or without a remote the name of its
+	 * top folder. Null when git did not say.
+	 */
+	repo: string | null;
 }
 
 /** The open pull request of the checked-out branch, from `gh pr view`. */

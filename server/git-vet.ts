@@ -15,7 +15,8 @@ import type { Run } from "./git.ts";
  */
 
 export type Vetting =
-	| { ok: true }
+	/** `config`: the repository's configuration as git read it (`git config --list --show-scope -z`), every scope. */
+	| { ok: true; config: string }
 	/** `slow`: git did not answer in time. `refused`: what keeps the folder from being looked at (absent: no repository). */
 	| { ok: false; slow: boolean; refused?: string };
 
@@ -111,5 +112,5 @@ export async function vetRepository(
 	if (text === null) return { ok: false, slow: false, refused: `${dirname(attributes)} cannot be read` };
 	const lines = commandAttributes(text);
 	if (lines.length > 0) return { ok: false, slow: false, refused: `${attributes} assigns ${lines[0]}` };
-	return { ok: true };
+	return { ok: true, config: listing.stdout };
 }
