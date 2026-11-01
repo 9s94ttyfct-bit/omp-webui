@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { expectMode } from "../support/modes.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -147,10 +148,10 @@ test("the data dir is 0700 and everything the server keeps in it is 0600 or 0700
 			headers: { ...authed(), "x-omp-webui": "1", "content-type": "application/json" },
 			body: JSON.stringify(body),
 		});
-	expect(statSync(data).mode & 0o777).toBe(0o700);
+	expectMode(data, 0o700);
 	// The index is there from the start, with the journal files SQLite keeps beside it.
 	for (const name of ["index.db", "index.db-wal", "index.db-shm", "ui-prefs.json", "server.pid"]) {
-		expect(statSync(join(data, name)).mode & 0o777, name).toBe(0o600);
+		expectMode(join(data, name), 0o600, name);
 	}
 
 	// Every store the page writes.
@@ -178,7 +179,7 @@ test("the data dir is 0700 and everything the server keeps in it is 0600 or 0700
 		"model-guidance.json",
 		"unattended.json",
 	]) {
-		expect(statSync(join(data, name)).mode & 0o777, name).toBe(0o600);
+		expectMode(join(data, name), 0o600, name);
 	}
 	expect(reachable(data)).toEqual([]);
 });

@@ -22,7 +22,10 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 test("a rejected promise and an exception thrown from a timer leave the server running and answering", async () => {
 	const dataDir = join(root, "data");
 	mkdirSync(dataDir, { recursive: true });
-	const preload = join(import.meta.dir, "../support/stray-errors-preload.ts");
+	// BUN_OPTIONS is split like a command line, which takes Windows' backslashes for escapes: forward slashes serve both.
+	const preload = join(import.meta.dir, "../support/stray-errors-preload.ts")
+		.split("\\")
+		.join("/");
 	const server = await startAppServer(env, dataDir, 0, { BUN_OPTIONS: `--preload ${preload}` });
 	try {
 		let exited = false;

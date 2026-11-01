@@ -1,8 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleModelConfig } from "../../server/omp/model-config.ts";
+import { writeBunProgram } from "../support/bun-program.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
 
 /**
@@ -20,11 +21,10 @@ afterEach(() => {
  * (a `read-<n>` marker file), then takes `delayMs` to answer.
  */
 function slowOmp(dir: string, roleFile: string, delayMs: number): string {
-	const bin = join(dir, "omp");
-	writeFileSync(
-		bin,
-		`#!/usr/bin/env bun
-const role = await Bun.file(${JSON.stringify(roleFile)}).text();
+	return writeBunProgram(
+		dir,
+		"omp",
+		`const role = await Bun.file(${JSON.stringify(roleFile)}).text();
 const { readdirSync, writeFileSync } = await import("node:fs");
 const n = readdirSync(${JSON.stringify(dir)}).filter((f) => f.startsWith("read-")).length;
 writeFileSync(${JSON.stringify(dir)} + "/read-" + n, role);
@@ -36,8 +36,6 @@ console.log(JSON.stringify({
 }));
 `,
 	);
-	chmodSync(bin, 0o755);
-	return bin;
 }
 
 async function untilExists(path: string): Promise<void> {

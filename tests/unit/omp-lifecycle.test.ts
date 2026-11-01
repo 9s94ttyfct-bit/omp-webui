@@ -1,3 +1,4 @@
+// needs: posixShell
 import { afterAll, expect, spyOn, test } from "bun:test";
 import {
 	chmodSync,

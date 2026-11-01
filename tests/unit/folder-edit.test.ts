@@ -20,6 +20,7 @@ import { mayEdit } from "../../server/folder-write.ts";
 import type { TransferEnv } from "../../server/transfer-core.ts";
 import { FOLDER_LIMITS, type FolderFile, type FolderSaved } from "../../shared/folder.ts";
 import { ERROR_HEADER, type TransferRecord } from "../../shared/transfer.ts";
+import { expectMode } from "../support/modes.ts";
 import { tempDir } from "../support/temp-dirs.ts";
 
 /**
@@ -112,10 +113,10 @@ describe("a save", () => {
 		expect(status).toBe(200);
 		expect(readFileSync(join(w.proj, "a.txt"), "utf8")).toBe("one\ntwo\n");
 		expect(json).toMatchObject({ etag: sha("one\ntwo\n"), size: 8 });
-		expect(statSync(join(w.proj, "a.txt")).mode & 0o777).toBe(0o640);
+		expectMode(join(w.proj, "a.txt"), 0o640);
 		// A program keeps being one; a file that was not never becomes one.
 		expect((await w.save({ path: "run.sh", text: "#!/bin/sh\necho hi\n", etag: sha("#!/bin/sh\n") })).status).toBe(200);
-		expect(statSync(join(w.proj, "run.sh")).mode & 0o777).toBe(0o755);
+		expectMode(join(w.proj, "run.sh"), 0o755);
 		expect(readFileSync(join(w.proj, "other.txt"), "utf8")).toBe("other\n");
 		expect(names(w.proj)).toEqual(["a.txt", "other.txt", "run.sh"]);
 	});

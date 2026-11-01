@@ -24,6 +24,7 @@ import {
 import { type AccessKey, AUD, EMAIL, HOSTNAME, type Jwks, makeKey, startJwks, TEAM } from "../support/access-jwt.ts";
 import { writeChatSession } from "../support/chat-session.ts";
 import { lanAddress, rawRequest } from "../support/lan-peer.ts";
+import { expectMode } from "../support/modes.ts";
 import { pollUntil } from "../support/poll.ts";
 import { remoteClient } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
@@ -608,7 +609,7 @@ describe("the log", () => {
 		await (await get(here, "README.md")).arrayBuffer();
 		await pollUntil(() => logged().length > before, "the download's line in the log");
 		const text = readFileSync(logFile(), "utf8");
-		expect(statSync(logFile()).mode & 0o777).toBe(0o600);
+		expectMode(logFile(), 0o600);
 		expect(text).not.toContain(s.accessToken);
 		expect(text).not.toContain("token");
 		expect(text).not.toContain("?");

@@ -15,6 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ListPref } from "../../server/sessions/actions.ts";
+import { expectMode } from "../support/modes.ts";
 
 /**
  * The web UI's own lists (archived conversations, favorite models) are kept in one small file each: a change must
@@ -53,7 +54,7 @@ test("a change is a whole file or none: a reader that opened the list before it 
 	expect(archived.list()).toEqual(["/s/d.jsonl", ...ITEMS]);
 	// Nothing is left beside it, and it stays private.
 	expect(readdirSync(dir)).toEqual(["archived.json"]);
-	expect(statSync(file).mode & 0o777).toBe(0o600);
+	expectMode(file, 0o600);
 });
 
 test("a file that was cut off is kept aside, not written over by the next change", () => {

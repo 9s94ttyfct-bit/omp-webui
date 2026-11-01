@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { DEFAULT_INSTRUCTION, type Question, type QuestionList, UNATTENDED_TOOL } from "../../shared/unattended.ts";
 import { type AccessKey, type Jwks, makeKey, startJwks } from "../support/access-jwt.ts";
 import { type Frame, messageWhere, watchFrames } from "../support/frames.ts";
+import { expectMode } from "../support/modes.ts";
 import { pollUntil } from "../support/poll.ts";
 import { type RemoteClient, remoteClient, remoteSettings } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
@@ -365,8 +366,7 @@ test("the list, the mode and the instruction are private to the person and survi
 	const c = await conversation();
 	const q = await filed(c, "Which logger?", ["pino", "winston"]);
 	await post("/api/unattended", { instruction: "KEPT-ACROSS-RESTART-646" });
-	for (const file of ["questions.json", "unattended.json"])
-		expect(statSync(join(dataDir, file)).mode & 0o777, file).toBe(0o600);
+	for (const file of ["questions.json", "unattended.json"]) expectMode(join(dataDir, file), 0o600, file);
 	c.ws.close();
 	await s.restart();
 	const after = await list();

@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { placementOf } from "../../server/migrate/layout.ts";
 import { ProjectGroupStore } from "../../server/project-groups.ts";
 import type { ProjectGroup, ProjectGroupsAnswer } from "../../shared/project-groups.ts";
 import { messageWhere } from "../support/frames.ts";
+import { expectMode } from "../support/modes.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect } from "../support/ws.ts";
 
@@ -91,7 +92,7 @@ test("a name another group has is refused, and the file is private and what the 
 	const body = (await res.json()) as { code: string; params: Record<string, unknown> };
 	expect(body.code).toBe("groupNameInvalid");
 	expect(body.params.problem).toBe("taken");
-	expect(statSync(file()).mode & 0o777).toBe(0o600);
+	expectMode(file(), 0o600);
 	const stored = JSON.parse(readFileSync(file(), "utf8")) as { version: number; groups: ProjectGroup[] };
 	expect(stored.version).toBe(1);
 	expect(stored.groups).toEqual((await listed()).groups);
@@ -164,7 +165,7 @@ test("the first change makes the data dir's file, private, with nothing beside i
 		const store = new ProjectGroupStore(join(dir, "nested"));
 		await store.create("Work");
 		expect(readdirSync(join(dir, "nested"))).toEqual(["project-groups.json"]);
-		expect(statSync(join(dir, "nested", "project-groups.json")).mode & 0o777).toBe(0o600);
+		expectMode(join(dir, "nested", "project-groups.json"), 0o600);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}

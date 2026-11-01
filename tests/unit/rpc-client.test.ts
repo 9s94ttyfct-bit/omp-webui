@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RpcClient, RpcError } from "../../server/omp/rpc-client.ts";
 import type { OmpFrame } from "../../shared/protocol.ts";
+import { writeBunProgram } from "../support/bun-program.ts";
 
 /**
  * Drives RpcClient against a scripted fake `omp` so framing edge cases
@@ -18,10 +19,7 @@ afterEach(() => {
 function fakeOmp(script: string): string {
 	const dir = mkdtempSync(join(tmpdir(), "ompw-fake-"));
 	dirs.push(dir);
-	const bin = join(dir, "omp");
-	writeFileSync(bin, `#!/usr/bin/env bun\n${script}`);
-	chmodSync(bin, 0o755);
-	return bin;
+	return writeBunProgram(dir, "omp", script);
 }
 
 const SERVER_PRELUDE = `

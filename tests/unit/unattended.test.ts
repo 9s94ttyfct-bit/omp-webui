@@ -33,6 +33,7 @@ import {
 	WAITING_MAX,
 	waitingQuestionsBlock,
 } from "../../shared/unattended.ts";
+import { expectMode } from "../support/modes.ts";
 import { tempDir } from "../support/temp-dirs.ts";
 
 /**
@@ -201,7 +202,7 @@ describe("the question store", () => {
 		const store = new QuestionStore(data, clock());
 		const filed = store.file(from, "tool", draft("Which db?", { options: [{ label: "A" }], recommended: 0 }), "call-1");
 		expect(filed.ok).toBe(true);
-		expect(statSync(join(data, "questions.json")).mode & 0o777).toBe(0o600);
+		expectMode(join(data, "questions.json"), 0o600);
 		const next = new QuestionStore(data);
 		const [q] = next.list().questions;
 		expect(q).toMatchObject({
@@ -450,7 +451,7 @@ describe("what the person set", () => {
 		expect(store.settings()).toEqual({ instruction: DEFAULT_INSTRUCTION, shipped: DEFAULT_INSTRUCTION, custom: false });
 		expect(existsSync(join(data, "unattended.json"))).toBe(false);
 		expect(store.setInstruction("  Ask nothing. File everything.  ").instruction).toBe("Ask nothing. File everything.");
-		expect(statSync(join(data, "unattended.json")).mode & 0o777).toBe(0o600);
+		expectMode(join(data, "unattended.json"), 0o600);
 		expect(new UnattendedStore(data).settings()).toMatchObject({
 			instruction: "Ask nothing. File everything.",
 			custom: true,
@@ -526,7 +527,7 @@ describe("what the person set", () => {
 		expect(service.fileFor("L1", null)).toBe(join(data, "unattended", "live", `L1${UNATTENDED_SUFFIX}`));
 		service.write(file, "  tell it  ");
 		expect(readFileSync(file, "utf8")).toBe("tell it\n");
-		expect(statSync(file).mode & 0o777).toBe(0o600);
+		expectMode(file, 0o600);
 		service.write(file, null);
 		expect(existsSync(file)).toBe(false);
 		service.write(file, "   ");
@@ -544,7 +545,7 @@ describe("the extension omp is started with", () => {
 		expect(text).toContain(UNATTENDED_FILE_ENV);
 		expect(text).toContain(FILE_QUESTION_TOOL);
 		expect(text).not.toContain("OMPW_GUIDANCE_FILE");
-		expect(statSync(path).mode & 0o777).toBe(0o600);
+		expectMode(path, 0o600);
 	});
 
 	test("a file already as the server has it is not written again, and one that differs is", () => {
@@ -704,7 +705,7 @@ describe("the extension's own side of the file", () => {
 		load(file);
 		const note = `${file}${UNATTENDED_LOADED_SUFFIX}`;
 		expect(readFileSync(note, "utf8")).toBe(String(process.pid));
-		expect(statSync(note).mode & 0o777).toBe(0o600);
+		expectMode(note, 0o600);
 	});
 });
 

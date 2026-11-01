@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -15,6 +15,7 @@ import {
 	signBundle,
 } from "../../scripts/signing-identity.ts";
 import { capabilities } from "../../server/platform/capabilities.ts";
+import { expectMode } from "../support/modes.ts";
 
 /**
  * Why updates lose the macOS permissions (#456): an ad-hoc signature's designated requirement is the build's cdhash, which
@@ -142,9 +143,9 @@ test.skipIf(!mac)("the keychain's password is a random one in a file only the us
 	expect(keychainPassword(keychain)).toBe(password);
 	const file = passwordFileFor(keychain);
 	expect(existsSync(file)).toBe(true);
-	expect(statSync(file).mode & 0o777).toBe(0o600);
-	expect(statSync(dirname(file)).mode & 0o777).toBe(0o700);
-	expect(statSync(keychain).mode & 0o777).toBe(0o600);
+	expectMode(file, 0o600);
+	expectMode(dirname(file), 0o700);
+	expectMode(keychain, 0o600);
 	expect(readFileSync(file, "utf8")).toContain(password);
 });
 
@@ -193,7 +194,7 @@ test.skipIf(!mac)("a keychain made with the old fixed password keeps its certifi
 	expect(ensureIdentity(legacy)).toBe(beforeSha);
 	const password = keychainPassword(legacy);
 	expect(password).not.toBe("omp-webui local signing");
-	expect(statSync(passwordFileFor(legacy)).mode & 0o777).toBe(0o600);
+	expectMode(passwordFileFor(legacy), 0o600);
 	// The old password opens it no more.
 	Bun.spawnSync(["security", "lock-keychain", legacy]);
 	const old = Bun.spawnSync(["security", "unlock-keychain", "-p", "omp-webui local signing", legacy]);

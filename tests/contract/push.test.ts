@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LiveInfo } from "../../shared/protocol.ts";
@@ -18,6 +18,7 @@ import {
 } from "../support/access-jwt.ts";
 import { writeChatSession } from "../support/chat-session.ts";
 import { watchFrames } from "../support/frames.ts";
+import { expectMode } from "../support/modes.ts";
 import { pollUntil } from "../support/poll.ts";
 import { newReceiver, type Receiver } from "../support/push-receiver.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
@@ -245,7 +246,7 @@ describe("who may subscribe", () => {
 	test("the key and the devices are kept for their user alone, and the list never carries an endpoint or a key", async () => {
 		const d = await subscribe({ device: "k".repeat(24) });
 		for (const name of ["push-vapid.json", "push-devices.json"]) {
-			expect(statSync(join(server.root, "data", name)).mode & 0o777, name).toBe(0o600);
+			expectMode(join(server.root, "data", name), 0o600, name);
 		}
 		const text = await (await fetch(`${server.url}${PUSH_API}`, { headers: authed() })).text();
 		expect(text).not.toContain("/push/");

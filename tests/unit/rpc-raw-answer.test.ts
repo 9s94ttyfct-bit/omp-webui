@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RpcClient, splitResponse } from "../../server/omp/rpc-client.ts";
 import { ReplyAssembler, replyMessages } from "../../shared/reply-parts.ts";
+import { writeBunProgram } from "../support/bun-program.ts";
 
 /**
  * A large answer is passed on to the page as the text omp wrote, not read into objects and written out again: for a
@@ -87,11 +88,10 @@ const TEXT = 20_000;
 function client(): RpcClient {
 	const dir = mkdtempSync(join(tmpdir(), "ompw-raw-"));
 	dirs.push(dir);
-	const bin = join(dir, "omp");
-	writeFileSync(
-		bin,
-		`#!/usr/bin/env bun
-const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
+	const bin = writeBunProgram(
+		dir,
+		"omp",
+		`const out = (o) => process.stdout.write(JSON.stringify(o) + "\\n");
 out({ type: "ready", protocolVersion: 1, supportedProtocolVersions: [1, 2], maxFrameBytes: 1048576, maxReassembledFrameBytes: 67108864 });
 let buf = "";
 for await (const c of Bun.stdin.stream()) {
@@ -109,7 +109,6 @@ for await (const c of Bun.stdin.stream()) {
 }
 `,
 	);
-	chmodSync(bin, 0o755);
 	return new RpcClient({ bin, args: [], cwd: tmpdir(), onFrame: () => {}, onExit: () => {} });
 }
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RemoteStore, remoteConfigPath } from "../../server/remote-config.ts";
@@ -11,6 +11,7 @@ import {
 	parseRemoteConfigPatch,
 	RemoteConfigError,
 } from "../../shared/remote.ts";
+import { expectMode } from "../support/modes.ts";
 
 /**
  * The remote access settings: what a page may change, what the file may hold, and that neither can put a value in
@@ -168,7 +169,7 @@ test("a change is kept for the next start, in a file only its owner reads, with 
 	store.patch({ team: "t" });
 	const again = new RemoteStore(file).read();
 	expect(again).toEqual({ ...DEFAULT_REMOTE_CONFIG, hostname: "omp.example.com", emails: ["a@b.co"], team: "t" });
-	expect(statSync(file).mode & 0o777).toBe(0o600);
+	expectMode(file, 0o600);
 	expect(readdirSync(join(dir, "data"))).toEqual(["remote.json"]);
 });
 

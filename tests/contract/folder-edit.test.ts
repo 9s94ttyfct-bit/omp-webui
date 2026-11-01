@@ -1,20 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import {
-	mkdirSync,
-	mkdtempSync,
-	readFileSync,
-	realpathSync,
-	rmSync,
-	statSync,
-	symlinkSync,
-	writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FOLDER_LIMITS, type FolderFile, type FolderSaved } from "../../shared/folder.ts";
 import { CSRF_HEADER, ERROR_HEADER, type FileTransfer, type TransferRecord } from "../../shared/transfer.ts";
 import { type AccessKey, AUD, EMAIL, HOSTNAME, type Jwks, makeKey, startJwks, TEAM } from "../support/access-jwt.ts";
 import { writeChatSession } from "../support/chat-session.ts";
+import { expectMode } from "../support/modes.ts";
 import { pollUntil } from "../support/poll.ts";
 import { type RemoteClient, remoteClient } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
@@ -259,7 +251,7 @@ describe("saving what a page opened", () => {
 		Bun.spawnSync(["chmod", "600", join(proj, path)]);
 		const { etag } = await text(here, path);
 		expect((await save(here, path, "b", etag)).status).toBe(200);
-		expect(statSync(join(proj, path)).mode & 0o777).toBe(0o600);
+		expectMode(join(proj, path), 0o600);
 	});
 });
 

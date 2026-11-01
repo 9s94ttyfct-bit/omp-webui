@@ -30,6 +30,7 @@ import {
 	type UploadProgress,
 	type UploadSaved,
 } from "../../shared/transfer.ts";
+import { expectMode } from "../support/modes.ts";
 import { tempDir } from "../support/temp-dirs.ts";
 
 /**
@@ -1140,12 +1141,12 @@ describe("the log", () => {
 			ms: 1,
 		};
 		log.append(line);
-		expect(statSync(file).mode & 0o777).toBe(0o600);
+		expectMode(file, 0o600);
 		log.append(line);
 		expect(readFileSync(file, "utf8").trim().split("\n")).toHaveLength(2);
 		for (let n = 0; n < 4; n++) log.append(line);
 		expect(existsSync(`${file}.1`)).toBe(true);
-		expect(statSync(`${file}.1`).mode & 0o777).toBe(0o600);
+		expectMode(`${file}.1`, 0o600);
 		expect(readFileSync(file, "utf8").trim().split("\n").length).toBeLessThan(6);
 		// A link where the log goes is not followed.
 		const target = join(dir, "target.txt");

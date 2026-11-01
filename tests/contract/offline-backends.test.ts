@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type BackendModels, CORE_TOOLS, type ModeState } from "../../shared/offline.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
+import { expectMode } from "../support/modes.ts";
 import { newestOfflineAgent } from "../support/offline-agent.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type StubChat, type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
@@ -189,7 +190,7 @@ test("Light on Ollama: the conversation runs on Ollama's model at the address fr
 	}
 
 	// The Light agent directory holds Ollama's provider (the user's entry, completed) and nothing of oMLX.
-	expect(statSync(offlineModelsFile()).mode & 0o777).toBe(0o600);
+	expectMode(offlineModelsFile(), 0o600);
 	expect(Bun.YAML.parse(readFileSync(offlineModelsFile(), "utf8"))).toEqual({
 		providers: {
 			ollama: {

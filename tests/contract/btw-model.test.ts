@@ -7,7 +7,6 @@ import {
 	readdirSync,
 	readFileSync,
 	rmSync,
-	statSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,6 +16,7 @@ import { isRecord } from "../../shared/guards.ts";
 import { PREF, type PrefsSnapshot } from "../../shared/prefs.ts";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { type Frame, watchFrames } from "../support/frames.ts";
+import { expectMode } from "../support/modes.ts";
 import { pollUntil } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type StubChat, type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
@@ -290,8 +290,8 @@ test("the process that answers is the conversation's own command line on a copy,
 		await pollUntil(() => forks().length > seen, "the process to start");
 		expect(runs()).toHaveLength(1);
 		const run = join(forkDir(), runs()[0] as string);
-		expect(statSync(forkDir()).mode & 0o777).toBe(0o700);
-		expect(statSync(run).mode & 0o777).toBe(0o700);
+		expectMode(forkDir(), 0o700);
+		expectMode(run, 0o700);
 		// Everything under it, what omp wrote there as well as the copies: no group or other bits anywhere.
 		await pollUntil(() => existsSync(join(run, "session")), "omp to checkpoint the question");
 		expect(reachableBy(forkDir())).toEqual([]);

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HostToolServer } from "../../server/omp/host-tools.ts";
@@ -13,6 +13,7 @@ import type { LiveAttached, ServerMessage } from "../../shared/protocol.ts";
 import { DEFAULT_REMOTE_CONFIG, type RemoteSnapshot, withoutLinks } from "../../shared/remote.ts";
 import { REMOTE_AI_READ_ONLY, REMOTE_AI_TOOL, REMOTE_AI_TOOL_NAMES } from "../../shared/remote-ai.ts";
 import { FAKE_TUNNEL_ID, type FakeCloudflared, makeFakeCloudflared } from "../support/fake-cloudflared.ts";
+import { expectMode } from "../support/modes.ts";
 import { pollUntil } from "../support/poll.ts";
 
 /**
@@ -156,7 +157,7 @@ describe("the opt-in", () => {
 		expect((await ask(w, "GET", "/api/remote")).body.ai).toEqual({ enabled: true, conversations: [liveId] });
 		// Kept like the settings: in a file only its owner reads.
 		expect(readFileSync(w.file, "utf8")).toContain('"enabled":true');
-		expect(statSync(w.file).mode & 0o777).toBe(0o600);
+		expectMode(w.file, 0o600);
 		// The cards of every page are told.
 		expect(w.pushed.length).toBeGreaterThan(0);
 		// And the conversation can use them.

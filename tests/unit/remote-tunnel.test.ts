@@ -1,5 +1,6 @@
+// needs: remoteAccess
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Subprocess, spawn } from "bun";
@@ -8,6 +9,7 @@ import { RemoteStore } from "../../server/remote-config.ts";
 import { Tunnel, TunnelError, type TunnelTimings } from "../../server/remote-tunnel.ts";
 import type { RemoteStatus } from "../../shared/remote.ts";
 import { connectedPlan, emit, FAKE_TUNNEL_ID, LOG, makeFakeCloudflared } from "../support/fake-cloudflared.ts";
+import { expectMode } from "../support/modes.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
 
 /**
@@ -350,7 +352,7 @@ describe("create, route and set up", () => {
 		expect(yml).toContain(`service: "http://127.0.0.1:4711"`);
 		// The last rule answers everything that is not the hostname.
 		expect(yml.trimEnd().endsWith(`- service: http_status:404`)).toBe(true);
-		expect(statSync(w.yml).mode & 0o777).toBe(0o600);
+		expectMode(w.yml, 0o600);
 	});
 
 	test("the configuration points at the address the server listens on: another bind address, a bracketed IPv6 one", async () => {

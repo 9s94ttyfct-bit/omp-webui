@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isRecord } from "../../shared/guards.ts";
 import { MAC_LIMIT, type MacProblem, type MacRecord, type SavedMac } from "../../shared/macs.ts";
 import { lanAddress, rawRequest } from "../support/lan-peer.ts";
+import { expectMode } from "../support/modes.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect } from "../support/ws.ts";
 
@@ -79,8 +80,8 @@ describe("the list", () => {
 		expect(listed).toEqual([{ id: mac.id, name: "Studio", host: "studio.example.com", lastConnected: null }]);
 		expect(Object.keys(listed[0] as object).sort()).toEqual(["host", "id", "lastConnected", "name"]);
 
-		expect(statSync(file()).mode & 0o777).toBe(0o600);
-		expect(statSync(join(s.root, "data")).mode & 0o777).toBe(0o700);
+		expectMode(file(), 0o600);
+		expectMode(join(s.root, "data"), 0o700);
 		const kept = stored();
 		expect(kept.version).toBe(1);
 		expect(Object.keys(kept.macs[0] as object).sort()).toEqual([
@@ -374,6 +375,6 @@ describe("what the macOS app saved before the server kept the list", () => {
 			"remote-macs.json.damaged",
 		);
 		expect(readFileSync(join(old.root, "data", "remote-macs.json.damaged"), "utf8")).toBe(text);
-		expect(statSync(join(old.root, "data", "remote-macs.json")).mode & 0o777).toBe(0o600);
+		expectMode(join(old.root, "data", "remote-macs.json"), 0o600);
 	});
 });
