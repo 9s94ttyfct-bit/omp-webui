@@ -178,4 +178,23 @@ test.describe("window", () => {
 		await expect(page.getByTestId("chat-more")).toHaveCount(0);
 		for (const id of BESIDE_THE_TITLE) await expect(page.getByTestId(id), id).toBeVisible();
 	});
+
+	test("however wide the column, the readouts and buttons never leave the title less than its room", async ({
+		page,
+	}) => {
+		// A title that takes whatever room it is given; the quota's bar with its reset is the widest form of the header.
+		await startLiveChat(
+			page,
+			0xb8,
+			"Header probe whose title is long enough to fill whatever room the header gives it",
+		);
+		// From the narrow header's edge (a 704 px column beside the 288 px sidebar) to a window with room to spare: the
+		// wide header took over at 704 px whatever its readouts and buttons needed, and squeezed the title out of sight.
+		for (let width = 1000; width <= 1400; width += 25) {
+			await page.setViewportSize({ width, height: 800 });
+			await expect
+				.poll(async () => (await boxOf(page.getByTestId("chat-title"))).width, { message: `window ${width} px` })
+				.toBeGreaterThanOrEqual(120);
+		}
+	});
 });

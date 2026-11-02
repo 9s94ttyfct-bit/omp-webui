@@ -53,7 +53,7 @@ import { attachedBytes, MAX_TOTAL_IMAGE_BYTES } from "../lib/images.ts";
 import { endedWell } from "../lib/live-motion.ts";
 import { openLoaded } from "../lib/loaded.ts";
 import { MdOpenContext } from "../lib/md-open.ts";
-import { useNarrowerThan } from "../lib/media.ts";
+import { useNarrowerThanContent } from "../lib/media.ts";
 import { messageOf, type PromptImage, promptImages, roleOf, textOf } from "../lib/messages.ts";
 import { useStartConfig } from "../lib/model-config.ts";
 import { selectedThinking } from "../lib/models.ts";
@@ -165,6 +165,12 @@ type Usage = HeaderUsage;
 
 /** Below this width of the chat column the header swaps its readouts and buttons for one menu. */
 const COMPACT_HEADER_PX = 704;
+/**
+ * The room the header keeps for the title (and the folder under it) beside the wide form's readouts and buttons: two
+ * providers' quota, the cost and the buttons can take more than `COMPACT_HEADER_PX`, and the title was squeezed to nothing.
+ * With the header's padding and the gap before the buttons.
+ */
+const HEADER_TITLE_ROOM_PX = 200 + 32 + 8;
 
 /** How long the place Back put the reader at is held while what is above it settles (pictures decode, code is coloured). */
 const SETTLE_MS = 1000;
@@ -439,7 +445,8 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 	const isArchived = currentFile !== null && archived.includes(currentFile);
 	// The header has the room of this column, not of the window: the sidebar and the side panel take some of it.
 	const [column, setColumn] = useState<HTMLDivElement | null>(null);
-	const compact = useNarrowerThan(column, COMPACT_HEADER_PX);
+	const [headerTools, setHeaderTools] = useState<HTMLDivElement | null>(null);
+	const compact = useNarrowerThanContent(column, COMPACT_HEADER_PX, headerTools, HEADER_TITLE_ROOM_PX);
 	// A file, or a file's change, open large over this column (`BigView`): the panel opens it, and it is kept for this
 	// conversation alone — the key the panel's tree is kept under (see `store/big.ts`).
 	const chatKey = currentFile ?? liveId ?? "";
@@ -1369,7 +1376,7 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 									/>
 								</>
 							) : (
-								<>
+								<div ref={setHeaderTools} className="flex shrink-0 items-center gap-2">
 									<SessionCost usage={usage} tip />
 									{quota}
 									{currentFile ? (
@@ -1392,7 +1399,7 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 										<Layers size={16} />
 									</IconButton>
 									{panelToggle}
-								</>
+								</div>
 							)}
 						</header>
 						{guardUnavailable ? (

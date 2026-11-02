@@ -39,8 +39,43 @@ export function useNarrowerThan(el: HTMLElement | null, px: number): boolean {
 	return narrow;
 }
 
-/** Room a row's fuller form must have to spare before it comes back from its compact one (see `useCrampedRow`). */
+/** Room a fuller form must have to spare before it comes back from its compact one (`useNarrowerThanContent`, `useCrampedRow`). */
 const SPARE_PX = 12;
+
+/**
+ * `useNarrowerThan` for a header whose wider form can need more than `px`: narrow too while `el` cannot hold what `tools`
+ * (the wider form's controls) take plus `reserve` (the room its title keeps). `tools` is only there while the wider form is
+ * shown (pass the element held in state, or null): its width is remembered from then, since the narrower form says nothing
+ * of what the wider one needs, and the wider form comes back only with `SPARE_PX` of room to spare, so that a width right
+ * at the edge does not tip it back and forth.
+ */
+export function useNarrowerThanContent(
+	el: HTMLElement | null,
+	px: number,
+	tools: HTMLElement | null,
+	reserve: number,
+): boolean {
+	const [narrow, setNarrow] = useState(false);
+	const need = useRef(0);
+	const was = useRef(false);
+	useLayoutEffect(() => {
+		if (!el) return;
+		const measure = () => {
+			if (tools?.isConnected) need.current = tools.offsetWidth + reserve;
+			const room = el.clientWidth;
+			const next = room < px || room < need.current + (was.current ? SPARE_PX : 0);
+			if (next === was.current) return;
+			was.current = next;
+			setNarrow(next);
+		};
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(el);
+		if (tools) observer.observe(tools);
+		return () => observer.disconnect();
+	}, [el, px, tools, reserve]);
+	return narrow;
+}
 
 /**
  * Whether a row of controls has too little room for its fuller form, and so shows its compact one: `attribute` is set on
