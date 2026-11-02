@@ -218,7 +218,10 @@ or its CfT when it runs the server alone), and that is what the remote window's 
   pressed. No pairing. The risk the person accepted: whoever holds the account, or the access token, can install or
   update the browser and clear its logins. Each of the three endpoints checks it on the server, from the request's own
   authentication, not from what the page shows. This is wider than the projects folder's rule (which a network page
-  cannot change), on purpose.
+  cannot change), on purpose. It needs a credential, though: with the server's token check turned off
+  (`OMP_WEBUI_AUTH=off`), a network page that brings neither a verified Access sign-in nor a valid token is let in
+  elsewhere but cannot install, update or clear (**call made here**: the person allowed signed-in and token-holding
+  pages, not any request).
 
 ### Data
 
