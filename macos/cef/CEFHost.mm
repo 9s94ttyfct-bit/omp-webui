@@ -218,6 +218,21 @@ class Client : public CefClient, public CefLifeSpanHandler, public CefDisplayHan
     });
   }
 
+  // A page closes in place, never through its window. CEF's default (`false`) asks the window the page's view is in to
+  // close (`performClose:`): the hidden window cannot, so the page stayed open, and the app's own window, while its
+  // Browser tab showed the page, took it for the person closing the window and quit the app (#32). The close is completed
+  // as the header says it may be, by taking the view out of its window: CEF's view going is the end of the browser,
+  // then `OnBeforeClose`. On the run loop rather than the main queue, so that it runs inside `shutdown`'s wait too, which
+  // runs inside a block of the main queue at quit.
+  bool DoClose(CefRefPtr<CefBrowser> browser) override {
+    NSView* view = (__bridge NSView*)browser->GetHost()->GetWindowHandle();
+    CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, ^{
+      [view removeFromSuperview];
+    });
+    CFRunLoopWakeUp(CFRunLoopGetMain());
+    return true;
+  }
+
   void OnBeforeClose(CefRefPtr<CefBrowser> browser) override {
     auto it = gPages.find(browser->GetIdentifier());
     if (it == gPages.end()) return;
