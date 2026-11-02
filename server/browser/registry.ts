@@ -184,10 +184,29 @@ export class PageRegistry {
 		return () => this.settledFns.delete(fn);
 	}
 
+	/** Called (once per tick) after the pages, their owners or their titles may have changed. */
+	onChange(fn: () => void): () => void {
+		this.changeFns.add(fn);
+		return () => this.changeFns.delete(fn);
+	}
+
+	private readonly changeFns = new Set<() => void>();
+	private changeQueued = false;
+
+	private changed(): void {
+		if (this.changeQueued) return;
+		this.changeQueued = true;
+		queueMicrotask(() => {
+			this.changeQueued = false;
+			for (const fn of [...this.changeFns]) fn();
+		});
+	}
+
 	/** The engine has this target (discovery: created or changed). */
 	track(info: TargetInfo): void {
 		this.alive.set(info.targetId, { ...this.alive.get(info.targetId), ...info });
 		this.resolve(info);
+		this.changed();
 	}
 
 	/** The engine's target is gone. */
@@ -196,6 +215,7 @@ export class PageRegistry {
 		this.tabs.delete(targetId);
 		this.empty.delete(targetId);
 		if (this.targets.delete(targetId)) this.save();
+		this.changed();
 	}
 
 	info(targetId: string): TargetInfo | null {
@@ -246,5 +266,6 @@ export class PageRegistry {
 		mkdirSync(dirname(this.file), { recursive: true });
 		writeFileSync(`${this.file}.tmp`, `${JSON.stringify(saved, null, 2)}\n`, { mode: 0o600 });
 		renameSync(`${this.file}.tmp`, this.file);
+		this.changed();
 	}
 }

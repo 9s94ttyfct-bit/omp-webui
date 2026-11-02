@@ -1,0 +1,116 @@
+import { afterAll, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { EngineHost } from "../../server/browser/engine.ts";
+import { PageRegistry } from "../../server/browser/registry.ts";
+import { ScreenHub, type ScreenSocket } from "../../server/browser/screen.ts";
+import { frameToPage, pageSizeFor, type ScreenServerMessage } from "../../shared/browser-protocol.ts";
+import { FakeBrowser } from "../support/fake-cdp.ts";
+
+/** The Browser tab's sizes and coordinates, and who is told a page's console. */
+
+const work = mkdtempSync(join(tmpdir(), "ompw-browser-screen-"));
+afterAll(() => rmSync(work, { recursive: true, force: true }));
+
+test("a page lays out at the desktop size, the panel's, or a phone's", () => {
+	const panel = { w: 333.4, h: 500 };
+	expect(pageSizeFor("desktop", panel)).toEqual({ w: 1280, h: 800, scale: 1, mobile: false });
+	expect(pageSizeFor("desktop", panel, { w: 1440, h: 900 })).toEqual({ w: 1440, h: 900, scale: 1, mobile: false });
+	expect(pageSizeFor("phone", panel)).toEqual({ w: 390, h: 844, scale: 3, mobile: true });
+	expect(pageSizeFor("panel", panel)).toEqual({ w: 333, h: 500, scale: 1, mobile: false });
+});
+
+test("a point of the shown frame is the page's CSS pixel under it, kept on the page", () => {
+	const frame = { w: 640, h: 400 };
+	const page = { w: 1280, h: 800 };
+	expect(frameToPage(320, 200, frame, page)).toEqual({ x: 640, y: 400 });
+	expect(frameToPage(-5, 900, frame, page)).toEqual({ x: 0, y: 799 });
+	expect(frameToPage(700, 10, frame, page)).toEqual({ x: 1279, y: 20 });
+});
+
+class Socket implements ScreenSocket {
+	readonly texts: ScreenServerMessage[] = [];
+	readonly frames: Uint8Array[] = [];
+	sendText(text: string): void {
+		this.texts.push(JSON.parse(text) as ScreenServerMessage);
+	}
+	sendBinary(data: Uint8Array): void {
+		this.frames.push(data);
+	}
+	buffered(): number {
+		return 0;
+	}
+	close(): void {}
+}
+
+async function until(fn: () => boolean): Promise<void> {
+	for (let i = 0; i < 500 && !fn(); i++) await Bun.sleep(2);
+	expect(fn()).toBe(true);
+}
+
+test("a page's console is told only to the tabs that show that page", async () => {
+	const registry = new PageRegistry(join(work, "owners.json"));
+	const browser = new FakeBrowser();
+	const host = new EngineHost(registry, async () => ({ transport: browser, generation: "g", fresh: true }));
+	const hub = new ScreenHub(host, registry);
+	const engine = await host.ready();
+	const one = await engine.createPage("/s/a.jsonl");
+	const two = await engine.createPage("/s/a.jsonl");
+
+	const watchOne = new Socket();
+	const watchTwo = new Socket();
+	const listOnly = new Socket();
+	hub
+		.connect(watchOne)
+		.message(JSON.stringify({ t: "watch", owner: "/s/a.jsonl", targetId: one, panel: { w: 800, h: 600 } }));
+	hub
+		.connect(watchTwo)
+		.message(JSON.stringify({ t: "watch", owner: "/s/a.jsonl", targetId: two, panel: { w: 800, h: 600 } }));
+	hub
+		.connect(listOnly)
+		.message(JSON.stringify({ t: "watch", owner: "/s/a.jsonl", targetId: null, panel: { w: 800, h: 600 } }));
+	await until(() => listOnly.texts.some((m) => m.t === "pages" && m.pages.length === 2));
+	await until(() => browser.log.filter((l) => l.method === "Runtime.enable").length === 2);
+
+	browser.emitOnPage(one, "Runtime.consoleAPICalled", {
+		type: "error",
+		args: [{ type: "string", value: "boom" }],
+		timestamp: 1,
+	});
+	await until(() => watchOne.texts.some((m) => m.t === "console"));
+	const entry = watchOne.texts.find((m) => m.t === "console");
+	expect(entry).toMatchObject({
+		t: "console",
+		targetId: one,
+		entry: { level: "error", text: "boom", source: "console" },
+	});
+	await Bun.sleep(10);
+	expect(watchTwo.texts.some((m) => m.t === "console")).toBe(false);
+	expect(listOnly.texts.some((m) => m.t === "console")).toBe(false);
+});
+
+test("a tab acts only on the pages of the conversation it watches", async () => {
+	const registry = new PageRegistry(join(work, "owners-scope.json"));
+	const browser = new FakeBrowser();
+	const host = new EngineHost(registry, async () => ({ transport: browser, generation: "g", fresh: true }));
+	const hub = new ScreenHub(host, registry);
+	const engine = await host.ready();
+	const pageB = await engine.createPage("/s/b.jsonl");
+	const tab = new Socket();
+	const client = hub.connect(tab);
+	client.message(JSON.stringify({ t: "watch", owner: "/s/a.jsonl", targetId: null, panel: { w: 800, h: 600 } }));
+	await until(() => tab.texts.some((m) => m.t === "pages"));
+	const sent = browser.log.length;
+	client.message(JSON.stringify({ t: "navigate", targetId: pageB, action: "url", url: "https://example.com" }));
+	client.message(JSON.stringify({ t: "input", targetId: pageB, event: { kind: "text", text: "x" } }));
+	client.message(JSON.stringify({ t: "close", targetId: pageB }));
+	client.message(JSON.stringify({ t: "open", owner: "/s/b.jsonl", url: "https://example.com" }));
+	await Bun.sleep(20);
+	const after = browser.log.slice(sent).map((l) => l.method);
+	expect(after).not.toContain("Page.navigate");
+	expect(after).not.toContain("Input.insertText");
+	expect(after).not.toContain("Target.closeTarget");
+	expect(after).not.toContain("Target.createTarget");
+	expect(registry.pagesOf("/s/b.jsonl")).toEqual([pageB]);
+});

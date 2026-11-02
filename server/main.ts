@@ -42,6 +42,7 @@ import { Auth } from "./auth.ts";
 import { canManageBrowser } from "./browser/gate.ts";
 import { cdpPath, LazyBrowser } from "./browser/lazy.ts";
 import type { ProxyConnection } from "./browser/proxy.ts";
+import type { ScreenClient } from "./browser/screen.ts";
 import { compressResponse, serveStatic } from "./compress.ts";
 import { loadConfig } from "./config.ts";
 import { guardAgainstStrayErrors } from "./crash-guard.ts";
@@ -222,7 +223,22 @@ interface CdpWsData {
 	conn: ProxyConnection | null;
 }
 
-type SocketData = WsData | CdpWsData;
+/**
+ * A Browser tab's socket (`/ws/browser`, see `ScreenHub`): a page let in as `/ws` is. Its messages wait in `inbox` until
+ * the browser service is made.
+ */
+interface ScreenWsData {
+	kind: "screen";
+	remote: RemoteIdentity | null;
+	out: WsOutbox | null;
+	client: ScreenClient | null;
+	inbox: string[];
+	closed: boolean;
+	expiry: NodeJS.Timeout | undefined;
+	ping: NodeJS.Timeout | undefined;
+}
+
+type SocketData = WsData | CdpWsData | ScreenWsData;
 
 const sockets = new Set<Bun.ServerWebSocket<WsData>>();
 const broadcastAll = (msg: ServerMessage) => {
@@ -2573,7 +2589,7 @@ async function route(req: Request, srv: Bun.Server<SocketData>): Promise<Respons
 		return browser.http(owner, cdp.rest, `ws://${req.headers.get("host")}/browser-cdp/${cdp.token}`);
 	}
 	// The API and the socket answer a page of this origin only; the page itself (and the token link) is served to anyone.
-	const isApi = url.pathname === "/ws" || url.pathname.startsWith("/api/");
+	const isApi = url.pathname === "/ws" || url.pathname === "/ws/browser" || url.pathname.startsWith("/api/");
 	if (isApi && !fromOwnPage(req)) return new Response("Forbidden", { status: 403 });
 	// What guards the agent and what it decided, the tunnel's settings, the app's updates and moving to another computer
 	// are the person's at this computer (see `isLocalOnlyRoute`): a page that is not on it must never be able to
@@ -2609,6 +2625,20 @@ async function route(req: Request, srv: Bun.Server<SocketData>): Promise<Respons
 		});
 	}
 	if (isApi && !auth.allowed(req)) return fail("Unauthorized: open the link printed by the server", 401);
+	if (url.pathname === "/ws/browser") {
+		const data: ScreenWsData = {
+			kind: "screen",
+			remote,
+			out: null,
+			client: null,
+			inbox: [],
+			closed: false,
+			expiry: undefined,
+			ping: undefined,
+		};
+		if (srv.upgrade(req, { data })) return undefined;
+		return new Response("Upgrade failed", { status: 400 });
+	}
 	if (url.pathname === "/ws") {
 		const sub: Subscriber = { send: () => {} };
 		const data: WsData = {
@@ -2712,6 +2742,33 @@ const listen = (hostname: string, port: number) =>
 					if (!data.conn) socket.close(1011, "The built-in browser is not available");
 					return;
 				}
+				if (socket.data.kind === "screen") {
+					const data = socket.data;
+					const out = new WsOutbox(socket);
+					data.out = out;
+					if (data.remote) {
+						data.ping = setInterval(() => socket.ping(), remotePing);
+						const left = Math.max(0, data.remote.validUntil - Date.now());
+						data.expiry = setTimeout(() => socket.close(ACCESS_EXPIRED, "Access session expired"), left);
+					}
+					void browser
+						.screen({
+							sendText: (text) => out.send(text),
+							sendBinary: (bytes) => socket.sendBinary(bytes),
+							buffered: () => socket.getBufferedAmount(),
+							close: (code, reason) => socket.close(code, reason),
+						})
+						.then(
+							(client) => {
+								if (data.closed) return client.close();
+								data.client = client;
+								for (const text of data.inbox.splice(0)) client.message(text);
+							},
+							(e: unknown) =>
+								socket.close(1011, `The built-in browser is not available: ${(e as Error).message}`.slice(0, 120)),
+						);
+					return;
+				}
 				const ws = socket as Bun.ServerWebSocket<WsData>;
 				const out = new WsOutbox(ws);
 				ws.data.out = out;
@@ -2746,6 +2803,16 @@ const listen = (hostname: string, port: number) =>
 			async message(socket, raw) {
 				if (socket.data.kind === "cdp") {
 					socket.data.conn?.message(String(raw));
+					return;
+				}
+				if (socket.data.kind === "screen") {
+					const data = socket.data;
+					if (data.remote && Date.now() >= data.remote.validUntil) {
+						socket.close(ACCESS_EXPIRED, "Access session expired");
+						return;
+					}
+					if (data.client) data.client.message(String(raw));
+					else data.inbox.push(String(raw));
 					return;
 				}
 				const ws = socket as Bun.ServerWebSocket<WsData>;
@@ -2784,6 +2851,15 @@ const listen = (hostname: string, port: number) =>
 				if (socket.data.kind === "cdp") {
 					socket.data.conn?.close();
 					socket.data.out?.abandon();
+					return;
+				}
+				if (socket.data.kind === "screen") {
+					const data = socket.data;
+					data.closed = true;
+					clearTimeout(data.expiry);
+					clearInterval(data.ping);
+					data.client?.close();
+					data.out?.abandon();
 					return;
 				}
 				const ws = socket as Bun.ServerWebSocket<WsData>;

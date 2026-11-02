@@ -6,6 +6,7 @@ import type { EngineHost, EngineStart } from "./engine.ts";
 import type { BrowserInstaller } from "./install.ts";
 import type { CdpProxy, ProxyConnection, ProxySocket } from "./proxy.ts";
 import type { PageRegistry } from "./registry.ts";
+import type { ScreenClient, ScreenHub, ScreenSocket } from "./screen.ts";
 
 /**
  * The built-in browser, made on first use: nothing of it is loaded while no page and no conversation asks for it
@@ -39,6 +40,7 @@ export interface BrowserService {
 	registry: PageRegistry;
 	host: EngineHost;
 	proxy: CdpProxy;
+	screen: ScreenHub;
 }
 
 export class LazyBrowser {
@@ -59,8 +61,9 @@ export class LazyBrowser {
 			import("./engine.ts"),
 			import("./proxy.ts"),
 			import("./cft.ts"),
+			import("./screen.ts"),
 		]).then(
-			([{ BrowserInstaller }, { PageRegistry }, { EngineHost }, { CdpProxy }, { startCft }]) => {
+			([{ BrowserInstaller }, { PageRegistry }, { EngineHost }, { CdpProxy }, { startCft }, { ScreenHub }]) => {
 				const root = join(this.opts.dataDir, "browser");
 				const engine = engineHere();
 				const registry = new PageRegistry(join(root, "owners.json"));
@@ -94,7 +97,13 @@ export class LazyBrowser {
 				});
 				const inst = installer;
 				inst.onChange(() => this.opts.changed(inst));
-				const service = { installer: inst, registry, host, proxy: new CdpProxy(host, registry) };
+				const service = {
+					installer: inst,
+					registry,
+					host,
+					proxy: new CdpProxy(host, registry),
+					screen: new ScreenHub(host, registry),
+				};
 				this.#service = service;
 				return service;
 			},
@@ -125,6 +134,11 @@ export class LazyBrowser {
 	/** A conversation's CDP WebSocket opened (the service exists: its token was looked up). */
 	connect(owner: string, socket: ProxySocket, target: string | null): ProxyConnection | null {
 		return this.#service?.proxy.connect(owner, socket, target) ?? null;
+	}
+
+	/** A Browser tab's socket (`/ws/browser`): made with the service, which the tab's first message needs anyway. */
+	async screen(socket: ScreenSocket): Promise<ScreenClient> {
+		return (await this.service()).screen.connect(socket);
 	}
 
 	/** The server is stopping: the engine it started ends with it. */
