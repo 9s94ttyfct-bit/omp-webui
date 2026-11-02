@@ -120,6 +120,10 @@ Decided with the person: **one shared page per conversation now, omp's own pages
   conversation's Browser tab shows, the same page the person sees; a second tab name of the agent lands on it too. Other
   commands pass through as they are, including ones that act on the whole browser (clearing cookies, download
   behaviour): the agent is the person's own (**call made here**).
+- **Target commands are scoped too.** A page a conversation's connection creates (`Target.createTarget`) is that
+  conversation's. Any command naming a page of another conversation (attach, close, activate, a session on it) is
+  refused, so the page boundary cannot be crossed by a command; only whole-browser state (cookies, downloads) is
+  shared, as above.
 - **Later.** No request is filed with omp (decided with the person). If an omp release comes to open pages of its own by
   name when connected to a browser, leaving existing pages alone, the web UI may then require that release, stop
   opening the blank page, and show each agent tab name as its own page in the conversation's Browser tab. The filtering
