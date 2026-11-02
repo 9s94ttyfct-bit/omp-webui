@@ -1,4 +1,5 @@
 import type { Shown } from "@shared/attention.ts";
+import type { PageMode } from "@shared/browser-protocol.ts";
 
 /**
  * The page's part in the macOS app's notifications. The app shows this UI in a WKWebView and shows the notifications itself
@@ -48,6 +49,8 @@ declare global {
 				ompwDrop?: Handler;
 				ompwMacs?: Handler;
 				ompwView?: Handler;
+				/** The Mac app's own window: its native CEF view over the Browser tab (see `BrowserBridgeMessage`). */
+				ompwBrowser?: Handler;
 			};
 		};
 	}
@@ -55,6 +58,37 @@ declare global {
 
 /** The name the page listens to for what the shell says on its own. */
 export const SHELL_EVENT = "ompw-notification";
+
+/**
+ * What the Browser tab tells the Mac app's own window, which lays its native CEF view over the tab instead of the page
+ * drawing the screencast (`components/BrowserTab.tsx`):
+ *
+ * - `place`: show page `targetId` in `rect` (CSS pixels of this page's viewport: the tab's frame area), in `mode`'s size;
+ *   sent on layout, resize, panel drag, tab switch and scroll.
+ * - `cover`: whether a menu, popover or dialog of the page lies over that rectangle now (the view hides under it).
+ * - `hide`: the tab is not shown (another tab, the panel closed or folded, no page).
+ * - `devtools`: open the developer tools of page `targetId`.
+ */
+export type BrowserBridgeMessage =
+	| { type: "place"; targetId: string; rect: { x: number; y: number; w: number; h: number }; mode: PageMode }
+	| { type: "cover"; covered: boolean }
+	| { type: "hide" }
+	| { type: "devtools"; targetId: string };
+
+const browserHandler = (): Handler | undefined =>
+	typeof window === "undefined" ? undefined : window.webkit?.messageHandlers?.ompwBrowser;
+
+/** The page is in the Mac app's own window, whose native view shows the Browser tab's page. */
+export const hasBrowserBridge = (): boolean => typeof browserHandler()?.postMessage === "function";
+
+/** Tell the app's window about the Browser tab; nothing is waited for. */
+export function postBrowserBridge(message: BrowserBridgeMessage): void {
+	try {
+		void Promise.resolve(browserHandler()?.postMessage(message)).catch(() => {});
+	} catch {
+		// A window that refuses keeps its view where it was.
+	}
+}
 
 const handler = (): Handler | undefined =>
 	typeof window === "undefined" ? undefined : window.webkit?.messageHandlers?.ompwNotify;

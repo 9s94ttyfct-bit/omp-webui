@@ -1,5 +1,6 @@
 /** The zh-CN language pack, loaded on demand so English users never download it. */
 
+export * as browser from "./browser.ts";
 export * as chat from "./chat.ts";
 export * as ci from "./ci.ts";
 export * as common from "./common.ts";

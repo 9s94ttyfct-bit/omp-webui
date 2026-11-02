@@ -105,6 +105,21 @@ export interface FrameHeader {
 export const DESKTOP_SIZE: Size = { w: 1280, h: 800 };
 export const PHONE_SIZE: Size = { w: 390, h: 844 };
 
+/** The desktop sizes Settings › Browser takes (`ompw.browserSize`), in CSS pixels, each side. */
+export const BROWSER_SIZE_BOUNDS = { min: 320, max: 3840 } as const;
+
+/** `ompw.browserSize` (`<width>x<height>`) as a size; null for anything else, a side out of bounds among it. */
+export function parseBrowserSize(value: string | null | undefined): Size | null {
+	const m = /^(\d{3,4})x(\d{3,4})$/.exec(value ?? "");
+	if (!m) return null;
+	const w = Number(m[1]);
+	const h = Number(m[2]);
+	const ok = (n: number) => n >= BROWSER_SIZE_BOUNDS.min && n <= BROWSER_SIZE_BOUNDS.max;
+	return ok(w) && ok(h) ? { w, h } : null;
+}
+
+export const formatBrowserSize = (size: Size): string => `${size.w}x${size.h}`;
+
 /** The layout a page gets in a mode. */
 export function pageSizeFor(
 	mode: PageMode,

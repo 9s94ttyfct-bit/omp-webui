@@ -250,3 +250,54 @@ test("OMPW_BROWSER_EXECUTABLE stands for an installed CfT", () => {
 	});
 	expect(inst.executable()).toBe("/opt/chrome/chrome");
 });
+
+test("a test download base stands for both download servers, and downloads from elsewhere are still refused", async () => {
+	const base = "http://127.0.0.1:9";
+	const asked: string[] = [];
+	const zipUrl = `${base}/cft/chrome-mac-arm64.zip`;
+	const local = (async (input: string | URL | Request, init?: RequestInit) => {
+		const url = String(input instanceof Request ? input.url : input);
+		asked.push(url);
+		if (url === `${base}/cft/versions.json`)
+			return Response.json({
+				channels: { Stable: { version: CFT_VERSION, downloads: { chrome: [{ platform: "mac-arm64", url: zipUrl }] } } },
+			});
+		if (url === zipUrl) return fakeFetch(CFT_ZIP_URL, init);
+		return new Response("not found", { status: 404 });
+	}) as typeof fetch;
+	const root = join(work, "root-base");
+	const inst = new BrowserInstaller({
+		root,
+		engine: "cft",
+		fetch: local,
+		cftPlatform: "mac-arm64",
+		downloadBase: base,
+	});
+	await inst.install();
+	expect(inst.state(true).installed).toEqual({ version: CFT_VERSION });
+	expect(asked).toEqual([`${base}/cft/versions.json`, zipUrl]);
+
+	// Its version list naming a zip on another plain-http host: not a download address.
+	const elsewhere = (async (input: string | URL | Request) => {
+		const url = String(input instanceof Request ? input.url : input);
+		if (url === `${base}/cft/versions.json`)
+			return Response.json({
+				channels: {
+					Stable: {
+						version: "201.0.0.0",
+						downloads: { chrome: [{ platform: "mac-arm64", url: "http://example.test/c.zip" }] },
+					},
+				},
+			});
+		return new Response("not found", { status: 404 });
+	}) as typeof fetch;
+	const refused = new BrowserInstaller({
+		root: join(work, "root-base-2"),
+		engine: "cft",
+		fetch: elsewhere,
+		cftPlatform: "mac-arm64",
+		downloadBase: base,
+	});
+	await refused.install();
+	expect(refused.state(true).error).toMatch(/Not a download address/);
+});

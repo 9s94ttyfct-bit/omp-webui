@@ -48,6 +48,8 @@ export const en = {
 	tabGuidance: "Guidance",
 	tabQuestions: "Questions",
 	tabWorktrees: "Worktrees",
+	tabBrowser: "Browser",
+	browserNoConversation: "Open a conversation to see the pages its agent browses.",
 	worktreesNoConversation: "Open a conversation to see the worktrees of its repository.",
 	worktreesRefresh: "Refresh worktrees",
 	worktreesFailed: "Could not list the worktrees: {error}",

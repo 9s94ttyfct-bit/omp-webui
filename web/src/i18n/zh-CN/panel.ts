@@ -44,6 +44,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	tabGuidance: "指引",
 	tabQuestions: "问题",
 	tabWorktrees: "工作树",
+	tabBrowser: "浏览器",
+	browserNoConversation: "打开一个对话，即可看到它的智能体浏览的页面。",
 	worktreesNoConversation: "打开一个对话即可看到其仓库的工作树。",
 	worktreesRefresh: "刷新工作树",
 	worktreesFailed: "无法列出工作树：{error}",

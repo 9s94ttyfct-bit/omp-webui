@@ -22,6 +22,7 @@ The docs are English only, by choice. Agents running inside omp-webui read the s
 - [Guard dangerous commands](docs/agents/guard.md): the reviewer gate for risky tool calls
 - [Remote access](docs/agents/remote-access.md): Cloudflare tunnel and Access, what a remote page may do
 - [Files tab and file transfer](docs/agents/file-transfer.md): browsing, editing, downloading and uploading a conversation's files
+- [The built-in browser](docs/agents/browser.md): the browser the agents browse in, the Browser tab of a conversation, Settings › Browser
 - [Models, roles, presets and accounts](docs/agents/models.md): provider logins, model roles, presets, favourites
 - [Model guidance](docs/agents/model-guidance.md): standing instructions on which models subagents use
 - [Memory](docs/agents/memory.md): what omp remembers, and the Memory page

@@ -3,6 +3,8 @@
  * of the app is a key here, whole (the first-page half and the `-later` half of a namespace, and the namespaces whose
  * strings arrive with a lazy chunk), so a text on a page that is one of them is a string `t()` did not know.
  */
+
+import { en as browser } from "../../web/src/i18n/browser.ts";
 import { en as chat } from "../../web/src/i18n/chat.ts";
 import { en as chatLater } from "../../web/src/i18n/chat-later.ts";
 import { en as ci } from "../../web/src/i18n/ci.ts";
@@ -64,6 +66,7 @@ export const NAMESPACES: Record<string, object[]> = {
 	files: [files],
 	issues: [issues],
 	ci: [ci],
+	browser: [browser],
 	quickPrompts: [quickPrompts],
 	controlsHelp: [controlsHelp],
 	migrate: [migrate],

@@ -68,6 +68,10 @@ const QuickPromptsSettings = lazy(() =>
 );
 // Ask agent for help (v0.13.0): a chunk of its own, with its strings; only a page on this computer has it (its routes are local-only).
 const SettingsHelpCard = lazy(() => import("./SettingsHelp.tsx").then((m) => ({ default: m.SettingsHelpCard })));
+// The built-in browser (install, update, clear; the size of new pages): a chunk of its own, with its strings.
+const BrowserSettings = lazy(() =>
+	import("./settings/BrowserSettings.tsx").then((m) => ({ default: m.BrowserSettings })),
+);
 
 export function SettingsPage() {
 	const t = useT();
@@ -425,6 +429,9 @@ export function SettingsPage() {
 					<>
 						<OmpSettings />
 						<UpdateSettings />
+						<Suspense fallback={null}>
+							<BrowserSettings />
+						</Suspense>
 						<QuitSettings />
 						<Suspense fallback={null}>
 							<SleepSettings />

@@ -9,6 +9,7 @@
  * (`ompw.chunkReloadAt`, sessionStorage), the sync marker below, and unsent composer drafts (memory only).
  */
 
+import { parseBrowserSize } from "./browser-protocol.ts";
 import { STATUS_FILTERS, TIME_FILTERS } from "./graph-filter.ts";
 import { GUIDANCE_ID_MAX, GUIDANCE_MAX } from "./model-guidance.ts";
 import { parsePanes } from "./panes.ts";
@@ -117,6 +118,11 @@ export const PREF = {
 	 */
 	animations: "ompw.animations",
 	animationIntensity: "ompw.animationIntensity",
+	/**
+	 * The desktop size a page of the built-in browser is laid out at (Settings › Browser), as `<width>x<height>` in CSS
+	 * pixels; unset is 1280×800 (`DESKTOP_SIZE`, `shared/browser-protocol.ts`). See `parseBrowserSize`.
+	 */
+	browserSize: "ompw.browserSize",
 } as const;
 
 export type PrefKey = (typeof PREF)[keyof typeof PREF];
@@ -210,6 +216,7 @@ const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 	[PREF.guidanceCheck]: switchValue,
 	[PREF.animations]: switchValue,
 	[PREF.animationIntensity]: oneOf(ANIMATION_INTENSITIES),
+	[PREF.browserSize]: (v) => parseBrowserSize(v) !== null,
 };
 
 /** Whether `value` is something the app ever writes under `key` (length is checked apart: `MAX_PREF_LENGTH`). */

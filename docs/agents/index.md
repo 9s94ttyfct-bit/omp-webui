@@ -25,7 +25,7 @@ They are written in English only, by choice: one language keeps them exact and s
 ## Where things are
 
 - **Sidebar**: New chat, the list of conversations (grouped by date and project, filter, pinned group, archive), and the pages: *Agent graph*, *Usage & cost*, *Memory*, *Commands & terminal*, *Settings*, *Guard* (not offered to a remote page). On a narrow window the pages are on a rail.
-- **A conversation**: header (title, model, quota ring, guard switch, session settings, ⋯ menu), the transcript, the message box with its controls, the status line under it, and the right side panel: two panes of tabs, by default *Agents*, *Todos*, *Jobs*, *Branches*, *Info*, *Guidance*, *Questions* on top and *Files*, *Issues*, *Ask*, *Host*, *Terminal*, *Worktrees* below (a tab can be moved between panes).
+- **A conversation**: header (title, model, quota ring, guard switch, session settings, ⋯ menu), the transcript, the message box with its controls, the status line under it, and the right side panel: two panes of tabs, by default *Agents*, *Todos*, *Jobs*, *Branches*, *Info*, *Guidance*, *Questions* on top and *Files*, *Issues*, *Ask*, *Host*, *Terminal*, *Worktrees*, *Browser* below (a tab can be moved between panes).
 - **Settings** (`#/settings/<page>`) has five pages: *Look & layout* (`look`), *Conversations & files* (`chats`), *Models & accounts* (`models`), *Approvals & safety* (`safety`), *App & system* (`app`), and a search box that finds any setting.
 - **⌘K** (Ctrl+K elsewhere) searches every message of every conversation; see `conversations` and `shortcuts`.
 
@@ -46,6 +46,7 @@ They are written in English only, by choice: one language keeps them exact and s
 - [Guard dangerous commands](guard.md)
 - [Remote access](remote-access.md)
 - [Files tab and file transfer](file-transfer.md)
+- [The built-in browser](browser.md)
 - [Models, roles, presets and accounts](models.md)
 - [Guidance](model-guidance.md)
 - [Memory](memory.md)

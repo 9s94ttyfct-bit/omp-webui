@@ -7,6 +7,7 @@ import {
 	FolderGit2,
 	FolderTree,
 	GitBranch,
+	Globe,
 	Hourglass,
 	Info,
 	ListChecks,
@@ -61,6 +62,8 @@ const CiTab = lazy(() => import("./CiTab.tsx").then((m) => ({ default: m.CiTab }
 const ShellTab = lazy(() => import("./ShellTab.tsx").then((m) => ({ default: m.ShellTab })));
 const QuestionsTab = lazy(() => import("./QuestionsPage.tsx").then((m) => ({ default: m.QuestionsTab })));
 const WorktreesTab = lazy(() => import("./WorktreesTab.tsx").then((m) => ({ default: m.WorktreesTab })));
+// The built-in browser's tab: the conversation's pages, their screencast and console; a chunk of its own with its strings.
+const BrowserTab = lazy(() => import("./BrowserTab.tsx").then((m) => ({ default: m.BrowserTab })));
 
 const NO_ENTRIES: readonly SessionEntry[] = [];
 interface Props {
@@ -179,6 +182,7 @@ export function RightPanel({ live, file, family, entries, onClose, onNavigate, s
 		guidance: { Icon: Sparkles, label: t("panel.tabGuidance"), count: "" },
 		questions: { Icon: ListChecks, label: t("panel.tabQuestions"), count: questionsOpen ? String(questionsOpen) : "" },
 		worktrees: { Icon: FolderGit2, label: t("panel.tabWorktrees"), count: "" },
+		browser: { Icon: Globe, label: t("panel.tabBrowser"), count: "" },
 	};
 	const body = (tab: PanelTab): ReactNode => {
 		switch (tab) {
@@ -287,6 +291,19 @@ export function RightPanel({ live, file, family, entries, onClose, onNavigate, s
 				);
 			case "host":
 				return <HostTab />;
+			case "browser":
+				// A page is a conversation's by its session file, which a conversation not saved yet does not have.
+				if (!file)
+					return (
+						<Empty icon={<Globe size={22} />} title={t("panel.tabBrowser")}>
+							{t("panel.browserNoConversation")}
+						</Empty>
+					);
+				return (
+					<Suspense fallback={null}>
+						<BrowserTab owner={file} />
+					</Suspense>
+				);
 			case "terminal": {
 				// One shell per conversation: by its file, or by its process until omp has written one.
 				const key = file ?? (live ? `live:${live.info.liveId}` : null);

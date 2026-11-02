@@ -1,6 +1,7 @@
 import { PREF } from "@shared/prefs.ts";
 import { create } from "zustand";
 import { setPref } from "../lib/prefs.ts";
+import type * as browser from "./browser.ts";
 import * as chat from "./chat.ts";
 import type * as chatLater from "./chat-later.ts";
 import type * as ci from "./ci.ts";
@@ -76,6 +77,7 @@ type LazyModules = {
 	presetAgents: typeof presetAgents;
 	drop: typeof drop;
 	navLayout: typeof navLayout;
+	browser: typeof browser;
 };
 type Modules = typeof MODULES & LazyModules;
 /**

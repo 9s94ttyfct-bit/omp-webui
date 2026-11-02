@@ -21,6 +21,7 @@ export const PANEL_TABS = [
 	"guidance",
 	"questions",
 	"worktrees",
+	"browser",
 ] as const;
 export type PanelTab = (typeof PANEL_TABS)[number];
 
@@ -49,7 +50,7 @@ export const DEFAULT_SPLIT = 0.5;
 /** What the panel opens with: the tabs of the conversation above, the files and the side tools below. */
 export const DEFAULT_ROWS: PaneRows = {
 	top: ["agents", "todos", "jobs", "tree", "info", "guidance", "questions"],
-	bottom: ["files", "issues", "ci", "btw", "host", "terminal", "worktrees"],
+	bottom: ["files", "issues", "ci", "btw", "host", "terminal", "worktrees", "browser"],
 };
 
 export const DEFAULT_PANES: PaneLayout = {

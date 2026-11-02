@@ -79,6 +79,12 @@ export interface BrowserInstallerOptions {
 	cftPlatform?: CftPlatform | null;
 	/** `OMPW_BROWSER_EXECUTABLE`: a Chrome to run instead of an installed CfT (tests, CI). */
 	executableOverride?: string | null;
+	/**
+	 * `OMPW_BROWSER_DOWNLOAD_BASE` (tests only): an origin such as `http://127.0.0.1:<port>` that stands for both download
+	 * servers. The CfT version list is `<base>/cft/versions.json`, CEF's index `<base>/cef/index.json` and its files
+	 * `<base>/cef/<name>`; downloads may come from that origin (over plain http too).
+	 */
+	downloadBase?: string | null;
 	hooks?: BrowserHooks;
 	idleMs?: number;
 }
@@ -97,6 +103,8 @@ export class BrowserInstaller {
 	private readonly platform: CftPlatform | null;
 	private readonly override: string | null;
 	private readonly hooks: BrowserHooks;
+	/** Where the version list, CEF's index and its files are, and the origins downloads may come from. */
+	private readonly sources: { cft: string; cefIndex: string; cefFiles: string; test: string | null };
 	private current: Current;
 	private rev = 0;
 	private latest: string | null = null;
@@ -112,6 +120,11 @@ export class BrowserInstaller {
 		this.platform = opts.cftPlatform === undefined ? cftPlatformHere() : opts.cftPlatform;
 		this.override = opts.executableOverride ?? process.env.OMPW_BROWSER_EXECUTABLE ?? null;
 		this.hooks = opts.hooks ?? {};
+		const base = (opts.downloadBase ?? process.env.OMPW_BROWSER_DOWNLOAD_BASE ?? "").replace(/\/+$/, "");
+		const test = base ? new URL(base).origin : null;
+		this.sources = test
+			? { cft: `${test}/cft/versions.json`, cefIndex: `${test}/cef/index.json`, cefFiles: `${test}/cef/`, test }
+			: { cft: CFT_VERSIONS_URL, cefIndex: CEF_INDEX_URL, cefFiles: CEF_FILES, test: null };
 		this.current = this.read();
 		this.prune();
 	}
@@ -259,7 +272,12 @@ export class BrowserInstaller {
 		for (const build of candidates) {
 			if (build.version === this.current.cef?.version) return;
 			const file = join(dir, `${build.version}.download`);
-			const got = await this.download(`${CEF_FILES}${encodeURIComponent(build.name)}`, file, signal, build.size);
+			const got = await this.download(
+				`${this.sources.cefFiles}${encodeURIComponent(build.name)}`,
+				file,
+				signal,
+				build.size,
+			);
 			if (got.received !== build.size || got.sha1 !== build.sha1)
 				throw new JobError("The CEF download is damaged (checksum differs)");
 			const part = join(dir, `${build.version}.part`);
@@ -288,7 +306,7 @@ export class BrowserInstaller {
 	}
 
 	private async cftRelease(signal: AbortSignal): Promise<{ version: string; url: string }> {
-		const res = await this.fetcher(CFT_VERSIONS_URL, { signal });
+		const res = await this.fetcher(this.sources.cft, { signal });
 		if (!res.ok) throw new JobError(`Chrome for Testing's version list answered ${res.status}`);
 		const data = (await res.json()) as {
 			channels?: { Stable?: { version?: string; downloads?: { chrome?: { platform: string; url: string }[] } } };
@@ -304,7 +322,7 @@ export class BrowserInstaller {
 	private async cefCandidates(
 		signal: AbortSignal,
 	): Promise<{ version: string; name: string; sha1: string; size: number }[]> {
-		const res = await this.fetcher(CEF_INDEX_URL, { signal });
+		const res = await this.fetcher(this.sources.cefIndex, { signal });
 		if (!res.ok) throw new JobError(`CEF's build index answered ${res.status}`);
 		const data = (await res.json()) as {
 			macosarm64?: {
@@ -333,8 +351,10 @@ export class BrowserInstaller {
 		size?: number,
 	): Promise<{ received: number; md5: string; sha1: string; goog: string | null }> {
 		const at = new URL(url);
-		if (at.protocol !== "https:" || !DOWNLOAD_HOSTS.has(at.host))
-			throw new JobError(`Not a download address: ${at.host}`);
+		const allowed =
+			(at.protocol === "https:" && DOWNLOAD_HOSTS.has(at.host)) ||
+			(this.sources.test !== null && at.origin === this.sources.test);
+		if (!allowed) throw new JobError(`Not a download address: ${at.host}`);
 		const idle = new AbortController();
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		const rearm = () => {

@@ -59,7 +59,7 @@ const LAYOUTS: [string, PaneLayout][] = [
 		layout({
 			rows: rowsOf(
 				["info", "files", "agents", "guidance"],
-				["btw", "todos", "jobs", "tree", "issues", "ci", "host", "terminal", "questions", "worktrees"],
+				["btw", "todos", "jobs", "tree", "issues", "ci", "host", "terminal", "questions", "worktrees", "browser"],
 			),
 			shown: { top: "files", bottom: "tree" },
 		}),
@@ -87,9 +87,9 @@ describe("every tab is in one row", () => {
 		expect(DEFAULT_PANES.shown).toEqual({ top: "agents", bottom: "files" });
 	});
 
-	test("the default is agents, todos, jobs, tree, info, guidance and questions above, and files, issues, CI, ask, host and terminal below", () => {
+	test("the default is agents, todos, jobs, tree, info, guidance and questions above, and files, issues, CI, ask, host, terminal, worktrees and browser below", () => {
 		expect(DEFAULT_ROWS.top).toEqual(["agents", "todos", "jobs", "tree", "info", "guidance", "questions"]);
-		expect(DEFAULT_ROWS.bottom).toEqual(["files", "issues", "ci", "btw", "host", "terminal", "worktrees"]);
+		expect(DEFAULT_ROWS.bottom).toEqual(["files", "issues", "ci", "btw", "host", "terminal", "worktrees", "browser"]);
 	});
 
 	test("no move leaves a tab listed twice or in no row", () => {
@@ -159,7 +159,7 @@ describe("moving a tab along its row", () => {
 		]);
 		const edge = layout();
 		expect(moveBy(edge, "agents", -1)).toBe(edge);
-		expect(moveBy(edge, "worktrees", 1)).toBe(edge);
+		expect(moveBy(edge, "browser", 1)).toBe(edge);
 	});
 
 	test("what each pane shows and the fold stay as they were, whichever tab moves", () => {
@@ -200,7 +200,7 @@ describe("moving a tab to the other pane", () => {
 		expect(next.rows).toEqual(
 			rowsOf(
 				["agents", "todos", "jobs", "tree", "guidance", "questions"],
-				["files", "info", "issues", "ci", "btw", "host", "terminal", "worktrees"],
+				["files", "info", "issues", "ci", "btw", "host", "terminal", "worktrees", "browser"],
 			),
 		);
 		expect(next.shown.bottom).toBe("info");
@@ -224,6 +224,7 @@ describe("moving a tab to the other pane", () => {
 			"host",
 			"terminal",
 			"worktrees",
+			"browser",
 			"agents",
 		]);
 		expect(moveAcross(layout(), "host").rows.top).toEqual([
@@ -426,7 +427,7 @@ describe("a layout stored before the rows (version 1)", () => {
 		expect(first?.rows).toEqual(
 			rowsOf(
 				["agents", "jobs", "tree", "info", "guidance", "questions"],
-				["files", "issues", "ci", "btw", "host", "terminal", "worktrees", "todos"],
+				["files", "issues", "ci", "btw", "host", "terminal", "worktrees", "browser", "todos"],
 			),
 		);
 		expect(first?.shown).toEqual({ top: "agents", bottom: "todos" });
@@ -435,7 +436,7 @@ describe("a layout stored before the rows (version 1)", () => {
 		expect(second?.rows).toEqual(
 			rowsOf(
 				["agents", "todos", "tree", "info", "guidance", "questions"],
-				["files", "issues", "ci", "btw", "host", "terminal", "worktrees", "jobs"],
+				["files", "issues", "ci", "btw", "host", "terminal", "worktrees", "browser", "jobs"],
 			),
 		);
 		expect(second).toMatchObject({ shown: { top: "info", bottom: "jobs" }, collapsed: "bottom", split: 0.4 });
@@ -452,7 +453,7 @@ describe("a layout stored before the rows (version 1)", () => {
 		expect(l?.rows).toEqual(
 			rowsOf(
 				["todos", "jobs", "tree", "info", "guidance", "questions", "files"],
-				["issues", "ci", "btw", "host", "terminal", "worktrees", "agents"],
+				["issues", "ci", "btw", "host", "terminal", "worktrees", "browser", "agents"],
 			),
 		);
 		expect(l?.shown).toEqual({ top: "files", bottom: "agents" });
@@ -492,7 +493,7 @@ describe("a layout of version 2 that does not match the tabs of this page", () =
 		expect(l?.rows).toEqual(
 			rowsOf(
 				["info", "agents", "todos", "jobs", "tree", "guidance", "questions"],
-				["files", "issues", "ci", "btw", "host", "terminal", "worktrees"],
+				["files", "issues", "ci", "btw", "host", "terminal", "worktrees", "browser"],
 			),
 		);
 		if (l) whole(l);
@@ -502,7 +503,7 @@ describe("a layout of version 2 that does not match the tabs of this page", () =
 		expect(emptied?.shown).toEqual({ top: null, bottom: "agents" });
 	});
 
-	test("a layout stored before the Guidance, Questions, Worktrees and CI tabs (#704, #693, #698) gets each at the end of its default row, where the rest stay as they were", () => {
+	test("a layout stored before the Guidance, Questions, Worktrees, CI and Browser tabs (#704, #693, #698) gets each at the end of its default row, where the rest stay as they were", () => {
 		const l = v2({
 			rows: {
 				top: ["jobs", "agents", "todos", "tree", "info"],
@@ -514,7 +515,7 @@ describe("a layout of version 2 that does not match the tabs of this page", () =
 		expect(l?.rows).toEqual(
 			rowsOf(
 				["jobs", "agents", "todos", "tree", "info", "guidance", "questions"],
-				["files", "issues", "btw", "host", "terminal", "ci", "worktrees"],
+				["files", "issues", "btw", "host", "terminal", "ci", "worktrees", "browser"],
 			),
 		);
 		expect(l?.shown).toEqual({ top: "info", bottom: "files" });
@@ -531,7 +532,7 @@ describe("a layout of version 2 that does not match the tabs of this page", () =
 		expect(l?.rows).toEqual(
 			rowsOf(
 				["agents", "info", "guidance", "questions"],
-				["files", "todos", "jobs", "issues", "btw", "host", "tree", "ci", "terminal", "worktrees"],
+				["files", "todos", "jobs", "issues", "btw", "host", "tree", "ci", "terminal", "worktrees", "browser"],
 			),
 		);
 		if (l) whole(l);

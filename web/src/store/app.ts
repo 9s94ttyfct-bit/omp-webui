@@ -33,6 +33,7 @@ import { type Palette, storedPalette, storedTheme } from "../lib/theme.ts";
 import { webUrl } from "../lib/web-url.ts";
 import { ReplyError, socket } from "../lib/ws.ts";
 import { onAppUpdateMessage } from "./app-update.ts";
+import { browserServerMet, onBrowserState } from "./browser.ts";
 import { onGuardMessage } from "./guard.ts";
 import {
 	applyAttached,
@@ -1389,9 +1390,14 @@ export function onServer(msg: ServerMessage): void {
 		case "hello":
 			// Times the server stamps (when omp's backoff began) are on its clock, which this page's may be far from.
 			if (typeof msg.time === "number") noteServerTime(msg.time);
+			// The server may be another run of it: its browser state's `rev` starts over.
+			browserServerMet();
 			return;
 		case "app_update":
 			onAppUpdateMessage(msg.state);
+			return;
+		case "browser_state":
+			onBrowserState(msg.state);
 			return;
 		case "omp":
 		case "omp_log":

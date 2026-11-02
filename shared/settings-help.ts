@@ -84,6 +84,7 @@ export const PREF_CLASS: Readonly<Record<PrefKey, SettingClass>> = {
 	[PREF.graphFocus]: "normal",
 	[PREF.graphStatus]: "normal",
 	[PREF.graphTime]: "normal",
+	[PREF.browserSize]: "normal",
 	// What each conversation's guard was under before the header's switch turned it off.
 	[PREF.guardBefore]: "unavailable",
 	[PREF.animations]: "normal",
