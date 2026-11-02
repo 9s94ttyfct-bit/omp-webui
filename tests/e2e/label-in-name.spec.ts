@@ -80,15 +80,14 @@ test("New chat's guard picker is named by what it shows", async ({ page }) => {
 	await expect(picker).toHaveAccessibleDescription("Guard dangerous commands, for this conversation");
 });
 
-test("New chat's Mode chip in the phone's ⋯ panel is named by what it shows (#788)", async ({ page }) => {
+test("New chat's Mode chip, an icon on a phone, is named by what it shows (#788)", async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 844 });
 	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
-	await page.getByTestId("composer-more").click({ timeout: 60_000 });
-	const panel = page.getByTestId("composer-more-panel");
-	const chip = panel.getByTestId("mode-picker");
-	await expect(chip).toBeVisible();
-	expect(await mismatches(page, '[data-testid="composer-more-panel"]')).toEqual([]);
-	// It shows "Mode: Full"; its name starts with that, and what it is for stays its description.
+	const bar = page.getByTestId("new-chat-settings");
+	const chip = bar.getByTestId("mode-picker");
+	await expect(chip).toBeVisible({ timeout: 60_000 });
+	expect(await mismatches(page, '[data-testid="new-chat-settings"]')).toEqual([]);
+	// It says "Mode: Full" to whoever cannot see the icon; what it is for stays its description.
 	await expect(chip).toHaveAccessibleName(/^Mode: (Full|Light)$/);
 	await expect(chip).toHaveAccessibleDescription("Full or Light for new conversations");
 });

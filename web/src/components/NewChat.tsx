@@ -16,6 +16,7 @@ import { createGoal, startGuidedGoal, useGoalRequest } from "../lib/goal.ts";
 import { guidanceToRemember, initialGuidance } from "../lib/guidance-start.ts";
 import { useImeGuard } from "../lib/ime.ts";
 import { lazyChunk } from "../lib/lazy-chunk.ts";
+import { useCrampedRow } from "../lib/media.ts";
 import { loadStartConfig, switchPreset, useStartConfig } from "../lib/model-config.ts";
 import { selectedThinking } from "../lib/models.ts";
 import {
@@ -31,7 +32,7 @@ import { selectMode, useMode } from "../lib/offline.ts";
 import { setPref } from "../lib/prefs.ts";
 import { ReplyError, socket } from "../lib/ws.ts";
 import { closeLive, openLive, refreshState, runBash, useApp } from "../store/app.ts";
-import { Composer, type ComposerHandle, type ImageAttachment } from "./Composer.tsx";
+import { Composer, type ComposerHandle, type ImageAttachment, NARROW_COMPOSER_PX } from "./Composer.tsx";
 import { ErrorBoundary } from "./ErrorBoundary.tsx";
 import { Button, cx, Spinner } from "./ui.tsx";
 
@@ -156,33 +157,29 @@ function pickIo(liveId: string): PickIo {
 }
 
 /**
- * What the composer's footer holds while the pickers' chunk is on its way: one grey bar where each control will be, at
- * that control's width, so that the footer wraps exactly when the controls do and the composer's field above it does not
- * move as the chunk lands. `contents` puts the bars in the footer's own flex (not in a row of their own): a footer too
- * narrow for the row wraps them onto a second line just as it will the controls, and under `composer-narrow`, where the
- * controls keep only their icons, the bars become 32 px squares too; and there, as the controls do (C1), the ones behind
- * "⋯" give way to one square for it, at the end. The widths are the controls' own and depend on the labels, so they live
- * in `index.css` (one set per language, by `data-sk`), not in this chunk's JavaScript.
+ * What the settings bar holds while the pickers' chunk is on its way: one grey bar where each control will be, at that
+ * control's width, so that the bar wraps exactly when the controls do and nothing under it moves as the chunk lands.
+ * `contents` puts the bars in the settings bar's own flex (not in a row of their own): a bar too narrow for the row wraps
+ * them onto a second line just as it will the controls, and under `composer-narrow`, where the controls keep only their
+ * icons, the bars become 32 px squares too. The widths are the controls' own and depend on the labels, so they live in
+ * `index.css` (one set per language, by `data-sk`), not in this chunk's JavaScript.
  */
 function PickersSkeleton() {
-	const more = "h-8 shrink-0 rounded-lg bg-hover composer-narrow:hidden";
+	const bar = "h-8 shrink-0 rounded-lg bg-hover";
 	return (
 		<span aria-hidden data-testid="pickers-skeleton" className="contents">
-			<span data-sk="preset" className="h-8 shrink-0 rounded-lg bg-hover" />
-			<span data-sk="model" className="h-8 shrink-0 rounded-lg bg-hover" />
-			{/* behind "⋯" on a narrow composer: thinking level, guard, model guidance (#641), Full / Light, the goal */}
-			<span data-sk="thinking" className={more} />
-			<span data-sk="guard" className={more} />
-			<span data-sk="guidance" className={more} />
-			<span data-sk="mode" className={more} />
-			<span data-sk="goal" className={more} />
-			<span data-sk="approval" className="h-8 shrink-0 rounded-lg bg-hover" />
-			{/* unattended mode (#646): a square, in every language and at every width */}
-			<span data-sk="unattended" className="h-8 w-8 shrink-0 rounded-lg bg-hover" />
-			<span
-				data-sk="more"
-				className="hidden h-8 shrink-0 rounded-lg bg-hover composer-narrow:order-last composer-narrow:block"
-			/>
+			{/* the model's: preset, model, thinking level, Full / Light */}
+			<span data-sk="preset" className={bar} />
+			<span data-sk="model" className={bar} />
+			<span data-sk="thinking" className={bar} />
+			<span data-sk="mode" className={bar} />
+			<span data-sk="divider" className="mx-1 h-5 w-px shrink-0 bg-border" />
+			{/* the conversation's rules: guard, guidance (#641), permission mode, unattended mode (#646, a square), the goal */}
+			<span data-sk="guard" className={bar} />
+			<span data-sk="guidance" className={bar} />
+			<span data-sk="approval" className={bar} />
+			<span data-sk="unattended" className={`${bar} w-8`} />
+			<span data-sk="goal" className={bar} />
 		</span>
 	);
 }
@@ -581,9 +578,14 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 		}
 	};
 
+	// The settings of the conversation about to start are a bar under the composer, every one always shown: under the
+	// composer's own narrow width they keep only their icons (`composer-narrow`, the pickers' own styles) and wrap.
+	const [bar, setBar] = useState<HTMLDivElement | null>(null);
+	const narrowBar = useCrampedRow(bar, "data-composer-narrow", (row) => row.clientWidth < NARROW_COMPOSER_PX);
+
 	// The goal and its "skip the questions" go together: one group that wraps as one (C2), never a line of its own. It is
-	// New chat's own, not the pickers' chunk's: it goes behind "⋯" with them where the chunk is there, and stands alone
-	// in the footer where that chunk is gone (a toast says so), so a goal can still be started.
+	// New chat's own, not the pickers' chunk's: it ends the bar after them, and stands alone in the bar where that chunk
+	// is gone (a toast says so), so a goal can still be started.
 	const goalSwitches = (
 		<span className="inline-flex shrink-0 items-center gap-1" data-testid="goal-switches">
 			<button
@@ -750,59 +752,64 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 								? t("pages.newGoalDirectPlaceholder")
 								: t("pages.newPlaceholder")
 					}
-					footer={
-						warmId ? (
-							<ErrorBoundary
-								fallback={() => goalSwitches}
-								resetKey={warmId}
-								onError={() => {
-									retryPickers();
-									toast("error", t("shell.errorPickersLoad"));
-								}}
-							>
-								<Suspense fallback={<PickersSkeleton />}>
-									<Pickers
-										liveId={warmId}
-										model={live?.state?.model}
-										thinking={thinking}
-										onPreset={(preset) => remember(warmId, (b) => pickPreset(b, preset))}
-										onModel={(model) => remember(warmId, (b) => pickModel(b, model))}
-										onThinking={(level) => remember(warmId, (b) => pickThinking(b, level))}
-										onApproval={setApproval}
-										onGuard={setGuard}
-										guidance={guidanceLive}
-										onGuidance={(pick) => {
-											guidancePick.current = pick;
-										}}
-										guidanceDisabled={local}
-										unattended={unattendedPick}
-										more={goalSwitches}
-									/>
+				/>
+				<div
+					ref={setBar}
+					data-testid="new-chat-settings"
+					data-composer-narrow={narrowBar ? "" : undefined}
+					className="mt-2 flex min-h-8 flex-wrap items-center gap-1 px-1"
+				>
+					{warmId ? (
+						<ErrorBoundary
+							fallback={() => goalSwitches}
+							resetKey={warmId}
+							onError={() => {
+								retryPickers();
+								toast("error", t("shell.errorPickersLoad"));
+							}}
+						>
+							<Suspense fallback={<PickersSkeleton />}>
+								<Pickers
+									liveId={warmId}
+									model={live?.state?.model}
+									thinking={thinking}
+									onPreset={(preset) => remember(warmId, (b) => pickPreset(b, preset))}
+									onModel={(model) => remember(warmId, (b) => pickModel(b, model))}
+									onThinking={(level) => remember(warmId, (b) => pickThinking(b, level))}
+									onApproval={setApproval}
+									onGuard={setGuard}
+									guidance={guidanceLive}
+									onGuidance={(pick) => {
+										guidancePick.current = pick;
+									}}
+									guidanceDisabled={local}
+									unattended={unattendedPick}
+									goal={goalSwitches}
+								/>
+							</Suspense>
+						</ErrorBoundary>
+					) : !cwd ? (
+						<span className="truncate px-2 text-xs text-muted">{t("pages.newPickFolder")}</span>
+					) : warmError ? (
+						<>
+							<ErrorBoundary fallback={() => null} onError={retryModeChip}>
+								<Suspense fallback={null}>
+									<ModeChip />
 								</Suspense>
 							</ErrorBoundary>
-						) : !cwd ? (
-							<span className="truncate px-2 text-xs text-muted">{t("pages.newPickFolder")}</span>
-						) : warmError ? (
-							<>
-								<ErrorBoundary fallback={() => null} onError={retryModeChip}>
-									<Suspense fallback={null}>
-										<ModeChip />
-									</Suspense>
-								</ErrorBoundary>
-								<span className="min-w-0 break-words px-2 text-xs text-danger" data-testid="new-chat-error">
-									{warmError}
-								</span>
-								<Button size="sm" variant="ghost" onClick={restartWarmUp}>
-									<RotateCw size={13} /> {t("common.retry")}
-								</Button>
-							</>
-						) : (
-							<span className="inline-flex items-center gap-1.5 px-2 text-xs text-faint">
-								<Spinner size={12} /> {t("pages.newStartingOmp")}
+							<span className="min-w-0 break-words px-2 text-xs text-danger" data-testid="new-chat-error">
+								{warmError}
 							</span>
-						)
-					}
-				/>
+							<Button size="sm" variant="ghost" onClick={restartWarmUp}>
+								<RotateCw size={13} /> {t("common.retry")}
+							</Button>
+						</>
+					) : (
+						<span className="inline-flex items-center gap-1.5 px-2 text-xs text-faint">
+							<Spinner size={12} /> {t("pages.newStartingOmp")}
+						</span>
+					)}
+				</div>
 			</div>
 			{/* Mounted when the picker is first opened, and kept: it is a chunk of its own (see `DirBrowser.tsx`). */}
 			{pickerOpened.current ? (

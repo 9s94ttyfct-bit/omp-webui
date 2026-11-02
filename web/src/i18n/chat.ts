@@ -31,8 +31,6 @@ export const en = {
 	composerPlaceholderQueueBare: "Queue a follow-up…",
 	composerPlaceholderApproval: "Message omp… (sending it denies the approval)",
 	composerAttach: "Attach files",
-	/** Where the message box is narrow: the button that shows its less used controls. */
-	composerMore: "More controls",
 	composerOffline: "Can be sent once the page has reconnected",
 	composerSteer: "Steer",
 	composerStop: "Stop",

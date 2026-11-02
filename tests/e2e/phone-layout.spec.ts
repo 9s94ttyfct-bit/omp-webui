@@ -179,44 +179,41 @@ test.describe("phone", () => {
 		expect(shown).toBeGreaterThanOrEqual(20);
 	});
 
-	test("the composer footer keeps the main controls in its row and the rest behind ⋯, none behind Send", async ({
+	test("New chat's settings are a bar of icons under the composer, every one on the screen and named, none behind Send", async ({
 		page,
 	}) => {
 		await page.goto(newChat());
 		await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
-		await expect(page.getByTestId("guard-picker")).toBeAttached();
+		await expect(page.getByTestId("guidance-picker")).toBeVisible({ timeout: 60_000 });
+		await expect(page.getByTestId("composer-more")).toHaveCount(0);
 		const card = await boxOf(composerCard(page));
 		const send = await boxOf(page.getByTestId("send"));
-		const inCard = async (id: string) => {
-			const b = await boxOf(page.getByTestId(id));
-			expect(b.x, id).toBeGreaterThanOrEqual(card.x);
-			expect(b.x + b.width, id).toBeLessThanOrEqual(card.x + card.width);
-			expect(b.y + b.height, id).toBeLessThanOrEqual(card.y + card.height);
-			const overlapsSend =
-				b.x < send.x + send.width && send.x < b.x + b.width && b.y < send.y + send.height && send.y < b.y + b.height;
-			expect(overlapsSend, `${id} overlaps Send`).toBe(false);
-		};
-		for (const id of ["model-picker", "approval-picker", "composer-more"]) await inCard(id);
-		// The less used ones are not in the row until ⋯ is pressed…
-		const more = ["thinking-picker", "guard-picker", "mode-picker", "goal-mode"];
-		for (const id of more) await expect(page.getByTestId(id), id).toBeHidden();
-		await page.getByTestId("composer-more").click();
-		const panel = page.getByTestId("composer-more-panel");
-		await expect(panel).toBeVisible();
-		// …then each is in the panel, on the screen, and says what it is (its words, not only an icon).
+		const bar = page.getByTestId("new-chat-settings");
 		const view = page.viewportSize() ?? { width: 390, height: 844 };
-		for (const id of more) {
-			const control = panel.getByTestId(id);
+		for (const id of [
+			"preset-picker",
+			"model-picker",
+			"thinking-picker",
+			"mode-picker",
+			"guard-picker",
+			"guidance-picker",
+			"approval-picker",
+			"unattended-toggle",
+			"goal-mode",
+		]) {
+			const control = bar.getByTestId(id);
 			await expect(control, id).toBeVisible();
 			const b = await boxOf(control);
 			expect(b.x, id).toBeGreaterThanOrEqual(0);
 			expect(b.x + b.width, id).toBeLessThanOrEqual(view.width);
-			expect(b.y, id).toBeGreaterThanOrEqual(0);
-			expect((await control.innerText()).trim(), id).not.toBe("");
+			expect(b.y, id).toBeGreaterThanOrEqual(card.y + card.height);
+			const overlapsSend =
+				b.x < send.x + send.width && send.x < b.x + b.width && b.y < send.y + send.height && send.y < b.y + b.height;
+			expect(overlapsSend, `${id} overlaps Send`).toBe(false);
 		}
-		// Each names its setting with the value, not "Low" or "Full" alone.
-		await expect(panel.getByText("Thinking:", { exact: true })).toBeVisible();
-		expect(words(await panel.getByTestId("mode-picker").innerText())).toMatch(/^Mode: (Full|Light)$/);
+		// An icon still says what it sets, with the value, not "Low" or "Full" alone.
+		await expect(bar.getByTestId("thinking-picker")).toHaveAccessibleName(/^Thinking/);
+		await expect(bar.getByTestId("mode-picker")).toHaveAccessibleName(/^Mode: (Full|Light)$/);
 		// The guard and the permission mode are not two of the same shield.
 		const icon = (id: string) =>
 			page
@@ -226,25 +223,21 @@ test.describe("phone", () => {
 				.evaluate((el) => [...el.classList].find((c) => c.startsWith("lucide-") && c !== "lucide-icon") ?? "");
 		expect(await icon("guard-picker")).not.toMatch(/shield/);
 		expect(await icon("approval-picker")).toMatch(/shield/);
-		// A picker opened from the panel keeps the panel open; Escape closes its popover first, then the panel.
-		await panel.getByTestId("guard-picker").click();
+		// A picker opens from the bar, and Escape closes it and gives the keyboard back to it.
+		await bar.getByTestId("guard-picker").click();
 		await expect(page.getByRole("dialog")).toBeVisible();
 		await page.keyboard.press("Escape");
 		await expect(page.getByRole("dialog")).toBeHidden();
-		await expect(panel).toBeVisible();
-		await page.keyboard.press("Escape");
-		await expect(panel).toBeHidden();
-		await expect(page.getByTestId("composer-more")).toBeFocused();
+		await expect(bar.getByTestId("guard-picker")).toBeFocused();
 	});
 
-	test("the ⋯ panel names the settings in Chinese too", async ({ page }) => {
+	test("New chat's settings icons are named in Chinese too", async ({ page }) => {
 		await page.addInitScript(() => localStorage.setItem("ompw.lang", "zh-CN"));
 		await page.goto(newChat());
 		await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
-		await page.getByTestId("composer-more").click();
-		const panel = page.getByTestId("composer-more-panel");
-		await expect(panel.getByText("思考强度：", { exact: true })).toBeVisible();
-		expect(words(await panel.getByTestId("mode-picker").innerText())).toMatch(/^模式： (完整|轻量)$/);
+		const bar = page.getByTestId("new-chat-settings");
+		await expect(bar.getByTestId("thinking-picker")).toHaveAccessibleName(/^思考强度/);
+		await expect(bar.getByTestId("mode-picker")).toHaveAccessibleName(/^模式：\s?(完整|轻量)$/);
 	});
 
 	test("the app, the drawer and the composer keep clear of the status bar and the home indicator", async ({ page }) => {

@@ -5,6 +5,8 @@
  * imports `later.ts` (`tests/unit/i18n-first-load.test.ts`). The ones the first page asks for are in `chat.ts`.
  */
 export const en = {
+	/** Where the message box is narrow: the button that shows its less used controls. */
+	composerMore: "More controls",
 	// Agent turn work summary
 	turnWorkedFor: "Worked for {duration} · ",
 	turnToolCall: "{n} tool call",

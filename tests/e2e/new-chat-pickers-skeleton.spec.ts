@@ -2,31 +2,32 @@ import { newChatIn } from "../support/new-chat.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /**
- * The pickers in New chat's composer footer (preset, model, thinking level, permission mode, guard) are a chunk of their
- * own, fetched when the warm-up process starts. Until it lands the footer held nothing, so the row of controls appeared
- * and the composer's field and the page around it shifted by that row — on the widths where the row wraps onto a second
- * line, by 36 px. The placeholder is a bar where each control will be, at its width, in the footer's own flex, so it wraps
- * exactly when the controls do (`display: contents`: the bars are the footer's children, not a row of their own).
+ * The pickers in New chat's settings bar, under its composer (preset, model, thinking level, Full / Light, guard,
+ * guidance, permission mode, unattended mode), are a chunk of their own, fetched when the warm-up process starts. Until
+ * it lands the bar would hold nothing, so the row of controls would appear and the page around it, centred in the
+ * window, would shift by that row. The placeholder is a bar where each control will be, at its width, in the settings
+ * bar's own flex, so it wraps exactly when the controls do (`display: contents`: the bars are the settings bar's
+ * children, not a row of their own).
  *
- * The widths swept are where the row goes from one line to two and back (measured: 600–740 px of viewport at this
- * composer's width, and 920–1020), in both languages: `zh`'s controls are a few pixels wider, which moves that band.
+ * The widths swept go from a bar that wraps onto more than one line to one that holds them all, in both languages:
+ * `zh`'s controls are a few pixels wider, which moves where it wraps.
  */
 
 const PICKERS_CHUNK = /\/assets\/NewChatPickers-[^/]+\.js$/;
 
-/** The viewports where the footer's row is one line, two, and one again (the band is entered and left). */
+/** The viewports where the bar wraps and where it does not. */
 const WIDTHS = [600, 700, 920, 1020, 1400];
 
-/** The composer footer's box and the message field's: neither may move when the chunk lands. */
+/** The settings bar's box and the message field's: neither may move when the chunk lands. */
 async function boxes(page: Page) {
-	const footer = await page.getByTestId("composer-footer").boundingBox();
+	const bar = await page.getByTestId("new-chat-settings").boundingBox();
 	const field = await page.getByTestId("composer").boundingBox();
-	if (!footer || !field) throw new Error("the composer or its footer is not on screen");
-	return { footer, field };
+	if (!bar || !field) throw new Error("the composer or its settings bar is not on screen");
+	return { bar, field };
 }
 
 for (const lang of ["en", "zh-CN"]) {
-	test(`while the pickers' chunk is on its way the footer keeps its height and the field its place (${lang})`, async ({
+	test(`while the pickers' chunk is on its way the bar keeps its height and the field its place (${lang})`, async ({
 		page,
 	}) => {
 		// One gate per width: the chunk is held until this test lets it go, so what is measured is the second in which
@@ -46,24 +47,24 @@ for (const lang of ["en", "zh-CN"]) {
 			await page.setViewportSize({ width, height: 900 });
 			await page.goto("/");
 
-			// The placeholder: nothing to read or tab to, and the footer is as tall as the controls will make it.
+			// The placeholder: nothing to read or tab to, and the bar is as tall as the controls will make it.
 			const skeleton = page.getByTestId("pickers-skeleton");
 			await expect(skeleton).toBeVisible({ timeout: 60_000 });
 			await expect(skeleton).toHaveAttribute("aria-hidden", "true");
 			const before = await boxes(page);
-			// The bars are 32 px tall wherever they are: one row, or two when the footer is too narrow for them.
-			expect([32, 68]).toContain(before.footer.height);
+			// The bars are 32 px tall wherever they are: one row, or more (4 px apart) when the bar is too narrow for them.
+			expect([32, 68, 104]).toContain(before.bar.height);
 
-			// The controls land: the placeholder goes, and neither the footer nor the field moved.
+			// The controls land: the placeholder goes, and neither the bar nor the field moved.
 			gate.resolve();
 			await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 			// The guidance control (#641) is a chunk of its own inside the pickers': the row is whole once it is there too.
 			await expect(page.getByTestId("guidance-picker")).toBeVisible({ timeout: 60_000 });
 			await expect(skeleton).toHaveCount(0);
 			const after = await boxes(page);
-			expect({ width, footer: after.footer.height, field: Math.round(after.field.y) }).toEqual({
+			expect({ width, bar: after.bar.height, field: Math.round(after.field.y) }).toEqual({
 				width,
-				footer: before.footer.height,
+				bar: before.bar.height,
 				field: Math.round(before.field.y),
 			});
 		}
@@ -78,5 +79,5 @@ test("the placeholder is not in the page's text: nothing announces it, and no tr
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	// Once the controls are there the placeholder is gone; what remains is the controls' own words.
 	await expect(page.getByTestId("pickers-skeleton")).toHaveCount(0);
-	await expect(page.getByTestId("composer-footer")).not.toContainText("pickers.");
+	await expect(page.getByTestId("new-chat-settings")).not.toContainText("pickers.");
 });

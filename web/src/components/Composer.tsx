@@ -84,9 +84,10 @@ const FIELD_TEXT =
 
 /**
  * Below this width the composer's footer controls keep only their icons: with a sidebar and a side panel open (or on a
- * phone) four labelled controls fill three or four rows under a one-line field.
+ * phone) four labelled controls fill three or four rows under a one-line field. New chat's settings bar, under its
+ * composer, uses the same width.
  */
-const NARROW_COMPOSER_PX = 440;
+export const NARROW_COMPOSER_PX = 440;
 
 /**
  * Whether the footer's controls, as they are laid out now, take more than one line: the vertical centres of their boxes
@@ -166,7 +167,7 @@ interface Props {
 	/**
 	 * The controls must fit on one line beside Attach and Send. Where they do not with their names, they keep only their
 	 * icons and the less used are behind "⋯" (the conversation's). Without it they wrap onto a second line, and the icons
-	 * alone start below `NARROW_COMPOSER_PX` (New chat's, which has more controls and the width of a page to itself).
+	 * alone start below `NARROW_COMPOSER_PX`.
 	 */
 	footerOneRow?: boolean;
 	/** What was sent in this conversation, oldest first: Up and Down in the composer walk through it. */

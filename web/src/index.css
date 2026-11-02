@@ -980,11 +980,14 @@ html[data-agent-full] .app-shell {
 :root[lang="zh-CN"] [data-testid="pickers-skeleton"] > [data-sk="approval"] {
 	width: 103px;
 }
-/* As specific as the per-language rules above (`:root`, `:nth-child(n)`), and after them, so the narrow footer's icon
- * squares win in every language. */
+/* As specific as the per-language rules above (`:root`, `:nth-child(n)`), and after them, so the narrow settings bar's
+ * icon squares win in every language; the divider between the model's settings and the rules stays a line. */
 :root [data-composer-narrow] [data-testid="pickers-skeleton"] > span:nth-child(n),
 :root [data-composer-narrow] [data-testid="guidance-skeleton"] {
 	width: 2rem;
+}
+:root [data-composer-narrow] [data-testid="pickers-skeleton"] > [data-sk="divider"]:nth-child(n) {
+	width: 1px;
 }
 /* Dragging an item of the sidebar or the rail (#654): the drag (a chunk of its own) only sets attributes, and these draw
  * them: the dragged item dimmed, a line where it would land, and, while something is dragged, a place to drop on in a

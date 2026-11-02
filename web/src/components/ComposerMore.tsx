@@ -1,6 +1,7 @@
 import { Ellipsis } from "lucide-react";
 import { createContext, type ReactNode, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n/index.ts";
+import "../i18n/later.ts";
 import { cx, IconButton } from "./ui.tsx";
 
 /** What a control in the panel can ask of it (`useComposerMore`). */
