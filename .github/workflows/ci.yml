@@ -167,6 +167,10 @@ jobs:
         run: |
           omp --version
           [ "$WANT" = latest ] || omp --version | grep -qF "$WANT"
+      # The built-in browser's engine tests run a real Chrome for Testing (tests/contract/browser-*.test.ts): the one
+      # Playwright installs. Windows skips them (they need a POSIX shell).
+      - if: runner.os == 'Linux'
+        run: bunx playwright install --with-deps chromium
       # What the runner has: the timings and the shard counts are only as good as it is like the last one.
       - if: runner.os == 'Linux'
         run: nproc && free -m
