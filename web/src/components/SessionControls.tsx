@@ -859,20 +859,6 @@ export function SessionControls({
 								}
 							/>
 						) : null}
-						{claudeSlow && !(st?.slowModeSupported && slowVariant === "lowPriority") ? (
-							// The active model is not Claude, so `get_state` says nothing of Claude's slow mode: it is read from, and
-							// written to, omp's configuration, where it is global.
-							<Segmented
-								label={t("controlsHelp.slowModeLabelClaude")}
-								testid="claude-slow-mode"
-								help={help}
-								helpId="claudeSlowMode"
-								note={t("controlsHelp.slowModeNoteGlobal")}
-								value={claudeSlow}
-								choices={onOff}
-								onChange={(v) => void setClaudeSlow(v === "on")}
-							/>
-						) : null}
 					</div>
 					{/* The settings changed least often (#716): folded, so the panel fits without a scroll. A dot says one of
 					    them is not what omp starts new conversations with; the open state is remembered. */}
@@ -901,6 +887,22 @@ export function SessionControls({
 					</button>
 					{advancedOpen ? (
 						<div id={advancedId} className="divide-y divide-border">
+							{/* Claude's slow mode is omp's global setting, changed rarely and from any conversation: folded with the rest
+							    (#716), so the panel fits a 1280×800 window. */}
+							{claudeSlow && !(st?.slowModeSupported && slowVariant === "lowPriority") ? (
+								// The active model is not Claude, so `get_state` says nothing of Claude's slow mode: it is read from, and
+								// written to, omp's configuration, where it is global.
+								<Segmented
+									label={t("controlsHelp.slowModeLabelClaude")}
+									testid="claude-slow-mode"
+									help={help}
+									helpId="claudeSlowMode"
+									note={t("controlsHelp.slowModeNoteGlobal")}
+									value={claudeSlow}
+									choices={onOff}
+									onChange={(v) => void setClaudeSlow(v === "on")}
+								/>
+							) : null}
 							{/* How many subagents run at once: omp's own setting, which the conversation's overlay carries. */}
 							<ConcurrencyRow
 								file={compactFile}
