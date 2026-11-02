@@ -427,6 +427,7 @@
 		"chat-header.spec.ts › phone › a running conversation keeps a readable title and a one-line quota; the rest is in a menu": 7.3,
 		"chat-header.spec.ts › phone › the menu's Goal opens its dialog, and closing that returns focus to the menu button": 7.7,
 		"chat-header.spec.ts › phone › the menu's session settings open on their own: the menu is gone behind them and focus returns to its button": 8.3,
+		"chat-header.spec.ts › window › however wide the column, the readouts and buttons never leave the title less than its room": 2.5,
 		"chat-header.spec.ts › window › the header follows the room its column has: the side panel takes room, closing it gives it back": 7.8,
 		"chat-paused.spec.ts › Esc on the banner asks first; a second Esc stops": 8.6,
 		"chat-paused.spec.ts › Resume gives focus back to the composer and lets the command carry on": 11.3,
