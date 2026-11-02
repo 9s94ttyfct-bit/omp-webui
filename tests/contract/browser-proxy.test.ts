@@ -106,6 +106,10 @@ test("the root discovery answers a token sent as the user name (omp's Puppeteer 
 	expect((await fetch(`${server.url}/json/version`, { headers: basic("z".repeat(43)) })).status).toBe(401);
 	const fromPage = await fetch(`${server.url}/json/version`, { headers: { ...basic(TB), origin: server.url } });
 	expect(fromPage.status).toBe(403);
-	// Without a token it is no endpoint: the app's own page answers there, as before.
-	expect((await fetch(`${server.url}/json/version`)).headers.get("content-type")).toContain("text/html");
+	// Without a token it is no endpoint: the app's own page answers there, as before (its HTML, or the note that the web UI
+	// is not built), never the browser's discovery nor a refusal of a token.
+	const plain = await fetch(`${server.url}/json/version`);
+	expect(plain.status).not.toBe(401);
+	expect(plain.headers.get("content-type")).not.toContain("application/json");
+	expect(await plain.text()).not.toContain("webSocketDebuggerUrl");
 });
