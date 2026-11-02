@@ -22,7 +22,8 @@ Not for everyday browsing: no bookmarks, download manager, history UI or multi-w
 ## Goals
 
 - One browser, managed by omp-webui, with **one login state** (one profile) shared by every conversation and by the
-  person.
+  person. It is the engine's own: CEF's profile on the Mac, CfT's when the server runs alone; logins are not carried
+  from one engine to the other.
 - Every conversation's omp browses in it, never in the person's own Chrome.
 - A conversation's side panel has a **Browser** tab showing that conversation's pages, live, that the person can click
   and type into.
@@ -53,9 +54,10 @@ Not for everyday browsing: no bookmarks, download manager, history UI or multi-w
    **Chrome for Testing (CfT)** headless instead. Reason: one Chromium profile can be open in one process at a time,
    and Chromium versions migrate a profile forward, so two engines cannot share one login state.
 2. **CEF runs inside the Mac app's process** (approach A below).
-3. **Lifetime.** Pages belong to the app's process, not to a window. Closing the window leaves every page running in the
-   background (the app keeps running in the menu bar); reopening the window shows them again without a reload. Only
-   quitting the app ends the browser. Without the app, CfT lives as long as the server.
+3. **Lifetime.** Pages belong to the app's process, not to a window. When closing the window leaves the app running in
+   the background (the app's existing choice on close: run in the background, in the menu bar), every page keeps running;
+   reopening the window shows them again without a reload. Only quitting the app ends the browser. Without the app, CfT
+   lives as long as the server. (Keeping CEF's views alive off-window is part of the spike.)
 4. **Which pages a conversation shows.** Only the pages that conversation's agent opened, and the pages the person
    opened from that conversation's Browser tab. Other conversations' pages are not listed. The login state is shared by
    all.
@@ -143,7 +145,8 @@ Decided with the person: **one shared page per conversation now, omp's own pages
 - Top: the conversation's pages as tabs, an address field, back / forward / reload, and "new page".
 - Middle: the page. In the app's window: the native view, placed from the panel's rectangle that the page reports to
   the app (on layout, resize, panel drag, tab switch, scroll). Elsewhere: the screencast.
-- Bottom: the console strip (decision 7).
+- Bottom: the console strip (decision 7). Its console messages and failed requests are read from that page's own CDP
+  session, so a conversation never sees another conversation's page's output.
 - The native view hides while something of the web page has to be above it (a menu, a popover, a dialog), and shows again
   when it closes (**call made here**: simplest correct behaviour).
 - A conversation with no pages shows an empty state with the address field.
