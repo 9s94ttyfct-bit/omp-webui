@@ -166,3 +166,18 @@ test("the tabs learn a page's title once it has loaded, and again after it moves
 	await until("the second title", () => titled("second-title"));
 	client.close();
 }, 30_000);
+
+test("after a navigation the tabs can go back, and after going back they can go forward", async () => {
+	const targetId = await engine.createPage(OWNER, "data:text/html,<title>h0</title>");
+	const tab = new Tab();
+	const client = hub.connect(tab);
+	client.message(JSON.stringify({ t: "watch", owner: OWNER, targetId, panel: { w: 400, h: 300 } }));
+	const latest = () =>
+		tab.texts.flatMap((m) => (m.t === "pages" ? m.pages.filter((pg) => pg.targetId === targetId) : [])).at(-1);
+	await until("watching", () => latest() !== undefined);
+	client.message(JSON.stringify({ t: "navigate", targetId, action: "url", url: "data:text/html,<title>h1</title>" }));
+	await until("back possible", () => latest()?.title === "h1" && latest()?.canBack === true);
+	client.message(JSON.stringify({ t: "navigate", targetId, action: "back" }));
+	await until("forward possible", () => latest()?.title === "h0" && latest()?.canForward === true);
+	client.close();
+}, 30_000);

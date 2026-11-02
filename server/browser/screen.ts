@@ -294,7 +294,8 @@ export class ScreenHub {
 			if (!p.frame.parentId) navigated(view);
 		});
 		on("Page.navigatedWithinDocument", (view) => navigated(view));
-		on("Page.loadEventFired", (view) => retitle(view));
+		// The entry a navigation made may not be in the history yet when it is said: read again once the page has loaded.
+		on("Page.loadEventFired", (view) => navigated(view));
 	}
 }
 
