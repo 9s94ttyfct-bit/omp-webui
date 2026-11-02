@@ -169,6 +169,31 @@ test("Browser.close ends the connection, not the browser", async () => {
 	expect(registry.pagesOf("/s/a.jsonl")).toHaveLength(1);
 });
 
+test("Clear while a conversation's connection waits for the engine to start ends it with the reason, never leaves it hanging", async () => {
+	const file = join(work, `owners-${++worlds}.json`);
+	const registry = new PageRegistry(file);
+	const browser = new FakeBrowser();
+	let started!: () => void;
+	const held = new Promise<void>((resolve) => {
+		started = resolve;
+	});
+	const host = new EngineHost(registry, async () => {
+		await held;
+		return { transport: browser, generation: "gen-1", fresh: true };
+	});
+	const proxy = new CdpProxy(host, registry);
+	const client = new Client();
+	client.conn = proxy.connect("/s/a.jsonl", client);
+	// The agent's first command waits for the engine, which is still starting when Clear stops it.
+	client.conn.message(JSON.stringify({ id: 1, method: "Target.getTargets", params: {} }));
+	const stopped = host.stop("Browser data was cleared");
+	started();
+	await stopped;
+	for (let i = 0; i < 500 && !client.closed; i++) await Bun.sleep(1);
+	expect(client.closed?.reason).toContain("Browser data was cleared");
+	expect(client.got.find((m) => m.id === 1)).toBeUndefined();
+});
+
 test("owners.json keeps tokens and owners for the same engine, and only tokens for a new one", async () => {
 	const { file, registry, connect } = await world();
 	const tokenA = registry.tokenFor("/s/a.jsonl");
