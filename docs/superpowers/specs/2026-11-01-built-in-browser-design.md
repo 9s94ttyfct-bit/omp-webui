@@ -211,20 +211,12 @@ or its CfT when it runs the server alone), and that is what the remote window's 
 - **Clear browser data** removes the profile (logins, cookies, storage, cache). It asks first, then restarts the app
   (CfT: the server restarts CfT) and deletes the profile before the browser starts again (**call made here**: a running
   browser keeps its profile open, and clearing it live over CDP misses saved data).
-- Who may install, update and clear (decided with the person): a page at this computer, and **the app of a Mac the
-  person paired with this one**, from its remote window (Clear still asks first). A browser tab or a phone that comes in
-  over the network or the tunnel sees the state and uses the Browser tab, but cannot install, update or clear.
-- **Pairing is new.** Today a remote window signs in to the other Mac the way a browser does (the Cloudflare Access
-  sign-in kept in the app's web data store, `server/remote-auth.ts`, `server/saved-macs.ts`), so the other Mac cannot
-  tell the app's window from a browser signed in with the same account. Pairing gives the app a credential of its own:
-  the first time a remote window asks to manage the browser, the other Mac asks its person to allow this Mac by name;
-  once allowed, the other Mac keeps the pairing, and the app proves it holds its key (kept in its Keychain, used through
-  the remote window's script bridge) on each such request. Settings on the other Mac lists the paired Macs and can
-  remove one. The key scheme is left to the builder. The check is the server's, on the install, update and clear
-  endpoints themselves (hiding the buttons is not the check): a request that cannot prove a pairing is refused as from
-  any remote page, whoever knows the route. The saved-Macs list (`remote-macs.json`, which holds no secret) is never
-  taken as proof. Pairing is a prerequisite of remote management; until it is built, remote windows only view and use
-  the browser.
+- Who may install, update and clear (decided with the person): **every page the server lets in as the person** — a page
+  at this computer, and a remote one signed in with the person's account (through the tunnel: the Cloudflare Access
+  sign-in `server/remote-auth.ts` verifies; on the network: the server's access token, `server/auth.ts`). That includes
+  the app's remote windows, a browser tab and a phone. Clear asks first, wherever it is pressed. No pairing: the person
+  judged that a page signed in as them is them (the risk they accepted: whoever holds the account can clear the
+  browser's logins). The check is the server's own authentication of the request, as for any other route.
 
 ### Data
 
