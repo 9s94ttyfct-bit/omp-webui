@@ -211,17 +211,17 @@ or its CfT when it runs the server alone), and that is what the remote window's 
 - **Clear browser data** removes the profile (logins, cookies, storage, cache). It asks first, then restarts the app
   (CfT: the server restarts CfT) and deletes the profile before the browser starts again (**call made here**: a running
   browser keeps its profile open, and clearing it live over CDP misses saved data).
-- Who may install, update and clear (decided with the person): **every page the server lets in** — a page at this
-  computer; a remote page signed in with the person's account through the tunnel (the Cloudflare Access sign-in that
-  `server/remote-auth.ts` verifies); and a page on the local network that holds the server's access token
-  (`server/auth.ts`). That includes the app's remote windows, a browser tab and a phone. Clear asks first, wherever it is
-  pressed. No pairing. The risk the person accepted: whoever holds the account, or the access token, can install or
-  update the browser and clear its logins. Each of the three endpoints checks it on the server, from the request's own
-  authentication, not from what the page shows. This is wider than the projects folder's rule (which a network page
-  cannot change), on purpose. It needs a credential, though: with the server's token check turned off
-  (`OMP_WEBUI_AUTH=off`), a network page that brings neither a verified Access sign-in nor a valid token is let in
-  elsewhere but cannot install, update or clear (**call made here**: the person allowed signed-in and token-holding
-  pages, not any request).
+- Who may install, update and clear (decided with the person): a page at this computer, and **a remote page signed in
+  with the person's account** — through the tunnel, the Cloudflare Access sign-in that `server/remote-auth.ts` verifies.
+  That includes the app's remote windows, a browser tab and a phone that come in that way. Clear asks first, wherever it
+  is pressed. No pairing: the person judged that a page signed in as them is them (the risk they accepted: whoever holds
+  the account can install or update the browser and clear its logins).
+- A page on the local network that holds only the server's access token (`server/auth.ts`), or no credential at all
+  (with `OMP_WEBUI_AUTH=off`), views and uses the Browser tab but **cannot** install, update or clear (decided with the
+  person: the token is not their account).
+- Each of the three endpoints checks this on the server, from the request's own authentication (at this computer, or a
+  verified Access identity), not from what the page shows. They are routes of their own, not the app's update routes
+  (`server/this-computer.ts` keeps `/api/update*` to this computer, which does not change).
 
 ### Data
 
