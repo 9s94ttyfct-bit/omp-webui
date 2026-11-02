@@ -40,7 +40,8 @@ import type { UploadFailure } from "../shared/upload.ts";
 import { DEFAULT_USAGE_RANGE, isUsageRange } from "../shared/usage-range.ts";
 import { Auth } from "./auth.ts";
 import { canManageBrowser } from "./browser/gate.ts";
-import { LazyBrowser } from "./browser/lazy.ts";
+import { cdpPath, LazyBrowser } from "./browser/lazy.ts";
+import type { ProxyConnection } from "./browser/proxy.ts";
 import { compressResponse, serveStatic } from "./compress.ts";
 import { loadConfig } from "./config.ts";
 import { guardAgainstStrayErrors } from "./crash-guard.ts";
@@ -187,6 +188,7 @@ const cfg = loadConfig();
 // exists (a `const` below `await omp.init()` is not initialized yet, and the server ended with a ReferenceError, again
 // at every later start: #310).
 interface WsData {
+	kind: "page";
 	sub: Subscriber;
 	attached: Set<string>;
 	/** What is sent to this page, in order and never dropped (see `WsOutbox`); set when the socket opens. */
@@ -206,6 +208,20 @@ interface WsData {
 	/** Pings a remote page's socket so that Cloudflare's idle limit does not cut it (see `remote-keepalive.ts`). */
 	ping: NodeJS.Timeout | undefined;
 }
+
+/**
+ * A conversation's CDP connection to the built-in browser (`/browser-cdp/<token>/devtools/…`, see `CdpProxy`): its omp on
+ * this computer, not a page. `target`: a page's own endpoint; null for the browser's.
+ */
+interface CdpWsData {
+	kind: "cdp";
+	owner: string;
+	target: string | null;
+	out: WsOutbox | null;
+	conn: ProxyConnection | null;
+}
+
+type SocketData = WsData | CdpWsData;
 
 const sockets = new Set<Bun.ServerWebSocket<WsData>>();
 const broadcastAll = (msg: ServerMessage) => {
@@ -2508,7 +2524,7 @@ async function serveIndex(req: Request, file: string): Promise<Response> {
 }
 
 /** Everything but the WebSocket (`undefined`: the request became one). */
-async function route(req: Request, srv: Bun.Server<WsData>): Promise<Response | undefined> {
+async function route(req: Request, srv: Bun.Server<SocketData>): Promise<Response | undefined> {
 	// A request to the public hostname is let in only with a valid Access token (see `RemoteAuth.verify`); it is no local
 	// request, and a local request needs no token of Cloudflare's.
 	const remote = await remoteAuth.verify(req);
@@ -2519,6 +2535,21 @@ async function route(req: Request, srv: Bun.Server<WsData>): Promise<Response | 
 	else if (remoteAuth.isPublicHost(req.headers.get("host")) || !trusted(req))
 		return new Response("Forbidden", { status: 403 });
 	const url = new URL(req.url);
+	// A conversation's CDP endpoint (docs/agents/browser.md): its omp, on this computer, with the conversation's token in the
+	// path, and no page at all (a page sends an Origin; nothing else is let in). Before the cookie check: omp has no cookie.
+	const cdp = cdpPath(url.pathname);
+	if (cdp) {
+		if (!local || req.headers.has("origin")) return new Response("Forbidden", { status: 403 });
+		const owner = await browser.ownerOf(cdp.token);
+		if (owner === null) return new Response("Unknown token", { status: 401 });
+		const page = /^\/devtools\/page\/([A-Za-z0-9]+)$/.exec(cdp.rest);
+		if (cdp.rest === "/devtools/browser" || cdp.rest.startsWith("/devtools/browser/") || page) {
+			const data: CdpWsData = { kind: "cdp", owner, target: page?.[1] ?? null, out: null, conn: null };
+			if (srv.upgrade(req, { data })) return undefined;
+			return new Response("Upgrade failed", { status: 400 });
+		}
+		return browser.http(owner, cdp.rest, `ws://${req.headers.get("host")}/browser-cdp/${cdp.token}`);
+	}
 	// The API and the socket answer a page of this origin only; the page itself (and the token link) is served to anyone.
 	const isApi = url.pathname === "/ws" || url.pathname.startsWith("/api/");
 	if (isApi && !fromOwnPage(req)) return new Response("Forbidden", { status: 403 });
@@ -2559,6 +2590,7 @@ async function route(req: Request, srv: Bun.Server<WsData>): Promise<Response | 
 	if (url.pathname === "/ws") {
 		const sub: Subscriber = { send: () => {} };
 		const data: WsData = {
+			kind: "page",
 			sub,
 			attached: new Set(),
 			out: null,
@@ -2614,7 +2646,7 @@ async function route(req: Request, srv: Bun.Server<WsData>): Promise<Response | 
 }
 
 const listen = (hostname: string, port: number) =>
-	Bun.serve<WsData>({
+	Bun.serve<SocketData>({
 		hostname,
 		port,
 		idleTimeout: 0,
@@ -2645,7 +2677,20 @@ const listen = (hostname: string, port: number) =>
 		websocket: {
 			// Bun closes the socket on a message over its default of 16 MiB, which a prompt with a few large images is.
 			maxPayloadLength: MAX_WS_MESSAGE_BYTES,
-			open(ws) {
+			open(socket) {
+				if (socket.data.kind === "cdp") {
+					const data = socket.data;
+					const out = new WsOutbox(socket);
+					data.out = out;
+					data.conn = browser.connect(
+						data.owner,
+						{ send: (text) => out.send(text), close: (code, reason) => socket.close(code, reason) },
+						data.target,
+					);
+					if (!data.conn) socket.close(1011, "The built-in browser is not available");
+					return;
+				}
+				const ws = socket as Bun.ServerWebSocket<WsData>;
 				const out = new WsOutbox(ws);
 				ws.data.out = out;
 				ws.data.sub.send = (m) => out.send(JSON.stringify(m));
@@ -2676,7 +2721,12 @@ const listen = (hostname: string, port: number) =>
 			drain(ws) {
 				ws.data.out?.drain();
 			},
-			async message(ws, raw) {
+			async message(socket, raw) {
+				if (socket.data.kind === "cdp") {
+					socket.data.conn?.message(String(raw));
+					return;
+				}
+				const ws = socket as Bun.ServerWebSocket<WsData>;
 				// The backstop of the timer: a remote page whose token has run out is heard no more.
 				if (ws.data.remote && Date.now() >= ws.data.remote.validUntil) {
 					ws.close(ACCESS_EXPIRED, "Access session expired");
@@ -2708,7 +2758,13 @@ const listen = (hostname: string, port: number) =>
 						);
 				}
 			},
-			close(ws) {
+			close(socket) {
+				if (socket.data.kind === "cdp") {
+					socket.data.conn?.close();
+					socket.data.out?.abandon();
+					return;
+				}
+				const ws = socket as Bun.ServerWebSocket<WsData>;
 				ws.data.closed = true;
 				clearTimeout(ws.data.expiry);
 				clearInterval(ws.data.ping);
@@ -2852,6 +2908,8 @@ function shutdown(): Promise<never> {
 			if (kept > 0)
 				console.log(`omp-webui: ${kept} conversation(s) (paused, or waiting out a usage limit) stay in the background`);
 			await pool.shutdown();
+			// The Chrome for Testing this server started ends with it (the app's CEF does not: only its channel closes).
+			await browser.stop();
 			loopback?.server.stop(true);
 			// What was being sent here is stopped, and the files that were not finished are removed.
 			await folder.close();

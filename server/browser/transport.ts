@@ -127,3 +127,115 @@ export class TransportListeners {
 		for (const fn of fns) fn(why);
 	}
 }
+
+/**
+ * Several CDP connections over the engine's one: each channel numbers its own calls, and is given the answers to them,
+ * the events of the sessions it attached to (a session in a call's answer, or one an `attachedToTarget` event of its own
+ * sessions names), and nothing else. The root channel also gets the events of the root session (no `sessionId`).
+ */
+export class CdpMux {
+	private nextId = 1;
+	private readonly calls = new Map<number, { channel: MuxChannel; id: number }>();
+	private readonly sessions = new Map<string, MuxChannel>();
+	private readonly channels = new Set<MuxChannel>();
+	private root: MuxChannel | null = null;
+	private ended: string | null = null;
+
+	constructor(private readonly transport: CdpTransport) {
+		transport.onMessage((m) => this.receive(m));
+		transport.onClose((why) => {
+			this.ended = why;
+			for (const channel of [...this.channels]) channel.end(why);
+		});
+	}
+
+	/** A new channel; `root`: the one that also gets the root session's events (the server's own). */
+	open(opts: { root?: boolean } = {}): MuxChannel {
+		const channel = new MuxChannel(this);
+		if (this.ended !== null) {
+			channel.end(this.ended);
+			return channel;
+		}
+		this.channels.add(channel);
+		if (opts.root) this.root = channel;
+		return channel;
+	}
+
+	/** @internal */
+	forward(channel: MuxChannel, message: CdpMessage): void {
+		if (!this.channels.has(channel)) return;
+		const id = this.nextId++;
+		if (message.id !== undefined) this.calls.set(id, { channel, id: message.id });
+		this.transport.send({ ...message, id });
+	}
+
+	/** @internal */
+	owns(channel: MuxChannel, sessionId: string): boolean {
+		return this.sessions.get(sessionId) === channel;
+	}
+
+	/** @internal */
+	drop(channel: MuxChannel): void {
+		if (!this.channels.delete(channel)) return;
+		if (this.root === channel) this.root = null;
+		for (const [id, call] of this.calls) if (call.channel === channel) this.calls.delete(id);
+		for (const [session, owner] of this.sessions) if (owner === channel) this.sessions.delete(session);
+	}
+
+	private receive(m: CdpMessage): void {
+		if (m.id !== undefined) {
+			const call = this.calls.get(m.id);
+			if (!call) return;
+			this.calls.delete(m.id);
+			const session = (m.result as { sessionId?: unknown } | undefined)?.sessionId;
+			if (typeof session === "string") this.sessions.set(session, call.channel);
+			call.channel.deliver({ ...m, id: call.id });
+			return;
+		}
+		const channel = m.sessionId === undefined ? this.root : this.sessions.get(m.sessionId);
+		if (!channel) return;
+		const child = (m.params as { sessionId?: unknown } | undefined)?.sessionId;
+		if (m.method === "Target.attachedToTarget" && typeof child === "string") this.sessions.set(child, channel);
+		channel.deliver(m);
+		if (m.method === "Target.detachedFromTarget" && typeof child === "string") this.sessions.delete(child);
+	}
+}
+
+/** One connection of a `CdpMux`. */
+export class MuxChannel implements CdpTransport {
+	private readonly listeners = new TransportListeners();
+
+	constructor(private readonly mux: CdpMux) {}
+
+	send(message: object): void {
+		this.mux.forward(this, message as CdpMessage);
+	}
+
+	/** Whether `sessionId` is a session this channel attached to. */
+	owns(sessionId: string): boolean {
+		return this.mux.owns(this, sessionId);
+	}
+
+	onMessage(fn: (m: CdpMessage) => void): () => void {
+		return this.listeners.onMessage(fn);
+	}
+
+	onClose(fn: (why: string) => void): () => void {
+		return this.listeners.onClose(fn);
+	}
+
+	close(): void {
+		this.end("closed");
+	}
+
+	/** @internal */
+	deliver(m: CdpMessage): void {
+		this.listeners.deliver(m);
+	}
+
+	/** @internal */
+	end(why: string): void {
+		this.mux.drop(this);
+		this.listeners.end(why);
+	}
+}

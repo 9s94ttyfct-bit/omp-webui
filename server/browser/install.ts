@@ -62,8 +62,8 @@ interface Current {
 }
 
 export interface BrowserHooks {
-	/** CfT: stop the running engine (nothing when none runs). */
-	stopEngine?(): Promise<void>;
+	/** CfT: stop the running engine (nothing when none runs); `why` is told to the connections it ends. */
+	stopEngine?(why: string): Promise<void>;
 	/** CfT: start the engine again if it is wanted. */
 	startEngine?(): Promise<void>;
 	/** CEF: the app is to restart (the shell events stream's `browserRestart`). */
@@ -189,7 +189,7 @@ export class BrowserInstaller {
 		if (this.job) return Promise.resolve();
 		return this.run("clear", async () => {
 			if (this.opts.engine === "cft") {
-				await this.hooks.stopEngine?.();
+				await this.hooks.stopEngine?.("The browser restarted to clear its data");
 				try {
 					rmSync(this.profileDir(), { recursive: true, force: true });
 				} finally {
@@ -242,7 +242,7 @@ export class BrowserInstaller {
 			throw new JobError("The Chrome for Testing download holds no Chrome");
 		renameSync(part, join(dir, release.version));
 		rmSync(file, { force: true });
-		if (before) await this.hooks.stopEngine?.();
+		if (before) await this.hooks.stopEngine?.("The browser restarted for an update");
 		this.write({ ...this.current, cft: { version: release.version, platform: this.platform } });
 		if (before) {
 			this.prune();
