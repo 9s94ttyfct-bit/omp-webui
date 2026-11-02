@@ -34,10 +34,11 @@ function scratch(): string {
 	return dir;
 }
 
-test("the controls omp cannot report are the two it only lets a client set, and each says which omp setting holds it", () => {
-	expect([...UNREPORTED]).toEqual(["autoRetry", "cacheWarming"]);
+test("the controls omp cannot report are the two it only lets a client set and the advisor, and each says which omp setting holds it", () => {
+	expect([...UNREPORTED]).toEqual(["autoRetry", "cacheWarming", "advisor"]);
 	expect(configKey("autoRetry")).toBe("retry.enabled");
 	expect(configKey("cacheWarming")).toBe("providers.cacheWarming");
+	expect(configKey("advisor")).toBe("advisor.enabled");
 	// Every one has a default to make: the star writes the very setting that is read.
 	for (const setting of UNREPORTED) expect(Object.hasOwn(SESSION_DEFAULTS, setting)).toBe(true);
 });
@@ -194,14 +195,19 @@ test("what the process's overlay holds it at is the server's to say: over omp's 
 	expect(await configuredSettings(one.cfg, held)).toEqual({ autoRetry: "on", cacheWarming: "streaming" });
 	expect(runs(one.log)).toHaveLength(1);
 
-	// Holding both, it needs no omp at all.
+	// Holding all of them, it needs no omp at all.
 	const none = fakeOmp(answers);
 	const both = conversation({
 		cwd: scratch(),
 		env: { OMP_LOG: none.log },
-		overlaySettings: { "retry.enabled": true, "providers.cacheWarming": "off", "tools.approvalMode": "yolo" },
+		overlaySettings: {
+			"retry.enabled": true,
+			"providers.cacheWarming": "off",
+			"advisor.enabled": false,
+			"tools.approvalMode": "yolo",
+		},
 	});
-	expect(await configuredSettings(none.cfg, both)).toEqual({ autoRetry: "on", cacheWarming: "off" });
+	expect(await configuredSettings(none.cfg, both)).toEqual({ autoRetry: "on", cacheWarming: "off", advisor: "off" });
 	expect(runs(none.log)).toEqual([]);
 });
 

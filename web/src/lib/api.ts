@@ -431,6 +431,10 @@ export const sessionActions = {
 	/** `limit` null: the conversation follows omp's configuration again. */
 	setSessionConcurrency: (file: string, limit: number | null) =>
 		post<ConcurrencyState>("/api/subagent-concurrency/session", { file, limit }),
+	/** Whether omp's own configuration runs the advisor (`advisor.enabled`): what New chat's switch starts at; null where it could not be read. */
+	advisor: () => get<{ omp: boolean | null }>("/api/advisor"),
+	/** Whether the advisor reviews a running conversation from its next turn; kept with the conversation. */
+	setAdvisor: (liveId: string, on: boolean) => post<{ on: boolean }>("/api/advisor/live", { liveId, on }),
 	rename: (file: string, title: string) => post<{ ok: true }>("/api/session/rename", { file, title }),
 	remove: (file: string) => post<{ ok: true }>("/api/session/delete", { file }),
 	/** omp's `/move` of a conversation (by its file, or its process when it has none yet) to `folder`; where it is now. */
@@ -470,8 +474,8 @@ export const controls = {
 	setDefault: (live: string, setting: SessionDefault, value: string) =>
 		post<{ ok: true }>("/api/controls/default", { live, setting, value }),
 	/**
-	 * What omp's configuration says of the controls omp cannot report (auto-retry, cache warming) for the conversation's
-	 * process, as it reads it; the conversation's own choices (`LiveInfo.sessionSettings`) are over it.
+	 * What omp's configuration says of the controls omp cannot report (auto-retry, cache warming, the advisor) for the
+	 * conversation's process, as it reads it; the conversation's own choices (`LiveInfo.sessionSettings`, `LiveInfo.advisor`) are over it.
 	 */
 	settings: (live: string) => post<SessionSettings>("/api/controls/settings", { live }),
 	/**

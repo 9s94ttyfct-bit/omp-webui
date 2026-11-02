@@ -126,4 +126,9 @@ export const en = {
 	approvalFailed: "Could not change the permission mode: {error}",
 	// The info button of a session-panel row (`InfoButton`), which the guard's module on the first page imports.
 	controlsInfo: "About “{label}”",
+	// New chat's advisor switch (`AdvisorToggle`, on the first page), whose words the session panel's row shares.
+	controlsAdvisor: "Advisor",
+	controlsAdvisorFailed: "Could not turn the advisor on or off: {error}",
+	advisorToggleOn: "Advisor on: a second model reviews each turn",
+	advisorToggleOff: "Advisor off: no second model reviews the turns",
 };

@@ -69,6 +69,8 @@ export type OpenTarget =
 			guidance?: SessionGuidance;
 			/** Whether the conversation starts unattended (#646); absent: it does not. */
 			unattended?: boolean;
+			/** Whether the advisor reviews the conversation (see `shared/advisor.ts`); absent: omp's configuration decides. */
+			advisor?: boolean;
 			mode?: Mode;
 	  };
 
@@ -194,6 +196,12 @@ export interface LiveInfo {
 	 * window or a count of tokens, held by this process's overlay. Absent while omp's own configuration decides (Default).
 	 */
 	compactAt?: CompactAt;
+	/**
+	 * Whether the advisor reviews this conversation (omp's `advisor.enabled`, see `shared/advisor.ts`), where that is its own
+	 * choice, held by this process's overlay. Absent while omp's configuration decides (what the session panel reads with
+	 * `controls.settings`).
+	 */
+	advisor?: boolean;
 	/**
 	 * How many subagents this conversation runs at once (omp's `task.maxConcurrency`, `0`: no limit; see
 	 * `shared/subagent-concurrency.ts`), where that is its own limit, held by this process's overlay. Absent while omp's own

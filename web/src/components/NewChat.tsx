@@ -178,11 +178,12 @@ function PickersSkeleton() {
 				<span data-sk="mode" className={bar} />
 			</span>
 			<span data-sk="divider" className="mx-1 h-5 w-px shrink-0 bg-border" />
-			{/* the conversation's rules: guard, guidance (#641), permission mode, unattended mode (#646, a square), the goal */}
+			{/* the conversation's rules: guard, guidance (#641), permission mode, the advisor and unattended mode (#646; squares), the goal */}
 			<span className={group}>
 				<span data-sk="guard" className={bar} />
 				<span data-sk="guidance" className={bar} />
 				<span data-sk="approval" className={bar} />
+				<span data-sk="advisor" className={`${bar} w-8`} />
 				<span data-sk="unattended" className={`${bar} w-8`} />
 				<span data-sk="goal" className={bar} />
 			</span>
@@ -276,6 +277,12 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 	 * processes started after the folder or options change (a flip on a running process is applied to it by the switch itself).
 	 */
 	const unattendedPick = useRef(localStorage.getItem(PREF.unattended) === "on");
+	/**
+	 * Whether omp's advisor reviews the conversation: null (omp's own `advisor.enabled` decides) until the person flips the
+	 * switch here; kept for the processes started after the folder or options change (a flip on a running process is
+	 * applied to it by the switch itself).
+	 */
+	const advisorPick = useRef<boolean | null>(null);
 	const composer = useRef<ComposerHandle>(null);
 	useGoalRequest((mode) => {
 		setGoalMode(mode);
@@ -369,6 +376,7 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 						...(guardAtStart.current ? { guard: guardAtStart.current } : {}),
 						...(guidancePick.current ? { guidance: guidancePick.current } : {}),
 						unattended: unattendedPick.current,
+						...(advisorPick.current === null ? {} : { advisor: advisorPick.current }),
 					});
 				} catch (e) {
 					if (cancelled) return;
@@ -472,6 +480,7 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 				...(guardAtStart.current ? { guard: guardAtStart.current } : {}),
 				...(guidancePick.current ? { guidance: guidancePick.current } : {}),
 				unattended: unattendedPick.current,
+				...(advisorPick.current === null ? {} : { advisor: advisorPick.current }),
 			});
 		} catch (e) {
 			if (gen === madeGen.current) toast("error", errorText(e));
@@ -764,6 +773,7 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 									}}
 									guidanceDisabled={local}
 									unattended={unattendedPick}
+									advisor={advisorPick}
 									goal={goalSwitches}
 								/>
 							</Suspense>

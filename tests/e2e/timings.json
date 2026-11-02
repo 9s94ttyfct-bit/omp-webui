@@ -10,6 +10,8 @@
 		"accounts.spec.ts › providers, stored accounts, and a cancelled login": 11.7,
 		"accounts.spec.ts › signed-in providers come first, the rest are folded away, and every button says what it acts on": 6.1,
 		"accounts.spec.ts › with nothing signed in, the providers are listed open and say so": 3,
+		"advisor.spec.ts › New chat's switch starts at omp's setting, acts on the warm-up process, and what it says is what the next process starts with": 8,
+		"advisor.spec.ts › a conversation's Advisor row is its own, reaches its process, is kept across a load, and its star writes omp's setting": 6,
 		"advisor-totals.spec.ts › a conversation without an advisor shows no advisor share": 3,
 		"advisor-totals.spec.ts › the header total, its tooltip, the Info tab, the sidebar and the usage page count the advisors, apart from the subagents": 3.1,
 		"advisor-totals.spec.ts › while omp runs, an advisor that goes on writing moves every total once, with no frame to say so": 10.2,

@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { ADVISOR_KEY, advisorOf } from "../../shared/advisor.ts";
 import { type ApprovalMode, isApprovalMode } from "../../shared/approval.ts";
 import { type CompactAt, compactAtOf, compactAtWrites } from "../../shared/compact-at.ts";
 import { COMPACT_STEP_LOADED_SUFFIX, COMPACT_STEP_SUFFIX } from "../../shared/compact-step.ts";
@@ -295,15 +296,21 @@ export class ProcessOverlay {
 		 * configuration decides. omp reads it whenever a subagent asks for a slot, so a change applies to the next one that starts.
 		 */
 		public concurrency: number | null = null,
+		/**
+		 * Whether the advisor reviews this conversation (`advisor.enabled`, see `shared/advisor.ts`): held by this process's
+		 * own overlay, over omp's configuration and over what `pins` hold; null while those decide. A change starts or stops
+		 * the process's advisor once omp has reloaded the file, so it applies from the next turn.
+		 */
+		public advisor: boolean | null = null,
 	) {
 		this.write();
 	}
 
 	/**
 	 * The settings this overlay holds the process at, by omp's dotted key: what `pin` holds, what `retry.waitForUsageReset`
-	 * says where the conversation chose it, the compaction point and the subagent limit where the conversation has its own.
-	 * The file says exactly this, and the server holds it in memory, so what the process is held at never has to be read
-	 * back from a file that may have been taken away.
+	 * says where the conversation chose it, the compaction point, the subagent limit and the advisor where the conversation
+	 * has its own. The file says exactly this, and the server holds it in memory, so what the process is held at never has
+	 * to be read back from a file that may have been taken away.
 	 */
 	get settings(): Readonly<Record<string, ConfigValue>> {
 		return {
@@ -311,6 +318,7 @@ export class ProcessOverlay {
 			...(this.wait === null ? {} : { "retry.waitForUsageReset": this.wait }),
 			...(this.compact === null ? {} : compactAtWrites(this.compact)),
 			...(this.concurrency === null ? {} : { [CONCURRENCY_KEY]: this.concurrency }),
+			...(this.advisor === null ? {} : { [ADVISOR_KEY]: this.advisor }),
 		};
 	}
 
@@ -393,6 +401,13 @@ export class ProcessOverlay {
 	/** How many subagents this conversation runs at once becomes `limit` (null: omp's configuration again); resolves as `set` does. */
 	setConcurrency(limit: number | null): Promise<void> {
 		this.concurrency = limit;
+		this.write();
+		return Bun.sleep(this.reloadMs);
+	}
+
+	/** Whether the advisor reviews this conversation becomes `on` (null: omp's configuration again); resolves as `set` does. */
+	setAdvisor(on: boolean | null): Promise<void> {
+		this.advisor = on;
 		this.write();
 		return Bun.sleep(this.reloadMs);
 	}
@@ -516,6 +531,8 @@ interface Prefs {
 	compact: Record<string, CompactAt>;
 	/** How many subagents a conversation runs at once, where that is its own limit (see `shared/subagent-concurrency.ts`); by session file. */
 	concurrency: Record<string, number>;
+	/** Whether the advisor reviews a conversation, where that is its own choice (see `shared/advisor.ts`); by session file. */
+	advisor: Record<string, boolean>;
 	/** The mode (Full or Light) a conversation last ran in, by session file: what it is reopened in (see `LivePool.resume`). */
 	launch: Record<string, Mode>;
 	/** What a conversation chose of "Guard dangerous commands" over the global settings is the server's own (see `ApprovalStore.guardMap`). */
@@ -625,6 +642,11 @@ export class ApprovalStore {
 				const parsed = concurrencyOf(raw);
 				if (parsed !== null) concurrency[file] = parsed;
 			}
+			const advisor: Record<string, boolean> = {};
+			for (const [file, raw] of Object.entries(v.advisor ?? {})) {
+				const parsed = advisorOf(raw);
+				if (parsed !== null) advisor[file] = parsed;
+			}
 			const launch: Record<string, Mode> = {};
 			for (const [file, mode] of Object.entries(v.launch ?? {})) if (isMode(mode)) launch[file] = mode;
 			return {
@@ -634,10 +656,20 @@ export class ApprovalStore {
 				models,
 				compact,
 				concurrency,
+				advisor,
 				launch,
 			};
 		} catch {
-			return { default: null, sessions: {}, usageWait: {}, models: {}, compact: {}, concurrency: {}, launch: {} };
+			return {
+				default: null,
+				sessions: {},
+				usageWait: {},
+				models: {},
+				compact: {},
+				concurrency: {},
+				advisor: {},
+				launch: {},
+			};
 		}
 	}
 
@@ -729,6 +761,22 @@ export class ApprovalStore {
 		if (limit !== null) {
 			prefs.concurrency[file] = limit;
 			for (const old of Object.keys(prefs.concurrency).slice(0, -MAX_REMEMBERED)) delete prefs.concurrency[old];
+		}
+		this.save(prefs);
+	}
+
+	/** Whether the advisor reviews the conversation in `file`, if that is its own choice; null: it follows omp's configuration. */
+	sessionAdvisor(file: string): boolean | null {
+		return this.read().advisor[file] ?? null;
+	}
+
+	/** `on` null: the conversation follows omp's configuration again. */
+	rememberAdvisor(file: string, on: boolean | null): void {
+		const prefs = this.read();
+		delete prefs.advisor[file];
+		if (on !== null) {
+			prefs.advisor[file] = on;
+			for (const old of Object.keys(prefs.advisor).slice(0, -MAX_REMEMBERED)) delete prefs.advisor[old];
 		}
 		this.save(prefs);
 	}
@@ -902,6 +950,8 @@ export class ApprovalStore {
 		compact: CompactAt | null = null,
 		/** How many subagents the conversation runs at once, as it chose before (see `sessionConcurrency`). */
 		concurrency: number | null = null,
+		/** Whether the advisor reviews the conversation, as it chose (see `sessionAdvisor`). */
+		advisor: boolean | null = null,
 	): Promise<ProcessOverlay> {
 		this.dir ??= overlayDir(this.dataDir).catch((e: unknown) => {
 			// The next overlay tries again.
@@ -921,6 +971,7 @@ export class ApprovalStore {
 			absentAgents,
 			compact,
 			concurrency,
+			advisor,
 		);
 	}
 
@@ -938,6 +989,7 @@ export class ApprovalStore {
 		absentAgents: readonly string[] = [],
 		compact: CompactAt | null = null,
 		concurrency: number | null = null,
+		advisor: boolean | null = null,
 	): ProcessOverlay {
 		const overlay = new ProcessOverlay(
 			file,
@@ -952,6 +1004,7 @@ export class ApprovalStore {
 			absentAgents,
 			compact,
 			concurrency,
+			advisor,
 		);
 		overlay.park();
 		overlay.adopt();

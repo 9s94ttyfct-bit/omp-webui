@@ -1,3 +1,5 @@
+import { ADVISOR_KEY } from "./advisor.ts";
+
 /**
  * The session controls that can be made the global default ("Set as default" in the controls of a conversation), and
  * the omp settings each one stands for. omp has them as ordinary settings (`omp config set <key> <value>`): a new
@@ -75,6 +77,8 @@ export const SESSION_DEFAULTS = {
 					],
 	},
 	cacheWarming: { values: ["off", "streaming", "idle"], writes: (v) => [{ key: "providers.cacheWarming", value: v }] },
+	// The advisor (see `shared/advisor.ts`): a conversation's own choice is its overlay's, the star writes omp's own.
+	advisor: { values: ON_OFF, writes: (v) => [{ key: ADVISOR_KEY, value: v === "on" }] },
 } satisfies Record<string, Definition>;
 
 export type SessionDefault = keyof typeof SESSION_DEFAULTS;
@@ -100,11 +104,13 @@ export function defaultWrites(
 }
 
 /**
- * The controls whose value omp's `get_state` does not report. omp's RPC can set them (`set_auto_retry`,
- * `set_cache_warming`: a value of this process's own, over every file) and never read them, so what the process uses is
- * the server's to work out: what it was told, else what its configuration says (see `server/omp/session-settings.ts`).
+ * The controls whose value omp's `get_state` does not report. omp's RPC can set two of them (`set_auto_retry`,
+ * `set_cache_warming`: a value of this process's own, over every file) and never read them; the advisor
+ * (`advisor.enabled`) has no RPC command, and a conversation's own choice of it is its overlay's (`LiveInfo.advisor`). So
+ * what the process uses is the server's to work out: what it was told, else what its overlay and configuration say (see
+ * `server/omp/session-settings.ts`).
  */
-export const UNREPORTED = ["autoRetry", "cacheWarming"] as const satisfies readonly SessionDefault[];
+export const UNREPORTED = ["autoRetry", "cacheWarming", "advisor"] as const satisfies readonly SessionDefault[];
 export type Unreported = (typeof UNREPORTED)[number];
 
 /** What a process uses of the `UNREPORTED` controls, in the words of their choices; a control is absent where that is not known. */

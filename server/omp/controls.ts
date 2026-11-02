@@ -156,8 +156,9 @@ const ACTIONS: Record<string, Action> = {
 	},
 
 	/**
-	 * `{ live }`: what omp's configuration says of the controls omp cannot report (`UNREPORTED`: auto-retry, cache warming) for
-	 * this conversation's process, which uses it wherever the conversation was not told otherwise (`LiveInfo.sessionSettings`).
+	 * `{ live }`: what omp's configuration says of the controls omp cannot report (`UNREPORTED`: auto-retry, cache warming,
+	 * the advisor) for this conversation's process, which uses it wherever the conversation was not told otherwise
+	 * (`LiveInfo.sessionSettings`, and `LiveInfo.advisor` for the advisor; the overlay's values are in what is read).
 	 * Read the way the process was started: its folder, its agent directory (Light has one of its own), its
 	 * `--config` files and its `--profile`.
 	 */

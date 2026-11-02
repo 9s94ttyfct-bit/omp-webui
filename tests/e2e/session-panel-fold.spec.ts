@@ -11,7 +11,7 @@ import { expect, type Page, test } from "./fixtures.ts";
 
 const panel = (page: Page) => page.getByTestId("session-controls-panel");
 const fold = (page: Page) => panel(page).getByTestId("session-controls-advanced");
-const FOLDED = ["auto-retry", "steering-mode", "follow-up-mode", "interrupt-mode", "cache-warming"];
+const FOLDED = ["advisor", "auto-retry", "steering-mode", "follow-up-mode", "interrupt-mode", "cache-warming"];
 
 /** A page of its own whose Advanced fold starts closed, with the conversation's process running and omp's state as `state`. */
 async function openPanel(page: Page, title: string, state: Record<string, unknown> = {}) {

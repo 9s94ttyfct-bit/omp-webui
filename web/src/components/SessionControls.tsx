@@ -29,7 +29,7 @@ import {
 import { en as helpEn } from "../i18n/controls-help.ts";
 import "../i18n/later.ts";
 import { type MessageKey, registerStrings, useT } from "../i18n/index.ts";
-import { controls, type PanelConfigState } from "../lib/api.ts";
+import { controls, type PanelConfigState, sessionActions } from "../lib/api.ts";
 import { cancelCompact, queueCompact } from "../lib/compact-queue.ts";
 import { useCompactWherePref } from "../lib/compact-where.ts";
 import { setPref } from "../lib/prefs.ts";
@@ -161,6 +161,13 @@ const HELP = {
 		choices: {},
 		cost: CONCURRENCY_HELP.cost,
 		advice: CONCURRENCY_HELP.advice,
+	},
+	// Whether omp's advisor reviews the conversation: omp's `advisor.enabled`, held by the overlay.
+	advisor: {
+		what: "controlsHelp.advisorWhat",
+		choices: { on: "controlsHelp.advisorOn", off: "controlsHelp.advisorOff" },
+		cost: "controlsHelp.advisorCost",
+		advice: "controlsHelp.advisorAdvice",
 	},
 } satisfies Record<string, Help>;
 
@@ -548,6 +555,19 @@ export function SessionControls({
 			toast("error", t("panel.controlsConcurrencyFailed", { error: (e as Error).message }));
 		}
 	};
+	/**
+	 * Whether omp's advisor reviews this conversation: omp's own setting, held by the process's overlay (which omp reloads by
+	 * itself, so it applies from the next turn), and kept for when the conversation is opened again.
+	 */
+	const setAdvisor = async (on: boolean) => {
+		if (!id) return;
+		try {
+			await sessionActions.setAdvisor(id, on);
+			void reload();
+		} catch (e) {
+			toast("error", t("panel.controlsAdvisorFailed", { error: (e as Error).message }));
+		}
+	};
 	const send = async (command: Record<string, unknown>, label: string) => {
 		if (!id) return;
 		try {
@@ -684,6 +704,12 @@ export function SessionControls({
 	const followUpDefault = asDefault("followUpMode", { shown: st?.followUpMode });
 	const interruptDefault = asDefault("interruptMode", { shown: st?.interruptMode });
 	const cacheWarmingDefault = asUnreportedDefault("cacheWarming");
+	// The advisor: the conversation's own choice (every page is told it), else what its overlay and configuration say.
+	const advisorValue = live?.info.advisor === undefined ? used("advisor") : live.info.advisor ? "on" : "off";
+	const advisorDefault = asDefault("advisor", {
+		blocked: configured !== undefined && advisorValue === undefined ? t("panel.controlsUnreadable") : undefined,
+		shown: advisorValue,
+	});
 	const advancedChanged =
 		// A conversation with its own subagent limit is not on omp's default either.
 		live?.info.subagentConcurrency !== undefined ||
@@ -696,6 +722,7 @@ export function SessionControls({
 					[followUpDefault, st?.followUpMode],
 					[interruptDefault, st?.interruptMode],
 					[cacheWarmingDefault, used("cacheWarming")],
+					[advisorDefault, advisorValue],
 				] as const
 			).some(([d, shown]) => shown !== undefined && d.defaultBlocked === undefined && !d.isDefault));
 	return (
@@ -900,6 +927,17 @@ export function SessionControls({
 											/>
 										) : null,
 								}}
+							/>
+							{/* Whether omp's advisor reviews the conversation: omp's own setting, which the overlay carries. */}
+							<Segmented
+								label={t("panel.controlsAdvisor")}
+								testid="advisor"
+								help={help}
+								helpId="advisor"
+								{...advisorDefault}
+								value={advisorValue}
+								choices={onOff}
+								onChange={(v) => void setAdvisor(v === "on")}
 							/>
 							<Segmented
 								label={t("panel.controlsAutoRetry")}

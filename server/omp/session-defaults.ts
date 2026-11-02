@@ -40,7 +40,7 @@ function reported(setting: SessionDefault, state: Record<string, unknown>): stri
 		case "fastMode":
 			return onOff(state.fastModeEnabled);
 		default:
-			// Auto-retry and cache warming are write-only: omp does not say what a process has.
+			// Auto-retry and cache warming are write-only, and the advisor is a setting: omp does not say what a process has.
 			return undefined;
 	}
 }

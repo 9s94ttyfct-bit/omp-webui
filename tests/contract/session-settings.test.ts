@@ -81,7 +81,7 @@ test("a conversation that was told nothing uses omp's defaults, which is what it
 	const chat = await conversation();
 	try {
 		await chat.start();
-		expect(await configured(chat)).toEqual({ autoRetry: "on", cacheWarming: "idle" });
+		expect(await configured(chat)).toEqual({ autoRetry: "on", cacheWarming: "idle", advisor: "off" });
 		expect(await retries(chat)).toBe(true);
 	} finally {
 		chat.close();
@@ -94,7 +94,7 @@ test("omp's global config is what a conversation uses: a conversation started af
 	const chat = await conversation();
 	try {
 		await chat.start();
-		expect(await configured(chat)).toEqual({ autoRetry: "off", cacheWarming: "streaming" });
+		expect(await configured(chat)).toEqual({ autoRetry: "off", cacheWarming: "streaming", advisor: "off" });
 		expect(await retries(chat)).toBe(false);
 	} finally {
 		chat.close();
@@ -110,7 +110,7 @@ test("the folder's own config is over the global one, as omp reads it", async ()
 	const chat = await conversation(folder);
 	try {
 		await chat.start();
-		expect(await configured(chat)).toEqual({ autoRetry: "on", cacheWarming: "off" });
+		expect(await configured(chat)).toEqual({ autoRetry: "on", cacheWarming: "off", advisor: "off" });
 		expect(await retries(chat)).toBe(true);
 	} finally {
 		chat.close();
@@ -140,7 +140,7 @@ test("what a process was told is its own, over the files: every page is told, an
 			later.close();
 		}
 		// The files say what they said, and nothing was written; the process uses what it was told.
-		expect(await configured(chat)).toEqual({ autoRetry: "on", cacheWarming: "idle" });
+		expect(await configured(chat)).toEqual({ autoRetry: "on", cacheWarming: "idle", advisor: "off" });
 		expect(configYml()).toBe(original);
 		expect(await retries(chat)).toBe(false);
 
@@ -169,8 +169,8 @@ test("a default made in one conversation is what the next one starts with; the o
 
 		// The conversation it was made in was told nothing, so it follows the config it changed; the other was held at what it
 		// had (its overlay) and says so, whatever the global config is.
-		expect(await configured(origin)).toEqual({ autoRetry: "off", cacheWarming: "streaming" });
-		expect(await configured(bystander)).toEqual({ autoRetry: "on", cacheWarming: "idle" });
+		expect(await configured(origin)).toEqual({ autoRetry: "off", cacheWarming: "streaming", advisor: "off" });
+		expect(await configured(bystander)).toEqual({ autoRetry: "on", cacheWarming: "idle", advisor: "off" });
 		await reloaded(origin, bystander);
 		expect(await retries(origin)).toBe(false);
 		expect(await retries(bystander)).toBe(true);
@@ -178,7 +178,7 @@ test("a default made in one conversation is what the next one starts with; the o
 		const next = await conversation();
 		try {
 			await next.start();
-			expect(await configured(next)).toEqual({ autoRetry: "off", cacheWarming: "streaming" });
+			expect(await configured(next)).toEqual({ autoRetry: "off", cacheWarming: "streaming", advisor: "off" });
 		} finally {
 			next.close();
 		}
@@ -201,14 +201,14 @@ test("the panel still reads a conversation whose overlay file is gone: omp's fil
 		expect(
 			(await api("/api/controls/default", { live: origin.liveId, setting: "autoRetry", value: "off" })).status,
 		).toBe(200);
-		expect(await configured(origin)).toEqual({ autoRetry: "off", cacheWarming: "idle" });
-		expect(await configured(bystander)).toEqual({ autoRetry: "on", cacheWarming: "idle" });
+		expect(await configured(origin)).toEqual({ autoRetry: "off", cacheWarming: "idle", advisor: "off" });
+		expect(await configured(bystander)).toEqual({ autoRetry: "on", cacheWarming: "idle", advisor: "off" });
 
 		rmSync(overlayOf(bystander));
 		rmSync(overlayOf(origin));
 		// What a process is held at is the server's to say; the rest is omp's files', read without the overlay.
-		expect(await configured(origin)).toEqual({ autoRetry: "off", cacheWarming: "idle" });
-		expect(await configured(bystander)).toEqual({ autoRetry: "on", cacheWarming: "idle" });
+		expect(await configured(origin)).toEqual({ autoRetry: "off", cacheWarming: "idle", advisor: "off" });
+		expect(await configured(bystander)).toEqual({ autoRetry: "on", cacheWarming: "idle", advisor: "off" });
 		expect((await bystander.listing())?.exited).toBe(false);
 	} finally {
 		origin.close();

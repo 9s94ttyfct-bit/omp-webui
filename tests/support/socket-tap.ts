@@ -21,6 +21,8 @@ export interface Msg {
 		guidance?: { template?: string; text?: string };
 		/** Whether the conversation starts unattended (#646). */
 		unattended?: boolean;
+		/** Whether the advisor reviews the conversation; absent: omp's setting decides. */
+		advisor?: boolean;
 	};
 	[key: string]: unknown;
 }

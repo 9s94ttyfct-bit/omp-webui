@@ -1,5 +1,6 @@
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { advisorOf } from "../../shared/advisor.ts";
 import { type ApprovalMode, isApprovalMode } from "../../shared/approval.ts";
 import { type CompactAt, compactAtOf } from "../../shared/compact-at.ts";
 import { type CompactQueueRecord, compactQueueRecordOf } from "../../shared/compact-queue.ts";
@@ -86,6 +87,8 @@ export interface ParkedRecord {
 		compact?: CompactAt | null;
 		/** How many subagents the conversation runs at once (`ProcessOverlay.concurrency`): absent in a record an older server wrote, and while omp's configuration decides. */
 		concurrency?: number | null;
+		/** Whether the advisor reviews the conversation (`ProcessOverlay.advisor`): absent in a record an older server wrote, and while omp's configuration decides. */
+		advisor?: boolean | null;
 	} | null;
 	/**
 	 * What the process was told of the controls omp cannot report (`LiveInfo.sessionSettings`): it keeps them while it is
@@ -308,6 +311,7 @@ function parse(text: string): ParkedRecord | "other" | null {
 					pins: pinsOf(overlay.pins),
 					compact: compactAtOf(overlay.compact),
 					concurrency: concurrencyOf(overlay.concurrency),
+					advisor: advisorOf(overlay.advisor),
 				}
 			: null,
 		descendants: v.descendants ?? [],

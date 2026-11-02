@@ -1,6 +1,7 @@
 import { existsSync, realpathSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { advisorOf } from "../shared/advisor.ts";
 import { type ApprovalMode, isApprovalMode } from "../shared/approval.ts";
 import { COMPACT_KEYS, type CompactAt } from "../shared/compact-at.ts";
 import { compactWhereOf, type HeldPrompt, instructionsOf, type StepUnavailable } from "../shared/compact-queue.ts";
@@ -1123,6 +1124,7 @@ export class Live {
 						pins: { ...this.overlay.pins },
 						compact: this.overlay.compact,
 						concurrency: this.overlay.concurrency,
+						advisor: this.overlay.advisor,
 					}
 				: null,
 			descendants: this.descendants,
@@ -1422,6 +1424,7 @@ export class Live {
 			...(overlay?.models ? { models: overlay.models } : {}),
 			...(overlay?.compact ? { compactAt: overlay.compact } : {}),
 			...(overlay && overlay.concurrency !== null ? { subagentConcurrency: overlay.concurrency } : {}),
+			...(overlay && overlay.advisor !== null ? { advisor: overlay.advisor } : {}),
 			// What it was told before it was frozen: omp reports neither of these controls, and a record is all there is.
 			...(restored?.sessionSettings && Object.keys(restored.sessionSettings).length > 0
 				? { sessionSettings: restored.sessionSettings }
@@ -1658,6 +1661,7 @@ export class Live {
 			if (from && to) this.pool.carryModels(from, to);
 			if (from && to) this.pool.carryCompact(from, to);
 			if (from && to) this.pool.carryConcurrency(from, to);
+			if (from && to) this.pool.carryAdvisor(from, to);
 			if (from && to) this.pool.carryGuidance(from, to);
 			if (from && to) this.pool.carryUnattended(from, to);
 			if (from && to) this.pool.carryLaunchMode(from, to);
@@ -3035,6 +3039,24 @@ export class Live {
 	}
 
 	/**
+	 * Whether the advisor reviews this conversation becomes `on` (null: omp's configuration again). The process's overlay
+	 * says it, which omp reloads by itself: a changed `advisor.enabled` starts or stops the process's advisor at once, so the
+	 * next turn is reviewed or not, and nothing is restarted. Notes the advisor already wrote stay. The choice is kept with
+	 * the conversation for when it is opened again (`LivePool.rememberAdvisor`).
+	 */
+	async setAdvisor(on: boolean | null): Promise<void> {
+		if (!this.overlay) throw new Error("This process does not take settings");
+		if (this.info.exited || this.client.closing) throw new Error("This conversation is not running");
+		const reloaded = this.overlay.setAdvisor(on);
+		if (on !== null) this.info.advisor = on;
+		else delete this.info.advisor;
+		this.pool.rememberAdvisor(this, on);
+		await reloaded;
+		this.pool.announce(this);
+		this.persist();
+	}
+
+	/**
 	 * omp took `set_auto_retry` or `set_cache_warming`, which it never reports back (see `UNREPORTED`): from now on the
 	 * value is this process's own, over every file it reads, and the server keeps it for the pages (`LiveInfo.sessionSettings`).
 	 * `answer` is omp's: for cache warming it is the mode the process runs in, which is what is kept.
@@ -4012,6 +4034,21 @@ export class LivePool {
 			approval.rememberConcurrency(sessionKey(to), picked);
 	}
 
+	/** The conversation moved from one session file to another: whether the advisor reviews it goes along. */
+	carryAdvisor(from: string, to: string): void {
+		const approval = this.approval;
+		if (!approval) return;
+		const picked = approval.sessionAdvisor(sessionKey(from));
+		if (picked !== null && approval.sessionAdvisor(sessionKey(to)) === null)
+			approval.rememberAdvisor(sessionKey(to), picked);
+	}
+
+	/** Whether the advisor reviews the conversation `live` holds was chosen (null: its choice is forgotten): kept for when it is opened again. */
+	rememberAdvisor(live: Live, on: boolean | null): void {
+		const { sessionFile } = live.info;
+		if (sessionFile) this.approval?.rememberAdvisor(sessionKey(sessionFile), on);
+	}
+
 	/** The conversation moved from one session file to another: the choice made for it about waiting out usage limits goes along. */
 	carryUsageWait(from: string, to: string): void {
 		const approval = this.approval;
@@ -4394,6 +4431,8 @@ export class LivePool {
 			const guidance = this.pickedGuidance(target.guidance);
 			// And of unattended mode (#646): off unless the page says so (the person's default for new chats is the page's).
 			const unattended = this.unattended !== null && target.unattended === true;
+			// And of the advisor: omp's configuration decides unless the page says otherwise.
+			const advisor = advisorOf(target.advisor);
 			const started = async (): Promise<Live> => {
 				const live = await this.spawn(
 					target.cwd,
@@ -4405,6 +4444,7 @@ export class LivePool {
 					NO_TOOL_POLICIES,
 					guidance,
 					unattended,
+					advisor,
 				);
 				if (guard) live.setGuard(guard);
 				return live;
@@ -4427,6 +4467,14 @@ export class LivePool {
 				if (mode)
 					try {
 						await spare.setApprovalMode(mode, false);
+					} catch (e) {
+						if (!gone()) throw e;
+						return started();
+					}
+				// The advisor as this page picked it (or omp's configuration), not as a page that left the process did.
+				if ((spare.info.advisor ?? null) !== advisor)
+					try {
+						await spare.setAdvisor(advisor);
 					} catch (e) {
 						if (!gone()) throw e;
 						return started();
@@ -4621,6 +4669,8 @@ export class LivePool {
 		guidance?: KeptGuidance | null,
 		/** Whether a new conversation starts unattended (see `OpenTarget`; undefined: what was kept for its file). */
 		unattended?: boolean,
+		/** Whether the advisor reviews a new conversation (see `OpenTarget`; null: omp's configuration; undefined: what was kept for its file). */
+		advisor?: boolean | null,
 	): Promise<Live> {
 		const launch = planned ?? (await this.plan(args, sessionFile));
 		const liveId = `L${++this.seq}-${Date.now().toString(36)}`;
@@ -4628,6 +4678,12 @@ export class LivePool {
 		const models =
 			this.approval && sessionFile && !runsLocal(launch) ? this.approval.sessionModels(sessionKey(sessionFile)) : null;
 		const absent = models ? await this.absentModels(cwd, models) : { roles: [], agents: [] };
+		const ownAdvisor =
+			advisor !== undefined
+				? advisor
+				: sessionFile
+					? (this.approval?.sessionAdvisor(sessionKey(sessionFile)) ?? null)
+					: null;
 		const start = await this.approval?.startingMode(cwd, sessionFile, requested, launch.env);
 		const overlay =
 			this.approval && start
@@ -4641,6 +4697,7 @@ export class LivePool {
 						absent.agents,
 						sessionFile ? this.approval.sessionCompact(sessionKey(sessionFile)) : null,
 						sessionFile ? this.approval.sessionConcurrency(sessionKey(sessionFile)) : null,
+						ownAdvisor,
 					)
 				: null;
 		const live = new Live(
@@ -4688,6 +4745,8 @@ export class LivePool {
 		if (guidance) this.rememberGuidance(live, guidance);
 		// The same of unattended mode (#646).
 		if (unattended) this.rememberUnattended(live, true);
+		// And whether the advisor reviews it, where the page chose.
+		if (advisor !== undefined && advisor !== null) this.rememberAdvisor(live, advisor);
 		await live.untilGuidanceSaid();
 		await live.untilUnattendedSaid();
 		this.announce(live);
@@ -4810,6 +4869,7 @@ export class LivePool {
 						record.overlay.absentAgents ?? [],
 						record.overlay.compact ?? null,
 						record.overlay.concurrency ?? null,
+						record.overlay.advisor ?? null,
 					)
 				: null;
 		const live = new Live(

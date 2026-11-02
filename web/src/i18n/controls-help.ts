@@ -132,6 +132,16 @@ export const en = {
 	concurrencyAdvice:
 		"Keep Default for most work. Pick 1–4 when a provider limits requests per minute or you want subagents to run one after another (for example edits to the same files); Unlimited only for many small, independent lookups.",
 
+	advisorWhat:
+		"omp's advisor: a second model (the one assigned to the advisor role) that reads each turn of this conversation and adds notes for the agent. On and Off are this conversation's own; the star makes the shown value omp's setting for new conversations. A change applies from the next turn, without a restart.",
+	advisorOn: "The advisor reviews each turn and may add notes the agent sees.",
+	advisorOff:
+		"No reviews from the next turn. Notes the advisor already wrote stay in the conversation; other conversations are not affected.",
+	advisorCost:
+		"Each review is a request to the advisor's model, with its own usage and cost (shown apart in the conversation's cost). With no model assigned to the advisor role, On does nothing.",
+	advisorAdvice:
+		"Keep it on for long or risky work where a second opinion catches mistakes; turn it off for quick questions, or to save requests when a quota is low.",
+
 	compactWhat:
 		"Summarizes the older part of the conversation now (omp's /compact) to free context. The instructions say what the summary must keep.",
 	compactCost:

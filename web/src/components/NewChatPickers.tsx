@@ -5,6 +5,7 @@ import { lazy, type MutableRefObject, type ReactNode, Suspense } from "react";
 import { lazyChunk } from "../lib/lazy-chunk.ts";
 import type { PickedModel } from "../lib/new-chat-picks.ts";
 import type { ModelInfo } from "../store/live.ts";
+import { AdvisorToggle } from "./AdvisorToggle.tsx";
 import { ApprovalPicker } from "./ApprovalPicker.tsx";
 import { ModelPicker, ThinkingPicker } from "./ModelPicker.tsx";
 import { ModePicker } from "./ModePicker.tsx";
@@ -16,7 +17,7 @@ const UnattendedToggle = lazy(() => import("./UnattendedToggle.tsx"));
 /**
  * New chat's settings bar, under its composer: preset, model, thinking level and the Full / Light chip (the mode of that
  * process and of the next new chat), a divider, then the conversation's rules: guard, the guidance its main agent is
- * given (#641; its own chunk, as most people never pick one), permission mode, unattended mode and the goal. Every one is
+ * given (#641; its own chunk, as most people never pick one), permission mode, the advisor, unattended mode and the goal. Every one is
  * always shown; a narrow bar shows their icons. They are shown once the warm-up process runs, which is after the first
  * paint, so they are a chunk of their own (`NewChat` fetches it when the warm-up starts) and the menus and popovers they
  * are made of are not in the first load.
@@ -37,6 +38,7 @@ export function NewChatPickers({
 	onGuard,
 	guidance,
 	unattended,
+	advisor,
 	onGuidance,
 	guidanceDisabled,
 	goal,
@@ -54,6 +56,8 @@ export function NewChatPickers({
 	guidanceDisabled?: boolean;
 	/** What New chat has picked of unattended mode (#646): the switch reads it and writes it (a flip is kept for the processes started later). */
 	unattended: MutableRefObject<boolean>;
+	/** What New chat has picked of the advisor (null: omp's setting): the switch reads it and writes it. */
+	advisor: MutableRefObject<boolean | null>;
 	/** New chat's own controls (the goal switches), at the end of the bar. */
 	goal?: ReactNode;
 }) {
@@ -84,6 +88,7 @@ export function NewChatPickers({
 					<GuidancePicker value={guidance} liveId={liveId} disabled={guidanceDisabled} onPick={onGuidance} />
 				</Suspense>
 				<ApprovalPicker liveId={liveId} onChange={onApproval} />
+				<AdvisorToggle liveId={liveId} pick={advisor} />
 				<Suspense
 					fallback={
 						<span aria-hidden data-testid="unattended-skeleton" className="h-8 w-8 shrink-0 rounded-lg bg-hover" />

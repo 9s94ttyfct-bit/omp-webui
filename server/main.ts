@@ -72,6 +72,7 @@ import type { MemoryService } from "./memory/routes.ts";
 import type { MigrateService } from "./migrate/service.ts";
 import { sweepMigrateDir } from "./migrate/sweep.ts";
 import { createModeApi, ModeService } from "./offline/index.ts";
+import { readAdvisorDefault } from "./omp/advisor.ts";
 import { ApprovalStore, sessionKey } from "./omp/approval.ts";
 import { BtwForks, sweepForkDir } from "./omp/btw-fork.ts";
 import { cliHelp, cliInventory, ompVersion, resetCliInventory } from "./omp/cli.ts";
@@ -274,6 +275,8 @@ const ownUsageWait = new ConfigRead(join(cfg.agentDir, "config.yml"), () => appr
 const ownCompactAt = new ConfigRead(join(cfg.agentDir, "config.yml"), () => readCompactDefaults(cfg));
 // And omp's own limit of subagents that run at once, which the session panel and Settings show as what "Default" means.
 const ownConcurrency = new ConfigRead(join(cfg.agentDir, "config.yml"), () => readConcurrencyDefault(cfg));
+// And whether omp's own configuration runs the advisor, which New chat's switch starts at.
+const ownAdvisor = new ConfigRead(join(cfg.agentDir, "config.yml"), () => readAdvisorDefault(cfg));
 // A migration's uploads and finished exports are for the server that made them: what a crash left is removed.
 sweepMigrateDir(cfg.dataDir);
 // The copies of conversations a server that was killed left for the side questions it was answering are of no use any more.
@@ -1682,6 +1685,25 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				return fail((e as Error).message, 409);
 			}
 			return json({ omp: await ownConcurrency.get(), session: limit });
+		}
+		case "/api/advisor":
+			// Whether omp's own configuration runs the advisor (`advisor.enabled`, see `shared/advisor.ts`): what New chat's
+			// switch starts at. The session panel's star changes it (`/api/controls/default`, setting `advisor`).
+			return json({ omp: await ownAdvisor.get() });
+		case "/api/advisor/live": {
+			// Whether the advisor reviews one running conversation: a line of its process's overlay, which omp reloads by itself
+			// (the next turn is reviewed, or not, without a restart), kept with the conversation for when it is opened again.
+			if (req.method !== "POST") return fail("POST required", 405);
+			const body: unknown = await req.json().catch(() => null);
+			const live = isRecord(body) && typeof body.liveId === "string" ? pool.get(body.liveId) : undefined;
+			if (!live || live.info.exited) return fail("Live session not found", 404);
+			if (!isRecord(body) || typeof body.on !== "boolean") return fail("on must be true or false", 422);
+			try {
+				await live.setAdvisor(body.on);
+			} catch (e) {
+				return fail(`Could not change the advisor: ${(e as Error).message}`, 409);
+			}
+			return json({ on: body.on });
 		}
 		case "/api/usage-reset-wait": {
 			// Whether a failed turn waits out its provider's usage limit is omp's own retry (`retry.waitForUsageReset`):

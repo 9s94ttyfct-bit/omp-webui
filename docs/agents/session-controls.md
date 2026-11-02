@@ -16,9 +16,10 @@ Runtime settings of the conversation's own omp process. Rows:
 - **Compact at (context used)**: where omp compacts (Default / Percent of window / Tokens). See the compaction topic.
 - **Fast mode** (On/Off): the provider's priority tier (omp's `/fast`) for the model's family (Anthropic, OpenAI or Google); billed at a premium. Models whose family is unknown (OpenRouter, a local server) have no default star.
 - **Slow mode** (shown when the model supports it): either Claude's low-priority lane at the usage limit (omp's global setting `providers.anthropic.slowMode`, written to omp's `config.yml`, affects every conversation) or the provider's flex tier (this conversation only). A *Claude slow mode* row appears when the model is not Claude but the setting exists. No default star.
+- **Advisor** (On/Off, in Advanced): whether omp's advisor — a second model, the one assigned to the `advisor` role — reviews this conversation's turns and adds notes. The choice is this conversation's own (a line of its process's `--config` overlay, which omp reloads by itself): it applies from the next turn without a restart, notes already written stay, and other conversations are not affected. It is kept with the conversation across reopening, pause/resume and a server restart. Until the conversation chooses, it follows omp's `advisor.enabled`. The star writes omp's `advisor.enabled`. New chat's settings bar has the same switch (glasses icon, beside the permission mode), which starts at omp's `advisor.enabled` until it is flipped.
 - The conversation's **guard** and **Full / Light** mode rows (see their own topics). Switching mode restarts omp in the other mode and resumes the conversation; while a turn runs the switch waits for it to end. A paused conversation cannot switch mode.
 - **Compact context**: optional instructions (*Optional: what to keep*) and *Compact now*; while omp works it becomes *Compact after this turn* / *Compact between steps* with a *Where the compact runs* choice, and a queued compact can be cancelled.
-- **Advanced** (folded; remembers whether it is open; a dot means one of these is not omp's default): **Parallel subagents** (Default (N) / 1–16 / Unlimited: how many subagents this conversation runs at once; see the agent graph topic), **Auto-retry** (On/Off), **Steering delivery** (One at a time / All), **Follow-up delivery** (One at a time / All), **Interrupt tools on steer** (Immediately / Wait), **Prompt-cache warming** (Off / Streaming / Idle).
+- **Advanced** (folded; remembers whether it is open; a dot means one of these is not omp's default): **Advisor** (On/Off, above), **Parallel subagents** (Default (N) / 1–16 / Unlimited: how many subagents this conversation runs at once; see the agent graph topic), **Auto-retry** (On/Off), **Steering delivery** (One at a time / All), **Follow-up delivery** (One at a time / All), **Interrupt tools on steer** (Immediately / Wait), **Prompt-cache warming** (Off / Streaming / Idle).
 
 Every row and Compact context has an ⓘ *About* explanation (what it does, each choice, cost and risk, recommendation).
 
@@ -74,11 +75,13 @@ The Todos tab and the todo strip let the user finish/reopen a task, change its s
 | `session:interruptMode` | `immediate`, `wait` | omp's own default (`immediate`) | Star writes omp config `interruptMode`. |
 | `session:fastMode` | `on`, `off` | omp's own default | Star writes omp config `tier.<family>` (`anthropic`, `openai` or `google`, the model's family): `priority` for on; for off `none`, only over `priority` or `ultrafast`. |
 | `session:cacheWarming` | `off`, `streaming`, `idle` | omp's own default (`idle`) | Star writes omp config `providers.cacheWarming`. |
+| `session:advisor` | `on`, `off` | omp's own default (`advisor.enabled`, off unless set) | Star writes omp config `advisor.enabled` (`true`/`false`). A conversation's own choice is its overlay's, over this. |
 
 | Stored in | Field | Values | Default | Effect |
 |---|---|---|---|---|
 | `approval.json` (omp-webui data folder) | `default` | `always-ask`, `always-ask-cached`, `write`, `yolo`, or null | null (follow omp's `tools.approvalMode`) | Permission mode of new conversations. |
 | `approval.json` | `sessions` | session file → mode | none | The mode the user picked per conversation, used when it is reopened. |
+| `approval.json` | `advisor` | session file → `true`/`false` | none (follow omp's `advisor.enabled`) | Whether the advisor reviews a conversation, where it chose (This session or New chat); used when it is reopened. |
 
 ## API routes
 
@@ -93,9 +96,11 @@ The Todos tab and the todo strip let the user finish/reopen a task, change its s
 | `/api/controls/mcp` | POST | token | `{ live, name, enabled }`: MCP server on/off via `/mcp enable\|disable`. Running Full conversations only. |
 | `/api/controls/restart` | POST | token | `{ live }`: end the conversation's omp if idle (409 while working, waiting or paused) so the page can resume it anew. |
 | `/api/controls/default` | POST | token | `{ live, setting, value }`: make a session control omp's global default (`SESSION_DEFAULTS`). Refused in Light. |
-| `/api/controls/settings` | POST | token | `{ live }`: what omp's configuration says for auto-retry and cache warming for this process. |
+| `/api/controls/settings` | POST | token | `{ live }`: what this process uses of auto-retry, cache warming and the advisor where omp does not report it (its overlay, else omp's configuration). |
 | `/api/controls/panel-config` | POST | token | `{ live }`: Claude slow mode in omp's config and the folder's defaults (which rows are already the default). |
 | `/api/controls/claude-slow` | POST | token | `{ live, enabled }`: Claude slow mode in omp's global config (every conversation). Refused in Light. |
+| `/api/advisor` | GET | token | `{ omp }`: whether omp's own configuration runs the advisor (`advisor.enabled`; null when it could not be read): what New chat's switch starts at. |
+| `/api/advisor/live` | POST | token | `{ liveId, on }`: the advisor on or off for one running conversation from its next turn (its overlay), kept with the conversation. 404 for no such process, 422 for an `on` that is not a boolean. |
 | `/api/loaded` | GET | token | `?live=&file=`: the Loaded dialog's contents (tools, MCP servers, commands, skills, plugins, rules) and `restartOwed`. |
 | `/api/lives` | GET | token | The omp processes this server runs (live id, session file, folder, mode, paused/working state), as Settings › Running sessions lists them. |
 | `/api/lives/end-kept` | POST | token | End every kept conversation (paused, or waiting out a usage limit), as the macOS app's *Quit and end* does; answers `{ ended }`. |
@@ -104,7 +109,8 @@ The Todos tab and the todo strip let the user finish/reopen a task, change its s
 
 - Changes in This session apply to this omp process only, except the star (global omp config), slow mode for Claude (global) and skill switches (global).
 - MCP changes need an omp restart; restart is refused while the conversation works, waits for input, or is paused.
-- Auto-retry and cache warming are not reported by omp; the server shows what it told the process, else what omp's config says.
+- Auto-retry, cache warming and the advisor are not reported by omp; the server shows what it told the process (its overlay for the advisor), else what omp's config says.
+- The advisor runs only when a model is assigned to omp's `advisor` role; without one, On does nothing. omp's own `/advisor status` may still say *running* after the advisor was turned off live: it is not, and the next turn is not reviewed.
 - Auto-approve runs every tool without asking.
 
 ## Security notes

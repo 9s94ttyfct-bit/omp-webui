@@ -260,6 +260,10 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	controlsConcurrencySaved: "并行子代理：{value}",
 	controlsConcurrencySavedDefault: "并行子代理：omp 的默认值",
 	controlsConcurrencyFailed: "无法设置同时运行的子代理数量：{error}",
+	controlsAdvisor: "顾问",
+	controlsAdvisorFailed: "无法开关顾问：{error}",
+	advisorToggleOn: "顾问已开：另一个模型会审阅每一轮",
+	advisorToggleOff: "顾问已关：没有第二个模型审阅",
 
 	goalPaused: "已暂停",
 	goalPausing: "暂停中 · 正在完成当前这一步",
