@@ -93,7 +93,9 @@ export type ScreenServerMessage =
 	| { t: "pages"; owner: string; pages: PageInfo[] }
 	| { t: "console"; targetId: string; entry: ConsoleEntry }
 	/** The browser cannot be used now (not installed, failed to start, restarted): why, in words. */
-	| { t: "unavailable"; reason: string };
+	| { t: "unavailable"; reason: string }
+	/** It can be used again: the tab's last watch, which could not be carried out, has been now. */
+	| { t: "available" };
 
 /** What precedes a frame's JPEG. `w`/`h`: the page's layout size in CSS pixels the frame shows. */
 export interface FrameHeader {

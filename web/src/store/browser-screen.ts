@@ -102,6 +102,9 @@ function received(msg: ScreenServerMessage): void {
 		case "unavailable":
 			useScreen.setState({ unavailable: msg.reason, answered: true });
 			return;
+		case "available":
+			useScreen.setState({ unavailable: null });
+			return;
 	}
 }
 

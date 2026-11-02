@@ -226,3 +226,41 @@ test("a tab that draws the page itself (the Mac app's view) is told its console,
 	expect(tab.frames).toEqual([]);
 	expect(browser.log.some((l) => l.method === "Page.startScreencast")).toBe(false);
 });
+
+test("a tab whose watch came before the engine could be used watches again once it can, and is told so", async () => {
+	const registry = new PageRegistry(join(work, "owners-late.json"));
+	// The app's browser, over one connection and then another (its pages stay): the second sees the first's pages.
+	const first = new FakeBrowser();
+	const browser = new FakeBrowser();
+	let linked = true;
+	const host = new EngineHost(registry, async () => {
+		if (!linked) throw new Error("the app's browser is not connected");
+		return { transport: browser.targets.size ? browser : first, generation: "g", fresh: false };
+	});
+	const page = await (await host.ready()).createPage("/s/a.jsonl");
+	for (const [id, info] of first.targets) browser.targets.set(id, info);
+	// The engine's connection ends (the app's server restarted) and the tab's watch comes before the app is linked again.
+	linked = false;
+	await host.stop("The app connected again");
+	const hub = new ScreenHub(host, registry);
+	const tab = new Socket();
+	hub
+		.connect(tab)
+		.message(JSON.stringify({ t: "watch", owner: "/s/a.jsonl", targetId: page, panel: { w: 800, h: 600 } }));
+	await until(() => tab.texts.some((m) => m.t === "unavailable"));
+
+	linked = true;
+	hub.engineBack();
+	await until(() => tab.texts.some((m) => m.t === "available"));
+	expect(tab.texts.findLast((m) => m.t === "pages")).toMatchObject({
+		owner: "/s/a.jsonl",
+		pages: [{ targetId: page }],
+	});
+	browser.emitOnPage(page, "Runtime.consoleAPICalled", { type: "error", args: [{ type: "string", value: "boom" }] });
+	await until(() => tab.texts.some((m) => m.t === "console"));
+	// A tab that was never told it could not be used is not made to watch again.
+	const before = tab.texts.length;
+	hub.engineBack();
+	await Bun.sleep(10);
+	expect(tab.texts.length).toBe(before);
+});

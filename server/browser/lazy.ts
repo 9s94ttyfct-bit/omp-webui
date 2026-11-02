@@ -75,7 +75,12 @@ export class LazyBrowser {
 	 */
 	attachApp(socket: AppSocket): CefLink {
 		this.#link?.end("The app connected again");
-		const link = new CefLink(socket, () => this.opts.engineLinked());
+		// The app's CEF said hello: the conversations' endpoints are named again, and the Browser tabs told it could not be
+		// used watch again.
+		const link = new CefLink(socket, () => {
+			this.opts.engineLinked();
+			this.#service?.screen.engineBack();
+		});
 		this.#link = link;
 		return link;
 	}
@@ -132,7 +137,9 @@ export class LazyBrowser {
 							await host.stop(why);
 						},
 						startEngine: async () => {
-							if (wasRunning) await host.ready().catch(() => {});
+							if (!wasRunning) return;
+							await host.ready().catch(() => {});
+							this.#service?.screen.engineBack();
 						},
 						requestAppRestart: () => this.opts.requestAppRestart(),
 					},

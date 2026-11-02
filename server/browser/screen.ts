@@ -262,12 +262,19 @@ export class ScreenHub {
 			this.views.clear();
 			this.bySession.clear();
 			this.settledViews.clear();
-			const text = JSON.stringify({ t: "unavailable", reason: why } satisfies ScreenServerMessage);
 			for (const c of this.clients) {
-				c.socket.sendText(text);
+				c.tellUnavailable(why);
 				c.sendPages();
 			}
 		});
+	}
+
+	/**
+	 * The engine can be used again (the app's CEF said hello, or CfT started again after a Clear or an update): every tab
+	 * that was told it could not be watches again what it last asked to, and is told the browser is back.
+	 */
+	engineBack(): void {
+		for (const c of this.clients) c.retry();
 	}
 
 	connect(socket: ScreenSocket): ScreenClient {
@@ -424,6 +431,9 @@ export class ScreenClient {
 	private readonly fitted = new Set<PageView>();
 	/** The tab's messages are handled one after the other, in order (a press before its release, watch before size). */
 	private queue: Promise<void> = Promise.resolve();
+	/** The tab's last watch, and whether it was told the browser cannot be used since that watch was carried out. */
+	private lastWatch: Extract<ScreenClientMessage, { t: "watch" }> | null = null;
+	private stale = false;
 
 	constructor(
 		private readonly hub: ScreenHub,
@@ -439,7 +449,30 @@ export class ScreenClient {
 			return;
 		}
 		if (typeof msg !== "object" || msg === null) return;
-		this.queue = this.queue.then(() => this.handle(msg).catch((e: unknown) => this.unavailable(e)));
+		this.enqueue(msg);
+	}
+
+	private enqueue(msg: ScreenClientMessage): void {
+		this.queue = this.queue.then(() =>
+			this.handle(msg).then(
+				() => {
+					if (msg.t !== "watch" || this.closed) return;
+					this.lastWatch = msg;
+					if (!this.stale) return;
+					this.stale = false;
+					this.socket.sendText(JSON.stringify({ t: "available" } satisfies ScreenServerMessage));
+				},
+				(e: unknown) => {
+					if (msg.t === "watch") this.lastWatch = msg;
+					this.tellUnavailable(e instanceof Error ? e.message : String(e));
+				},
+			),
+		);
+	}
+
+	/** The engine is back: a tab that was told it could not be used watches what it last asked to again. */
+	retry(): void {
+		if (this.stale && this.lastWatch && !this.closed) this.enqueue(this.lastWatch);
 	}
 
 	close(): void {
@@ -455,8 +488,8 @@ export class ScreenClient {
 		this.socket.sendText(JSON.stringify({ t: "pages", owner: this.owner, pages } satisfies ScreenServerMessage));
 	}
 
-	private unavailable(e: unknown): void {
-		const reason = e instanceof Error ? e.message : String(e);
+	tellUnavailable(reason: string): void {
+		this.stale = true;
 		this.socket.sendText(JSON.stringify({ t: "unavailable", reason } satisfies ScreenServerMessage));
 	}
 
