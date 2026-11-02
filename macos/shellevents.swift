@@ -15,6 +15,8 @@ enum ShellMessage: Equatable {
 	case state(ShellState, epoch: String)
 	/// A conversation needs somebody (a notification to show); `seq` numbers the notices of an epoch from 1.
 	case attention(Banner, seq: Int)
+	/// The built-in browser's engine changed (a CEF install, update or Clear, server/browser/install.ts): the app is to start again.
+	case browserRestart
 }
 
 /// The message a line is, or nil for anything else (a line a newer server sends that this app does not know, or damage).
@@ -40,6 +42,8 @@ func parseShellMessage(_ line: String) -> ShellMessage? {
 		else { return nil }
 		let file = (json["file"] as? String).flatMap { $0.isEmpty ? nil : $0 }
 		return .attention(Banner(id: id, title: title, body: body, liveId: liveId, file: file), seq: seq)
+	case "browserRestart":
+		return .browserRestart
 	default:
 		return nil
 	}
@@ -232,6 +236,7 @@ final class ShellEventStream: NSObject, URLSessionDataDelegate {
 			switch message {
 			case .state(_, let served): if served != epoch { (epoch, lastSeq) = (served, 0) }
 			case .attention(_, let seq): lastSeq = max(lastSeq, seq)
+			case .browserRestart: break
 			}
 			onMessage(message)
 		}

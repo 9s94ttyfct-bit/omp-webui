@@ -76,6 +76,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 	var askingToQuit = false
 	/// The server's update has been handed to its helper and the app was asked to quit for it (`quitForUpdate`).
 	var quittingForUpdate = false
+	/// The built-in browser asked the app to start again and the person agreed (`restartForBrowser`): it quits, then opens again.
+	var restartingForBrowser = false
 	/// Run in Background: the app has no window and is not a regular app, and its menu bar icon is what is left of it (see
 	/// `BackgroundMode`). The server and its conversations run on.
 	var background: BackgroundMode!
@@ -193,6 +195,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 	/// The built-in browser's pages close and its engine stops with the app.
 	func applicationWillTerminate(_ notification: Notification) {
 		BrowserEngine.stop()
+		if restartingForBrowser { relaunchWhenGone() }
+	}
+
+	/// The built-in browser's engine changed (a CEF install, update or Clear): it is loaded once per run of the app, so the app
+	/// starts again. That is a quit like ⌘Q's without the choice of the background: it asks first while a conversation is still
+	/// working (paused ones and ones waiting out a usage limit stay, as on any quit), and nothing happens when the person says
+	/// Cancel (Settings › Browser still says the app has to restart).
+	func restartForBrowser() {
+		guard !stoppingServer, !askingToQuit, !quittingForUpdate, !restartingForBrowser, origin != nil else { return }
+		askingToQuit = true
+		readQuitContext { context in
+			let finish = { (quit: Bool) in
+				self.askingToQuit = false
+				guard quit else { return }
+				self.restartingForBrowser = true
+				NSApp.terminate(nil)
+			}
+			if context.running.needsWarning { self.answer(quitDialog(context, offersBackground: false), finish) } else { finish(true) }
+		}
+	}
+
+	/// The app opens again once this process is gone: a second copy would only bring this one forward and leave.
+	private func relaunchWhenGone() {
+		let relauncher = Process()
+		relauncher.executableURL = URL(fileURLWithPath: "/bin/sh")
+		relauncher.arguments = [
+			"-c", "while /bin/kill -0 \"$1\" 2>/dev/null; do /bin/sleep 0.2; done; exec /usr/bin/open \"$2\"", "relaunch",
+			String(ProcessInfo.processInfo.processIdentifier), Bundle.main.bundlePath,
+		]
+		try? relauncher.run()
 	}
 
 	/// Quitting asks first, unless the person chose an answer for good: run in the background (the window closes; the app,
@@ -215,7 +247,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 			if askingToQuit && NSApp.modalWindow != nil { NSApp.abortModal() }
 			return .terminateLater
 		}
-		if quittingForUpdate || endingSession || serverGone || origin == nil {
+		if quittingForUpdate || restartingForBrowser || endingSession || serverGone || origin == nil {
 			guard supervisor != nil else { return .terminateNow }
 			stopServerAndQuit()
 			return .terminateLater
@@ -400,6 +432,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 		case .attention(let banner, _):
 			let focused = NSApp.isActive && window?.isKeyWindow == true
 			notifications.present(banner, watching: notifications.isLooked(at: banner, focused: focused))
+		case .browserRestart:
+			restartForBrowser()
 		}
 	}
 

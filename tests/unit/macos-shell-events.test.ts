@@ -137,7 +137,7 @@ afterAll(async () => {
 	for (const server of servers) await server.stop(true);
 });
 
-test.skipIf(!mac)("a line is a state or a notice with what each needs; anything else is nothing", () => {
+test.skipIf(!mac)("a line is a state, a notice or the browser's restart with what each needs; anything else is nothing", () => {
 	const [
 		full,
 		negative,
@@ -160,6 +160,7 @@ test.skipIf(!mac)("a line is a state or a notice with what each needs; anything 
 		newer,
 		counted,
 		clamped,
+		restart,
 	] = report.pure.parsed;
 	// A server from before `paused`, `menuIcon`, `questions` and `finished`: nothing paused, the icon wanted (the default), no
 	// question open and no run finished.
@@ -214,6 +215,8 @@ test.skipIf(!mac)("a line is a state or a notice with what each needs; anything 
 	for (const bad of [seqZero, noSeq, noId, noLive, badTitle]) expect(bad).toBe("nil");
 	// What a newer server says, and damage, are passed over.
 	for (const other of [later, noType, damaged, array, empty]) expect(other).toBe("nil");
+	// The built-in browser's engine changed: the app starts again (server/browser/install.ts).
+	expect(restart).toEqual({ t: "browserRestart" });
 });
 
 test.skipIf(!mac)(
