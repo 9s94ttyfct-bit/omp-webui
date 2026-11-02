@@ -125,7 +125,8 @@ test("concurrent exports each return their own session, and nothing is left on d
 	);
 
 	for (const [i, res] of responses.entries()) {
-		expect(res.status).toBe(200);
+		// A refused export says why (omp's own error), not only that it was 500.
+		if (res.status !== 200) throw new Error(`export of ${files[i]} answered ${res.status}: ${await res.text()}`);
 		expect(res.headers.get("content-disposition")).toBe(
 			`attachment; filename="omp-session-${basename(files[i], ".jsonl")}.html"`,
 		);
@@ -149,7 +150,7 @@ test("an export folder left by earlier versions or a crash is cleaned up by the 
 		method: "POST",
 		headers: { ...authed, "x-omp-webui": "1" },
 	});
-	expect(res.status).toBe(200);
+	if (res.status !== 200) throw new Error(`export answered ${res.status}: ${await res.text()}`);
 	expect(readdirSync(exports)).toEqual([]);
 }, 60_000);
 
