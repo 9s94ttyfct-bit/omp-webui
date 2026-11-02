@@ -35,9 +35,21 @@ enum BrowserEngine {
 			removeProfile(profile)
 			takeOff("clearPending", current: file)
 		}
-		let framework = root.appendingPathComponent("cef").appendingPathComponent(version).appendingPathComponent("Release")
+		let versions = root.appendingPathComponent("cef")
+		let framework = versions.appendingPathComponent(version).appendingPathComponent("Release")
 		let bundle = framework.appendingPathComponent("Chromium Embedded Framework.framework")
-		return FileManager.default.fileExists(atPath: bundle.path) ? (version, framework, profile) : nil
+		guard FileManager.default.fileExists(atPath: bundle.path) else { return nil }
+		removeOlder(than: version, in: versions)
+		return (version, framework, profile)
+	}
+
+	/// The versions an update replaced go, before CEF loads (none of them is loaded now). A download or an unpacking of
+	/// the server's (`.download`, `.part`) is left to it.
+	private static func removeOlder(than version: String, in versions: URL) {
+		guard let names = try? FileManager.default.contentsOfDirectory(atPath: versions.path) else { return }
+		for name in names where name != version && !name.hasSuffix(".download") && !name.hasSuffix(".part") {
+			try? FileManager.default.removeItem(at: versions.appendingPathComponent(name))
+		}
 	}
 
 	/// CEF's profile and its log go.

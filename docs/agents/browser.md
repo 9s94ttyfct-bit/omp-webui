@@ -51,7 +51,7 @@ Deleting a conversation closes its pages and forgets its token; archiving it clo
 | `ompw.browserSize` | `<width>x<height>`, each 320–3840 CSS px | unset (1280×800) | Synced preference. The Desktop layout size a page gets the first time a Browser tab shows it. |
 | `ompw.browser` | `on`, `off` | unset (on) | Synced preference. Off: no Browser tab, every page closed, no endpoint, and `browser.enabled: false` in every conversation's overlay. `/api/prefs` refuses to change it (403) from a page that may not manage the browser. |
 
-Other stored values: the engines and profiles are in `browser/` of the server's data folder (`cft/<version>/`, `cef/<version>/`, `cft-profile/`, `cef-profile/`, `current.json`, which says what is installed and holds a CEF Clear or Uninstall that the app carries out when it starts again, and `owners.json`, which page belongs to which conversation and each conversation's endpoint token). `browser/` is not moved to another computer (Move to another computer): the new computer installs its own browser and signs in again.
+Other stored values: the engines and profiles are in `browser/` of the server's data folder (`cft/<version>/`, `cef/<version>/`, `cft-profile/`, `cef-profile/`, `current.json`, which says what is installed and holds a CEF Clear or Uninstall that the app carries out when it starts again, and `owners.json`, which page belongs to which conversation and each conversation's endpoint token). Only the installed version is kept: the server removes the CfT versions an update replaced, and the app the CEF ones, when it starts and before it loads CEF. `browser/` is not moved to another computer (Move to another computer): the new computer installs its own browser and signs in again.
 
 ## API routes
 
