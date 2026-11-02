@@ -23,6 +23,10 @@ import { onPrefsChanged, setPref } from "./prefs.ts";
  * folded to its tab row, and where the divider is. A tab is in one row only. A preference (localStorage, read when this
  * module loads so the first paint already has it, and kept by the server so that another port or window finds it), like the
  * panel's width. A phone-sized window shows one pane with every tab in its row, and leaves the layout as it is.
+ *
+ * A tab can be hidden: the Browser tab while the built-in browser is turned off (`ompw.browser`). The panes draw the
+ * remembered layout without it (`withoutTabs`), and what is chosen meanwhile is remembered with it back where it was
+ * (`withTabsBack`), so that it comes back there when the browser is turned on again.
  */
 
 // ------------------------------------------------------------------ transitions (pure)
@@ -107,6 +111,50 @@ export function shareBounds(height: number): { min: number; max: number } {
 	return min > max ? { min: 0.5, max: 0.5 } : { min, max };
 }
 
+/** The tab a pane whose row is `row` shows, when it showed `was`: that one if the row still lists it, else the row's first. */
+const shownIn = (row: readonly PanelTab[], was: PanelTab | null): PanelTab | null =>
+	was !== null && row.includes(was) ? was : (row[0] ?? null);
+
+/** `l` as drawn while the tabs in `hide` are hidden: a pane left with no tab is closed, and nothing is folded then. */
+export function withoutTabs(l: PaneLayout, hide: readonly PanelTab[]): PaneLayout {
+	if (hide.length === 0) return l;
+	const top = l.rows.top.filter((t) => !hide.includes(t));
+	const bottom = l.rows.bottom.filter((t) => !hide.includes(t));
+	return {
+		...l,
+		rows: { top, bottom },
+		shown: { top: shownIn(top, l.shown.top), bottom: shownIn(bottom, l.shown.bottom) },
+		collapsed: top.length > 0 && bottom.length > 0 ? l.collapsed : null,
+	};
+}
+
+/**
+ * The layout to remember when `next` was chosen while the tabs in `hide` were hidden, and `stored` was remembered: each
+ * hidden tab back in its row at its place, and what `next` left as `withoutTabs` drew it (which tab a pane shows, the fold)
+ * as `stored` has it, so that a pane that showed a hidden tab shows it again once it is back.
+ */
+export function withTabsBack(next: PaneLayout, stored: PaneLayout, hide: readonly PanelTab[]): PaneLayout {
+	if (hide.length === 0) return next;
+	const drawn = withoutTabs(stored, hide);
+	const rows = { top: [...next.rows.top], bottom: [...next.rows.bottom] };
+	for (const tab of hide) {
+		const pane = paneOfTab(stored.rows, tab);
+		const at = stored.rows[pane].indexOf(tab);
+		rows[pane].splice(at < 0 ? rows[pane].length : Math.min(at, rows[pane].length), 0, tab);
+	}
+	const shown = (pane: PaneId): PanelTab | null =>
+		next.shown[pane] === drawn.shown[pane] && stored.shown[pane] !== null && rows[pane].includes(stored.shown[pane])
+			? stored.shown[pane]
+			: shownIn(rows[pane], next.shown[pane]);
+	const collapsed = next.collapsed === drawn.collapsed ? stored.collapsed : next.collapsed;
+	return {
+		...next,
+		rows,
+		shown: { top: shown("top"), bottom: shown("bottom") },
+		collapsed: rows.top.length > 0 && rows.bottom.length > 0 ? collapsed : null,
+	};
+}
+
 // ------------------------------------------------------------------ the remembered layout
 
 function readStored(): PaneLayout {
@@ -117,7 +165,18 @@ function readStored(): PaneLayout {
 	}
 }
 
-let layout: PaneLayout = readStored();
+/** The tabs not drawn now: the Browser tab while the built-in browser is turned off. */
+function hiddenTabs(): PanelTab[] {
+	try {
+		return localStorage.getItem(PREF.browser) === "off" ? ["browser"] : [];
+	} catch {
+		return [];
+	}
+}
+
+/** The layout as remembered, every tab in it; `layout` is what is drawn of it. */
+let stored: PaneLayout = readStored();
+let layout: PaneLayout = withoutTabs(stored, hiddenTabs());
 const listeners = new Set<() => void>();
 
 function subscribe(l: () => void) {
@@ -135,6 +194,7 @@ export const currentPanes = (): PaneLayout => layout;
  */
 export function setPanes(next: PaneLayout, persist = true): void {
 	if (samePanes(layout, next)) return;
+	stored = withTabsBack(next, stored, hiddenTabs());
 	layout = next;
 	if (persist) commitPanes();
 	for (const l of listeners) l();
@@ -143,15 +203,18 @@ export function setPanes(next: PaneLayout, persist = true): void {
 /** Keep the layout now drawn: in localStorage, and on the server shortly. */
 export function commitPanes(): void {
 	try {
-		setPref(PREF.panelPanes, serializePanes(layout));
+		setPref(PREF.panelPanes, serializePanes(stored));
 	} catch {
 		// Private mode or a full quota: the layout still applies until reload.
 	}
 }
 
-/** Another page chose the layout: show what localStorage now holds. */
+/** Another page chose the layout, or a tab was hidden or shown again: draw what localStorage now holds. */
 export function reloadPanes(): void {
-	const next = readStored();
+	stored = readStored();
+	const hide = hiddenTabs();
+	if (sheetChoice !== null && hide.includes(sheetChoice)) sheetChoice = null;
+	const next = withoutTabs(stored, hide);
 	if (samePanes(next, layout)) return;
 	layout = next;
 	for (const l of listeners) l();
@@ -160,7 +223,7 @@ export function reloadPanes(): void {
 // The layout can be chosen in another tab or window (the server's copy then arrives in localStorage). This module registers
 // itself, so that the page's start-up code does not have to load it.
 onPrefsChanged((keys) => {
-	if (keys.includes(PREF.panelPanes)) reloadPanes();
+	if (keys.includes(PREF.panelPanes) || keys.includes(PREF.browser)) reloadPanes();
 });
 
 /** Back to the default divider position. */
@@ -193,6 +256,7 @@ export function chooseSheetTab(tab: PanelTab): void {
 
 /** Open the side panel on `tab`: in the pane that lists it, opened if it was folded (a sheet shows it in its one pane). */
 export function showPanelTab(tab: PanelTab): void {
+	if (hiddenTabs().includes(tab)) return;
 	if (matchMedia(PANEL_SHEET_QUERY).matches) chooseSheetTab(tab);
 	else setPanes(pick(layout, tab));
 	useApp.getState().set({ panelOpen: true });

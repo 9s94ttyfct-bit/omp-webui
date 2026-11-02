@@ -281,6 +281,36 @@ test("in Chinese the tab, its size switch and its empty state are named in Chine
 	await expect(page.getByTestId("browser-address")).toHaveAttribute("placeholder", "输入地址后按 Enter");
 });
 
+test("turned off in another window, the Browser tab goes from the panel, and comes back where it was when turned on", async ({
+	page,
+}) => {
+	await openTab(page, TITLE_B);
+	const showing = page.locator('[data-testid^="panel-pane-"][data-tab="browser"]');
+	await expect(showing).toHaveCount(1);
+	/** The preference as another window sets it: through the server, which tells every page. */
+	const set = (value: string | null) =>
+		page.evaluate(
+			(v) =>
+				fetch("/api/prefs", {
+					method: "POST",
+					headers: { "content-type": "application/json", "x-omp-webui": "1" },
+					body: JSON.stringify({ changes: { "ompw.browser": v } }),
+				}).then((r) => r.status),
+			value,
+		);
+	try {
+		expect(await set("off")).toBe(200);
+		await expect(page.getByTestId("pane-tab-browser")).toHaveCount(0);
+		await expect(page.getByTestId("browser-tab")).toHaveCount(0);
+		await expect(showing).toHaveCount(0);
+	} finally {
+		expect(await set(null)).toBe(200);
+	}
+	await expect(page.getByTestId("pane-tab-browser")).toBeVisible();
+	await expect(showing).toHaveCount(1);
+	await expect(page.getByTestId("browser-tab")).toBeVisible();
+});
+
 test("in the Mac app's window the tab places the native view instead of drawing the page, and hides it when not shown", async ({
 	page,
 }) => {

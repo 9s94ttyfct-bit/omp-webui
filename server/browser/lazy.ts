@@ -210,6 +210,17 @@ export class LazyBrowser {
 		await (await this.known())?.registry.closeOwner(owner, forget);
 	}
 
+	/**
+	 * The person turned the browser off (`PREF.browser`): every page closes and the engine stops (CfT ends; the app's CEF stays
+	 * loaded, with no page, until the app quits). Nothing of it is loaded for this when it never ran.
+	 */
+	async turnOff(): Promise<void> {
+		const service = this.#service;
+		if (!service) return;
+		await service.registry.closeAll();
+		await service.host.stop("The browser was turned off");
+	}
+
 	/** The service, when there is anything of the browser to change: it ran here or before (its owners file is there). */
 	private async known(): Promise<BrowserService | null> {
 		if (this.#service) return this.#service;

@@ -6,6 +6,7 @@ import { en } from "../../i18n/browser.ts";
 import { registerStrings, useT } from "../../i18n/index.ts";
 import { formatProgress, progressPercent } from "../../lib/app-update.ts";
 import { storedBrowserSize } from "../../lib/browser-size.ts";
+import { reloadPanes } from "../../lib/panel-panes.ts";
 import { onPrefsChanged, setPref } from "../../lib/prefs.ts";
 import { useApp } from "../../store/app.ts";
 import { browserApi, useBrowserState } from "../../store/browser.ts";
@@ -15,23 +16,29 @@ import { Button, CardHeader, cx, Modal, Spinner } from "../ui.tsx";
 registerStrings("browser", en);
 
 /**
- * Settings › Browser (docs/agents/browser.md): which engine this server drives (CEF inside the Mac app, Chrome for Testing
- * when the server runs alone), the version installed and the newest one, Install / Update with progress and Cancel, and
- * Clear browser data, which asks first. The server decides who may manage it (`canManage`: this computer, or a page signed
- * in through Access); a page that may not sees the versions and no buttons. Under it, the size new pages are laid out at.
+ * Settings › Browser (docs/agents/browser.md): whether the built-in browser is used at all (`ompw.browser`: off, no Browser
+ * tab and no browser tool for the agents), which engine this server drives (CEF inside the Mac app, Chrome for Testing when
+ * the server runs alone), the version installed and the newest one, Install / Update with progress and Cancel, and Clear
+ * browser data and Uninstall, which ask first. The server decides who may manage it (`canManage`: this computer, or a page
+ * signed in through Access); a page that may not sees the versions and no buttons. Under it, the size new pages are laid out at.
  */
 export function BrowserSettings() {
 	const t = useT();
 	const toast = useApp((s) => s.toast);
 	const state = useBrowserState((s) => s.state);
-	const [busy, setBusy] = useState<"check" | "install" | "clear" | null>(null);
-	const [asking, setAsking] = useState(false);
+	const [busy, setBusy] = useState<"check" | "install" | "clear" | "uninstall" | null>(null);
+	const [asking, setAsking] = useState<"clear" | "uninstall" | null>(null);
+	const [on, setOn] = useState(() => localStorage.getItem(PREF.browser) !== "off");
 
 	useEffect(() => {
 		browserApi.load().catch(() => {});
 	}, []);
+	useEffect(
+		() => onPrefsChanged((keys) => keys.includes(PREF.browser) && setOn(localStorage.getItem(PREF.browser) !== "off")),
+		[],
+	);
 
-	const run = (what: "check" | "install" | "clear", call: () => Promise<unknown>) => {
+	const run = (what: "check" | "install" | "clear" | "uninstall", call: () => Promise<unknown>) => {
 		setBusy(what);
 		call()
 			.catch((e: Error) => toast("error", t("browser.requestFailed", { error: e.message })))
@@ -50,6 +57,30 @@ export function BrowserSettings() {
 			data-setting="browser"
 		>
 			<CardHeader icon={<Globe size={16} />} title={t("browser.title")} hint={t("browser.hint")} />
+			<label className="flex cursor-pointer items-start gap-3 text-sm">
+				<input
+					type="checkbox"
+					className="mt-1 accent-[var(--accent)]"
+					data-testid="browser-enabled"
+					checked={on}
+					disabled={!state?.canManage}
+					onChange={(e) => {
+						setPref(PREF.browser, e.target.checked ? null : "off");
+						setOn(e.target.checked);
+						// The side panel of this page draws its tabs again (another page hears it from the server).
+						reloadPanes();
+					}}
+				/>
+				<span>
+					{t("browser.enabledTitle")}
+					<span className="block text-xs text-muted">{t("browser.enabledHint")}</span>
+				</span>
+			</label>
+			{on ? null : (
+				<p className="text-xs text-warning" role="status" data-testid="browser-off">
+					{t("browser.offNote")}
+				</p>
+			)}
 			{state ? (
 				<>
 					<dl className="divide-y divide-border rounded-xl border border-border text-sm">
@@ -93,12 +124,14 @@ export function BrowserSettings() {
 									{t(
 										job.kind === "clear"
 											? "browser.jobClear"
-											: job.kind === "update"
-												? "browser.jobUpdate"
-												: "browser.jobInstall",
+											: job.kind === "uninstall"
+												? "browser.jobUninstall"
+												: job.kind === "update"
+													? "browser.jobUpdate"
+													: "browser.jobInstall",
 									)}
 								</span>
-								{job.kind !== "clear" && state.canManage ? (
+								{(job.kind === "install" || job.kind === "update") && state.canManage ? (
 									<Button
 										size="sm"
 										data-testid="browser-cancel"
@@ -108,7 +141,7 @@ export function BrowserSettings() {
 									</Button>
 								) : null}
 							</div>
-							{job.kind !== "clear" ? (
+							{job.kind === "install" || job.kind === "update" ? (
 								<div className="space-y-1">
 									<div
 										role="progressbar"
@@ -177,15 +210,28 @@ export function BrowserSettings() {
 							</div>
 							{cef && newer ? <p className="text-xs text-muted">{t("browser.updateCefNote")}</p> : null}
 							<div className="space-y-1 border-t border-border pt-3">
-								<Button
-									variant="outline"
-									disabled={job !== null || busy !== null}
-									data-testid="browser-clear"
-									onClick={() => setAsking(true)}
-								>
-									{t("browser.clear")}
-								</Button>
+								<div className="flex flex-wrap gap-2">
+									<Button
+										variant="outline"
+										disabled={job !== null || busy !== null}
+										data-testid="browser-clear"
+										onClick={() => setAsking("clear")}
+									>
+										{t("browser.clear")}
+									</Button>
+									{state.installed ? (
+										<Button
+											variant="outline"
+											disabled={job !== null || busy !== null}
+											data-testid="browser-uninstall"
+											onClick={() => setAsking("uninstall")}
+										>
+											{t("browser.uninstall")}
+										</Button>
+									) : null}
+								</div>
 								<p className="text-xs text-muted">{t("browser.clearHint")}</p>
+								{state.installed ? <p className="text-xs text-muted">{t("browser.uninstallHint")}</p> : null}
 							</div>
 						</>
 					) : (
@@ -200,21 +246,42 @@ export function BrowserSettings() {
 				</p>
 			)}
 			<SizeSetting />
-			<Modal open={asking} onOpenChange={setAsking} title={t("browser.clearTitle")}>
-				<div data-testid="browser-clear-confirm">
-					<p className="text-sm">{cef ? t("browser.clearBodyCef") : t("browser.clearBodyCft")}</p>
+			<Modal
+				open={asking !== null}
+				onOpenChange={(open) => !open && setAsking(null)}
+				title={t(asking === "uninstall" ? "browser.uninstallTitle" : "browser.clearTitle")}
+			>
+				<div data-testid={asking === "uninstall" ? "browser-uninstall-confirm" : "browser-clear-confirm"}>
+					<p className="text-sm">
+						{asking === "uninstall"
+							? t(cef ? "browser.uninstallBodyCef" : "browser.uninstallBodyCft")
+							: t(cef ? "browser.clearBodyCef" : "browser.clearBodyCft")}
+					</p>
 					<div className="mt-4 flex justify-end gap-2">
-						<Button onClick={() => setAsking(false)}>{t("browser.cancel")}</Button>
-						<Button
-							variant="danger"
-							data-testid="browser-clear-go"
-							onClick={() => {
-								setAsking(false);
-								run("clear", () => browserApi.clear());
-							}}
-						>
-							{t("browser.clearConfirm")}
-						</Button>
+						<Button onClick={() => setAsking(null)}>{t("browser.cancel")}</Button>
+						{asking === "uninstall" ? (
+							<Button
+								variant="danger"
+								data-testid="browser-uninstall-go"
+								onClick={() => {
+									setAsking(null);
+									run("uninstall", () => browserApi.uninstall());
+								}}
+							>
+								{t("browser.uninstallConfirm")}
+							</Button>
+						) : (
+							<Button
+								variant="danger"
+								data-testid="browser-clear-go"
+								onClick={() => {
+									setAsking(null);
+									run("clear", () => browserApi.clear());
+								}}
+							>
+								{t("browser.clearConfirm")}
+							</Button>
+						)}
 					</div>
 				</div>
 			</Modal>

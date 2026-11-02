@@ -123,6 +123,12 @@ export const PREF = {
 	 * pixels; unset is 1280×800 (`DESKTOP_SIZE`, `shared/browser-protocol.ts`). See `parseBrowserSize`.
 	 */
 	browserSize: "ompw.browserSize",
+	/**
+	 * Whether the built-in browser is used at all (v0.18.4): `on` (the default) or `off`. Off, the side panel has no Browser
+	 * tab, no conversation is given its endpoint and omp's own browser tool is turned off (`browser.enabled: false` in each
+	 * conversation's overlay), until it is turned on again. Changed only where the browser is managed (`canManageBrowser`).
+	 */
+	browser: "ompw.browser",
 } as const;
 
 export type PrefKey = (typeof PREF)[keyof typeof PREF];
@@ -217,6 +223,7 @@ const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 	[PREF.animations]: switchValue,
 	[PREF.animationIntensity]: oneOf(ANIMATION_INTENSITIES),
 	[PREF.browserSize]: (v) => parseBrowserSize(v) !== null,
+	[PREF.browser]: switchValue,
 };
 
 /** Whether `value` is something the app ever writes under `key` (length is checked apart: `MAX_PREF_LENGTH`). */

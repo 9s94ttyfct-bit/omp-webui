@@ -256,6 +256,15 @@ export class PageRegistry {
 		if (close) await Promise.all(mine.filter((id) => this.alive.has(id)).map((id) => close(id).catch(() => {})));
 	}
 
+	/** The browser was turned off: every conversation's pages are closed; the tokens stay, for when it is turned on again. */
+	async closeAll(): Promise<void> {
+		const ids = [...this.targets.keys()];
+		this.targets.clear();
+		this.save();
+		const close = this.closer;
+		if (close) await Promise.all(ids.filter((id) => this.alive.has(id)).map((id) => close(id).catch(() => {})));
+	}
+
 	private settled(): void {
 		for (const fn of [...this.settledFns]) fn();
 	}

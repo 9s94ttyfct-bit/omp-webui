@@ -7,7 +7,7 @@ import type { RemoteIdentity } from "../remote-auth.ts";
 import { canManageBrowser } from "./gate.ts";
 
 /**
- * Installing, updating and clearing the built-in browser's engine, in `<dataDir>/browser/`:
+ * Installing, updating, clearing and uninstalling the built-in browser's engine, in `<dataDir>/browser/`:
  *
  * - `cft/<version>/`: Chrome for Testing, the engine of a server that runs alone. Its newest Stable comes from Google's
  *   version list; the zip's size and MD5 are the ones Google's storage answers with.
@@ -15,7 +15,8 @@ import { canManageBrowser } from "./gate.ts";
  *   `include/cef_api_versions.h` lists the API version the app was built against (`CEF_API_VERSION`); size and SHA-1 are
  *   the index's. A build without it is remembered and passed over for the next older one.
  * - `cft-profile/`, `cef-profile/`: each engine's own profile (logins, cookies, storage).
- * - `current.json`: what is installed, and a clear of CEF's profile the app does at its next start.
+ * - `current.json`: what is installed, and a clear of CEF's profile, or the removal of CEF and its profile, the app does
+ *   at its next start.
  *
  * A download goes to `<version>.download`, is checked, unpacked into `<version>.part` and renamed into place: nothing
  * half-made is ever taken for an install, and what a failed or cancelled job left is removed.
@@ -57,6 +58,8 @@ interface Current {
 	cef?: { version: string };
 	/** CEF's profile is deleted by the app before CEF starts again. */
 	clearPending?: boolean;
+	/** CEF was uninstalled: the app deletes `cef/` and `cef-profile/` at its next start, and loads nothing. */
+	uninstallPending?: boolean;
 	/** CEF builds found not to list `CEF_API_VERSION`: not offered again. */
 	cefIncompatible?: string[];
 }
@@ -191,7 +194,7 @@ export class BrowserInstaller {
 	}
 
 	cancel(): void {
-		if (this.job?.kind !== "clear") this.abort?.abort();
+		if (this.job?.kind === "install" || this.job?.kind === "update") this.abort?.abort();
 	}
 
 	/**
@@ -211,6 +214,30 @@ export class BrowserInstaller {
 				return;
 			}
 			this.write({ ...this.current, clearPending: true });
+			this.restartNeeded = true;
+			this.hooks.requestAppRestart?.();
+		});
+	}
+
+	/**
+	 * Removes the engine and what it kept (logins, cookies, storage, cache); installing again starts over. CfT: stops it and
+	 * deletes `cft/` and `cft-profile/`. CEF: the app has both open, so `current.json` asks the app to delete them at its next
+	 * start, and the app is asked to restart now. Either way nothing is installed from now on, so no conversation is given
+	 * the browser's endpoint any more.
+	 */
+	uninstall(): Promise<void> {
+		if (this.job) return Promise.resolve();
+		return this.run("uninstall", async () => {
+			if (this.opts.engine === "cft") {
+				await this.hooks.stopEngine?.("The browser was uninstalled");
+				const { cft: _, ...rest } = this.current;
+				this.write(rest);
+				for (const name of ["cft", "cft-profile"]) rmSync(join(this.opts.root, name), { recursive: true, force: true });
+				return;
+			}
+			if (!this.current.cef) return;
+			const { cef: _, clearPending: __, ...rest } = this.current;
+			this.write({ ...rest, uninstallPending: true });
 			this.restartNeeded = true;
 			this.hooks.requestAppRestart?.();
 		});
@@ -271,6 +298,8 @@ export class BrowserInstaller {
 		mkdirSync(dir, { recursive: true });
 		for (const build of candidates) {
 			if (build.version === this.current.cef?.version) return;
+			// Uninstalled, and the app has not removed it yet (it is loaded): installing it again keeps it.
+			if (existsSync(join(dir, build.version))) return this.adoptCef(build.version);
 			const file = join(dir, `${build.version}.download`);
 			const got = await this.download(
 				`${this.sources.cefFiles}${encodeURIComponent(build.name)}`,
@@ -296,13 +325,21 @@ export class BrowserInstaller {
 			}
 			renameSync(join(part, top), join(dir, build.version));
 			rmSync(part, { recursive: true, force: true });
-			this.write({ ...this.current, cef: { version: build.version } });
-			this.latest = build.version;
-			this.restartNeeded = true;
-			this.hooks.requestAppRestart?.();
-			return;
+			return this.adoptCef(build.version);
 		}
 		throw new JobError(`No CEF build for this app (API version ${CEF_API_VERSION})`);
+	}
+
+	/**
+	 * `version`, unpacked in `cef/`, is the one the app loads from its next start. Installed again before the app removed what
+	 * was uninstalled: it no longer removes it, and the profile still goes.
+	 */
+	private adoptCef(version: string): void {
+		const { uninstallPending, ...rest } = this.current;
+		this.write({ ...rest, ...(uninstallPending ? { clearPending: true } : {}), cef: { version } });
+		this.latest = version;
+		this.restartNeeded = true;
+		this.hooks.requestAppRestart?.();
 	}
 
 	private async cftRelease(signal: AbortSignal): Promise<{ version: string; url: string }> {
@@ -475,7 +512,7 @@ const json = (data: unknown, status = 200) =>
 	new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
 
 /**
- * `GET /api/browser` (the state, to any page the server lets in) and `POST /api/browser/{check,install,cancel,clear}`
+ * `GET /api/browser` (the state, to any page the server lets in) and `POST /api/browser/{check,install,cancel,clear,uninstall}`
  * (only to a page `canManageBrowser` allows, decided from the request's own authentication).
  */
 export async function handleBrowserRoute(
@@ -489,13 +526,13 @@ export async function handleBrowserRoute(
 		return req.method === "GET" ? json(inst.state(canManage)) : json({ error: "GET required" }, 405);
 	}
 	const action = url.pathname.slice("/api/browser/".length);
-	if (!["check", "install", "cancel", "clear"].includes(action)) return json({ error: "Not found" }, 404);
+	if (!["check", "install", "cancel", "clear", "uninstall"].includes(action)) return json({ error: "Not found" }, 404);
 	if (req.method !== "POST") return json({ error: "POST required" }, 405);
 	if (!canManage)
 		return json(
 			{
 				error:
-					"The browser is installed, updated and cleared from this computer, or from a page signed in with your account",
+					"The browser is installed, updated, cleared and uninstalled from this computer, or from a page signed in with your account",
 				problem: BROWSER_NOT_HERE,
 			},
 			403,
@@ -510,6 +547,9 @@ export async function handleBrowserRoute(
 		case "cancel":
 			inst.cancel();
 			return json(inst.state(true));
+		case "uninstall":
+			void inst.uninstall();
+			return json(inst.state(true), 202);
 		default:
 			void inst.clear();
 			return json(inst.state(true), 202);

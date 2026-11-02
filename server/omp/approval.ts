@@ -314,9 +314,10 @@ export class ProcessOverlay {
 		public advisor: boolean | null = null,
 		/**
 		 * The conversation's endpoint of the built-in browser (`browser.cdpUrl`, see docs/agents/browser.md); null while the
-		 * browser is not installed, and omp uses its own. omp's relay to the person's Chrome is off either way.
+		 * browser is not installed, and omp uses its own; false while the person turned the browser off (Settings › Browser),
+		 * and omp's browser tool is off too (`browser.enabled: false`). omp's relay to the person's Chrome is off either way.
 		 */
-		public browser: string | null = null,
+		public browser: string | false | null = null,
 	) {
 		this.write();
 	}
@@ -350,7 +351,11 @@ export class ProcessOverlay {
 			...settingLines(
 				{
 					...this.settings,
-					...(this.browser === null ? {} : { "browser.cdpUrl": this.browser }),
+					...(this.browser === null
+						? {}
+						: this.browser === false
+							? { "browser.enabled": false }
+							: { "browser.cdpUrl": this.browser }),
 					"browser.relay": false,
 				},
 				agentModels(this.models, this.absentAgents),
@@ -434,8 +439,8 @@ export class ProcessOverlay {
 		return Bun.sleep(this.reloadMs);
 	}
 
-	/** The conversation's browser endpoint becomes `cdpUrl` (null: none); resolves as `set` does. */
-	setBrowser(cdpUrl: string | null): Promise<void> {
+	/** The conversation's browser endpoint becomes `cdpUrl` (null: none; false: the browser is off); resolves as `set` does. */
+	setBrowser(cdpUrl: string | false | null): Promise<void> {
 		this.browser = cdpUrl;
 		this.write();
 		return Bun.sleep(this.reloadMs);
@@ -1012,7 +1017,7 @@ export class ApprovalStore {
 		/** Whether the advisor reviews the conversation, as it chose (see `sessionAdvisor`). */
 		advisor: boolean | null = null,
 		/** The conversation's browser endpoint (see `ProcessOverlay.browser`). */
-		browser: string | null = null,
+		browser: string | false | null = null,
 	): Promise<ProcessOverlay> {
 		this.dir ??= overlayDir(this.dataDir).catch((e: unknown) => {
 			// The next overlay tries again.
@@ -1055,7 +1060,7 @@ export class ApprovalStore {
 		concurrency: number | null = null,
 		advisor: boolean | null = null,
 		/** The endpoint the former server gave it; the server writes its own once it knows its address (`LivePool.syncBrowser`). */
-		browser: string | null = null,
+		browser: string | false | null = null,
 	): ProcessOverlay {
 		const overlay = new ProcessOverlay(
 			file,

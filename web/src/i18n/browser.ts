@@ -76,6 +76,7 @@ export const en = {
 	jobInstall: "Installing…",
 	jobUpdate: "Updating…",
 	jobClear: "Clearing the browser's data…",
+	jobUninstall: "Uninstalling…",
 	clear: "Clear browser data",
 	clearHint: "Removes logins, cookies, storage and the cache of the built-in browser.",
 	clearTitle: "Clear browser data?",
@@ -87,7 +88,20 @@ export const en = {
 	failed: "Did not finish: {error}",
 	requestFailed: "The server refused: {error}",
 	cannotManage:
-		"The browser is installed, updated and cleared from this computer, or from a page signed in with your account.",
+		"The browser is installed, updated, cleared, uninstalled and turned on or off from this computer, or from a page signed in with your account.",
+	enabledTitle: "Use the built-in browser",
+	enabledHint:
+		"Off: no Browser tab, and the agents of your conversations have no browser tool at all, until you turn it on again.",
+	offNote: "The built-in browser is off. Agents have no browser tool.",
+	uninstall: "Uninstall",
+	uninstallHint:
+		"Removes the browser and everything it kept: logins, cookies, storage and the cache. You can install it again.",
+	uninstallTitle: "Uninstall the browser?",
+	uninstallBodyCft:
+		"The browser, its logins, cookies, storage and cache are deleted, and its pages close. Conversations' agents use omp's own browser until you install it again or turn the browser off.",
+	uninstallBodyCef:
+		"The browser, its logins, cookies, storage and cache are deleted. The app restarts to do it, and the Browser tabs start empty. Conversations' agents use omp's own browser until you install it again or turn the browser off.",
+	uninstallConfirm: "Uninstall",
 	sizeTitle: "Size of new pages",
 	sizeHint: "The desktop layout a page gets: the agent's screenshots and every screen show the same layout.",
 	width: "Width",

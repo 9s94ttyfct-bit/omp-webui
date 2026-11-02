@@ -113,8 +113,12 @@ import { SLEEP_FOLLOW_MS, sleepAftermath } from "./sleep.ts";
 
 /** What the pool asks of the built-in browser (see `LivePool.browser`; `server/browser/lazy.ts` in the server). */
 export interface BrowserHooks {
-	/** The conversation's CDP endpoint (`browser.cdpUrl`); null while there is none (not installed, no address yet). */
-	cdpUrlFor(owner: string): Promise<string | null>;
+	/**
+	 * The conversation's CDP endpoint (`browser.cdpUrl`; `owner` is its session file, null for a new chat with none yet);
+	 * null while there is none (not installed, no address or file yet); false while the person turned the browser off
+	 * (`PREF.browser`), and the conversation gets no browser tool at all.
+	 */
+	cdpUrlFor(owner: string | null): Promise<string | false | null>;
 	/** The conversation in `from` moved to `to`: its pages and endpoint are the new file's. */
 	moved(from: string, to: string): Promise<void>;
 }
@@ -2574,7 +2578,7 @@ export class Live {
 		const overlay = this.overlay;
 		if (!browser || !overlay || this.info.exited) return;
 		const file = this.info.sessionFile;
-		const url = file ? await browser.cdpUrlFor(file) : null;
+		const url = await browser.cdpUrlFor(file ?? null);
 		if (url === overlay.browser || this.info.exited) return;
 		await overlay.setBrowser(url);
 		this.persist();
@@ -4740,11 +4744,12 @@ export class LivePool {
 					? (this.approval?.sessionAdvisor(sessionKey(sessionFile)) ?? null)
 					: null;
 		const start = await this.approval?.startingMode(cwd, sessionFile, requested, launch.env);
-		// The conversation's browser endpoint, from its first turn (a new chat has no file yet: it is named once it has one).
+		// The conversation's browser endpoint, from its first turn (a new chat has no file yet: it is named once it has one;
+		// a browser turned off is off from the first turn either way).
 		const browser =
-			this.approval && start && sessionFile && this.browser
-				? await this.browser.cdpUrlFor(sessionKey(sessionFile)).catch((e: unknown) => {
-						console.error(`omp-webui: no browser endpoint for ${sessionFile}: ${(e as Error).message}`);
+			this.approval && start && this.browser
+				? await this.browser.cdpUrlFor(sessionFile ? sessionKey(sessionFile) : null).catch((e: unknown) => {
+						console.error(`omp-webui: no browser endpoint for ${sessionFile ?? liveId}: ${(e as Error).message}`);
 						return null;
 					})
 				: null;

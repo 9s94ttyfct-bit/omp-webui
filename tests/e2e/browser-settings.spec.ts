@@ -157,6 +157,49 @@ test("Clear browser data asks first: Cancel clears nothing, Clear clears", async
 	await expect(page.getByTestId("browser-error")).toHaveCount(0);
 });
 
+test("Uninstall asks first: Cancel keeps the browser, Uninstall removes it, and Install installs it again", async ({
+	page,
+}) => {
+	await openCard(page);
+	await expect(page.getByTestId("browser-installed")).toHaveText(VERSION);
+	await page.getByTestId("browser-uninstall").click();
+	const dialog = page.getByTestId("browser-uninstall-confirm");
+	await expect(dialog).toContainText("its pages close");
+	await dialog.getByRole("button", { name: "Cancel" }).click();
+	await expect(dialog).toHaveCount(0);
+	await expect(page.getByTestId("browser-installed")).toHaveText(VERSION);
+
+	await page.getByTestId("browser-uninstall").click();
+	await page.getByTestId("browser-uninstall-go").click();
+	await expect(page.getByTestId("browser-installed")).toHaveText("Not installed");
+	await expect(page.getByTestId("browser-uninstall")).toHaveCount(0);
+	await expect(page.getByTestId("browser-error")).toHaveCount(0);
+
+	await page.getByTestId("browser-install").click();
+	await expect(page.getByTestId("browser-installed")).toHaveText(VERSION, { timeout: 30_000 });
+});
+
+test("the browser can be turned off and on again, which is the synced preference", async ({ page }) => {
+	await openCard(page);
+	const stored = () =>
+		page.evaluate(() =>
+			fetch("/api/prefs")
+				.then((r) => r.json())
+				.then((p) => p.values["ompw.browser"]),
+		);
+	const enabled = page.getByTestId("browser-enabled");
+	await expect(enabled).toBeChecked();
+	await expect(page.getByTestId("browser-off")).toHaveCount(0);
+	await enabled.uncheck();
+	await expect(page.getByTestId("browser-off")).toHaveText("The built-in browser is off. Agents have no browser tool.");
+	await expect.poll(stored).toBe("off");
+	await page.reload();
+	await expect(page.getByTestId("browser-enabled")).not.toBeChecked();
+	await page.getByTestId("browser-enabled").check();
+	await expect.poll(stored).toBeNull();
+	await expect(page.getByTestId("browser-off")).toHaveCount(0);
+});
+
 test("the size of new pages is kept as the synced preference, within bounds", async ({ page }) => {
 	await openCard(page);
 	await page.getByTestId("browser-size-width").fill("1440");
@@ -187,10 +230,11 @@ test("a page that may not manage the browser sees the versions and no buttons", 
 	tap.rewrite((msg) => (msg.t === "browser_state" ? { ...msg, state: notHere(msg.state as BrowserState) } : msg));
 	await openCard(page);
 	await expect(page.getByTestId("browser-cannot-manage")).toHaveText(
-		"The browser is installed, updated and cleared from this computer, or from a page signed in with your account.",
+		"The browser is installed, updated, cleared, uninstalled and turned on or off from this computer, or from a page signed in with your account.",
 	);
 	await expect(page.getByTestId("browser-installed")).toBeVisible();
-	for (const id of ["browser-install", "browser-update", "browser-check", "browser-clear"])
+	await expect(page.getByTestId("browser-enabled")).toBeDisabled();
+	for (const id of ["browser-install", "browser-update", "browser-check", "browser-clear", "browser-uninstall"])
 		await expect(card(page).getByTestId(id)).toHaveCount(0);
 });
 

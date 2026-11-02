@@ -25,6 +25,8 @@ import {
 	shareBounds,
 	sheetTabOf,
 	toggleFold,
+	withoutTabs,
+	withTabsBack,
 } from "../../web/src/lib/panel-panes.ts";
 import { installGlobals, restoreGlobals } from "./browser-globals.ts";
 
@@ -415,6 +417,56 @@ describe("what is kept", () => {
 		expect(isValidPref(PREF.panelPanes, '{"top":"info","bottom":"info"}')).toBe(false);
 		expect(isValidPref(PREF.panelPanes, '{"version":2,"rows":"all"}')).toBe(false);
 		expect(isValidPref(PREF.panelPanes, "wide")).toBe(false);
+	});
+});
+
+describe("a hidden tab (the Browser tab while the browser is off)", () => {
+	const hide: PanelTab[] = ["browser"];
+
+	test("is not drawn: a pane that showed it shows its row's first, a pane left empty is closed and nothing is folded", () => {
+		const drawn = withoutTabs(layout({ shown: { top: "agents", bottom: "browser" } }), hide);
+		expect(drawn.rows.bottom).not.toContain("browser");
+		expect(drawn.shown.bottom).toBe("files");
+		const alone = layout({
+			rows: rowsOf(
+				PANEL_TABS.filter((t) => t !== "browser"),
+				["browser"],
+			),
+			shown: { top: "info", bottom: "browser" },
+			collapsed: "top",
+		});
+		expect(withoutTabs(alone, hide)).toEqual({
+			...alone,
+			rows: rowsOf(alone.rows.top as PanelTab[], []),
+			shown: { top: "info", bottom: null },
+			collapsed: null,
+		});
+	});
+
+	test("comes back where it was, and shown where it was shown, after the layout was changed without it", () => {
+		for (const [name, stored] of LAYOUTS) {
+			const shown = {
+				...stored,
+				shown: { ...stored.shown, [stored.rows.top.includes("browser") ? "top" : "bottom"]: "browser" },
+			};
+			// The divider moved while the tab was hidden: everything else as it was.
+			const next = { ...withoutTabs(shown, hide), split: 0.3 };
+			const kept = withTabsBack(next, shown, hide);
+			whole(kept, name);
+			expect(kept, name).toEqual({ ...shown, split: 0.3 });
+		}
+	});
+
+	test("a tab picked or moved while it was hidden is what is kept, with the hidden tab back in its row", () => {
+		const stored = layout({ shown: { top: "agents", bottom: "browser" } });
+		const picked = withTabsBack(pick(withoutTabs(stored, hide), "ci"), stored, hide);
+		whole(picked);
+		expect(picked.shown.bottom).toBe("ci");
+		expect(picked.rows.bottom).toEqual(DEFAULT_ROWS.bottom);
+		const moved = withTabsBack(moveAcross(withoutTabs(stored, hide), "files"), stored, hide);
+		whole(moved);
+		expect(moved.rows.top.at(-1)).toBe("files");
+		expect(moved.rows.bottom).toContain("browser");
 	});
 });
 

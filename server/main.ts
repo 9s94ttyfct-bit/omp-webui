@@ -615,10 +615,13 @@ function browserOrigin(): string | null {
 	const at = loopbackPort || remotePort;
 	return at ? `http://127.0.0.1:${at}` : null;
 }
+/** Whether the person turned the built-in browser off (Settings › Browser): no conversation gets a browser tool then. */
+const browserOff = (): boolean => uiPrefs.snapshot().values[PREF.browser] === "off";
 pool.browser = {
 	cdpUrlFor: async (owner) => {
+		if (browserOff()) return false;
 		const origin = browserOrigin();
-		return origin ? browser.cdpUrlFor(owner, origin) : null;
+		return origin && owner !== null ? browser.cdpUrlFor(owner, origin) : null;
 	},
 	moved: (from, to) => browser.moved(from, to),
 };
@@ -774,13 +777,20 @@ pool.onAnnounce((info) => {
  * for help change them through this.
  */
 function applyPrefs(changes: unknown): PrefsSnapshot {
-	const before = uiPrefs.snapshot().rev;
+	const before = uiPrefs.snapshot();
 	const snapshot = uiPrefs.apply(changes);
-	if (snapshot.rev !== before) {
+	if (snapshot.rev !== before.rev) {
 		broadcastAll({ t: "prefs", snapshot });
 		pool.syncRisk();
 		applyKeepAwake();
 		shellEvents.prefsChanged();
+		// The browser turned off or on: each conversation's overlay says so (its browser tool goes or comes back), and off,
+		// its pages close and the engine stops.
+		if ((before.values[PREF.browser] === "off") !== (snapshot.values[PREF.browser] === "off")) {
+			if (snapshot.values[PREF.browser] === "off")
+				browser.turnOff().catch((e: unknown) => console.error(`omp-webui: turning the browser off: ${String(e)}`));
+			void pool.syncBrowser();
+		}
 	}
 	return snapshot;
 }
@@ -1624,6 +1634,16 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				// while they work. Its key is refused with the rest, not silently dropped, so the page can say why.
 				if (!onThisComputer.has(req) && isRecord(body?.changes) && Object.hasOwn(body.changes, PREF.keepAwake))
 					return fail("Keep the Mac awake is changed on the computer omp-webui runs on", 403);
+				// Whether conversations have a browser at all is the person's who manages the browser (`canManageBrowser`).
+				if (
+					isRecord(body?.changes) &&
+					Object.hasOwn(body.changes, PREF.browser) &&
+					!canManageBrowser(remoteOf.get(req) ?? null, onThisComputer.has(req))
+				)
+					return fail(
+						"The browser is turned on and off from this computer, or from a page signed in with your account",
+						403,
+					);
 				try {
 					return json(applyPrefs(body?.changes));
 				} catch (e) {
@@ -2642,6 +2662,7 @@ async function route(req: Request, srv: Bun.Server<SocketData>): Promise<Respons
 	const cdp = cdpPath(url.pathname, req.headers.get("authorization"));
 	if (cdp) {
 		if (!local || req.headers.has("origin")) return new Response("Forbidden", { status: 403 });
+		if (browserOff()) return new Response("The browser is turned off", { status: 403 });
 		const owner = await browser.ownerOf(cdp.token);
 		if (owner === null) return new Response("Unknown token", { status: 401 });
 		const page = /^\/devtools\/page\/([A-Za-z0-9]+)$/.exec(cdp.rest);

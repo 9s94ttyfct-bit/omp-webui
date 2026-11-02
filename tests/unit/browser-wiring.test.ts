@@ -122,8 +122,10 @@ function setup() {
 	const browser = {
 		origin: "http://127.0.0.1:1111",
 		installed: true,
+		off: false,
 		moves: [] as [string, string][],
-		cdpUrlFor: async (owner: string) => (browser.installed ? `${browser.origin}/browser-cdp${owner}` : null),
+		cdpUrlFor: async (owner: string | null) =>
+			browser.off ? false : browser.installed && owner !== null ? `${browser.origin}/browser-cdp${owner}` : null,
 		moved: async (from: string, to: string) => {
 			browser.moves.push([from, to]);
 		},
@@ -188,4 +190,51 @@ test("the endpoints are written again when the server learns its address or the 
 	browser.origin = "http://127.0.0.1:2222";
 	await pool.syncBrowser();
 	expect(browserIn(overlayFile())).toEqual({ cdpUrl: `http://127.0.0.1:2222/browser-cdp${key}`, relay: false });
+});
+
+test("a browser turned off turns omp's browser tool off, a new chat's from its first turn, until it is turned on", async () => {
+	const { pool, browser, sessionFile, key, overlayFile, logged } = setup();
+	browser.off = true;
+	await pool.open({ kind: "new", cwd: tmpdir() }, async () => null);
+	const fresh = overlayFile();
+	expect(browserIn(fresh)).toEqual({ enabled: false, relay: false });
+
+	await pool.open({ kind: "resume", sessionFile }, async () => tmpdir());
+	const resumed = logged()
+		.filter((l) => l.argv)
+		.at(-1)
+		?.argv?.at(-1) as string;
+	expect(resumed).not.toBe(fresh);
+	expect(browserIn(resumed)).toEqual({ enabled: false, relay: false });
+
+	browser.off = false;
+	await pool.syncBrowser();
+	expect(browserIn(resumed)).toEqual({ cdpUrl: `${browser.origin}/browser-cdp${key}`, relay: false });
+	expect(browserIn(fresh)?.enabled).toBeUndefined();
+});
+
+test("a paused conversation's record keeps a browser turned off", () => {
+	const store = new ParkedStore(scratch());
+	store.save({
+		version: 2,
+		liveId: "L1",
+		omp: { pid: 1, identity: "a" },
+		relay: { pid: 2, identity: "b" },
+		socket: "/tmp/x.sock",
+		owner: null,
+		cwd: "/",
+		args: [],
+		env: {},
+		mode: "full",
+		startedAt: 0,
+		pausedAt: 1,
+		sessionFile: null,
+		sessionId: null,
+		streaming: false,
+		overlay: { file: "/tmp/L1.yml", mode: null, browserCdpUrl: false },
+		interviewing: false,
+		pendingUI: [],
+		descendants: [],
+	});
+	expect(store.list()[0].overlay?.browserCdpUrl).toBe(false);
 });

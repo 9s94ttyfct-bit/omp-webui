@@ -241,6 +241,63 @@ test("clear of CEF marks the profile for deletion at the app's next start and as
 	expect(inst.profileDir()).toBe(join(root, "cef-profile"));
 });
 
+test("uninstalling CfT stops it, removes it and its profile, and does not start it again", async () => {
+	const steps: string[] = [];
+	const { root, inst } = installer("cft", {
+		stopEngine: async () => {
+			steps.push("stop");
+		},
+		startEngine: async () => {
+			steps.push("start");
+		},
+	});
+	await inst.install();
+	mkdirSync(join(inst.profileDir(), "Default"), { recursive: true });
+	await inst.uninstall();
+	expect(steps).toEqual(["stop"]);
+	expect(inst.state(true).installed).toBeNull();
+	expect(inst.executable()).toBeNull();
+	expect(existsSync(join(root, "cft"))).toBe(false);
+	expect(existsSync(inst.profileDir())).toBe(false);
+	expect(JSON.parse(readFileSync(join(root, "current.json"), "utf8")).cft).toBeUndefined();
+	// It can be installed again.
+	await inst.install();
+	expect(inst.state(true).installed).toEqual({ version: CFT_VERSION });
+});
+
+test("uninstalling CEF leaves its removal to the app's next start; installing it again before that keeps it", async () => {
+	const restarts: string[] = [];
+	const { root, inst } = installer("cef", { requestAppRestart: () => restarts.push("restart") });
+	await inst.install();
+	const version = "200.0.3+gbbbbbbb+chromium-200.0.1.0";
+	await inst.uninstall();
+	const current = () => JSON.parse(readFileSync(join(root, "current.json"), "utf8"));
+	expect(current().uninstallPending).toBe(true);
+	expect(current().cef).toBeUndefined();
+	expect(inst.state(true).installed).toBeNull();
+	expect(inst.state(true).restartNeeded).toBe(true);
+	expect(restarts).toEqual(["restart", "restart"]);
+	// The app has it loaded: its files stay until the app removes them.
+	expect(entries(join(root, "cef"))).toEqual([version]);
+
+	// Installed again before the app restarted: the files there are taken, nothing is downloaded, and the profile still goes.
+	served.oldSha1 = "0".repeat(40);
+	await inst.install();
+	expect(inst.state(true).error).toBeNull();
+	expect(inst.state(true).installed).toEqual({ version });
+	expect(current().uninstallPending).toBeUndefined();
+	expect(current().clearPending).toBe(true);
+});
+
+test("uninstalling CEF that is not installed changes nothing", async () => {
+	const restarts: string[] = [];
+	const { root, inst } = installer("cef", { requestAppRestart: () => restarts.push("restart") });
+	await inst.uninstall();
+	expect(existsSync(join(root, "current.json"))).toBe(false);
+	expect(restarts).toEqual([]);
+	expect(inst.state(true).restartNeeded).toBe(false);
+});
+
 test("OMPW_BROWSER_EXECUTABLE stands for an installed CfT", () => {
 	const inst = new BrowserInstaller({
 		root: join(work, "root-env"),

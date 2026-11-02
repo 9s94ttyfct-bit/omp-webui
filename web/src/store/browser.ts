@@ -70,4 +70,6 @@ export const browserApi = {
 	cancel: () => request("/api/browser/cancel", true),
 	/** Clear the browser's profile (the person was asked first). */
 	clear: () => request("/api/browser/clear", true),
+	/** Remove the browser and its profile (the person was asked first). */
+	uninstall: () => request("/api/browser/uninstall", true),
 };
