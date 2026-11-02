@@ -7,6 +7,7 @@
  */
 
 import type { ApprovalMode } from "./approval.ts";
+import type { BrowserState } from "./browser.ts";
 import type { CompactAt } from "./compact-at.ts";
 import type { CompactEnded, CompactQueued, CompactWhere } from "./compact-queue.ts";
 import type { ErrorInfo, ErrorParams } from "./error-info.ts";
@@ -566,7 +567,12 @@ export type ServerMessage =
 	 * A look at the host's load, to the pages that watch it (`host_watch`). `minute`: the minute this look finished, as the
 	 * coarse series holds it. `procs`: only to the pages that asked for them.
 	 */
-	| { t: "host_sample"; point: HostPoint; minute?: HostPoint; procs?: HostProc[] };
+	| { t: "host_sample"; point: HostPoint; minute?: HostPoint; procs?: HostProc[] }
+	/**
+	 * The built-in browser's install state changed (a check answered, an install moved on, a clear ended): to every page,
+	 * each told whether it may manage it (`canManage`).
+	 */
+	| { t: "browser_state"; state: BrowserState };
 
 // ---------------------------------------------------------------- REST payloads
 

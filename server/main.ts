@@ -39,6 +39,8 @@ import { answerMessage, cleanAnswer, instructionProblemText } from "../shared/un
 import type { UploadFailure } from "../shared/upload.ts";
 import { DEFAULT_USAGE_RANGE, isUsageRange } from "../shared/usage-range.ts";
 import { Auth } from "./auth.ts";
+import { canManageBrowser } from "./browser/gate.ts";
+import { LazyBrowser } from "./browser/lazy.ts";
 import { compressResponse, serveStatic } from "./compress.ts";
 import { loadConfig } from "./config.ts";
 import { guardAgainstStrayErrors } from "./crash-guard.ts";
@@ -528,6 +530,21 @@ function broadcastLocal(msg: ServerMessage): void {
 	const text = JSON.stringify(msg);
 	for (const ws of sockets) if (ws.data.local) ws.data.out?.send(text);
 }
+
+/**
+ * The built-in browser (docs/agents/browser.md): its install state goes to every page the server lets in, each told whether
+ * it may install, update and clear (this computer, or a verified Access sign-in; see `canManageBrowser`).
+ */
+const browser = new LazyBrowser({
+	dataDir: cfg.dataDir,
+	changed(inst) {
+		for (const ws of sockets) {
+			const state = inst.state(canManageBrowser(ws.data.remote, ws.data.local));
+			ws.data.out?.send(JSON.stringify({ t: "browser_state", state } satisfies ServerMessage));
+		}
+	},
+	requestAppRestart: () => shellEvents.browserRestart(),
+});
 
 /** The conversations an update would stop (working, asking) or leave in the background (paused, waiting for a usage limit). */
 function conversationsHeld(): Conversations {
@@ -2085,6 +2102,8 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		return (await pushService()).handle(req, url, { remote: remoteOf.has(req) });
 	if (p === "/api/omp" || p.startsWith("/api/omp/")) return omp.handle(req, url);
 	if (p === "/api/update" || p.startsWith("/api/update/")) return (await appUpdater()).handle(req, url);
+	if (p === "/api/browser" || p.startsWith("/api/browser/"))
+		return browser.handle(req, url, { remote: remoteOf.get(req) ?? null, local: onThisComputer.has(req) });
 	const remoteAnswer = await remoteAuth.handle(req, url, peer);
 	if (remoteAnswer) return remoteAnswer;
 	const macsAnswer = await savedMacs.handle(req, url, peer);
@@ -2646,6 +2665,11 @@ const listen = (hostname: string, port: number) =>
 				// The app's own updates, to a local page that opens while there is something to show (nothing loads for it).
 				if (ws.data.local && updater?.worthShowing()) {
 					out.send(JSON.stringify({ t: "app_update", state: updater.state() } satisfies ServerMessage));
+				}
+				// The built-in browser's state, once something asked for it (nothing loads for it here).
+				if (browser.loaded) {
+					const state = browser.loaded.state(canManageBrowser(ws.data.remote, ws.data.local));
+					out.send(JSON.stringify({ t: "browser_state", state } satisfies ServerMessage));
 				}
 			},
 			// Bun's socket has taken what it was holding: the outbox sends what it held back.

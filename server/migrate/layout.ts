@@ -222,6 +222,9 @@ function placeData(name: string, isDir: boolean): Placement {
 		name === "push-vapid.json" ||
 		name === "push-devices.json" ||
 		name === "remote-macs.json" ||
+		// The built-in browser (docs/agents/browser.md): its engines are downloads for this computer's system, and its profiles
+		// hold the person's logins in this computer's browser. Neither travels; the new computer installs its own.
+		name === "browser" ||
 		/^cloudflared\./.test(name)
 	)
 		return { left: "machine" };

@@ -69,7 +69,9 @@ export function shellCounts(infos: Iterable<LiveInfo>): ShellCounts {
 /** What goes down the response, one JSON object per line. */
 export type ShellMessage =
 	| ({ t: "state"; epoch: string } & ShellState)
-	| ({ t: "attention"; seq: number } & AttentionNotice);
+	| ({ t: "attention"; seq: number } & AttentionNotice)
+	/** The built-in browser's CEF was installed, updated or its data cleared: this computer's app restarts to take it. */
+	| { t: "browserRestart" };
 
 /** How many notices are kept for a reader that comes back. */
 const KEPT = 20;
@@ -240,6 +242,11 @@ export class ShellEvents {
 	/** A question was filed, answered or dismissed: the number that are open may be different. */
 	questionsChanged(): void {
 		if (this.readers.size > 0) this.counts();
+	}
+
+	/** Asks this computer's app (not another Mac's) to restart for the built-in browser (see `ShellMessage`). */
+	browserRestart(): void {
+		for (const reader of [...this.readers]) if (!reader.remote) this.send(reader, { t: "browserRestart" });
 	}
 
 	private state(): ShellState {
