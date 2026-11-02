@@ -19,8 +19,8 @@ async function openChat(page: Page, title: string) {
 
 /**
  * Close is inside the window; in every pane the tabs are on the row's single line, none of them is hidden behind its scroll,
- * and each pane lists the tabs it is given (a tab is in one row only: six above and five below by default, all eleven in a
- * sheet's one).
+ * and each pane lists the tabs it is given (a tab is in one row only: seven above and eight below by default, all fifteen in
+ * a sheet's one).
  */
 async function expectReachable(page: Page, panel: Locator, panes: Partial<Record<"top" | "bottom", number>>) {
 	const { width } = viewportOf(page);
@@ -62,9 +62,9 @@ test.describe("beside the conversation (1400 px)", () => {
 		await page.getByTestId("toggle-panel").click();
 		const panel = page.getByTestId("right-panel");
 		await expect(panel).toBeVisible();
-		await expectReachable(page, panel, { top: 7, bottom: 7 });
+		await expectReachable(page, panel, { top: 7, bottom: 8 });
 		await expect(page.getByTestId("right-panel-backdrop")).toHaveCount(0);
-		// At the default width the tabs that are not shown are icons (with their counts) so that seven tabs and the pane's buttons
+		// At the default width the tabs that are not shown are icons (with their counts) so that eight tabs and the pane's buttons
 		// fit one line: each still has a name for a screen reader and a tooltip.
 		await expect(topTab(panel, /^Agents/).getByText(/^Agents$/)).toBeVisible();
 		for (const which of ["top", "bottom"] as const) {
@@ -85,7 +85,7 @@ test.describe("beside the conversation (1400 px)", () => {
 		const panel = page.getByTestId("right-panel");
 		await expect(panel).toBeVisible();
 		expect(Math.round((await boxOf(panel)).width)).toBe(720);
-		await expectReachable(page, panel, { top: 7, bottom: 7 });
+		await expectReachable(page, panel, { top: 7, bottom: 8 });
 		for (const [which, tabs] of [
 			[
 				"top",
@@ -109,6 +109,7 @@ test.describe("beside the conversation (1400 px)", () => {
 					[/^Host$/, /^Host$/],
 					[/^Terminal$/, /^Terminal$/],
 					[/^Worktrees$/, /^Worktrees$/],
+					[/^Browser$/, /^Browser$/],
 				],
 			],
 		] as const) {
@@ -148,10 +149,10 @@ test.describe("a sheet over the conversation (phone)", () => {
 		await expect(panel).toBeVisible();
 		const close = await boxOf(panel.getByTestId("right-panel-close"));
 		expect(close.x + close.width).toBeLessThanOrEqual(390);
-		// Fourteen labelled tabs are wider than a phone's sheet, so its one row of tabs scrolls sideways: every tab stays
+		// Fifteen labelled tabs are wider than a phone's sheet, so its one row of tabs scrolls sideways: every tab stays
 		// on one line with its name (P1: none shrinks to a bare icon), and the last is brought into view before Close.
 		const tabs = panel.getByRole("tab");
-		await expect(tabs).toHaveCount(14);
+		await expect(tabs).toHaveCount(15);
 		const tops = await tabs.evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
 		expect(new Set(tops).size, "the tabs share one line").toBe(1);
 		await expect(panel.getByRole("tablist")).not.toHaveAttribute("data-compact");
