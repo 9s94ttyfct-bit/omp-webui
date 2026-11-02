@@ -1,4 +1,4 @@
-import { type CiAnswer, type CiBadge, type CiJob, type CiRun, type CiScope, CI_SCOPES, ciBadge } from "@shared/ci.ts";
+import { CI_SCOPES, type CiAnswer, type CiBadge, type CiJob, type CiRun, type CiScope, ciBadge } from "@shared/ci.ts";
 import { PREF } from "@shared/prefs.ts";
 import { useEffect, useState } from "react";
 import "../i18n/later.ts";
