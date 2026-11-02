@@ -414,8 +414,9 @@ export class ScreenClient {
 		switch (msg.t) {
 			case "watch": {
 				if (typeof msg.owner !== "string") return;
-				// The page this tab watched until now: watched again (its panel resized), it has been told its console already.
-				const before = this.view;
+				// The page this tab watched until now, for the same conversation: watched again (its panel resized), it has
+				// been told its console already. The tab starts its list over for another conversation.
+				const before = msg.owner === this.owner ? this.view : null;
 				this.unwatch();
 				if (msg.owner !== this.owner) this.unfit();
 				this.owner = msg.owner;
