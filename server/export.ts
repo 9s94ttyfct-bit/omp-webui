@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { hardenExport } from "./export-harden.ts";
 import { run } from "./omp/run.ts";
 
@@ -33,7 +33,10 @@ export async function exportSession(
 	sweep(exports);
 	const dir = mkdtempSync(join(exports, "export-"));
 	try {
-		const { stdout, stderr, code } = await run([ompBin, "--export", sessionFile], { cwd: dir, timeoutMs });
+		// The file is named where it goes, a path in the export's own directory: given none, omp 18.16 on Windows fails to
+		// make the directory of its default `omp-session-<name>.html` (`EEXIST: file already exists, mkdir '.'`).
+		const out = join(dir, `omp-session-${basename(sessionFile, ".jsonl")}.html`);
+		const { stdout, stderr, code } = await run([ompBin, "--export", sessionFile, out], { cwd: dir, timeoutMs });
 		if (code !== 0) throw new Error(`Export failed: ${stderr}`);
 		const name = readdirSync(dir).find((f) => f.endsWith(".html"));
 		if (!name) throw new Error(`Export produced no HTML: ${stdout}`);
