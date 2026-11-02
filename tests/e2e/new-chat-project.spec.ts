@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { newChatIn } from "../support/new-chat.ts";
+import { newChatIn, openFolderBrowser } from "../support/new-chat.ts";
 import { choose, readOptions } from "../support/select.ts";
 import { type SocketTap, tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
@@ -155,20 +155,23 @@ test("an address with a folder opens New chat in that folder, as before: no new 
 	expect(readdirSync(root)).toEqual([]);
 });
 
-test("Use an existing folder switches to the folder picker's choice, and back to a new project", async ({ page }) => {
+test("the folder button's menu switches to an existing folder from the folder picker, and back to a new project", async ({
+	page,
+}) => {
 	const root = freshRoot();
 	await setRoot(root);
 	const work = join(process.env.OMPW_E2E_WORK as string, `picked-${Date.now()}`);
 	mkdirSync(work, { recursive: true });
 	const tap = await openNewChat(page);
-	await page.getByTestId("use-existing-folder").click();
+	await openFolderBrowser(page);
 	const dialog = page.getByRole("dialog");
 	await expect(dialog.getByTestId("dir-up")).toBeVisible();
 	await dialog.getByLabel("Path").fill(work);
 	await dialog.getByRole("button", { name: "Use this folder" }).click();
-	await expect(page.getByTestId("cwd-picker")).toContainText(work.split("/").pop() as string);
+	await expect(page.getByTestId("folder-menu")).toHaveText(work.split("/").pop() as string);
 	await expect.poll(() => opens(tap).at(-1)).toBe(work);
-	await page.getByTestId("back-to-new-project").click();
+	await page.getByTestId("folder-menu").click();
+	await page.getByTestId("folder-menu-new").click();
 	await expect(page.getByTestId("new-project-name")).toBeVisible();
 	await expect.poll(() => opens(tap).at(-1)).toBe(root);
 });

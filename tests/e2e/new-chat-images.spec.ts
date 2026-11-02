@@ -63,7 +63,7 @@ test("a goal that starts at once is refused with an image: nothing is sent and t
 	await expect(page.getByTestId("toast").filter({ hasText: "images" })).toBeVisible();
 	await expect(page.getByTestId("composer")).toHaveValue("ship the release");
 	await expect(page.getByRole("img", { name: "dot.png" })).toBeVisible();
-	await expect(page.getByTestId("cwd-picker")).toBeVisible();
+	await expect(page.getByTestId("folder-menu")).toBeVisible();
 	expect(created(tap)).toEqual([]);
 	expect(tap.commands("prompt")).toEqual([]);
 

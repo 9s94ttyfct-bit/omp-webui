@@ -28,7 +28,6 @@ export const en = {
 	newProject: "New project folder",
 	newIn: "Made in {folder}",
 	autoPlaceholder: "New project's name (empty: {name})",
-	useExisting: "Use an existing folder",
 	change: "Change",
 	nameLabel: "Folder name",
 	namePlaceholder: "my-project",

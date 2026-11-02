@@ -929,64 +929,65 @@ html[data-agent-full] .app-shell {
 }
 
 /*
- * The width of each control in the composer's footer, for the placeholder that holds their row while the pickers' chunk is
- * fetched (`PickersSkeleton` in NewChat.tsx): the labels decide them, so one set per language. Measured with the menu
- * closed; a row wrong by a few pixels wraps at the wrong width, which is what these keep within a few pixels of the
- * controls'. The narrow footer keeps its `w-8` icons whatever these say: its rule comes last, under the same footer.
+ * The width of each control in New chat's settings bar, for the placeholder that holds its rows while the pickers' chunk
+ * is fetched (`PickersSkeleton` in NewChat.tsx; the bars sit in the same two groups as the controls): the labels decide
+ * them, so one set per language. Measured with the menu closed; a row wrong by a few pixels wraps at the wrong width,
+ * which is what these keep within a few pixels of the controls'. The narrow bar keeps its `w-8` icons whatever these say:
+ * its rule comes last and is more specific.
  */
-[data-testid="pickers-skeleton"] > [data-sk="preset"] {
+[data-testid="pickers-skeleton"] [data-sk="preset"] {
 	width: 97px;
 }
-[data-testid="pickers-skeleton"] > [data-sk="model"] {
+[data-testid="pickers-skeleton"] [data-sk="model"] {
 	width: 150px;
 }
-[data-testid="pickers-skeleton"] > [data-sk="thinking"] {
+[data-testid="pickers-skeleton"] [data-sk="thinking"] {
 	width: 73px;
 }
-[data-testid="pickers-skeleton"] > [data-sk="guard"] {
+[data-testid="pickers-skeleton"] [data-sk="guard"] {
 	width: 95px;
 }
-[data-testid="pickers-skeleton"] > [data-sk="guidance"],
+[data-testid="pickers-skeleton"] [data-sk="guidance"],
 [data-testid="guidance-skeleton"] {
 	width: 88px;
 }
 /* Full / Light: one width in every language and for both modes */
-[data-testid="pickers-skeleton"] > [data-sk="mode"] {
+[data-testid="pickers-skeleton"] [data-sk="mode"] {
 	width: 80px;
 }
-[data-testid="pickers-skeleton"] > [data-sk="goal"] {
+[data-testid="pickers-skeleton"] [data-sk="goal"] {
 	width: 62px;
 }
-[data-testid="pickers-skeleton"] > [data-sk="approval"] {
+[data-testid="pickers-skeleton"] [data-sk="approval"] {
 	width: 131px;
 }
 /* The same rule again, one step more specific (`:root[lang]`: the pack that chose the language is on the document). */
-:root[lang="zh-CN"] [data-testid="pickers-skeleton"] > [data-sk="preset"] {
+:root[lang="zh-CN"] [data-testid="pickers-skeleton"] [data-sk="preset"] {
 	width: 79px;
 }
-:root[lang="zh-CN"] [data-testid="pickers-skeleton"] > [data-sk="thinking"] {
+:root[lang="zh-CN"] [data-testid="pickers-skeleton"] [data-sk="thinking"] {
 	width: 62px;
 }
-:root[lang="zh-CN"] [data-testid="pickers-skeleton"] > [data-sk="guard"] {
+:root[lang="zh-CN"] [data-testid="pickers-skeleton"] [data-sk="guard"] {
 	width: 97px;
 }
-:root[lang="zh-CN"] [data-testid="pickers-skeleton"] > [data-sk="guidance"],
+:root[lang="zh-CN"] [data-testid="pickers-skeleton"] [data-sk="guidance"],
 :root[lang="zh-CN"] [data-testid="guidance-skeleton"] {
 	width: 83px;
 }
-:root[lang="zh-CN"] [data-testid="pickers-skeleton"] > [data-sk="goal"] {
+:root[lang="zh-CN"] [data-testid="pickers-skeleton"] [data-sk="goal"] {
 	width: 62px;
 }
-:root[lang="zh-CN"] [data-testid="pickers-skeleton"] > [data-sk="approval"] {
+:root[lang="zh-CN"] [data-testid="pickers-skeleton"] [data-sk="approval"] {
 	width: 103px;
 }
-/* As specific as the per-language rules above (`:root`, `:nth-child(n)`), and after them, so the narrow settings bar's
+/* More specific than the per-language rules above (`:root`, `:nth-child(n)`), and after them, so the narrow settings bar's
  * icon squares win in every language; the divider between the model's settings and the rules stays a line. */
-:root [data-composer-narrow] [data-testid="pickers-skeleton"] > span:nth-child(n),
+:root [data-composer-narrow] [data-testid="pickers-skeleton"] [data-sk]:nth-child(n),
 :root [data-composer-narrow] [data-testid="guidance-skeleton"] {
 	width: 2rem;
 }
-:root [data-composer-narrow] [data-testid="pickers-skeleton"] > [data-sk="divider"]:nth-child(n) {
+:root [data-composer-narrow] [data-testid="pickers-skeleton"] [data-sk="divider"]:nth-child(n) {
 	width: 1px;
 }
 /* Dragging an item of the sidebar or the rail (#654): the drag (a chunk of its own) only sets attributes, and these draw

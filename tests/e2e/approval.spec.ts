@@ -1,5 +1,5 @@
 import { ownSession, sessionRow, startLive } from "../support/live.ts";
-import { newChatIn } from "../support/new-chat.ts";
+import { newChatIn, openFolderBrowser } from "../support/new-chat.ts";
 import { type Msg, type SocketTap, tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -152,7 +152,7 @@ test("New chat keeps the mode picked here when the folder changes and omp starts
 	const tap = await newChat(page);
 	await choose(page, "always-ask");
 
-	await page.getByTestId("cwd-picker").click();
+	await openFolderBrowser(page);
 	await page.getByTestId("dir-up").click();
 	await page.getByRole("button", { name: "Use this folder" }).click();
 	// A second process for the new folder, started in the picked mode: the switcher shows it, nothing was reset.

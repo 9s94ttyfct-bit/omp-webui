@@ -158,7 +158,7 @@ test("an issue starts a new conversation in the same folder with it in the messa
 	await page.locator('[data-testid="issues-row"][data-number="7"]').click();
 	await expect(page.getByTestId("issue-title")).toHaveText("Crash on start");
 	await page.getByTestId("issue-to-new").click();
-	await expect(page.getByTestId("cwd-picker")).toContainText("issues-repo");
+	await expect(page.getByTestId("folder-menu")).toContainText("issues-repo");
 	await expect(page.getByTestId("composer")).toHaveValue(/GitHub issue #7: Crash on start/);
 });
 

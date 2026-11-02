@@ -57,35 +57,42 @@ export function NewChatPickers({
 	/** New chat's own controls (the goal switches), at the end of the bar. */
 	goal?: ReactNode;
 }) {
+	// Two groups, each wrapping as one: the bar breaks between them (the rules under the model's settings, aligned at the
+	// left), never inside one while it fits a line. `PickersSkeleton` in NewChat.tsx holds the same groups.
+	const group = "inline-flex min-w-0 flex-wrap items-center gap-1";
 	return (
 		<>
-			<PresetPicker liveId={liveId} onPick={onPreset} />
-			<ModelPicker liveId={liveId} current={model} onPick={onModel} />
-			<ThinkingPicker
-				liveId={liveId}
-				level={thinking.selected}
-				resolved={thinking.resolved}
-				current={model}
-				onPick={onThinking}
-			/>
-			<ModePicker />
+			<span className={group} data-group="model">
+				<PresetPicker liveId={liveId} onPick={onPreset} />
+				<ModelPicker liveId={liveId} current={model} onPick={onModel} />
+				<ThinkingPicker
+					liveId={liveId}
+					level={thinking.selected}
+					resolved={thinking.resolved}
+					current={model}
+					onPick={onThinking}
+				/>
+				<ModePicker />
+			</span>
 			<span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-border" />
-			<GuardPicker liveId={liveId} onChange={onGuard} />
-			{/* Its own chunk lands after the others: a bar of its width holds its place, so the row does not wrap twice. */}
-			<Suspense
-				fallback={<span aria-hidden data-testid="guidance-skeleton" className="h-8 shrink-0 rounded-lg bg-hover" />}
-			>
-				<GuidancePicker value={guidance} liveId={liveId} disabled={guidanceDisabled} onPick={onGuidance} />
-			</Suspense>
-			<ApprovalPicker liveId={liveId} onChange={onApproval} />
-			<Suspense
-				fallback={
-					<span aria-hidden data-testid="unattended-skeleton" className="h-8 w-8 shrink-0 rounded-lg bg-hover" />
-				}
-			>
-				<UnattendedToggle liveId={liveId} pick={unattended} />
-			</Suspense>
-			{goal}
+			<span className={group} data-group="rules">
+				<GuardPicker liveId={liveId} onChange={onGuard} />
+				{/* Its own chunk lands after the others: a bar of its width holds its place, so the row does not wrap twice. */}
+				<Suspense
+					fallback={<span aria-hidden data-testid="guidance-skeleton" className="h-8 shrink-0 rounded-lg bg-hover" />}
+				>
+					<GuidancePicker value={guidance} liveId={liveId} disabled={guidanceDisabled} onPick={onGuidance} />
+				</Suspense>
+				<ApprovalPicker liveId={liveId} onChange={onApproval} />
+				<Suspense
+					fallback={
+						<span aria-hidden data-testid="unattended-skeleton" className="h-8 w-8 shrink-0 rounded-lg bg-hover" />
+					}
+				>
+					<UnattendedToggle liveId={liveId} pick={unattended} />
+				</Suspense>
+				{goal}
+			</span>
 		</>
 	);
 }

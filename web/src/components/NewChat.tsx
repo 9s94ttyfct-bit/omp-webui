@@ -5,13 +5,12 @@ import { MODEL_FLAGS, runsLocal } from "@shared/offline.ts";
 import { PREF } from "@shared/prefs.ts";
 import type { ProjectsInfo } from "@shared/projects.ts";
 import type { CliFlag } from "@shared/protocol.ts";
-import { ChevronDown, FastForward, FolderOpen, FolderPlus, RotateCw, SlidersHorizontal, Target } from "lucide-react";
+import { FastForward, RotateCw, SlidersHorizontal, Target } from "lucide-react";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { type MessageKey, useT } from "../i18n/index.ts";
 import { api } from "../lib/api.ts";
 import { errorText } from "../lib/error-text.ts";
-import { shortPath } from "../lib/format.ts";
 import { createGoal, startGuidedGoal, useGoalRequest } from "../lib/goal.ts";
 import { guidanceToRemember, initialGuidance } from "../lib/guidance-start.ts";
 import { useImeGuard } from "../lib/ime.ts";
@@ -34,6 +33,7 @@ import { ReplyError, socket } from "../lib/ws.ts";
 import { closeLive, openLive, refreshState, runBash, useApp } from "../store/app.ts";
 import { Composer, type ComposerHandle, type ImageAttachment, NARROW_COMPOSER_PX } from "./Composer.tsx";
 import { ErrorBoundary } from "./ErrorBoundary.tsx";
+import { NewChatFolderMenu } from "./NewChatFolder.tsx";
 import { Button, cx, Spinner } from "./ui.tsx";
 
 // "Guard dangerous commands" for this conversation (its own settings over the global ones): a chunk of its own, with its strings.
@@ -166,20 +166,26 @@ function pickIo(liveId: string): PickIo {
  */
 function PickersSkeleton() {
 	const bar = "h-8 shrink-0 rounded-lg bg-hover";
+	// The pickers' own two groups (`NewChatPickers`), so the placeholder breaks where the controls will.
+	const group = "inline-flex min-w-0 flex-wrap items-center gap-1";
 	return (
 		<span aria-hidden data-testid="pickers-skeleton" className="contents">
 			{/* the model's: preset, model, thinking level, Full / Light */}
-			<span data-sk="preset" className={bar} />
-			<span data-sk="model" className={bar} />
-			<span data-sk="thinking" className={bar} />
-			<span data-sk="mode" className={bar} />
+			<span className={group}>
+				<span data-sk="preset" className={bar} />
+				<span data-sk="model" className={bar} />
+				<span data-sk="thinking" className={bar} />
+				<span data-sk="mode" className={bar} />
+			</span>
 			<span data-sk="divider" className="mx-1 h-5 w-px shrink-0 bg-border" />
 			{/* the conversation's rules: guard, guidance (#641), permission mode, unattended mode (#646, a square), the goal */}
-			<span data-sk="guard" className={bar} />
-			<span data-sk="guidance" className={bar} />
-			<span data-sk="approval" className={bar} />
-			<span data-sk="unattended" className={`${bar} w-8`} />
-			<span data-sk="goal" className={bar} />
+			<span className={group}>
+				<span data-sk="guard" className={bar} />
+				<span data-sk="guidance" className={bar} />
+				<span data-sk="approval" className={bar} />
+				<span data-sk="unattended" className={`${bar} w-8`} />
+				<span data-sk="goal" className={bar} />
+			</span>
 		</span>
 	);
 }
@@ -627,10 +633,23 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 				<h1 className="mb-8 text-center font-serif text-3xl tracking-tight sm:text-4xl">
 					<span className="text-accent">✻</span> {greeting(t)}
 				</h1>
-				{/* The folder (a long path) and the recent ones wrap among themselves; the meter and Options keep the first row, at
-				    its right, however long the path is. The group is as tall as the folder button, so they line up with it. */}
+				{/* One line: where the conversation starts (its menu holds the other choices and the recent folders), the new
+				    project's name with the note under it, and the meter and Options at the right. They line up on the top line. */}
 				<div className="mb-3 flex items-start gap-2">
-					<div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+					<NewChatFolderMenu
+						existing={existing}
+						recent={recent}
+						home={meta?.home}
+						onWarm={preloadDirBrowser}
+						onNew={() => {
+							if (existing === null) return;
+							setExisting(null);
+							setRootGen((g) => g + 1);
+						}}
+						onChooseExisting={() => setBrowse(true)}
+						onPick={setExisting}
+					/>
+					<div className="flex min-w-0 flex-1">
 						{existing === null ? (
 							<ErrorBoundary fallback={() => null} onError={retryProjectField}>
 								<Suspense fallback={null}>
@@ -646,52 +665,11 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 										failure={projectFailure}
 										remote={remote}
 										onChangeRoot={() => setBrowseFor("root")}
-										onUseExisting={() => setBrowseFor("existing")}
 										onEnter={() => composer.current?.focus()}
 									/>
 								</Suspense>
 							</ErrorBoundary>
-						) : (
-							<>
-								<button
-									type="button"
-									data-testid="cwd-picker"
-									title={cwd || undefined}
-									className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs hover:bg-hover"
-									onPointerEnter={preloadDirBrowser}
-									onClick={() => setBrowse(true)}
-								>
-									<FolderOpen size={14} className="shrink-0 text-accent" />
-									<span className="truncate">{shortPath(cwd, meta?.home)}</span>
-									<ChevronDown size={12} className="shrink-0" />
-								</button>
-								<button
-									type="button"
-									data-testid="back-to-new-project"
-									className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted hover:bg-hover hover:text-fg"
-									onClick={() => {
-										setExisting(null);
-										setRootGen((g) => g + 1);
-									}}
-								>
-									<FolderPlus size={13} /> {t("pages.newBackToProject")}
-								</button>
-							</>
-						)}
-						{recent
-							.filter((r) => r !== existing)
-							.slice(0, 4)
-							.map((r) => (
-								<button
-									type="button"
-									key={r}
-									title={r}
-									className="truncate rounded-lg px-2 py-1 text-xs text-muted hover:bg-hover hover:text-fg"
-									onClick={() => setExisting(r)}
-								>
-									{shortPath(r, meta?.home).split("/").pop() || r}
-								</button>
-							))}
+						) : null}
 					</div>
 					<div className="flex h-[1.875rem] shrink-0 items-center gap-2">
 						{live?.state?.model?.provider ? (

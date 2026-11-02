@@ -40,7 +40,7 @@ test("the new-chat page offers a new project, warms omp up in the home folder, a
 	await expect(name).toBeVisible();
 	await expect(name).toBeFocused();
 	await expect(name).toHaveValue("");
-	await expect(page.getByTestId("cwd-picker")).toHaveCount(0);
+	await expect(page.getByTestId("folder-menu")).toHaveAttribute("data-mode", "new");
 	// `~/omp` is not there before its first project: omp is warmed up in the home folder, for the pickers only.
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	expect(startedIn(tap)).toEqual([home]);

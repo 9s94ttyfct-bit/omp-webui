@@ -1,5 +1,4 @@
 import { autoProjectName, type ProjectsInfo, projectNameProblem } from "@shared/projects.ts";
-import { FolderOpen, FolderPlus } from "lucide-react";
 import { useId } from "react";
 import { useT } from "../i18n/index.ts";
 import { shortPath } from "../lib/format.ts";
@@ -8,10 +7,10 @@ import { problemText, projectsErrorText } from "../lib/projects-api.ts";
 import { useProjectsStrings } from "../lib/projects-strings.ts";
 
 /**
- * New chat's default (v0.17.0): the name of the new project its conversation starts in, the projects folder it is made in
- * (Settings › Projects folder; "Change" sets that same setting, on this computer only), and the way to an existing folder
- * instead. The folder is made by New chat when the first message is sent, not here. A chunk of its own with the projects
- * folder's strings, like "New project folder" in the folder picker.
+ * New chat's default (v0.17.0): the name of the new project its conversation starts in, and the projects folder it is made
+ * in (Settings › Projects folder; "Change" sets that same setting, on this computer only). An existing folder instead is
+ * New chat's folder button's choice (`NewChatFolderMenu`). The folder is made by New chat when the first message is sent,
+ * not here. A chunk of its own with the projects folder's strings, like "New project folder" in the folder picker.
  */
 export default function NewProjectField({
 	name,
@@ -21,7 +20,6 @@ export default function NewProjectField({
 	failure,
 	remote,
 	onChangeRoot,
-	onUseExisting,
 	onEnter,
 }: {
 	name: string;
@@ -34,7 +32,6 @@ export default function NewProjectField({
 	/** A page not on this computer cannot change the projects folder (the server refuses it). */
 	remote: boolean;
 	onChangeRoot: () => void;
-	onUseExisting: () => void;
 	/** Enter in the name: on to the message box. */
 	onEnter: () => void;
 }) {
@@ -48,7 +45,6 @@ export default function NewProjectField({
 	return (
 		<div className="flex min-w-0 flex-1 flex-col gap-1" data-testid="new-project">
 			<div className="flex min-w-0 items-center gap-1.5">
-				<FolderPlus size={14} className="shrink-0 text-accent" aria-hidden />
 				<label htmlFor={id} className="sr-only">
 					{t("projects.nameLabel")}
 				</label>
@@ -74,14 +70,6 @@ export default function NewProjectField({
 					}}
 					className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-2.5 py-1.5 font-mono text-xs outline-none focus:border-faint"
 				/>
-				<button
-					type="button"
-					data-testid="use-existing-folder"
-					className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-muted hover:bg-hover hover:text-fg"
-					onClick={onUseExisting}
-				>
-					<FolderOpen size={13} /> {t("projects.useExisting")}
-				</button>
 			</div>
 			<div id={`${id}-note`} className="min-h-4 px-1 text-xs" role="status">
 				{shown ? (

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
-import { newChatIn } from "../support/new-chat.ts";
+import { newChatIn, openFolderBrowser } from "../support/new-chat.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /**
@@ -28,7 +28,7 @@ test.beforeEach(async ({ e2eServer }) => {
 async function openPicker(page: Page, lang: "en" | "zh-CN" = "en") {
 	await page.addInitScript((l) => localStorage.setItem("ompw.lang", l), lang);
 	await page.goto(newChatIn(work()));
-	await page.getByTestId("cwd-picker").click();
+	await openFolderBrowser(page);
 	const dialog = page.getByRole("dialog");
 	await expect(dialog.getByTestId("dir-up")).toBeVisible();
 	return dialog;
@@ -44,7 +44,7 @@ test("a new project folder is made in the projects folder, and the chat starts i
 	const made = join(omp(), "my-app");
 	expect(existsSync(made)).toBe(true);
 	expect(readdirSync(made)).toEqual([]);
-	await expect(page.getByTestId("cwd-picker")).toContainText("~/omp/my-app");
+	await expect(page.getByTestId("folder-menu")).toHaveAttribute("title", /\/omp\/my-app$/);
 	// The chat has started there: omp runs in it, so its controls are on the page.
 	await expect(page.getByTestId("goal-mode")).toBeVisible({ timeout: 60_000 });
 	await expect(page.getByTestId("new-chat-error")).toHaveCount(0);
@@ -94,7 +94,7 @@ test("a folder that exists is not touched: the name is told to be taken and the 
 	await expect(dialog).toHaveCount(0);
 	expect(readFileSync(join(taken, "keep.txt"), "utf8")).toBe("mine");
 	expect(existsSync(join(omp(), "taken-2"))).toBe(true);
-	await expect(page.getByTestId("cwd-picker")).toContainText("~/omp/taken-2");
+	await expect(page.getByTestId("folder-menu")).toHaveAttribute("title", /\/omp\/taken-2$/);
 });
 
 test("Back closes the form, and the existing folders can still be picked", async ({ page }) => {
@@ -112,7 +112,7 @@ test("Back closes the form, and the existing folders can still be picked", async
 	await dialog.getByRole("button", { name: "existing", exact: true }).click();
 	await dialog.getByRole("button", { name: "Use this folder" }).click();
 	await expect(dialog).toHaveCount(0);
-	await expect(page.getByTestId("cwd-picker")).toContainText("~/existing");
+	await expect(page.getByTestId("folder-menu")).toHaveAttribute("title", /\/existing$/);
 	expect(existsSync(join(home(), "never"))).toBe(false);
 });
 
@@ -143,7 +143,7 @@ test("Settings › Projects folder: the default is shown, a chosen folder is kep
 	await dialog.getByTestId("new-project-create").click();
 	await expect(dialog).toHaveCount(0);
 	expect(existsSync(join(home(), "dev", "from-settings"))).toBe(true);
-	await expect(page.getByTestId("cwd-picker")).toContainText("~/dev/from-settings");
+	await expect(page.getByTestId("folder-menu")).toHaveAttribute("title", /\/dev\/from-settings$/);
 
 	await page.goto("/#/settings/chats");
 	await page.getByTestId("projects-default").click();

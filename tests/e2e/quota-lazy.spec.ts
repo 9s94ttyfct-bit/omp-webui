@@ -84,7 +84,7 @@ test("a long folder path leaves the meter on the folder's row, at desktop and ph
 				() =>
 					page.evaluate(async (width) => {
 						await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
-						const folder = document.querySelector('[data-testid="cwd-picker"]')?.getBoundingClientRect();
+						const folder = document.querySelector('[data-testid="folder-menu"]')?.getBoundingClientRect();
 						const pill = document.querySelector('[data-testid="quota"]')?.getBoundingClientRect();
 						if (!folder || !pill) return "the folder or the meter is not on the screen";
 						// Beside the folder, not wrapped under it, and on the screen.

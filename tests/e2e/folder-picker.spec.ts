@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { newChatIn } from "../support/new-chat.ts";
+import { newChatIn, openFolderBrowser } from "../support/new-chat.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /**
@@ -17,7 +17,7 @@ test.afterAll(() => rmSync(base, { recursive: true, force: true }));
 
 async function openPicker(page: Page) {
 	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
-	await page.getByTestId("cwd-picker").click();
+	await openFolderBrowser(page);
 	const dialog = page.getByRole("dialog");
 	await expect(dialog.getByTestId("dir-up")).toBeVisible();
 	return { dialog, path: dialog.getByLabel("Path") };

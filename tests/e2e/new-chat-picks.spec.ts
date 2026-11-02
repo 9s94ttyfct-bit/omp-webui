@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { newChatIn } from "../support/new-chat.ts";
+import { newChatIn, openFolderBrowser } from "../support/new-chat.ts";
 import { choose, readOptions } from "../support/select.ts";
 import { type SocketTap, tapSocket } from "../support/socket-tap.ts";
 import { type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
@@ -82,7 +82,7 @@ test("a model chosen before the folder changes is on the process started for the
 	const label = await page.getByTestId("model-picker").innerText();
 
 	const started = opens(tap).length;
-	await page.getByTestId("cwd-picker").click();
+	await openFolderBrowser(page);
 	const dialog = page.getByRole("dialog");
 	// The listing of the current folder fills the field when it arrives: type after it.
 	await expect(dialog.getByTestId("dir-up")).toBeVisible();

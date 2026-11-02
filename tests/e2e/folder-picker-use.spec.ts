@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { newChatIn } from "../support/new-chat.ts";
+import { newChatIn, openFolderBrowser } from "../support/new-chat.ts";
 import { expect, type Locator, type Page, test } from "./fixtures.ts";
 
 /**
@@ -17,7 +17,7 @@ test.afterAll(() => rmSync(base, { recursive: true, force: true }));
 
 async function openPicker(page: Page, folder = process.env.OMPW_E2E_WORK as string) {
 	await page.goto(newChatIn(folder));
-	await page.getByTestId("cwd-picker").click();
+	await openFolderBrowser(page);
 	const dialog = page.getByRole("dialog");
 	await expect(dialog.getByTestId("dir-up")).toBeVisible();
 	return { dialog, path: dialog.getByLabel("Path") };
@@ -31,17 +31,17 @@ test("Use this folder takes the path in the field, also when it was never listed
 	await path.fill(typed);
 	await dialog.getByRole("button", { name: "Use this folder" }).click();
 	await expect(dialog).toHaveCount(0);
-	await expect(page.getByTestId("cwd-picker")).toContainText(typed);
+	await expect(page.getByTestId("folder-menu")).toHaveAttribute("title", typed);
 });
 
 test("a path that cannot be used keeps the dialog open and says why; the folder does not change", async ({ page }) => {
 	const { dialog, path } = await openPicker(page);
-	const chip = await page.getByTestId("cwd-picker").innerText();
+	const chip = await page.getByTestId("folder-menu").innerText();
 	await path.fill(join(base, "nowhere"));
 	await dialog.getByRole("button", { name: "Use this folder" }).click();
 	await expect(dialog).toContainText(`${join(base, "nowhere")} does not exist.`);
 	await expect(dialog).toContainText("Choose a working folder");
-	await expect(page.getByTestId("cwd-picker")).toHaveText(chip);
+	await expect(page.getByTestId("folder-menu")).toHaveText(chip);
 });
 
 /** Whether the path field is scrolled to its end, with its text longer than the field. */

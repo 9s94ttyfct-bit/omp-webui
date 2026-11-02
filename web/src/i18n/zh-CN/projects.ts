@@ -21,7 +21,6 @@ export const zh: Record<keyof typeof en, string> = {
 	newProject: "新建项目文件夹",
 	newIn: "将创建于 {folder}",
 	autoPlaceholder: "新项目名称（留空则为 {name}）",
-	useExisting: "改用已有文件夹",
 	change: "更改",
 	nameLabel: "文件夹名称",
 	namePlaceholder: "my-project",

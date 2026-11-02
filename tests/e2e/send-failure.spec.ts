@@ -40,7 +40,7 @@ test("a failed send in a new chat keeps the draft and stays on the new-chat page
 	await page.goto(newChatIn(process.env.OMPW_E2E_WORK as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	await draft(page, "keep me (new chat)");
-	await expect(page.getByTestId("cwd-picker")).toBeVisible();
+	await expect(page.getByTestId("folder-menu")).toBeVisible();
 });
 
 test("a failed send in an existing conversation keeps the draft", async ({ page }) => {

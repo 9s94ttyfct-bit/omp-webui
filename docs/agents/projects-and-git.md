@@ -8,7 +8,7 @@ settings: projects-folder
 
 ## What it does
 
-**A conversation's folder.** Every conversation runs omp in one folder (its project). **New chat** makes a new project by default (v0.17.0): *Project name* (empty: named from the time, `chat-YYYY-MM-DD-HHMM`, then `-2`, …) is made in the projects folder (*Made in …*, *Change*) when the first message is sent, never before; everything picked before then goes to the process started there. **Use an existing folder** opens a folder picker that lists the folders of a path (hidden ones left out; `~` is the home folder); **Make a new project instead** goes back. An entry point with a folder (an issue's *New conversation with it*, `#/new?cwd=<folder>`) opens New chat in that folder. From the picker, **New project folder** makes an empty folder in the projects folder under a name the person types (*Folder name*, *Create and use*) and starts the chat there. A name is one folder: at most 100 characters (and 255 bytes), no `/` or `\`, not starting with a dot, not starting or ending with a space or ending with a dot, no control characters or `< > : " | ? *`, and not a folder that already exists.
+**A conversation's folder.** Every conversation runs omp in one folder (its project). **New chat** makes a new project by default (v0.17.0): *Project name* (empty: named from the time, `chat-YYYY-MM-DD-HHMM`, then `-2`, …) is made in the projects folder (*Made in …*, *Change*) when the first message is sent, never before; everything picked before then goes to the process started there. The folder button before the name (*New project ▾*, or the chosen folder's name, its path in the tooltip) has a menu: **New project**, **Choose an existing folder…** (a folder picker that lists the folders of a path; hidden ones left out; `~` is the home folder) and up to four **Recent** folders. An entry point with a folder (an issue's *New conversation with it*, `#/new?cwd=<folder>`) opens New chat in that folder. From the picker, **New project folder** makes an empty folder in the projects folder under a name the person types (*Folder name*, *Create and use*) and starts the chat there. A name is one folder: at most 100 characters (and 255 bytes), no `/` or `\`, not starting with a dot, not starting or ending with a space or ending with a dot, no control characters or `< > : " | ? *`, and not a folder that already exists.
 
 **The projects folder** is where New project folder makes projects. Default: `~/omp` (made when the first project folder is). New chat makes its new projects there too. The person can choose another folder or go back to the default.
 
@@ -28,7 +28,7 @@ settings: projects-folder
 
 ## Where it is
 
-- **New chat** › folder picker, with **New project folder** (*Made in <projects folder>*).
+- **New chat** › the folder button's menu › *Choose an existing folder…* (the folder picker), with **New project folder** (*Made in <projects folder>*).
 - **Settings › Conversations & files › Projects folder** (`#/settings/chats`): the path, *Choose…*, *Save*, *Use default*. On a page that is not on this computer it is read-only ("Change the projects folder on the computer omp-webui runs on. From here you can still make a project folder in it.").
 - Sidebar: the projects funnel and its popover with the groups and their menus.
 - A conversation: the status line (git), side panel tabs **Worktrees**, **Issues** and **CI** (bottom pane by default).
