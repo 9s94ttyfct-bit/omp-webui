@@ -29,7 +29,7 @@ import "../i18n/later.ts";
 import { en } from "../i18n/ci.ts";
 import { type MessageKey, registerStrings, type Translate, useT } from "../i18n/index.ts";
 import { setNotifications, useNotify } from "../lib/attention.ts";
-import { askJobs, ciNotifyPossible, ciWatcher, useCiRuns } from "../lib/ci-runs.ts";
+import { askJobs, ciNotifyPossible, ciWatcher, readCiScope, saveCiScope, useCiRuns } from "../lib/ci-runs.ts";
 import { fmtElapsed } from "../lib/clock.ts";
 import { fmtRelative } from "../lib/format.ts";
 import { onPrefsChanged, setPref } from "../lib/prefs.ts";
@@ -181,7 +181,8 @@ function NotifyToggle() {
 
 export function CiTab({ cwd }: { cwd: string | null }) {
 	const t = useT();
-	const [scope, setScope] = useState<CiScope>("branch");
+	// Every branch's runs unless this device chose the folder's branch last time (`ompw.ciScope`).
+	const [scope, setScope] = useState<CiScope>(readCiScope);
 	const view = useCiRuns(cwd, scope);
 	const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
 	// Another conversation's folder is another repository.
@@ -215,7 +216,10 @@ export function CiTab({ cwd }: { cwd: string | null }) {
 								type="button"
 								aria-pressed={scope === s.value}
 								data-testid={`ci-scope-${s.value}`}
-								onClick={() => setScope(s.value)}
+								onClick={() => {
+									setScope(s.value);
+									saveCiScope(s.value);
+								}}
 								className={cx(
 									"h-6 rounded-md px-2 text-xs text-muted hover:text-fg",
 									scope === s.value && "bg-hover text-fg",

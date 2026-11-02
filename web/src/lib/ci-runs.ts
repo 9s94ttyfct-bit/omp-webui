@@ -1,4 +1,4 @@
-import { type CiAnswer, type CiBadge, type CiJob, type CiRun, type CiScope, ciBadge } from "@shared/ci.ts";
+import { type CiAnswer, type CiBadge, type CiJob, type CiRun, type CiScope, CI_SCOPES, ciBadge } from "@shared/ci.ts";
 import { PREF } from "@shared/prefs.ts";
 import { useEffect, useState } from "react";
 import "../i18n/later.ts";
@@ -37,6 +37,27 @@ export function ciNotifyWanted(): boolean {
 	const notify = useNotify.getState();
 	if (!notify.enabled) return false;
 	return inShell() ? notify.permission === "granted" : Notification.permission === "granted";
+}
+
+/** localStorage key (device-local, like the sidebar's layout): which runs the CI tab lists, every branch's or the folder's. */
+export const CI_SCOPE_KEY = "ompw.ciScope";
+
+/** The CI tab's last choice on this device; every branch's runs when there is none. */
+export function readCiScope(): CiScope {
+	try {
+		const v = localStorage.getItem(CI_SCOPE_KEY);
+		return CI_SCOPES.find((s) => s === v) ?? "all";
+	} catch {
+		return "all";
+	}
+}
+
+export function saveCiScope(scope: CiScope): void {
+	try {
+		localStorage.setItem(CI_SCOPE_KEY, scope);
+	} catch {
+		// storage refused (a private window that is full): the choice lasts until the page is closed
+	}
 }
 
 /** Tell that `runs` of the folder's branch ended, unless somebody is looking at this window (they see the tab's badge change). */

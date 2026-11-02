@@ -148,9 +148,25 @@ const runIds = (page: Page) =>
 	page.getByTestId("ci-run").evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.id));
 const badge = (page: Page) => page.getByTestId("pane-tab-status-ci");
 
-/** Open the conversation and its side panel (the badge is there from now on), then the CI tab unless `tab` is false. */
-async function openCi(page: Page, title = REPO_TITLE, server = s, tab = true): Promise<void> {
-	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
+/**
+ * Open the conversation and its side panel (the badge is there from now on), then the CI tab unless `tab` is false. The
+ * tab lists the branch's runs, as this device chose before (`ompw.ciScope`); `scope: null` leaves the device without a choice.
+ */
+async function openCi(
+	page: Page,
+	title = REPO_TITLE,
+	server = s,
+	tab = true,
+	scope: "branch" | "all" | null = "branch",
+): Promise<void> {
+	await page.addInitScript((chosen) => {
+		localStorage.setItem("ompw.autoTitle", "off");
+		// Only on the first load: a reload keeps what the page itself chose since.
+		if (chosen && !sessionStorage.getItem("ci-scope-set")) {
+			localStorage.setItem("ompw.ciScope", chosen);
+			sessionStorage.setItem("ci-scope-set", "1");
+		}
+	}, scope);
 	await page.goto(`${server.url}/?token=${server.accessToken}`);
 	// On a phone the sidebar is a drawer to open first.
 	await openSidebar(page);
@@ -162,7 +178,7 @@ async function openCi(page: Page, title = REPO_TITLE, server = s, tab = true): P
 	await expect(page.getByTestId("ci-tab")).toBeVisible();
 }
 
-test("the tab is lazy, lists the branch's runs, unfolds a failed run to its jobs with the failing step and its log, and shows every branch", async ({
+test("the tab is lazy, lists every branch's runs until this device chooses the branch, remembers that, and unfolds a failed run to its jobs with the failing step and its log", async ({
 	page,
 }) => {
 	runsOf("runs-branch.json", [ghRun(302, "failure"), ghRun(301, "success")]);
@@ -170,15 +186,22 @@ test("the tab is lazy, lists the branch's runs, unfolds a failed run to its jobs
 	page.on("request", (r) => {
 		if (/CiTab-.*\.js$/.test(new URL(r.url()).pathname)) chunks.push(r.url());
 	});
-	await openCi(page, REPO_TITLE, s, false);
+	await openCi(page, REPO_TITLE, s, false, null);
 	// The badge watches the branch with the panel open, before the tab's own code is fetched.
 	await expect(badge(page)).toHaveAttribute("data-status", "failed");
 	await expect(page.getByTestId("pane-tab-ci")).toHaveAttribute("aria-label", "CI: failed");
 	expect(chunks).toEqual([]);
 
+	// With no choice made on this device, the tab lists every branch's runs.
 	await page.getByTestId("pane-tab-ci").click();
-	await expect.poll(() => runIds(page)).toEqual(["302", "301"]);
+	await expect(page.getByTestId("ci-scope-all")).toHaveAttribute("aria-pressed", "true");
+	await expect.poll(() => runIds(page)).toEqual(["400", "302", "301"]);
 	expect(chunks).toHaveLength(1);
+	expect(asked().some((a) => a.startsWith("run list") && !a.includes("--branch"))).toBe(true);
+
+	await page.getByTestId("ci-scope-branch").click();
+	await expect(page.getByTestId("ci-scope-branch")).toHaveAttribute("aria-pressed", "true");
+	await expect.poll(() => runIds(page)).toEqual(["302", "301"]);
 	await expect(page.getByTestId("ci-branch")).toHaveText("Branch feat/ci");
 	// The repository the runs are of, as gh reads it: a checkout of another one than meant is plain to see.
 	await expect(page.getByTestId("ci-repo")).toHaveText("o/r");
@@ -208,13 +231,16 @@ test("the tab is lazy, lists the branch's runs, unfolds a failed run to its jobs
 	await page.keyboard.press("Enter");
 	await expect(toggle).toHaveAttribute("aria-expanded", "false");
 	await expect(failed.getByTestId("ci-job")).toHaveCount(0);
-
-	await page.getByTestId("ci-scope-all").click();
-	await expect(page.getByTestId("ci-scope-all")).toHaveAttribute("aria-pressed", "true");
-	await expect.poll(() => runIds(page)).toEqual(["400", "302", "301"]);
-	expect(asked().at(-1)).not.toContain("--branch");
 	// The badge stays the branch's.
 	await expect(badge(page)).toHaveAttribute("data-status", "failed");
+
+	// The choice is this device's: a page loaded again starts on the branch.
+	await page.reload();
+	await expect(page.getByTestId("composer")).toBeVisible();
+	await page.getByTestId("toggle-panel").click();
+	await page.getByTestId("pane-tab-ci").click();
+	await expect(page.getByTestId("ci-scope-branch")).toHaveAttribute("aria-pressed", "true");
+	await expect.poll(() => runIds(page)).toEqual(["302", "301"]);
 });
 
 test("the badge follows the latest commit's runs: running, then passed", async ({ page }) => {
