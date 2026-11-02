@@ -1,3 +1,5 @@
+import type { PlatformId } from "../../shared/platform.ts";
+import { platform } from "../platform/index.ts";
 import { type CdpMessage, type CdpTransport, TransportListeners } from "./transport.ts";
 
 /**
@@ -29,7 +31,7 @@ interface CftOptions {
 	profileDir: string;
 	signal?: AbortSignal;
 	/** The system it runs on (tests stand in for Linux). */
-	platform?: NodeJS.Platform;
+	platform?: PlatformId;
 }
 
 /**
@@ -40,7 +42,7 @@ interface CftOptions {
  */
 export async function startCft(opts: CftOptions): Promise<CftTransport> {
 	const first = launch(opts, []);
-	if ((opts.platform ?? process.platform) !== "linux") return first.transport;
+	if ((opts.platform ?? platform.id) !== "linux") return first.transport;
 	if (await first.runs()) return first.transport;
 	if (!first.sandboxRefused() || opts.signal?.aborted) return first.transport;
 	console.warn(
