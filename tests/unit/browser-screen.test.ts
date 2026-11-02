@@ -204,3 +204,25 @@ test("a page's frames are numbered above any earlier view's of it, so a tab that
 	const seqOf = (data: Uint8Array | undefined) => decodeFrame(data as Uint8Array).header.seq;
 	expect(seqOf(later.frames[0])).toBeGreaterThan(seqOf(first.frames.at(-1)));
 });
+
+test("a tab that draws the page itself (the Mac app's view) is told its console, and gets no frames", async () => {
+	const registry = new PageRegistry(join(work, "owners-console-only.json"));
+	const browser = new FakeBrowser();
+	const host = new EngineHost(registry, async () => ({ transport: browser, generation: "g", fresh: true }));
+	const hub = new ScreenHub(host, registry);
+	const engine = await host.ready();
+	const page = await engine.createPage("/s/a.jsonl");
+	const tab = new Socket();
+	hub
+		.connect(tab)
+		.message(
+			JSON.stringify({ t: "watch", owner: "/s/a.jsonl", targetId: page, panel: { w: 800, h: 600 }, frames: false }),
+		);
+	await until(() => browser.log.some((l) => l.method === "Runtime.enable"));
+	browser.emitOnPage(page, "Runtime.consoleAPICalled", { type: "error", args: [{ type: "string", value: "boom" }] });
+	await until(() => tab.texts.some((m) => m.t === "console"));
+	browser.emitOnPage(page, "Page.screencastFrame", { data: Buffer.from("jpeg").toString("base64"), sessionId: 1 });
+	await Bun.sleep(10);
+	expect(tab.frames).toEqual([]);
+	expect(browser.log.some((l) => l.method === "Page.startScreencast")).toBe(false);
+});

@@ -345,6 +345,13 @@ test("in the Mac app's window the tab places the native view instead of drawing 
 	await expect
 		.poll(async () => (await posts()).findLast((p) => p.type === "devtools"))
 		.toEqual({ type: "devtools", targetId });
+	// The page's console is listed there too, though the tab draws no frames of it.
+	await go(page, "/console");
+	await expect(page.getByTestId("browser-console-entry").filter({ hasText: "boom from page" })).toHaveAttribute(
+		"data-level",
+		"error",
+	);
+	await expect(page.getByTestId("browser-screen")).toHaveCount(0);
 	// Another tab of the pane: the native view is put away.
 	await page.getByTestId("pane-tab-files").click();
 	await expect.poll(async () => (await posts()).at(-1)).toEqual({ type: "hide" });

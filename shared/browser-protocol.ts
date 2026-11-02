@@ -55,8 +55,8 @@ export type BrowserInput = MouseInput | WheelInput | KeyInput | TextInput;
 
 export type ScreenClientMessage =
 	/** Watch `owner`'s page list, and the frames and console of `targetId` (none: the list only). `panel`: the frame's
-	 *  room in device pixels. */
-	| { t: "watch"; owner: string; targetId: string | null; panel: Size }
+	 *  room in device pixels. `frames: false`: the console only (the Mac app's own view draws the page). */
+	| { t: "watch"; owner: string; targetId: string | null; panel: Size; frames?: boolean }
 	| { t: "unwatch" }
 	/** A new page for the conversation (the person's "New page"). */
 	| { t: "open"; owner: string; url: string }

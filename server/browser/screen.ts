@@ -211,9 +211,10 @@ class PageView {
 		this.canForward = h ? h.currentIndex < (h.entries?.length ?? 0) - 1 : false;
 	}
 
-	/** Runs the screencast at the largest room a watcher has, or stops it when nobody watches. */
+	/** Runs the screencast at the largest room a watcher of its frames has, or stops it when none watches them. */
 	async cast(): Promise<void> {
-		if (this.watchers.size === 0) {
+		const casting = [...this.watchers].filter((c) => c.frames);
+		if (casting.length === 0) {
 			if (this.casting) {
 				this.casting = null;
 				await this.call("Page.stopScreencast").catch(() => {});
@@ -221,7 +222,7 @@ class PageView {
 			return;
 		}
 		const room = { w: 1, h: 1 };
-		for (const c of this.watchers) {
+		for (const c of casting) {
 			room.w = Math.max(room.w, Math.round(c.panel.w));
 			room.h = Math.max(room.h, Math.round(c.panel.h));
 		}
@@ -358,7 +359,7 @@ export class ScreenHub {
 				{ targetId: view.targetId, w: view.size.w, h: view.size.h, scale: view.size.scale, seq: ++view.seq },
 				Buffer.from(p.data, "base64"),
 			);
-			for (const c of view.watchers) if (c.socket.buffered() <= FRAME_BACKLOG) c.socket.sendBinary(frame);
+			for (const c of view.watchers) if (c.frames && c.socket.buffered() <= FRAME_BACKLOG) c.socket.sendBinary(frame);
 		});
 		on<{ type: string; args: ConsoleArg[]; timestamp: number }>("Runtime.consoleAPICalled", (view, p) => {
 			view.note({
@@ -415,6 +416,8 @@ export class ScreenClient {
 	owner: string | null = null;
 	targetId: string | null = null;
 	panel: Size = { w: 1, h: 1 };
+	/** Whether the tab draws the frames of the page it watches; not in the Mac app's own view, which wants its console only. */
+	frames = true;
 	private view: PageView | null = null;
 	private closed = false;
 	/** The pages this tab said it draws in the Mac app's own view (`fit`). */
@@ -502,6 +505,7 @@ export class ScreenClient {
 				if (msg.owner !== this.owner) this.unfit();
 				this.owner = msg.owner;
 				this.panel = { w: Math.max(1, Number(msg.panel?.w) || 1), h: Math.max(1, Number(msg.panel?.h) || 1) };
+				this.frames = msg.frames !== false;
 				this.sendPages();
 				if (!msg.targetId || this.hub.registry.ownerOfTarget(msg.targetId) !== msg.owner) return;
 				this.targetId = msg.targetId;

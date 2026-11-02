@@ -170,8 +170,9 @@ function BrowserPages({ owner, place }: { owner: string; place: BrowserPlace }) 
 		if (selected) rememberShown(owner, selected);
 	}, [owner, selected]);
 
-	// Watch the conversation's pages and the frames of the one shown, at the room the frame area has (in device pixels).
-	// Asked again when the engine was installed or updated.
+	// Watch the conversation's pages and the frames of the one shown, at the room the frame area has (in device pixels); in
+	// the Mac app's own view (`bridge`), which draws the page itself, its console only. Asked again when the engine was
+	// installed or updated.
 	const installedVersion = state?.installed?.version ?? null;
 	const dpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
 	const watchedPage = current?.targetId ?? (answered ? null : selected);
@@ -179,7 +180,13 @@ function BrowserPages({ owner, place }: { owner: string; place: BrowserPlace }) 
 	const panelH = room ? Math.max(1, Math.round(room.h * dpr)) : 1;
 	// biome-ignore lint/correctness/useExhaustiveDependencies: installedVersion asks again after an install.
 	useEffect(() => {
-		sendScreen({ t: "watch", owner, targetId: bridge ? null : watchedPage, panel: { w: panelW, h: panelH } });
+		sendScreen({
+			t: "watch",
+			owner,
+			targetId: watchedPage,
+			panel: { w: panelW, h: panelH },
+			...(bridge ? { frames: false } : {}),
+		});
 	}, [owner, watchedPage, panelW, panelH, bridge, installedVersion]);
 	useEffect(() => () => sendScreen({ t: "unwatch" }), []);
 
