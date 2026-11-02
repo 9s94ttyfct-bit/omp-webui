@@ -318,6 +318,7 @@
     "tests/unit/entry-graph.test.ts": 60,
     "tests/unit/settings-help.test.ts": 51,
     "tests/unit/subagent-index.test.ts": 51,
+    "tests/unit/browser-registry.test.ts": 50,
     "tests/unit/git-store.test.ts": 48,
     "tests/unit/upload-names.test.ts": 48,
     "tests/unit/session-flags.test.ts": 47,

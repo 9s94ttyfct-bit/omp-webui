@@ -204,7 +204,10 @@ export class PageRegistry {
 
 	/** The engine has this target (discovery: created or changed). */
 	track(info: TargetInfo): void {
-		this.alive.set(info.targetId, { ...this.alive.get(info.targetId), ...info });
+		const before = this.alive.get(info.targetId);
+		// A tab found empty is asked about again once it changes (it may hold a page by now).
+		if (info.type === "tab" && before && before.url !== info.url) this.empty.delete(info.targetId);
+		this.alive.set(info.targetId, { ...before, ...info });
 		this.resolve(info);
 		this.changed();
 	}
@@ -213,6 +216,8 @@ export class PageRegistry {
 	untrack(targetId: string): void {
 		this.alive.delete(targetId);
 		this.tabs.delete(targetId);
+		// A tab whose page is gone no longer holds it: the page that replaces it is found again.
+		for (const [tab, page] of this.tabs) if (page === targetId) this.tabs.delete(tab);
 		this.empty.delete(targetId);
 		if (this.targets.delete(targetId)) this.save();
 		this.changed();
