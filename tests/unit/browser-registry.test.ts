@@ -62,3 +62,21 @@ test("a tab found empty is asked about again once its address changes, not on ev
 	expect(asked).toEqual(["T", "T"]);
 	expect(registry.ownerOfTarget("T")).toBe("A");
 });
+
+test("an archived conversation's pages close and its endpoint stays; a deleted one's endpoint goes too", async () => {
+	const { registry } = setup("close");
+	const closed: string[] = [];
+	registry.setEngine({ close: async (id) => void closed.push(id), link: async () => {} });
+	const token = registry.tokenFor("A");
+	registry.adopt("P1", "A");
+	registry.track({ targetId: "P1", type: "page" });
+
+	await registry.closeOwner("A", false);
+	expect(closed).toEqual(["P1"]);
+	expect(registry.pagesOf("A")).toEqual([]);
+	expect(registry.ownerOf(token)).toBe("A");
+
+	await registry.closeOwner("A");
+	expect(registry.ownerOf(token)).toBeNull();
+	expect(registry.tokenFor("A")).not.toBe(token);
+});

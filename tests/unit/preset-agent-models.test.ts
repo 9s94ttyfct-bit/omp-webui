@@ -197,9 +197,9 @@ test("an overlay gives a conversation the preset's subagent models, and `null` f
 	await overlay.setModels({ preset: "plain", roles }, [], ["scout"]);
 	expect(Object.hasOwn(read(file), "task")).toBe(false);
 
-	// Back to the global config: nothing of the preset is left.
+	// Back to the global config: nothing of the preset is left (the relay stays off, as in every overlay).
 	await overlay.setModels(null, [], []);
-	expect(read(file)).toEqual({ tools: { approval: { propose_goal: "allow" } } });
+	expect(read(file)).toEqual({ tools: { approval: { propose_goal: "allow" } }, browser: { relay: false } });
 });
 
 test("an overlay writes agent names and selectors as strings YAML reads back as they are, whatever they look like", () => {

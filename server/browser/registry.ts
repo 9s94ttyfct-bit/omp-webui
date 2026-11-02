@@ -239,10 +239,13 @@ export class PageRegistry {
 		this.save();
 	}
 
-	/** The conversation was deleted or archived: its pages are closed, and its token forgotten. */
-	async closeOwner(owner: string): Promise<void> {
+	/**
+	 * The conversation was deleted or archived: its pages are closed. `forget` (deleted): its token goes too; an archived one
+	 * keeps it, for its omp may still run.
+	 */
+	async closeOwner(owner: string, forget = true): Promise<void> {
 		const mine = [...this.targets].filter(([, o]) => o === owner).map(([id]) => id);
-		const token = this.tokens.get(owner);
+		const token = forget ? this.tokens.get(owner) : undefined;
 		if (token) {
 			this.tokens.delete(owner);
 			this.owners.delete(token);

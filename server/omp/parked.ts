@@ -89,6 +89,8 @@ export interface ParkedRecord {
 		concurrency?: number | null;
 		/** Whether the advisor reviews the conversation (`ProcessOverlay.advisor`): absent in a record an older server wrote, and while omp's configuration decides. */
 		advisor?: boolean | null;
+		/** The conversation's browser endpoint (`ProcessOverlay.browser`): absent in a record an older server wrote, like none. */
+		browserCdpUrl?: string | null;
 	} | null;
 	/**
 	 * What the process was told of the controls omp cannot report (`LiveInfo.sessionSettings`): it keeps them while it is
@@ -312,6 +314,7 @@ function parse(text: string): ParkedRecord | "other" | null {
 					compact: compactAtOf(overlay.compact),
 					concurrency: concurrencyOf(overlay.concurrency),
 					advisor: advisorOf(overlay.advisor),
+					browserCdpUrl: typeof overlay.browserCdpUrl === "string" ? overlay.browserCdpUrl : null,
 				}
 			: null,
 		descendants: v.descendants ?? [],

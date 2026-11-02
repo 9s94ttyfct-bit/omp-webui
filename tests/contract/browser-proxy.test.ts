@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
 import puppeteer, { type Browser } from "puppeteer-core";
+import { cdpUrlOf } from "../../server/browser/lazy.ts";
 import { PageRegistry } from "../../server/browser/registry.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 
@@ -42,8 +43,9 @@ afterAll(async () => {
 	rmSync(data, { recursive: true, force: true });
 });
 
+/** Connected as omp connects with the `browser.cdpUrl` it is given: the token as the URL's user name, at the root. */
 async function connect(token: string): Promise<Browser> {
-	const b = await puppeteer.connect({ browserURL: `${server.url}/browser-cdp/${token}`, defaultViewport: null });
+	const b = await puppeteer.connect({ browserURL: cdpUrlOf(server.url, token), defaultViewport: null });
 	connected.push(b);
 	return b;
 }
@@ -93,4 +95,17 @@ test("the endpoint refuses an unknown token and anything sent by a page", async 
 	expect(version.status).toBe(200);
 	const body = (await version.json()) as { webSocketDebuggerUrl: string };
 	expect(body.webSocketDebuggerUrl).toBe(`${server.url.replace(/^http/, "ws")}/browser-cdp/${TA}/devtools/browser`);
+});
+
+test("the root discovery answers a token sent as the user name (omp's Puppeteer drops any path), and only that", async () => {
+	const basic = (user: string) => ({ authorization: `Basic ${Buffer.from(`${user}:`).toString("base64")}` });
+	const version = await fetch(`${server.url}/json/version`, { headers: basic(TB) });
+	expect(version.status).toBe(200);
+	const body = (await version.json()) as { webSocketDebuggerUrl: string };
+	expect(body.webSocketDebuggerUrl).toBe(`${server.url.replace(/^http/, "ws")}/browser-cdp/${TB}/devtools/browser`);
+	expect((await fetch(`${server.url}/json/version`, { headers: basic("z".repeat(43)) })).status).toBe(401);
+	const fromPage = await fetch(`${server.url}/json/version`, { headers: { ...basic(TB), origin: server.url } });
+	expect(fromPage.status).toBe(403);
+	// Without a token it is no endpoint: the app's own page answers there, as before.
+	expect((await fetch(`${server.url}/json/version`)).headers.get("content-type")).toContain("text/html");
 });

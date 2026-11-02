@@ -92,7 +92,8 @@ test("an overlay that names no mode is still a mapping, which omp requires of ev
 	new ProcessOverlay(file, null);
 	const text = readFileSync(file, "utf8");
 	expect(text).not.toContain("approvalMode");
-	expect(Bun.YAML.parse(text)).toEqual({ tools: { approval: { propose_goal: "allow" } } });
+	// Besides the tools: omp's relay to the person's Chrome is off in every overlay (docs/agents/browser.md).
+	expect(Bun.YAML.parse(text)).toEqual({ tools: { approval: { propose_goal: "allow" } }, browser: { relay: false } });
 });
 
 test("every overlay allows propose_goal, in each mode and after a change: omp would otherwise ask before the interview's own card", () => {
@@ -103,10 +104,12 @@ test("every overlay allows propose_goal, in each mode and after a change: omp wo
 		const allowed = { propose_goal: "allow" };
 		expect(Bun.YAML.parse(readFileSync(file, "utf8"))).toEqual({
 			tools: { approval: allowed, ...(mode ? { approvalMode: mode } : {}) },
+			browser: { relay: false },
 		});
 		void overlay.set("always-ask");
 		expect(Bun.YAML.parse(readFileSync(file, "utf8"))).toEqual({
 			tools: { approval: allowed, approvalMode: "always-ask" },
+			browser: { relay: false },
 		});
 	}
 });
@@ -136,7 +139,10 @@ test("an overlay carries a conversation's preset: its roles, the config's roles 
 
 	// Back to the global config: nothing of the preset is left, and the rest of the overlay is as it was.
 	await overlay.setModels(null, []);
-	expect(read()).toEqual({ tools: { approval: { propose_goal: "allow" }, approvalMode: "write" } });
+	expect(read()).toEqual({
+		tools: { approval: { propose_goal: "allow" }, approvalMode: "write" },
+		browser: { relay: false },
+	});
 });
 
 test("a preset with no roles leaves `modelRoles` an empty mapping: null under that key would replace the config's roles", () => {

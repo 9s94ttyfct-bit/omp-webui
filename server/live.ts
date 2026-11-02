@@ -111,6 +111,14 @@ import { platform } from "./platform/index.ts";
 import { dialogLine, replyLine } from "./push/preview.ts";
 import { SLEEP_FOLLOW_MS, sleepAftermath } from "./sleep.ts";
 
+/** What the pool asks of the built-in browser (see `LivePool.browser`; `server/browser/lazy.ts` in the server). */
+export interface BrowserHooks {
+	/** The conversation's CDP endpoint (`browser.cdpUrl`); null while there is none (not installed, no address yet). */
+	cdpUrlFor(owner: string): Promise<string | null>;
+	/** The conversation in `from` moved to `to`: its pages and endpoint are the new file's. */
+	moved(from: string, to: string): Promise<void>;
+}
+
 /** The commands after which the conversation is the same one in another file, so that its guard goes along (see `Live.followGuard`). */
 const CARRIES_GUARD: Record<string, true> = { new_session: true, fork: true, branch: true, handoff: true };
 
@@ -1125,6 +1133,7 @@ export class Live {
 						compact: this.overlay.compact,
 						concurrency: this.overlay.concurrency,
 						advisor: this.overlay.advisor,
+						browserCdpUrl: this.overlay.browser,
 					}
 				: null,
 			descendants: this.descendants,
@@ -1540,17 +1549,17 @@ export class Live {
 			// Last, so that no overlay the user passed in the options can override it.
 			args: overlay ? [...args, "--config", overlay.file] : args,
 			cwd,
-			env:
-				this.guidanceFile || this.unattendedFile || this.quotaFile || this.compactStepFile || this.restartFile
-					? {
-							...launch.env,
-							...(this.guidanceFile ? { [GUIDANCE_FILE_ENV]: this.guidanceFile } : {}),
-							...(this.unattendedFile ? { [UNATTENDED_FILE_ENV]: this.unattendedFile } : {}),
-							...(this.quotaFile ? { [QUOTA_FILE_ENV]: this.quotaFile } : {}),
-							...(this.compactStepFile ? { [COMPACT_STEP_FILE_ENV]: this.compactStepFile } : {}),
-							...(this.restartFile ? { [RESTART_FILE_ENV]: this.restartFile } : {}),
-						}
-					: launch.env,
+			// Never omp's relay to the person's own Chrome (docs/agents/browser.md); not part of `launch.env`, which a spare is
+			// matched on.
+			env: {
+				...launch.env,
+				PI_BROWSER_RELAY: "0",
+				...(this.guidanceFile ? { [GUIDANCE_FILE_ENV]: this.guidanceFile } : {}),
+				...(this.unattendedFile ? { [UNATTENDED_FILE_ENV]: this.unattendedFile } : {}),
+				...(this.quotaFile ? { [QUOTA_FILE_ENV]: this.quotaFile } : {}),
+				...(this.compactStepFile ? { [COMPACT_STEP_FILE_ENV]: this.compactStepFile } : {}),
+				...(this.restartFile ? { [RESTART_FILE_ENV]: this.restartFile } : {}),
+			},
 			via: extra.via,
 			onFrame: (f) => this.onFrame(f),
 			onExit: (code, stderr, signal) => {
@@ -1666,6 +1675,7 @@ export class Live {
 			if (from && to) this.pool.carryUnattended(from, to);
 			if (from && to) this.pool.carryLaunchMode(from, to);
 			if (to) this.followGuard(to, from);
+			if (to) void this.followBrowser(from, to);
 			followed?.();
 			if (this.interviewing) this.pool.noteInterview(to, true);
 			if (from && to) await this.followFolder();
@@ -2540,6 +2550,34 @@ export class Live {
 		this.guardDamaged = next.damaged;
 		this.syncRisk();
 		this.syncGuardInfo();
+	}
+
+	/**
+	 * The process is bound to the session file `to`: a conversation moved there (omp's `/move` takes its file along, so the
+	 * one it was in is gone) takes its pages and endpoint along; any other file is a conversation of its own, with its own
+	 * pages, and the overlay names that one's endpoint.
+	 */
+	private async followBrowser(from: string | null, to: string): Promise<void> {
+		const browser = this.pool.browser;
+		if (!browser) return;
+		try {
+			if (from && !existsSync(from)) await browser.moved(from, to);
+			await this.syncBrowser();
+		} catch (e) {
+			console.error(`omp-webui: could not point ${this.info.liveId} at its browser: ${(e as Error).message}`);
+		}
+	}
+
+	/** The overlay names this conversation's browser endpoint as the server has it now (none while it has no file, or no browser). */
+	async syncBrowser(): Promise<void> {
+		const browser = this.pool.browser;
+		const overlay = this.overlay;
+		if (!browser || !overlay || this.info.exited) return;
+		const file = this.info.sessionFile;
+		const url = file ? await browser.cdpUrlFor(file) : null;
+		if (url === overlay.browser || this.info.exited) return;
+		await overlay.setBrowser(url);
+		this.persist();
 	}
 
 	/** The record of a kept conversation is the server's: it is written again when the file does not say what was last written. */
@@ -3815,6 +3853,23 @@ export class LivePool {
 	 */
 	restarts: RestartCoordinator | null = null;
 
+	/**
+	 * The built-in browser (docs/agents/browser.md): each conversation's CDP endpoint, and its pages following a conversation
+	 * that moved to another file. Null: omp is given no endpoint (its relay is off all the same).
+	 */
+	browser: BrowserHooks | null = null;
+
+	/** The server learned its address, or the browser was installed: every conversation's overlay names its endpoint again. */
+	async syncBrowser(): Promise<void> {
+		await Promise.all(
+			[...this.lives.values()].map((live) =>
+				live.syncBrowser().catch((e: unknown) => {
+					console.error(`omp-webui: could not point ${live.info.liveId} at its browser: ${(e as Error).message}`);
+				}),
+			),
+		);
+	}
+
 	/** A floor was set, changed or taken away: every conversation that works looks at its provider again. */
 	quotaFloorChanged(): void {
 		for (const live of this.lives.values()) if (!live.info.exited) live.quotaFloorChanged();
@@ -4685,6 +4740,14 @@ export class LivePool {
 					? (this.approval?.sessionAdvisor(sessionKey(sessionFile)) ?? null)
 					: null;
 		const start = await this.approval?.startingMode(cwd, sessionFile, requested, launch.env);
+		// The conversation's browser endpoint, from its first turn (a new chat has no file yet: it is named once it has one).
+		const browser =
+			this.approval && start && sessionFile && this.browser
+				? await this.browser.cdpUrlFor(sessionKey(sessionFile)).catch((e: unknown) => {
+						console.error(`omp-webui: no browser endpoint for ${sessionFile}: ${(e as Error).message}`);
+						return null;
+					})
+				: null;
 		const overlay =
 			this.approval && start
 				? await this.approval.create(
@@ -4698,6 +4761,7 @@ export class LivePool {
 						sessionFile ? this.approval.sessionCompact(sessionKey(sessionFile)) : null,
 						sessionFile ? this.approval.sessionConcurrency(sessionKey(sessionFile)) : null,
 						ownAdvisor,
+						browser,
 					)
 				: null;
 		const live = new Live(
@@ -4870,6 +4934,7 @@ export class LivePool {
 						record.overlay.compact ?? null,
 						record.overlay.concurrency ?? null,
 						record.overlay.advisor ?? null,
+						record.overlay.browserCdpUrl ?? null,
 					)
 				: null;
 		const live = new Live(

@@ -173,6 +173,7 @@
     "tests/contract/resume-folder.test.ts": 1531,
     "tests/contract/remote-tunnel.test.ts": 1504,
     "tests/contract/browser-cft.test.ts": 1500,
+    "tests/unit/browser-wiring.test.ts": 1500,
     "tests/unit/remote-risk.test.ts": 1482,
     "tests/unit/guard-classify.test.ts": 1414,
     "tests/unit/retry-now.test.ts": 1412,

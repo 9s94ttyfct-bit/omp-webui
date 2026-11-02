@@ -128,6 +128,8 @@ test("an overlay with no pins reads as it always did", () => {
 			"  approvalMode: yolo",
 			"retry:",
 			"  waitForUsageReset: false",
+			"browser:",
+			"  relay: false",
 			"",
 		].join("\n"),
 	);

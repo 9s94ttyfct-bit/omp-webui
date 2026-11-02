@@ -210,6 +210,7 @@
 		"branch.spec.ts › Regenerate resends the prompt's image with its text": 6.7,
 		"branch.spec.ts › editing a prompt of a chat opened from the sidebar switches to the branch and shows the edit and its reply": 0.8,
 		"branch.spec.ts › forking a chat opened from the sidebar moves the view to the new file, and the next send stays on that process": 7.9,
+		"browser-agent.spec.ts › with a model › the agent's page is its conversation's, and no other conversation's": 0,
 		"btw-model.spec.ts › a conversation opened after the choice shows it too: it is the app's, not the conversation's": 3.5,
 		"btw-model.spec.ts › each side question says which model answered, and an error says why": 6.1,
 		"btw-model.spec.ts › the model chosen in one page's Ask tab is the one every other page shows, live, and the default is omp's": 6.6,

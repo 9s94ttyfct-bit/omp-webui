@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { EngineKind } from "../../shared/browser.ts";
 import type { RemoteIdentity } from "../remote-auth.ts";
@@ -29,10 +30,24 @@ export function engineHere(env: Record<string, string | undefined> = process.env
 	return env.OMP_WEBUI_BROWSER_ENGINE === "cef" ? "cef" : "cft";
 }
 
-/** A conversation's endpoint path: `/browser-cdp/<token><rest>`. */
-export function cdpPath(pathname: string): { token: string; rest: string } | null {
+/**
+ * A conversation's endpoint request: `/browser-cdp/<token><rest>`, or the discovery at the server's root (`/json`,
+ * `/json/version`…) with the token as the URL's user name. omp hands its `browser.cdpUrl` to Puppeteer as `browserURL`, which
+ * resolves `/json/version` against it and so drops any path, but keeps a user name, and Bun's fetch sends it as Basic auth:
+ * the endpoint is `http://<token>@127.0.0.1:<port>` (see `cdpUrlOf`).
+ */
+export function cdpPath(pathname: string, authorization: string | null = null): { token: string; rest: string } | null {
 	const m = /^\/browser-cdp\/([A-Za-z0-9_-]{16,})(\/.*)?$/.exec(pathname);
-	return m ? { token: m[1], rest: m[2] ?? "" } : null;
+	if (m) return { token: m[1], rest: m[2] ?? "" };
+	if (!/^\/json(\/[a-z]*)?$/.test(pathname) || !authorization) return null;
+	const basic = /^Basic\s+([A-Za-z0-9+/]+=*)$/i.exec(authorization.trim());
+	const user = basic ? Buffer.from(basic[1], "base64").toString("utf8").split(":")[0] : "";
+	return /^[A-Za-z0-9_-]{16,}$/.test(user) ? { token: user, rest: pathname } : null;
+}
+
+/** The endpoint omp is given for a token, on the server's loopback `origin` (`http://127.0.0.1:<port>`). */
+export function cdpUrlOf(origin: string, token: string): string {
+	return origin.replace("://", `://${token}@`);
 }
 
 export interface BrowserService {
@@ -139,6 +154,37 @@ export class LazyBrowser {
 	/** A Browser tab's socket (`/ws/browser`): made with the service, which the tab's first message needs anyway. */
 	async screen(socket: ScreenSocket): Promise<ScreenClient> {
 		return (await this.service()).screen.connect(socket);
+	}
+
+	/**
+	 * The conversation's CDP endpoint on `origin` (`browser.cdpUrl` of its omp), or null while the browser is not installed
+	 * (its omp then uses its own hidden Chromium).
+	 */
+	async cdpUrlFor(owner: string, origin: string): Promise<string | null> {
+		const { installer, registry } = await this.service();
+		const installed =
+			installer.engine === "cef" ? installer.state(false).installed !== null : installer.executable() !== null;
+		return installed ? cdpUrlOf(origin, registry.tokenFor(owner)) : null;
+	}
+
+	/** The conversation in `from` moved to `to` (omp's `/move`): its pages and endpoint are the new file's. */
+	async moved(from: string, to: string): Promise<void> {
+		(await this.known())?.registry.rekey(from, to);
+	}
+
+	/**
+	 * The conversation was deleted (`forget`: its endpoint goes too) or archived (its omp may still run, and keeps its
+	 * endpoint): its pages are closed.
+	 */
+	async closeOwner(owner: string, forget: boolean): Promise<void> {
+		await (await this.known())?.registry.closeOwner(owner, forget);
+	}
+
+	/** The service, when there is anything of the browser to change: it ran here or before (its owners file is there). */
+	private async known(): Promise<BrowserService | null> {
+		if (this.#service) return this.#service;
+		if (!existsSync(join(this.opts.dataDir, "browser", "owners.json"))) return null;
+		return this.service();
 	}
 
 	/** The server is stopping: the engine it started ends with it. */

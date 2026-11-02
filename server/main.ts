@@ -577,9 +577,28 @@ const browser = new LazyBrowser({
 			const state = inst.state(canManageBrowser(ws.data.remote, ws.data.local));
 			ws.data.out?.send(JSON.stringify({ t: "browser_state", state } satisfies ServerMessage));
 		}
+		// Installed (or gone): the conversations' overlays name their endpoints from now on (or no more).
+		const installed = inst.state(false).installed?.version ?? null;
+		if (installed !== browserInstalled) {
+			browserInstalled = installed;
+			void pool.syncBrowser();
+		}
 	},
 	requestAppRestart: () => shellEvents.browserRestart(),
 });
+let browserInstalled: string | null = null;
+/** Where this server's conversations reach its browser: the loopback address, once the server has bound its port. */
+function browserOrigin(): string | null {
+	const at = loopbackPort || remotePort;
+	return at ? `http://127.0.0.1:${at}` : null;
+}
+pool.browser = {
+	cdpUrlFor: async (owner) => {
+		const origin = browserOrigin();
+		return origin ? browser.cdpUrlFor(owner, origin) : null;
+	},
+	moved: (from, to) => browser.moved(from, to),
+};
 
 /** The conversations an update would stop (working, asking) or leave in the background (paused, waiting for a usage limit). */
 function conversationsHeld(): Conversations {
@@ -792,6 +811,23 @@ store.onChange(() => broadcastAll({ t: "sessions_changed" }));
 pins.onChange(() => broadcastAll({ t: "sessions_changed" }));
 // Archiving a conversation and loving a model are the person's, not one page's: every page shows the list as it is now.
 archived.onChange(() => broadcastAll({ t: "sessions_changed" }));
+// An archived conversation's pages of the built-in browser are closed: no panel shows them any more (docs/agents/browser.md).
+let archivedBefore = new Set(archived.list());
+archived.onChange((list) => {
+	const now = new Set(list);
+	for (const file of now)
+		if (!archivedBefore.has(file))
+			void browser.closeOwner(sessionKey(file), false).catch((e: unknown) => {
+				console.error(`omp-webui: could not close the browser pages of ${file}: ${(e as Error).message}`);
+			});
+	archivedBefore = now;
+});
+/** A deleted conversation's pages are closed and its endpoint forgotten; a failure there leaves the delete done. */
+async function closeBrowserOf(key: string): Promise<void> {
+	await browser.closeOwner(key, true).catch((e: unknown) => {
+		console.error(`omp-webui: could not close the browser pages of ${key}: ${(e as Error).message}`);
+	});
+}
 favoriteModels.onChange((models) => broadcastAll({ t: "favorite_models", models }));
 void pins
 	.adoptLegacy()
@@ -2017,8 +2053,10 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 					if (!title) return fail("Title required");
 					await actions.rename(target, title);
 				} else {
+					const key = sessionKey(file);
 					await actions.delete(target);
 					archived.set([file], false);
+					await closeBrowserOf(key);
 				}
 			} catch (e) {
 				// Working, asking or paused, or open in a terminal's omp: nothing was touched, and the conversation goes on.
@@ -2086,8 +2124,10 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 					continue;
 				}
 				try {
+					const key = sessionKey(file);
 					await actions.delete(await sessionTarget(file));
 					deleted.push(file);
+					await closeBrowserOf(key);
 				} catch (e) {
 					failed.push({ file, error: (e as Error).message });
 				}
@@ -2574,8 +2614,9 @@ async function route(req: Request, srv: Bun.Server<SocketData>): Promise<Respons
 		return new Response("Forbidden", { status: 403 });
 	const url = new URL(req.url);
 	// A conversation's CDP endpoint (docs/agents/browser.md): its omp, on this computer, with the conversation's token in the
-	// path, and no page at all (a page sends an Origin; nothing else is let in). Before the cookie check: omp has no cookie.
-	const cdp = cdpPath(url.pathname);
+	// path or, for the discovery at the root, as the URL's user name (see `cdpPath`), and no page at all (a page sends an
+	// Origin; nothing else is let in). Before the cookie check: omp has no cookie.
+	const cdp = cdpPath(url.pathname, req.headers.get("authorization"));
 	if (cdp) {
 		if (!local || req.headers.has("origin")) return new Response("Forbidden", { status: 403 });
 		const owner = await browser.ownerOf(cdp.token);
@@ -2926,6 +2967,8 @@ if (noLoopback) {
 loopbackPort = loopback?.port ?? 0;
 // The gates of the conversations that were taken over before the server had a port are told it now.
 pool.syncRisk();
+// And the conversations taken over are pointed at this server's browser endpoint (a former server's address is gone).
+void pool.syncBrowser();
 recordServer(cfg.dataDir, port, cfg.parentPid, loopback?.moved ? loopback.port : undefined);
 omp.start();
 host.start();

@@ -29,7 +29,10 @@ export function sourceFiles(): string[] {
 	const found = DIRS.flatMap((dir) => [...new Bun.Glob(`${dir}/**/*.{ts,tsx}`).scanSync({ cwd: ROOT })]);
 	// Glob gives Windows' separator there; the names here are written with `/`.
 	const files = found.map((f) => f.replaceAll("\\", "/"));
-	return files.filter((f) => !f.startsWith("web/src/i18n/") && f !== "shared/remote-risk.ts").sort();
+	// server/browser/ speaks to Chrome (its command line, CDP's `type` fields), never to omp.
+	return files
+		.filter((f) => !f.startsWith("web/src/i18n/") && f !== "shared/remote-risk.ts" && !f.startsWith("server/browser/"))
+		.sort();
 }
 
 export const read = (file: string): string => readFileSync(`${ROOT}${file}`, "utf8");
