@@ -161,6 +161,16 @@ let sent: [(String, OSType?)] = [
 	("shutdown", OSType(kAEShutDown)),
 ]
 
+/// An environment the app could have been started with, for `relaunchCommand`: what it forwards, what the shell sets for its
+/// server only, and the rest. The test holds the command to the one the server builds of the same environment.
+let relaunchSample: [String: String] = [
+	"OMP_WEBUI_DATA_DIR": "/tmp/data dir", "OMP_WEBUI_PORT": "7999", "OMP_WEBUI_APP_UPDATE_API": "http://127.0.0.1:1",
+	"HOME": "/tmp/home", "PI_CODING_AGENT_DIR": "/tmp/agent", "OMP_BIN": "/tmp/omp",
+	"OMP_WEBUI_TOKEN": "secret", "OMP_WEBUI_PARENT_PID": "42", "OMP_WEBUI_DIST": "/tmp/dist", "OMP_WEBUI_AUTO_PORT": "1",
+	"OMP_WEBUI_LOGIN_SHELL": "/bin/zsh", "OMP_WEBUI_APP_BUNDLE": "/x.app", "PATH": "/usr/bin", "OMP_WEBUI": "1",
+	"XOMP_WEBUI_PORT": "1",
+]
+
 func next(_ index: Int) {
 	guard index < sent.count else {
 		var session: [String: Bool] = [:]
@@ -169,6 +179,7 @@ func next(_ index: Int) {
 			json([
 				"context": contexts, "first": first, "dialogs": dialogs, "warnings": warnings,
 				"session": ["asked": delegate.seen.count, "ending": session],
+				"relaunch": relaunchCommand(bundle: "/Applications/omp-webui.app", environment: relaunchSample),
 			]))
 		exit(0)
 	}

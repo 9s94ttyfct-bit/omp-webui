@@ -8,11 +8,13 @@ import { capabilities } from "../../server/platform/capabilities.ts";
  * How the macOS shell hears that the server has an update to install (macos/update.swift, #571): SIGUSR1 means "quit for the
  * update" only while the server's handover record is there, is never fatal on its own (its default action ends a process),
  * and the quit that follows really ends the app. Compiled with the `swiftc` the app is built with, a harness
- * (tests/support/swift/update/main.swift) runs the shell's own `UpdateQuit` inside a real `NSApplication` whose
- * `applicationShouldTerminate` answers `.terminateLater` and replies from a block of the main queue, as the shell does while
- * the server stops. The first version of the shell called `terminate` inside the signal's handler, which is a block of the
- * main queue: `terminate` then waited for a reply that could only come from the queue it was blocking, and the first real
- * update never got past "the app did not quit". The harness's `direct` mode is that version, the control of the measurement.
+ * (tests/support/swift/update/main.swift) runs the shell's own `UpdateQuit`, quitting with its `quitFromRunLoop`
+ * (macos/quit.swift), inside a real `NSApplication` whose `applicationShouldTerminate` answers `.terminateLater` and replies
+ * from a block of the main queue, as the shell does while the server stops. The first version of the shell called
+ * `terminate` inside the signal's handler, which is a block of the main queue: `terminate` then waited for a reply that
+ * could only come from the queue it was blocking, and the first real update never got past "the app did not quit" (the
+ * restart after a browser install did the same from the server's answers, #31). The harness's `direct` mode is that
+ * version, the control of the measurement.
  */
 
 const here = import.meta.dir;
@@ -28,6 +30,7 @@ if (mac) {
 			"-swift-version",
 			"5",
 			join(here, "../../macos/update.swift"),
+			join(here, "../../macos/quit.swift"),
 			join(here, "../support/swift/update/main.swift"),
 			"-o",
 			harness,

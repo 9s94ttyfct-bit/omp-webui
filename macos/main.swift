@@ -211,20 +211,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 				self.askingToQuit = false
 				guard quit else { return }
 				self.restartingForBrowser = true
-				NSApp.terminate(nil)
+				quitFromRunLoop()
 			}
 			if context.running.needsWarning { self.answer(quitDialog(context, offersBackground: false), finish) } else { finish(true) }
 		}
 	}
 
-	/// The app opens again once this process is gone: a second copy would only bring this one forward and leave.
+	/// The app opens again once this process is gone (a second copy would only bring this one forward and leave), with what it
+	/// was started with (`relaunchCommand`, macos/quit.swift).
 	private func relaunchWhenGone() {
 		let relauncher = Process()
 		relauncher.executableURL = URL(fileURLWithPath: "/bin/sh")
-		relauncher.arguments = [
-			"-c", "while /bin/kill -0 \"$1\" 2>/dev/null; do /bin/sleep 0.2; done; exec /usr/bin/open \"$2\"", "relaunch",
-			String(ProcessInfo.processInfo.processIdentifier), Bundle.main.bundlePath,
-		]
+		relauncher.arguments =
+			[
+				"-c", "pid=$1; shift; while /bin/kill -0 \"$pid\" 2>/dev/null; do /bin/sleep 0.2; done; exec \"$@\"", "relaunch",
+				String(ProcessInfo.processInfo.processIdentifier),
+			] + relaunchCommand(bundle: Bundle.main.bundlePath, environment: ProcessInfo.processInfo.environment)
 		try? relauncher.run()
 	}
 
@@ -618,7 +620,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 		// A quit that is already under way (the question is open, the server is stopping) is not changed by it.
 		guard !stoppingServer, !askingToQuit else { return }
 		quittingForUpdate = true
-		NSApp.terminate(nil)
+		quitFromRunLoop()
 	}
 
 	/// The server stopped for good (see `ServerSupervisor`), or could not be started.
@@ -632,7 +634,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 		alert.alertStyle = .critical
 		alert.addButton(withTitle: "Quit")
 		alert.runModal()
-		NSApp.terminate(nil)
+		quitFromRunLoop()
 	}
 
 	/// The server's output goes into alerts, and its start-up banner, a logged URL or an error can carry the

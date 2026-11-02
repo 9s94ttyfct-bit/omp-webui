@@ -2,13 +2,17 @@ import AppKit
 import Darwin
 import Foundation
 
-// Harness for macos/update.swift: the shell's `UpdateQuit` inside a real `NSApplication`, quitting the way the shell does —
-// `NSApp.terminate` answered `.terminateLater`, with the reply sent from a block of the main queue once "the server has
-// stopped" (the supervisor's `done` runs on the main queue). Prints `ready` once the handler is installed, `asked` for each
-// request that is for an update, and `quit` when the application is ending. See tests/unit/macos-update.test.ts.
+// Harness for macos/update.swift and `quitFromRunLoop` (macos/quit.swift): the shell's `UpdateQuit` inside a real
+// `NSApplication`, quitting the way the shell does — `NSApp.terminate` answered `.terminateLater`, with the reply sent from a
+// block of the main queue once "the server has stopped" (the supervisor's `done` runs on the main queue). Prints `ready` once
+// the handler is installed, `asked` for each request that is for an update, and `quit` when the application is ending. See
+// tests/unit/macos-update.test.ts.
 //
 //   harness <data dir>                 how the shell quits (what the app does)
 //   harness <data dir> direct          the shell as it was first written: `terminate` called inside the signal's handler
+
+/// `main.swift` of the app names the app; macos/quit.swift's question says its name.
+let appName = "omp-webui"
 
 setvbuf(stdout, nil, _IOLBF, 0)
 let dataDir = URL(fileURLWithPath: CommandLine.arguments[1])
@@ -32,7 +36,7 @@ var requests = 0
 let updateQuit = UpdateQuit(dataDir: dataDir) {
 	requests += 1
 	print("asked")
-	NSApp.terminate(nil)
+	quitFromRunLoop()
 }
 if direct {
 	// The first version of `UpdateQuit.requested`: the quit is called in the handler itself.

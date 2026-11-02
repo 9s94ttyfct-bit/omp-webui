@@ -11,7 +11,8 @@ final class UpdateQuit {
 	private let quit: () -> Void
 	private var source: DispatchSourceSignal?
 
-	/// `quit` is called on the main thread, once for each request that is for an update.
+	/// `quit` is called on the main thread, inside a block of the main queue, once for each request that is for an update: it
+	/// quits with `quitFromRunLoop` (macos/quit.swift), never with `NSApp.terminate` itself.
 	init(dataDir: URL, quit: @escaping () -> Void) {
 		self.handover = dataDir.appendingPathComponent("update").appendingPathComponent("handover.json")
 		self.quit = quit
@@ -27,10 +28,6 @@ final class UpdateQuit {
 
 	private func requested() {
 		guard FileManager.default.fileExists(atPath: handover.path) else { return }
-		// Not from here: this handler runs inside a block the main queue is draining, and `NSApp.terminate` waits for the
-		// server to stop (`.terminateLater`) in a loop of its own — which cannot run the blocks that answer it while the one
-		// it was called from is still running. The app then never quit (found by the first real update). A run-loop source
-		// is no block of the main queue: it is run by the loop itself, which is then free to run the queue.
-		RunLoop.main.perform(inModes: [.common]) { [quit] in quit() }
+		quit()
 	}
 }

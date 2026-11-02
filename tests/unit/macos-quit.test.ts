@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { capabilities } from "../../server/platform/capabilities.ts";
+import { relaunchCommand } from "../../server/update/service.ts";
 import { guiSkipNotice, guiTests } from "../support/gui-tests.ts";
 
 /**
@@ -44,6 +45,7 @@ interface Report {
 	dialogs: Record<string, Dialog>;
 	warnings: Record<string, boolean>;
 	session: { asked: number; ending: Record<string, boolean> };
+	relaunch: string[];
 }
 
 let report: Report;
@@ -248,6 +250,37 @@ test.skipIf(!mac)(
 		}
 		// Dock › Quit and `osascript … quit` are a quit event without a reason; ⌘Q has no event at all; another reason is not one.
 		for (const other of ["appleEvent", "terminate", "userReason"]) expect(ending[other], other).toBe(false);
+	},
+);
+
+test.skipIf(!mac)(
+	"the app that opens itself again after a restart for the browser keeps its data folder, as the server's relaunch after an update does",
+	() => {
+		// The same environment as the harness's `relaunchSample`.
+		const env = {
+			OMP_WEBUI_DATA_DIR: "/tmp/data dir",
+			OMP_WEBUI_PORT: "7999",
+			OMP_WEBUI_APP_UPDATE_API: "http://127.0.0.1:1",
+			HOME: "/tmp/home",
+			PI_CODING_AGENT_DIR: "/tmp/agent",
+			OMP_BIN: "/tmp/omp",
+			OMP_WEBUI_TOKEN: "secret",
+			OMP_WEBUI_PARENT_PID: "42",
+			OMP_WEBUI_DIST: "/tmp/dist",
+			OMP_WEBUI_AUTO_PORT: "1",
+			OMP_WEBUI_LOGIN_SHELL: "/bin/zsh",
+			OMP_WEBUI_APP_BUNDLE: "/x.app",
+			PATH: "/usr/bin",
+			OMP_WEBUI: "1",
+			XOMP_WEBUI_PORT: "1",
+		};
+		const pairs = (command: string[]) => command.filter((_, i) => command[i - 1] === "--env").sort();
+		const server = relaunchCommand("/Applications/omp-webui.app", env);
+		// A new instance: the app that quit is still counted as running for a moment, and a plain `open` would start nothing.
+		expect(report.relaunch.slice(0, 2)).toEqual(["/usr/bin/open", "-n"]);
+		expect(report.relaunch.at(-1)).toBe("/Applications/omp-webui.app");
+		expect(pairs(report.relaunch)).toEqual(pairs(server));
+		expect(pairs(report.relaunch)).toContain("OMP_WEBUI_DATA_DIR=/tmp/data dir");
 	},
 );
 

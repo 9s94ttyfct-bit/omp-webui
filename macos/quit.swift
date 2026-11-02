@@ -346,3 +346,34 @@ func quitDialog(_ context: QuitContext, offersBackground: Bool) -> QuitDialog {
 		detail: lines.joined(separator: context.language == .zh ? "" : " "), buttons: buttons,
 		remember: offersBackground ? w.dontAsk : nil)
 }
+
+// MARK: - Quitting from code
+
+/// Quit the way ⌘Q does, from code that runs in a block of the main queue: a signal's handler (an update), the server's
+/// answers (the restart for the browser), the supervisor's notice that the server is gone. `NSApp.terminate` waits for the
+/// server to stop (`.terminateLater`) in a run loop of its own, and the main queue runs no other block while one of its own
+/// is still running, so the supervisor's answer, a block of the main queue, never came: the app stayed open on a stopped
+/// server until it was force quit (the first real update; the restart after a browser install, #31). A block the run loop
+/// performs is no block of the main queue: once it runs, the loop is free to run the queue.
+func quitFromRunLoop() {
+	RunLoop.main.perform(inModes: [.common]) { NSApp.terminate(nil) }
+}
+
+/// What the app takes from this one's environment when it opens itself again (the restart for the browser), the names the
+/// server's relaunch after an update forwards (`RELAUNCH_ENV`, server/update/service.ts): where its data and omp are, and the
+/// settings of a test or a developer. `open` starts an app with none of the caller's environment, and a copy started on
+/// another data folder came back on the real one (#21).
+private let relaunchEnvironment = try! NSRegularExpression(
+	pattern: "^(OMP_WEBUI_(?!TOKEN$|PARENT_PID$|DIST$|AUTO_PORT$|LOGIN_SHELL$|APP_BUNDLE$)\\w+|HOME|PI_CODING_AGENT_DIR|OMP_BIN)$")
+
+/// The command that starts the app at `bundle` again, with what it was started with from `environment`
+/// (`relaunchEnvironment`), as the server's `relaunchCommand` does after an update; and as a new instance (`-n`): the old
+/// app's process is gone by the time it runs, but LaunchServices still counts the app as running for a moment after, and
+/// a plain `open` then only brings that app forward and starts nothing. A copy that is already running is never doubled:
+/// a second copy brings it forward and leaves (`runningInstance`, main.swift).
+func relaunchCommand(bundle: String, environment: [String: String]) -> [String] {
+	let forwarded = environment.keys.sorted().filter { name in
+		relaunchEnvironment.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)) != nil
+	}
+	return ["/usr/bin/open", "-n"] + forwarded.flatMap { ["--env", "\($0)=\(environment[$0] ?? "")"] } + [bundle]
+}
