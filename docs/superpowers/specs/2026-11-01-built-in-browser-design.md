@@ -211,15 +211,14 @@ or its CfT when it runs the server alone), and that is what the remote window's 
 - **Clear browser data** removes the profile (logins, cookies, storage, cache). It asks first, then restarts the app
   (CfT: the server restarts CfT) and deletes the profile before the browser starts again (**call made here**: a running
   browser keeps its profile open, and clearing it live over CDP misses saved data).
-- Who may install, update and clear (decided with the person): a page at this computer, and **a remote page signed in
-  with the person's account** — through the tunnel, the Cloudflare Access sign-in that `server/remote-auth.ts` verifies.
-  That includes the app's remote windows, a browser tab and a phone that come in that way. Clear asks first, wherever it
-  is pressed. No pairing: the person judged that a page signed in as them is them (the risk they accepted: whoever holds
-  the account can clear the browser's logins). Each of the three endpoints checks it on the server, from the request's
-  verified identity, not from what the page shows.
-- A page on the local network that holds only the server's access token (`server/auth.ts`, not an account sign-in)
-  views and uses the Browser tab but cannot install, update or clear, as it cannot change the projects folder
-  (**call made here**: the person chose account sign-in; the token is not one).
+- Who may install, update and clear (decided with the person): **every page the server lets in** — a page at this
+  computer; a remote page signed in with the person's account through the tunnel (the Cloudflare Access sign-in that
+  `server/remote-auth.ts` verifies); and a page on the local network that holds the server's access token
+  (`server/auth.ts`). That includes the app's remote windows, a browser tab and a phone. Clear asks first, wherever it is
+  pressed. No pairing. The risk the person accepted: whoever holds the account, or the access token, can install or
+  update the browser and clear its logins. Each of the three endpoints checks it on the server, from the request's own
+  authentication, not from what the page shows. This is wider than the projects folder's rule (which a network page
+  cannot change), on purpose.
 
 ### Data
 
