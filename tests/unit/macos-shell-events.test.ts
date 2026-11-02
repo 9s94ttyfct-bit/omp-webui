@@ -137,87 +137,90 @@ afterAll(async () => {
 	for (const server of servers) await server.stop(true);
 });
 
-test.skipIf(!mac)("a line is a state, a notice or the browser's restart with what each needs; anything else is nothing", () => {
-	const [
-		full,
-		negative,
-		text,
-		missing,
-		noEpoch,
-		emptyEpoch,
-		asking,
-		finished,
-		seqZero,
-		noSeq,
-		noId,
-		noLive,
-		badTitle,
-		later,
-		noType,
-		damaged,
-		array,
-		empty,
-		newer,
-		counted,
-		clamped,
-		restart,
-	] = report.pure.parsed;
-	// A server from before `paused`, `menuIcon`, `questions` and `finished`: nothing paused, the icon wanted (the default), no
-	// question open and no run finished.
-	expect(full).toEqual({
-		t: "state",
-		working: 2,
-		asking: 1,
-		paused: 0,
-		menuIcon: true,
-		questions: 0,
-		finished: 0,
-		epoch: "E1",
-	});
-	expect(newer).toEqual({
-		t: "state",
-		working: 0,
-		asking: 0,
-		paused: 3,
-		menuIcon: false,
-		questions: 0,
-		finished: 0,
-		epoch: "E1",
-	});
-	// The open questions and the finished runs (#705), as the server counts them; counts that cannot be are none.
-	expect(counted).toEqual({
-		t: "state",
-		working: 1,
-		asking: 2,
-		paused: 0,
-		menuIcon: true,
-		questions: 3,
-		finished: 7,
-		epoch: "E1",
-	});
-	expect(clamped).toEqual({
-		t: "state",
-		working: 0,
-		asking: 0,
-		paused: 0,
-		menuIcon: true,
-		questions: 0,
-		finished: 0,
-		epoch: "E1",
-	});
-	// Counts that cannot be: no count. A state that does not say whose run it is is not one.
-	for (const bad of [negative, text, missing, noEpoch, emptyEpoch]) expect(bad).toBe("nil");
-	expect(asking).toEqual({ t: "attention", seq: 4, id: "L", title: "T", body: "B", liveId: "L", file: "/s/a.jsonl" });
-	// A conversation with no file yet is still one to open, by its process.
-	expect(finished).toEqual({ t: "attention", seq: 1, id: "L", title: "T", body: "B", liveId: "L", file: null });
-	// A notice with no number (what the app would say it has read), nothing to replace, nothing to open, or words that are not text
-	// is not shown.
-	for (const bad of [seqZero, noSeq, noId, noLive, badTitle]) expect(bad).toBe("nil");
-	// What a newer server says, and damage, are passed over.
-	for (const other of [later, noType, damaged, array, empty]) expect(other).toBe("nil");
-	// The built-in browser's engine changed: the app starts again (server/browser/install.ts).
-	expect(restart).toEqual({ t: "browserRestart" });
-});
+test.skipIf(!mac)(
+	"a line is a state, a notice or the browser's restart with what each needs; anything else is nothing",
+	() => {
+		const [
+			full,
+			negative,
+			text,
+			missing,
+			noEpoch,
+			emptyEpoch,
+			asking,
+			finished,
+			seqZero,
+			noSeq,
+			noId,
+			noLive,
+			badTitle,
+			later,
+			noType,
+			damaged,
+			array,
+			empty,
+			newer,
+			counted,
+			clamped,
+			restart,
+		] = report.pure.parsed;
+		// A server from before `paused`, `menuIcon`, `questions` and `finished`: nothing paused, the icon wanted (the default), no
+		// question open and no run finished.
+		expect(full).toEqual({
+			t: "state",
+			working: 2,
+			asking: 1,
+			paused: 0,
+			menuIcon: true,
+			questions: 0,
+			finished: 0,
+			epoch: "E1",
+		});
+		expect(newer).toEqual({
+			t: "state",
+			working: 0,
+			asking: 0,
+			paused: 3,
+			menuIcon: false,
+			questions: 0,
+			finished: 0,
+			epoch: "E1",
+		});
+		// The open questions and the finished runs (#705), as the server counts them; counts that cannot be are none.
+		expect(counted).toEqual({
+			t: "state",
+			working: 1,
+			asking: 2,
+			paused: 0,
+			menuIcon: true,
+			questions: 3,
+			finished: 7,
+			epoch: "E1",
+		});
+		expect(clamped).toEqual({
+			t: "state",
+			working: 0,
+			asking: 0,
+			paused: 0,
+			menuIcon: true,
+			questions: 0,
+			finished: 0,
+			epoch: "E1",
+		});
+		// Counts that cannot be: no count. A state that does not say whose run it is is not one.
+		for (const bad of [negative, text, missing, noEpoch, emptyEpoch]) expect(bad).toBe("nil");
+		expect(asking).toEqual({ t: "attention", seq: 4, id: "L", title: "T", body: "B", liveId: "L", file: "/s/a.jsonl" });
+		// A conversation with no file yet is still one to open, by its process.
+		expect(finished).toEqual({ t: "attention", seq: 1, id: "L", title: "T", body: "B", liveId: "L", file: null });
+		// A notice with no number (what the app would say it has read), nothing to replace, nothing to open, or words that are not text
+		// is not shown.
+		for (const bad of [seqZero, noSeq, noId, noLive, badTitle]) expect(bad).toBe("nil");
+		// What a newer server says, and damage, are passed over.
+		for (const other of [later, noType, damaged, array, empty]) expect(other).toBe("nil");
+		// The built-in browser's engine changed: the app starts again (server/browser/install.ts).
+		expect(restart).toEqual({ t: "browserRestart" });
+	},
+);
 
 test.skipIf(!mac)(
 	"the pieces of a response are cut into lines wherever the network cut them, characters included",

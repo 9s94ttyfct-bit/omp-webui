@@ -23,6 +23,7 @@
 - **Models your way**: omp's model roles and presets in one click, goal and plan mode, and a Light mode that loads only the tools, MCP servers and skills you pick.
 - **A guard for dangerous commands**: high-risk tool calls, in the main agent and every subagent, wait for a reviewer model or for you.
 - **Unattended mode**: the agent keeps working while you are away and files its questions in a Questions list.
+- **A browser for every conversation**: the agent browses in pages of its own, which the side panel's Browser tab shows live for you to watch and use, at desktop, panel or phone size.
 - **From your phone**: remote access through a Cloudflare Tunnel with Access, a layout for narrow screens, and push notifications when a conversation needs you.
 - **A macOS app**: installs omp for you, updates itself from the releases, runs in the background from the menu bar, and moves your setup to another Mac.
 

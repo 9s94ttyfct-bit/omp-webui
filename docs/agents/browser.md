@@ -10,7 +10,7 @@ settings: browser
 
 omp-webui owns the browser its conversations' agents browse in: **CEF** inside the macOS app, or **Chrome for Testing** (CfT) that the server starts itself when it runs alone. Neither opens a debugging port, and the person's own Chrome is never used.
 
-Every page belongs to one conversation (its session file): a conversation's agent sees and uses only its own pages, and the side panel's **Browser** tab of that conversation lists only those.
+Every page belongs to one conversation (its session file): a conversation's agent sees and uses only its own pages, and the side panel's **Browser** tab of that conversation lists only those. The agent and the person share that conversation's pages: what the agent opens the person sees, and the person can click and type into it while the agent works.
 
 **The Browser tab** (side panel, lower pane by default):
 
@@ -22,7 +22,17 @@ Every page belongs to one conversation (its session file): a conversation's agen
 
 When the browser is not installed, the tab says so and offers **Install** to a page that may install it (see Security notes); otherwise it points to Settings › Browser. When the browser cannot be used (it failed to start, it restarted), the tab says why.
 
-**Settings › Browser**: the engine this server drives, the version installed and the newest one known (**Check for a newer version** looks it up), **Install** / **Update** (download into the data folder with progress and **Cancel**), **Clear browser data** (asks first; removes logins, cookies, storage and the cache: CfT restarts and its pages close; with CEF the app restarts to do it and every Browser tab starts empty), a note when the app has to restart to finish, and **Size of new pages** (width × height of the Desktop layout).
+**Settings › Browser**: the engine this server drives, the version installed and the newest one known (**Check for a newer version** looks it up), **Install** / **Update** (download into the data folder with progress and **Cancel**), **Clear browser data** (asks first; removes logins, cookies, storage and the cache: CfT restarts and its pages close; with CEF the app restarts by itself and removes the profile as it starts, and every Browser tab starts empty), a note while the app still has to restart to finish (it was not restarted: the person cancelled the quit question), and **Size of new pages** (width × height of the Desktop layout).
+
+**How a conversation's agent browses in it.** omp's browser tool is pointed at the built-in browser, never at omp's own hidden Chromium or the person's Chrome. The server writes two lines into the conversation's own settings overlay (the `--config` file omp is started with and reloads when it changes): `browser.cdpUrl`, the conversation's endpoint, and `browser.relay: false`; and it starts every omp with `PI_BROWSER_RELAY=0`, so omp's relay to the person's Chrome is off either way. The endpoint is `http://<token>@127.0.0.1:<port>`: omp asks it for `/json/version` (the token travels as the URL's user name) and is sent on to `/browser-cdp/<token>/devtools/browser`. Each conversation has a token of its own, kept with the page owners in `owners.json` in the data folder; a conversation gets its endpoint once it has a session file, and the server writes it again when it comes up on another port or when the browser is installed. While the browser is not installed no `browser.cdpUrl` is written, and omp uses its own hidden Chromium as before.
+
+What the endpoint lets a conversation see: its own pages only. Target discovery, the target list and attaching see nothing else, and a command that names another conversation's page or session is refused (`Not this conversation's page`). A page the conversation creates, and a page one of its pages opens (`window.open`, a link to a new tab), is that conversation's and shows as another tab of its Browser tab, never as a window. omp attaches to a page that is there rather than making one, so a conversation with no page gets a blank one before its first answer, and that is the page its Browser tab shows. `Browser.close` from the agent ends its own connection, not the browser. Commands about the whole browser (cookies, downloads) go through: the login state is one, shared by every conversation and the person.
+
+Deleting a conversation closes its pages and forgets its token; archiving it closes its pages. A conversation moved to another folder (omp's `/move`) keeps its pages and its endpoint.
+
+**The engines.** Without the Mac app the engine is Chrome for Testing: the server installs it from Settings › Browser and starts it itself, headless, the first time a conversation or a Browser tab needs it, speaking to it over `--remote-debugging-pipe` (Chrome reads and writes CDP on two inherited pipes and opens no port). In the Mac app the engine is CEF, inside the app's own process: the app starts its server with `OMP_WEBUI_BROWSER_ENGINE=cef`, the server installs CEF into the data folder (only a build that supports the CEF API version the app was built against), and the app loads it from there at launch. The app connects to the server's `/browser-engine` WebSocket and, on it, reports its pages and carries each page's DevTools channel; the server answers the browser-level CDP `Target` domain itself from that list, so CEF opens no debugging port either. CEF is loaded once per run of the app, so after installing it, a new CEF version or Clear the app restarts by itself: the server tells this computer's app, which quits as it does for ⌘Q (without offering Run in Background: while a conversation is still working it asks first, and paused conversations and ones waiting out a usage limit stay) and opens again, deleting the profile first after a Clear and then loading the installed version. If the person cancels that question, the app keeps running as it was and Settings › Browser says *Restart the app to finish*. Each engine has a profile of its own: logins are not carried from one engine to the other.
+
+**In the Mac app's own window.** Only the app's main window, and only while CEF runs, lays CEF's own view of the page over the Browser tab instead of the screencast. The tab tells the app where its page area is, the page's layout size and its size mode; the app places the view there, scaled down to fit when the layout (Desktop, Phone) is larger than the area, hides it while a menu, popover or dialog of the web page is over it, and moves it to a hidden window when the tab shows no page (the page keeps running, and other windows still see it through the screencast). Closing the window keeps every page running in that hidden window; quitting the app closes them. **Developer tools** there opens CEF's own DevTools window for the page. Pop-out windows, browser tabs, phones and windows onto other Macs always show the screencast; a window onto another Mac shows that Mac's browser (its pages, its logins, its `localhost`), never this Mac's. A page takes the keyboard only when clicked: never because it loaded or the agent navigated it.
 
 ## Where it is
 
@@ -35,7 +45,7 @@ When the browser is not installed, the tab says so and offers **Install** to a p
 |---|---|---|---|
 | `ompw.browserSize` | `<width>x<height>`, each 320–3840 CSS px | unset (1280×800) | Synced preference. The Desktop layout size a page gets the first time a Browser tab shows it. |
 
-Other stored values: the engines and profiles are in `browser/` of the server's data folder (`cft/<version>/`, `cef/<version>/`, `cft-profile/`, `cef-profile/`, `current.json`, and `owners.json`, which page belongs to which conversation).
+Other stored values: the engines and profiles are in `browser/` of the server's data folder (`cft/<version>/`, `cef/<version>/`, `cft-profile/`, `cef-profile/`, `current.json`, which says what is installed and holds a CEF Clear that the app carries out when it starts again, and `owners.json`, which page belongs to which conversation and each conversation's endpoint token). `browser/` is not moved to another computer (Move to another computer): the new computer installs its own browser and signs in again.
 
 ## API routes
 
@@ -49,14 +59,30 @@ Other stored values: the engines and profiles are in `browser/` of the server's 
 
 The four POST routes answer 403 with `problem: "browserNotHere"` to any other page. The Browser tab talks over its own WebSocket, `/ws/browser` (same sign-in as the page's socket): the page list, console entries and JPEG frames from the server; watch, open, close, navigate, size and input from the page.
 
+The browser's own endpoints, outside `/api`:
+
+| Endpoint | Kind | Access | Purpose |
+|---|---|---|---|
+| `/browser-cdp/<token>/json/version`, `/json`, `/json/list` | GET | this computer only, without an `Origin` header (never a web page), the conversation's token | A conversation's CDP discovery: the browser's version and `webSocketDebuggerUrl`, and the list of its own pages (making a blank one when it has none). 401 for a token that is no conversation's, 503 while the browser cannot be used. |
+| `/json/version`, `/json`, `/json/list` | GET | as above, with the token as the URL's user name (HTTP Basic) | The same discovery at the server's root, for the endpoint omp is given (`http://<token>@127.0.0.1:<port>`). |
+| `/browser-cdp/<token>/devtools/browser`, `/browser-cdp/<token>/devtools/page/<id>` | WebSocket | as above | The conversation's CDP connection: the whole browser seen as its own pages, or one of its pages. |
+| `/browser-engine` | WebSocket | this computer only, without an `Origin` header, only while the engine is CEF, and only with the exact token the app started the server with (`x-omp-webui-token` equal to `OMP_WEBUI_TOKEN`, whatever `OMP_WEBUI_AUTH` says) | The Mac app's CEF: its pages and each page's DevTools channel; the server asks it to make and close pages. |
+
 ## Limits and caveats
 
-- Pages are not restored after the browser or the app restarts (an update, Clear): every Browser tab starts empty. A restart of the server alone keeps which page is whose.
+- One set of pages per conversation, shared by its agent and the person. omp attaches to a page and makes none of its own, so every tab name the agent uses (`main`, `docs`) lands on that conversation's current page.
+- A conversation not saved to a file yet has no pages and no endpoint; until it has one its agent uses omp's own hidden Chromium.
+- Pages are not restored after the browser or the app restarts (an update, Clear, quitting the app): every Browser tab starts empty. A restart of the server alone keeps which page is whose and each conversation's endpoint.
+- Installing CEF, a new CEF version and Clear with CEF restart the app, which stops the conversations that are working (after the quit question) as any quit does.
 - The screencast follows what the connection carries: through the tunnel it is less smooth than on this computer.
 - A page sized by Settings › Browser is sized when a Browser tab first shows it; a page shown before keeps its size.
 
 ## Security notes
 
 - Installing, updating and clearing are for a page on this computer or a page signed in through Cloudflare Access with the person's account; a page that holds only the access token (or none, with authentication off) may view and use the Browser tab but not manage the browser. The server decides from the request's own authentication.
+- No engine opens a debugging port: CfT is driven over a pipe the server holds, CEF over the app's `/browser-engine` connection. A conversation's endpoint answers only this computer, never a request with an `Origin` (so no web page, through the tunnel or not), and only with a token the server gave a conversation; with it, a conversation reaches only its own pages.
+- `/browser-engine` takes only the app that started the server: on this computer, with the app's own token, and only when the server was started for CEF.
+- In the Mac app, the view over the Browser tab takes messages only from the main frame of the server's own page in the main window.
+- Commands about the whole browser are not filtered: any conversation's agent can read or clear the shared cookies, as the person can. An agent that asks omp for another browser in its own call (omp's relay, another CDP address, an app path) is not stopped.
 - Downloads come only from Google's storage (CfT, checked against the MD5 Google lists) and CEF's build server (checked against the index's SHA-1).
-- Every Chrome omp-webui starts uses a mock keychain and a basic password store, so macOS never asks for the keychain.
+- The engines never use the macOS keychain: CfT runs with `--use-mock-keychain --password-store=basic`, CEF with `--use-mock-keychain`, so macOS never asks for the keychain. The profiles are kept by the data folder's own permissions.

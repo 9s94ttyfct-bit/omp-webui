@@ -75,6 +75,7 @@ Errors are `{ error, code, params }` with codes such as `migrateBusy`, `migrateW
 - Logins are not restored when this Mac's omp keeps them in an older layout than the omp that made the file: update omp, then sign in again.
 - Remote access arrives switched off and must be turned on again on the new Mac; secret values blanked in the archive must be entered again.
 - Caches, usage statistics and the search index are not moved; they are rebuilt.
+- The built-in browser (`browser/` in the data folder: its engines, and its logins, cookies and storage) is not moved: on the new Mac it is installed again from Settings › Browser and sites are signed in to again.
 - Settings values that name the old Mac's paths are listed after the import for the person to check.
 
 ## Security notes
