@@ -148,3 +148,21 @@ test("the page's console errors and failed requests reach the tab that shows it"
 	);
 	client.close();
 }, 30_000);
+
+test("the tabs learn a page's title once it has loaded, and again after it moves", async () => {
+	const targetId = await engine.createPage(OWNER, "about:blank");
+	const tab = new Tab();
+	const client = hub.connect(tab);
+	client.message(JSON.stringify({ t: "watch", owner: OWNER, targetId, panel: { w: 400, h: 300 } }));
+	const titled = (title: string) =>
+		tab.texts.some((m) => m.t === "pages" && m.pages.some((pg) => pg.targetId === targetId && pg.title === title));
+	client.message(
+		JSON.stringify({ t: "navigate", targetId, action: "url", url: "data:text/html,<title>first-title</title>" }),
+	);
+	await until("the first title", () => titled("first-title"));
+	client.message(
+		JSON.stringify({ t: "navigate", targetId, action: "url", url: "data:text/html,<title>second-title</title>" }),
+	);
+	await until("the second title", () => titled("second-title"));
+	client.close();
+}, 30_000);
