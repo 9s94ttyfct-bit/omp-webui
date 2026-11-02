@@ -67,12 +67,18 @@ test.describe("phone", () => {
 		const bar = page.getByTestId("new-chat-settings");
 		await expect(bar).toHaveAttribute("data-composer-narrow", "");
 		await expect(page.getByTestId("composer-more")).toHaveCount(0);
+		// The goal on: its "skip the questions" switch is in the bar too.
+		await bar.getByTestId("goal-mode").click();
 		const width = page.viewportSize()?.width ?? 0;
-		for (const id of SETTINGS) {
+		for (const id of [...SETTINGS, "goal-direct"]) {
 			const control = bar.getByTestId(id);
 			await expect(control, id).toBeVisible();
 			const b = await boxOf(control);
 			expect(b.x + b.width, id).toBeLessThanOrEqual(width);
+			// An icon, not a word: no wider than an icon button (32 px) and its focus ring's room.
+			expect(b.width, id).toBeLessThanOrEqual(40);
+			// It still says what it is to whoever cannot see the icon.
+			await expect(control, id).toHaveAccessibleName(/\S/);
 		}
 	});
 });

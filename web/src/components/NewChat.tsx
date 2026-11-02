@@ -5,7 +5,7 @@ import { MODEL_FLAGS, runsLocal } from "@shared/offline.ts";
 import { PREF } from "@shared/prefs.ts";
 import type { ProjectsInfo } from "@shared/projects.ts";
 import type { CliFlag } from "@shared/protocol.ts";
-import { ChevronDown, FolderOpen, FolderPlus, RotateCw, SlidersHorizontal, Target } from "lucide-react";
+import { ChevronDown, FastForward, FolderOpen, FolderPlus, RotateCw, SlidersHorizontal, Target } from "lucide-react";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { type MessageKey, useT } from "../i18n/index.ts";
@@ -599,7 +599,7 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 				)}
 				onClick={() => setGoalMode((g) => (g === "off" ? "guided" : "off"))}
 			>
-				<Target size={14} /> {t("pages.newGoal")}
+				<Target size={14} className="shrink-0" /> <span className="composer-narrow:sr-only">{t("pages.newGoal")}</span>
 			</button>
 			{goalMode !== "off" ? (
 				<button
@@ -613,7 +613,9 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 					)}
 					onClick={() => setGoalMode((g) => (g === "direct" ? "guided" : "direct"))}
 				>
-					{t("pages.newGoalDirect")}
+					{/* Its words alone where there is room; an icon where the bar shows icons, the words still its name. */}
+					<FastForward size={14} className="hidden shrink-0 composer-narrow:block" aria-hidden />
+					<span className="composer-narrow:sr-only">{t("pages.newGoalDirect")}</span>
 				</button>
 			) : null}
 		</span>

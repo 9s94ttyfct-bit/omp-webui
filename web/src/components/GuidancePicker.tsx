@@ -99,8 +99,9 @@ export function GuidancePicker({
 						)}
 						onPointerEnter={read}
 					>
-						<Sparkles size={14} className="shrink-0" /> <span className="truncate">{label}</span>
-						<ChevronDown size={12} className="shrink-0" />
+						<Sparkles size={14} className="shrink-0" />{" "}
+						<span className="truncate composer-narrow:sr-only">{label}</span>
+						<ChevronDown size={12} className="shrink-0 composer-narrow:hidden" />
 					</button>
 				</Popover.Trigger>
 				<Popover.Portal>
