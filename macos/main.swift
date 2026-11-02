@@ -744,7 +744,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
 	// MARK: Navigation
 
-	func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { notifications.pageLoading() }
+	func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+		notifications.pageLoading()
+		// The page that placed the browser's view is going (a reload, the server's restart): the view goes with it.
+		if webView === self.webView { browserBridge.hide() }
+	}
 
 	func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
 		if action.shouldPerformDownload { return decisionHandler(.download) }
@@ -803,7 +807,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 	}
 
 	/// The web content process died (memory pressure, crash): reload instead of a blank window.
-	func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { webView.reload() }
+	func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+		if webView === self.webView { browserBridge.hide() }
+		webView.reload()
+	}
 
 	// MARK: Theme
 

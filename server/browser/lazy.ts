@@ -25,6 +25,8 @@ export interface LazyBrowserOptions {
 	changed(inst: BrowserInstaller): void;
 	/** CEF: the app is to restart (shell events' `browserRestart`). */
 	requestAppRestart(): void;
+	/** CEF: the app's browser can be used now (the app said hello): the conversations' endpoints are named again. */
+	engineLinked(): void;
 }
 
 export function engineHere(env: Record<string, string | undefined> = process.env): EngineKind {
@@ -73,7 +75,7 @@ export class LazyBrowser {
 	 */
 	attachApp(socket: AppSocket): CefLink {
 		this.#link?.end("The app connected again");
-		const link = new CefLink(socket);
+		const link = new CefLink(socket, () => this.opts.engineLinked());
 		this.#link = link;
 		return link;
 	}
@@ -182,14 +184,17 @@ export class LazyBrowser {
 	}
 
 	/**
-	 * The conversation's CDP endpoint on `origin` (`browser.cdpUrl` of its omp), or null while the browser is not installed
-	 * (its omp then uses its own hidden Chromium).
+	 * The conversation's CDP endpoint on `origin` (`browser.cdpUrl` of its omp), or null while the browser cannot be used:
+	 * not installed, or, with CEF, installed but not running in the app (before its restart, or it failed to load). Its omp
+	 * then uses its own hidden Chromium.
 	 */
 	async cdpUrlFor(owner: string, origin: string): Promise<string | null> {
 		const { installer, registry } = await this.service();
-		const installed =
-			installer.engine === "cef" ? installer.state(false).installed !== null : installer.executable() !== null;
-		return installed ? cdpUrlOf(origin, registry.tokenFor(owner)) : null;
+		const usable =
+			installer.engine === "cef"
+				? installer.state(false).installed !== null && this.#link?.ready === true
+				: installer.executable() !== null;
+		return usable ? cdpUrlOf(origin, registry.tokenFor(owner)) : null;
 	}
 
 	/** The conversation in `from` moved to `to` (omp's `/move`): its pages and endpoint are the new file's. */

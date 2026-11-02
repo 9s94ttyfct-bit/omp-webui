@@ -157,6 +157,7 @@ export class ScreenHub {
 		host.onEnd((why) => {
 			this.views.clear();
 			this.bySession.clear();
+			this.settledViews.clear();
 			const text = JSON.stringify({ t: "unavailable", reason: why } satisfies ScreenServerMessage);
 			for (const c of this.clients) {
 				c.socket.sendText(text);
@@ -239,6 +240,14 @@ export class ScreenHub {
 				const view = session ? this.bySession.get(session) : undefined;
 				if (view) fn(view, p);
 			});
+		// A page that closed (or its session that ended) is forgotten: its console, its requests, its size.
+		engine.client.on<{ sessionId: string }>("Target.detachedFromTarget", (p, session) => {
+			const view = session === undefined ? this.bySession.get(p.sessionId) : undefined;
+			if (!view) return;
+			this.bySession.delete(p.sessionId);
+			this.views.delete(view.targetId);
+			if (this.settledViews.get(view.targetId) === view) this.settledViews.delete(view.targetId);
+		});
 		on<{ data: string; sessionId: number }>("Page.screencastFrame", (view, p) => {
 			void view.call("Page.screencastFrameAck", { sessionId: p.sessionId }).catch(() => {});
 			if (view.watchers.size === 0) return;

@@ -606,6 +606,8 @@ const browser = new LazyBrowser({
 		}
 	},
 	requestAppRestart: () => shellEvents.browserRestart(),
+	// The app's CEF said hello: the conversations' overlays name their endpoints from now on.
+	engineLinked: () => void pool.syncBrowser(),
 });
 let browserInstalled: string | null = null;
 /** Where this server's conversations reach its browser: the loopback address, once the server has bound its port. */

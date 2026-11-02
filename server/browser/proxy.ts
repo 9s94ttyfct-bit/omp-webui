@@ -138,6 +138,8 @@ export class ProxyConnection {
 	/** Targets and sessions this connection was told of: what ends them is told too. */
 	private readonly seenTargets = new Set<string>();
 	private readonly seenSessions = new Set<string>();
+	/** Sessions let go of (`release`): another conversation's pages, of which nothing more is passed on. */
+	private readonly released = new Set<string>();
 
 	constructor(
 		private readonly host: EngineHost,
@@ -257,6 +259,8 @@ export class ProxyConnection {
 			done?.(m);
 			return;
 		}
+		// Whatever is still said on a session let go of (it is another conversation's page) goes nowhere.
+		if (m.sessionId !== undefined && this.released.has(m.sessionId)) return;
 		if (m.id !== undefined) {
 			const method = this.asked.get(m.id);
 			this.asked.delete(m.id);
@@ -294,10 +298,13 @@ export class ProxyConnection {
 
 	/** What becomes of a held message: target events by their page's owner, anything else in its turn. */
 	private decide(m: CdpMessage): Decision {
+		if (m.sessionId !== undefined && this.released.has(m.sessionId)) return "drop";
 		if (m.id !== undefined || m.sessionId !== undefined || !TARGET_EVENTS.has(m.method ?? "")) return "deliver";
 		const p = (m.params ?? {}) as { targetInfo?: TargetInfo; targetId?: string; sessionId?: string };
 		const targetId = p.targetInfo?.targetId ?? p.targetId;
 		if (m.method === "Target.detachedFromTarget" && p.sessionId) {
+			// A session let go of is detached now: nothing more can be said on it.
+			this.released.delete(p.sessionId);
 			if (!this.seenSessions.delete(p.sessionId)) return "drop";
 			return "deliver";
 		}
@@ -320,6 +327,7 @@ export class ProxyConnection {
 
 	/** Lets go of a session auto-attached to a page that is not this conversation's: resumed, then detached. */
 	private release(sessionId: string): void {
+		this.released.add(sessionId);
 		this.channel?.send({ id: this.nextOwn--, method: "Runtime.runIfWaitingForDebugger", sessionId });
 		this.channel?.send({
 			id: this.nextOwn--,

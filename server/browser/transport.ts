@@ -21,6 +21,8 @@ export interface CdpTransport {
 	/** Called once, when the connection ends for any reason (closed here, the engine exited, the channel broke). */
 	onClose(fn: (why: string) => void): () => void;
 	close(): void;
+	/** A browser this connection started: settles once its process has exited (none: nothing outlives the connection). */
+	readonly exited?: Promise<unknown>;
 }
 
 /** A CDP error answer, as an Error. */
@@ -34,12 +36,15 @@ export class CdpError extends Error {
 	}
 }
 
-/** Calls over a transport, each answered by the message with its id; calls still waiting when it closes are refused. */
+/**
+ * Calls over a transport, each answered by the message with its id; calls still waiting when it closes are refused, and
+ * so are the calls on a session when the session is detached (its page closed: no answer will come).
+ */
 export class CdpClient {
 	private next = 1;
 	private readonly pending = new Map<
 		number,
-		{ method: string; resolve: (v: unknown) => void; reject: (e: Error) => void }
+		{ method: string; sessionId?: string; resolve: (v: unknown) => void; reject: (e: Error) => void }
 	>();
 	private readonly listeners = new Map<string, Set<(params: unknown, sessionId?: string) => void>>();
 	private closed: string | null = null;
@@ -59,7 +64,7 @@ export class CdpClient {
 			return Promise.reject(new Error(`${method}: the browser connection closed (${this.closed})`));
 		const id = this.next++;
 		return new Promise<T>((resolve, reject) => {
-			this.pending.set(id, { method, resolve: resolve as (v: unknown) => void, reject });
+			this.pending.set(id, { method, sessionId, resolve: resolve as (v: unknown) => void, reject });
 			this.transport.send({ id, method, params: params ?? {}, ...(sessionId ? { sessionId } : {}) });
 		});
 	}
@@ -84,6 +89,14 @@ export class CdpClient {
 			if (m.error) p.reject(new CdpError(p.method, m.error.code, m.error.message));
 			else p.resolve(m.result);
 			return;
+		}
+		if (m.method === "Target.detachedFromTarget" && m.sessionId === undefined) {
+			const gone = (m.params as { sessionId?: unknown } | undefined)?.sessionId;
+			for (const [id, p] of [...this.pending]) {
+				if (p.sessionId === undefined || p.sessionId !== gone) continue;
+				this.pending.delete(id);
+				p.reject(new Error(`${p.method}: the page's session ended`));
+			}
 		}
 		if (m.method) for (const fn of this.listeners.get(m.method) ?? []) fn(m.params, m.sessionId);
 	}

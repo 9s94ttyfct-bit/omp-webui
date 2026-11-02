@@ -194,6 +194,28 @@ test("Clear while a conversation's connection waits for the engine to start ends
 	expect(client.got.find((m) => m.id === 1)).toBeUndefined();
 });
 
+test("stopping the engine (Clear, an update) returns only once the browser it started has exited: its profile is free", async () => {
+	const registry = new PageRegistry(join(work, `owners-${++worlds}.json`));
+	let exit!: () => void;
+	const browser = Object.assign(new FakeBrowser(), {
+		exited: new Promise<void>((resolve) => {
+			exit = resolve;
+		}),
+	});
+	const host = new EngineHost(registry, async () => ({ transport: browser, generation: "gen-1", fresh: true }));
+	await host.ready();
+	let stopped = false;
+	const stopping = host.stop("Browser data was cleared").then(() => {
+		stopped = true;
+	});
+	await Bun.sleep(5);
+	// The connection is closed, the process still shuts down.
+	expect(stopped).toBe(false);
+	exit();
+	await stopping;
+	expect(stopped).toBe(true);
+});
+
 test("owners.json keeps tokens and owners for the same engine, and only tokens for a new one", async () => {
 	const { file, registry, connect } = await world();
 	const tokenA = registry.tokenFor("/s/a.jsonl");

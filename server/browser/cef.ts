@@ -58,7 +58,11 @@ export class CefLink {
 	transport: CefTransport | null = null;
 	private ended: string | null = null;
 
-	constructor(private readonly socket: AppSocket) {}
+	/** `onHello`: the app said hello (its browser can be used from now on). */
+	constructor(
+		private readonly socket: AppSocket,
+		private readonly onHello: () => void = () => {},
+	) {}
 
 	/** Whether the app has said hello (its pages are known). */
 	get ready(): boolean {
@@ -79,6 +83,7 @@ export class CefLink {
 				this.version = m.version;
 				this.pages.clear();
 				for (const page of m.pages) this.pages.set(page.targetId, page);
+				this.onHello();
 				return;
 			case "page": {
 				const known = this.pages.has(m.page.targetId);
@@ -121,23 +126,44 @@ interface PageSession {
 	targetId: string;
 	/** The browser-level session it was attached in. */
 	context: string;
+	/** It asked for the page's frames and workers (`Target.setAutoAttach`): their sessions are told to it. */
+	autoAttach: boolean;
+	/** It runs a screencast (`Page.startScreencast`): the page's frames go to it, and to no other session. */
+	screencast: boolean;
+}
+
+/** A session of a page's frame or worker, made by the page's channel itself (a flat child session). */
+interface ChildSession {
+	targetId: string;
 }
 
 /** A command sent on into a page's channel: where its answer goes. */
 interface Waiting {
 	id: number;
 	sessionId: string;
+	targetId: string;
 }
+
+/** The domains a browser-level command may be of: the app's browser answers them on any page's channel. A page's own
+ *  domains (`Runtime`, `Page`, `Input`, …) are not the browser's, and on a page they would reach whose page it is. */
+const BROWSER_DOMAINS = ["Browser.", "Storage.", "SystemInfo."];
+
+/** The screencast's events: for the session that runs it, never every session on the page. */
+const SCREENCAST_EVENTS = new Set(["Page.screencastFrame", "Page.screencastVisibilityChanged"]);
+
+/** A start for this connection's ids: answers the app still carries for a connection before it never match one of these. */
+const freshIds = () => 1 + Math.floor(Math.random() * 2 ** 28);
 
 export class CefTransport implements CdpTransport {
 	private readonly listeners = new TransportListeners();
 	private readonly contexts = new Map<string, Context>([["", { discover: false, autoAttach: false }]]);
 	private readonly sessions = new Map<string, PageSession>();
+	private readonly children = new Map<string, ChildSession>();
 	private readonly waiting = new Map<number, Waiting>();
 	private readonly creating = new Map<number, { id: number; context: string }>();
 	private nextSession = 1;
-	private nextWire = 1;
-	private nextReq = 1;
+	private nextWire = freshIds();
+	private nextReq = freshIds();
 
 	constructor(private readonly link: CefLink) {
 		link.transport?.end("Another engine connection took over");
@@ -169,6 +195,8 @@ export class CefTransport implements CdpTransport {
 		queueMicrotask(() => {
 			if (this.listeners.ended !== null) return;
 			if (m.sessionId !== undefined && this.sessions.has(m.sessionId)) return this.toPage(m, m.sessionId);
+			const child = m.sessionId === undefined ? undefined : this.children.get(m.sessionId);
+			if (child && m.sessionId !== undefined) return this.forward(child.targetId, m, m.sessionId, m.sessionId);
 			const context = m.sessionId ?? "";
 			if (!this.contexts.has(context)) return this.error(m, -32001, `Session with given id not found.`, m.sessionId);
 			this.browserLevel(context, m);
@@ -190,6 +218,17 @@ export class CefTransport implements CdpTransport {
 
 	/** @internal */
 	pageClosed(targetId: string): void {
+		// What was asked of it and not answered never will be: it is answered here, as a browser answers for a target that went.
+		for (const [wire, w] of [...this.waiting]) {
+			if (w.targetId !== targetId) continue;
+			this.waiting.delete(wire);
+			this.deliver({
+				id: w.id,
+				error: { code: -32000, message: "Target closed" },
+				...(w.sessionId ? { sessionId: w.sessionId } : {}),
+			});
+		}
+		for (const [sessionId, c] of [...this.children]) if (c.targetId === targetId) this.children.delete(sessionId);
 		for (const [sessionId, s] of [...this.sessions]) {
 			if (s.targetId !== targetId) continue;
 			this.sessions.delete(sessionId);
@@ -205,8 +244,16 @@ export class CefTransport implements CdpTransport {
 		if (!asked) return;
 		this.creating.delete(req);
 		const ask = { id: asked.id, method: "Target.createTarget" };
-		if (targetId) this.reply(ask, { targetId }, asked.context || undefined);
-		else this.error(ask, -32000, "The page could not be made", asked.context || undefined);
+		if (!targetId) {
+			this.error(ask, -32000, "The page could not be made", asked.context || undefined);
+			return;
+		}
+		// The page is known before the answer, whichever the app told first: an attach right after it finds it.
+		if (!this.link.pages.has(targetId)) {
+			this.link.pages.set(targetId, { targetId, url: "about:blank", title: "" });
+			this.pageChanged(targetId, true);
+		}
+		this.reply(ask, { targetId }, asked.context || undefined);
 	}
 
 	/** @internal A message of a page's channel. */
@@ -226,8 +273,23 @@ export class CefTransport implements CdpTransport {
 			return;
 		}
 		if (!m.method) return;
-		for (const [sessionId, s] of this.sessions)
-			if (s.targetId === targetId) this.deliver({ method: m.method, params: m.params, sessionId });
+		// An event of a frame's or worker's own session: to whoever holds that session.
+		if (m.sessionId !== undefined) {
+			if (this.children.has(m.sessionId)) this.deliver({ method: m.method, params: m.params, sessionId: m.sessionId });
+			return;
+		}
+		const child = (m.params as { sessionId?: unknown } | undefined)?.sessionId;
+		const isChild =
+			(m.method === "Target.attachedToTarget" || m.method === "Target.detachedFromTarget") && typeof child === "string";
+		if (isChild && m.method === "Target.attachedToTarget") this.children.set(child as string, { targetId });
+		if (isChild && m.method === "Target.detachedFromTarget") this.children.delete(child as string);
+		for (const [sessionId, s] of this.sessions) {
+			if (s.targetId !== targetId) continue;
+			// A frame's session is the one session's that asked for them; the screencast's frames the one's that runs it.
+			if (isChild && !s.autoAttach) continue;
+			if (SCREENCAST_EVENTS.has(m.method) && !s.screencast) continue;
+			this.deliver({ method: m.method, params: m.params, sessionId });
+		}
 	}
 
 	// ------------------------------------------------------------------ CDP
@@ -296,6 +358,12 @@ export class CefTransport implements CdpTransport {
 			}
 			case "Target.detachFromTarget": {
 				const sessionId = String(p.sessionId);
+				// A connection's browser session: it goes, with the page sessions made in it.
+				if (sessionId !== "" && this.contexts.has(sessionId)) {
+					this.contexts.delete(sessionId);
+					for (const [id, s] of [...this.sessions]) if (s.context === sessionId) this.sessions.delete(id);
+					return this.reply(m, {}, at);
+				}
 				const s = this.sessions.get(sessionId);
 				if (!s) return this.error(m, -32602, "No session with given id", at);
 				this.sessions.delete(sessionId);
@@ -307,6 +375,8 @@ export class CefTransport implements CdpTransport {
 				this.contexts.set(sessionId, { discover: false, autoAttach: false });
 				return this.reply(m, { sessionId }, at);
 			}
+			case "Target.getBrowserContexts":
+				return this.reply(m, { browserContextIds: [] }, at);
 			case "Browser.getVersion": {
 				const chromium = /chromium-([\d.]+)/.exec(this.link.version)?.[1] ?? this.link.version;
 				return this.reply(
@@ -319,6 +389,8 @@ export class CefTransport implements CdpTransport {
 			case "Browser.close":
 				return this.reply(m, {}, at);
 			default: {
+				if (!m.method || !BROWSER_DOMAINS.some((d) => m.method?.startsWith(d)))
+					return this.error(m, -32601, `'${m.method}' wasn't found`, at);
 				const first = this.link.pages.keys().next();
 				if (first.done) return this.error(m, -32000, "The built-in browser has no page to carry this", at);
 				this.forward(first.value, m, context);
@@ -329,7 +401,7 @@ export class CefTransport implements CdpTransport {
 	/** A new flat session on the page, made in `context` and told there. */
 	private attach(context: string, targetId: string): string {
 		const sessionId = `S${this.nextSession++}`;
-		this.sessions.set(sessionId, { targetId, context });
+		this.sessions.set(sessionId, { targetId, context, autoAttach: false, screencast: false });
 		this.emit(context, "Target.attachedToTarget", {
 			sessionId,
 			targetInfo: this.info(targetId),
@@ -342,16 +414,26 @@ export class CefTransport implements CdpTransport {
 		const s = this.sessions.get(sessionId) as PageSession;
 		// No page is ever held waiting here (pages are attached as they run).
 		if (m.method === "Runtime.runIfWaitingForDebugger") return this.reply(m, {}, sessionId);
+		const p = (m.params ?? {}) as Record<string, unknown>;
+		if (m.method === "Target.setAutoAttach") s.autoAttach = p.autoAttach === true;
+		if (m.method === "Page.startScreencast") s.screencast = true;
+		if (m.method === "Page.stopScreencast") s.screencast = false;
 		this.forward(s.targetId, m, sessionId);
 	}
 
-	private forward(targetId: string, m: CdpMessage, sessionId: string): void {
+	/** Into the page's channel; `child`: a frame's or worker's session there, which the channel knows by its own id. */
+	private forward(targetId: string, m: CdpMessage, sessionId: string, child?: string): void {
 		const wire = this.nextWire++;
-		if (m.id !== undefined) this.waiting.set(wire, { id: m.id, sessionId });
+		if (m.id !== undefined) this.waiting.set(wire, { id: m.id, sessionId, targetId });
 		this.link.send({
 			t: "cdp",
 			targetId,
-			message: JSON.stringify({ id: wire, method: m.method, params: m.params ?? {} }),
+			message: JSON.stringify({
+				id: wire,
+				method: m.method,
+				params: m.params ?? {},
+				...(child ? { sessionId: child } : {}),
+			}),
 		});
 	}
 

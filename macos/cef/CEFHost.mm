@@ -207,9 +207,14 @@ class Client : public CefClient, public CefLifeSpanHandler, public CefDisplayHan
       made.targetId = targetId;
       auto opener = gPages.find(made.openerKey);
       if (opener != gPages.end()) made.openerId = opener->second.targetId;
-      // Told before the reply: the server knows the page by the time `create` is answered.
+      // Told before the reply (both on the next turns of the run loop, in this order): the server knows the page by the
+      // time `create` is answered.
       tell(made);
-      if (reply) reply(targetId.empty() ? nil : ns(targetId));
+      if (!reply) return;
+      NSString* made_id = targetId.empty() ? nil : ns(targetId);
+      dispatch_async(dispatch_get_main_queue(), ^{
+        reply(made_id);
+      });
     });
   }
 

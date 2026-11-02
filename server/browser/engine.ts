@@ -21,7 +21,7 @@ const LINK_MS = 150;
 export class Engine {
 	readonly mux: CdpMux;
 	readonly client: CdpClient;
-	/** Settles when the engine's connection has ended. */
+	/** Settles when the engine's connection has ended and the browser it started (CfT) has exited: its profile is free. */
 	readonly ended: Promise<string>;
 	private readonly ensuring = new Map<string, Promise<void>>();
 
@@ -29,7 +29,10 @@ export class Engine {
 		private readonly transport: CdpTransport,
 		private readonly registry: PageRegistry,
 	) {
-		this.ended = new Promise((resolve) => transport.onClose(resolve));
+		this.ended = new Promise<string>((resolve) => transport.onClose(resolve)).then(async (why) => {
+			await transport.exited?.catch(() => {});
+			return why;
+		});
 		this.mux = new CdpMux(transport);
 		this.client = new CdpClient(this.mux.open({ root: true }));
 	}

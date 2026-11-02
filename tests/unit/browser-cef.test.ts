@@ -17,6 +17,9 @@ import { CdpClient, type CdpMessage } from "../../server/browser/transport.ts";
 const work = mkdtempSync(join(tmpdir(), "ompw-browser-cef-"));
 afterAll(() => rmSync(work, { recursive: true, force: true }));
 
+/** What `answer` gives for a command the page never answers (it closes first). */
+const NO_ANSWER = Symbol("no answer");
+
 /** The app: its pages, what it was told, and a page channel that answers every command with what `answer` says. */
 class FakeApp {
 	readonly told: ServerToApp[] = [];
@@ -45,10 +48,18 @@ class FakeApp {
 	}
 
 	/** The commands a page's channel was sent. */
-	cdpTo(targetId: string): { id: number; method: string }[] {
+	cdpTo(targetId: string): { id: number; method: string; sessionId?: string }[] {
 		return this.told.flatMap((m) =>
-			m.t === "cdp" && m.targetId === targetId ? [JSON.parse(m.message) as { id: number; method: string }] : [],
+			m.t === "cdp" && m.targetId === targetId
+				? [JSON.parse(m.message) as { id: number; method: string; sessionId?: string }]
+				: [],
 		);
+	}
+
+	/** The page's channel says something of its own (an event; `sessionId`: of a frame's session there). */
+	event(targetId: string, method: string, params: unknown = {}, sessionId?: string): void {
+		const message = JSON.stringify({ method, params, ...(sessionId ? { sessionId } : {}) });
+		this.link.receive(JSON.stringify({ t: "cdp", targetId, message }));
 	}
 
 	private got(m: ServerToApp): void {
@@ -61,8 +72,10 @@ class FakeApp {
 			} else if (m.t === "close") {
 				this.close(m.targetId);
 			} else {
-				const c = JSON.parse(m.message) as { id: number; method: string; params: unknown };
-				const reply = { id: c.id, result: this.answer(c.method, c.params) };
+				const c = JSON.parse(m.message) as { id: number; method: string; params: unknown; sessionId?: string };
+				const result = this.answer(c.method, c.params);
+				if (result === NO_ANSWER) return;
+				const reply = { id: c.id, result, ...(c.sessionId ? { sessionId: c.sessionId } : {}) };
 				this.link.receive(JSON.stringify({ t: "cdp", targetId: m.targetId, message: JSON.stringify(reply) }));
 			}
 		});
@@ -153,6 +166,87 @@ test("what is said on a page session reaches that page in the app, and its answe
 			.map((m) => (m.params as { sessionId: string }).sessionId)
 			.sort(),
 	).toEqual([s1, s2].sort());
+});
+
+test("a connection reaches only its own pages: page commands at the browser are refused, a frame's session is its asker's, and a closed page answers what it was asked", async () => {
+	const app = new FakeApp();
+	const page = app.open("about:blank");
+	const transport = startCefEngine(app.link);
+	const got: CdpMessage[] = [];
+	transport.onMessage((m) => got.push(m));
+	const answer = async (id: number, sessionId?: string) => {
+		for (let i = 0; i < 100 && !got.some((g) => g.id === id && g.sessionId === sessionId); i++) await Bun.sleep(0);
+		return got.find((g) => g.id === id && g.sessionId === sessionId) as CdpMessage;
+	};
+	const call = (m: CdpMessage) => {
+		transport.send(m);
+		return answer(m.id as number, m.sessionId);
+	};
+	// A page's own command sent to the browser goes to no page (on the app's first page it would reach whoever's it is).
+	const refused = await call({ id: 1, method: "Runtime.evaluate", params: { expression: "document.cookie" } });
+	expect(refused.error?.message).toContain("wasn't found");
+	expect(app.cdpTo(page)).toEqual([]);
+	// The browser's own domains still go through a page's channel.
+	expect((await call({ id: 2, method: "Browser.setDownloadBehavior", params: { behavior: "deny" } })).result).toEqual(
+		{},
+	);
+	expect(app.cdpTo(page).map((c) => c.method)).toEqual(["Browser.setDownloadBehavior"]);
+
+	// A connection's browser session, gone: no page attaches in it any more.
+	const context = ((await call({ id: 3, method: "Target.attachToBrowserTarget" })).result as { sessionId: string })
+		.sessionId;
+	await call({
+		id: 4,
+		method: "Target.setAutoAttach",
+		params: { autoAttach: true, flatten: true },
+		sessionId: context,
+	});
+	await call({ id: 5, method: "Target.detachFromTarget", params: { sessionId: context } });
+	const before = got.length;
+	app.open("https://example.com/");
+	expect(got.slice(before).filter((m) => m.method === "Target.attachedToTarget")).toEqual([]);
+
+	// Two sessions on the page; one asks for its frames.
+	const attach = async (id: number) =>
+		(
+			(await call({ id, method: "Target.attachToTarget", params: { targetId: page, flatten: true } })).result as {
+				sessionId: string;
+			}
+		).sessionId;
+	const [s1, s2] = [await attach(6), await attach(7)];
+	await call({
+		id: 8,
+		method: "Target.setAutoAttach",
+		params: { autoAttach: true, waitForDebuggerOnStart: true, flatten: true },
+		sessionId: s1,
+	});
+	app.event(page, "Target.attachedToTarget", {
+		sessionId: "FRAME1",
+		targetInfo: { type: "iframe" },
+		waitingForDebugger: true,
+	});
+	const frameAttached = got.filter(
+		(m) => m.method === "Target.attachedToTarget" && (m.params as { sessionId?: string }).sessionId === "FRAME1",
+	);
+	expect(frameAttached.map((m) => m.sessionId)).toEqual([s1]);
+	// The frame's session is the page channel's own: what is said on it goes there as it is, and comes back on it.
+	const resumed = await call({ id: 9, method: "Runtime.runIfWaitingForDebugger", params: {}, sessionId: "FRAME1" });
+	expect(resumed.result).toEqual({});
+	expect(app.cdpTo(page).at(-1)).toMatchObject({ method: "Runtime.runIfWaitingForDebugger", sessionId: "FRAME1" });
+	app.event(page, "Runtime.consoleAPICalled", { type: "log" }, "FRAME1");
+	expect(got.filter((m) => m.method === "Runtime.consoleAPICalled").map((m) => m.sessionId)).toEqual(["FRAME1"]);
+
+	// The screencast's frames go to the session that runs it.
+	await call({ id: 10, method: "Page.startScreencast", params: {}, sessionId: s2 });
+	app.event(page, "Page.screencastFrame", { data: "", sessionId: 1 });
+	expect(got.filter((m) => m.method === "Page.screencastFrame").map((m) => m.sessionId)).toEqual([s2]);
+
+	// The page closes while a command waits for its answer: the command is answered.
+	app.answer = () => NO_ANSWER;
+	transport.send({ id: 11, method: "Page.navigate", params: { url: "https://example.org/" }, sessionId: s1 });
+	for (let i = 0; i < 100 && !app.cdpTo(page).some((c) => c.method === "Page.navigate"); i++) await Bun.sleep(0);
+	app.close(page);
+	expect((await answer(11, s1)).error?.message).toBe("Target closed");
 });
 
 /** A conversation's connection to the proxy (as in tests/unit/browser-proxy.test.ts). */
