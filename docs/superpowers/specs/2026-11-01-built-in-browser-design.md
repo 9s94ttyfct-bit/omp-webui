@@ -168,6 +168,22 @@ Decided with the person: **one shared page per conversation now, omp's own pages
 - Input: mouse, wheel and keys are sent over CDP input events; text from a phone's keyboard and IME is inserted as text.
   Coordinates are mapped from the shown frame (with its scale) to the page's CSS pixels.
 
+### A remote Mac (the app's remote windows)
+
+The person's app can open a window on another Mac's omp-webui (`macos/remotewindow.swift`: a `WKWebView` on that Mac's
+site). There, a conversation's agent runs on the other Mac, so its pages are in **the other Mac's browser** (its CEF,
+or its CfT when it runs the server alone), and that is what the remote window's Browser tab shows:
+
+- The remote window's Browser tab always shows the **screencast** from the other Mac's server, with input going back to
+  it, as a browser tab or a phone does. The local Mac's CEF never covers a remote window, and its pages are never
+  listed there.
+- So what the person sees is what the agent on the other Mac sees: the same page, the same login state (the other Mac's),
+  and `localhost` is the other Mac's dev server.
+- The local app's CEF is not needed for this: a Mac without the browser installed can watch and use a remote Mac's
+  browser.
+- The screencast goes over the remote connection (the local network or the tunnel), so it is less smooth than the native
+  view; the frame size and rate follow what the connection carries (left to the builder, with the screencast policy).
+
 ### Lifetime in the app
 
 - CEF starts with the app (or when installed), not with the window.
@@ -195,9 +211,17 @@ Decided with the person: **one shared page per conversation now, omp's own pages
 - **Clear browser data** removes the profile (logins, cookies, storage, cache). It asks first, then restarts the app
   (CfT: the server restarts CfT) and deletes the profile before the browser starts again (**call made here**: a running
   browser keeps its profile open, and clearing it live over CDP misses saved data).
-- Install, Update and Clear are offered only on a page at this computer, as the projects folder is; a remote page (a
-  phone over the tunnel) sees the state and uses the Browser tab but cannot install, update or clear (**call made here**:
-  these download and run programs or erase logins).
+- Who may install, update and clear (decided with the person): a page at this computer, and **the app of a Mac the
+  person paired with this one**, from its remote window (Clear still asks first). A browser tab or a phone that comes in
+  over the network or the tunnel sees the state and uses the Browser tab, but cannot install, update or clear.
+- **Pairing is new.** Today a remote window signs in to the other Mac the way a browser does (the Cloudflare Access
+  sign-in kept in the app's web data store, `server/remote-auth.ts`, `server/saved-macs.ts`), so the other Mac cannot
+  tell the app's window from a browser signed in with the same account. Pairing gives the app a credential of its own:
+  the first time a remote window asks to manage the browser, the other Mac asks its person to allow this Mac by name;
+  once allowed, the other Mac keeps the pairing, and the app proves it holds its key (kept in its Keychain, used through
+  the remote window's script bridge) on each such request. Settings on the other Mac lists the paired Macs and can
+  remove one. The key scheme is left to the builder; a request that cannot prove a pairing is treated as any remote
+  page.
 
 ### Data
 
