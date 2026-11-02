@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { EngineHost } from "../../server/browser/engine.ts";
 import { PageRegistry } from "../../server/browser/registry.ts";
 import { ScreenHub, type ScreenSocket } from "../../server/browser/screen.ts";
-import { frameToPage, pageSizeFor, type ScreenServerMessage } from "../../shared/browser-protocol.ts";
+import { decodeFrame, frameToPage, pageSizeFor, type ScreenServerMessage } from "../../shared/browser-protocol.ts";
 import { FakeBrowser } from "../support/fake-cdp.ts";
 
 /** The Browser tab's sizes and coordinates, and who is told a page's console. */
@@ -176,4 +176,31 @@ test("a page drawn by the app's own view is scaled to fit it, until the tab that
 	await Bun.sleep(20);
 	expect(metrics().length).toBe(before + 1);
 	expect(tab.texts.some((m) => m.t === "unavailable")).toBe(false);
+});
+
+test("a page's frames are numbered above any earlier view's of it, so a tab that drew those still draws these", async () => {
+	const registry = new PageRegistry(join(work, "owners-seq.json"));
+	const browser = new FakeBrowser();
+	const host = new EngineHost(registry, async () => ({ transport: browser, generation: "g", fresh: true }));
+	const engine = await host.ready();
+	const page = await engine.createPage("/s/a.jsonl");
+	/** A tab of a server (its own hub, as a server that restarted while the app kept the page) and the frames it gets. */
+	const watching = async () => {
+		const tab = new Socket();
+		new ScreenHub(host, registry)
+			.connect(tab)
+			.message(JSON.stringify({ t: "watch", owner: "/s/a.jsonl", targetId: page, panel: { w: 800, h: 600 } }));
+		await until(() => tab.texts.some((m) => m.t === "pages" && m.pages.length === 1));
+		await Bun.sleep(10);
+		return tab;
+	};
+	const frame = { data: Buffer.from("jpeg").toString("base64"), sessionId: 1 };
+	const first = await watching();
+	for (let i = 0; i < 50; i++) browser.emitOnPage(page, "Page.screencastFrame", frame);
+	await until(() => first.frames.length === 50);
+	const later = await watching();
+	browser.emitOnPage(page, "Page.screencastFrame", frame);
+	await until(() => later.frames.length === 1);
+	const seqOf = (data: Uint8Array | undefined) => decodeFrame(data as Uint8Array).header.seq;
+	expect(seqOf(later.frames[0])).toBeGreaterThan(seqOf(first.frames.at(-1)));
 });

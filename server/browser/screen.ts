@@ -118,7 +118,12 @@ class PageView {
 	size = pageSizeFor("desktop", DESKTOP_SIZE);
 	canBack = false;
 	canForward = false;
-	seq = 0;
+	/**
+	 * The number of the view's last frame. It starts at the time in µs, not at 0: a tab keeps the newest number it drew and
+	 * drops anything not above it, and the same page gets a new view when the engine's connection or the server restarts
+	 * (CEF keeps its pages), whose frames must not be taken for old ones. A page sends far fewer than a frame per µs.
+	 */
+	seq = Math.floor((performance.timeOrigin + performance.now()) * 1000);
 	/** The screencast's size now; null while it does not run. */
 	casting: Size | null = null;
 	/** Where the Mac app's own view draws the page (`fit` of the protocol); null: only screencasts show it. */
