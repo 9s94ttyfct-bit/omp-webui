@@ -1,6 +1,6 @@
 {
 	"name": "@9s94ttyfct-bit/omp-webui",
-	"version": "0.18.0",
+	"version": "0.18.1",
 	"private": true,
 	"type": "module",
 	"description": "A modern web UI for the omp coding agent",
