@@ -1,16 +1,21 @@
 import "./browser-globals.ts";
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { sessionOf } from "../../web/src/lib/model-config.ts";
 import { levelsFor, selectedThinking, startedOnAuto, withAuto } from "../../web/src/lib/models.ts";
 import { statusItems } from "../../web/src/lib/status-line.ts";
 import { initialLive, type LiveState } from "../../web/src/store/live.ts";
+import { installGlobals, restoreGlobals } from "./browser-globals.ts";
 
 /**
  * What the composer's thinking switcher, the status line and the presets show for omp's `auto` level. omp reports the
  * level `auto` resolved to as the conversation's level (`get_state.thinkingLevel`) and never offers `auto` among the
  * levels it lists: the page has to add it, and to say `auto` when that is what the conversation is set to.
  */
+
+// The real `fetch` is put back when this file ends, so that a later file in the same process does not get the stub (#24).
+beforeAll(installGlobals);
+afterAll(restoreGlobals);
 
 const info: LiveInfo = {
 	liveId: "L1",

@@ -1,6 +1,6 @@
 // needs: pauseResume
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Live, LivePool } from "../../server/live.ts";
@@ -8,6 +8,7 @@ import type { LiveInfo, LiveRetry } from "../../shared/protocol.ts";
 import { USAGE_LIMIT_FLAG } from "../../shared/retry.ts";
 import { fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
 import { pollUntil } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * A conversation paused while omp backs off before a retry (a usage-limit wait of hours, most of all) is still waiting
@@ -24,7 +25,7 @@ afterEach(async () => {
 		for (const l of pool.list()) if (l.pid !== null) Bun.spawnSync(["kill", "-CONT", String(l.pid)]);
 		await pool.shutdown();
 	}
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 const retryStart = {

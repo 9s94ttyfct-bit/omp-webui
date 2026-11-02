@@ -11,6 +11,7 @@ import type { RemoteStatus } from "../../shared/remote.ts";
 import { connectedPlan, emit, FAKE_TUNNEL_ID, LOG, makeFakeCloudflared } from "../support/fake-cloudflared.ts";
 import { expectMode } from "../support/modes.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * The tunnel against a stand-in for `cloudflared` (tests/support/fake-cloudflared.ts): every command it runs, how it
@@ -32,7 +33,7 @@ const strays: Subprocess[] = [];
 afterEach(async () => {
 	for (const t of tunnels.splice(0)) await t.close();
 	for (const p of strays.splice(0)) p.kill("SIGKILL");
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 function world(o: { installed?: boolean; timings?: Partial<TunnelTimings>; port?: number; host?: string } = {}) {

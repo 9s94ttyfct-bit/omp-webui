@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LivePool } from "../../server/live.ts";
@@ -7,6 +7,7 @@ import type { Resumed } from "../../server/omp/resumed.ts";
 import { platform } from "../../server/platform/index.ts";
 import { type FakeOmpOptions, fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
 import { has } from "../support/needs.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /** How the pool opens a session file: one omp process per file, however many opens ask for it. */
 
@@ -18,7 +19,7 @@ const strays: number[] = [];
 afterEach(async () => {
 	for (const pid of strays.splice(0)) Bun.spawnSync(["kill", "-KILL", String(pid)], { stderr: "ignore" });
 	for (const pool of pools.splice(0)) await pool.shutdown();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 /**

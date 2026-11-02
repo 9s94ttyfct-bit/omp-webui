@@ -1,6 +1,6 @@
 // needs: posixPaths
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LivePool } from "../../server/live.ts";
@@ -8,6 +8,7 @@ import { FULL, type Launcher, type LaunchPlan } from "../../server/offline/index
 import { type ParkedRecord, referenceTo } from "../../server/omp/parked.ts";
 import type { Mode } from "../../shared/offline.ts";
 import { fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /** A New chat reuses an unused process only when it was started in the mode the chat starts in (the target's, else the default). */
 
@@ -15,7 +16,7 @@ const dirs: string[] = [];
 const pools: LivePool[] = [];
 afterEach(async () => {
 	for (const pool of pools.splice(0)) await pool.shutdown();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 /** Differs from Full only in its environment (another agent dir): the command lines alone look the same. */

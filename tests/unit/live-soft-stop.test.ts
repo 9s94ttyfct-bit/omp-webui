@@ -1,10 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Live, LivePool } from "../../server/live.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
 import { pollUntil } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { writeSyncOmp } from "../support/sync-omp-bin.ts";
 
 /**
@@ -21,7 +22,7 @@ afterEach(async () => {
 	restoreEnv?.();
 	restoreEnv = null;
 	for (const pool of pools.splice(0)) await pool.shutdown();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 async function conversation(): Promise<{ pool: LivePool; live: Live }> {

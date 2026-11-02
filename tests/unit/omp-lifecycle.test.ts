@@ -27,6 +27,7 @@ import {
 } from "../support/fake-install.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * omp's life as the server runs it — missing, installed from the first-run screen, found broken, looked up for a
@@ -36,7 +37,7 @@ import { pollUntil, processExists } from "../support/poll.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ompw-lifecycle-"));
 let n = 0;
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => removeScratch(root));
 
 /*
  * A test that lives for seconds by design carries its own limit, `}, 60_000);`: it follows a fake install to its end

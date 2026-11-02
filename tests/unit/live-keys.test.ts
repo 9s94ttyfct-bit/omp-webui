@@ -1,14 +1,20 @@
 import "./browser-globals.ts";
-import { expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { LiveKeys } from "../../web/src/lib/live-keys.ts";
 import type { AgentMessage } from "../../web/src/lib/messages.ts";
 import type { OverlayMessage } from "../../web/src/store/live.ts";
 import { assistant, user } from "../support/session-entries.ts";
+import { installGlobals, restoreGlobals } from "./browser-globals.ts";
 
 /**
  * The row that streams a message and the row of the entry omp saves for it are one message to the reader: the saved row
  * takes over the streamed row's key (omp keeps the `timestamp` the message streamed with), so its DOM is not rebuilt.
  */
+
+// The real `fetch` is put back when this file ends: a later file in the same process (a contract test's requests to
+// its server, puppeteer's discovery) would otherwise get the stub's `[]` for every request (#24).
+beforeAll(installGlobals);
+afterAll(restoreGlobals);
 
 const streamed = (messageId: string, timestamp: number | undefined, ended = false): OverlayMessage => {
 	const message: AgentMessage = { role: "assistant", content: [], timestamp };

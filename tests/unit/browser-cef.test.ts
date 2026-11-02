@@ -168,6 +168,62 @@ test("what is said on a page session reaches that page in the app, and its answe
 	).toEqual([s1, s2].sort());
 });
 
+test("what a session set on its page ends with it: the page gets back what the session before it set, or none (#27)", async () => {
+	const app = new FakeApp();
+	const page = app.open("about:blank");
+	const transport = startCefEngine(app.link);
+	const got: CdpMessage[] = [];
+	transport.onMessage((m) => got.push(m));
+	let next = 100;
+	const call = async (method: string, params: object = {}, sessionId?: string) => {
+		const id = next++;
+		transport.send({ id, method, params, ...(sessionId ? { sessionId } : {}) });
+		for (let i = 0; i < 100 && !got.some((g) => g.id === id); i++) await Bun.sleep(0);
+		return got.find((g) => g.id === id) as CdpMessage;
+	};
+	const attach = async () =>
+		((await call("Target.attachToTarget", { targetId: page, flatten: true })).result as { sessionId: string })
+			.sessionId;
+	const tab = await attach();
+	const agent = await attach();
+	const sent = () => app.cdpTo(page) as { method: string; params?: Record<string, unknown> }[];
+
+	// The tab lays the page out as a phone; the agent then sets its own size and intercepts requests.
+	await call("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, mobile: true }, tab);
+	await call("Emulation.setDeviceMetricsOverride", { width: 800, height: 600, mobile: false }, agent);
+	await call("Fetch.enable", { patterns: [{ urlPattern: "*" }] }, agent);
+	// A held request is the interceptor's alone.
+	app.event(page, "Fetch.requestPaused", { requestId: "r1" });
+	expect(got.filter((m) => m.method === "Fetch.requestPaused").map((m) => m.sessionId)).toEqual([agent]);
+
+	// The agent goes: the tab's phone comes back, and the interception ends (its held requests go on).
+	const before = sent().length;
+	await call("Target.detachFromTarget", { sessionId: agent });
+	await Bun.sleep(0);
+	const after = sent().slice(before);
+	expect(after.map((c) => c.method).sort()).toEqual(["Emulation.setDeviceMetricsOverride", "Fetch.disable"]);
+	expect(after.find((c) => c.method === "Emulation.setDeviceMetricsOverride")?.params).toMatchObject({ width: 390 });
+
+	// The tab goes too: nobody set a size any more.
+	const later = sent().length;
+	await call("Target.detachFromTarget", { sessionId: tab });
+	await Bun.sleep(0);
+	expect(
+		sent()
+			.slice(later)
+			.map((c) => c.method),
+	).toEqual(["Emulation.clearDeviceMetricsOverride"]);
+
+	// A session that cleared what it set leaves nothing to undo.
+	const third = await attach();
+	await call("Emulation.setUserAgentOverride", { userAgent: "phone" }, third);
+	await call("Emulation.setUserAgentOverride", { userAgent: "" }, third);
+	const last = sent().length;
+	await call("Target.detachFromTarget", { sessionId: third });
+	await Bun.sleep(0);
+	expect(sent().slice(last)).toEqual([]);
+});
+
 test("a connection reaches only its own pages: page commands at the browser are refused, a frame's session is its asker's, and a closed page answers what it was asked", async () => {
 	const app = new FakeApp();
 	const page = app.open("about:blank");

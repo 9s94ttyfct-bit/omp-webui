@@ -15,6 +15,8 @@ export interface Reading {
 	pressure: Pressure | null;
 	/** Every accelerator that reports a utilisation; null when this platform has none to ask or the read failed. */
 	gpus: GpuReading[] | null;
+	/** The whole computer's power draw in watts (macOS: the SMC's `PSTR`); null where it has none or the read failed. */
+	power: number | null;
 }
 
 /** Where the sampler gets its figures: the computer's own (`systemReader`), or a stand-in for a test. */
@@ -57,7 +59,8 @@ export function systemReader(options: SystemReaderOptions = {}): HostReader {
 				failed(platform.host.memorySource, e);
 			}
 			const gpus = (await gpu?.read()) ?? null;
-			return { cpu, memUsed: memory.used, memTotal: memory.total, pressure: memory.pressure, gpus };
+			const power = gpu?.power() ?? null;
+			return { cpu, memUsed: memory.used, memTotal: memory.total, pressure: memory.pressure, gpus, power };
 		},
 	};
 }

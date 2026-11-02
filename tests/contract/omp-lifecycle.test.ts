@@ -1,12 +1,13 @@
 // needs: posixShell
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { OmpSnapshot } from "../../shared/omp-install.ts";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { type FakeRegistry, makeWorld, realOmp, startFakeRegistry, type World } from "../support/fake-install.ts";
 import { pollUntil } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -23,7 +24,7 @@ const registries: FakeRegistry[] = [];
 afterAll(async () => {
 	for (const s of servers) await s.stop();
 	for (const r of registries) await r.stop();
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 const skip = realOmp() === null;

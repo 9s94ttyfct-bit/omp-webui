@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Live, LivePool } from "../../server/live.ts";
@@ -8,6 +8,7 @@ import { capabilities } from "../../server/platform/capabilities.ts";
 import { isRecord } from "../../shared/guards.ts";
 import { fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
 import { pollUntil } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { writeSyncOmp } from "../support/sync-omp-bin.ts";
 
 /**
@@ -28,7 +29,7 @@ afterEach(async () => {
 		for (const l of pool.list()) if (l.pid !== null) Bun.spawnSync(["kill", "-CONT", String(l.pid)]);
 		await pool.shutdown();
 	}
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 interface Conversation {

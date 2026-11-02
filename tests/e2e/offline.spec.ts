@@ -117,7 +117,9 @@ test("Settings › Full / Light: choosing Light is kept for every tab and for th
 	expect(await (await api("/api/mode")).json()).toMatchObject({ mode: "light", lightModels: "local" });
 	// New chat's chip is the same choice.
 	await page.goto("/");
-	await expect(page.getByTestId("mode-picker")).toHaveAttribute("data-mode", "light");
+	// The chip is drawn once New chat's warm-up omp runs (here in Light, with its MCP server): a process start, as every
+	// other wait for it in this file allows for, not a page's render (#19).
+	await expect(page.getByTestId("mode-picker")).toHaveAttribute("data-mode", "light", { timeout: 60_000 });
 });
 
 test("Settings › Full / Light: Light's models are your own or a local server's, and the server's options show only for the latter", async ({
@@ -797,7 +799,8 @@ test.describe("in Chinese", () => {
 		await expect(page.getByTestId("local-server-options")).toContainText("本地模型服务器");
 		await expect(page.getByTestId("local-server-options")).toContainText("oMLX 地址");
 		await page.goto("/");
-		await expect(page.getByTestId("mode-picker")).toContainText(/完整|轻量/);
+		// After New chat's warm-up omp has started (see the first test).
+		await expect(page.getByTestId("mode-picker")).toContainText(/完整|轻量/, { timeout: 60_000 });
 	});
 
 	test("a selected MCP server that mcp.json no longer has is named in zh-CN too", async ({ page }) => {

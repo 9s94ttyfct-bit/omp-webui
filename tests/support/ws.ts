@@ -21,6 +21,14 @@ interface Pending {
 const sockets = new WeakMap<WebSocket, { pending: Map<string, Pending>; parts: ReplyAssembler }>();
 
 /**
+ * How each socket that carried a request ended, as its events said: the error Bun's client gave and the close code. Bun's
+ * client says `error` only when what it received broke the protocol (a frame that is not valid UTF-8, an unknown opcode),
+ * and gives the reason in the event's message; a socket the server closes or crashes under, or a connection reset, has
+ * only a `close` (1006). Both are kept in the requests' errors, so that a lost connection says which it was (#20).
+ */
+const endings = new WeakMap<WebSocket, string>();
+
+/**
  * One set of listeners per socket, however many requests it carries: a frame is parsed once (and not at all while
  * nothing waits), a reply removes its request from the table, and the socket closing fails every request still
  * waiting, at once, instead of leaving each to its test's timeout.
@@ -60,8 +68,16 @@ function dispatcherOf(ws: WebSocket) {
 		if (m.ok) waiting.resolve(m.data);
 		else waiting.reject(Object.assign(new Error(m.error), { code: m.code }));
 	});
-	ws.addEventListener("close", () => failAll("connection closed before the reply"));
-	ws.addEventListener("error", () => failAll("connection error before the reply"));
+	let error = "";
+	ws.addEventListener("close", (ev) => {
+		const how = `${error ? `error: ${error}; ` : ""}close ${ev.code}${ev.reason ? ` ${ev.reason}` : ""}`;
+		endings.set(ws, how);
+		failAll(`connection closed before the reply (${how})`);
+	});
+	ws.addEventListener("error", (ev) => {
+		error = (ev as ErrorEvent).message || "no message";
+		failAll(`connection error before the reply (${error})`);
+	});
 	const made = { pending, parts };
 	sockets.set(ws, made);
 	return made;
@@ -76,7 +92,8 @@ export function request<T>(ws: WebSocket, msg: Record<string, unknown>): Promise
 	const { promise, resolve, reject } = Promise.withResolvers<T>();
 	// A socket that is closing or closed will never hear the reply, and no event is coming to say so.
 	if (ws.readyState > WebSocket.OPEN) {
-		reject(new Error("connection closed before the request was sent"));
+		const how = endings.get(ws);
+		reject(new Error(`connection closed before the request was sent${how ? ` (${how})` : ""}`));
 		return promise;
 	}
 	dispatcherOf(ws).pending.set(req, { resolve: resolve as Pending["resolve"], reject });

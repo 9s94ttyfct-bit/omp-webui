@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type FakeRegistry, makeWorld, realOmp, startFakeRegistry, type World } from "../support/fake-install.ts";
@@ -67,16 +67,19 @@ async function lives(run: Run): Promise<{ busy: boolean; exited: boolean }[]> {
 
 /**
  * Open a conversation and give its omp a command that keeps it working until the returned function is called, and
- * prints `marker` then. Returns once the server counts the conversation as working: the command is sent after the
- * conversation is opened and its omp started, so until then there is nothing for an update to wait for, however
- * much the page already shows.
+ * prints `marker` then. Returns once the command runs and the server counts the conversation as working. The server
+ * counts it as working while any request to its omp is unanswered, so the requests that open it make it so for a moment
+ * before the command is even sent: the count alone could pass then, and an update asked for next would find nothing to
+ * wait for (#19). The command marks that it started, and omp answers it only when it exits.
  */
 async function startBusy(page: Page, run: Run, marker: string): Promise<() => void> {
 	const gate = join(run.world.dir, "let-busy-end");
+	const started = join(run.world.dir, `busy-started-${marker}`);
 	await sessionRow(page, "Fixture alpha: zebra protocol").click();
 	const composer = page.getByTestId("composer");
-	await composer.fill(`!while [ ! -e ${gate} ]; do sleep 0.2; done; echo ${marker}`);
+	await composer.fill(`!touch ${started}; while [ ! -e ${gate} ]; do sleep 0.2; done; echo ${marker}`);
 	await composer.press("Enter");
+	await expect.poll(() => existsSync(started), { timeout: 30_000 }).toBe(true);
 	await expect
 		.poll(async () => (await lives(run)).filter((l) => l.busy && !l.exited).length, { timeout: 30_000 })
 		.toBe(1);

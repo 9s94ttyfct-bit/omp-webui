@@ -1,11 +1,12 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LivePool } from "../../server/live.ts";
 import type { ServerMessage } from "../../shared/protocol.ts";
 import { type FakeOmpOptions, fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
 import { has } from "../support/needs.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * Who ended a conversation's omp, and why: the page must be able to tell an end the server asked for (the idle
@@ -23,7 +24,7 @@ const pools: LivePool[] = [];
 
 afterAll(async () => {
 	for (const pool of pools.splice(0)) await pool.shutdown();
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 /** A pool of one scripted omp, and the exits it tells the page about. */

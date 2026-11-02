@@ -27,6 +27,7 @@ import { providerUsage } from "../../server/omp/usage.ts";
 import { SessionActions } from "../../server/sessions/actions.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * Every command the server runs to ask omp something has a time limit (#319): an omp that stops answering hangs the one
@@ -64,7 +65,7 @@ afterEach(() => {
 		}
 	}
 	strays.clear();
-	rmSync(dir, { recursive: true, force: true });
+	removeScratch(dir);
 });
 
 /** An omp whose helper commands (everything but `--version`) record their pid in `pids`, start a child, and hang. */

@@ -1,10 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Live, LivePool, refusal, surplus } from "../../server/live.ts";
 import { fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
 import { pollUntil } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * omp's own word on whether it is done (`get_state`: `isSettled`, `hasPendingAsyncWork`, `isCompacting`; the frames
@@ -19,7 +20,7 @@ const pools: LivePool[] = [];
 
 afterEach(async () => {
 	for (const pool of pools.splice(0)) await pool.shutdown();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 async function conversation(): Promise<{ pool: LivePool; live: Live }> {

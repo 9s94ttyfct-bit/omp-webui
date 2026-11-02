@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Live, LivePool, settingFrame } from "../../server/live.ts";
@@ -7,6 +7,7 @@ import { isRecord } from "../../shared/guards.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * What the server says to every page that no frame could: when a process starts or ends a turn, asks, or is answered
@@ -19,7 +20,7 @@ const pools: LivePool[] = [];
 
 afterEach(async () => {
 	for (const pool of pools.splice(0)) await pool.shutdown();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 /** A process, and what every page was told of it (a copy of its info at each announcement). */

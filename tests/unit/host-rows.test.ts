@@ -8,6 +8,7 @@ import {
 	fmtCore,
 	fmtMem,
 	fmtShare,
+	fmtWatts,
 	type HostRow,
 	hostColor,
 	mergeRows,
@@ -16,6 +17,7 @@ import {
 	rowsOf,
 	tickStep,
 	trimRows,
+	wattsScale,
 } from "../../web/src/lib/host-rows.ts";
 
 /** What the host's graphs and tiles do with the server's figures (web/src/lib/host-rows.ts). */
@@ -26,6 +28,7 @@ const row = (t: number, over: Partial<HostRow> = {}): HostRow => ({
 	gpu: null,
 	mem: 50,
 	pressure: 0,
+	power: null,
 	...over,
 });
 const SEC = 1000;
@@ -40,15 +43,21 @@ describe("rows from the server's columns", () => {
 			gpu: [null, 7],
 			mem: [61.2, 61.4],
 			pressure: [0, null],
+			power: [18.2, null],
 		};
 		expect(rowsOf(s)).toEqual([
-			{ t: 1000, cpu: 12.5, gpu: null, mem: 61.2, pressure: 0 },
-			{ t: 3000, cpu: 40, gpu: 7, mem: 61.4, pressure: null },
+			{ t: 1000, cpu: 12.5, gpu: null, mem: 61.2, pressure: 0, power: 18.2 },
+			{ t: 3000, cpu: 40, gpu: 7, mem: 61.4, pressure: null, power: null },
 		]);
 	});
 
+	test("a server of an older version sends no power column: its rows have no power", () => {
+		const old = { t: [1000], cpu: [1], gpu: [null], mem: [2], pressure: [0] } as unknown as HostSeries;
+		expect(rowsOf(old)).toEqual([{ t: 1000, cpu: 1, gpu: null, mem: 2, pressure: 0, power: null }]);
+	});
+
 	test("empty columns are no rows", () => {
-		expect(rowsOf({ t: [], cpu: [], gpu: [], mem: [], pressure: [] })).toEqual([]);
+		expect(rowsOf({ t: [], cpu: [], gpu: [], mem: [], pressure: [], power: [] })).toEqual([]);
 	});
 });
 
@@ -105,7 +114,7 @@ describe("a graph's gaps", () => {
 	test("a stretch with no looks (asleep, or no server) breaks the line: a row of nothing is put in it", () => {
 		const out = chartRows([row(0), row(10 * SEC), row(10 * MIN)], 30 * SEC);
 		expect(out.map((r) => r.t)).toEqual([0, 10 * SEC, 10 * SEC + 1, 10 * MIN]);
-		expect(out[2]).toEqual({ t: 10 * SEC + 1, cpu: null, gpu: null, mem: null, pressure: null });
+		expect(out[2]).toEqual({ t: 10 * SEC + 1, cpu: null, gpu: null, mem: null, pressure: null, power: null });
 	});
 
 	test("looks that keep their pace are one line", () => {
@@ -252,6 +261,21 @@ describe("figures", () => {
 		expect(fmtMem(9_800_000_000)).toBe("9.8 GB");
 		expect(fmtMem(24_000_000_000)).toBe("24 GB");
 		expect(fmtMem(512)).toBe("512 B");
+	});
+
+	test("watts have a tenth below 100 W, and a power graph's top is the round step above its highest", () => {
+		expect(fmtWatts(18.44)).toBe("18.4 W");
+		expect(fmtWatts(7)).toBe("7.0 W");
+		expect(fmtWatts(142.6)).toBe("143 W");
+		expect(fmtWatts(null)).toBe("—");
+		expect(fmtWatts(undefined)).toBe("—");
+		expect(wattsScale(null)).toBe(10);
+		expect(wattsScale(3)).toBe(10);
+		expect(wattsScale(10)).toBe(10);
+		expect(wattsScale(18.4)).toBe(20);
+		expect(wattsScale(21)).toBe(50);
+		expect(wattsScale(60)).toBe(100);
+		expect(wattsScale(240)).toBe(500);
 	});
 
 	test("the series colours are the palette's own, one each", () => {

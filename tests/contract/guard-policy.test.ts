@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BenchInfo, BenchRun } from "../../shared/guard-bench.ts";
@@ -11,6 +11,7 @@ import { expectMode } from "../support/modes.ts";
 import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
 import { remoteClient, remoteSettings } from "../support/remote-client.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect } from "../support/ws.ts";
 
@@ -89,7 +90,7 @@ beforeAll(async () => {
 afterAll(async () => {
 	await s?.stop();
 	jwks?.stop();
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 describe("what the person tuned", () => {

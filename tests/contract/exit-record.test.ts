@@ -1,6 +1,6 @@
 // needs: relay
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
@@ -9,6 +9,7 @@ import { startAppServer } from "../support/app-server.ts";
 import { writeFakeOmp } from "../support/fake-omp.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
 import { pollUntil } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { connect, request } from "../support/ws.ts";
 
 /**
@@ -36,7 +37,7 @@ beforeAll(async () => {
 afterEach(() => {
 	for (const p of procs.splice(0)) p.kill("SIGKILL");
 });
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => removeScratch(root));
 
 /** A server with a scripted omp, and a socket to it. */
 async function server() {

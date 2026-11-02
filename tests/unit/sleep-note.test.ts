@@ -1,11 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Live, LivePool } from "../../server/live.ts";
 import { sleepAftermath, workingIds } from "../../server/sleep.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * What a sleep says in a conversation (#647): the note the process carries (`LiveInfo.slept`, which every page is told
@@ -18,7 +19,7 @@ const pools: LivePool[] = [];
 
 afterEach(async () => {
 	for (const pool of pools.splice(0)) await pool.shutdown();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 async function start(): Promise<{ live: Live; pool: LivePool }> {

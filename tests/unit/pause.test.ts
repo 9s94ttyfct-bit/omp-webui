@@ -1,6 +1,6 @@
 // needs: pauseResume
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Live, LivePool } from "../../server/live.ts";
@@ -8,6 +8,7 @@ import { platform } from "../../server/platform/index.ts";
 import { errorInfoOf } from "../../shared/error-info.ts";
 import { type FakeOmpOptions, fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
 import { pollUntil } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * Pause freezes omp and everything under it with SIGSTOP. A process that vanishes mid-pause, or a
@@ -28,7 +29,7 @@ afterEach(async () => {
 		for (const l of pool.list()) if (l.pid !== null) Bun.spawnSync(["kill", "-CONT", String(l.pid)]);
 		await pool.shutdown();
 	}
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 async function openFake(options: FakeOmpOptions = {}): Promise<Live> {

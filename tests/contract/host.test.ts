@@ -105,7 +105,8 @@ async function rate(ms: number): Promise<number> {
 
 function expectSeries(series: HostSeries): void {
 	const n = series.t.length;
-	for (const column of [series.cpu, series.gpu, series.mem, series.pressure]) expect(column).toHaveLength(n);
+	for (const column of [series.cpu, series.gpu, series.mem, series.pressure, series.power])
+		expect(column).toHaveLength(n);
 	for (let i = 0; i < n; i++) {
 		if (i > 0) expect(series.t[i] as number).toBeGreaterThan(series.t[i - 1] as number);
 		expect(series.cpu[i] as number).toBeGreaterThanOrEqual(0);
@@ -118,11 +119,17 @@ function expectSeries(series: HostSeries): void {
 			}
 		}
 		expect([null, 0, 1, 2]).toContain(series.pressure[i] as number | null);
+		// The whole computer's draw: a figure in watts a computer can draw, or none.
+		const w = series.power[i];
+		if (w !== null) {
+			expect(w as number).toBeGreaterThan(0);
+			expect(w as number).toBeLessThan(5000);
+		}
 	}
 }
 
 function expectPoint(p: HostPoint): void {
-	expectSeries({ t: [p.t], cpu: [p.cpu], gpu: [p.gpu], mem: [p.mem], pressure: [p.pressure] });
+	expectSeries({ t: [p.t], cpu: [p.cpu], gpu: [p.gpu], mem: [p.mem], pressure: [p.pressure], power: [p.power] });
 }
 
 describe("GET /api/host at this computer", () => {

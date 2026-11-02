@@ -72,32 +72,42 @@ test("a conversation's endpoint works over the app's pages, and ends when the ap
 		}
 	};
 	app.send(JSON.stringify({ t: "hello", run: "run-1", version: "156.0.0", pages: [] }));
+	// The hello is on another socket than the conversation's: a server that has not taken it yet answers the conversation's
+	// first request "the app's browser is not connected" (503) and ends the connection. Said by the endpoint's discovery,
+	// which is 200 once it has (#23).
+	await waitFor(
+		async () => (await fetch(`${server.url}/browser-cdp/${TA}/json/version`).catch(() => null))?.status === 200,
+	);
 
 	const conversation = await opens(`/browser-cdp/${TA}/devtools/browser`, {});
 	if (!conversation) throw new Error("the conversation was not let in");
 	const answers = new Map<number, unknown>();
-	let closed = false;
+	let closed: string | null = null;
 	conversation.onmessage = (e) => {
 		const m = JSON.parse(String(e.data));
 		if (m.id) answers.set(m.id, m.result);
 	};
-	conversation.onclose = () => {
-		closed = true;
+	conversation.onclose = (e) => {
+		closed = `${e.code} ${e.reason}`;
 	};
 	conversation.send(JSON.stringify({ id: 1, method: "Target.getTargets", params: {} }));
-	await waitFor(() => answers.has(1));
+	// A connection the server ended says why, rather than leaving the wait to time out (#23).
+	await waitFor(() => {
+		if (closed !== null && !answers.has(1)) throw new Error(`the conversation's endpoint closed first: ${closed}`);
+		return answers.has(1);
+	});
 	// Its first page was made by the app, on the server's request.
 	expect(said.some((m) => m.t === "create")).toBe(true);
 	const infos = (answers.get(1) as { targetInfos: { targetId: string; type: string }[] }).targetInfos;
 	expect(infos.map((t) => [t.targetId, t.type])).toEqual([["P1", "page"]]);
 
 	app.close();
-	await waitFor(() => closed);
+	await waitFor(() => closed !== null);
 });
 
-async function waitFor(ok: () => boolean, ms = 10_000): Promise<void> {
+async function waitFor(ok: () => boolean | Promise<boolean>, ms = 10_000): Promise<void> {
 	const end = Date.now() + ms;
-	while (!ok()) {
+	while (!(await ok())) {
 		if (Date.now() > end) throw new Error("timed out");
 		await new Promise((r) => setTimeout(r, 20));
 	}

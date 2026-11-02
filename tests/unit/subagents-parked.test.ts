@@ -1,10 +1,11 @@
 // needs: pauseResume
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Live, LivePool } from "../../server/live.ts";
 import { fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * A frozen omp cannot be asked which subagents run, and a page that was not there when the conversation was paused has
@@ -22,7 +23,7 @@ afterEach(async () => {
 		for (const l of pool.list()) if (l.pid !== null) Bun.spawnSync(["kill", "-CONT", String(l.pid)]);
 		await pool.shutdown();
 	}
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 const scout = {

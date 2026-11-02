@@ -154,6 +154,90 @@ const SCREENCAST_EVENTS = new Set(["Page.screencastFrame", "Page.screencastVisib
 /** A start for this connection's ids: answers the app still carries for a connection before it never match one of these. */
 const freshIds = () => 1 + Math.floor(Math.random() * 2 ** 28);
 
+/**
+ * What a session can set on a page that lasts past the session (#27), and what undoes it. In Chrome each session is a
+ * client of its own and what it set ends with it; over a page's one DevTools channel it would not: it would stay after the
+ * session went, and apply to every other session on the page (the agent's puppeteer and the Browser tab's own size, or a
+ * request interception left on with nobody to let the requests go). So what each session sets is remembered here, per page,
+ * and when the session ends the page is given back what the session before it set (the latest one still there), or undone.
+ *
+ * `key`: the state the command sets; `clears`: the command (with these parameters) ends that state instead.
+ */
+interface Lasting {
+	key: string;
+	clears?: (p: Record<string, unknown>) => boolean;
+}
+
+const off = (name: string) => (p: Record<string, unknown>) => p[name] !== true;
+const empty = (name: string) => (p: Record<string, unknown>) => {
+	const v = p[name];
+	return (
+		v === undefined ||
+		v === "" ||
+		(Array.isArray(v) && v.length === 0) ||
+		(typeof v === "object" && v !== null && Object.keys(v).length === 0)
+	);
+};
+
+const LASTING: Record<string, Lasting> = {
+	"Fetch.enable": { key: "fetch" },
+	"Fetch.disable": { key: "fetch", clears: () => true },
+	"Emulation.setDeviceMetricsOverride": { key: "metrics" },
+	"Emulation.clearDeviceMetricsOverride": { key: "metrics", clears: () => true },
+	"Emulation.setUserAgentOverride": { key: "agent", clears: empty("userAgent") },
+	"Network.setUserAgentOverride": { key: "agent", clears: empty("userAgent") },
+	"Emulation.setTouchEmulationEnabled": { key: "touch", clears: off("enabled") },
+	"Emulation.setEmitTouchEventsForMouse": { key: "touchMouse", clears: off("enabled") },
+	"Emulation.setGeolocationOverride": { key: "geolocation" },
+	"Emulation.clearGeolocationOverride": { key: "geolocation", clears: () => true },
+	"Emulation.setEmulatedMedia": { key: "media", clears: (p) => empty("media")(p) && empty("features")(p) },
+	"Emulation.setTimezoneOverride": { key: "timezone", clears: empty("timezoneId") },
+	"Emulation.setLocaleOverride": { key: "locale", clears: empty("locale") },
+	"Emulation.setCPUThrottlingRate": { key: "cpu", clears: (p) => p.rate === 1 },
+	"Emulation.setScriptExecutionDisabled": { key: "script", clears: off("value") },
+	"Emulation.setDefaultBackgroundColorOverride": { key: "background", clears: empty("color") },
+	"Emulation.setEmulatedVisionDeficiency": { key: "vision", clears: (p) => p.type === "none" },
+	"Emulation.setFocusEmulationEnabled": { key: "focus", clears: off("enabled") },
+	"Emulation.setIdleOverride": { key: "idle" },
+	"Emulation.clearIdleOverride": { key: "idle", clears: () => true },
+	"Network.setExtraHTTPHeaders": { key: "headers", clears: empty("headers") },
+	"Network.emulateNetworkConditions": { key: "conditions" },
+	"Network.setCacheDisabled": { key: "cache", clears: off("cacheDisabled") },
+	"Network.setBlockedURLs": { key: "blocked", clears: empty("urls") },
+	"Network.setBypassServiceWorker": { key: "serviceWorker", clears: off("bypass") },
+	"Page.setInterceptFileChooserDialog": { key: "fileChooser", clears: off("enabled") },
+	"Page.setBypassCSP": { key: "csp", clears: off("enabled") },
+};
+
+/** What gives a page back the state `key` as it is with nobody having set it. */
+const UNDO: Record<string, { method: string; params: object }> = {
+	fetch: { method: "Fetch.disable", params: {} },
+	metrics: { method: "Emulation.clearDeviceMetricsOverride", params: {} },
+	agent: { method: "Emulation.setUserAgentOverride", params: { userAgent: "" } },
+	touch: { method: "Emulation.setTouchEmulationEnabled", params: { enabled: false } },
+	touchMouse: { method: "Emulation.setEmitTouchEventsForMouse", params: { enabled: false } },
+	geolocation: { method: "Emulation.clearGeolocationOverride", params: {} },
+	media: { method: "Emulation.setEmulatedMedia", params: { media: "", features: [] } },
+	timezone: { method: "Emulation.setTimezoneOverride", params: { timezoneId: "" } },
+	locale: { method: "Emulation.setLocaleOverride", params: {} },
+	cpu: { method: "Emulation.setCPUThrottlingRate", params: { rate: 1 } },
+	script: { method: "Emulation.setScriptExecutionDisabled", params: { value: false } },
+	background: { method: "Emulation.setDefaultBackgroundColorOverride", params: {} },
+	vision: { method: "Emulation.setEmulatedVisionDeficiency", params: { type: "none" } },
+	focus: { method: "Emulation.setFocusEmulationEnabled", params: { enabled: false } },
+	idle: { method: "Emulation.clearIdleOverride", params: {} },
+	headers: { method: "Network.setExtraHTTPHeaders", params: { headers: {} } },
+	conditions: {
+		method: "Network.emulateNetworkConditions",
+		params: { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 },
+	},
+	cache: { method: "Network.setCacheDisabled", params: { cacheDisabled: false } },
+	blocked: { method: "Network.setBlockedURLs", params: { urls: [] } },
+	serviceWorker: { method: "Network.setBypassServiceWorker", params: { bypass: false } },
+	fileChooser: { method: "Page.setInterceptFileChooserDialog", params: { enabled: false } },
+	csp: { method: "Page.setBypassCSP", params: { enabled: false } },
+};
+
 export class CefTransport implements CdpTransport {
 	private readonly listeners = new TransportListeners();
 	private readonly contexts = new Map<string, Context>([["", { discover: false, autoAttach: false }]]);
@@ -161,6 +245,8 @@ export class CefTransport implements CdpTransport {
 	private readonly children = new Map<string, ChildSession>();
 	private readonly waiting = new Map<number, Waiting>();
 	private readonly creating = new Map<number, { id: number; context: string }>();
+	/** What each session set on each page that lasts (`LASTING`): page → state → session → its command, latest last. */
+	private readonly lasting = new Map<string, Map<string, Map<string, { method: string; params: unknown }>>>();
 	private nextSession = 1;
 	private nextWire = freshIds();
 	private nextReq = freshIds();
@@ -186,6 +272,8 @@ export class CefTransport implements CdpTransport {
 	/** @internal */
 	end(why: string): void {
 		if (this.link.transport === this) this.link.transport = null;
+		// The app's pages stay (another connection may take them over): what this connection's sessions set on them goes.
+		if (this.listeners.ended === null) for (const sessionId of [...this.sessions.keys()]) this.release(sessionId);
 		this.listeners.end(why);
 	}
 
@@ -236,6 +324,7 @@ export class CefTransport implements CdpTransport {
 		}
 		for (const [context, c] of this.contexts)
 			if (c.discover) this.emit(context, "Target.targetDestroyed", { targetId });
+		this.lasting.delete(targetId);
 	}
 
 	/** @internal */
@@ -283,13 +372,64 @@ export class CefTransport implements CdpTransport {
 			(m.method === "Target.attachedToTarget" || m.method === "Target.detachedFromTarget") && typeof child === "string";
 		if (isChild && m.method === "Target.attachedToTarget") this.children.set(child as string, { targetId });
 		if (isChild && m.method === "Target.detachedFromTarget") this.children.delete(child as string);
+		// A request held by an interception is the session's that holds the interception now: two that both let it go would clash.
+		const fetching = m.method.startsWith("Fetch.") ? this.setter(targetId, "fetch") : null;
 		for (const [sessionId, s] of this.sessions) {
 			if (s.targetId !== targetId) continue;
 			// A frame's session is the one session's that asked for them; the screencast's frames the one's that runs it.
 			if (isChild && !s.autoAttach) continue;
 			if (SCREENCAST_EVENTS.has(m.method) && !s.screencast) continue;
+			if (m.method.startsWith("Fetch.") && sessionId !== fetching) continue;
 			this.deliver({ method: m.method, params: m.params, sessionId });
 		}
+	}
+
+	/** The session whose setting of `key` the page has now (the latest one that set it), or null. */
+	private setter(targetId: string, key: string): string | null {
+		const by = this.lasting.get(targetId)?.get(key);
+		let last: string | null = null;
+		if (by) for (const sessionId of by.keys()) last = sessionId;
+		return last;
+	}
+
+	/** `m`, sent on the page by `sessionId`: what it sets that lasts is remembered (`LASTING`). */
+	private remember(targetId: string, sessionId: string, m: CdpMessage): void {
+		const rule = m.method ? LASTING[m.method] : undefined;
+		if (!rule) return;
+		const p = (m.params ?? {}) as Record<string, unknown>;
+		const page = this.lasting.get(targetId) ?? new Map<string, Map<string, { method: string; params: unknown }>>();
+		this.lasting.set(targetId, page);
+		// One channel, one state: a session that clears it clears it for every session on the page.
+		if (rule.clears?.(p)) {
+			page.delete(rule.key);
+			return;
+		}
+		const by = page.get(rule.key) ?? new Map<string, { method: string; params: unknown }>();
+		page.set(rule.key, by);
+		by.delete(sessionId);
+		by.set(sessionId, { method: m.method as string, params: m.params ?? {} });
+	}
+
+	/**
+	 * The session ended: on its page, each state it was the latest to set is given what the session before it set, or undone.
+	 * Sent without an id: its answer is nobody's.
+	 */
+	private release(sessionId: string): void {
+		const s = this.sessions.get(sessionId);
+		this.sessions.delete(sessionId);
+		if (!s) return;
+		const page = this.lasting.get(s.targetId);
+		if (!page) return;
+		for (const [key, by] of [...page]) {
+			if (!by.has(sessionId)) continue;
+			const wasLatest = this.setter(s.targetId, key) === sessionId;
+			by.delete(sessionId);
+			if (by.size === 0) page.delete(key);
+			if (!wasLatest) continue;
+			const back = [...by.values()].at(-1) ?? UNDO[key];
+			if (back) this.forward(s.targetId, { method: back.method, params: back.params }, sessionId);
+		}
+		if (page.size === 0) this.lasting.delete(s.targetId);
 	}
 
 	// ------------------------------------------------------------------ CDP
@@ -361,12 +501,12 @@ export class CefTransport implements CdpTransport {
 				// A connection's browser session: it goes, with the page sessions made in it.
 				if (sessionId !== "" && this.contexts.has(sessionId)) {
 					this.contexts.delete(sessionId);
-					for (const [id, s] of [...this.sessions]) if (s.context === sessionId) this.sessions.delete(id);
+					for (const [id, s] of [...this.sessions]) if (s.context === sessionId) this.release(id);
 					return this.reply(m, {}, at);
 				}
 				const s = this.sessions.get(sessionId);
 				if (!s) return this.error(m, -32602, "No session with given id", at);
-				this.sessions.delete(sessionId);
+				this.release(sessionId);
 				this.emit(s.context, "Target.detachedFromTarget", { sessionId, targetId: s.targetId });
 				return this.reply(m, {}, at);
 			}
@@ -418,6 +558,7 @@ export class CefTransport implements CdpTransport {
 		if (m.method === "Target.setAutoAttach") s.autoAttach = p.autoAttach === true;
 		if (m.method === "Page.startScreencast") s.screencast = true;
 		if (m.method === "Page.stopScreencast") s.screencast = false;
+		this.remember(s.targetId, sessionId, m);
 		this.forward(s.targetId, m, sessionId);
 	}
 

@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SUBAGENT_UPDATE_MS, SubagentCoalescer, type Timers } from "../../server/coalesce.ts";
@@ -7,6 +7,7 @@ import { LivePool } from "../../server/live.ts";
 import type { OmpFrame } from "../../shared/protocol.ts";
 import { fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
 import { pollUntil } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * A subagent streaming text makes omp send a frame per token, each holding the whole message so far. The server
@@ -140,7 +141,7 @@ const dirs: string[] = [];
 const pools: LivePool[] = [];
 afterEach(async () => {
 	for (const pool of pools.splice(0)) await pool.shutdown();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 test("a live process broadcasts a burst of subagent updates as one frame, with the final state", async () => {

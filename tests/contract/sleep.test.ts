@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
@@ -10,6 +10,7 @@ import { startAppServer } from "../support/app-server.ts";
 import { writeFakeOmp } from "../support/fake-omp.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
 import { pollUntil } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { connect, request } from "../support/ws.ts";
 
 /**
@@ -55,8 +56,8 @@ afterEach(() => {
 	stubs.clear();
 });
 afterAll(() => {
-	for (const d of dataDirs) rmSync(d, { recursive: true, force: true });
-	rmSync(root, { recursive: true, force: true });
+	for (const d of dataDirs) removeScratch(d);
+	removeScratch(root);
 });
 
 /**

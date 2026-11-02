@@ -32,6 +32,7 @@ import { isRecord } from "../../shared/guards.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
 import { expectMode } from "../support/modes.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { setTempDir } from "../support/tmp.ts";
 
 /**
@@ -44,7 +45,7 @@ const dirs: string[] = [];
 const pools: LivePool[] = [];
 afterEach(async () => {
 	for (const pool of pools.splice(0)) await pool.shutdown();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 // The server sweeps the temp dir for the overlay directories of servers that are gone: these tests use a temp dir of their own.
 const sharedTmp = process.env.TMPDIR;
@@ -56,7 +57,7 @@ beforeAll(() => {
 afterAll(() => {
 	if (sharedTmp === undefined) delete process.env.TMPDIR;
 	else setTempDir(sharedTmp);
-	rmSync(ownTmp, { recursive: true, force: true });
+	removeScratch(ownTmp);
 });
 const scratch = (): string => {
 	const dir = mkdtempSync(join(tmpdir(), "ompw-guard-srv-"));

@@ -1,11 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Live, LivePool } from "../../server/live.ts";
 import { isRecord } from "../../shared/guards.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * What omp says once (a compaction under way, the status lines and widgets of extensions, a `!command` that runs, when a
@@ -18,7 +19,7 @@ const pools: LivePool[] = [];
 
 afterEach(async () => {
 	for (const pool of pools.splice(0)) await pool.shutdown();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 async function start(): Promise<Live> {

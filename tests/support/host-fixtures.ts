@@ -17,6 +17,7 @@ export const INFO: HostInfo = {
 	memTotal: 24_000_000_000,
 	gpu: { name: "Apple M4 Pro", cores: 16 },
 	pressure: true,
+	power: true,
 	liveMs: 2000,
 	backgroundMs: 10_000,
 	fineSpanMs: HOUR,
@@ -33,6 +34,7 @@ export function lookAt(t: number, over: Partial<HostPoint> = {}): HostPoint {
 		gpu: Math.round((12 + 10 * Math.cos(x / 5)) * 10) / 10,
 		mem: Math.round((61 + 3 * Math.sin(x / 9)) * 10) / 10,
 		pressure: 0,
+		power: Math.round((18 + 6 * Math.sin(x / 4)) * 10) / 10,
 		...over,
 	};
 }
@@ -43,6 +45,7 @@ const columns = (points: HostPoint[]): HostSeries => ({
 	gpu: points.map((p) => p.gpu),
 	mem: points.map((p) => p.mem),
 	pressure: points.map((p) => p.pressure),
+	power: points.map((p) => p.power),
 });
 
 export interface HistoryOptions {

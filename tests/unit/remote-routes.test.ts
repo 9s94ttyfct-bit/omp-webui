@@ -1,6 +1,6 @@
 // needs: remoteAccess
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Subprocess, spawn } from "bun";
@@ -12,6 +12,7 @@ import type { ServerMessage } from "../../shared/protocol.ts";
 import type { RemoteLogin, RemoteSnapshot } from "../../shared/remote.ts";
 import { FAKE_TUNNEL_ID, makeFakeCloudflared } from "../support/fake-cloudflared.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * `/api/remote*` against the fake cloudflared: every call, what each answers, that a request that came through the tunnel
@@ -26,7 +27,7 @@ const dirs: string[] = [];
 const services: RemoteService[] = [];
 afterEach(async () => {
 	for (const s of services.splice(0)) await s.close();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 function world(o: { installed?: boolean; host?: string } = {}) {

@@ -129,9 +129,17 @@ function suite(): void {
 		const right = index.getByTestId("scroll-row-right");
 		// At least one of the two rows (pages, cards) runs past the phone's width and offers its arrow.
 		await expect(right.first()).toBeVisible();
-		const row = right.first().locator("xpath=ancestor::div[1]/preceding-sibling::ul[1]");
+		// That row and its arrow are held as elements, not found again by `right.first()`: one click can scroll a row that runs
+		// only a little past the edge to its end (in Chinese the pages run 80px past it), and its right arrow goes then, so
+		// `right.first()` would be the other row's, which has not moved (#19).
+		const arrow = await right.first().elementHandle();
+		const row = await arrow.evaluateHandle((el) => {
+			const ul = el.closest("div.relative")?.querySelector(":scope > ul");
+			if (!ul) throw new Error("no row beside the arrow");
+			return ul;
+		});
 		const before = await row.evaluate((el) => el.scrollLeft);
-		await right.first().click();
+		await arrow.click();
 		await expect.poll(() => row.evaluate((el) => el.scrollLeft)).toBeGreaterThan(before);
 		await expect(index.getByTestId("scroll-row-left").first()).toBeVisible();
 	});

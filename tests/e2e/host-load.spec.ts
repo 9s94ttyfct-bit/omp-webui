@@ -68,6 +68,17 @@ test.describe("with figures the spec chose", () => {
 		await expect(page.getByTestId("host-chart-cpu")).toBeVisible();
 	});
 
+	test("a computer that tells no power draw has no power tile nor graph", async ({ page }) => {
+		const history = historyAt(Date.now(), { info: { power: false } });
+		history.fine.power = history.fine.power.map(() => null);
+		history.coarse.power = history.coarse.power.map(() => null);
+		await open(page, history);
+		await chip(page).click();
+		await expect(page.getByTestId("host-chart-cpu")).toBeVisible();
+		await expect(page.getByTestId("host-tile-power")).toHaveCount(0);
+		await expect(page.getByTestId("host-chart-power")).toHaveCount(0);
+	});
+
 	test("a computer that tells no memory pressure has a neutral dot and says nothing of pressure", async ({ page }) => {
 		const history = historyAt(Date.now(), { info: { pressure: false } });
 		history.fine.pressure = history.fine.pressure.map(() => null);
@@ -93,6 +104,15 @@ test.describe("with figures the spec chose", () => {
 		await expect(page.getByTestId("host-tile-cpu")).toContainText("12 cores");
 		await expect(page.getByTestId("host-tile-gpu")).toContainText("Apple M4 Pro · 16 cores");
 		await expect(page.getByTestId("host-tile-mem")).toContainText("of 24 GB");
+		// The whole Mac's draw, in watts to a tenth, and its graph against a round number of watts.
+		await expect(page.getByTestId("host-tile-power-value")).toHaveText(`${last.power?.toFixed(1)} W`);
+		await expect(page.getByTestId("host-tile-power")).toContainText("The whole Mac");
+		await expect(page.getByTestId("host-chart-power")).toHaveAttribute(
+			"aria-label",
+			/^Power, last 1 h: now \d+\.\d W, highest \d+\.\d W$/,
+		);
+		// The fixture draws 12–24 W: the graph's top is 50 W, the next round step above.
+		await expect(page.getByTestId("host-chart-power")).toContainText("50 W");
 		await expect(page.getByTestId("host-pressure")).toHaveAttribute("data-level", "0");
 		await expect(page.getByTestId("host-pressure")).toHaveText("Normal");
 

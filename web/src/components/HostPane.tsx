@@ -20,6 +20,7 @@ import {
 	fmtCore,
 	fmtMem,
 	fmtShare,
+	fmtWatts,
 	type HostRow,
 	hostColor,
 	type PressureRun,
@@ -27,6 +28,7 @@ import {
 	pressureRuns,
 	tickStep,
 	trimRows,
+	wattsScale,
 } from "../lib/host-rows.ts";
 import { useHost } from "../lib/host-store.ts";
 import { PRESSURE_KEY, PRESSURE_TONE, useHostStrings } from "../lib/host-strings.ts";
@@ -39,17 +41,20 @@ const GAP_FACTOR = 3;
 
 type Range = "1h" | "24h";
 
-/** A series' graph: its colour is the usage chart's, by position, so the three never share one. */
+/** A series' graph: its colour is the usage chart's, by position, so the four never share one. */
 interface Series {
-	key: "cpu" | "gpu" | "mem";
+	key: "cpu" | "gpu" | "mem" | "power";
 	name: MessageKey;
 	colour: number;
+	/** How its figures are written: a share (`12%`) or watts (`18.4 W`). */
+	format: (v: number | null | undefined) => string;
 }
 
 const SERIES: Record<Series["key"], Series> = {
-	cpu: { key: "cpu", name: "host.tileCpu", colour: 0 },
-	gpu: { key: "gpu", name: "host.tileGpu", colour: 1 },
-	mem: { key: "mem", name: "host.tileMemory", colour: 2 },
+	cpu: { key: "cpu", name: "host.tileCpu", colour: 0, format: fmtShare },
+	gpu: { key: "gpu", name: "host.tileGpu", colour: 1, format: fmtShare },
+	mem: { key: "mem", name: "host.tileMemory", colour: 2, format: fmtShare },
+	power: { key: "power", name: "host.tilePower", colour: 3, format: fmtWatts },
 };
 
 /** The time of a mark or of a point, in the viewer's own zone. */
@@ -99,7 +104,8 @@ function PointTip({
 	payload,
 	clock,
 	name,
-}: TooltipContentProps & { clock: (t: number) => string; name: string }) {
+	format,
+}: TooltipContentProps & { clock: (t: number) => string; name: string; format: Series["format"] }) {
 	if (!active || !payload?.length) return null;
 	const row = payload[0]?.payload as ChartRow | undefined;
 	const v = payload[0]?.value;
@@ -108,7 +114,7 @@ function PointTip({
 		<div className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs shadow-lg">
 			<div className="text-muted">{clock(row.t)}</div>
 			<div className="tabular-nums text-fg">
-				{name} {fmtShare(v)}
+				{name} {format(v)}
 			</div>
 		</div>
 	);
@@ -133,7 +139,7 @@ function Chart({
 	const clock = useClock();
 	const colour = hostColor(series.colour);
 	const name = t(series.name);
-	const column = (r: HostRow | ChartRow) => r[series.key];
+	const column = (r: HostRow | ChartRow) => r[series.key] ?? null;
 	const ticks = useMemo(
 		() =>
 			clockTicks(
@@ -145,18 +151,21 @@ function Chart({
 		[domain],
 	);
 	const last = [...rows].reverse().find((r) => column(r) !== null);
-	const peak = peakOf(rows as HostRow[], (r) => column(r) as number | null);
+	const peak = peakOf(rows as HostRow[], (r) => column(r));
+	const watts = series.key === "power";
+	// A share is drawn against the whole; watts against a round step above the highest, so that the line is not flat.
+	const top = watts ? wattsScale(peak) : 100;
 	const aria = t("host.chartAria", {
 		name,
 		range: t(range === "1h" ? "host.range1h" : "host.range24h"),
-		now: last ? fmtShare(column(last) as number) : t("host.chartNoData"),
-		peak: fmtShare(peak),
+		now: last ? series.format(column(last)) : t("host.chartNoData"),
+		peak: series.format(peak),
 	});
 	return (
 		<div role="img" aria-label={aria} data-testid={`host-chart-${series.key}`} data-points={rows.length}>
 			<div className="mb-0.5 flex items-baseline justify-between text-xs text-muted" aria-hidden>
 				<span>{name}</span>
-				<span className="tabular-nums">{t("host.peak", { v: fmtShare(peak) })}</span>
+				<span className="tabular-nums">{t("host.peak", { v: series.format(peak) })}</span>
 			</div>
 			<div className="h-24 w-full" aria-hidden>
 				<AreaChart
@@ -180,9 +189,9 @@ function Chart({
 						minTickGap={24}
 					/>
 					<YAxis
-						domain={[0, 100]}
-						ticks={[0, 50, 100]}
-						tickFormatter={(v: number) => `${v}%`}
+						domain={[0, top]}
+						ticks={[0, top / 2, top]}
+						tickFormatter={(v: number) => (watts ? `${v} W` : `${v}%`)}
 						tick={{ fill: "var(--muted)", fontSize: 12 }}
 						tickLine={false}
 						axisLine={false}
@@ -204,7 +213,7 @@ function Chart({
 							))
 						: null}
 					<Tooltip
-						content={(p) => <PointTip {...p} clock={clock} name={name} />}
+						content={(p) => <PointTip {...p} clock={clock} name={name} format={series.format} />}
 						isAnimationActive={false}
 						cursor={{ stroke: "var(--faint)" }}
 					/>
@@ -285,6 +294,8 @@ export default function HostPane({ titleId }: { titleId?: string }) {
 	if (!ready) return null;
 	const latest = fine.at(-1) ?? null;
 	const showGpu = info?.gpu != null || fine.some((r) => r.gpu !== null);
+	const showPower = info?.power === true || fine.some((r) => r.power != null);
+	const tiles = 2 + (showGpu ? 1 : 0) + (showPower ? 1 : 0);
 	const level: Pressure | null = latest?.pressure ?? null;
 	const usedBytes = latest?.mem != null && info ? (latest.mem / 100) * info.memTotal : null;
 	const enough = shown.length >= 2;
@@ -321,7 +332,8 @@ export default function HostPane({ titleId }: { titleId?: string }) {
 				</fieldset>
 			</div>
 
-			<div className={cx("grid gap-2", showGpu ? "grid-cols-3" : "grid-cols-2")}>
+			{/* Three tiles share a row; four make two rows of two, which a side panel has the width for. */}
+			<div className={cx("grid gap-2", tiles === 3 ? "grid-cols-3" : "grid-cols-2")}>
 				<Tile
 					testid="host-tile-cpu"
 					name={t("host.tileCpu")}
@@ -356,6 +368,15 @@ export default function HostPane({ titleId }: { titleId?: string }) {
 						)
 					}
 				/>
+				{showPower ? (
+					<Tile
+						testid="host-tile-power"
+						name={t("host.tilePower")}
+						value={fmtWatts(latest?.power)}
+						sub={t("host.powerSub")}
+						colour={SERIES.power.colour}
+					/>
+				) : null}
 			</div>
 
 			{failed ? (
@@ -371,6 +392,9 @@ export default function HostPane({ titleId }: { titleId?: string }) {
 						<Chart series={SERIES.gpu} rows={chart} range={range} info={info} domain={domain} runs={runs} />
 					) : null}
 					<Chart series={SERIES.mem} rows={chart} range={range} info={info} domain={domain} runs={runs} />
+					{showPower ? (
+						<Chart series={SERIES.power} rows={chart} range={range} info={info} domain={domain} runs={runs} />
+					) : null}
 					{info?.pressure && runs.length > 0 ? <p className="text-xs text-faint">{t("host.bandNote")}</p> : null}
 				</div>
 			) : (

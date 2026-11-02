@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SETTINGS_PROMPTED_TOOLS } from "../../server/settings-help/service.ts";
 import { SETTINGS_TOOL, type SettingsHelpState } from "../../shared/settings-help.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
 import { pollUntil } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -41,7 +42,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
 	await s?.stop();
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 // ------------------------------------------------------------------ what reached omp

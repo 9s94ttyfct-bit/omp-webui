@@ -1,6 +1,6 @@
 // needs: relay
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
@@ -11,6 +11,7 @@ import { writeFakeOmp } from "../support/fake-omp.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
 import { removeRelayDir } from "../support/relay-dirs.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { connect, request } from "../support/ws.ts";
 
 /**
@@ -44,7 +45,7 @@ afterEach(() => {
 	strays.clear();
 	for (const dir of dataDirs.splice(0)) removeRelayDir(dir);
 });
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => removeScratch(root));
 
 const sockets = (dataDir: string): string[] => {
 	const dir = relayDirPath(dataDir);

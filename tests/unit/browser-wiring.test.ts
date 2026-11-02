@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LivePool } from "../../server/live.ts";
@@ -7,6 +7,7 @@ import { ApprovalStore, ProcessOverlay, sessionKey } from "../../server/omp/appr
 import { type ParkedRecord, ParkedStore } from "../../server/omp/parked.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { setTempDir } from "../support/tmp.ts";
 
 /**
@@ -25,7 +26,7 @@ const scratch = () => {
 };
 afterEach(async () => {
 	for (const pool of pools.splice(0)) await pool.shutdown();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 // Other files' servers sweep the shared temp dir for overlay folders of servers that are gone.
 const sharedTmp = process.env.TMPDIR;
@@ -37,7 +38,7 @@ beforeAll(() => {
 afterAll(() => {
 	if (sharedTmp === undefined) delete process.env.TMPDIR;
 	else setTempDir(sharedTmp);
-	rmSync(ownTmp, { recursive: true, force: true });
+	removeScratch(ownTmp);
 });
 
 const browserIn = (file: string): Record<string, unknown> | undefined =>

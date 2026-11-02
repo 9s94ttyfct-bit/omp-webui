@@ -6,9 +6,9 @@ import type { HostPoint, HostSeries, Pressure } from "@shared/host.ts";
  */
 
 /**
- * The colour of the series at `index` (CPU, GPU, memory): the palette's own, as the usage chart's are (`seriesColor` of
- * `lib/usage-series.ts`, the same `--chart-N`), so the graphs follow the palette and the mode. Not imported from there: that
- * would make the usage page's helper a chunk of its own that the first page has to name.
+ * The colour of the series at `index` (CPU, GPU, memory, power): the palette's own, as the usage chart's are (`seriesColor`
+ * of `lib/usage-series.ts`, the same `--chart-N`), so the graphs follow the palette and the mode. Not imported from there:
+ * that would make the usage page's helper a chunk of its own that the first page has to name.
  */
 export const hostColor = (index: number): string => `var(--chart-${index + 1})`;
 
@@ -25,6 +25,8 @@ export function rowsOf(s: HostSeries): HostRow[] {
 			gpu: s.gpu[i] ?? null,
 			mem: s.mem[i] ?? null,
 			pressure: s.pressure[i] ?? null,
+			// A server of an older version (another Mac's) sends no power column.
+			power: s.power?.[i] ?? null,
 		});
 	}
 	return rows;
@@ -61,6 +63,7 @@ export interface ChartRow {
 	gpu: number | null;
 	mem: number | null;
 	pressure: Pressure | null;
+	power: number | null;
 }
 
 /**
@@ -71,7 +74,8 @@ export function chartRows(rows: HostRow[], gapMs: number): ChartRow[] {
 	const out: ChartRow[] = [];
 	let prev: HostRow | undefined;
 	for (const r of rows) {
-		if (prev && r.t - prev.t > gapMs) out.push({ t: prev.t + 1, cpu: null, gpu: null, mem: null, pressure: null });
+		if (prev && r.t - prev.t > gapMs)
+			out.push({ t: prev.t + 1, cpu: null, gpu: null, mem: null, pressure: null, power: null });
 		out.push(r);
 		prev = r;
 	}
@@ -113,7 +117,7 @@ function meanOf(group: HostRow[]): HostRow {
 		let sum = 0;
 		for (const r of group) {
 			const v = pick(r);
-			if (v === null) continue;
+			if (v === null || v === undefined) continue;
 			n++;
 			sum += v;
 		}
@@ -127,6 +131,7 @@ function meanOf(group: HostRow[]): HostRow {
 		gpu: mean((r) => r.gpu),
 		mem: mean((r) => r.mem),
 		pressure,
+		power: mean((r) => r.power ?? null),
 	};
 }
 
@@ -179,7 +184,7 @@ export function peakOf(rows: HostRow[], pick: (r: HostRow) => number | null): nu
 	let peak: number | null = null;
 	for (const r of rows) {
 		const v = pick(r);
-		if (v !== null && (peak === null || v > peak)) peak = v;
+		if (v !== null && v !== undefined && (peak === null || v > peak)) peak = v;
 	}
 	return peak;
 }
@@ -193,6 +198,21 @@ export function fmtShare(v: number | null | undefined): string {
 export function fmtCore(v: number | null | undefined): string {
 	if (v === null || v === undefined) return "—";
 	return `${v < 10 ? (Math.round(v * 10) / 10).toFixed(1) : Math.round(v)}%`;
+}
+
+/** Watts as a meter shows them: a tenth below 100 W (`18.4 W`), whole above; a dash for a figure the host does not have. */
+export function fmtWatts(v: number | null | undefined): string {
+	if (v === null || v === undefined) return "—";
+	return `${v < 100 ? (Math.round(v * 10) / 10).toFixed(1) : Math.round(v)} W`;
+}
+
+/**
+ * The top of a power graph whose highest figure is `peak` watts: the next round step above it (10, 20, 50, 100… W, and their
+ * doubles and fives), so that the graph is mostly filled and its marks are round. 10 W when there is no figure.
+ */
+export function wattsScale(peak: number | null): number {
+	const need = Math.max(10, peak ?? 0);
+	for (let decade = 10; ; decade *= 10) for (const step of [1, 2, 5]) if (step * decade >= need) return step * decade;
 }
 
 /** Bytes of memory as Activity Monitor writes them (decimal units): 412 MB, 9.8 GB, 24 GB. */

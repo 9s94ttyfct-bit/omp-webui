@@ -1,4 +1,5 @@
 import {
+	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
@@ -8,6 +9,7 @@ import {
 	rmdirSync,
 	rmSync,
 	statSync,
+	utimesSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -248,12 +250,20 @@ const PARKED = ".parked";
 /** Names the server (its pid) that took an overlay over from one that is gone: the directory is kept while that server runs. */
 const ADOPTED = ".adopted";
 
+/** How often a running conversation's overlay is looked at (`ProcessOverlay.keep`). */
+const CHECK_MS = 15_000;
+/** How often its time stamps are renewed: far more often than the system's cleaner of `$TMPDIR` (macOS: three days) acts. */
+const RENEW_MS = 6 * 3_600_000;
+
 /** One omp process's own overlay file. */
 export class ProcessOverlay {
 	/** The conversation is paused: see `park`. */
 	private parked = false;
 	/** This server took the overlay over from another: see `adopt`. */
 	private adopted = false;
+	private keeper: ReturnType<typeof setInterval> | null = null;
+	/** When the file's time stamps were last renewed (`keep`). */
+	private stamped = Date.now();
 
 	constructor(
 		readonly file: string,
@@ -462,7 +472,37 @@ export class ProcessOverlay {
 		this.mark();
 	}
 
+	/**
+	 * Keep the file for as long as the process runs (#30): it is looked at every `checkMs`, and written again, from what the
+	 * server holds, when it is gone (a cleaner of the temp folder, another program's sweep): omp keeps reading it where it was
+	 * told, and what the conversation was set to (mode, roles, endpoint) is lost with it otherwise. Its time stamps are
+	 * renewed now and then, because the system's cleaner of `$TMPDIR` removes what has not been used for days and omp reads
+	 * an overlay only when it changes. Ends with `remove`. The timer never keeps the server alive.
+	 */
+	keep(checkMs = CHECK_MS): void {
+		this.keeper ??= setInterval(() => this.check(), checkMs);
+		this.keeper.unref();
+	}
+
+	/** One look at the file (`keep`); the modification time stays, so that omp does not reload an unchanged file. */
+	check(): void {
+		try {
+			if (!existsSync(this.file)) {
+				this.write();
+				return;
+			}
+			const now = Date.now();
+			if (now - this.stamped < RENEW_MS) return;
+			this.stamped = now;
+			utimesSync(this.file, new Date(now), statSync(this.file).mtime);
+		} catch (e) {
+			console.warn(`omp-webui: could not keep a conversation's overlay: ${(e as Error).message}`);
+		}
+	}
+
 	remove(): void {
+		if (this.keeper) clearInterval(this.keeper);
+		this.keeper = null;
 		removeOverlayFiles(this.file);
 	}
 }
@@ -979,7 +1019,7 @@ export class ApprovalStore {
 			this.dir = null;
 			throw e;
 		});
-		return new ProcessOverlay(
+		const overlay = new ProcessOverlay(
 			join(await this.dir, `${liveId}.yml`),
 			mode,
 			this.reloadMs,
@@ -995,6 +1035,8 @@ export class ApprovalStore {
 			advisor,
 			browser,
 		);
+		overlay.keep();
+		return overlay;
 	}
 
 	/**
@@ -1033,6 +1075,7 @@ export class ApprovalStore {
 		);
 		overlay.park();
 		overlay.adopt();
+		overlay.keep();
 		return overlay;
 	}
 }

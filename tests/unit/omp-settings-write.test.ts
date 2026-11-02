@@ -1,10 +1,11 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OmpLifecycle } from "../../server/omp/lifecycle.ts";
 import type { ServerMessage } from "../../shared/protocol.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * The lifecycle's two kept settings (`<data dir>/omp.json`). A change that could not be written is refused for good:
@@ -14,7 +15,7 @@ import { fakeConfig } from "../support/fake-omp.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ompw-omp-settings-"));
 let n = 0;
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => removeScratch(root));
 
 function unwritable(kept?: object) {
 	const dir = join(root, `case${++n}`);

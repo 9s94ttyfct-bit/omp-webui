@@ -1,6 +1,6 @@
 // needs: remoteAccess
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RemoteSnapshot } from "../../shared/remote.ts";
@@ -21,6 +21,7 @@ import { FAKE_TUNNEL_ID, type FakeCloudflared, makeFakeCloudflared } from "../su
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
 import { messageWhere, type ServerMsg, watchFrames } from "../support/frames.ts";
 import { pollUntil } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -71,7 +72,7 @@ beforeAll(async () => {
 afterAll(async () => {
 	await s?.stop();
 	jwks?.stop();
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 // ------------------------------------------------------------------ what reached omp

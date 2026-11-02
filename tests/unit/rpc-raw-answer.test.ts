@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RpcClient, splitResponse } from "../../server/omp/rpc-client.ts";
 import { ReplyAssembler, replyMessages } from "../../shared/reply-parts.ts";
 import { writeBunProgram } from "../support/bun-program.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * A large answer is passed on to the page as the text omp wrote, not read into objects and written out again: for a
@@ -77,7 +78,7 @@ describe("splitResponse", () => {
 
 const dirs: string[] = [];
 afterEach(() => {
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 const ENTRIES = 60;

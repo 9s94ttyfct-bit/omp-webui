@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RpcClient, RpcError } from "../../server/omp/rpc-client.ts";
 import type { OmpFrame } from "../../shared/protocol.ts";
 import { writeBunProgram } from "../support/bun-program.ts";
 import { has } from "../support/needs.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * Drives RpcClient against a scripted fake `omp` so framing edge cases
@@ -14,7 +15,7 @@ import { has } from "../support/needs.ts";
 
 const dirs: string[] = [];
 afterEach(() => {
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 function fakeOmp(script: string): string {

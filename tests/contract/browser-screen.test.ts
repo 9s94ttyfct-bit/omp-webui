@@ -127,6 +127,42 @@ test("the phone size lays the page out 390 px wide", async () => {
 	client.close();
 }, 30_000);
 
+test("a page put in the phone size is loaded again as a phone's, and a computer's again when it leaves it", async () => {
+	// A site that chooses on its server: it answers a phone with another page, by the user agent and the client hint.
+	const seen: { agent: string; mobile: string | null }[] = [];
+	const site = Bun.serve({
+		port: 0,
+		hostname: "127.0.0.1",
+		fetch(req) {
+			const agent = req.headers.get("user-agent") ?? "";
+			const mobile = req.headers.get("sec-ch-ua-mobile");
+			seen.push({ agent, mobile });
+			const phone = /Mobile/.test(agent) && mobile === "?1";
+			return new Response(`<title>${phone ? "phone" : "computer"}</title>`, {
+				headers: { "content-type": "text/html", "accept-ch": "Sec-CH-UA-Mobile, Sec-CH-UA-Platform" },
+			});
+		},
+	});
+	try {
+		const targetId = await engine.createPage(OWNER, `http://127.0.0.1:${site.port}/`);
+		const tab = new Tab();
+		const client = hub.connect(tab);
+		client.message(JSON.stringify({ t: "watch", owner: OWNER, targetId, panel: { w: 400, h: 800 } }));
+		await until("the computer's page", async () => (await evaluate(targetId, "document.title")) === "computer");
+		client.message(JSON.stringify({ t: "size", targetId, mode: "phone" }));
+		await until("the phone's page", async () => (await evaluate(targetId, "document.title")) === "phone");
+		expect(await evaluate(targetId, "navigator.userAgentData.mobile")).toBe(true);
+		expect(await evaluate(targetId, "navigator.userAgent")).toContain("Android");
+		client.message(JSON.stringify({ t: "size", targetId, mode: "desktop" }));
+		await until("the computer's page again", async () => (await evaluate(targetId, "document.title")) === "computer");
+		expect(await evaluate(targetId, "navigator.userAgentData.mobile")).toBe(false);
+		expect(seen.at(-1)?.agent).not.toContain("Android");
+		client.close();
+	} finally {
+		site.stop(true);
+	}
+}, 30_000);
+
 test("the page's console errors and failed requests reach the tab that shows it", async () => {
 	const targetId = await engine.createPage(OWNER, "data:text/html,<title>c</title>");
 	const tab = new Tab();

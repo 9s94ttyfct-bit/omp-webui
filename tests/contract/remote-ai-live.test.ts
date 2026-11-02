@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LiveInfo } from "../../shared/protocol.ts";
@@ -8,6 +8,7 @@ import { REMOTE_AI_READ_ONLY, REMOTE_AI_TOOL, REMOTE_AI_TOOL_NAMES } from "../..
 import { makeFakeCloudflared } from "../support/fake-cloudflared.ts";
 import { type Frame, watchFrames } from "../support/frames.ts";
 import { canCallModel } from "../support/omp-env.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -31,7 +32,7 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => {
 	await s?.stop();
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 const api = (path: string, body?: unknown) =>

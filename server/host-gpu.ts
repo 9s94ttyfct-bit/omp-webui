@@ -32,7 +32,31 @@ export interface GpuReading {
 export interface GpuProbe {
 	/** Every accelerator that reports a utilisation, one reading each; an empty list when none does. */
 	read(): GpuReading[];
+	/** The whole computer's power draw in watts (`PSTR` of the SMC), or null when it has none to tell. */
+	power(): number | null;
 }
+
+/**
+ * The SMC (System Management Controller) is asked for one key, `PSTR`, the power the whole computer draws (all its parts,
+ * the display included; what tools such as `macmon` call system power), in watts as a 32-bit float. It is read the way
+ * `smc` tools do, through `AppleSMC`'s user client (`IOConnectCallStructMethod`, selector 2) with Apple's `SMCKeyData_t`,
+ * 80 bytes: the key's size and type are asked once (command 9), and its value at each look (command 5). No privileges are
+ * needed (measured, Apple M4 Pro, macOS 27: about 20 W at rest on a laptop on its charger, as the battery's own
+ * `PowerTelemetryData.SystemLoad` says).
+ */
+const SMC_STRUCT = 80;
+const SMC_SELECTOR = 2;
+const SMC_KEY_INFO = 9;
+const SMC_READ = 5;
+/** Offsets in `SMCKeyData_t`: the key, `keyInfo.dataSize`, `keyInfo.dataType`, `result`, `data8` (the command), `bytes`. */
+const SMC_AT = { key: 0, size: 28, type: 32, result: 40, command: 42, bytes: 48 } as const;
+/** `'flt '`, the type of a key that is a float. */
+const SMC_FLOAT = 0x666c7420;
+/** A reading above this is no computer's: the key means something else here, or the read is wrong. */
+const MAX_WATTS = 5000;
+
+const fourCC = (s: string): number =>
+	((s.charCodeAt(0) << 24) | (s.charCodeAt(1) << 16) | (s.charCodeAt(2) << 8) | s.charCodeAt(3)) >>> 0;
 
 const IOKIT = "/System/Library/Frameworks/IOKit.framework/IOKit";
 const CORE_FOUNDATION = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
@@ -53,6 +77,13 @@ function loadLibraries() {
 				IOIteratorNext: { args: ["u32"], returns: "u32" },
 				IORegistryEntryCreateCFProperty: { args: ["u32", "ptr", "ptr", "u32"], returns: "ptr" },
 				IOObjectRelease: { args: ["u32"], returns: "i32" },
+				IOServiceGetMatchingService: { args: ["u32", "ptr"], returns: "u32" },
+				IOServiceOpen: { args: ["u32", "u32", "u32", "ptr"], returns: "i32" },
+				IOServiceClose: { args: ["u32"], returns: "i32" },
+				IOConnectCallStructMethod: { args: ["u32", "u32", "ptr", "u64", "ptr", "ptr"], returns: "i32" },
+			}).symbols,
+			system: dlopen("/usr/lib/libSystem.B.dylib", {
+				mach_task_self: { args: [], returns: "u32" },
 			}).symbols,
 			cf: dlopen(CORE_FOUNDATION, {
 				CFStringCreateWithCString: { args: ["ptr", "ptr", "u32"], returns: "ptr" },
@@ -75,7 +106,7 @@ function loadLibraries() {
 export function openGpuProbe(): GpuProbe | null {
 	const libraries = loadLibraries();
 	if (!libraries) return null;
-	const { io, cf } = libraries;
+	const { io, cf, system } = libraries;
 	/** The C strings handed to the library: held here, so that the collector cannot free one while the library reads it. */
 	const held: Buffer[] = [];
 	const cfString = (s: string) => {
@@ -141,6 +172,59 @@ export function openGpuProbe(): GpuProbe | null {
 		return { name: label, cores, util: Math.min(100, Math.max(0, util)) };
 	};
 
+	/**
+	 * The SMC's connection, opened on the first look for power and kept for the run; 0 when there is none (no `AppleSMC`, or
+	 * it would not open), and nothing is asked of it again. `PSTR`'s size, checked once: a key that is not a 4-byte float is
+	 * not the power this reads.
+	 */
+	let smc: number | null = null;
+	let pstrSize = 0;
+	const smcIn = Buffer.alloc(SMC_STRUCT);
+	const smcOut = Buffer.alloc(SMC_STRUCT);
+	const smcOutSize = new BigUint64Array(1);
+	const pstr = fourCC("PSTR");
+	/** One command to the SMC about `PSTR`; false when it failed. */
+	const smcCall = (command: number, size: number): boolean => {
+		smcIn.fill(0);
+		smcIn.writeUInt32LE(pstr, SMC_AT.key);
+		smcIn.writeUInt32LE(size, SMC_AT.size);
+		smcIn[SMC_AT.command] = command;
+		smcOutSize[0] = BigInt(SMC_STRUCT);
+		const r = io.IOConnectCallStructMethod(
+			smc as number,
+			SMC_SELECTOR,
+			ptr(smcIn),
+			BigInt(SMC_STRUCT),
+			ptr(smcOut),
+			ptr(smcOutSize),
+		);
+		return r === 0 && smcOut[SMC_AT.result] === 0;
+	};
+	const openSmc = (): number => {
+		const matching = io.IOServiceMatching(ptr(Buffer.from("AppleSMC\0")));
+		if (!matching) return 0;
+		// The matching dictionary is consumed by the call that takes it.
+		const service = io.IOServiceGetMatchingService(0, matching);
+		if (service === 0) return 0;
+		const connection = new Uint32Array(1);
+		try {
+			if (io.IOServiceOpen(service, system.mach_task_self(), 0, ptr(connection)) !== 0) return 0;
+		} finally {
+			io.IOObjectRelease(service);
+		}
+		smc = connection[0] as number;
+		const usable =
+			smcCall(SMC_KEY_INFO, 0) &&
+			smcOut.readUInt32LE(SMC_AT.size) === 4 &&
+			smcOut.readUInt32LE(SMC_AT.type) === SMC_FLOAT;
+		if (!usable) {
+			io.IOServiceClose(smc);
+			return 0;
+		}
+		pstrSize = 4;
+		return smc;
+	};
+
 	return {
 		read() {
 			// The matching dictionary is consumed by the call that takes it.
@@ -161,6 +245,12 @@ export function openGpuProbe(): GpuProbe | null {
 				io.IOObjectRelease(found);
 			}
 			return gpus;
+		},
+		power() {
+			if (smc === null) smc = openSmc() || 0;
+			if (smc === 0 || pstrSize === 0 || !smcCall(SMC_READ, pstrSize)) return null;
+			const watts = smcOut.readFloatLE(SMC_AT.bytes);
+			return Number.isFinite(watts) && watts >= 0 && watts < MAX_WATTS ? Math.round(watts * 10) / 10 : null;
 		},
 	};
 }

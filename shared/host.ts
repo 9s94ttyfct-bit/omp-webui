@@ -17,6 +17,8 @@ export interface HostPoint {
 	/** Memory in use (what Activity Monitor adds up as app, wired and compressed memory) as a share of all of it, 0–100. */
 	mem: number | null;
 	pressure: Pressure | null;
+	/** The whole computer's power draw, watts, to a tenth (macOS: the SMC's system power; null where the computer tells none). */
+	power: number | null;
 }
 
 /** A run of points, as columns (a day of them is a few hundred KB as objects and a fifth of that as columns), oldest first. */
@@ -26,6 +28,7 @@ export interface HostSeries {
 	gpu: (number | null)[];
 	mem: (number | null)[];
 	pressure: (Pressure | null)[];
+	power: (number | null)[];
 }
 
 /** What does not change while the server runs, and how the series are taken. */
@@ -39,6 +42,8 @@ export interface HostInfo {
 	gpu: { name: string | null; cores: number | null } | null;
 	/** Whether this platform tells memory pressure (a series of nulls is not drawn). */
 	pressure: boolean;
+	/** Whether the computer's power draw has been read (a computer that tells none shows no power). */
+	power: boolean;
 	/** Milliseconds between two looks while a page watches, and while none does. */
 	liveMs: number;
 	backgroundMs: number;

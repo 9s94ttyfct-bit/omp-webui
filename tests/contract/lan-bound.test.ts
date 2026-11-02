@@ -1,12 +1,13 @@
 // needs: remoteAccess
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type FakeCloudflared, makeFakeCloudflared } from "../support/fake-cloudflared.ts";
 import { type FakeReleases, startFakeReleases } from "../support/fake-releases.ts";
 import { lanAddress, type NetSocket, rawRequest, rawSocket } from "../support/lan-peer.ts";
 import { pollUntil } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 
 /**
@@ -37,7 +38,7 @@ let program: FakeCloudflared;
 beforeAll(() => {
 	program = makeFakeCloudflared(join(root, "cf"), { installed: false });
 });
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => removeScratch(root));
 
 /** The settings every server of this file has: nothing real is run (cloudflared and brew are stand-ins). */
 const baseEnv = (): Record<string, string> => ({

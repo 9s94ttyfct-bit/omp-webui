@@ -1,12 +1,13 @@
 // needs: relay
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LivePool } from "../../server/live.ts";
 import { type ParkedRecord, type ProcessRef, referenceTo } from "../../server/omp/parked.ts";
 import { relaySocket } from "../../server/omp/relay-client.ts";
 import { fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * A server that starts takes over the paused conversations a former one left (`LivePool.adopt`) before it listens. One
@@ -20,7 +21,7 @@ const stops: (() => void)[] = [];
 
 afterEach(() => {
 	for (const stop of stops.splice(0)) stop();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 test("a parked conversation whose relay accepts the connection and never greets is dropped, and adopt returns", async () => {

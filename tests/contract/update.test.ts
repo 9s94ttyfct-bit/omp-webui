@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
@@ -15,6 +15,7 @@ import { type FakeReleases, startFakeReleases } from "../support/fake-releases.t
 import { has } from "../support/needs.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { buildFixtures, disposeFixtures, type Fixtures, NEWER } from "../support/update-fixtures.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -75,7 +76,7 @@ afterEach(() => {
 afterAll(async () => {
 	await fake.stop();
 	if (mac) disposeFixtures(fixtures);
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 function relayPids(dataDir: string): number[] {

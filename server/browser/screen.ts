@@ -65,6 +65,50 @@ export function addressOf(text: string): string {
 	return `https://${t}`;
 }
 
+/**
+ * What a page in the phone size says it is (`Emulation.setUserAgentOverride`): Chrome on an Android phone, of the browser's
+ * own major version (`product`: `Browser.getVersion`'s, `Chrome/131.0.6778.85`), in the reduced form Chrome itself sends
+ * (`Android 10; K`, the minor parts zero), with the client hints to match. An engine whose version cannot be read says 130.
+ */
+export function phoneAgent(product: string): {
+	userAgent: string;
+	platform: string;
+	userAgentMetadata: {
+		brands: { brand: string; version: string }[];
+		fullVersionList: { brand: string; version: string }[];
+		fullVersion: string;
+		platform: string;
+		platformVersion: string;
+		architecture: string;
+		model: string;
+		mobile: boolean;
+	};
+} {
+	const full = /(?:Chrome|Chromium|HeadlessChrome)\/(\d+(?:\.\d+)*)/.exec(product)?.[1] ?? "130.0.0.0";
+	const major = full.split(".")[0] as string;
+	const brands = [
+		{ brand: "Chromium", version: major },
+		{ brand: "Not?A_Brand", version: "99" },
+	];
+	return {
+		userAgent: `Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Mobile Safari/537.36`,
+		platform: "Linux armv81",
+		userAgentMetadata: {
+			brands,
+			fullVersionList: [
+				{ brand: "Chromium", version: full },
+				{ brand: "Not?A_Brand", version: "99.0.0.0" },
+			],
+			fullVersion: full,
+			platform: "Android",
+			platformVersion: "10.0.0",
+			architecture: "",
+			model: "K",
+			mobile: true,
+		},
+	};
+}
+
 /** The server's session on one page. */
 class PageView {
 	readonly watchers = new Set<ScreenClient>();
@@ -92,11 +136,43 @@ class PageView {
 		return this.engine.client.call<T>(method, params, this.session);
 	}
 
+	/**
+	 * The page's device. A phone is one to the sites as well as in its layout: it is laid out at a phone's size with touch,
+	 * and says it is a phone (`phoneAgent`: the user agent, and the client hints `Sec-CH-UA-Mobile` and `Sec-CH-UA-Platform`
+	 * that many sites decide by), and the page is loaded again when it changes between a phone and a computer, so that a site
+	 * that serves phones another page sends that one, as it would to a real phone. Without this a site that chooses on its
+	 * server sent its desktop page, drawn squeezed onto the phone's width.
+	 */
 	async setSize(mode: PageMode, panel: Size, desktop: Size): Promise<void> {
+		const wasMobile = this.size.mobile;
 		this.mode = mode;
 		this.size = pageSizeFor(mode, panel, desktop);
 		await this.emulate();
-		await this.call("Emulation.setTouchEmulationEnabled", { enabled: this.size.mobile });
+		await this.call("Emulation.setTouchEmulationEnabled", {
+			enabled: this.size.mobile,
+			...(this.size.mobile ? { maxTouchPoints: 5 } : {}),
+		});
+		if (this.size.mobile === wasMobile) return;
+		// An empty user agent ends the override: the browser's own is sent again.
+		await this.call(
+			"Emulation.setUserAgentOverride",
+			this.size.mobile ? phoneAgent(await this.engineProduct()) : { userAgent: "" },
+		);
+		const h = await this.call<{ currentIndex: number; entries: { url: string }[] }>("Page.getNavigationHistory").catch(
+			() => null,
+		);
+		const url = h?.entries?.[h.currentIndex]?.url ?? "";
+		if (/^https?:/i.test(url)) await this.call("Page.reload");
+	}
+
+	/** The browser's product (`Chrome/131.0.6778.85`), asked once per page view. */
+	private product: Promise<string> | null = null;
+	private engineProduct(): Promise<string> {
+		this.product ??= this.engine.client
+			.call<{ product?: string }>("Browser.getVersion")
+			.then((v) => v.product ?? "")
+			.catch(() => "");
+		return this.product;
 	}
 
 	async setFit(room: Size | null, by: ScreenClient | null): Promise<void> {

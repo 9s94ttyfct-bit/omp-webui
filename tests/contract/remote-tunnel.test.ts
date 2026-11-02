@@ -1,12 +1,13 @@
 // needs: remoteAccess
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ServerMessage } from "../../shared/protocol.ts";
 import type { RemoteLogin, RemoteSnapshot } from "../../shared/remote.ts";
 import { FAKE_TUNNEL_ID, makeFakeCloudflared } from "../support/fake-cloudflared.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect } from "../support/ws.ts";
 
@@ -42,7 +43,7 @@ afterAll(async () => {
 		} catch {}
 	}
 	await s?.stop();
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 const headers = (extra: Record<string, string> = {}) => ({

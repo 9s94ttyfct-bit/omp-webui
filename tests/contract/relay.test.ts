@@ -14,6 +14,7 @@ import type { OmpFrame } from "../../shared/protocol.ts";
 import { writeFakeOmp } from "../support/fake-omp.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
 import { removeRelayDir } from "../support/relay-dirs.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * The relay that holds omp's pipes (server/omp/relay.ts), driven through `RpcClient` against a scripted fake omp:
@@ -46,7 +47,7 @@ afterEach(() => {
 	}
 	for (const d of dirs.splice(0)) {
 		removeRelayDir(d);
-		rmSync(d, { recursive: true, force: true });
+		removeScratch(d);
 	}
 });
 

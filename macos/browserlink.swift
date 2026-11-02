@@ -164,6 +164,8 @@ final class BrowserBridge: NSObject, WKScriptMessageHandler {
 	private weak var owner: WKWebView?
 	/// The close of the window the view is in.
 	private var closing: NSObjectProtocol?
+	/// Escape typed while the page has the keyboard (see `watchEscape`).
+	private var escape: Any?
 
 	init(origin: @escaping () -> URL?) {
 		self.origin = origin
@@ -195,6 +197,20 @@ final class BrowserBridge: NSObject, WKScriptMessageHandler {
 		}
 	}
 
+	/// Escape typed while the page (CEF's view, which then has the keyboard, so that the web UI never sees the key) has the
+	/// keyboard: the tab's own page is told (`ompw-native-escape`), so that a full screen can end as it does when the web UI has
+	/// the key. The key still goes on to the page, which may use it too: it is not taken away from it.
+	private func watchEscape() {
+		guard escape == nil else { return }
+		escape = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+			guard event.keyCode == 53, let self, let holder = self.holder, !holder.isHidden, let web = self.owner,
+				let focus = event.window?.firstResponder as? NSView, focus.isDescendant(of: holder)
+			else { return event }
+			web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('ompw-native-escape'))", completionHandler: nil)
+			return event
+		}
+	}
+
 	/// The tab shows no page: the view goes back to the hidden window.
 	func hide() {
 		CEFHost.parkAll()
@@ -207,6 +223,7 @@ final class BrowserBridge: NSObject, WKScriptMessageHandler {
 		guard let container = web.superview, let view = CEFHost.view(forTarget: targetId) else { return hide() }
 		if owner !== web { covered = false }
 		owner = web
+		watchEscape()
 		let holder: BrowserHolder
 		if let existing = self.holder, existing.superview === container {
 			holder = existing
@@ -224,6 +241,8 @@ final class BrowserBridge: NSObject, WKScriptMessageHandler {
 				holder.removeFromSuperview()
 				self.holder = nil
 				self.owner = nil
+				if let escape = self.escape { NSEvent.removeMonitor(escape) }
+				self.escape = nil
 			}
 		}
 		if shown != targetId || view.superview !== holder {

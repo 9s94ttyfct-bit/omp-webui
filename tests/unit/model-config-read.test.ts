@@ -1,10 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleModelConfig } from "../../server/omp/model-config.ts";
 import { writeBunProgram } from "../support/bun-program.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * A read of the model configuration asked for after a change sees the change, even while an earlier read is
@@ -13,7 +14,7 @@ import { fakeConfig } from "../support/fake-omp.ts";
 
 const dirs: string[] = [];
 afterEach(() => {
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 /**

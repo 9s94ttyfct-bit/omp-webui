@@ -27,6 +27,8 @@ export const en = {
 	gpuSub: "{name}",
 	gpuSubCores: "{name} · {n} cores",
 	memSub: "{used} of {total}",
+	tilePower: "Power",
+	powerSub: "The whole Mac, as its SMC measures it",
 	// The graphs
 	rangeLabel: "History",
 	range1h: "1 h",

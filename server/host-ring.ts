@@ -1,14 +1,16 @@
 import type { HostPoint, HostSeries, Pressure } from "../shared/host.ts";
 import { tenth } from "./host-parse.ts";
 
-/** A figure that is not there, in a column of tenths of a percent (0–1000 are figures). */
+/** A figure that is not there, in a column of tenths (of a percent: 0–1000; of a watt: 0–60000). */
 const NONE = 0xffff;
 const NO_PRESSURE = -1;
+/** The most watts a column of tenths holds below `NONE`. */
+const MAX_WATTS = 6000;
 
 /**
- * A fixed number of looks at the host, in columns of typed arrays (15 bytes a look: a day of minutes and an hour of seconds
+ * A fixed number of looks at the host, in columns of typed arrays (17 bytes a look: a day of minutes and an hour of seconds
  * are 60 KB together, and nothing grows). Writing past the end overwrites the oldest, so the bound holds however long the
- * server runs. Percentages are kept in tenths, which is all the pages draw.
+ * server runs. Percentages and watts are kept in tenths, which is all the pages draw.
  */
 export class HostRing {
 	readonly capacity: number;
@@ -17,6 +19,7 @@ export class HostRing {
 	private readonly gpu: Uint16Array;
 	private readonly mem: Uint16Array;
 	private readonly pressure: Int8Array;
+	private readonly power: Uint16Array;
 	/** Where the next look is written. */
 	private next = 0;
 	private size = 0;
@@ -29,6 +32,7 @@ export class HostRing {
 		this.gpu = new Uint16Array(capacity);
 		this.mem = new Uint16Array(capacity);
 		this.pressure = new Int8Array(capacity);
+		this.power = new Uint16Array(capacity);
 	}
 
 	get length(): number {
@@ -42,6 +46,7 @@ export class HostRing {
 		this.gpu[i] = tenths(p.gpu);
 		this.mem[i] = tenths(p.mem);
 		this.pressure[i] = p.pressure ?? NO_PRESSURE;
+		this.power[i] = wattTenths(p.power);
 		this.next = (i + 1) % this.capacity;
 		if (this.size < this.capacity) this.size++;
 	}
@@ -68,12 +73,13 @@ export class HostRing {
 			gpu: untenths(this.gpu[i] as number),
 			mem: untenths(this.mem[i] as number),
 			pressure: this.pressureAt(i),
+			power: untenths(this.power[i] as number),
 		};
 	}
 
 	/** The looks at or after `since` (epoch ms), oldest first, as columns. */
 	series(since = 0): HostSeries {
-		const out: HostSeries = { t: [], cpu: [], gpu: [], mem: [], pressure: [] };
+		const out: HostSeries = { t: [], cpu: [], gpu: [], mem: [], pressure: [], power: [] };
 		for (let n = 0; n < this.size; n++) {
 			const i = this.at(n);
 			if ((this.t[i] as number) < since) continue;
@@ -82,12 +88,15 @@ export class HostRing {
 			out.gpu.push(untenths(this.gpu[i] as number));
 			out.mem.push(untenths(this.mem[i] as number));
 			out.pressure.push(this.pressureAt(i));
+			out.power.push(untenths(this.power[i] as number));
 		}
 		return out;
 	}
 }
 
 const tenths = (v: number | null): number => (v === null ? NONE : Math.min(1000, Math.max(0, Math.round(v * 10))));
+const wattTenths = (v: number | null): number =>
+	v === null ? NONE : Math.min(MAX_WATTS * 10, Math.max(0, Math.round(v * 10)));
 const untenths = (v: number): number | null => (v === NONE ? null : v / 10);
 
 /**
@@ -103,6 +112,7 @@ export class MinuteBuckets {
 	private gpu = { n: 0, sum: 0 };
 	private mem = { n: 0, sum: 0 };
 	private pressure: Pressure | null = null;
+	private power = { n: 0, sum: 0 };
 
 	add(p: HostPoint): HostPoint | null {
 		const start = Math.floor(p.t / this.spanMs) * this.spanMs;
@@ -122,6 +132,10 @@ export class MinuteBuckets {
 			this.mem.sum += p.mem;
 		}
 		if (p.pressure !== null) this.pressure = Math.max(this.pressure ?? 0, p.pressure) as Pressure;
+		if (p.power !== null) {
+			this.power.n++;
+			this.power.sum += p.power;
+		}
 		return done;
 	}
 
@@ -133,12 +147,14 @@ export class MinuteBuckets {
 			gpu: this.gpu.n ? tenth(this.gpu.sum / this.gpu.n) : null,
 			mem: this.mem.n ? tenth(this.mem.sum / this.mem.n) : null,
 			pressure: this.pressure,
+			power: this.power.n ? tenth(this.power.sum / this.power.n) : null,
 		};
 		this.n = 0;
 		this.cpu = 0;
 		this.gpu = { n: 0, sum: 0 };
 		this.mem = { n: 0, sum: 0 };
 		this.pressure = null;
+		this.power = { n: 0, sum: 0 };
 		return done;
 	}
 }

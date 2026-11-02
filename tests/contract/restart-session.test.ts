@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Live, LivePool } from "../../server/live.ts";
@@ -14,6 +14,7 @@ import { RESTART_TOOL } from "../../shared/restart.ts";
 import { type FakeOmpOptions, fakeConfig, writeFakeOmp } from "../support/fake-omp.ts";
 import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * `restart_session` (`shared/restart.ts`) against the server's own pool and a scripted omp: the agent's call becomes a
@@ -39,7 +40,7 @@ afterAll(async () => {
 			// gone, as it should be
 		}
 	}
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 /** Short steps: a scripted omp needs no time to end. */

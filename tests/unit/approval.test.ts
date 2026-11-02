@@ -10,13 +10,14 @@ import {
 } from "../../server/omp/approval.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
 import { has } from "../support/needs.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { setTempDir } from "../support/tmp.ts";
 
 /** Per-conversation tool approval: the overlay omp reloads, the user's choices, and what a conversation starts in. */
 
 const dirs: string[] = [];
 afterEach(() => {
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 /**
@@ -33,7 +34,7 @@ beforeAll(() => {
 afterAll(() => {
 	if (sharedTmp === undefined) delete process.env.TMPDIR;
 	else setTempDir(sharedTmp);
-	rmSync(ownTmp, { recursive: true, force: true });
+	removeScratch(ownTmp);
 });
 
 function scratch(): string {

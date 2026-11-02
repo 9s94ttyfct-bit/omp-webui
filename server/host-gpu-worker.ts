@@ -18,7 +18,7 @@ self.onmessage = (event: MessageEvent<GpuRequest>) => {
 	let reply: GpuReply;
 	try {
 		probe ??= openGpuProbe();
-		reply = { id, ok: true, gpus: probe === null ? null : probe.read() };
+		reply = probe === null ? { id, ok: true, gpus: null } : { id, ok: true, gpus: probe.read(), power: probe.power() };
 	} catch (e) {
 		reply = { id, ok: false, error: (e as Error).message ?? String(e) };
 	}

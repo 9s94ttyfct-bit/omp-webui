@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LivePool } from "../../server/live.ts";
@@ -7,6 +7,7 @@ import { ApprovalStore } from "../../server/omp/approval.ts";
 import type { HostToolCall, HostToolResult, HostToolServer } from "../../server/omp/host-tools.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { setTempDir } from "../support/tmp.ts";
 
 /**
@@ -19,7 +20,7 @@ const dirs: string[] = [];
 const pools: LivePool[] = [];
 afterEach(async () => {
 	for (const pool of pools.splice(0)) await pool.shutdown();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 const sharedTmp = process.env.TMPDIR;
@@ -31,7 +32,7 @@ beforeAll(() => {
 afterAll(() => {
 	if (sharedTmp === undefined) delete process.env.TMPDIR;
 	else setTempDir(sharedTmp);
-	rmSync(ownTmp, { recursive: true, force: true });
+	removeScratch(ownTmp);
 });
 
 const tool = (name: string) => ({

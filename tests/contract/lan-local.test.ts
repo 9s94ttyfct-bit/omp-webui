@@ -1,6 +1,6 @@
 // needs: remoteAccess
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FolderFile, FolderListing } from "../../shared/folder.ts";
@@ -9,6 +9,7 @@ import { writeChatSession } from "../support/chat-session.ts";
 import { type FakeCloudflared, makeFakeCloudflared } from "../support/fake-cloudflared.ts";
 import { messageWhere } from "../support/frames.ts";
 import { lanAddress, type NetSocket, rawRequest, rawSocket } from "../support/lan-peer.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect } from "../support/ws.ts";
 
@@ -103,7 +104,7 @@ afterAll(async () => {
 	await s?.stop();
 	await bound?.stop();
 	releases?.stop(true);
-	rmSync(root, { recursive: true, force: true });
+	removeScratch(root);
 });
 
 /** A request as a kind of page makes it: with the token (header) unless `token` is false; headers as given. */

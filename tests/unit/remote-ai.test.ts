@@ -16,6 +16,7 @@ import { REMOTE_AI_READ_ONLY, REMOTE_AI_TOOL, REMOTE_AI_TOOL_NAMES } from "../..
 import { FAKE_TUNNEL_ID, type FakeCloudflared, makeFakeCloudflared } from "../support/fake-cloudflared.ts";
 import { expectMode } from "../support/modes.ts";
 import { pollUntil } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * The AI help for remote access, against the real `RemoteService` and the fake cloudflared: who may call its tools (only a
@@ -36,7 +37,7 @@ const stoppers: (() => void)[] = [];
 afterEach(async () => {
 	for (const stop of stoppers.splice(0)) stop();
 	for (const s of services.splice(0)) await s.close();
-	for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+	for (const d of dirs.splice(0)) removeScratch(d);
 });
 
 interface Hooks extends RemoteAiHooks {

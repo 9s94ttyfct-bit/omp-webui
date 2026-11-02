@@ -1,6 +1,6 @@
 // needs: pauseResume
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
@@ -10,6 +10,7 @@ import { startAppServer } from "../support/app-server.ts";
 import { writeFakeOmp } from "../support/fake-omp.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
+import { removeScratch } from "../support/scratch.ts";
 import { connect, request } from "../support/ws.ts";
 
 /**
@@ -41,7 +42,7 @@ afterEach(() => {
 	}
 	strays.clear();
 });
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => removeScratch(root));
 
 const state = (pid: number): string =>
 	Bun.spawnSync(["ps", "-o", "stat=", "-p", String(pid)])

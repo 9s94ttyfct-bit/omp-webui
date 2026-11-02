@@ -92,6 +92,7 @@ export class HostSampler {
 	#prev: CpuTimes | null = null;
 	#gpu: HostInfo["gpu"] = null;
 	#hasPressure = false;
+	#hasPower = false;
 	#cancel: (() => void) | undefined;
 	#busy = false;
 	#stopped = true;
@@ -160,6 +161,7 @@ export class HostSampler {
 			memTotal: totalmem(),
 			gpu: this.#gpu,
 			pressure: this.#hasPressure,
+			power: this.#hasPower,
 			liveMs: this.#liveMs,
 			backgroundMs: this.#backgroundMs,
 			fineSpanMs: HOUR_MS,
@@ -244,12 +246,14 @@ export class HostSampler {
 		const busiest = gpus?.reduce((a, b) => (b.util > a.util ? b : a));
 		if (gpus && busiest) this.#gpu = { name: busiest.name, cores: busiest.cores };
 		if (reading.pressure !== null) this.#hasPressure = true;
+		if (reading.power !== null) this.#hasPower = true;
 		const point: HostPoint = {
 			t,
 			cpu,
 			gpu: busiest ? busiest.util : null,
 			mem: reading.memUsed !== null && reading.memTotal > 0 ? tenth((reading.memUsed / reading.memTotal) * 100) : null,
 			pressure: reading.pressure,
+			power: reading.power,
 		};
 		this.#fine.push(point);
 		const minute = this.#minute.add(point);

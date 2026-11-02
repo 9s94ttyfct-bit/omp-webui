@@ -20,6 +20,7 @@ class Fake implements HostReader {
 	gpus: Reading["gpus"] = [{ name: "Test GPU", cores: 8, util: 25 }];
 	memUsed: number | null = 8_000;
 	pressure: Reading["pressure"] = 0;
+	power: Reading["power"] = 21.5;
 	rows: PsRow[] = [];
 	listingFails = false;
 	reads = 0;
@@ -36,6 +37,7 @@ class Fake implements HostReader {
 			memTotal: 16_000,
 			pressure: this.pressure,
 			gpus: this.gpus,
+			power: this.power,
 		};
 	}
 	async processes(): Promise<PsRow[]> {
@@ -70,25 +72,29 @@ describe("one look", () => {
 		const s = sampler(fake);
 		await s.sample();
 		fake.look(300, 700, 2000);
-		expect(await s.sample()).toEqual({ t: fake.now, cpu: 30, gpu: 70, mem: 50, pressure: 1 });
+		expect(await s.sample()).toEqual({ t: fake.now, cpu: 30, gpu: 70, mem: 50, pressure: 1, power: 21.5 });
 		const h = s.history();
 		expect(h.fine.cpu).toEqual([30]);
 		expect(h.info.gpu).toEqual({ name: "Discrete", cores: 30 });
 		expect(h.info.pressure).toBe(true);
+		expect(h.info.power).toBe(true);
 	});
 
-	test("a computer with no GPU or pressure figure has none recorded, and says so in its info", async () => {
+	test("a computer with no GPU, pressure or power figure has none recorded, and says so in its info", async () => {
 		const fake = new Fake();
 		fake.gpus = null;
 		fake.pressure = null;
+		fake.power = null;
 		const s = sampler(fake);
 		await s.sample();
 		fake.look(10, 90, 2000);
 		const p = await s.sample();
 		expect(p?.gpu).toBeNull();
 		expect(p?.pressure).toBeNull();
+		expect(p?.power).toBeNull();
 		expect(s.info().gpu).toBeNull();
 		expect(s.info().pressure).toBe(false);
+		expect(s.info().power).toBe(false);
 	});
 
 	test("a failed read of memory is a null, not a zero", async () => {

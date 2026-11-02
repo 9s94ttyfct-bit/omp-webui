@@ -20,6 +20,8 @@ export const zh: Record<keyof typeof en, string> = {
 	gpuSub: "{name}",
 	gpuSubCores: "{name} · {n} 核",
 	memSub: "已用 {used} / 共 {total}",
+	tilePower: "整机功耗",
+	powerSub: "整台 Mac，由 SMC 测得",
 	rangeLabel: "历史",
 	range1h: "1 小时",
 	range24h: "24 小时",

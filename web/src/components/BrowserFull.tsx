@@ -32,6 +32,16 @@ export function BrowserFull({ popOut }: { popOut: boolean }) {
 	}, [popOut, t]);
 	// See SubagentFull: the page under the full screen is hidden, not unmounted.
 	useEffect(() => (popOut ? undefined : markFullView()), [popOut]);
+	// The Mac app's native page has the keyboard and swallows Escape before the web UI sees it: the app says so instead
+	// (`BrowserBridge.watchEscape`), and the full screen ends as it does for the key itself. The page gets the key too.
+	useEffect(() => {
+		if (popOut) return;
+		const onEscape = () => {
+			if (!dismissOverlays()) exitFull();
+		};
+		window.addEventListener("ompw-native-escape", onEscape);
+		return () => window.removeEventListener("ompw-native-escape", onEscape);
+	}, [popOut]);
 
 	const body = file ? (
 		<BrowserTab owner={file} place={popOut ? "window" : "full"} />

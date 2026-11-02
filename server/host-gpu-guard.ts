@@ -37,6 +37,8 @@ export interface GpuOptions {
 export interface GuardedGpu {
 	/** Every accelerator that reports a utilisation; null when there is none, the GPU is left out, or this look failed. */
 	read(): Promise<GpuReading[] | null>;
+	/** The whole computer's power draw in watts from the last `read`; null when it told none or that look failed. */
+	power(): number | null;
 	/** Stop the thread. */
 	close(): void;
 }
@@ -153,8 +155,12 @@ export function guardedGpu(options: GpuOptions = {}): GuardedGpu {
 		}
 	};
 
+	/** The power the last read's answer told. */
+	let lastPower: number | null = null;
 	return {
+		power: () => lastPower,
 		async read() {
+			lastPower = null;
 			if (state === "off" || options.enabled === false) return null;
 			if (state === "idle" && !start()) return null;
 			const w = worker;
@@ -190,6 +196,7 @@ export function guardedGpu(options: GpuOptions = {}): GuardedGpu {
 				return null;
 			}
 			log.recovered("gpu");
+			lastPower = typeof outcome.power === "number" && Number.isFinite(outcome.power) ? outcome.power : null;
 			if (outcome.gpus === null) {
 				// No probe on this computer: nothing to ask again, and no thread to keep.
 				stop();

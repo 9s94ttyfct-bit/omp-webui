@@ -22,6 +22,10 @@ test("a query keeps only the quick prompts it names, and one that names nothing 
 	);
 	await page.goto(`/#/s/${encodeURIComponent(file)}`);
 	await expect(page.getByTestId("composer")).toBeVisible({ timeout: 15_000 });
+	// The palette lists quick prompts only when the message box's quick-prompt menu offers its sender, and looks when it
+	// opens: the menu is a chunk of its own that can come after the message box, and a palette opened before it lists
+	// none, even once it is there (#19).
+	await expect(page.getByTestId("quick-prompts")).toBeVisible();
 	await page.keyboard.press("ControlOrMeta+K");
 	const prompts = page.getByTestId("palette-quick-prompt");
 	await expect(prompts.first()).toBeVisible();
