@@ -44,7 +44,7 @@ Prove each, with a tiny Objective-C++ host built with `clang++` against the CEF 
 - [ ] **Step 3:** Moving the browser's `NSView` into an off-screen, never-shown window and back keeps the page (a counter in JS keeps counting; no reload). Expected: counter continues.
 - [ ] **Step 4:** With `remote_debugging_port = 0`, `CefBrowserHost::SendDevToolsMessage` + `CefDevToolsMessageObserver` drive the page: `Page.navigate`, `Runtime.evaluate`, `Page.startScreencast` (frames arrive), `Input.dispatchMouseEvent`. Record which `Target.*` methods answer on a page's host (`getTargets`, `createTarget`, `attachToTarget` with `flatten`).
 - [ ] **Step 5:** Code-signing: sign host and helper with the app's local identity (`scripts/signing-identity.ts` flow) without signing the downloaded framework; launch. Expected: runs (no hardened runtime).
-- [ ] **Step 6: Gate.** All five hold → continue. Any fails → stop the plan and bring the result and the spec's fallback options to the person.
+- [ ] **Step 6: Gate.** All five hold → continue with every task. Any fails → **CfT-only release** (decided with the person, 2026-11-02): skip Tasks 8 and 9; the engine is CfT everywhere, also when the server was started by the Mac app (engine kind always `cft`), and the app's own window shows the screencast like any other page (no `ompwBrowser` bridge). Record the failing step in the ledger and in `docs/agents/browser.md` as the reason CEF is not there yet; release v0.18.0 with that, and leave CEF for a later version.
 
 ### Task 2: Engine transport and the CfT engine
 
