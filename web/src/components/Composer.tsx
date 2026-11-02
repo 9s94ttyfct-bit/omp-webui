@@ -164,12 +164,6 @@ interface Props {
 	uploadScope?: UploadScope | null;
 	/** The controls beside Attach; a function is told whether something is typed in the box. */
 	footer?: React.ReactNode | ((composer: { typing: boolean }) => React.ReactNode);
-	/**
-	 * The controls must fit on one line beside Attach and Send. Where they do not with their names, they keep only their
-	 * icons and the less used are behind "⋯" (the conversation's). Without it they wrap onto a second line, and the icons
-	 * alone start below `NARROW_COMPOSER_PX`.
-	 */
-	footerOneRow?: boolean;
 	/** What was sent in this conversation, oldest first: Up and Down in the composer walk through it. */
 	history?: string[];
 	/** Whose unsent text this is (see `lib/drafts.ts`): it is kept under this key and comes back when the page does. */
@@ -232,7 +226,6 @@ export function Composer({
 	onEditQueued,
 	draft,
 	footer,
-	footerOneRow = false,
 	predictLive,
 	history,
 	draftKey,
@@ -279,9 +272,9 @@ export function Composer({
 	const ta = useRef<HTMLTextAreaElement>(null);
 	const [box, setBox] = useState<HTMLDivElement | null>(null);
 	const [footerRow, setFooterRow] = useState<HTMLDivElement | null>(null);
-	// The footer's controls keep only their icons where the composer is narrower than `NARROW_COMPOSER_PX` and, for a
-	// footer that must be one line (`footerOneRow`), where they do not fit on one with their names; the less used are
-	// then behind "⋯" (`ComposerMore`). With a sidebar and a side panel open (or on a phone) they filled two to four rows.
+	// The footer's controls must fit on one line beside Attach and Send: where the composer is narrower than
+	// `NARROW_COMPOSER_PX`, or they do not fit on one line with their names, they keep only their icons and the less used
+	// are behind "⋯" (`ComposerMore`). With a sidebar and a side panel open (or on a phone) they filled two to four rows.
 	// Typing hides a control (quick prompts, whose place Steer takes): that does not bring the names back for the first
 	// letter typed and take them away again when the box is cleared.
 	const typing = text.trim() !== "";
@@ -289,8 +282,7 @@ export function Composer({
 		footerRow,
 		"data-composer-narrow",
 		(row, compact) =>
-			(box !== null && box.clientWidth < NARROW_COMPOSER_PX) ||
-			(footerOneRow && ((compact && typing) || wrapsOntoLines(row))),
+			(box !== null && box.clientWidth < NARROW_COMPOSER_PX) || (compact && typing) || wrapsOntoLines(row),
 	);
 	useImperativeHandle(ref, () => ({ focus: () => ta.current?.focus() }), []);
 	// Other parts of the page put text here (the Files tab's mentions): at the end, as the box is not theirs to read.

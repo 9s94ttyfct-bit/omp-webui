@@ -600,7 +600,7 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 				data-testid="goal-mode"
 				title={t("pages.newGoalTitle")}
 				className={cx(
-					"inline-flex h-8 items-center gap-1 rounded-lg px-2 text-xs",
+					"inline-flex h-8 items-center gap-1 rounded-lg px-2 text-xs composer-narrow:w-8 composer-narrow:justify-center composer-narrow:px-0",
 					goalMode !== "off" ? "bg-accent-soft text-accent" : "text-muted hover:bg-hover hover:text-fg",
 				)}
 				onClick={() => setGoalMode((g) => (g === "off" ? "guided" : "off"))}
@@ -614,7 +614,7 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 					data-testid="goal-direct"
 					title={t("pages.newGoalDirectTitle")}
 					className={cx(
-						"inline-flex h-8 items-center rounded-lg px-2 text-xs",
+						"inline-flex h-8 items-center rounded-lg px-2 text-xs composer-narrow:w-8 composer-narrow:justify-center composer-narrow:px-0",
 						goalMode === "direct" ? "bg-accent-soft text-accent" : "border border-border text-fg hover:bg-hover",
 					)}
 					onClick={() => setGoalMode((g) => (g === "direct" ? "guided" : "direct"))}

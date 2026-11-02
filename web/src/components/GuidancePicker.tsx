@@ -94,7 +94,7 @@ export function GuidancePicker({
 						title={t("guidance.pickTemplateHint")}
 						disabled={disabled}
 						className={cx(
-							"inline-flex h-8 max-w-56 items-center gap-1 rounded-lg px-2 text-xs",
+							"inline-flex h-8 max-w-56 items-center gap-1 rounded-lg px-2 text-xs composer-narrow:w-8 composer-narrow:justify-center composer-narrow:px-0",
 							value ? "bg-accent-soft text-accent" : "text-muted hover:bg-hover hover:text-fg",
 						)}
 						onPointerEnter={read}

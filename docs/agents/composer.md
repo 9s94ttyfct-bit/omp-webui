@@ -43,7 +43,7 @@ The side panel's *Ask* tab (omp's `/btw`) answers a question about the conversat
 
 ### The ⋯ overflow
 
-When the controls do not fit in one row, the model, permission mode, Attach and the unattended switch stay in the row and the thinking level, guard, guidance, Full/Light, goal and quick prompts move behind **⋯**, each labelled (e.g. *Thinking: Low*, *Mode: Full*). Choosing a quick prompt closes the panel.
+In a conversation, when the controls do not fit in one row, the preset, model, permission mode, Attach and the unattended switch stay in the row and the thinking level and quick prompts move behind **⋯**, each labelled (e.g. *Thinking: Low*). Choosing a quick prompt closes the panel. New chat has no **⋯**: its settings are a bar under the composer, and where the bar is narrow every setting stays in it as an icon, named by what it sets.
 
 ## Where it is
 

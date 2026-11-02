@@ -1643,9 +1643,6 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 												.catch((e) => toast("error", e.message))
 										}
 										onEditQueued={liveId ? editQueued : undefined}
-										// One line beside Attach and Send (V17): where the controls with their names do not fit on it (a side panel open), the
-										// less used are behind "⋯" and the rest keep only their icons.
-										footerOneRow
 										footer={({ typing }) =>
 											liveId || currentFile ? (
 												<>

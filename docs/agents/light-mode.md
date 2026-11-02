@@ -22,14 +22,14 @@ To list a backend's models the server asks `GET <address>/models` (OpenAI format
 
 Light processes run with an agent directory of the web UI's own (`offline-agent/<revision>` in the data folder), built from the user's files for each configuration and never changed afterwards; sessions, history and images are links to the user's, so Light conversations show in the history and open in Full too.
 
-**Choosing.** The mode of *new* conversations is one choice kept by the server (`mode.json`) and followed by every tab: the **Full / Light** chip in New chat's footer, or Settings. An open conversation keeps the mode its process started in; its *This session* settings can switch it, which restarts its omp on the same session file (it waits while a turn runs). A conversation started in Light shows a **Light** (or **Light · local**) badge.
+**Choosing.** The mode of *new* conversations is one choice kept by the server (`mode.json`) and followed by every tab: the **Full / Light** chip in New chat's settings bar (under the composer), or Settings. An open conversation keeps the mode its process started in; its *This session* settings can switch it, which restarts its omp on the same session file (it waits while a turn runs). A conversation started in Light shows a **Light** (or **Light · local**) badge.
 
 **Context measurement.** Settings shows how many tokens a fresh conversation of each mode starts with (measured with omp's `/context` in a new process of each mode), broken down into system prompt, tool definitions, context files and MCP notes, and skills, with **Measure again**.
 
 ## Where it is
 
 - **Settings › Models & accounts › Full / Light** (`#/settings/models`): **Mode of new conversations** (Full / Light), **Light's models** (Your models / Local server), **Local server** section (Local model server, address, model, Thinking level, "Check again"), **What Light loads** (MCP servers, Tools, Skills, **Also load my AGENTS.md**), and **Context at the start of a conversation**.
-- New chat footer: the **Mode** chip (Full / Light).
+- New chat's settings bar under the composer: the **Mode** chip (Full / Light).
 - A conversation's *This session* settings: switch its mode.
 
 ## Settings

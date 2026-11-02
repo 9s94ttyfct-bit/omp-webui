@@ -1,3 +1,5 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { FIXTURE_CWD } from "../support/fixtures.ts";
 import { newChatIn } from "../support/new-chat.ts";
 import { boxOf } from "../support/style.ts";
@@ -104,10 +106,29 @@ test.describe("phone", () => {
 			await expect(control, id).toBeVisible();
 			const b = await boxOf(control);
 			expect(b.x + b.width, id).toBeLessThanOrEqual(width);
-			// An icon, not a word: no wider than an icon button (32 px) and its focus ring's room.
-			expect(b.width, id).toBeLessThanOrEqual(40);
+			// An icon, not a word: a 32 px square, as wide as the bar the placeholder held for it.
+			expect(Math.round(b.width), id).toBe(32);
 			// It still says what it is to whoever cannot see the icon.
 			await expect(control, id).toHaveAccessibleName(/\S/);
+		}
+	});
+
+	test("phone: a long folder name is cut short, and Options stays on the screen", async ({ page }) => {
+		// A small phone (360 px): the button cannot take its widest and leave Options its room.
+		await page.setViewportSize({ width: 360, height: 780 });
+		// A folder of the test's own, so that removing it afterwards removes nothing else.
+		const long = mkdtempSync(join(process.env.OMPW_E2E_WORK as string, "a-project-folder-with-a-really-long-name-"));
+		try {
+			await page.goto(newChatIn(long));
+			const folder = page.getByTestId("folder-menu");
+			await expect(folder).toHaveAttribute("title", long, { timeout: 60_000 });
+			await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
+			const width = page.viewportSize()?.width ?? 0;
+			const options = await boxOf(page.getByRole("button", { name: /^Options/ }));
+			expect(options.x + options.width).toBeLessThanOrEqual(width);
+			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+		} finally {
+			rmSync(long, { recursive: true, force: true });
 		}
 	});
 });

@@ -46,7 +46,7 @@ export function NewChatFolderMenu({
 					data-testid="folder-menu"
 					data-mode={existing === null ? "new" : "existing"}
 					title={existing ?? undefined}
-					className="inline-flex max-w-64 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs hover:bg-hover"
+					className="inline-flex min-w-0 max-w-64 items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs hover:bg-hover"
 					onPointerEnter={onWarm}
 				>
 					{existing === null ? (

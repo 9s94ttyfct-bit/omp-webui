@@ -15,8 +15,8 @@ import { expect, type Page, test } from "./fixtures.ts";
 
 const PICKERS_CHUNK = /\/assets\/NewChatPickers-[^/]+\.js$/;
 
-/** The viewports where the bar wraps and where it does not. */
-const WIDTHS = [600, 700, 920, 1020, 1400];
+/** The viewports where the bar wraps and where it does not; 370 px: a narrow bar of icons on the edge of wrapping. */
+const WIDTHS = [370, 600, 700, 920, 1020, 1400];
 
 /** The settings bar's box and the message field's: neither may move when the chunk lands. */
 async function boxes(page: Page) {

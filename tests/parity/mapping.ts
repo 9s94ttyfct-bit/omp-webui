@@ -51,8 +51,8 @@ export const FLAG_SURFACES: Record<string, Surface> = {
 	"--cwd": {
 		kind: "control",
 		route: "/",
-		testid: "use-existing-folder",
-		note: "Use an existing folder on the new-chat page (its folder picker)",
+		testid: "folder-menu",
+		note: "the folder button on the new-chat page: its menu's Choose an existing folder… (the folder picker)",
 	},
 	"--export": {
 		kind: "control",
@@ -69,13 +69,13 @@ export const FLAG_SURFACES: Record<string, Surface> = {
 		kind: "control",
 		route: "/",
 		testid: "goal-mode",
-		note: "Goal toggle on the new-chat composer (goal mode)",
+		note: "Goal toggle in the new-chat page's settings bar (goal mode)",
 	},
 	"--approval-mode": {
 		kind: "control",
 		route: "/",
 		testid: "approval-picker",
-		note: "permission mode switcher in the composer footer (a flag would override it)",
+		note: "permission mode switcher under or beside the message box (a flag would override it)",
 	},
 	"--auto-approve": {
 		kind: "control",
