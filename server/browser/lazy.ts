@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { EngineKind } from "../../shared/browser.ts";
 import type { RemoteIdentity } from "../remote-auth.ts";
+import { type AppSocket, CefLink, startCefEngine } from "./cef.ts";
 import type { EngineHost, EngineStart } from "./engine.ts";
 import type { BrowserInstaller } from "./install.ts";
 import type { CdpProxy, ProxyConnection, ProxySocket } from "./proxy.ts";
@@ -61,8 +62,27 @@ export interface BrowserService {
 export class LazyBrowser {
 	#loading: Promise<BrowserService> | null = null;
 	#service: BrowserService | null = null;
+	/** CEF: the app's connection on `/browser-engine` (the engine is started on it), null while it is not connected. */
+	#link: CefLink | null = null;
 
 	constructor(private readonly opts: LazyBrowserOptions) {}
+
+	/**
+	 * The app connected on `/browser-engine` (CEF): the engine is on this connection from now on; one before it ends, and the
+	 * engine on that one with it.
+	 */
+	attachApp(socket: AppSocket): CefLink {
+		this.#link?.end("The app connected again");
+		const link = new CefLink(socket);
+		this.#link = link;
+		return link;
+	}
+
+	/** The app's connection closed. */
+	detachApp(link: CefLink, why: string): void {
+		link.end(why);
+		if (this.#link === link) this.#link = null;
+	}
 
 	/** The installer when the service was made; null while nobody asked. */
 	get loaded(): BrowserInstaller | null {
@@ -84,7 +104,12 @@ export class LazyBrowser {
 				const registry = new PageRegistry(join(root, "owners.json"));
 				let installer: BrowserInstaller | null = null;
 				const start = async (): Promise<EngineStart> => {
-					if (engine === "cef") throw new Error("the app's browser is not connected");
+					if (engine === "cef") {
+						const link = this.#link;
+						if (!link?.ready) throw new Error("the app's browser is not connected");
+						// The app keeps its pages while the server restarts: they are met again, not closed (`fresh: false`).
+						return { transport: startCefEngine(link), generation: link.run, fresh: false };
+					}
 					const executable = installer?.executable();
 					if (!executable) throw new Error("it is not installed (Settings › Browser)");
 					const transport = await startCft({

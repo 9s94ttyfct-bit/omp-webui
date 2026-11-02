@@ -11,8 +11,11 @@ enum BrowserEngine {
 		let clearPending: Bool?
 	}
 
-	/// The installed version's framework folder and the profile, when there is one; a clear the server asked for is done first.
-	static func installed(dataDir: URL) -> (framework: URL, profile: URL)? {
+	/// The version CEF runs (the server is told it, macos/browserlink.swift); nil while it does not.
+	private(set) static var version: String?
+
+	/// The installed version, its framework folder and the profile, when there is one; a clear the server asked for is done first.
+	static func installed(dataDir: URL) -> (version: String, framework: URL, profile: URL)? {
 		let root = dataDir.appendingPathComponent("browser")
 		let file = root.appendingPathComponent("current.json")
 		guard let data = try? Data(contentsOf: file), let current = try? JSONDecoder().decode(Current.self, from: data),
@@ -22,7 +25,7 @@ enum BrowserEngine {
 		if current.clearPending == true { clearProfile(profile, current: file) }
 		let framework = root.appendingPathComponent("cef").appendingPathComponent(version).appendingPathComponent("Release")
 		let bundle = framework.appendingPathComponent("Chromium Embedded Framework.framework")
-		return FileManager.default.fileExists(atPath: bundle.path) ? (framework, profile) : nil
+		return FileManager.default.fileExists(atPath: bundle.path) ? (version, framework, profile) : nil
 	}
 
 	/// CEF's profile goes (Settings › Browser › Clear); the request is taken off `current.json`, the rest of it kept as it is.
@@ -44,6 +47,7 @@ enum BrowserEngine {
 		try? FileManager.default.createDirectory(at: found.profile, withIntermediateDirectories: true)
 		do {
 			try CEFHost.start(withFramework: found.framework.path, profile: found.profile.path)
+			version = found.version
 		} catch {
 			FileHandle.standardError.write(Data("omp-webui: the built-in browser did not start: \(error.localizedDescription)\n".utf8))
 		}

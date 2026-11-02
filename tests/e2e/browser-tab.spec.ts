@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium, devices } from "@playwright/test";
 import type { BrowserState } from "../../shared/browser.ts";
+import { DESKTOP_SIZE } from "../../shared/browser-protocol.ts";
 import { writeChatSession } from "../support/chat-session.ts";
 import { openSidebar } from "../support/live.ts";
 import { writeLongFakeOmp } from "../support/long-fake-omp-bin.ts";
@@ -305,6 +306,8 @@ test("in the Mac app's window the tab places the native view instead of drawing 
 			type: "place",
 			targetId,
 			mode: "desktop",
+			// The page's own layout size, which the window scales down to fit the frame area.
+			size: DESKTOP_SIZE,
 			rect: { x: Math.round(frame?.x ?? 0), y: Math.round(frame?.y ?? 0), w: Math.round(frame?.width ?? 0) },
 		});
 	expect((await posts()).find((p) => p.type === "cover")).toEqual({ type: "cover", covered: false });

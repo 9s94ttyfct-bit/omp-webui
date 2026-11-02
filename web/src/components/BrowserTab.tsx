@@ -443,8 +443,9 @@ function NativeArea({ frame, page }: { frame: RefObject<HTMLDivElement | null>; 
 				return;
 			}
 			const rect = { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
-			const key = `${page.targetId}|${page.mode}|${rect.x},${rect.y},${rect.w},${rect.h}`;
-			if (key !== last) postBrowserBridge({ type: "place", targetId: page.targetId, rect, mode: page.mode });
+			const size = { w: page.w, h: page.h };
+			const key = `${page.targetId}|${page.mode}|${rect.x},${rect.y},${rect.w},${rect.h}|${size.w}x${size.h}`;
+			if (key !== last) postBrowserBridge({ type: "place", targetId: page.targetId, rect, size, mode: page.mode });
 			last = key;
 			const now = covered(r);
 			if (now !== lastCover) postBrowserBridge({ type: "cover", covered: now });
@@ -455,7 +456,7 @@ function NativeArea({ frame, page }: { frame: RefObject<HTMLDivElement | null>; 
 			cancelAnimationFrame(request);
 			postBrowserBridge({ type: "hide" });
 		};
-	}, [frame, page.targetId, page.mode]);
+	}, [frame, page.targetId, page.mode, page.w, page.h]);
 	return <div className="flex-1" data-testid="browser-native" />;
 }
 

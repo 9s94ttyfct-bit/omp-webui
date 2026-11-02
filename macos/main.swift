@@ -101,6 +101,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 		origin: { [unowned self] in self.origin }, open: { [unowned self] in self.showWindow() })
 	/// Where the files dropped on the window are: the page cannot know, so the window's web view keeps them for it (see `DropPaths`).
 	lazy var drops = DropPaths(origin: { [unowned self] in self.origin })
+	/// The built-in browser's engine to the server (macos/browserlink.swift), while CEF runs.
+	lazy var browserLink = BrowserLink(token: token)
+	/// The Browser tab of the window's page shows CEF's own view, laid over it (macos/browserlink.swift).
+	lazy var browserBridge = BrowserBridge(origin: { [unowned self] in self.origin })
 	/// The windows the page pops out for a subagent: real windows of their own, which close without closing the app.
 	lazy var popOuts = PopOutWindows(origin: { [unowned self] in self.origin })
 	/// The other Macs this app can open a window onto, from macOS 14 on (see `RemoteMacsController`). The list is the local
@@ -544,6 +548,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 				self.origin = URL(string: "http://127.0.0.1:\(port)")
 				self.refreshLanguage()
 				self.shellEvents.connect(to: self.origin)
+				self.browserLink.connect(to: self.origin)
 				// The token link stores the access cookie and redirects to the UI. After a restart of the server too: the
 				// page loads again and signs in with the same token, on whatever port the new server took. (No window: the
 				// next one opens on it.)
@@ -562,6 +567,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 	func stopServerAndQuit() {
 		stoppingServer = true
 		shellEvents.stop()
+		browserLink.stop()
 		background?.status.remove()
 		window?.orderOut(nil)
 		popOuts.closeAll()
@@ -621,6 +627,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 		config.userContentController.addScriptMessageHandler(
 			notifications, contentWorld: .page, name: NotificationBridge.handlerName)
 		config.userContentController.addScriptMessageHandler(drops, contentWorld: .page, name: DropPaths.handlerName)
+		// The Browser tab lays CEF's view of its page over itself in this window only, while CEF runs; without the handler the
+		// tab draws the screencast (as in pop-outs and windows onto other Macs, whose configurations never have it).
+		if CEFHost.running() { config.userContentController.add(browserBridge, name: BrowserBridge.handlerName) }
 		// The page's switcher of Macs asks the app to open a saved Mac's window or to show the sheet that adds one (macOS 14 and
 		// later, where the Macs menu is). Only this window's page has it: a remote window's configuration is made in remotewindow.swift.
 		if #available(macOS 14.0, *) {
@@ -660,7 +669,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 		window.tabbingMode = .disallowed
 		window.backgroundColor = NSColor(cssHex: savedTheme) ?? NSColor(red: 0.102, green: 0.098, blue: 0.094, alpha: 1)
 		window.minSize = NSSize(width: 420, height: 480)
-		window.contentView = web
+		// With CEF, the window's content holds the web view and, above it, the view of the Browser tab's page.
+		if CEFHost.running() {
+			let container = NSView()
+			web.autoresizingMask = [.width, .height]
+			container.addSubview(web)
+			window.contentView = container
+			web.frame = container.bounds
+		} else {
+			window.contentView = web
+		}
 		// Where the last window was, else the middle of the screen. Not AppKit's autosave: a new window under a name the one
 		// before still held kept neither its frame nor the next one's (windowframe.swift).
 		if !mainFrame.restore(window, legacyName: "main") { window.center() }

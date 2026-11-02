@@ -11,6 +11,8 @@
 #include "include/cef_client.h"
 #include "include/cef_command_line.h"
 #include "include/cef_devtools_message_observer.h"
+#include "include/cef_display_handler.h"
+#include "include/cef_focus_handler.h"
 #include "include/cef_life_span_handler.h"
 #include "include/cef_parser.h"
 #include "include/wrapper/cef_library_loader.h"
@@ -29,6 +31,7 @@ bool gRunning = false;
 /// Where every page's view is made and parked: a borderless window that is never ordered in.
 NSWindow* gHidden = nil;
 void (^gObserver)(NSString*, NSString*) = nil;
+void (^gPageObserver)(NSString*, NSDictionary<NSString*, NSString*>* _Nullable) = nil;
 
 /// The host's own CDP calls are numbered from here: the server numbers its own from 1 up.
 constexpr int kOwnIds = 1 << 30;
@@ -40,6 +43,11 @@ struct Page {
   CefRefPtr<CefRegistration> observer;
   /// Its DevTools target id, once CEF said it (until then nothing can name the page).
   std::string targetId;
+  std::string url;
+  std::string title;
+  /// The page that opened it (its CefBrowser identifier; 0 for none), and its target id once that is known.
+  int openerKey = 0;
+  std::string openerId;
 };
 /// By CefBrowser identifier.
 std::map<int, Page> gPages;
@@ -53,6 +61,24 @@ Page* pageOf(NSString* targetId) {
   for (auto& [_, page] : gPages)
     if (page.targetId == id) return &page;
   return nullptr;
+}
+
+/// What the server is told of a page (`AppPage` of server/browser/cef.ts).
+NSDictionary<NSString*, NSString*>* infoOf(const Page& page) {
+  NSMutableDictionary* info = [@{@"targetId" : ns(page.targetId), @"url" : ns(page.url), @"title" : ns(page.title)} mutableCopy];
+  if (!page.openerId.empty()) info[@"openerId"] = ns(page.openerId);
+  return info;
+}
+
+/// The page appeared or changed (`closed`: it is gone), told on the next turn of the run loop.
+void tell(const Page& page, bool closed = false) {
+  if (page.targetId.empty() || !gPageObserver) return;
+  auto observer = gPageObserver;
+  NSString* target = ns(page.targetId);
+  NSDictionary* info = closed ? nil : infoOf(page);
+  dispatch_async(dispatch_get_main_queue(), ^{
+    observer(target, info);
+  });
 }
 
 /// Send on the next turn of the run loop, never from inside a CEF callback.
@@ -108,15 +134,20 @@ class Observer : public CefDevToolsMessageObserver {
   IMPLEMENT_REFCOUNTING(Observer);
 };
 
-class Client : public CefClient, public CefLifeSpanHandler {
+class Client : public CefClient, public CefLifeSpanHandler, public CefDisplayHandler, public CefFocusHandler {
  public:
-  explicit Client(void (^reply)(NSString* _Nullable)) : reply_(reply) {}
+  Client(void (^reply)(NSString* _Nullable), int openerKey) : reply_(reply), openerKey_(openerKey) {}
 
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
+  CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
+  CefRefPtr<CefFocusHandler> GetFocusHandler() override { return this; }
+
+  // A page takes the keyboard only when the person clicks in it: never because it loaded (the composer keeps it).
+  bool OnSetFocus(CefRefPtr<CefBrowser>, FocusSource source) override { return source == FOCUS_SOURCE_NAVIGATION; }
 
   // A page opened by another (`window.open`, a link to a new tab) is another page in the hidden window, never a window
   // of its own: the server shows it as another tab of the opener's conversation.
-  bool OnBeforePopup(CefRefPtr<CefBrowser>,
+  bool OnBeforePopup(CefRefPtr<CefBrowser> opener,
                      CefRefPtr<CefFrame>,
                      int,
                      const CefString&,
@@ -131,14 +162,31 @@ class Client : public CefClient, public CefLifeSpanHandler {
                      bool*) override {
     NSView* parent = gHidden.contentView;
     windowInfo.SetAsChild((__bridge void*)parent, CefRect(0, 0, (int)parent.bounds.size.width, (int)parent.bounds.size.height));
-    client = new Client(nil);
+    client = new Client(nil, opener->GetIdentifier());
     return false;
+  }
+
+  void OnAddressChange(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, const CefString& url) override {
+    if (!frame->IsMain()) return;
+    auto it = gPages.find(browser->GetIdentifier());
+    if (it == gPages.end()) return;
+    it->second.url = url.ToString();
+    tell(it->second);
+  }
+
+  void OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) override {
+    auto it = gPages.find(browser->GetIdentifier());
+    if (it == gPages.end()) return;
+    it->second.title = title.ToString();
+    tell(it->second);
   }
 
   void OnAfterCreated(CefRefPtr<CefBrowser> browser) override {
     Page& page = gPages[browser->GetIdentifier()];
     page.browser = browser;
     page.observer = browser->GetHost()->AddDevToolsMessageObserver(new Observer());
+    page.openerKey = openerKey_;
+    page.url = browser->GetMainFrame() ? browser->GetMainFrame()->GetURL().ToString() : "";
     auto reply = reply_;
     reply_ = nil;
     int key = browser->GetIdentifier();
@@ -155,7 +203,12 @@ class Client : public CefClient, public CefLifeSpanHandler {
         if (reply) reply(nil);
         return;
       }
-      it->second.targetId = targetId;
+      Page& made = it->second;
+      made.targetId = targetId;
+      auto opener = gPages.find(made.openerKey);
+      if (opener != gPages.end()) made.openerId = opener->second.targetId;
+      // Told before the reply: the server knows the page by the time `create` is answered.
+      tell(made);
       if (reply) reply(targetId.empty() ? nil : ns(targetId));
     });
   }
@@ -163,12 +216,14 @@ class Client : public CefClient, public CefLifeSpanHandler {
   void OnBeforeClose(CefRefPtr<CefBrowser> browser) override {
     auto it = gPages.find(browser->GetIdentifier());
     if (it == gPages.end()) return;
+    tell(it->second, true);
     it->second.observer = nullptr;
     gPages.erase(it);
   }
 
  private:
   void (^reply_)(NSString* _Nullable);
+  int openerKey_;
   IMPLEMENT_REFCOUNTING(Client);
 };
 
@@ -261,6 +316,7 @@ NSError* failure(NSString* text) {
 
 + (void)shutdown {
   if (!gRunning) return;
+  gPageObserver = nil;
   for (auto& [_, page] : gPages) page.browser->GetHost()->CloseBrowser(true);
   NSDate* deadline = [NSDate dateWithTimeIntervalSinceNow:3];
   while (!gPages.empty() && [deadline timeIntervalSinceNow] > 0) {
@@ -286,7 +342,7 @@ NSError* failure(NSString* text) {
   CefWindowInfo info;
   info.SetAsChild((__bridge void*)parent, CefRect(0, 0, (int)parent.bounds.size.width, (int)parent.bounds.size.height));
   CefBrowserSettings settings;
-  if (!CefBrowserHost::CreateBrowser(info, new Client(reply), url.UTF8String, settings, nullptr, nullptr)) reply(nil);
+  if (!CefBrowserHost::CreateBrowser(info, new Client(reply, 0), url.UTF8String, settings, nullptr, nullptr)) reply(nil);
 }
 
 + (void)closePage:(NSString*)targetId {
@@ -301,6 +357,10 @@ NSError* failure(NSString* text) {
 
 + (void)setCdpObserver:(void (^)(NSString*, NSString*))observer {
   gObserver = observer;
+}
+
++ (void)setPageObserver:(void (^)(NSString*, NSDictionary<NSString*, NSString*>* _Nullable))observer {
+  gPageObserver = observer;
 }
 
 + (void)showDevTools:(NSString*)targetId {
@@ -321,10 +381,10 @@ NSError* failure(NSString* text) {
   }
 }
 
-+ (NSArray<NSString*>*)targets {
++ (NSArray<NSDictionary<NSString*, NSString*>*>*)pages {
   NSMutableArray* all = [NSMutableArray array];
   for (auto& [_, page] : gPages)
-    if (!page.targetId.empty()) [all addObject:ns(page.targetId)];
+    if (!page.targetId.empty()) [all addObject:infoOf(page)];
   return all;
 }
 

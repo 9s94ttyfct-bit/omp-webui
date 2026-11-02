@@ -29,12 +29,15 @@ NS_ASSUME_NONNULL_BEGIN
 + (void)sendCdp:(NSString*)targetId message:(NSString*)json;
 /// Where the pages' CDP answers and events go (JSON text, with the page they are of); nil: nowhere.
 + (void)setCdpObserver:(void (^_Nullable)(NSString* targetId, NSString* json))observer;
+/// Where it is told that a page appeared or its address, title or opener changed (`info`: `targetId`, `url`, `title`,
+/// `openerId` when another page opened it), or that it closed (`info` nil); nil: nowhere.
++ (void)setPageObserver:(void (^_Nullable)(NSString* targetId, NSDictionary<NSString*, NSString*>* _Nullable info))observer;
 /// Open Chrome's DevTools for the page in a window of their own.
 + (void)showDevTools:(NSString*)targetId;
 /// Move every page's view back into the hidden window (the window they are in is closing). Pages go on running there.
 + (void)parkAll;
-/// The pages there are now, by target id.
-+ (NSArray<NSString*>*)targets;
+/// The pages there are now, as the page observer tells them.
++ (NSArray<NSDictionary<NSString*, NSString*>*>*)pages;
 
 @end
 

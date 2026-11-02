@@ -63,14 +63,21 @@ export const SHELL_EVENT = "ompw-notification";
  * What the Browser tab tells the Mac app's own window, which lays its native CEF view over the tab instead of the page
  * drawing the screencast (`components/BrowserTab.tsx`):
  *
- * - `place`: show page `targetId` in `rect` (CSS pixels of this page's viewport: the tab's frame area), in `mode`'s size;
- *   sent on layout, resize, panel drag, tab switch and scroll.
+ * - `place`: show page `targetId` in `rect` (CSS pixels of this page's viewport: the tab's frame area), laid out at `size`
+ *   (the page's CSS size in `mode`), scaled down to fit when it is larger; sent on layout, resize, panel drag, tab
+ *   switch, scroll and a change of the page's size.
  * - `cover`: whether a menu, popover or dialog of the page lies over that rectangle now (the view hides under it).
  * - `hide`: the tab is not shown (another tab, the panel closed or folded, no page).
  * - `devtools`: open the developer tools of page `targetId`.
  */
 export type BrowserBridgeMessage =
-	| { type: "place"; targetId: string; rect: { x: number; y: number; w: number; h: number }; mode: PageMode }
+	| {
+			type: "place";
+			targetId: string;
+			rect: { x: number; y: number; w: number; h: number };
+			size: { w: number; h: number };
+			mode: PageMode;
+	  }
 	| { type: "cover"; covered: boolean }
 	| { type: "hide" }
 	| { type: "devtools"; targetId: string };

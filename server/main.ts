@@ -1,5 +1,6 @@
 // `omp-webui-server --ompw-relay …` is a relay (see omp/relay.ts), not a server: it never gets past this import.
 import "./omp/relay-main.ts";
+import { timingSafeEqual } from "node:crypto";
 import { closeSync, existsSync, openSync, readSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -39,8 +40,9 @@ import { answerMessage, cleanAnswer, instructionProblemText } from "../shared/un
 import type { UploadFailure } from "../shared/upload.ts";
 import { DEFAULT_USAGE_RANGE, isUsageRange } from "../shared/usage-range.ts";
 import { Auth } from "./auth.ts";
+import type { CefLink } from "./browser/cef.ts";
 import { canManageBrowser } from "./browser/gate.ts";
-import { cdpPath, LazyBrowser } from "./browser/lazy.ts";
+import { cdpPath, engineHere, LazyBrowser } from "./browser/lazy.ts";
 import type { ProxyConnection } from "./browser/proxy.ts";
 import type { ScreenClient } from "./browser/screen.ts";
 import { compressResponse, serveStatic } from "./compress.ts";
@@ -238,7 +240,26 @@ interface ScreenWsData {
 	ping: NodeJS.Timeout | undefined;
 }
 
-type SocketData = WsData | CdpWsData | ScreenWsData;
+/**
+ * The Mac app's connection on `/browser-engine` (its CEF is the built-in browser's engine, see server/browser/cef.ts):
+ * the app on this computer, with its own token, and no page.
+ */
+interface EngineWsData {
+	kind: "engine";
+	out: WsOutbox | null;
+	link: CefLink | null;
+}
+
+type SocketData = WsData | CdpWsData | ScreenWsData | EngineWsData;
+
+/** The token the Mac app started this server with (`OMP_WEBUI_TOKEN`), whatever `OMP_WEBUI_AUTH` says. */
+function isAppToken(offered: string | null): boolean {
+	const token = process.env.OMP_WEBUI_TOKEN;
+	if (!token || !offered) return false;
+	const a = Buffer.from(offered);
+	const b = Buffer.from(token);
+	return a.length === b.length && timingSafeEqual(a, b);
+}
 
 const sockets = new Set<Bun.ServerWebSocket<WsData>>();
 const broadcastAll = (msg: ServerMessage) => {
@@ -2629,6 +2650,16 @@ async function route(req: Request, srv: Bun.Server<SocketData>): Promise<Respons
 		}
 		return browser.http(owner, cdp.rest, `ws://${req.headers.get("host")}/browser-cdp/${cdp.token}`);
 	}
+	// The Mac app's CEF (`OMP_WEBUI_BROWSER_ENGINE=cef`): the app that started this server, on this computer, with the token it
+	// started it with, and no page (a page sends an Origin). Before the cookie check: the app has no cookie.
+	if (url.pathname === "/browser-engine") {
+		const offered = req.headers.get("x-omp-webui-token");
+		if (!local || req.headers.has("origin") || engineHere() !== "cef" || !isAppToken(offered))
+			return new Response("Forbidden", { status: 403 });
+		const data: EngineWsData = { kind: "engine", out: null, link: null };
+		if (srv.upgrade(req, { data })) return undefined;
+		return new Response("Upgrade failed", { status: 400 });
+	}
 	// The API and the socket answer a page of this origin only; the page itself (and the token link) is served to anyone.
 	const isApi = url.pathname === "/ws" || url.pathname === "/ws/browser" || url.pathname.startsWith("/api/");
 	if (isApi && !fromOwnPage(req)) return new Response("Forbidden", { status: 403 });
@@ -2771,6 +2802,12 @@ const listen = (hostname: string, port: number) =>
 			// Bun closes the socket on a message over its default of 16 MiB, which a prompt with a few large images is.
 			maxPayloadLength: MAX_WS_MESSAGE_BYTES,
 			open(socket) {
+				if (socket.data.kind === "engine") {
+					const out = new WsOutbox(socket);
+					socket.data.out = out;
+					socket.data.link = browser.attachApp({ send: (text) => out.send(text) });
+					return;
+				}
 				if (socket.data.kind === "cdp") {
 					const data = socket.data;
 					const out = new WsOutbox(socket);
@@ -2842,6 +2879,10 @@ const listen = (hostname: string, port: number) =>
 				ws.data.out?.drain();
 			},
 			async message(socket, raw) {
+				if (socket.data.kind === "engine") {
+					socket.data.link?.receive(String(raw));
+					return;
+				}
 				if (socket.data.kind === "cdp") {
 					socket.data.conn?.message(String(raw));
 					return;
@@ -2889,6 +2930,11 @@ const listen = (hostname: string, port: number) =>
 				}
 			},
 			close(socket) {
+				if (socket.data.kind === "engine") {
+					if (socket.data.link) browser.detachApp(socket.data.link, "The app's browser disconnected");
+					socket.data.out?.abandon();
+					return;
+				}
 				if (socket.data.kind === "cdp") {
 					socket.data.conn?.close();
 					socket.data.out?.abandon();

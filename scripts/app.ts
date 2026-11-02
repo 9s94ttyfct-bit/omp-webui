@@ -175,6 +175,7 @@ try {
 		"macos/appmenu.swift",
 		"macos/background.swift",
 		"macos/browser.swift",
+		"macos/browserlink.swift",
 		"macos/downloads.swift",
 		"macos/droppaths.swift",
 		"macos/mainwindow.swift",
