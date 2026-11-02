@@ -220,8 +220,11 @@ or its CfT when it runs the server alone), and that is what the remote window's 
   the first time a remote window asks to manage the browser, the other Mac asks its person to allow this Mac by name;
   once allowed, the other Mac keeps the pairing, and the app proves it holds its key (kept in its Keychain, used through
   the remote window's script bridge) on each such request. Settings on the other Mac lists the paired Macs and can
-  remove one. The key scheme is left to the builder; a request that cannot prove a pairing is treated as any remote
-  page.
+  remove one. The key scheme is left to the builder. The check is the server's, on the install, update and clear
+  endpoints themselves (hiding the buttons is not the check): a request that cannot prove a pairing is refused as from
+  any remote page, whoever knows the route. The saved-Macs list (`remote-macs.json`, which holds no secret) is never
+  taken as proof. Pairing is a prerequisite of remote management; until it is built, remote windows only view and use
+  the browser.
 
 ### Data
 
