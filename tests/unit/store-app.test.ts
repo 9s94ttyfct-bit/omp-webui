@@ -164,6 +164,19 @@ test("a malformed agent in the address falls back to the new-chat view instead o
 	expect(viewFromHash()).toEqual({ kind: "new" });
 });
 
+test("a conversation's browser full screen is #/s/<file>/browser (or #/live/<id>/browser), and the address opens it again", () => {
+	const view = { kind: "chat", file: "/tmp/a/browser", liveId: null, browser: true } as const;
+	useApp.getState().setView(view);
+	useApp.getState().setView({ kind: "chat", file: null, liveId: "L9", browser: true });
+	const hash = `#/s/${encodeURIComponent("/tmp/a/browser")}/browser`;
+	expect(historyLog).toEqual([`push ${hash}`, "push #/live/L9/browser"]);
+	expect(viewFromHash()).toEqual({ kind: "chat", file: null, liveId: "L9", browser: true });
+	location.hash = hash;
+	expect(viewFromHash()).toEqual(view);
+	location.hash = `#/s/${encodeURIComponent("/tmp/a/browser")}`;
+	expect(viewFromHash()).toEqual({ kind: "chat", file: "/tmp/a/browser", liveId: null });
+});
+
 test("switching subagents replaces the address, so Back leaves the full screen in one step", () => {
 	const st = useApp.getState();
 	st.setView({ kind: "chat", file: A, liveId: null });
@@ -189,6 +202,15 @@ test("the full screen ends when its process moves to another session, whose suba
 	expect(view).not.toHaveProperty("agent");
 });
 
+test("the browser's full screen stays when the process names its first file, and ends when it moves to another session", () => {
+	open("L1", null);
+	useApp.setState({ view: { kind: "chat", file: null, liveId: "L1", browser: true } });
+	onServer(moved("L1", A));
+	expect(useApp.getState().view).toEqual({ kind: "chat", file: A, liveId: "L1", browser: true });
+	onServer(moved("L1", B));
+	expect(useApp.getState().view).not.toHaveProperty("browser");
+});
+
 // A step through the history (Back, Forward) shows what the address says, which is only the file and the subagent: stepping
 // into or out of a full screen must not rebuild the conversation under it from that.
 
@@ -209,6 +231,12 @@ test("coming back into a full screen by Forward keeps the conversation as it is,
 test("a step between two subagents of the conversation changes the subagent only", () => {
 	const now = { ...shown, agent: "One" } as const;
 	expect(viewOfStep(now, { kind: "chat", file: A, liveId: null, agent: "Two" })).toEqual({ ...shown, agent: "Two" });
+});
+
+test("a step between a subagent's full screen and the browser's changes the full screen only", () => {
+	const next = { kind: "chat", file: A, liveId: null, browser: true } as const;
+	expect(viewOfStep({ ...shown, agent: "One" }, next)).toEqual({ ...shown, browser: true });
+	expect(viewOfStep({ ...shown, browser: true }, { kind: "chat", file: A, liveId: null })).toEqual(shown);
 });
 
 test("a step to another conversation or page, or between two views with no full screen, is what the address says", () => {

@@ -1,12 +1,29 @@
 import type { PageInfo, PageMode, Size } from "@shared/browser-protocol.ts";
 import { PREF } from "@shared/prefs.ts";
-import { ArrowLeft, ArrowRight, Globe, Plus, RotateCw, SquareCode, TriangleAlert, X } from "lucide-react";
+import {
+	ArrowLeft,
+	ArrowRight,
+	ExternalLink,
+	Globe,
+	Maximize,
+	Maximize2,
+	Minimize,
+	Minimize2,
+	Plus,
+	RotateCw,
+	SquareCode,
+	TriangleAlert,
+	X,
+} from "lucide-react";
 import { type FormEvent, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { en } from "../i18n/browser.ts";
 import { registerStrings, useT } from "../i18n/index.ts";
 import { storedBrowserSize } from "../lib/browser-size.ts";
+import { closeBrowserWindow, useBrowserWindowOpen } from "../lib/browser-window.ts";
+import { useWindowFullScreen } from "../lib/fullscreen.ts";
 import { onPrefsChanged } from "../lib/prefs.ts";
 import { hasBrowserBridge, postBrowserBridge } from "../lib/shell-notify.ts";
+import { exitFull, popOutBrowser, showBrowserFull } from "../store/agents.ts";
 import { useApp } from "../store/app.ts";
 import { browserApi, useBrowserState } from "../store/browser.ts";
 import { holdScreen, sendScreen, useScreen } from "../store/browser-screen.ts";
@@ -19,8 +36,28 @@ registerStrings("browser", en);
 
 const NO_PAGES: readonly PageInfo[] = [];
 
-/** The page each conversation's tab showed last, for when it is shown again. */
-const lastShown = new Map<string, string>();
+/**
+ * The page each conversation's browser showed last, for when it is shown again: kept for the window's session, which a
+ * window popped out from it starts with a copy of (it shows the same page).
+ */
+const SHOWN_KEY = "ompw-browser-shown:";
+
+function lastShown(owner: string): string | null {
+	try {
+		return sessionStorage.getItem(SHOWN_KEY + owner);
+	} catch {
+		return null;
+	}
+}
+
+function rememberShown(owner: string, targetId: string): void {
+	try {
+		sessionStorage.setItem(SHOWN_KEY + owner, targetId);
+	} catch {
+		// Storage refused (full, or off): the first page is shown next time.
+	}
+}
+
 /** Pages given the desktop size of Settings › Browser by this page already (a page the person sized is left alone). */
 const sized = new Set<string>();
 
@@ -57,12 +94,42 @@ function useSettled<T>(value: T, ms: number): T {
 }
 
 /**
- * The side panel's Browser tab (docs/agents/browser.md): the pages of the conversation `owner` (its session file) as tabs,
- * an address field, back / forward / reload, a new page, and the page's layout size (desktop, the panel's, a phone's). The
- * page itself is the screencast (`BrowserScreen`), or in the Mac app's own window its native view, placed over the frame
- * area through `ompwBrowser`. Under it, the page's console.
+ * Where a conversation's browser is shown: the side panel's tab, full screen over the window (BrowserFull.tsx), or as
+ * the whole page of a window popped out for it.
  */
-export function BrowserTab({ owner }: { owner: string }) {
+export type BrowserPlace = "panel" | "full" | "window";
+
+/**
+ * A conversation's browser (docs/agents/browser.md): the pages of the conversation `owner` (its session file) as tabs,
+ * an address field, back / forward / reload, a new page, and the page's layout size (desktop, the panel's, a phone's). The
+ * page itself is the screencast (`BrowserScreen`), or in the Mac app's own windows its native view, placed over the frame
+ * area through `ompwBrowser`. Under it, the page's console. It is shown in one place at a time: the side panel steps
+ * aside while it is full screen or in a window of its own, and the full screen while it is in a window.
+ */
+export function BrowserTab({ owner, place = "panel" }: { owner: string; place?: BrowserPlace }) {
+	const t = useT();
+	const full = useApp((s) => s.view.kind === "chat" && s.view.browser === true);
+	const inWindow = useBrowserWindowOpen(owner);
+	const away = place === "window" ? null : inWindow ? "window" : place === "panel" && full ? "full" : null;
+	if (!away) return <BrowserPages owner={owner} place={place} />;
+	return (
+		<div className="flex flex-1 items-center justify-center p-4" data-testid="browser-elsewhere" data-where={away}>
+			<Empty icon={<Globe size={22} />} title={t(away === "full" ? "browser.shownFull" : "browser.shownWindow")}>
+				<Button
+					variant="outline"
+					size="sm"
+					className="mt-2"
+					data-testid="browser-show-here"
+					onClick={() => (away === "full" ? exitFull() : closeBrowserWindow(owner))}
+				>
+					{t("browser.showHere")}
+				</Button>
+			</Empty>
+		</div>
+	);
+}
+
+function BrowserPages({ owner, place }: { owner: string; place: BrowserPlace }) {
 	const t = useT();
 	const state = useBrowserState((s) => s.state);
 	const listed = useScreen((s) => (s.owner === owner ? s.pages : NO_PAGES));
@@ -70,7 +137,7 @@ export function BrowserTab({ owner }: { owner: string }) {
 	const unavailable = useScreen((s) => s.unavailable);
 	const bridge = useMemo(hasBrowserBridge, []);
 	const desktop = useDesktopSize();
-	const [selected, setSelected] = useState<string | null>(() => lastShown.get(owner) ?? null);
+	const [selected, setSelected] = useState<string | null>(() => lastShown(owner));
 	/** The pages there were when the person asked for a new one: the first that was not is shown. */
 	const opening = useRef<Set<string> | null>(null);
 	// The frame area mounts after the server's first answer: its element is state, so its size is watched from then on.
@@ -100,7 +167,7 @@ export function BrowserTab({ owner }: { owner: string }) {
 		setSelected(listed[0]?.targetId ?? null);
 	}, [listed, answered, selected]);
 	useEffect(() => {
-		if (selected) lastShown.set(owner, selected);
+		if (selected) rememberShown(owner, selected);
 	}, [owner, selected]);
 
 	// Watch the conversation's pages and the frames of the one shown, at the room the frame area has (in device pixels).
@@ -265,6 +332,7 @@ export function BrowserTab({ owner }: { owner: string }) {
 						<SquareCode size={15} />
 					</IconButton>
 				) : null}
+				<PlaceButtons place={place} />
 			</div>
 			<SizeSwitch page={current} desktop={desktop} onMode={setMode} />
 			{unavailable ? (
@@ -410,11 +478,14 @@ function SizeSwitch({
 	);
 }
 
-/** Whether a menu, popover or dialog of the page (a Radix portal that is open) lies over `rect`. */
-function covered(rect: DOMRect): boolean {
+/**
+ * Whether a menu, popover or dialog of the page (a Radix portal that is open) lies over `rect`; not the one the frame is
+ * in (the browser's full screen is such a dialog).
+ */
+function covered(rect: DOMRect, frame: HTMLElement): boolean {
 	const root = document.getElementById("root");
 	for (const el of document.querySelectorAll<HTMLElement>('[data-state="open"]')) {
-		if (root?.contains(el)) continue;
+		if (root?.contains(el) || el.contains(frame)) continue;
 		const r = el.getBoundingClientRect();
 		if (r.width && r.height && r.left < rect.right && r.right > rect.left && r.top < rect.bottom && r.bottom > rect.top)
 			return true;
@@ -423,15 +494,73 @@ function covered(rect: DOMRect): boolean {
 }
 
 /**
- * In the Mac app's own window: the frame area the native view is laid over. Its place is told on every change (a frame
+ * The ways to show the browser elsewhere: in the panel, full screen and a window of its own; full screen, back to the
+ * panel and a window; in a window, the window's own full screen (when there is one).
+ */
+function PlaceButtons({ place }: { place: BrowserPlace }) {
+	const t = useT();
+	const toast = useApp((s) => s.toast);
+	const screen = useWindowFullScreen((message) => toast("error", message));
+	if (place === "window") {
+		if (!screen.available) return null;
+		return (
+			<IconButton
+				size="sm"
+				label={t(screen.active ? "browser.fullScreenExit" : "browser.fullScreen")}
+				aria-pressed={screen.active}
+				data-testid="browser-window-full"
+				onClick={screen.toggle}
+			>
+				{screen.active ? <Minimize size={15} /> : <Maximize size={15} />}
+			</IconButton>
+		);
+	}
+	return (
+		<>
+			<IconButton
+				size="sm"
+				label={t("browser.popOut")}
+				className="max-sm:hidden"
+				data-testid="browser-popout"
+				onClick={popOutBrowser}
+			>
+				<ExternalLink size={15} />
+			</IconButton>
+			{place === "panel" ? (
+				<IconButton
+					size="sm"
+					label={t("browser.fullScreen")}
+					data-testid="browser-full-enter"
+					onClick={(e) => showBrowserFull(e.currentTarget)}
+				>
+					<Maximize2 size={15} />
+				</IconButton>
+			) : (
+				<IconButton size="sm" label={t("browser.fullScreenExit")} data-testid="browser-full-exit" onClick={exitFull}>
+					<Minimize2 size={15} />
+				</IconButton>
+			)}
+		</>
+	);
+}
+
+/**
+ * In the Mac app's own windows: the frame area the native view is laid over. Its place is told on every change (a frame
  * at a time, so a resize, a panel drag, a scroll or a tab switch all move the view with it), whether something of the page
- * covers it, and that it is gone when it is (a folded pane, another tab, the panel closed).
+ * covers it, and that it is gone when it is (a folded pane, another tab, the panel closed). The server is told the room
+ * the view has (`fit`), for the page to be drawn scaled to it.
  */
 function NativeArea({ frame, page }: { frame: RefObject<HTMLDivElement | null>; page: PageInfo }) {
 	useEffect(() => {
 		let last = "";
+		let lastFit = "";
 		let lastCover: boolean | null = null;
 		let request = 0;
+		const fit = (room: { w: number; h: number } | null) => {
+			const key = room ? `${room.w}x${room.h}` : "";
+			if (key !== lastFit) sendScreen({ t: "fit", targetId: page.targetId, room });
+			lastFit = key;
+		};
 		const tick = () => {
 			request = requestAnimationFrame(tick);
 			const el = frame.current;
@@ -440,6 +569,7 @@ function NativeArea({ frame, page }: { frame: RefObject<HTMLDivElement | null>; 
 			if (r.width < 1 || r.height < 1) {
 				if (last !== "hide") postBrowserBridge({ type: "hide" });
 				last = "hide";
+				fit(null);
 				return;
 			}
 			const rect = { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) };
@@ -447,14 +577,17 @@ function NativeArea({ frame, page }: { frame: RefObject<HTMLDivElement | null>; 
 			const key = `${page.targetId}|${page.mode}|${rect.x},${rect.y},${rect.w},${rect.h}|${size.w}x${size.h}`;
 			if (key !== last) postBrowserBridge({ type: "place", targetId: page.targetId, rect, size, mode: page.mode });
 			last = key;
-			const now = covered(r);
+			fit({ w: rect.w, h: rect.h });
+			const now = covered(r, el);
 			if (now !== lastCover) postBrowserBridge({ type: "cover", covered: now });
 			lastCover = now;
 		};
-		tick();
+		// From the next frame: the tab's watch (an effect of its parent, run after this one) goes to the server first.
+		request = requestAnimationFrame(tick);
 		return () => {
 			cancelAnimationFrame(request);
 			postBrowserBridge({ type: "hide" });
+			fit(null);
 		};
 	}, [frame, page.targetId, page.mode, page.w, page.h]);
 	return <div className="flex-1" data-testid="browser-native" />;

@@ -4,7 +4,7 @@ import { runsLocal } from "@shared/offline.ts";
 import { BookmarkPlus, Bot, Check, ChevronDown, CircleAlert, Layers, Lock, Settings2, Star } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useT } from "../i18n/index.ts";
-import { agentFullOpen } from "../lib/agent-full.ts";
+import { fullViewOpen } from "../lib/agent-full.ts";
 import {
 	conversationConfig,
 	conversationSnapshot,
@@ -138,7 +138,7 @@ export function PresetPicker({
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			const now = latest.current;
-			if (now.local || e.repeat || e.isComposing || agentFullOpen() || !matches("presetCycle", e)) return;
+			if (now.local || e.repeat || e.isComposing || fullViewOpen() || !matches("presetCycle", e)) return;
 			e.preventDefault();
 			// The shortcut walks the presets in their own order, not the menu's active-first one: that one is re-sorted by each
 			// switch, so walking it would go back and forth between the first two presets.

@@ -131,17 +131,28 @@ final class BrowserLink: NSObject, URLSessionWebSocketDelegate {
 	}
 }
 
-/// What lays a page's view over the tab: flipped, so a page's rectangle is placed as the page measures it, and its bounds
-/// are the page's size, so a page laid out larger than the tab (desktop, phone) is drawn scaled down to fit, and clicks
-/// on it are scaled back by AppKit.
+/// What lays a page's view over the tab: flipped, so a page's rectangle is placed as the page measures it. The view is
+/// the size the page is shown at; a page laid out larger than the tab (desktop, phone) is scaled down by CEF itself, told
+/// the scale by the server (`fit`, server/browser/screen.ts), so that it is drawn sharp and clicks land where they look.
+/// CEF still draws a frame the size of the layout, the page scaled into its corner: what lies outside the view is cut off.
 private final class BrowserHolder: NSView {
 	override var isFlipped: Bool { true }
+
+	override init(frame: NSRect) {
+		super.init(frame: frame)
+		wantsLayer = true
+		layer?.masksToBounds = true
+	}
+
+	required init?(coder: NSCoder) { fatalError("not from a nib") }
 }
 
-/// The Browser tab of the app's own window (web/src/components/BrowserTab.tsx, `ompwBrowser`): the page is CEF's own view,
-/// laid over the tab's frame area instead of the page drawing the screencast. Only the main window's page has this handler;
-/// pop-outs and windows onto other Macs always show the screencast. A view the tab no longer shows goes back to the hidden
-/// window, where the page runs on (and is still seen by the screencasts of other windows).
+/// The Browser tab of the app's windows (web/src/components/BrowserTab.tsx, `ompwBrowser`): the page is CEF's own view,
+/// laid over the tab's frame area instead of the page drawing the screencast. The main window has this handler, and so do
+/// its pop-outs (made with its configuration); windows onto other Macs show the screencast. One view is shown at a time,
+/// in the window that placed it last: a tab of another window that hides or is covered does not take it away. A view the
+/// tab no longer shows, or whose window closes, goes back to the hidden window, where the page runs on (and is still seen
+/// by the screencasts of other windows).
 final class BrowserBridge: NSObject, WKScriptMessageHandler {
 	static let handlerName = "ompwBrowser"
 
@@ -149,6 +160,10 @@ final class BrowserBridge: NSObject, WKScriptMessageHandler {
 	private var holder: BrowserHolder?
 	private var shown: String?
 	private var covered = false
+	/// The web view whose tab placed the view last.
+	private weak var owner: WKWebView?
+	/// The close of the window the view is in.
+	private var closing: NSObjectProtocol?
 
 	init(origin: @escaping () -> URL?) {
 		self.origin = origin
@@ -167,9 +182,11 @@ final class BrowserBridge: NSObject, WKScriptMessageHandler {
 			else { return }
 			place(targetId, in: web, rect: rect, size: size)
 		case "cover":
+			guard message.webView === owner else { return }
 			covered = body["covered"] as? Bool ?? false
 			holder?.isHidden = covered || shown == nil
 		case "hide":
+			if let owner, message.webView !== owner { return }
 			hide()
 		case "devtools":
 			if let targetId = body["targetId"] as? String { CEFHost.showDevTools(targetId) }
@@ -188,6 +205,8 @@ final class BrowserBridge: NSObject, WKScriptMessageHandler {
 	private func place(_ targetId: String, in web: WKWebView, rect: [String: Any], size: [String: Any]) {
 		func number(_ object: [String: Any], _ key: String) -> CGFloat { CGFloat((object[key] as? NSNumber)?.doubleValue ?? 0) }
 		guard let container = web.superview, let view = CEFHost.view(forTarget: targetId) else { return hide() }
+		if owner !== web { covered = false }
+		owner = web
 		let holder: BrowserHolder
 		if let existing = self.holder, existing.superview === container {
 			holder = existing
@@ -196,6 +215,16 @@ final class BrowserBridge: NSObject, WKScriptMessageHandler {
 			holder = BrowserHolder()
 			container.addSubview(holder, positioned: .above, relativeTo: web)
 			self.holder = holder
+			if let closing { NotificationCenter.default.removeObserver(closing) }
+			closing = NotificationCenter.default.addObserver(
+				forName: NSWindow.willCloseNotification, object: container.window, queue: .main
+			) { [weak self] _ in
+				guard let self, self.holder === holder else { return }
+				self.hide()
+				holder.removeFromSuperview()
+				self.holder = nil
+				self.owner = nil
+			}
 		}
 		if shown != targetId || view.superview !== holder {
 			CEFHost.parkAll()
@@ -203,7 +232,7 @@ final class BrowserBridge: NSObject, WKScriptMessageHandler {
 			holder.addSubview(view)
 			shown = targetId
 		}
-		// CSS pixels of the page's viewport to points of the window's content, which the web view fills.
+		// CSS pixels of the page's viewport to points of the web view (a pop-out's does not fill its window's content).
 		let zoom = web.pageZoom
 		let area = NSRect(
 			x: number(rect, "x") * zoom, y: number(rect, "y") * zoom, width: number(rect, "w") * zoom,
@@ -212,13 +241,13 @@ final class BrowserBridge: NSObject, WKScriptMessageHandler {
 		// Never larger than the page is; scaled down when the page is larger than the area, at the top, in the middle.
 		let scale = min(1, area.width / page.width, area.height / page.height)
 		let shownSize = NSSize(width: page.width * scale, height: page.height * scale)
-		let top = container.bounds.height - area.minY
-		holder.frame = NSRect(
-			x: area.minX + (area.width - shownSize.width) / 2, y: top - shownSize.height, width: shownSize.width,
-			height: shownSize.height)
-		holder.bounds = NSRect(origin: .zero, size: page)
+		let y = web.isFlipped ? area.minY : web.bounds.height - area.minY - shownSize.height
+		let spot = NSRect(
+			x: area.minX + (area.width - shownSize.width) / 2, y: y, width: shownSize.width, height: shownSize.height)
+		holder.frame = container.convert(spot, from: web)
+		holder.bounds = NSRect(origin: .zero, size: shownSize)
 		view.autoresizingMask = []
-		view.frame = NSRect(origin: .zero, size: page)
+		view.frame = holder.bounds
 		holder.isHidden = covered
 	}
 }

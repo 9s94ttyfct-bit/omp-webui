@@ -114,3 +114,39 @@ test("a tab acts only on the pages of the conversation it watches", async () => 
 	expect(after).not.toContain("Target.createTarget");
 	expect(registry.pagesOf("/s/b.jsonl")).toEqual([pageB]);
 });
+
+test("a page drawn by the app's own view is scaled to fit it, until the tab that said so stops watching", async () => {
+	const registry = new PageRegistry(join(work, "owners-fit.json"));
+	const browser = new FakeBrowser();
+	const host = new EngineHost(registry, async () => ({ transport: browser, generation: "g", fresh: true }));
+	const hub = new ScreenHub(host, registry);
+	const engine = await host.ready();
+	const page = await engine.createPage("/s/a.jsonl");
+	const metrics = () =>
+		browser.log.filter((l) => l.method === "Emulation.setDeviceMetricsOverride").map((l) => l.params) as {
+			width: number;
+			deviceScaleFactor: number;
+			scale?: number;
+		}[];
+	const tab = new Socket();
+	const client = hub.connect(tab);
+	client.message(JSON.stringify({ t: "watch", owner: "/s/a.jsonl", targetId: null, panel: { w: 1, h: 1 } }));
+	client.message(JSON.stringify({ t: "fit", targetId: page, room: { w: 320, h: 400 } }));
+	// 1280×800 into 320×400: a quarter, drawn at the screen's own pixel ratio.
+	await until(() => metrics().at(-1)?.scale === 0.25);
+	expect(metrics().at(-1)).toMatchObject({ width: 1280, deviceScaleFactor: 0 });
+	// Laid out at a phone's size, it keeps the phone's pixel ratio, scaled to the same room.
+	client.message(JSON.stringify({ t: "size", targetId: page, mode: "phone" }));
+	await until(() => metrics().at(-1)?.width === 390);
+	expect(metrics().at(-1)).toMatchObject({ deviceScaleFactor: 3, scale: Math.min(320 / 390, 400 / 844) });
+	// The tab stops watching (it went away): the page is drawn unscaled for the screencasts.
+	const before = metrics().length;
+	client.message(JSON.stringify({ t: "unwatch" }));
+	await until(() => metrics().length > before);
+	expect(metrics().at(-1)).not.toHaveProperty("scale");
+	// What it says after it stopped (its view ending as it goes) is no error, and changes nothing.
+	client.message(JSON.stringify({ t: "fit", targetId: page, room: null }));
+	await Bun.sleep(20);
+	expect(metrics().length).toBe(before + 1);
+	expect(tab.texts.some((m) => m.t === "unavailable")).toBe(false);
+});

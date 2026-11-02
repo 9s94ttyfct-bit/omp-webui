@@ -12,7 +12,7 @@ import { Toasts } from "./components/Toasts.tsx";
 import { Unlock } from "./components/Unlock.tsx";
 import { cx, IconButton, ignoreToastRegion, Spinner } from "./components/ui.tsx";
 import { useT } from "./i18n/index.ts";
-import { agentFullOpen, isPopOut } from "./lib/agent-full.ts";
+import { fullViewOpen, isPopOut } from "./lib/agent-full.ts";
 import { startAttention } from "./lib/attention.ts";
 import { useChangeFolder } from "./lib/change-folder.ts";
 import { type ChatKey, nextChatKey } from "./lib/chat-key.ts";
@@ -43,6 +43,8 @@ const ChangeFolderDialog = lazy(() =>
 );
 // A subagent's live view full screen (over the conversation, or as the whole page of a window popped out for it).
 const SubagentFull = lazy(() => import("./components/SubagentFull.tsx").then((m) => ({ default: m.SubagentFull })));
+// A conversation's browser full screen (over the conversation, or as the whole page of a window popped out for it).
+const BrowserFull = lazy(() => import("./components/BrowserFull.tsx").then((m) => ({ default: m.BrowserFull })));
 // Without omp, or right after installing it, these stand in for the whole app.
 const FirstRun = lazy(() => import("./components/FirstRun.tsx").then((m) => ({ default: m.FirstRun })));
 const Onboarding = lazy(() => import("./components/Onboarding.tsx").then((m) => ({ default: m.Onboarding })));
@@ -142,7 +144,8 @@ export function App() {
 	useEffect(() => (POP_OUT ? undefined : startAttention()), []);
 
 	useEffect(() => {
-		// A window popped out for a subagent has no search, no sidebar and no conversation to start: no global keys.
+		// A window popped out for a subagent or a browser has no search, no sidebar and no conversation to start: no
+		// global keys.
 		if (POP_OUT) return;
 		const onKey = (e: KeyboardEvent) => {
 			const shown = useApp.getState().view;
@@ -152,18 +155,18 @@ export function App() {
 			} else if (matches("newChat", e)) {
 				e.preventDefault();
 				setView({ kind: "new" });
-			} else if (matches("sidebar", e) && !(shown.kind === "chat" && shown.agent !== undefined)) {
+			} else if (matches("sidebar", e) && !(shown.kind === "chat" && (shown.agent !== undefined || shown.browser))) {
 				// Not behind a full screen, where the sidebar is hidden: it would change what comes back.
 				e.preventDefault();
 				set({ sidebarOpen: !useApp.getState().sidebarOpen });
-			} else if (matches("goal", e) && !agentFullOpen()) {
+			} else if (matches("goal", e) && !fullViewOpen()) {
 				// Where there is a conversation (or New chat) to set it in.
 				const kind = useApp.getState().view.kind;
 				if (kind === "chat" || kind === "new") {
 					e.preventDefault();
 					requestGoal();
 				}
-			} else if (matches("help", e) && !typingInField(e.target) && !agentFullOpen()) {
+			} else if (matches("help", e) && !typingInField(e.target) && !fullViewOpen()) {
 				// The list is a page of Settings now (#639): the key goes there. Not behind a subagent's full screen, where the
 				// shell is hidden and the page would open under it unseen: Esc leaves the full screen, as it did for the dialog.
 				e.preventDefault();
@@ -216,13 +219,14 @@ export function App() {
 		);
 	}
 	// A window popped out for a subagent shows that and nothing else, whatever its address says (a conversation that moved
-	// on, a process that is gone, another page): the missing-subagent state, never the whole app.
+	// on, a process that is gone, another page): the missing-subagent state, never the whole app. One popped out for a
+	// conversation's browser shows its browser.
 	if (POP_OUT) {
 		return (
 			<Tooltip.Provider>
 				<ErrorBoundary resetKey={pageKey}>
 					<Suspense fallback={<PageFallback />}>
-						<SubagentFull popOut />
+						{view.kind === "chat" && view.browser ? <BrowserFull popOut /> : <SubagentFull popOut />}
 					</Suspense>
 				</ErrorBoundary>
 				<Toasts />
@@ -304,7 +308,7 @@ export function App() {
 					</div>
 				</main>
 			</div>
-			{view.kind === "chat" && view.agent ? (
+			{view.kind === "chat" && (view.agent || view.browser) ? (
 				// The page above stays as it is, hidden while this is up. A chunk that is gone shows the Reload screen over it.
 				<ErrorBoundary
 					resetKey={chatKey}
@@ -315,7 +319,7 @@ export function App() {
 					)}
 				>
 					<Suspense fallback={null}>
-						<SubagentFull popOut={false} />
+						{view.agent ? <SubagentFull popOut={false} /> : <BrowserFull popOut={false} />}
 					</Suspense>
 				</ErrorBoundary>
 			) : null}

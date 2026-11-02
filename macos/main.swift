@@ -107,8 +107,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 	lazy var browserLink = BrowserLink(token: token)
 	/// The Browser tab of the window's page shows CEF's own view, laid over it (macos/browserlink.swift).
 	lazy var browserBridge = BrowserBridge(origin: { [unowned self] in self.origin })
-	/// The windows the page pops out for a subagent: real windows of their own, which close without closing the app.
-	lazy var popOuts = PopOutWindows(origin: { [unowned self] in self.origin })
+	/// The windows the page pops out for a subagent or the browser: real windows of their own, which close without closing
+	/// the app. With CEF, a window's content holds the view of its Browser tab's page too.
+	lazy var popOuts = PopOutWindows(origin: { [unowned self] in self.origin }, holdsBrowser: CEFHost.running())
 	/// The other Macs this app can open a window onto, from macOS 14 on (see `RemoteMacsController`). The list is the local
 	/// server's (it is the only writer; the app reads its file and asks it for changes). Held as an `AnyObject`: its type does not
 	/// exist before then.

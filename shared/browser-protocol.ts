@@ -64,6 +64,9 @@ export type ScreenClientMessage =
 	| { t: "navigate"; targetId: string; action: "url" | "back" | "forward" | "reload"; url?: string }
 	/** The page's layout size: the desktop size (`desktop`, from Settings; 1280×800 without it), the panel's, a phone's. */
 	| { t: "size"; targetId: string; mode: PageMode; panel?: Size; desktop?: Size }
+	/** The page is drawn by the Mac app's own view of it (not a screencast) in `room` (CSS pixels of the tab, the view's
+	 *  points), scaled down to fit when it is laid out larger; null: it is not any more. */
+	| { t: "fit"; targetId: string; room: Size | null }
 	| { t: "input"; targetId: string; event: BrowserInput };
 
 export interface PageInfo {

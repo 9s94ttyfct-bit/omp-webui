@@ -41,6 +41,15 @@ export const zh: Record<keyof typeof en, string> = {
 	levelWarn: "警告",
 	levelError: "错误",
 
+	fullScreen: "全屏",
+	fullScreenExit: "退出全屏",
+	fullTitle: "浏览器，全屏",
+	popOut: "在新窗口中打开",
+	shownFull: "浏览器正在全屏显示",
+	shownWindow: "浏览器在单独的窗口中打开",
+	showHere: "在这里显示",
+	noConversation: "这个窗口显示一个对话的浏览器，但它的地址没有指向已保存的对话。",
+
 	title: "浏览器",
 	hint: "你的对话中的智能体用来浏览的浏览器，浏览器标签页显示的也是它。",
 	engine: "引擎",

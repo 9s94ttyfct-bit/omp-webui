@@ -190,7 +190,7 @@ export function openAgentForToolCall(toolCallId: string, entries: SessionEntry[]
 	openAgent(found.length === 1 ? found[0].id : null);
 }
 
-// ------------------------------------------------------------------ a subagent full screen
+// ------------------------------------------------------------------ a full screen (a subagent's, the browser's)
 
 /**
  * The history entry this page pushed to show a full screen. Leaving it is a step back, which finds the conversation
@@ -209,6 +209,15 @@ export function takeFullOpener(): HTMLElement | null {
 	return el?.isConnected ? el : null;
 }
 
+/** Remember what opened a full screen, and the history entry under it; `from`: the control that was used, if any. */
+function enterFull(from: Element | null | undefined, to: View): void {
+	const focused = document.activeElement;
+	const source = from ?? (focused === document.body ? null : focused);
+	opener = source instanceof HTMLElement ? source : null;
+	useApp.getState().setView(to);
+	pushedFor = entryIdOf(history.state);
+}
+
 /**
  * Show `id` full screen over the conversation on screen, or, in a full screen already, switch to `id`. Entering is a
  * step of its own in the history (Back leaves the full screen); switching replaces it, so that going through ten
@@ -218,44 +227,70 @@ export function takeFullOpener(): HTMLElement | null {
 export function showAgentFull(id: string, from?: Element | null): void {
 	const { view, setView } = useApp.getState();
 	if (view.kind !== "chat" || view.agent === id) return;
-	if (view.agent) {
-		setView({ ...view, agent: id }, { replace: true });
+	const { browser: _browser, ...conversation } = view;
+	if (view.agent || view.browser) {
+		setView({ ...conversation, agent: id }, { replace: true });
 		return;
 	}
-	const focused = document.activeElement;
-	const source = from ?? (focused === document.body ? null : focused);
-	opener = source instanceof HTMLElement ? source : null;
-	setView({ ...view, agent: id });
-	pushedFor = entryIdOf(history.state);
+	enterFull(from, { ...conversation, agent: id });
+}
+
+/** Show the conversation's browser full screen over it (a step of its own in the history, like a subagent's). */
+export function showBrowserFull(from?: Element | null): void {
+	const { view, setView } = useApp.getState();
+	if (view.kind !== "chat" || view.browser) return;
+	const { agent: _agent, ...conversation } = view;
+	if (view.agent) {
+		setView({ ...conversation, browser: true }, { replace: true });
+		return;
+	}
+	enterFull(from, { ...conversation, browser: true });
 }
 
 /** Leave the full screen: back to the conversation exactly as it was left (it stays mounted underneath). */
-export function exitAgentFull(): void {
+export function exitFull(): void {
 	const { view, setView } = useApp.getState();
-	if (view.kind !== "chat" || !view.agent) return;
+	if (view.kind !== "chat" || (!view.agent && !view.browser)) return;
 	if (pushedFor !== null && entryIdOf(history.state) === pushedFor) {
 		pushedFor = null;
 		history.back();
 		return;
 	}
-	const { agent: _agent, ...conversation } = view;
+	const { agent: _agent, browser: _browser, ...conversation } = view;
 	setView(conversation, { replace: true });
 }
 
-/** The size of a window popped out for a subagent. */
+/** The size of a window popped out for a subagent or the browser. */
 const POPOUT_FEATURES = "popup=yes,width=1100,height=800";
 
 /**
- * Open `id` in a window of its own (the macOS app opens a native window for it). The full screen it was opened from
- * ends: the window takes its place. Closing the window leaves this page as it is.
+ * Open `to` (a full screen of the conversation on screen) in a window of its own (the macOS app opens a native window
+ * for it). The full screen it was opened from ends: the window takes its place. Closing the window leaves this page as
+ * it is.
  */
-export function popOutAgent(id: string): void {
+function popOut(to: View): void {
 	const { view, toast } = useApp.getState();
 	if (view.kind !== "chat") return;
-	const opened = window.open(popOutHref(location.origin, hashOf({ ...view, agent: id })), "_blank", POPOUT_FEATURES);
+	const opened = window.open(popOutHref(location.origin, hashOf(to)), "_blank", POPOUT_FEATURES);
 	if (!opened) {
 		toast("error", t("panel.agentFullPopOutBlocked"));
 		return;
 	}
-	if (view.agent) exitAgentFull();
+	exitFull();
+}
+
+/** Open the subagent `id` in a window of its own. */
+export function popOutAgent(id: string): void {
+	const { view } = useApp.getState();
+	if (view.kind !== "chat") return;
+	const { browser: _browser, ...conversation } = view;
+	popOut({ ...conversation, agent: id });
+}
+
+/** Open the conversation's browser in a window of its own. */
+export function popOutBrowser(): void {
+	const { view } = useApp.getState();
+	if (view.kind !== "chat") return;
+	const { agent: _agent, ...conversation } = view;
+	popOut({ ...conversation, browser: true });
 }

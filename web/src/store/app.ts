@@ -71,6 +71,8 @@ export type View =
 			reading?: Reading;
 			/** A subagent of this conversation shown full screen over the page (its id, as omp names it): a route of its own. */
 			agent?: string;
+			/** The conversation's built-in browser shown full screen over the page (`#/s/<file>/browser`); not with `agent`. */
+			browser?: true;
 	  }
 	/** New chat; `cwd`: in this folder (an entry point that knows its folder), else in a new project (the default). */
 	| { kind: "new"; cwd?: string }
@@ -315,10 +317,12 @@ export const useApp = create<AppState>((set, get) => ({
 // ------------------------------------------------------------------ routing
 
 export function hashOf(v: View): string {
-	// The conversation's address, then the full screen's: a file name is encoded, so it never holds `/agent/` itself.
-	const agent = v.kind === "chat" && v.agent ? `/agent/${encodeURIComponent(v.agent)}` : "";
-	if (v.kind === "chat" && v.file) return `#/s/${encodeURIComponent(v.file)}${agent}`;
-	if (v.kind === "chat" && v.liveId) return `#/live/${v.liveId}${agent}`;
+	// The conversation's address, then the full screen's: a file name is encoded, so it never holds `/agent/` itself, nor
+	// ends in `/browser`.
+	const full =
+		v.kind !== "chat" ? "" : v.agent ? `/agent/${encodeURIComponent(v.agent)}` : v.browser ? BROWSER_FULL : "";
+	if (v.kind === "chat" && v.file) return `#/s/${encodeURIComponent(v.file)}${full}`;
+	if (v.kind === "chat" && v.liveId) return `#/live/${v.liveId}${full}`;
 	if (v.kind === "settings" && v.page) return `#/settings/${v.page}`;
 	if (v.kind === "agents") return v.file ? `#/agents/${encodeURIComponent(v.file)}` : "#/agents";
 	if (["usage", "memory", "guard", "questions", "settings"].includes(v.kind)) return `#/${v.kind}`;
@@ -327,8 +331,12 @@ export function hashOf(v: View): string {
 	return "#/";
 }
 
-/** A conversation's address (`<file>` or `<liveId>`) with the subagent it shows full screen, if the address names one. */
-function splitAgent(rest: string): { target: string; agent?: string } {
+/** The end of a conversation's address that shows its browser full screen. */
+const BROWSER_FULL = "/browser";
+
+/** A conversation's address (`<file>` or `<liveId>`) with the full screen it shows (a subagent, the browser), if any. */
+function splitFull(rest: string): { target: string; agent?: string; browser?: true } {
+	if (rest.endsWith(BROWSER_FULL)) return { target: rest.slice(0, -BROWSER_FULL.length), browser: true };
 	const at = rest.indexOf("/agent/");
 	if (at < 0) return { target: rest };
 	const agent = decodeURIComponent(rest.slice(at + "/agent/".length));
@@ -351,12 +359,12 @@ export function viewFromHash(): View {
 	const h = location.hash.replace(/^#/, "");
 	try {
 		if (h.startsWith("/s/")) {
-			const { target, agent } = splitAgent(h.slice(3));
-			return { kind: "chat", file: decodeURIComponent(target), liveId: null, ...(agent ? { agent } : {}) };
+			const { target, ...full } = splitFull(h.slice(3));
+			return { kind: "chat", file: decodeURIComponent(target), liveId: null, ...full };
 		}
 		if (h.startsWith("/live/")) {
-			const { target, agent } = splitAgent(h.slice(6));
-			return { kind: "chat", file: null, liveId: target, ...(agent ? { agent } : {}) };
+			const { target, ...full } = splitFull(h.slice(6));
+			return { kind: "chat", file: null, liveId: target, ...full };
 		}
 		if (["/usage", "/memory", "/guard", "/questions", "/settings"].includes(h)) return { kind: h.slice(1) } as View;
 		if (h === "/agents") return { kind: "agents" };
@@ -1515,16 +1523,18 @@ export function onServer(msg: ServerMessage): void {
 					}
 					const v = st.view;
 					if (to && v.kind === "chat" && (v.liveId === msg.info.liveId || (left !== null && v.file === left))) {
-						// The subagents of the session the process left are not this conversation's: only a conversation
-						// that has just got its first file (or the same session under another spelling) keeps its full screen.
-						const keeps = v.agent !== undefined && (left === null || sameSession);
+						// The subagents and the pages of the session the process left are not this conversation's: only a
+						// conversation that has just got its first file (or the same session under another spelling) keeps its
+						// full screen.
+						const keeps = left === null || sameSession;
 						st.setView(
 							{
 								kind: "chat",
 								file: to,
 								liveId: msg.info.liveId,
 								from: left ?? undefined,
-								...(keeps ? { agent: v.agent } : {}),
+								...(keeps && v.agent !== undefined ? { agent: v.agent } : {}),
+								...(keeps && v.browser ? { browser: true } : {}),
 							},
 							{ replace: true },
 						);
@@ -1615,15 +1625,21 @@ function sameConversation(a: View, b: View): boolean {
 }
 
 /**
- * The view a step through the history shows. An address says only the file and the subagent, so a step into or out of
- * a subagent's full screen (or between two) keeps the conversation as the page shows it — its process, branch and
- * focus — and changes only the full screen: the page under it is not shown again.
+ * The view a step through the history shows. An address says only the file and the full screen (a subagent, the
+ * browser), so a step into or out of a full screen (or between two) keeps the conversation as the page shows it — its
+ * process, branch and focus — and changes only the full screen: the page under it is not shown again.
  */
 export function viewOfStep(now: View, next: View): View {
-	if (now.kind !== "chat" || next.kind !== "chat" || now.agent === next.agent || !sameConversation(now, next))
+	if (
+		now.kind !== "chat" ||
+		next.kind !== "chat" ||
+		(now.agent === next.agent && now.browser === next.browser) ||
+		!sameConversation(now, next)
+	)
 		return next;
-	const { agent: _agent, ...conversation } = now;
-	return next.agent ? { ...conversation, agent: next.agent } : conversation;
+	const { agent: _agent, browser: _browser, ...conversation } = now;
+	if (next.agent) return { ...conversation, agent: next.agent };
+	return next.browser ? { ...conversation, browser: true } : conversation;
 }
 
 /** Whether this page may ask for `/api/remote*`: it is not a remote page, and the server's system has remote access. */

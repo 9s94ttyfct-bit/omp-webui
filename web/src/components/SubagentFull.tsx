@@ -5,12 +5,12 @@ import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
-import { fieldKeepsKey, neighbour, positionOf } from "../lib/agent-full.ts";
+import { fieldKeepsKey, markFullView, neighbour, positionOf } from "../lib/agent-full.ts";
 import { useWindowFullScreen } from "../lib/fullscreen.ts";
 import { matches, typingInField, useShortcutLabel, withKeys } from "../lib/shortcuts.ts";
 import { type AgentRow, parentId } from "../lib/subagents.ts";
 import {
-	exitAgentFull,
+	exitFull,
 	popOutAgent,
 	showAgentFull,
 	takeFullOpener,
@@ -46,14 +46,7 @@ export function SubagentFull({ popOut }: { popOut: boolean }) {
 	// Over the conversation the page under the full screen is hidden, not unmounted: it keeps its scroll, its draft and
 	// its panel, and costs no painting meanwhile (see `.app-shell` in index.css). Set here, so that a full screen that
 	// fails to load leaves the page showing.
-	useEffect(() => {
-		if (popOut) return;
-		const root = document.documentElement;
-		root.dataset.agentFull = "";
-		return () => {
-			delete root.dataset.agentFull;
-		};
-	}, [popOut]);
+	useEffect(() => (popOut ? undefined : markFullView()), [popOut]);
 
 	const row = agent ? rows.find((r) => r.id === agent) : undefined;
 	const header = <FullHeader row={row} rows={rows} agent={agent} live={live} popOut={popOut} />;
@@ -85,7 +78,7 @@ export function SubagentFull({ popOut }: { popOut: boolean }) {
 		);
 	}
 	return (
-		<Dialog.Root open onOpenChange={(open) => !open && exitAgentFull()}>
+		<Dialog.Root open onOpenChange={(open) => !open && exitFull()}>
 			<Dialog.Portal>
 				{/* A modal dialog: Escape leaves, focus goes in, stays in and returns to what opened it, and the page under
 				    it is not reachable. The content is opaque and covers the window. */}
@@ -179,7 +172,7 @@ function FullHeader({
 			data-testid="subagent-full-header"
 		>
 			{popOut ? null : (
-				<IconButton label={t("panel.agentFullExit")} data-testid="subagent-full-exit" onClick={exitAgentFull}>
+				<IconButton label={t("panel.agentFullExit")} data-testid="subagent-full-exit" onClick={exitFull}>
 					<Minimize2 size={15} />
 				</IconButton>
 			)}

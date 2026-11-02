@@ -47,6 +47,8 @@ let ws: WebSocket | null = null;
 let holders = 0;
 let retry: ReturnType<typeof setTimeout> | undefined;
 let lastWatch: Extract<ScreenClientMessage, { t: "watch" }> | null = null;
+/** The pages drawn by the Mac app's own view, and their room (`fit`): said again, after the watch, on a new connection. */
+const fits = new Map<string, Extract<ScreenClientMessage, { t: "fit" }>>();
 const frameListeners = new Set<(frame: Frame) => void>();
 
 function open(): void {
@@ -57,6 +59,7 @@ function open(): void {
 	ws = socket;
 	socket.onopen = () => {
 		if (lastWatch) socket.send(JSON.stringify(lastWatch));
+		for (const fit of fits.values()) socket.send(JSON.stringify(fit));
 	};
 	socket.onmessage = (e) => {
 		if (e.data instanceof ArrayBuffer) {
@@ -109,24 +112,32 @@ export function holdScreen(): () => void {
 		if (holders > 0) return;
 		clearTimeout(retry);
 		lastWatch = null;
+		fits.clear();
 		const socket = ws;
 		ws = null;
 		socket?.close();
 	};
 }
 
-/** Send a message to the server, if the socket is open (a watch is sent again whenever it opens). */
+/** Send a message to the server, if the socket is open (a watch, and the fits, are sent again whenever it opens). */
 export function sendScreen(msg: ScreenClientMessage): void {
 	if (msg.t === "watch") {
 		const ownerChanged = msg.owner !== lastWatch?.owner;
 		const pageChanged = msg.targetId !== lastWatch?.targetId;
 		lastWatch = msg;
+		// The server ends the fits of a conversation the tab stops watching.
+		if (ownerChanged) fits.clear();
 		useScreen.setState(
 			ownerChanged ? { owner: null, pages: [], unavailable: null, answered: false } : { unavailable: null },
 		);
 		// The server sends what it kept of a page's console to a tab that starts showing it: the list starts over.
 		if (pageChanged && msg.targetId)
 			useScreen.setState((s) => ({ console: { ...s.console, [msg.targetId as string]: [] } }));
+	}
+	if (msg.t === "unwatch") fits.clear();
+	if (msg.t === "fit") {
+		if (msg.room) fits.set(msg.targetId, msg);
+		else fits.delete(msg.targetId);
 	}
 	if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }

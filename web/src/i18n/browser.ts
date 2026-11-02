@@ -46,6 +46,16 @@ export const en = {
 	levelWarn: "Warning",
 	levelError: "Error",
 
+	// Full screen over the window, or a window of its own
+	fullScreen: "Full screen",
+	fullScreenExit: "Exit full screen",
+	fullTitle: "Browser, full screen",
+	popOut: "Open in a new window",
+	shownFull: "The browser is shown full screen",
+	shownWindow: "The browser is open in its own window",
+	showHere: "Show it here",
+	noConversation: "This window shows a conversation's browser, and its address names no saved conversation.",
+
 	// Settings › Browser
 	title: "Browser",
 	hint: "The browser the agents of your conversations browse in, and that the Browser tab shows.",

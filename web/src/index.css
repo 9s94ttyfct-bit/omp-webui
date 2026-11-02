@@ -740,11 +740,11 @@ body {
 }
 
 /*
- * A subagent's full screen (SubagentFull.tsx) covers the window and the page under it stays mounted, so that it comes back
- * exactly as it was: hidden, not unmounted. `visibility` keeps every box and scroll offset, takes the page out of the tab
- * order and the accessibility tree, and costs no painting while the full screen is up.
+ * A full screen (a subagent's, SubagentFull.tsx; the browser's, BrowserFull.tsx) covers the window and the page under it
+ * stays mounted, so that it comes back exactly as it was: hidden, not unmounted. `visibility` keeps every box and scroll
+ * offset, takes the page out of the tab order and the accessibility tree, and costs no painting while the full screen is up.
  */
-html[data-agent-full] .app-shell {
+html[data-full-view] .app-shell {
 	visibility: hidden;
 }
 

@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { type MessageKey, useT } from "../i18n/index.ts";
-import { agentFullOpen } from "../lib/agent-full.ts";
+import { fullViewOpen } from "../lib/agent-full.ts";
 import type { SavedApproval } from "../lib/api.ts";
 import { matches, useShortcutLabel, withKeys } from "../lib/shortcuts.ts";
 import type { StartLive } from "../lib/start-live.ts";
@@ -69,7 +69,7 @@ export function ApprovalPicker({
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
-			if (!matches("approval", e) || agentFullOpen()) return;
+			if (!matches("approval", e) || fullViewOpen()) return;
 			e.preventDefault();
 			const active = document.activeElement;
 			// Only when it opens: the key that closes it again is pressed inside the menu.

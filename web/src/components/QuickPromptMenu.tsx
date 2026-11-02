@@ -4,7 +4,7 @@ import { Hand, Settings2, Zap } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { registerStrings, useT } from "../i18n/index.ts";
 import { en } from "../i18n/quick-prompts.ts";
-import { agentFullOpen } from "../lib/agent-full.ts";
+import { fullViewOpen } from "../lib/agent-full.ts";
 import { offerQuickPrompts, quickPromptSender } from "../lib/quick-prompt-bridge.ts";
 import { promptName, quickPrompts, useQuickPrompts } from "../lib/quick-prompts.ts";
 import { showSettingsCard } from "../lib/shortcut-view.ts";
@@ -30,7 +30,7 @@ function listenForKeys(): void {
 	if (keysListening) return;
 	keysListening = true;
 	window.addEventListener("keydown", (e) => {
-		if (e.defaultPrevented || e.repeat || agentFullOpen()) return;
+		if (e.defaultPrevented || e.repeat || fullViewOpen()) return;
 		const id = quickPromptFor(e);
 		const send = id === null ? null : quickPromptSender();
 		const prompt = send ? quickPrompts().find((p) => p.id === id) : undefined;

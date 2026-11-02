@@ -77,6 +77,10 @@ class PageView {
 	seq = 0;
 	/** The screencast's size now; null while it does not run. */
 	casting: Size | null = null;
+	/** Where the Mac app's own view draws the page (`fit` of the protocol); null: only screencasts show it. */
+	fit: Size | null = null;
+	/** The tab that said so: the fit ends with it. */
+	fitBy: ScreenClient | null = null;
 
 	constructor(
 		readonly engine: Engine,
@@ -91,13 +95,31 @@ class PageView {
 	async setSize(mode: PageMode, panel: Size, desktop: Size): Promise<void> {
 		this.mode = mode;
 		this.size = pageSizeFor(mode, panel, desktop);
-		await this.call("Emulation.setDeviceMetricsOverride", {
-			width: this.size.w,
-			height: this.size.h,
-			deviceScaleFactor: this.size.scale,
-			mobile: this.size.mobile,
-		});
+		await this.emulate();
 		await this.call("Emulation.setTouchEmulationEnabled", { enabled: this.size.mobile });
+	}
+
+	async setFit(room: Size | null, by: ScreenClient | null): Promise<void> {
+		this.fit = room;
+		this.fitBy = room ? by : null;
+		await this.emulate();
+	}
+
+	/**
+	 * The layout size. A view of the page's own (the Mac app's) lays it out at its own size and draws it at the screen's
+	 * pixel ratio unless told otherwise: it is given the size, and a scale that fits the page into the view, centred there
+	 * at the same scale by the app (macos/browserlink.swift). A phone keeps its pixel ratio.
+	 */
+	private async emulate(): Promise<void> {
+		const { w, h, scale, mobile } = this.size;
+		const fit = this.fit;
+		await this.call("Emulation.setDeviceMetricsOverride", {
+			width: w,
+			height: h,
+			deviceScaleFactor: fit && !mobile ? 0 : scale,
+			mobile,
+			...(fit ? { scale: Math.min(1, fit.w / w, fit.h / h) } : {}),
+		});
 	}
 
 	async history(): Promise<void> {
@@ -314,6 +336,8 @@ export class ScreenClient {
 	panel: Size = { w: 1, h: 1 };
 	private view: PageView | null = null;
 	private closed = false;
+	/** The pages this tab said it draws in the Mac app's own view (`fit`). */
+	private readonly fitted = new Set<PageView>();
 	/** The tab's messages are handled one after the other, in order (a press before its release, watch before size). */
 	private queue: Promise<void> = Promise.resolve();
 
@@ -337,6 +361,7 @@ export class ScreenClient {
 	close(): void {
 		this.closed = true;
 		this.unwatch();
+		this.unfit();
 		this.hub.forget(this);
 	}
 
@@ -361,6 +386,12 @@ export class ScreenClient {
 		}
 	}
 
+	/** The pages this tab draws in the Mac app's own view: they are not (it stopped watching their conversation). */
+	private unfit(): void {
+		for (const view of this.fitted) if (view.fitBy === this) void view.setFit(null, null).catch(() => {});
+		this.fitted.clear();
+	}
+
 	/**
 	 * The page `targetId`, when it is one of the conversation this tab watches: a tab acts on its own conversation's pages
 	 * only, whatever it names.
@@ -374,6 +405,7 @@ export class ScreenClient {
 	private async handle(msg: ScreenClientMessage): Promise<void> {
 		if (msg.t === "unwatch") {
 			this.unwatch();
+			this.unfit();
 			this.owner = null;
 			return;
 		}
@@ -383,6 +415,7 @@ export class ScreenClient {
 			case "watch": {
 				if (typeof msg.owner !== "string") return;
 				this.unwatch();
+				if (msg.owner !== this.owner) this.unfit();
 				this.owner = msg.owner;
 				this.panel = { w: Math.max(1, Number(msg.panel?.w) || 1), h: Math.max(1, Number(msg.panel?.h) || 1) };
 				this.sendPages();
@@ -424,6 +457,18 @@ export class ScreenClient {
 				await view.setSize(msg.mode, msg.panel ?? this.panel, msg.desktop ?? DESKTOP_SIZE);
 				for (const c of view.watchers) c.sendPages();
 				this.sendPages();
+				return;
+			}
+			case "fit": {
+				// Said after the tab stopped watching (its view ending as it goes): the fit ended with the watch.
+				if (this.owner === null || this.hub.registry.ownerOfTarget(msg.targetId) !== this.owner) return;
+				const view = await this.page(engine, msg.targetId);
+				const w = Number(msg.room?.w);
+				const h = Number(msg.room?.h);
+				const room = w >= 1 && h >= 1 ? { w, h } : null;
+				if (!room && view.fitBy !== this) return;
+				await view.setFit(room, this);
+				if (room) this.fitted.add(view);
 				return;
 			}
 			case "input": {

@@ -1,10 +1,11 @@
 import AppKit
 import WebKit
 
-/// The windows the page pops out (a subagent's live view, `window.open("/?popout#/s/…/agent/…")`): each a real window of
-/// its own, with a web view of its own on the same data store and the same page handlers, that can go to native full
-/// screen (its own Space) with the green button or from the page (`ompwWindow`, `{ type: "toggleFullScreen" }`; the page
-/// is told when the window enters or leaves it, by an `ompw-fullscreen` event on `window`).
+/// The windows the page pops out (a subagent's live view, `window.open("/?popout#/s/…/agent/…")`; a conversation's
+/// browser, `…/browser`): each a real window of its own, with a web view of its own on the same data store and the same
+/// page handlers, that can go to native full screen (its own Space) with the green button or from the page
+/// (`ompwWindow`, `{ type: "toggleFullScreen" }`; the page is told when the window enters or leaves it, by an
+/// `ompw-fullscreen` event on `window`).
 ///
 /// The window of the app is the whole app: its close button quits. A pop-out is not: it has its own delegate, closing it
 /// (the red button, ⌘W, `window.close()` in the page) closes that window and nothing else, and the app goes on with the
@@ -26,9 +27,15 @@ final class PopOutWindows: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
 
 	/// What the page's request for full screen does to its window (a test passes a counter: native full screen takes the screen over).
 	private let toggle: (NSWindow) -> Void
+	/// Whether a window's content holds, above its web view, the view of its Browser tab's page (CEF runs: browserlink.swift).
+	private let holdsBrowser: Bool
 
-	init(origin: @escaping () -> URL?, toggle: @escaping (NSWindow) -> Void = { $0.toggleFullScreen(nil) }) {
+	init(
+		origin: @escaping () -> URL?, holdsBrowser: Bool = false,
+		toggle: @escaping (NSWindow) -> Void = { $0.toggleFullScreen(nil) }
+	) {
 		self.origin = origin
+		self.holdsBrowser = holdsBrowser
 		self.toggle = toggle
 	}
 
@@ -63,7 +70,15 @@ final class PopOutWindows: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
 		window.isReleasedWhenClosed = false
 		window.minSize = NSSize(width: 420, height: 360)
 		window.backgroundColor = near?.backgroundColor ?? NSColor.windowBackgroundColor
-		window.contentView = web
+		if holdsBrowser {
+			let container = NSView()
+			web.autoresizingMask = [.width, .height]
+			container.addSubview(web)
+			window.contentView = container
+			web.frame = container.bounds
+		} else {
+			window.contentView = web
+		}
 		// The size the person last left a pop-out at (its whole frame), else what the page asked for.
 		if let kept = WindowFrameMemory(key: "popout").savedSize(), kept.width >= 420, kept.height >= 360 {
 			let size = NSSize(width: min(kept.width, 4000), height: min(kept.height, 3000))
@@ -102,7 +117,7 @@ final class PopOutWindows: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
 	func windowDidExitFullScreen(_ notification: Notification) { tell(notification, fullScreen: false) }
 
 	private func tell(_ notification: Notification, fullScreen: Bool) {
-		guard let web = (notification.object as? NSWindow)?.contentView as? WKWebView else { return }
+		guard let web = windowWebView(notification.object as? NSWindow) else { return }
 		report(web, fullScreen: fullScreen)
 	}
 
@@ -173,5 +188,11 @@ func isWindowRequestAllowed(isMainFrame: Bool, scheme: String, host: String, por
 /// The web view a menu command (Reload) acts on: the one in the window in front, a pop-out's or the
 /// app's own; the app's own when no window is.
 func targetWebView(keyWindow: NSWindow?, fallback: WKWebView) -> WKWebView {
-	(keyWindow?.contentView as? WKWebView) ?? fallback
+	windowWebView(keyWindow) ?? fallback
+}
+
+/// A pop-out's web view: its window's content, or the content's first view when that holds a Browser tab's page too.
+func windowWebView(_ window: NSWindow?) -> WKWebView? {
+	guard let content = window?.contentView else { return nil }
+	return (content as? WKWebView) ?? content.subviews.lazy.compactMap { $0 as? WKWebView }.first
 }
