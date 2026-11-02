@@ -672,6 +672,8 @@ export class ApprovalStore {
 		private readonly dataDir: string,
 		/** How long a changed overlay is given to take effect before the change counts as in force. */
 		private readonly reloadMs = OMP_RELOAD_MS,
+		/** How often each overlay is looked at and written again if it is gone (`ProcessOverlay.keep`). */
+		private readonly checkMs = CHECK_MS,
 	) {
 		this.prefsFile = join(dataDir, "approval.json");
 		// What the file says of the guard when the server starts is what it holds from then on.
@@ -1040,7 +1042,7 @@ export class ApprovalStore {
 			advisor,
 			browser,
 		);
-		overlay.keep();
+		overlay.keep(this.checkMs);
 		return overlay;
 	}
 
@@ -1080,7 +1082,7 @@ export class ApprovalStore {
 		);
 		overlay.park();
 		overlay.adopt();
-		overlay.keep();
+		overlay.keep(this.checkMs);
 		return overlay;
 	}
 }

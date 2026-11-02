@@ -4969,6 +4969,8 @@ export class LivePool {
 			await live.adopt(record.omp.pid);
 		} catch (e) {
 			live.client.detach();
+			// The overlay goes with its keeper: `discard` removes the files, which the keeper would write again otherwise.
+			overlay?.remove();
 			throw e;
 		}
 		this.lives.set(live.info.liveId, live);
