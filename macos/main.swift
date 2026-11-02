@@ -186,6 +186,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 	/// the person asks for it, from the menu bar icon, a notification or the app being opened again.)
 	func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { !inBackground }
 
+	/// The built-in browser's pages close and its engine stops with the app.
+	func applicationWillTerminate(_ notification: Notification) {
+		BrowserEngine.stop()
+	}
+
 	/// Quitting asks first, unless the person chose an answer for good: run in the background (the window closes; the app,
 	/// its server, its conversations and remote access run on) or quit. A real quit stops the server and every conversation it
 	/// runs, except the ones that outlive it: paused ones stay frozen in the background for the next launch, and ones waiting
@@ -322,6 +327,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 			popOuts.closeAll()
 			closeRemoteWindows()
 			background.enter {
+				// The built-in browser's pages run on in the hidden window (macos/browser.swift).
+				BrowserEngine.park()
 				mainWindow.close()
 				notifications.pageGone()
 			}
@@ -514,6 +521,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 		// looks for omp, which the web UI offers to install when there is none.
 		env["OMP_WEBUI_LOGIN_SHELL"] = env["SHELL"] ?? "/bin/zsh"
 		env["OMP_WEBUI_DATA_DIR"] = dataDir.path
+		// The built-in browser of the app is CEF (macos/browser.swift), which the server installs here and drives through the app.
+		env["OMP_WEBUI_BROWSER_ENGINE"] = "cef"
 		env["OMP_WEBUI_DIST"] = resources.appendingPathComponent("web").path
 		env["OMP_WEBUI_PORT"] = env["OMP_WEBUI_PORT"] ?? "7878"
 		env["OMP_WEBUI_AUTO_PORT"] = "1"
@@ -772,7 +781,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 	}
 }
 
-let app = NSApplication.shared
+// CEF needs the shared application to say when it dispatches an event (macos/cef/OmpApplication.mm).
+let app = OmpApplication.shared
 
 // A second copy of the app (another path, `open -n`, a build next to the installed one) must not start a
 // server of its own: it asks the running copy to come forward, as opening the app again does, and leaves.
@@ -788,6 +798,9 @@ if let running = runningInstance() {
 	}
 	exit(0)
 }
+
+// The built-in browser's engine, when one is installed: started before the run loop, as CEF wants (macos/browser.swift).
+BrowserEngine.start(dataDir: appDataDirectory())
 
 let delegate = AppDelegate()
 app.delegate = delegate

@@ -30,7 +30,16 @@
  */
 import { dlopen, FFIType, ptr } from "bun:ffi";
 import { randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -345,37 +354,68 @@ export interface SignOptions {
 }
 
 /**
+ * The helper apps in the bundle's Contents/Frameworks (CEF's, see scripts/app.ts) with their own bundle identifiers: `--deep`
+ * would sign them under the app's identifier, which their Info.plist does not say.
+ */
+function helperBundles(path: string): { path: string; identifier: string }[] {
+	const frameworks = join(path, "Contents", "Frameworks");
+	if (!existsSync(frameworks)) return [];
+	return readdirSync(frameworks)
+		.filter((name) => name.endsWith(".app"))
+		.map((name) => {
+			const helper = join(frameworks, name);
+			const plist = readFileSync(join(helper, "Contents", "Info.plist"), "utf8");
+			const id = /<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/.exec(plist)?.[1];
+			if (!id) throw new Error(`${helper} names no CFBundleIdentifier`);
+			return { path: helper, identifier: id };
+		});
+}
+
+/**
  * Sign the bundle at `path`: with the identity and the requirement above, or ad hoc (with a warning) when there is no
- * identity. Returns the identity's SHA-1, or null when it was signed ad hoc.
+ * identity. Returns the identity's SHA-1, or null when it was signed ad hoc. Everything nested is signed with it (`--deep`);
+ * then the helper apps again, each under its own identifier, and the bundle once more over them.
  */
 export function signBundle(path: string, options: SignOptions = {}): { identity: string | null } {
 	const keychain = options.keychain ?? SIGNING_KEYCHAIN;
 	const identifier = options.identifier ?? BUNDLE_ID;
+	const helpers = helperBundles(path);
 	const sha1 = findIdentity(keychain);
 	if (sha1 === null) {
 		(options.warn ?? console.warn)(
 			`WARNING: no code-signing identity named "${IDENTITY_NAME}": ${path} is signed ad-hoc, so its designated requirement is this build's hash and macOS forgets its permissions (notifications, screen recording, accessibility) at the next update. Run \`bun scripts/signing-identity.ts\` once and build again.`,
 		);
 		must(["codesign", "--force", "--deep", "--sign", "-", path]);
+		if (helpers.length > 0) {
+			for (const helper of helpers)
+				must(["codesign", "--force", "--sign", "-", "--identifier", helper.identifier, helper.path]);
+			must(["codesign", "--force", "--sign", "-", path]);
+		}
 		return { identity: null };
 	}
+	const signWith = (target: string, id: string, deep: boolean) =>
+		must([
+			"codesign",
+			"--force",
+			...(deep ? ["--deep"] : []),
+			"--sign",
+			sha1,
+			"--identifier",
+			id,
+			`--requirements==${requirementFor(sha1, id)}`,
+			"--keychain",
+			keychain,
+			target,
+		]);
 	// The keychain gets a random password of its own (the first version of this script used a fixed one) and locks itself.
 	secureKeychain(keychain);
 	unlock(keychain);
 	try {
-		must([
-			"codesign",
-			"--force",
-			"--deep",
-			"--sign",
-			sha1,
-			"--identifier",
-			identifier,
-			`--requirements==${requirementFor(sha1, identifier)}`,
-			"--keychain",
-			keychain,
-			path,
-		]);
+		signWith(path, identifier, true);
+		if (helpers.length > 0) {
+			for (const helper of helpers) signWith(helper.path, helper.identifier, false);
+			signWith(path, identifier, false);
+		}
 	} finally {
 		// Locked again right away, also when the signing failed: an open keychain is a key anyone can use.
 		lock(keychain);

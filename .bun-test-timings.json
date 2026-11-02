@@ -357,6 +357,7 @@
     "tests/unit/ci-watch.test.ts": 20,
     "tests/unit/prefs.test.ts": 20,
     "tests/unit/store-exited.test.ts": 20,
+    "tests/unit/cef-build.test.ts": 20,
     "tests/unit/ci-notify-shell.test.ts": 18,
     "tests/unit/platform-adapter.test.ts": 18,
     "tests/unit/projects.test.ts": 18,

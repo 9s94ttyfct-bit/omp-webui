@@ -116,6 +116,52 @@ test.skipIf(!mac)("two different builds signed with the identity have the same d
 	expect(cdhash(first)).not.toBe(cdhash(second));
 });
 
+/** `bundle`, with helper apps in Contents/Frameworks as CEF's are (scripts/app.ts), each with an identifier of its own. */
+function bundleWithHelpers(name: string): { app: string; helpers: { path: string; id: string }[] } {
+	const app = bundle(name, name);
+	const helpers = ["omp-webui Helper", "omp-webui Helper (GPU)"].map((helper, i) => {
+		const path = join(app, "Contents", "Frameworks", `${helper}.app`);
+		const id = i === 0 ? `${BUNDLE_ID}.helper` : `${BUNDLE_ID}.helper.gpu`;
+		mkdirSync(join(path, "Contents", "MacOS"), { recursive: true });
+		cpSync(hello, join(path, "Contents", "MacOS", helper));
+		writeFileSync(
+			join(path, "Contents", "Info.plist"),
+			`<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>${id}</string>
+<key>CFBundleExecutable</key><string>${helper}</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+</dict></plist>
+`,
+		);
+		return { path, id };
+	});
+	return { app, helpers };
+}
+
+const signedIdentifier = (path: string) =>
+	/^Identifier=(.+)$/m.exec(Bun.spawnSync(["codesign", "-dv", path], { stderr: "pipe" }).stderr.toString())?.[1];
+
+test.skipIf(!mac)("each helper app is signed under its own identifier, and the bundle over them still verifies", () => {
+	const sha = ensureIdentity(keychain);
+	const { app, helpers } = bundleWithHelpers("helpers");
+	expect(signBundle(app, { keychain }).identity).toBe(sha);
+	for (const helper of helpers) {
+		expect(signedIdentifier(helper.path)).toBe(helper.id);
+		expect(designatedRequirementOf(helper.path)).toBe(requirementFor(sha, helper.id));
+	}
+	expect(designatedRequirementOf(app)).toBe(requirementFor(sha));
+	const verified = Bun.spawnSync(["codesign", "--verify", "--deep", "--strict", app], { stderr: "pipe" });
+	expect(verified.stderr.toString()).toBe("");
+	expect(verified.exitCode).toBe(0);
+
+	// Ad hoc too: the helpers keep their own identifiers.
+	const adHoc = bundleWithHelpers("helpers-ad-hoc");
+	expect(signBundle(adHoc.app, { keychain: noKeychain, warn: () => {} }).identity).toBeNull();
+	for (const helper of adHoc.helpers) expect(signedIdentifier(helper.path)).toBe(helper.id);
+	expect(Bun.spawnSync(["codesign", "--verify", "--deep", "--strict", adHoc.app]).exitCode).toBe(0);
+});
+
 test.skipIf(!mac)("creating the identity again finds the one there instead of making another", () => {
 	const sha = ensureIdentity(keychain);
 	expect(ensureIdentity(keychain)).toBe(sha);
