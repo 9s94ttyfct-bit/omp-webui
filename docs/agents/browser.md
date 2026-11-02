@@ -72,6 +72,7 @@ The browser's own endpoints, outside `/api`:
 
 - One set of pages per conversation, shared by its agent and the person. omp attaches to a page and makes none of its own, so every tab name the agent uses (`main`, `docs`) lands on that conversation's current page.
 - A conversation not saved to a file yet has no pages and no endpoint; until it has one its agent uses omp's own hidden Chromium.
+- With CEF, a conversation is given its endpoint only while the app's CEF is connected: before the restart that follows an install, or when CEF failed to load, its agent uses omp's own hidden Chromium, and the endpoints are given once the app's CEF says hello.
 - Pages are not restored after the browser or the app restarts (an update, Clear, quitting the app): every Browser tab starts empty. A restart of the server alone keeps which page is whose and each conversation's endpoint.
 - Installing CEF, a new CEF version and Clear with CEF restart the app, which stops the conversations that are working (after the quit question) as any quit does.
 - The screencast follows what the connection carries: through the tunnel it is less smooth than on this computer.
@@ -86,3 +87,4 @@ The browser's own endpoints, outside `/api`:
 - Commands about the whole browser are not filtered: any conversation's agent can read or clear the shared cookies, as the person can. An agent that asks omp for another browser in its own call (omp's relay, another CDP address, an app path) is not stopped.
 - Downloads come only from Google's storage (CfT, checked against the MD5 Google lists) and CEF's build server (checked against the index's SHA-1).
 - The engines never use the macOS keychain: CfT runs with `--use-mock-keychain --password-store=basic`, CEF with `--use-mock-keychain`, so macOS never asks for the keychain. The profiles are kept by the data folder's own permissions.
+- Chrome's sandbox is kept wherever it works. On Linux it needs unprivileged user namespaces, which Ubuntu 23.10 and later (AppArmor), many containers and CI runners refuse: there Chrome for Testing aborts at once ("No usable sandbox!"), and the server starts it again with `--no-sandbox` and logs that it runs without one.
