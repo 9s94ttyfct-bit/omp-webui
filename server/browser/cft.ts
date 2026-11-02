@@ -19,11 +19,40 @@ export interface CftTransport extends CdpTransport {
 /** How long Chrome has to leave after SIGTERM before it is killed. */
 const QUIT_MS = 3000;
 
-export async function startCft(opts: {
+/** The id of the server's own first call, whose answer says Chrome runs (never delivered to the engine). */
+const PROBE_ID = 2 ** 31 - 1;
+/** How long the first answer is waited for before Chrome is taken to run all the same. */
+const PROBE_MS = 15_000;
+
+interface CftOptions {
 	executable: string;
 	profileDir: string;
 	signal?: AbortSignal;
-}): Promise<CftTransport> {
+	/** The system it runs on (tests stand in for Linux). */
+	platform?: NodeJS.Platform;
+}
+
+/**
+ * Chrome for Testing, started. On Linux its sandbox needs unprivileged user namespaces (CfT ships no setuid helper), which
+ * a system may refuse: Ubuntu 23.10 and later restrict them with AppArmor, and so do many containers and CI runners.
+ * Chrome then aborts at once ("No usable sandbox!"); it is started again without the sandbox, and the server says so.
+ * Everywhere else, and wherever the sandbox works, it is kept.
+ */
+export async function startCft(opts: CftOptions): Promise<CftTransport> {
+	const first = launch(opts, []);
+	if ((opts.platform ?? process.platform) !== "linux") return first.transport;
+	if (await first.runs()) return first.transport;
+	if (!first.sandboxRefused() || opts.signal?.aborted) return first.transport;
+	console.warn(
+		"omp-webui: Chrome for Testing has no usable sandbox on this system (unprivileged user namespaces are off); it runs without one",
+	);
+	return launch(opts, ["--no-sandbox"]).transport;
+}
+
+function launch(
+	opts: CftOptions,
+	extra: string[],
+): { transport: CftTransport; runs(): Promise<boolean>; sandboxRefused(): boolean } {
 	const proc = Bun.spawn(
 		[
 			opts.executable,
@@ -38,20 +67,25 @@ export async function startCft(opts: {
 			// cookies are kept by the data folder's own permissions instead, as Playwright and Puppeteer run Chrome.
 			"--use-mock-keychain",
 			"--password-store=basic",
+			...extra,
 		],
 		{ stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"] },
 	);
 	const sink = Bun.file(proc.stdio[3] as unknown as number).writer();
 	const listeners = new TransportListeners();
+	let probed = null as ((runs: boolean) => void) | null;
 
-	// What Chrome said on stderr last, for the reason given when it exits on its own.
+	// What Chrome said on stderr last, for the reason given when it exits on its own; and whether it found no sandbox.
 	let lastErr = "";
-	void (async () => {
+	let noSandbox = false;
+	const stderrRead = (async () => {
 		const decoder = new TextDecoder();
-		for await (const chunk of proc.stderr as ReadableStream<Uint8Array>)
-			lastErr = (lastErr + decoder.decode(chunk, { stream: true })).slice(-2000);
+		for await (const chunk of proc.stderr as ReadableStream<Uint8Array>) {
+			const text = decoder.decode(chunk, { stream: true });
+			if (text.includes("No usable sandbox")) noSandbox = true;
+			lastErr = (lastErr + text).slice(-2000);
+		}
 	})().catch(() => {});
-
 	void (async () => {
 		const decoder = new TextDecoder();
 		let buffered = "";
@@ -64,6 +98,10 @@ export async function startCft(opts: {
 				try {
 					message = JSON.parse(text) as CdpMessage;
 				} catch {
+					continue;
+				}
+				if (message.id === PROBE_ID) {
+					probed?.(true);
 					continue;
 				}
 				listeners.deliver(message);
@@ -89,7 +127,7 @@ export async function startCft(opts: {
 	if (opts.signal?.aborted) close("stopped");
 	else opts.signal?.addEventListener("abort", () => close("stopped"), { once: true });
 
-	return {
+	const transport: CftTransport = {
 		pid: proc.pid,
 		exited,
 		send(message: object) {
@@ -100,5 +138,23 @@ export async function startCft(opts: {
 		onMessage: (fn) => listeners.onMessage(fn),
 		onClose: (fn) => listeners.onClose(fn),
 		close: () => close("closed"),
+	};
+	return {
+		transport,
+		// Whether Chrome answers a first call (false: it exited first), what it said on stderr read to its end.
+		runs: async () => {
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			const answered = await new Promise<boolean>((resolve) => {
+				probed = resolve;
+				timer = setTimeout(() => resolve(true), PROBE_MS);
+				void proc.exited.then(() => resolve(false));
+				transport.send({ id: PROBE_ID, method: "Browser.getVersion" });
+			});
+			clearTimeout(timer);
+			probed = null;
+			if (!answered) await stderrRead;
+			return answered;
+		},
+		sandboxRefused: () => noSandbox,
 	};
 }

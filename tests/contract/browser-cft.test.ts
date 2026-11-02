@@ -1,6 +1,6 @@
 // needs: posixShell
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
@@ -60,3 +60,28 @@ test("CfT started with an already-aborted signal does not keep running", async (
 	while (alive(transport.pid) && Date.now() < deadline) await Bun.sleep(50);
 	expect(alive(transport.pid)).toBe(false);
 }, 30_000);
+
+test("on Linux, a Chrome that finds no usable sandbox is started again without one, and runs", async () => {
+	const real = process.env.OMPW_BROWSER_EXECUTABLE || chromium.executablePath();
+	// Chrome as a system without unprivileged user namespaces runs it (Ubuntu 23.10+, CI runners): it aborts at once,
+	// saying why, unless it is told to run without the sandbox.
+	const executable = join(root, "chrome-without-sandbox");
+	writeFileSync(
+		executable,
+		[
+			"#!/bin/sh",
+			`case " $* " in *" --no-sandbox "*) exec '${real}' "$@" ;; esac`,
+			"echo '[FATAL:zygote_host_impl_linux.cc(128)] No usable sandbox! If you are running on Ubuntu 23.10+ ...' >&2",
+			"echo '[end of stack trace]' >&2",
+			"exit 134",
+			"",
+		].join("\n"),
+		{ mode: 0o755 },
+	);
+	const transport = await startCft({ executable, profileDir: join(root, "nosandbox"), platform: "linux" });
+	const client = new CdpClient(transport);
+	const version = await client.call<{ product: string }>("Browser.getVersion");
+	expect(version.product).toMatch(/^(HeadlessChrome|Chrome)\//);
+	transport.close();
+	await transport.exited;
+}, 60_000);
