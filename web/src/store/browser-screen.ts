@@ -58,7 +58,12 @@ function open(): void {
 	socket.binaryType = "arraybuffer";
 	ws = socket;
 	socket.onopen = () => {
-		if (lastWatch) socket.send(JSON.stringify(lastWatch));
+		if (lastWatch) {
+			// A new connection is told the page's console from the start: the list starts over.
+			const shown = lastWatch.targetId;
+			if (shown) useScreen.setState((s) => ({ console: { ...s.console, [shown]: [] } }));
+			socket.send(JSON.stringify(lastWatch));
+		}
 		for (const fit of fits.values()) socket.send(JSON.stringify(fit));
 	};
 	socket.onmessage = (e) => {

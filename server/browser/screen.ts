@@ -414,6 +414,8 @@ export class ScreenClient {
 		switch (msg.t) {
 			case "watch": {
 				if (typeof msg.owner !== "string") return;
+				// The page this tab watched until now: watched again (its panel resized), it has been told its console already.
+				const before = this.view;
 				this.unwatch();
 				if (msg.owner !== this.owner) this.unfit();
 				this.owner = msg.owner;
@@ -425,10 +427,11 @@ export class ScreenClient {
 				if (this.closed || this.targetId !== msg.targetId) return;
 				this.view = view;
 				view.watchers.add(this);
-				for (const entry of view.console)
-					this.socket.sendText(
-						JSON.stringify({ t: "console", targetId: view.targetId, entry } satisfies ScreenServerMessage),
-					);
+				if (view !== before)
+					for (const entry of view.console)
+						this.socket.sendText(
+							JSON.stringify({ t: "console", targetId: view.targetId, entry } satisfies ScreenServerMessage),
+						);
 				this.sendPages();
 				await view.cast();
 				return;

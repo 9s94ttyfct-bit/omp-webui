@@ -134,8 +134,14 @@ function launch(
 		exited,
 		send(message: object) {
 			if (listeners.ended !== null) return;
-			sink.write(`${JSON.stringify(message)}\0`);
-			void Promise.resolve(sink.flush()).catch(() => {});
+			// A Chrome that has just exited (one that finds no sandbox, at once) has closed its end: the write fails at
+			// once (EPIPE), and its exit, which follows, says why.
+			try {
+				sink.write(`${JSON.stringify(message)}\0`);
+				void Promise.resolve(sink.flush()).catch(() => {});
+			} catch {
+				// The pipe is gone; `exited` ends the transport.
+			}
 		},
 		onMessage: (fn) => listeners.onMessage(fn),
 		onClose: (fn) => listeners.onClose(fn),

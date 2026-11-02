@@ -90,6 +90,33 @@ test("a page's console is told only to the tabs that show that page", async () =
 	expect(listOnly.texts.some((m) => m.t === "console")).toBe(false);
 });
 
+test("a tab that watches its page again (its panel resized) is not told the page's console twice", async () => {
+	const registry = new PageRegistry(join(work, "owners-rewatch.json"));
+	const browser = new FakeBrowser();
+	const host = new EngineHost(registry, async () => ({ transport: browser, generation: "g", fresh: true }));
+	const hub = new ScreenHub(host, registry);
+	const engine = await host.ready();
+	const page = await engine.createPage("/s/a.jsonl");
+	const other = await engine.createPage("/s/a.jsonl");
+	const tab = new Socket();
+	const client = hub.connect(tab);
+	const watch = (targetId: string, w: number) =>
+		client.message(JSON.stringify({ t: "watch", owner: "/s/a.jsonl", targetId, panel: { w, h: 600 } }));
+	const told = () => tab.texts.filter((m) => m.t === "console").length;
+	watch(page, 800);
+	await until(() => browser.log.some((l) => l.method === "Runtime.enable"));
+	browser.emitOnPage(page, "Runtime.consoleAPICalled", { type: "error", args: [{ type: "string", value: "boom" }] });
+	await until(() => told() === 1);
+	watch(page, 640);
+	await until(() => tab.texts.filter((m) => m.t === "pages").length >= 4);
+	await Bun.sleep(10);
+	expect(told()).toBe(1);
+	// Another page, then this one again: the tab's list started over, so it is told the console again.
+	watch(other, 640);
+	watch(page, 640);
+	await until(() => told() === 2);
+});
+
 test("a tab acts only on the pages of the conversation it watches", async () => {
 	const registry = new PageRegistry(join(work, "owners-scope.json"));
 	const browser = new FakeBrowser();
