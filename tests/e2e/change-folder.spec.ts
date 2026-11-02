@@ -121,3 +121,25 @@ test("the folder on the status line is the way to another one, and the conversat
 	expect(readdirSync(from)).toEqual(["keep.txt"]);
 	expect(readdirSync(to)).toEqual(["keep.txt"]);
 });
+
+test("the folder under the conversation's title is the way to another one too", async ({ page }) => {
+	const from = folder("from-header");
+	const to = folder("to-header");
+	const title = writeSession(3, from);
+	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
+	await page.goto("/");
+	await openSidebar(page);
+	await expect(sessionRow(page, title)).toHaveCount(1, { timeout: 15_000 });
+	await sessionRow(page, title).click();
+	const header = page.getByTestId("chat-cwd-change");
+	await expect(header).toContainText("from-header");
+	await expect(header).toHaveAttribute("title", `${from} · Change folder…`);
+	await header.click();
+	// The picker opens on the conversation's folder.
+	await expect(page.getByRole("dialog").getByLabel("Path")).toHaveValue(from);
+	await pick(page, to);
+	await expect(header).toContainText("to-header", { timeout: 30_000 });
+	await expect(page.getByTestId("msg-assistant").filter({ hasText: "Reply 3." })).toBeVisible();
+	expect(readdirSync(from)).toEqual(["keep.txt"]);
+	expect(readdirSync(to)).toEqual(["keep.txt"]);
+});

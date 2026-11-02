@@ -6,6 +6,7 @@ export const zh: Record<keyof typeof en, string> = {
 	chipCpu: "CPU {v}",
 	chipGpu: "GPU {v}",
 	chipMem: "内存 {v}",
+	chipPower: "功耗 {v}",
 	chipAria: "本机负载：{figures}。内存压力：{pressure}。",
 	chipAriaNoPressure: "本机负载：{figures}。",
 	chipOffline: "未连接：显示的是最后收到的数据。",

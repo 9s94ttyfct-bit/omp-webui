@@ -28,7 +28,7 @@ async function open(page: Page, history: HostHistory) {
 }
 
 test.describe("with figures the spec chose", () => {
-	test("the line says CPU, GPU and memory as the history's last look had them, and each look that comes after it", async ({
+	test("the line says CPU, GPU, memory and power as the history's last look had them, and each look that comes after it", async ({
 		page,
 	}) => {
 		const now = Date.now();
@@ -36,17 +36,17 @@ test.describe("with figures the spec chose", () => {
 		const host = await open(page, history);
 		const last = lookAt(history.fine.t.at(-1) as number);
 		await expect(page.getByTestId("host-figures")).toHaveText(
-			`CPU ${Math.round(last.cpu)}% · GPU ${Math.round(last.gpu as number)}% · MEM ${Math.round(last.mem as number)}%`,
+			`CPU ${Math.round(last.cpu)}% · GPU ${Math.round(last.gpu as number)}% · MEM ${Math.round(last.mem as number)}% · ${(last.power as number).toFixed(1)} W`,
 		);
 		await expect(chip(page)).toHaveAttribute("data-level", "0");
 		await expect(page.getByTestId("host-dot")).toHaveClass(/bg-success/);
 		await expect(chip(page)).toHaveAttribute(
 			"aria-label",
-			/Host load: CPU \d+%, GPU \d+%, MEM \d+%\. Memory pressure: Normal\./,
+			/Host load: CPU \d+%, GPU \d+%, MEM \d+%, power \d+\.\d W\. Memory pressure: Normal\./,
 		);
 
-		await host.push({ cpu: 88, gpu: 41, mem: 73, pressure: 1 });
-		await expect(page.getByTestId("host-figures")).toHaveText("CPU 88% · GPU 41% · MEM 73%");
+		await host.push({ cpu: 88, gpu: 41, mem: 73, pressure: 1, power: 6.2 });
+		await expect(page.getByTestId("host-figures")).toHaveText("CPU 88% · GPU 41% · MEM 73% · 6.2 W");
 		await expect(chip(page)).toHaveAttribute("data-level", "1");
 		await expect(page.getByTestId("host-dot")).toHaveClass(/bg-warning/);
 
@@ -57,7 +57,7 @@ test.describe("with figures the spec chose", () => {
 
 	test("a computer with no GPU to read has none on the line, nor a tile, nor a graph", async ({ page }) => {
 		await open(page, historyAt(Date.now(), { noGpu: true }));
-		await expect(page.getByTestId("host-figures")).toHaveText(/^CPU \d+% · MEM \d+%$/);
+		await expect(page.getByTestId("host-figures")).toHaveText(/^CPU \d+% · MEM \d+% · \d+\.\d W$/);
 		await expect(chip(page)).not.toHaveAttribute("aria-label", /GPU/);
 		await chip(page).click();
 		await expect(popover(page)).toBeVisible();
@@ -68,11 +68,13 @@ test.describe("with figures the spec chose", () => {
 		await expect(page.getByTestId("host-chart-cpu")).toBeVisible();
 	});
 
-	test("a computer that tells no power draw has no power tile nor graph", async ({ page }) => {
+	test("a computer that tells no power draw has no power on the line, nor a tile, nor a graph", async ({ page }) => {
 		const history = historyAt(Date.now(), { info: { power: false } });
 		history.fine.power = history.fine.power.map(() => null);
 		history.coarse.power = history.coarse.power.map(() => null);
 		await open(page, history);
+		await expect(page.getByTestId("host-figures")).toHaveText(/^CPU \d+% · GPU \d+% · MEM \d+%$/);
+		await expect(chip(page)).not.toHaveAttribute("aria-label", /power/);
 		await chip(page).click();
 		await expect(page.getByTestId("host-chart-cpu")).toBeVisible();
 		await expect(page.getByTestId("host-tile-power")).toHaveCount(0);
@@ -85,7 +87,10 @@ test.describe("with figures the spec chose", () => {
 		history.coarse.pressure = history.coarse.pressure.map(() => null);
 		await open(page, history);
 		await expect(page.getByTestId("host-dot")).toHaveClass(/bg-faint/);
-		await expect(chip(page)).toHaveAttribute("aria-label", /^Host load: CPU \d+%, GPU \d+%, MEM \d+%\.$/);
+		await expect(chip(page)).toHaveAttribute(
+			"aria-label",
+			/^Host load: CPU \d+%, GPU \d+%, MEM \d+%, power \d+\.\d W\.$/,
+		);
 		await chip(page).click();
 		await expect(page.getByTestId("host-pressure")).toHaveCount(0);
 	});
@@ -288,7 +293,7 @@ test.describe("with figures the spec chose", () => {
 		expect(violations.flatMap((v) => v.nodes.map((n) => n.target.join(" ")))).toEqual([]);
 		await expect(chip(page)).toHaveAttribute("aria-label", /Not connected: these are the last figures received\.$/);
 		// The figures it had are still there.
-		await expect(page.getByTestId("host-figures")).toHaveText(/^CPU \d+% · GPU \d+% · MEM \d+%$/);
+		await expect(page.getByTestId("host-figures")).toHaveText(/^CPU \d+% · GPU \d+% · MEM \d+% · \d+\.\d W$/);
 		host.reconnect();
 		await expect(chip(page)).toHaveAttribute("data-connected", "true", { timeout: 30_000 });
 		// The server forgot what the old connection watched: the new one is told.
@@ -346,8 +351,11 @@ test.describe("in Chinese", () => {
 
 	test("the line, the pressure and the pane are in Chinese, with CPU and GPU in Latin", async ({ page }) => {
 		const host = await open(page, historyAt(Date.now(), { pressure: [[40, 60, 1]] }));
-		await expect(page.getByTestId("host-figures")).toHaveText(/^CPU \d+% · GPU \d+% · 内存 \d+%$/);
-		await expect(chip(page)).toHaveAttribute("aria-label", /本机负载：CPU \d+%, GPU \d+%, 内存 \d+%。内存压力：正常。/);
+		await expect(page.getByTestId("host-figures")).toHaveText(/^CPU \d+% · GPU \d+% · 内存 \d+% · \d+\.\d W$/);
+		await expect(chip(page)).toHaveAttribute(
+			"aria-label",
+			/本机负载：CPU \d+%, GPU \d+%, 内存 \d+%, 功耗 \d+\.\d W。内存压力：正常。/,
+		);
 		await chip(page).click();
 		await expect(popover(page).getByRole("heading", { name: "本机负载" })).toBeVisible();
 		await expect(page.getByTestId("host-tile-gpu")).toContainText("Apple M4 Pro · 16 核");
@@ -462,7 +470,8 @@ test.describe("the real sampler", () => {
 		await appReady(page);
 		await openSidebar(page);
 		await expect(chip(page)).toBeVisible();
-		await expect(page.getByTestId("host-figures")).toHaveText(/^CPU \d+%( · GPU \d+%)? · MEM \d+%$/, {
+		// This computer's power draw where it tells one (a Mac with the SMC key), none where it does not (a CI runner).
+		await expect(page.getByTestId("host-figures")).toHaveText(/^CPU \d+%( · GPU \d+%)? · MEM \d+%( · \d+(\.\d)? W)?$/, {
 			timeout: 20_000,
 		});
 		await expect(chip(page)).toHaveAttribute("data-level", /^[012]?$/);

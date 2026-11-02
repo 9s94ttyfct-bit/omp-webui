@@ -32,6 +32,7 @@ import { blobBase64, controls, downloadExport, sessionActions } from "../lib/api
 import { unarchiveOnSend } from "../lib/archive.ts";
 import { useShownRepo } from "../lib/attention.ts";
 import { conversationBusy } from "../lib/busy.ts";
+import { askChangeFolder } from "../lib/change-folder.ts";
 import { useChatBottom } from "../lib/chat-bottom.ts";
 import { loadCommandNotes } from "../lib/command-notes.ts";
 import { withHeldFollowUps } from "../lib/compact-queue.ts";
@@ -1253,16 +1254,24 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 				<div className="flex min-w-0 items-center gap-1.5 text-xs text-faint">
 					{isArchived && currentFile ? <ArchivedMark file={currentFile} /> : null}
 					{cwd ? (
-						<>
+						// Like the folder on the status line, it is the way to another folder (`ChangeFolderDialog`); not while a turn runs.
+						<button
+							type="button"
+							className="flex min-w-0 items-center gap-1.5 rounded-sm hover:text-fg disabled:hover:text-inherit"
+							title={t("shell.changeFolderStatus", { folder: cwd })}
+							disabled={streaming}
+							onClick={() => askChangeFolder({ file: currentFile, liveId, cwd })}
+							data-testid="chat-cwd-change"
+						>
 							{repoInHeader ? (
-								<FolderGit2 size={11} className="shrink-0" />
+								<FolderGit2 size={11} className="shrink-0" aria-hidden />
 							) : (
-								<FolderOpen size={11} className="shrink-0" />
+								<FolderOpen size={11} className="shrink-0" aria-hidden />
 							)}
-							<span className="truncate" title={cwd} data-testid="chat-cwd" data-repo={repoInHeader ? "" : undefined}>
+							<span className="truncate" data-testid="chat-cwd" data-repo={repoInHeader ? "" : undefined}>
 								{repoInHeader ? repoName : shortPath(cwd, meta?.home)}
 							</span>
-						</>
+						</button>
 					) : null}
 				</div>
 			) : null}

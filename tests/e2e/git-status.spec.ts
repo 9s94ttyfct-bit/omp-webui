@@ -193,7 +193,7 @@ test("a clean repository shows its branch and no counts; a folder outside any re
 	await expect(page).toHaveTitle("omp-webui-demo · omp");
 	// The header names the repository, not the path the status line already shows; the path is its tooltip.
 	await expect(page.getByTestId("chat-cwd")).toHaveText("omp-webui-demo");
-	await expect(page.getByTestId("chat-cwd")).toHaveAttribute("title", fresh);
+	await expect(page.getByTestId("chat-cwd-change")).toHaveAttribute("title", `${fresh} · Change folder…`);
 	// Another page than a conversation has no repository.
 	await page.getByTestId("new-chat").click();
 	await expect(page).toHaveTitle("omp");

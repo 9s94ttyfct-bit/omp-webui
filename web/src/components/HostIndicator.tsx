@@ -2,7 +2,7 @@ import * as Popover from "@radix-ui/react-popover";
 import { Suspense, useId } from "react";
 import { useT } from "../i18n/index.ts";
 import { useHostWatch } from "../lib/host.ts";
-import { fmtShare, hostColor } from "../lib/host-rows.ts";
+import { fmtShare, fmtWatts, hostColor } from "../lib/host-rows.ts";
 import { useHost } from "../lib/host-store.ts";
 import { PRESSURE_DOT, PRESSURE_KEY, useHostStrings } from "../lib/host-strings.ts";
 import { lazyChunk } from "../lib/lazy-chunk.ts";
@@ -14,12 +14,12 @@ import { cx, Spinner, Tip } from "./ui.tsx";
 export const { Chunk: HostPaneChunk, retry: retryHostPane, preload } = lazyChunk(() => import("./HostPane.tsx"));
 
 /**
- * The host's load in the sidebar's footer, as one line (`CPU 12% · GPU 3% · MEM 61%` and a dot that is the colour of the
- * memory pressure), or, in the rail, as three small bars. A click, a tap or the keyboard opens the graphs. While it is on
- * screen the server tells this page each look, at its background pace (the line alone is no reason to look every 2 s);
- * the pane that opens here asks for the live pace (`HostPane`). A page that is hidden, or has no connection, asks for
+ * The host's load in the sidebar's footer, as one line (`CPU 12% · GPU 3% · MEM 61% · 6.2 W` and a dot that is the colour
+ * of the memory pressure), or, in the rail, as three small bars. A click, a tap or the keyboard opens the graphs. While it
+ * is on screen the server tells this page each look, at its background pace (the line alone is no reason to look every
+ * 2 s); the pane that opens here asks for the live pace (`HostPane`). A page that is hidden, or has no connection, asks for
  * nothing (`useHostWatch`) and the line is dimmed while there is no connection. The GPU is left out on a computer that
- * has none to read.
+ * has none to read, and the power draw on one that tells none (the rail's bars are shares, so it has no bar for power).
  */
 export default function HostIndicator({ variant }: { variant: "line" | "rail" }) {
 	const ready = useHostStrings();
@@ -29,6 +29,7 @@ export default function HostIndicator({ variant }: { variant: "line" | "rail" })
 	const connected = useApp((s) => s.connected);
 	const latest = useHost((s) => s.fine.at(-1) ?? null);
 	const gpuKnown = useHost((s) => s.info?.gpu != null);
+	const powerKnown = useHost((s) => s.info?.power === true);
 	const rail = variant === "rail";
 	if (!ready) return <div aria-hidden className={rail ? "h-8 w-8" : "h-7"} />;
 
@@ -39,10 +40,15 @@ export default function HostIndicator({ variant }: { variant: "line" | "rail" })
 		...(showGpu ? [t("host.chipGpu", { v: fmtShare(latest?.gpu) })] : []),
 		t("host.chipMem", { v: fmtShare(latest?.mem) }),
 	];
+	// The whole computer's power draw ends the line where the computer tells it; read aloud with its name.
+	const showPower = powerKnown || (latest?.power ?? null) !== null;
+	const watts = fmtWatts(latest?.power);
+	const shown = showPower ? [...figures, watts] : figures;
+	const told = showPower ? [...figures, t("host.chipPower", { v: watts })] : figures;
 	const said = level === null ? null : t(PRESSURE_KEY[level]);
 	const spoken = said
-		? t("host.chipAria", { figures: figures.join(", "), pressure: said })
-		: t("host.chipAriaNoPressure", { figures: figures.join(", ") });
+		? t("host.chipAria", { figures: told.join(", "), pressure: said })
+		: t("host.chipAriaNoPressure", { figures: told.join(", ") });
 	const aria = connected ? spoken : `${spoken} ${t("host.chipOffline")}`;
 	const dot = PRESSURE_DOT[level ?? "none"];
 	const bars = [latest?.cpu ?? null, ...(showGpu ? [latest?.gpu ?? null] : []), latest?.mem ?? null];
@@ -96,13 +102,21 @@ export default function HostIndicator({ variant }: { variant: "line" | "rail" })
 					onPointerEnter={preload}
 					onFocus={preload}
 					className={cx(
-						"flex h-7 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs tabular-nums hover:bg-hover hover:text-fg",
+						"flex min-h-7 w-full items-center gap-2 rounded-md px-2.5 py-1 text-left text-xs tabular-nums hover:bg-hover hover:text-fg",
 						// Figures the server no longer updates are told apart in the faint ink, not faded: at half opacity they were 2.2:1.
 						connected ? "text-muted" : "text-faint",
 					)}
 				>
-					<span className="min-w-0 truncate" data-testid="host-figures">
-						{figures.join(" · ")}
+					{/* A narrow sidebar breaks the line between two figures, never inside one, rather than cutting off the last
+					    (the power draw, at the end): each figure keeps its separator, and the space after it is where a line may break. */}
+					<span className="min-w-0" data-testid="host-figures">
+						{shown.map((figure, i) => (
+							// biome-ignore lint/suspicious/noArrayIndexKey: the figures are CPU, GPU, memory, power in a fixed order
+							<span key={i}>
+								{i > 0 ? " " : null}
+								<span className="whitespace-nowrap">{i < shown.length - 1 ? `${figure} ·` : figure}</span>
+							</span>
+						))}
 					</span>
 					<span aria-hidden data-testid="host-dot" className={cx("ml-auto h-2 w-2 shrink-0 rounded-full", dot)} />
 				</button>

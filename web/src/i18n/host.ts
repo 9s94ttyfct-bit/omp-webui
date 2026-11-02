@@ -11,6 +11,8 @@ export const en = {
 	chipCpu: "CPU {v}",
 	chipGpu: "GPU {v}",
 	chipMem: "MEM {v}",
+	// The sidebar's line shows the power draw as its figure alone (`6.2 W`); a screen reader hears its name too.
+	chipPower: "power {v}",
 	chipAria: "Host load: {figures}. Memory pressure: {pressure}.",
 	chipAriaNoPressure: "Host load: {figures}.",
 	chipOffline: "Not connected: these are the last figures received.",

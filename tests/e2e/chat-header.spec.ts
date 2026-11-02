@@ -147,7 +147,7 @@ test.describe("phone", () => {
 		await sessionRow(page, title).click();
 
 		const folder = page.getByTestId("chat-cwd");
-		await expect(folder).toHaveAttribute("title", cwd);
+		await expect(page.getByTestId("chat-cwd-change")).toHaveAttribute("title", `${cwd} · Change folder…`);
 		expect(await folder.evaluate((el) => getComputedStyle(el).textOverflow)).toBe("ellipsis");
 		expect(await folder.evaluate((el) => el.scrollWidth > el.clientWidth), "path is cut").toBe(true);
 		// It is cut inside the header, not pushed past it.
