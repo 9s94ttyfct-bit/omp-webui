@@ -33,6 +33,11 @@ export async function startCft(opts: {
 			"--no-first-run",
 			"--no-default-browser-check",
 			"--disable-background-networking",
+			// Never the macOS keychain ("Chromium Safe Storage") or a Linux secret store: CfT is a fresh unsigned binary at
+			// each version, so the keychain would ask the person for their login password on every start. The profile's
+			// cookies are kept by the data folder's own permissions instead, as Playwright and Puppeteer run Chrome.
+			"--use-mock-keychain",
+			"--password-store=basic",
 		],
 		{ stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"] },
 	);
