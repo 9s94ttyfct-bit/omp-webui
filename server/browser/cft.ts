@@ -69,7 +69,7 @@ export async function startCft(opts: {
 				listeners.deliver(message);
 			}
 		}
-	})().catch(() => {});
+	})().catch((e) => close(`The pipe from Chrome for Testing broke: ${e instanceof Error ? e.message : String(e)}`));
 
 	const exited = proc.exited.then((code) => {
 		const line = lastErr.trim().split("\n").pop()?.trim();
@@ -86,7 +86,8 @@ export async function startCft(opts: {
 		const hard = setTimeout(() => proc.kill("SIGKILL"), QUIT_MS);
 		void proc.exited.then(() => clearTimeout(hard));
 	};
-	opts.signal?.addEventListener("abort", () => close("stopped"), { once: true });
+	if (opts.signal?.aborted) close("stopped");
+	else opts.signal?.addEventListener("abort", () => close("stopped"), { once: true });
 
 	return {
 		pid: proc.pid,
