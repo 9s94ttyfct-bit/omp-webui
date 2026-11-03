@@ -33,6 +33,8 @@ export interface ScreenSocket {
 
 /** A socket further behind than this misses frames until it catches up. */
 const FRAME_BACKLOG = 1 << 20;
+/** How long after a page has loaded a screencast that has sent nothing since the page navigated is started again. */
+const RECAST_AFTER_MS = 1000;
 /** Console entries kept per page, for a tab that starts showing it. */
 const CONSOLE_KEPT = 200;
 /** Requests remembered per page for the address a failed one was for. */
@@ -126,6 +128,12 @@ class PageView {
 	seq = Math.floor((performance.timeOrigin + performance.now()) * 1000);
 	/** The screencast's size now; null while it does not run. */
 	casting: Size | null = null;
+	/**
+	 * Whether a frame has come since the main frame last navigated. The screencast sends one only when the page changes:
+	 * one lost (a socket too far behind), or none sent for the new document, and a page that then stays still would never
+	 * be shown (#41). A page that has loaded with none gets its screencast started again (`recast`).
+	 */
+	framed = true;
 	/** Where the Mac app's own view draws the page (`fit` of the protocol); null: only screencasts show it. */
 	fit: Size | null = null;
 	/** The tab that said so: the fit ends with it. */
@@ -235,6 +243,14 @@ class PageView {
 			maxHeight: room.h,
 			everyNthFrame: 1,
 		}).catch(() => {});
+	}
+
+	/** Start the screencast again, at the size it runs at: the engine then sends the page as it is now. */
+	async recast(): Promise<void> {
+		if (!this.casting) return;
+		this.casting = null;
+		await this.call("Page.stopScreencast").catch(() => {});
+		await this.cast();
 	}
 
 	note(entry: ConsoleEntry): void {
@@ -366,7 +382,14 @@ export class ScreenHub {
 				{ targetId: view.targetId, w: view.size.w, h: view.size.h, scale: view.size.scale, seq: ++view.seq },
 				Buffer.from(p.data, "base64"),
 			);
-			for (const c of view.watchers) if (c.frames && c.socket.buffered() <= FRAME_BACKLOG) c.socket.sendBinary(frame);
+			// A frame a tab missed (its socket too far behind) is not one it was shown: the page may be shown again (`framed`).
+			let missed = false;
+			for (const c of view.watchers) {
+				if (!c.frames) continue;
+				if (c.socket.buffered() <= FRAME_BACKLOG) c.socket.sendBinary(frame);
+				else missed = true;
+			}
+			view.framed = !missed;
 		});
 		on<{ type: string; args: ConsoleArg[]; timestamp: number }>("Runtime.consoleAPICalled", (view, p) => {
 			view.note({
@@ -411,11 +434,20 @@ export class ScreenHub {
 			});
 		};
 		on<{ frame: { parentId?: string } }>("Page.frameNavigated", (view, p) => {
-			if (!p.frame.parentId) navigated(view);
+			if (p.frame.parentId) return;
+			view.framed = false;
+			navigated(view);
 		});
 		on("Page.navigatedWithinDocument", (view) => navigated(view));
 		// The entry a navigation made may not be in the history yet when it is said: read again once the page has loaded.
-		on("Page.loadEventFired", (view) => navigated(view));
+		// And a page loaded with no frame since it navigated is shown by starting its screencast again (`PageView.framed`),
+		// after a moment for the frame the engine may still be about to send.
+		on("Page.loadEventFired", (view) => {
+			navigated(view);
+			setTimeout(() => {
+				if (!view.framed) void view.recast();
+			}, RECAST_AFTER_MS);
+		});
 	}
 }
 

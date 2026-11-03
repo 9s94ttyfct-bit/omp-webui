@@ -205,6 +205,36 @@ test("a page's frames are numbered above any earlier view's of it, so a tab that
 	expect(seqOf(later.frames[0])).toBeGreaterThan(seqOf(first.frames.at(-1)));
 });
 
+test("a page that has loaded with no frame since it navigated is cast again; one that sent a frame is not (#41)", async () => {
+	const registry = new PageRegistry(join(work, "owners-recast.json"));
+	const browser = new FakeBrowser();
+	const host = new EngineHost(registry, async () => ({ transport: browser, generation: "g", fresh: true }));
+	const hub = new ScreenHub(host, registry);
+	const engine = await host.ready();
+	const silent = await engine.createPage("/s/a.jsonl");
+	const shown = await engine.createPage("/s/a.jsonl");
+	for (const page of [silent, shown]) {
+		const tab = new Socket();
+		hub
+			.connect(tab)
+			.message(JSON.stringify({ t: "watch", owner: "/s/a.jsonl", targetId: page, panel: { w: 800, h: 600 } }));
+	}
+	const starts = () => browser.log.filter((l) => l.method === "Page.startScreencast").length;
+	await until(() => starts() === 2);
+	const frame = { data: Buffer.from("jpeg").toString("base64"), sessionId: 1 };
+	for (const page of [silent, shown]) browser.emitOnPage(page, "Page.frameNavigated", { frame: { id: "main" } });
+	// A child frame's navigation is not the page's.
+	browser.emitOnPage(shown, "Page.frameNavigated", { frame: { id: "child", parentId: "main" } });
+	browser.emitOnPage(shown, "Page.screencastFrame", frame);
+	for (const page of [silent, shown]) browser.emitOnPage(page, "Page.loadEventFired", {});
+	// The engine gets a moment for a frame first (`RECAST_AFTER_MS`, 1 s).
+	await Bun.sleep(900);
+	await until(() => starts() === 3);
+	await Bun.sleep(1200);
+	expect(starts()).toBe(3);
+	expect(browser.log.filter((l) => l.method === "Page.stopScreencast")).toHaveLength(1);
+});
+
 test("a tab that draws the page itself (the Mac app's view) is told its console, and gets no frames", async () => {
 	const registry = new PageRegistry(join(work, "owners-console-only.json"));
 	const browser = new FakeBrowser();
