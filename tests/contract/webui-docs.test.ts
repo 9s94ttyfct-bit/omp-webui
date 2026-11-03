@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { BROWSER_NOTE } from "../../server/omp/docs-tool/extension.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { type Frame, watchFrames } from "../support/frames.ts";
 import { pollUntil } from "../support/poll.ts";
@@ -22,6 +23,8 @@ import { connect, request } from "../support/ws.ts";
  */
 
 const DEVICE = "xd://webui_docs";
+/** What omp's prompt for a task subagent says (its request is told apart by it). */
+const SUBAGENT = "You are operating on a piece of work assigned to you by the main agent";
 
 interface Call {
 	name: string;
@@ -37,6 +40,8 @@ const told: string[] = [];
 let seq = 0;
 
 const script = (req: ScriptedRequest): ScriptedTurn => {
+	// A subagent reports at once.
+	if (req.text.includes(SUBAGENT)) return { text: "Scout report." };
 	// A title's request offers no task tool.
 	if (!req.tools.includes("task")) return { text: "A title" };
 	const messages = JSON.parse(req.text) as { role?: string; content?: unknown }[];
@@ -129,6 +134,25 @@ test("the app starts omp with the docs extension, and the main agent is offered 
 	// Mounted among omp's discoverable tools, with its summary: the schema is read on demand.
 	expect(req.text).toContain(DEVICE);
 	expect(req.text).toContain("omp-webui's own documentation");
+	// And told to look at pages in the built-in browser, never in a window on the person's desktop.
+	expect(req.text).toContain(BROWSER_NOTE.split("\n")[1]);
+	c.ws.close();
+}, 120_000);
+
+test("a subagent is told where to look at web pages too", async () => {
+	const c = await conversation();
+	const word = mark("sub");
+	plan.main = {
+		name: "task",
+		args: { context: "# Goal\nShared.", tasks: [{ name: "Scout", task: `Report back. ${word}-TASK` }] },
+	};
+	await turn(c, word);
+	await pollUntil(
+		() => agent.requests.some((r) => r.text.includes(SUBAGENT) && r.text.includes(`${word}-TASK`)),
+		"the subagent's request",
+	);
+	const sub = agent.requests.find((r) => r.text.includes(SUBAGENT) && r.text.includes(`${word}-TASK`));
+	expect(sub?.text).toContain(BROWSER_NOTE.split("\n")[1]);
 	c.ws.close();
 }, 120_000);
 

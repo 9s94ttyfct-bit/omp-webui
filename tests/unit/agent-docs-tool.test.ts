@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import docsData from "../../server/omp/docs-tool/docs-data.ts";
-import webuiDocs, { answer, DOCS_TOOL } from "../../server/omp/docs-tool/extension.ts";
+import webuiDocs, { answer, BROWSER_NOTE, DOCS_TOOL } from "../../server/omp/docs-tool/extension.ts";
 import { DocsToolService, docsToolPaths, installDocsTool } from "../../server/omp/docs-tool/install.ts";
 import { createLookup, DocsError, READ_MAX, SEARCH_LIMIT_MAX } from "../../server/omp/docs-tool/lookup.ts";
 import { expectMode } from "../support/modes.ts";
@@ -148,7 +148,7 @@ describe("read", () => {
 
 describe("the extension", () => {
 	const registered: Registered[] = [];
-	webuiDocs({ registerTool: (tool) => registered.push(tool as unknown as Registered) });
+	webuiDocs({ registerTool: (tool) => registered.push(tool as unknown as Registered), on: () => {} });
 	const tool = registered[0];
 
 	test("registers one read-only, discoverable tool named webui_docs", () => {
@@ -213,10 +213,23 @@ describe("the installed copy", () => {
 		// The copy omp loads, imported from where omp finds it: it registers the tool and answers.
 		const ext = (await import(path)).default as typeof webuiDocs;
 		const tools: Registered[] = [];
-		ext({ registerTool: (t) => tools.push(t as unknown as Registered) });
+		let onStart: ((event: unknown, ctx: unknown) => unknown) | null = null;
+		ext({
+			registerTool: (t) => tools.push(t as unknown as Registered),
+			on: (_event, handler) => {
+				onStart = handler as (event: unknown, ctx: unknown) => unknown;
+			},
+		});
 		const text = (await tools[0].execute("1", { action: "search", query: "webui_docs" })).content[0].text;
 		expect(text).toMatch(/^\d+ section\(s\) for "webui_docs"/);
 		expect(text).toContain(" › ");
+		// And it adds the browser note after omp's own blocks, for the main agent and a subagent; a title's request has no agent.
+		const start = onStart as unknown as (event: unknown, ctx: unknown) => unknown;
+		for (const kind of ["main", "sub"])
+			expect(start({ systemPrompt: ["omp's own"] }, { agent: { kind } })).toEqual({
+				systemPrompt: ["omp's own", BROWSER_NOTE],
+			});
+		expect(start({ systemPrompt: ["omp's own"] }, {})).toBeUndefined();
 	});
 
 	test("a file is written again only when it differs; the service says whether it could", () => {
