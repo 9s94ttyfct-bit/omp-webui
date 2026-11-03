@@ -29,7 +29,10 @@ async function askTab(page: Page, tap?: SocketTap): Promise<void> {
 	await page.route("**/api/models*", (route) => route.fulfill({ json: MODELS }));
 	if (tap) await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
 	await page.goto("/");
-	if (tap) await startLive(page, tap, FIXTURE.gammaTitle, "btw-model-probe");
+	// Each test's own probe: the conversation keeps what an earlier test's command printed (2 outputs, #33).
+	const run = test.info();
+	const probe = `btw-model-probe-${run.testId}-${run.repeatEachIndex}-${run.retry}`;
+	if (tap) await startLive(page, tap, FIXTURE.gammaTitle, probe);
 	else await sessionRow(page, FIXTURE.gammaTitle).click();
 	await expect(page.getByTestId("chat-title")).toHaveText(FIXTURE.gammaTitle);
 	await page.getByTestId("toggle-panel").click();
