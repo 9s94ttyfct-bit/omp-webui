@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { messageWhere } from "../support/frames.ts";
+import { writeSimpleSession } from "../support/fixtures.ts";
 import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
@@ -123,6 +124,34 @@ test("Change folder moves a conversation that has no process: omp's /move, no pr
 	// The process started for the move has ended.
 	await pollUntil(async () => (await running()).length === runningBefore, "the move's process to end");
 	// Opened again, it is in the new folder.
+	const again = await request<LiveInfo>(ws, {
+		t: "open",
+		target: { kind: "resume", sessionFile: r.body.file as string, model: HAIKU },
+	});
+	expect(again.cwd).toBe(there);
+	await request(ws, { t: "close", liveId: again.liveId });
+	ws.close();
+}, 90_000);
+
+test("Change folder rescues a conversation whose folder is gone: it moves to the chosen one and opens there (#28)", async () => {
+	const gone = join(s.root, "deleted-project");
+	mkdirSync(gone, { recursive: true });
+	const file = writeSimpleSession(s.agentDir, 0xc8, "Folder gone", undefined, realpathSync(gone));
+	rmSync(gone, { recursive: true });
+	const there = project("rescued");
+	const ws = await connect(s);
+	// Opened as it is, it has no folder to run in: the page asks for one.
+	await expect(request(ws, { t: "open", target: { kind: "resume", sessionFile: file } })).rejects.toThrow(
+		/no longer exists/,
+	);
+
+	const r = await move({ file, folder: there });
+	expect(r.status).toBe(200);
+	expect(r.body.cwd).toBe(there);
+	// omp filed it under the new folder (a process started in that folder would have found nothing to move).
+	expect(r.body.file).toContain("rescued");
+	expect(existsSync(file)).toBe(false);
+	expect(existsSync(gone)).toBe(false);
 	const again = await request<LiveInfo>(ws, {
 		t: "open",
 		target: { kind: "resume", sessionFile: r.body.file as string, model: HAIKU },

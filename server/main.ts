@@ -1,7 +1,7 @@
 // `omp-webui-server --ompw-relay …` is a relay (see omp/relay.ts), not a server: it never gets past this import.
 import "./omp/relay-main.ts";
 import { timingSafeEqual } from "node:crypto";
-import { closeSync, existsSync, openSync, readSync, realpathSync, statSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { type ApprovalMode, approvalModeNeeds, isApprovalMode } from "../shared/approval.ts";
@@ -2139,7 +2139,14 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 					target: from ? await sessionTarget(from) : null,
 					running,
 					folder,
-					open: () => pool.open({ kind: "resume", sessionFile: from as string }, cwdOfSessionFile),
+					// A conversation whose own folder is gone (#28) starts for the move in an empty folder of the app's own: not in
+					// the one it moves to, where `/move` would find it already is and file nothing, and with nothing to run but
+					// `/move` (the process is ended after it). One whose folder is there starts there, as always.
+					open: () => {
+						const staging = join(cfg.dataDir, "move-staging");
+						mkdirSync(staging, { recursive: true, mode: 0o700 });
+						return pool.open({ kind: "resume", sessionFile: from as string, folder: staging }, cwdOfSessionFile);
+					},
 				});
 				// The sidebar's own list is kept by file: an archived conversation stays archived in its new file.
 				if (from && moved.file && moved.file !== from && archived.list().includes(from)) {
