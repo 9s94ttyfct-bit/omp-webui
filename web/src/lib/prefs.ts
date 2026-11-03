@@ -38,6 +38,13 @@ let started = false;
 let synced = false;
 /** The newest store state this page has taken in; an older one, arriving late, is ignored. */
 let seen: { id: string; rev: number } | null = null;
+/**
+ * What the server last said of each key. localStorage is the origin's, shared by its tabs: a value there that is neither
+ * this nor what a newer snapshot says is a choice of this origin the server has not heard yet, maybe another tab's, which
+ * that tab still has to send. Writing the server's older word over it would undo it, and that tab, hearing the write as
+ * a newer choice (`onStorage`), would drop its own (#33).
+ */
+let told: PrefsSnapshot["values"] | null = null;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let chain: Promise<void> = Promise.resolve();
 
@@ -159,9 +166,10 @@ function writeLocal(changes: PrefsChanges): PrefKey[] {
 }
 
 /**
- * The server's copy as another page (or this page's own request) left it: take it in, key by key, except what this page
- * has chosen and the server has not heard yet. Older than what was seen is ignored; a store this page never met (a data dir
- * that was replaced under it) is merged as at start-up, so that this page's own choices are not wiped by it.
+ * The server's copy as another page (or this page's own request) left it: take it in, key by key, except what this origin
+ * has chosen and the server has not heard yet (this page's own edits, and another tab's: see `told`). Older than what was
+ * seen is ignored; a store this page never met (a data dir that was replaced under it) is merged as at start-up, so that
+ * this page's own choices are not wiped by it.
  */
 export function receiveSnapshot(snapshot: PrefsSnapshot): void {
 	if (!synced) return;
@@ -170,11 +178,16 @@ export function receiveSnapshot(snapshot: PrefsSnapshot): void {
 		seen = { id: snapshot.id, rev: snapshot.rev };
 		const take: PrefsChanges = {};
 		for (const key of PREF_KEYS) {
-			if (!pending.has(key) && !inflight.has(key)) take[key] = snapshot.values[key];
+			if (pending.has(key) || inflight.has(key)) continue;
+			const here = localStorage.getItem(key);
+			if (told && here !== told[key] && here !== snapshot.values[key]) continue;
+			take[key] = snapshot.values[key];
 		}
+		told = snapshot.values;
 		announce(writeLocal(take));
 	} else {
 		seen = { id: snapshot.id, rev: snapshot.rev };
+		told = snapshot.values;
 		const { adopt, upload } = reconcile(snapshot, null, localValues());
 		announce(writeLocal(adopt));
 		for (const [key, value] of Object.entries(upload) as [PrefKey, string | null][]) {
@@ -229,6 +242,7 @@ export async function startPrefsSync(): Promise<void> {
 		if (!pending.has(key)) pending.set(key, value);
 	}
 	seen = { id: snapshot.id, rev: snapshot.rev };
+	told = snapshot.values;
 	synced = true;
 	if (pending.size > 0) await flushPrefs();
 	else markIfCurrent(snapshot);

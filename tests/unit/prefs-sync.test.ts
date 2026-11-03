@@ -56,10 +56,15 @@ const posts = () => requests.filter((r) => r.method === "POST");
 
 /**
  * Load the page as `server` serves it at an origin holding `stored`, and start the page's sync. `served: false` is a
- * page that came without the preferences in it (the dev server's).
+ * page that came without the preferences in it (the dev server's). `storage`: another tab's, for a tab of the same origin.
  */
-async function open(server: UiPrefs, stored: Record<string, string> = {}, served = true): Promise<Origin> {
-	const storage = new Map(Object.entries(stored));
+async function open(
+	server: UiPrefs,
+	stored: Record<string, string> = {},
+	served = true,
+	shared?: Map<string, string>,
+): Promise<Origin> {
+	const storage = shared ?? new Map(Object.entries(stored));
 	const html = served ? server.inject("<html><head><script>x</script></head></html>") : "";
 	const block = new RegExp(`id="${PREFS_ELEMENT_ID}">([\\s\\S]*?)</script>`).exec(html)?.[1] ?? null;
 	const painted = { ...runPrepaint(block, storage), before: new Map(storage) };
@@ -368,6 +373,30 @@ describe("a change made on another page", () => {
 		requests.length = 0;
 		await a.hide();
 		expect(requests).toEqual([]);
+	});
+
+	test("a tab taking the server's word leaves alone what another tab of the origin chose and has not sent yet (#33)", async () => {
+		const server = new UiPrefs(dir);
+		const a = await open(server);
+		const b = await open(server, {}, true, a.storage);
+		a.use();
+		a.prefs.setPref(PREF.theme, "light");
+		await a.prefs.flushPrefs();
+		const lightOnly = server.snapshot();
+		// Chosen in a, not sent yet, when the server's word of the light theme reaches b.
+		a.prefs.setPref(PREF.palette, "hermes");
+		b.use();
+		b.prefs.receiveSnapshot(lightOnly);
+		expect(a.storage.get(PREF.palette)).toBe("hermes");
+		// The browser tells a of what b wrote over it, as a choice of that tab: nothing, here.
+		if (a.storage.get(PREF.palette) !== "hermes")
+			a.fire("storage", { key: PREF.palette, storageArea: globals.localStorage });
+		await a.hide();
+		expect(server.snapshot().values[PREF.palette]).toBe("hermes");
+		// Once the server has it, b takes its word for it as for any key.
+		b.use();
+		b.prefs.receiveSnapshot(server.snapshot());
+		expect(b.storage.get(PREF.palette)).toBe("hermes");
 	});
 
 	test("a value no build writes is dropped at start, and does not stop the rest from reaching the server", async () => {

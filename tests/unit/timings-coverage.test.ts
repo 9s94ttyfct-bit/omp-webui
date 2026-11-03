@@ -13,15 +13,21 @@ import { readBunTimings } from "../../scripts/test-shard.ts";
 
 const root = join(import.meta.dir, "..", "..");
 
-test("every end-to-end test has a time in tests/e2e/timings.json, and every time there names a test", () => {
-	const listed = listedTests(listSuite().suites).map((t) => t.key);
-	const timings = readTimings(readFileSync(TIMINGS, "utf8"));
-	const known = new Set(listed);
-	// Time a test with a run of its own and `bun scripts/e2e-timings.ts <its JSON report>` (`OMPW_E2E_JSON=<file>`).
-	expect(listed.filter((key) => timings[key] === undefined)).toEqual([]);
-	// A renamed or removed test: `bun scripts/e2e-timings.ts` drops what names no test.
-	expect(Object.keys(timings).filter((key) => !known.has(key))).toEqual([]);
-}, 60_000);
+// The list is the same on every system, and Linux and macOS check it. Listing loads every spec, which takes ~26 s on CI's
+// Windows runners and now and then more than a minute (#33): there it would only add a timeout to no purpose.
+test.skipIf(process.platform === "win32")(
+	"every end-to-end test has a time in tests/e2e/timings.json, and every time there names a test",
+	() => {
+		const listed = listedTests(listSuite().suites).map((t) => t.key);
+		const timings = readTimings(readFileSync(TIMINGS, "utf8"));
+		const known = new Set(listed);
+		// Time a test with a run of its own and `bun scripts/e2e-timings.ts <its JSON report>` (`OMPW_E2E_JSON=<file>`).
+		expect(listed.filter((key) => timings[key] === undefined)).toEqual([]);
+		// A renamed or removed test: `bun scripts/e2e-timings.ts` drops what names no test.
+		expect(Object.keys(timings).filter((key) => !known.has(key))).toEqual([]);
+	},
+	60_000,
+);
 
 test("every unit and contract test file has a time in .bun-test-timings.json, and every time there names a file", () => {
 	const files: string[] = [];
