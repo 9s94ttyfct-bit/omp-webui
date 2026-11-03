@@ -152,6 +152,22 @@ test("on: a caret while the model writes, a bar on the running tool, a burst at 
 			expect(await digits.evaluate((el) => el.getAnimations().map((a) => (a as CSSAnimation).animationName))).toEqual([
 				"live-glow",
 			]);
+			// Both breathe on the document timeline's beat (#40): the caret is a pseudo-element of the last block, a new one as
+			// blocks are added, and the glow's line is drawn anew; each new one goes on where the one before was instead of
+			// starting over at full opacity. Its phase is the timeline's, whatever element it is on.
+			const offBeat = await page.evaluate(() => {
+				const now = document.timeline.currentTime as number;
+				return document
+					.getAnimations()
+					.filter((a) => ["live-caret", "live-glow"].includes((a as CSSAnimation).animationName))
+					.map((a) => {
+						const period = a.effect?.getComputedTiming().duration as number;
+						const off = Math.abs(((a.currentTime as number) % period) - (now % period));
+						return Math.min(off, period - off);
+					});
+			});
+			expect(offBeat.length).toBe(2);
+			for (const off of offBeat) expect(off).toBeLessThan(1);
 		},
 		tool: async () => {
 			const card = page.locator('[data-testid="tool-card"][data-tool="bash"]').last();

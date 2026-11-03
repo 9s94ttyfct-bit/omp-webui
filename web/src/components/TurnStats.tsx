@@ -1,9 +1,9 @@
 import type { SessionEntry } from "@shared/protocol.ts";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import "../i18n/later.ts";
 import { useLang, useT } from "../i18n/index.ts";
 import { fmtCost, fmtCostExact, fmtDuration, fmtTime, fmtTokens } from "../lib/format.ts";
-import { useLiveMotion } from "../lib/live-motion.ts";
+import { useLiveMotion, useOnBeat } from "../lib/live-motion.ts";
 import type { AgentMessage } from "../lib/messages.ts";
 import { useNow } from "../lib/now.ts";
 import { fmtElapsed, fmtFinished, fmtRate } from "../lib/stat-format.ts";
@@ -198,12 +198,15 @@ export function LiveTurnStats({ live }: { live: LiveState }) {
 
 /**
  * The running time's glow (live animations): the same words over them, transparent but for the time, which is in the
- * accent, its opacity breathing. Drawn once per tick of the clock; only its opacity moves.
+ * accent, its opacity breathing. Drawn once per tick of the clock; only its opacity moves. Its line is drawn anew as the
+ * turn goes on, and the glow with it: on the beat of the one before (`useOnBeat`).
  */
 function RunningGlow({ label, value, motion }: { label: string; value: string; motion: string }) {
 	const [before = "", after = ""] = label.split("\u0000");
+	const glow = useRef<HTMLSpanElement>(null);
+	useOnBeat(glow, true);
 	return (
-		<span className="live-digits" data-motion={motion} data-testid="live-digits" aria-hidden>
+		<span ref={glow} className="live-digits" data-motion={motion} data-testid="live-digits" aria-hidden>
 			<span className="text-transparent">{before}</span>
 			{value}
 			<span className="text-transparent">{after}</span>

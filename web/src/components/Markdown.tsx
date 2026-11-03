@@ -22,6 +22,7 @@ import { hastText } from "../lib/hast-text.ts";
 import { highlight, highlighted } from "../lib/highlight.ts";
 import { isAllowedImageSrc } from "../lib/image-src.ts";
 import { linkTarget } from "../lib/link-target.ts";
+import { useOnBeat } from "../lib/live-motion.ts";
 import { type Nesting, nestsTooDeep, scanNesting } from "../lib/markdown-depth.ts";
 import { linkedMarkdown, MdOpenContext, openLinked } from "../lib/md-open.ts";
 import { findSection } from "../lib/slug.ts";
@@ -437,11 +438,15 @@ const MarkdownGroup = memo(function MarkdownGroup({ group }: { group: Group }) {
  * Blocks cut from one text (see `splitBlocks`), rendered as that text renders whole: react-markdown puts a newline between
  * top-level nodes, and so does this between blocks. `caret`: the live animations' intensity while this text is being
  * written, which puts a caret that breathes at its end (`.live-caret` in index.css); the blocks themselves do not render
- * again for it.
+ * again for it. The caret is a pseudo-element of the last block, a new one as blocks are added: each render puts its
+ * animation on the beat of the one before (`useOnBeat`).
  */
 export function MarkdownBlocks({ blocks, caret = null }: { blocks: readonly Block[]; caret?: string | null }) {
+	const box = useRef<HTMLDivElement>(null);
+	useOnBeat(box, caret !== null);
 	return (
 		<div
+			ref={box}
 			className={caret ? "prose-omp live-caret" : "prose-omp"}
 			data-motion={caret ?? undefined}
 			data-testid={caret ? "live-caret" : undefined}

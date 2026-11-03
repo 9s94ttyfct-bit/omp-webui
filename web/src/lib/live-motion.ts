@@ -1,5 +1,5 @@
 import { ANIMATION_INTENSITIES, PREF } from "@shared/prefs.ts";
-import { useSyncExternalStore } from "react";
+import { type RefObject, useLayoutEffect, useSyncExternalStore } from "react";
 import { type LiveState, newestMessage } from "../store/live.ts";
 import { onPrefsChanged, setPref } from "./prefs.ts";
 
@@ -57,6 +57,35 @@ const reducedNow = (): boolean => typeof matchMedia === "function" && matchMedia
 /** The level now, from the preferences and the system. */
 export const liveMotion = (): AnimationIntensity | null =>
 	motionLevel(localStorage.getItem(PREF.animations), localStorage.getItem(PREF.animationIntensity), reducedNow());
+
+/**
+ * The CSS live animations whose element is made again while what they follow goes on: the caret is a pseudo-element of
+ * the reply's last block, a new one each time a block starts or that block's element is drawn anew (every few hundred ms
+ * while a reply streams), and the running time's glow is drawn anew with its line. A new element's animation would start
+ * over (the caret back at full opacity), so the breathing jumps instead of going on (#40).
+ */
+const ON_THE_BEAT: ReadonlySet<string> = new Set(["live-caret", "live-glow"]);
+
+/**
+ * Put every such animation under `root` (and its pseudo-elements) on the document timeline's beat: started at the
+ * timeline's origin, so a new one is where the one before it was. Reading the animations makes the browser compute
+ * styles now, which the frame would do anyway; one already on the beat is left alone.
+ */
+export function keepOnBeat(root: Element): void {
+	if (typeof root.getAnimations !== "function") return;
+	for (const animation of root.getAnimations({ subtree: true })) {
+		if (animation.startTime === 0) continue;
+		const name = (animation as Partial<CSSAnimation>).animationName;
+		if (name && ON_THE_BEAT.has(name)) animation.startTime = 0;
+	}
+}
+
+/** `keepOnBeat` after every render of the element `ref` holds while `on`, before the browser draws it. */
+export function useOnBeat(ref: RefObject<Element | null>, on: boolean): void {
+	useLayoutEffect(() => {
+		if (on && ref.current) keepOnBeat(ref.current);
+	});
+}
 
 const changed = new Set<() => void>();
 const tell = () => {
