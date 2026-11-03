@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { type ListSuite, listedTests, readTimings, runsApart, units } from "../../scripts/e2e-shard.ts";
-import { reportTimings } from "../../scripts/e2e-timings.ts";
+import { medianTimings, reportTimings } from "../../scripts/e2e-timings.ts";
 import { assignShards, parseShard, weigh } from "../../scripts/lib/shards.ts";
 
 /** CI's suites split between runners by how long their parts take (`scripts/e2e-shard.ts`, `scripts/test-shard.ts`). */
@@ -106,5 +106,17 @@ describe("the end-to-end tests", () => {
 		const text = JSON.stringify({ config: { rootDir: "/r/tests/e2e" }, suites: report });
 		expect(reportTimings(text)).toEqual({ "follow.spec.ts › one": 30, "follow.spec.ts › two": 2 });
 		expect(readTimings(JSON.stringify({ version: 1, tests: { a: 1, b: "no" } }))).toEqual({ a: 1 });
+	});
+
+	test("several runs' timings give each test its median, so one slow or fast run does not move the split", () => {
+		expect(
+			medianTimings([
+				{ a: 10, b: 4, c: 1 },
+				{ a: 30, b: 5 },
+				{ a: 11, b: 9.05 },
+			]),
+		).toEqual({ a: 11, b: 5, c: 1 });
+		// An even count takes the middle two's mean.
+		expect(medianTimings([{ a: 2 }, { a: 3 }, { a: 100 }, { a: 1 }])).toEqual({ a: 2.5 });
 	});
 });
