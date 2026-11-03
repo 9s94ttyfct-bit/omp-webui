@@ -1,5 +1,6 @@
 import { isRecord } from "../../shared/guards.ts";
 import { compareVersions, parseVersion } from "../../shared/omp-install.ts";
+import type { PlatformId } from "../../shared/platform.ts";
 import { type AppRelease, type CheckFailure, UPDATE_REPO, type UpdateNotes } from "../../shared/update.ts";
 
 /**
@@ -15,14 +16,37 @@ export const DEFAULT_API = "https://api.github.com";
 const TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
 
 /**
- * The systems a release carries an installer for: the macOS app's disk image, and the Windows launcher's zip (one top
- * folder, `omp-webui-windows-x64/`, with `omp-webui.exe` and `web/`, as CI's windows-launcher job makes it).
+ * The systems a release carries an installer for: the macOS app's disk image, the Windows launcher's zip (one top
+ * folder, `omp-webui-windows-x64/`, with `omp-webui.exe` and `web/`, as CI's windows-launcher job makes it), and the
+ * Linux package's tarball per processor (one top folder, `omp-webui-linux-<arch>/`, as CI's linux-package job makes
+ * it). Only the first two install from here; a Linux server shows its tarball for the user to download and install.
  */
-export type InstallerPlatform = "darwin" | "win32";
+export type InstallerPlatform = "darwin" | "win32" | "linux-x64" | "linux-arm64";
 
 /** The installer a release carries for `platform`. */
-export const installerName = (version: string, platform: InstallerPlatform): string =>
-	platform === "win32" ? `omp-webui-v${version}-windows-x64.zip` : `omp-webui-v${version}.dmg`;
+export function installerName(version: string, platform: InstallerPlatform): string {
+	if (platform === "win32") return `omp-webui-v${version}-windows-x64.zip`;
+	if (platform === "darwin") return `omp-webui-v${version}.dmg`;
+	return `omp-webui-v${version}-${platform}.tar.gz`;
+}
+
+/**
+ * The installer a server shows, from what it was started as (`target`: the macOS app, the Windows launcher, or no app)
+ * and the system and processor it runs on. A server that is no app shows the release as it would be installed on its
+ * system. On Linux that is the package for its processor; a processor no package is built for has none (null), rather
+ * than one that would not run.
+ */
+export function installerPlatformOf(
+	target: "mac" | "windows" | null,
+	system: PlatformId,
+	arch: string,
+): InstallerPlatform | null {
+	if (target === "mac") return "darwin";
+	if (target === "windows") return "win32";
+	if (system === "win32") return "win32";
+	if (system === "linux") return arch === "x64" || arch === "arm64" ? `linux-${arch}` : null;
+	return "darwin";
+}
 
 /** The largest installer taken at its word (the app's own is about 100 MB): a release that lists more is refused. */
 export const MAX_INSTALLER_BYTES = 500 * 1024 * 1024;
@@ -132,11 +156,12 @@ export function splitNotes(body: string | null): UpdateNotes {
 /**
  * The release in a `releases/latest` answer; null when it is none this app can use: no `vX.Y.Z` tag, a draft or a
  * prerelease (the API never answers one, a stand-in might), or an installer at an address `installerUrlAllowed` refuses.
- * A release without the installer for `platform` is a release (the notes are shown) with no installer. On Windows a zip
- * GitHub lists no SHA-256 for is none either: nothing but that digest says the bytes are the release's (the macOS app's
- * disk image has its signature, which is checked against the running app's).
+ * A release without the installer for `platform` is a release (the notes are shown) with no installer, as is any release
+ * for a server with no installer of its own (`platform` null). On Windows a zip GitHub lists no SHA-256 for is none
+ * either: nothing but that digest says the bytes are the release's (the macOS app's disk image has its signature, which
+ * is checked against the running app's).
  */
-export function parseRelease(json: unknown, api: string, platform: InstallerPlatform): ParsedRelease | null {
+export function parseRelease(json: unknown, api: string, platform: InstallerPlatform | null): ParsedRelease | null {
 	if (!isRecord(json)) return null;
 	const tag = text(json.tag_name);
 	const m = tag === null ? null : TAG.exec(tag);
@@ -150,9 +175,9 @@ export function parseRelease(json: unknown, api: string, platform: InstallerPlat
 
 	let asset: AppRelease["asset"] = null;
 	let installer: Installer | null = null;
-	const wanted = installerName(version, platform);
+	const wanted = platform === null ? null : installerName(version, platform);
 	for (const item of Array.isArray(json.assets) ? json.assets : []) {
-		if (!isRecord(item) || item.name !== wanted) continue;
+		if (wanted === null || !isRecord(item) || item.name !== wanted) continue;
 		// An upload that is not finished is no installer yet.
 		if (item.state !== undefined && item.state !== "uploaded") continue;
 		const size = item.size;

@@ -420,6 +420,24 @@ test.skipIf(!mac)("this copy can replace itself only as a signed app bundle in a
 	expect(state(orphan).install).toEqual({ allowed: false, reason: "notApp" });
 });
 
+test("a server on Linux that is no app shows the package for its processor and cannot install it; another processor has none", async () => {
+	const tarball = "omp-webui-v9.0.0-linux-arm64.tar.gz";
+	fake.publish({ tag: "v9.0.0", dmg: join(import.meta.dirname, "../../package.json"), assetName: tarball });
+	const arm = world({ running: null, options: { system: { id: "linux", arch: "arm64" } } });
+	await arm.updater.check();
+	expect(state(arm)).toMatchObject({
+		newer: true,
+		latest: { tag: "v9.0.0", asset: { name: tarball } },
+		install: { allowed: false, reason: "notApp" },
+	});
+	expect(await arm.updater.install("v9.0.0", true)).toMatchObject({ code: "blocked", params: { reason: "notApp" } });
+
+	// No package is built for this processor: the release is shown without one, rather than one that would not run.
+	const other = world({ running: null, options: { system: { id: "linux", arch: "riscv64" } } });
+	await other.updater.check();
+	expect(state(other)).toMatchObject({ newer: true, latest: { tag: "v9.0.0", asset: null } });
+});
+
 test.skipIf(!mac)(
 	"an install is refused, and nothing starts, while it is blocked, busy, pointless or would stop conversations",
 	async () => {

@@ -320,12 +320,47 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  # The Linux package (scripts/linux-package.ts), per processor on a runner of its own: built, the launcher's contract test
+  # run against the built program, its install.sh's contract test run against the built folder, and the folder packed as a
+  # tarball for a release (scripts/release-local.ts attaches the tarballs of the commit it releases).
+  linux-package:
+    name: Linux package (${{ matrix.arch }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && github.event_name != 'schedule'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, runner: ubuntu-latest }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v4
+      # The tests' folders go under the runner's temp folder, not /tmp (see the unit + contract job).
+      - run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun scripts/linux-package.ts --arch ${{ matrix.arch }} --tar
+      - run: bun test --timeout 120000 tests/contract/launcher.test.ts
+        env:
+          OMPW_LAUNCHER_EXE: ${{ github.workspace }}/dist/omp-webui-linux-${{ matrix.arch }}/omp-webui
+      - run: bun test tests/contract/linux-install.test.ts
+        env:
+          OMPW_LINUX_PACKAGE: ${{ github.workspace }}/dist/omp-webui-linux-${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omp-webui-linux-${{ matrix.arch }}
+          path: dist/omp-webui-linux-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+          retention-days: 90
+
   # One check that says whether the run passed: every job did, or was not needed (documentation only; the daily run needs
   # no checks or e2e). A matrix job's result is `failure` when any of its legs failed (any omp, any shard), so each counts.
   ci-ok:
     name: CI ok
     if: always()
-    needs: [changes, checks, tests, e2e, e2e-windows, windows-launcher]
+    needs: [changes, checks, tests, e2e, e2e-windows, windows-launcher, linux-package]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

@@ -38,6 +38,7 @@
 		"lighthouse": "vite build && bun scripts/lighthouse.ts",
 		"app": "bun scripts/app.ts",
 		"windows-launcher": "bun scripts/windows-launcher.ts",
+		"linux-package": "bun scripts/linux-package.ts",
 		"icons": "bun scripts/icons.ts",
 		"dmg": "bun scripts/dmg.ts",
 		"screenshots": "vite build && bun scripts/screenshots.ts",

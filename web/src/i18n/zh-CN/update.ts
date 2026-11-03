@@ -32,7 +32,7 @@ export const zh: Record<keyof typeof en, string> = {
 
 	// Why this copy cannot install
 	blockedNotApp:
-		"只有 macOS 应用和 Windows 启动程序（omp-webui.exe）才能在这里安装更新。请到发布页面下载 v{version}，或者按这份副本原来的安装方式更新。",
+		"只有 macOS 应用和 Windows 启动程序（omp-webui.exe）才能在这里安装更新。请到发布页面下载 v{version}，或者按这份副本原来的安装方式更新。在 Linux 上，下载新的安装包，再运行一次其中的 install.sh。",
 	blockedTranslocated:
 		"macOS 正在从一份临时副本运行 omp-webui。请把它移到“应用程序”文件夹，再从那里打开，它才能更新自己。",
 	blockedNotWritable: "当前用户没有 omp-webui 所在文件夹的写入权限，没法替换自己。请到发布页面下载新版本，手动安装。",

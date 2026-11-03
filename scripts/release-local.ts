@@ -38,9 +38,11 @@
  * never made without them). `--dry-run` does everything but the tag and the publishing (the CI check, the macOS and the
  * live tests, the app and the dmg) and then stops, saying the commit a new tag would be made on.
  *
- * A release is the signed dmg and the Windows launcher's zip on a GitHub Release with the notes and the install steps,
- * nothing else: no package is published anywhere. The zip is not built here: it is the `omp-webui-windows-x64` artifact
- * of the CI run that passed on the released commit (the `windows-launcher` job), downloaded before anything is built.
+ * A release is the signed dmg, the Windows launcher's zip and the Linux packages' tarballs (x64 and arm64) on a GitHub
+ * Release with the notes and the install steps, nothing else: no package is published anywhere. The zip and the tarballs
+ * are not built here: they are the `omp-webui-windows-x64`, `omp-webui-linux-x64` and `omp-webui-linux-arm64` artifacts
+ * of the CI run that passed on the released commit (the `windows-launcher` and `linux-package` jobs), downloaded before
+ * anything is built.
  * SIGINT, SIGTERM and SIGHUP stop the running command and everything it started, then
  * remove the temporary worktree and directory too.
  */
@@ -276,12 +278,20 @@ async function release(): Promise<void> {
 	await run(["git", "worktree", "add", "--detach", tree, commit]);
 	await run(["bun", "install", "--frozen-lockfile"], { cwd: tree });
 
-	// The Windows launcher, as CI built and tested it on this commit.
-	const downloaded = join(work, "windows");
+	// The Windows launcher and the Linux packages, as CI built and tested them on this commit.
+	const downloaded = join(work, "artifacts");
 	mkdirSync(downloaded);
 	await run(["gh", "run", "download", String(ci.id), "-n", "omp-webui-windows-x64", "-D", downloaded, "-R", REPO]);
 	const windowsZip = join(work, `omp-webui-${tag}-windows-x64.zip`);
 	renameSync(join(downloaded, "omp-webui-windows-x64.zip"), windowsZip);
+	const linuxTarballs: string[] = [];
+	for (const arch of ["x64", "arm64"]) {
+		const name = `omp-webui-linux-${arch}`;
+		await run(["gh", "run", "download", String(ci.id), "-n", name, "-D", downloaded, "-R", REPO]);
+		const tarball = join(work, `omp-webui-${tag}-linux-${arch}.tar.gz`);
+		renameSync(join(downloaded, `${name}.tar.gz`), tarball);
+		linuxTarballs.push(tarball);
+	}
 
 	const version = JSON.parse(await Bun.file(join(tree, "package.json")).text()).version as string;
 	if (`v${version}` !== tag) throw new Error(`tag ${tag} != package.json v${version}`);
@@ -301,22 +311,23 @@ async function release(): Promise<void> {
 	await run(["bun", "run", "dmg"], { cwd: tree });
 	const dmg = join(tree, "dist", `omp-webui-${tag}.dmg`);
 	if (!(await Bun.file(dmg).exists())) throw new Error(`${dmg} was not built`);
-	const assets = [dmg, windowsZip];
+	const assets = [dmg, windowsZip, ...linuxTarballs];
 
 	if (dryRun) {
 		console.log(
 			fresh
-				? `Dry run: CI, the macOS tests, the live tests, the app, the dmg and the Windows launcher passed on ${commit} (origin/main), the commit ${tag} would be made on; no tag was made, and nothing was published.`
-				: `Dry run: ${tag} is ready (CI, the macOS tests, the live tests, the app, the dmg and the Windows launcher passed); nothing was published.`,
+				? `Dry run: CI, the macOS tests, the live tests, the app, the dmg, the Windows launcher and the Linux packages passed on ${commit} (origin/main), the commit ${tag} would be made on; no tag was made, and nothing was published.`
+				: `Dry run: ${tag} is ready (CI, the macOS tests, the live tests, the app, the dmg, the Windows launcher and the Linux packages passed); nothing was published.`,
 		);
 		return;
 	}
 	if (fresh) await makeTag(commit);
 
-	// The release: the notes plus how to install the app (signed with a local certificate, not notarized) and the Windows
-	// launcher (not signed). When the Release workflow was run by hand for this tag first, the release exists (notes and
-	// a line that there is no installer yet): its body is replaced, so that the page has the install steps and no longer
-	// says there is no installer. Otherwise it is created here, with the dmg and the zip.
+	// The release: the notes plus how to install the app (signed with a local certificate, not notarized), the Windows
+	// launcher (not signed) and the Linux packages. When the Release workflow was run by hand for this tag first, the
+	// release exists (notes and a line that there is no installer yet): its body is replaced, so that the page has the
+	// install steps and no longer says there is no installer. Otherwise it is created here, with the dmg, the zip and the
+	// tarballs.
 	const body = join(work, "body.md");
 	const notes = await Bun.file(join(tree, "release-notes", `${tag}.md`)).text();
 	const install = await Bun.file(join(tree, "release-notes", "_install.md")).text();

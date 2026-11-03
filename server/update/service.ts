@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { isRecord } from "../../shared/guards.ts";
+import type { PlatformId } from "../../shared/platform.ts";
 import type {
 	AppRelease,
 	AppUpdateState,
@@ -24,6 +25,7 @@ import type {
 	UpdateRefusal,
 	UpdateSnapshot,
 } from "../../shared/update.ts";
+import { platform } from "../platform/index.ts";
 import {
 	ensureUpdateDir,
 	type Handover,
@@ -43,6 +45,7 @@ import {
 	fetchLatest,
 	type Installer,
 	type InstallerPlatform,
+	installerPlatformOf,
 	isNewer,
 	type ParsedRelease,
 	parseRelease,
@@ -102,6 +105,8 @@ export interface UpdaterOptions {
 	/** For tests. */
 	fetch?: typeof fetch;
 	now?: () => number;
+	/** For tests: the system and processor whose installer a server that is no app shows (this one's by default). */
+	system?: { id: PlatformId; arch: string };
 	/** Quit the shell for the update (`SIGUSR1`; the macOS app). */
 	signalParent?: (pid: number) => void;
 	/**
@@ -195,16 +200,18 @@ export class AppUpdater {
 	private folderWritable: boolean | null = null;
 	private timers: NodeJS.Timeout[] = [];
 	private lastProgressAt = 0;
-	/** Which of a release's installers is this one's: the Windows launcher's zip, or the macOS app's disk image. */
-	private readonly platform: InstallerPlatform;
+	/** Which of a release's installers is this one's (`installerPlatformOf`); null: none (a Linux processor with no package). */
+	private readonly platform: InstallerPlatform | null;
 
 	constructor(private readonly opts: UpdaterOptions) {
 		this.api = opts.api ?? DEFAULT_API;
 		this.now = opts.now ?? Date.now;
 		this.paths = ensureUpdateDir(opts.dataDir);
-		// A server that is no app shows the release as it would be installed on this system (its card says to download it).
-		this.platform =
-			opts.target?.kind === "windows" || (opts.target === null && process.platform === "win32") ? "win32" : "darwin";
+		this.platform = installerPlatformOf(
+			opts.target?.kind ?? null,
+			opts.system?.id ?? platform.id,
+			opts.system?.arch ?? process.arch,
+		);
 		const cached = readJson(this.paths.check);
 		if (isRecord(cached) && typeof cached.checkedAt === "number") {
 			this.parsed = parseRelease(cached.body, this.api, this.platform);

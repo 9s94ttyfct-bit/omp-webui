@@ -3,6 +3,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { capabilities, platformId } from "../../server/platform/capabilities.ts";
+import { installerName, installerPlatformOf } from "../../server/update/release.ts";
 import { PREF, type PrefsSnapshot } from "../../shared/prefs.ts";
 import type { UpdateSnapshot } from "../../shared/update.ts";
 import { realOmp } from "../support/fake-install.ts";
@@ -56,7 +57,13 @@ test.describe("a release that is newer, on a copy that cannot install", () => {
 	let run: UpdateServer;
 	test.beforeAll(async () => {
 		fake = await startFakeReleases();
-		fake.publish({ tag: TAG, dmg: join(import.meta.dirname, "../../package.json") });
+		// The installer of this system, which a server that is no app shows: the disk image, the zip or a Linux tarball.
+		const here = installerPlatformOf(null, platformId, process.arch);
+		fake.publish({
+			tag: TAG,
+			dmg: join(import.meta.dirname, "../../package.json"),
+			assetName: here ? installerName(VERSION, here) : undefined,
+		});
 		run = await startUpdateServer({ fake });
 	});
 	test.afterAll(async () => {

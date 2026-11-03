@@ -21,6 +21,20 @@
 3. It opens omp-webui in your default browser. Its console window stays open while it runs; close it to stop omp-webui. If [`omp`](https://omp.sh) isn't installed yet, the page offers to install it.
 4. From 0.17.0 it updates itself (Settings › Updates). Coming from 0.16.0, update by hand once: download the new zip and replace the folder. Keep the folder somewhere you can write to (not under Program Files), or the update cannot replace it.
 
+## Run omp-webui on Linux
+
+1. Download `omp-webui-vX.Y.Z-linux-x64.tar.gz` or `omp-webui-vX.Y.Z-linux-arm64.tar.gz` for your processor, then unpack and install it in a terminal:
+
+   ```sh
+   tar xzf omp-webui-vX.Y.Z-linux-x64.tar.gz
+   cd omp-webui-linux-x64
+   ./install.sh
+   ```
+
+   It installs for your user only: the program in `~/.local/share/omp-webui`, an `omp-webui` command in `~/.local/bin` and omp-webui in the applications menu.
+2. Start it from the applications menu or with `omp-webui`. It opens omp-webui in your default browser; its terminal window stays open while it runs, and closing it stops omp-webui. If [`omp`](https://omp.sh) isn't installed yet, the page offers to install it.
+3. To update, quit omp-webui and install the new package the same way. `./install.sh --uninstall` removes it; both keep your data (`~/.omp-webui`).
+
 ## 安装 macOS 应用
 
 1. 下载 `omp-webui-vX.Y.Z.dmg`（Apple 芯片）并打开。
@@ -40,3 +54,17 @@
 2. 双击 `omp-webui.exe`。它没有签名，第一次运行时 SmartScreen 可能会警告：点“更多信息 › 仍要运行”。
 3. 它会在默认浏览器里打开 omp-webui。运行期间它的控制台窗口一直开着；关掉这个窗口就停止 omp-webui。如果还没有安装 [`omp`](https://omp.sh)，页面会提供安装。
 4. 从 0.17.0 起它会自动更新（设置 › 更新）。从 0.16.0 升级需要手动一次：下载新的 zip，替换整个文件夹。文件夹要放在你有写入权限的地方（不要放在 Program Files 下），否则更新无法替换它。
+
+## 在 Linux 上运行 omp-webui
+
+1. 按你的处理器下载 `omp-webui-vX.Y.Z-linux-x64.tar.gz` 或 `omp-webui-vX.Y.Z-linux-arm64.tar.gz`，然后在终端里解压并安装：
+
+   ```sh
+   tar xzf omp-webui-vX.Y.Z-linux-x64.tar.gz
+   cd omp-webui-linux-x64
+   ./install.sh
+   ```
+
+   它只为当前用户安装：程序装到 `~/.local/share/omp-webui`，`~/.local/bin` 里放一个 `omp-webui` 命令，应用菜单里加一个 omp-webui。
+2. 从应用菜单或运行 `omp-webui` 启动。它会在默认浏览器里打开 omp-webui；它的终端窗口在运行期间一直开着，关掉就停止 omp-webui。如果还没有安装 [`omp`](https://omp.sh)，页面会提供安装。
+3. 更新：先退出 omp-webui，再按同样的方法安装新的安装包。`./install.sh --uninstall` 会卸载它；两者都会保留你的数据（`~/.omp-webui`）。

@@ -39,6 +39,8 @@ xattr -dr com.apple.quarantine /Applications/omp-webui.app
 
 **Windows 启动器**（Windows 10 或更高，x64）：从[最新发布](../../releases/latest)下载 `omp-webui-vX.Y.Z-windows-x64.zip`，解压到任意位置，双击解压出的文件夹里的 `omp-webui.exe`（`web` 文件夹要留在它旁边）。它会启动服务器，并在默认浏览器里打开页面；运行期间它的控制台窗口一直开着，关掉这个窗口就停止 omp-webui。运行时再双击一次，只会再打开页面。程序没有签名，第一次运行时 SmartScreen 可能会警告：点“更多信息 › 仍要运行”。第一次打开时，如果还没有 [omp](https://omp.sh)，页面会提供安装。从 0.17.0 起它会从发布页自动更新（设置 › 更新；文件夹要放在你有写入权限的地方，不要放在 Program Files 下）；从 0.16.0 升级时需要手动下载新的 zip、替换整个文件夹一次。
 
+**Linux 安装包**（x64 或 arm64）：从[最新发布](../../releases/latest)下载 `omp-webui-vX.Y.Z-linux-x64.tar.gz` 或 `omp-webui-vX.Y.Z-linux-arm64.tar.gz`，用 `tar xzf` 解压，`cd omp-webui-linux-<arch>`，再运行 `./install.sh`。它只为当前用户安装：程序装到 `~/.local/share/omp-webui`，`~/.local/bin` 里放一个 `omp-webui` 命令，应用菜单里加一项。从任一处启动，它都会启动服务器，并在默认浏览器里打开页面；运行期间它的终端窗口一直开着，关掉就停止 omp-webui。第一次启动时，如果没有 [omp](https://omp.sh)，页面会提供安装。它不会自己更新：设置 › 更新会提示有新版本；先退出 omp-webui，再按同样的方法安装新的安装包。`./install.sh --uninstall` 会卸载它；两种情况都会保留你的数据（`~/.omp-webui`）。
+
 **从源码运行**，供开发使用（任何装有 [Bun](https://bun.sh) ≥ 1.3、且 `omp` 在 `PATH` 里的系统）：
 
 ```sh

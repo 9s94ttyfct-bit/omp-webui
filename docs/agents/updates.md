@@ -1,6 +1,6 @@
 ---
 title: Updates of the app and of omp
-summary: How omp-webui updates itself from its GitHub releases (the macOS app and the Windows launcher), and how it checks for, installs and updates the omp coding agent it drives, by hand or automatically.
+summary: How omp-webui updates itself from its GitHub releases (the macOS app and the Windows launcher; the Linux package checks and links), and how it checks for, installs and updates the omp coding agent it drives, by hand or automatically.
 settings: update, omp
 ---
 
@@ -34,6 +34,8 @@ The app can install updates only when it is the macOS app (started by its own sh
 When omp is not found or does not start, the app shows **Install omp to get started** instead of the conversations: choices Homebrew (recommended where present), omp's installer (standalone binary in `~/.local/bin`; on Windows omp's PowerShell installer, into `%LOCALAPPDATA%\omp`) and Bun, each with the command it runs, the installer output, **Cancel**, and **I installed it myself — look again**. After an install the first-time setup follows.
 
 On Windows, omp-webui runs from `omp-webui.exe` (the release's `omp-webui-vX.Y.Z-windows-x64.zip`): a double-click starts the server and opens the page in the default browser; closing its console window stops it. It updates itself as described above. The server exits for the update only once the PowerShell helper has said it runs (within 10 seconds); a helper that does not (a policy that allows only signed scripts, security software) is ended, and the install fails with nothing changed and the server still running.
+
+On Linux, omp-webui runs from the Linux package (the release's `omp-webui-vX.Y.Z-linux-x64.tar.gz` or `-linux-arm64.tar.gz`): its `install.sh` installs it for the user into `~/.local/share/omp-webui` with an `omp-webui` command in `~/.local/bin` and an applications-menu entry that starts it in a terminal (closing the terminal stops it). It does not install its own updates: the Updates card shows a newer release with the tarball for this processor and says to download the new package and run its `install.sh` again (quit omp-webui first). `./install.sh --uninstall` removes it; the data folder is kept.
 
 ## Where it is
 
@@ -80,7 +82,7 @@ Every omp route answers with the new `{ state, log }`; errors are `{ error, code
 
 ## Limits and caveats
 
-- Only the macOS app and the Windows launcher can install their own updates; the web version (or a copy started another way) only shows that a release exists and links its page.
+- Only the macOS app and the Windows launcher can install their own updates; the Linux package checks for releases and links its tarball (install it with its `install.sh`), and the web version (or a copy started another way) only shows that a release exists and links its page. On a Linux processor no package is built for (other than x64 and arm64) the release is shown without an installer.
 - Installing an omp-webui update restarts the app, which stops conversations that are replying.
 - GitHub's anonymous rate limit can stop look-ups for a while; the card says when it will look again.
 - An omp update waits for paused and asking conversations too unless **Update anyway** is used; conversations that stay open keep running the old omp until restarted.

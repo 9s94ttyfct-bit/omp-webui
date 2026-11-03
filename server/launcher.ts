@@ -1,21 +1,25 @@
 /**
- * The Windows launcher (`omp-webui.exe`, built by scripts/windows-launcher.ts): what a double-click runs. It is the
- * server, with what a program started from Explorer cannot be told:
+ * The launcher: what a double-click runs. It is the program of the Windows launcher (`omp-webui.exe`, built by
+ * scripts/windows-launcher.ts) and of the Linux package (`omp-webui`, built by scripts/linux-package.ts, started from
+ * the applications menu or the `omp-webui` command its install.sh writes). It is the server, with what a program started
+ * from Explorer or a menu cannot be told:
  *
  * - The web UI is the `web` folder beside the program (unless `OMP_WEBUI_DIST` says).
  * - A taken port is no error: the next free one is taken (`OMP_WEBUI_PORT_WINDOW`).
  * - The page opens in the default browser once the server listens, with the access token in its address.
  * - When this data folder's server already runs (a second double-click), its page is opened and nothing else starts.
- * - It updates itself from the releases (Settings › Updates): the folder it is in is the one the updater replaces
- *   (`OMP_WEBUI_APP_FOLDER`, server/update/windows.ts and helper.ps1).
+ * - On Windows it updates itself from the releases (Settings › Updates): the folder it is in is the one the updater
+ *   replaces (`OMP_WEBUI_APP_FOLDER`, server/update/windows.ts and helper.ps1). The Linux package does not: the server
+ *   takes that folder only on Windows (server/main.ts), and a newer package is installed with its install.sh.
  *
- * Its console window is the server's: it says where the page is, and closing it stops the server. An error while
- * starting is left on the screen until Enter is pressed, rather than closing the window with it.
+ * Its console window (on Linux, the terminal the menu entry opens) is the server's: it says where the page is, and
+ * closing it stops the server. An error while starting is left on the screen until Enter is pressed, rather than closing
+ * the window with it.
  *
  * `BROWSER` names another program to open the page with (it is given the address); it is also how the tests see
  * which page was opened.
  *
- * `omp-webui.exe --version` prints the version and ends (no server, no page): the updater checks a staged program with it.
+ * `omp-webui --version` prints the version and ends (no server, no page): the updater checks a staged program with it.
  */
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";

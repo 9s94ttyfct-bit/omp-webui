@@ -214,6 +214,7 @@
     "tests/unit/password-strength.test.ts": 846,
     "tests/contract/slim-state.test.ts": 844,
     "tests/unit/store-tail.test.ts": 824,
+    "tests/contract/linux-install.test.ts": 818,
     "tests/unit/session-settings.test.ts": 808,
     "tests/contract/upload.test.ts": 807,
     "tests/contract/family-view.test.ts": 801,

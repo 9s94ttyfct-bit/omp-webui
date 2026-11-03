@@ -10,10 +10,11 @@ import { pollUntil } from "../support/poll.ts";
 import { removeScratch } from "../support/scratch.ts";
 
 /**
- * The Windows launcher (`server/launcher.ts`, built as `omp-webui.exe`): a double-click starts the server and opens its
- * page in the browser; a second one opens the page of the server that runs. The browser is a program of the test's own
- * (`BROWSER`), which writes down each address it is given. `OMPW_LAUNCHER_EXE` runs the built program instead of the
- * source (the Windows launcher job in CI): its page is then the `web` folder beside it.
+ * The launcher (`server/launcher.ts`, built as the Windows launcher's `omp-webui.exe` and the Linux package's
+ * `omp-webui`): a double-click starts the server and opens its page in the browser; a second one opens the page of the
+ * server that runs. The browser is a program of the test's own (`BROWSER`), which writes down each address it is given.
+ * `OMPW_LAUNCHER_EXE` runs the built program instead of the source (the Windows launcher and Linux package jobs in CI):
+ * its page is then the `web` folder beside it.
  */
 
 const root = mkdtempSync(join(tmpdir(), "ompw-launcher-"));

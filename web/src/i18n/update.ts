@@ -34,7 +34,7 @@ export const en = {
 
 	// Why this copy cannot install
 	blockedNotApp:
-		"Updates install only in the macOS app and the Windows launcher (omp-webui.exe). Download v{version} from the release page, or update the way this copy was installed.",
+		"Updates install only in the macOS app and the Windows launcher (omp-webui.exe). Download v{version} from the release page, or update the way this copy was installed. On Linux, download the new package and run its install.sh again.",
 	blockedTranslocated:
 		"macOS is running omp-webui from a temporary copy. Move it to the Applications folder and open it from there; then it can update itself.",
 	blockedNotWritable:

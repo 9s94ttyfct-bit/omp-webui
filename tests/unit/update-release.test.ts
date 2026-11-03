@@ -4,6 +4,7 @@ import {
 	DEFAULT_API,
 	fetchLatest,
 	installerName,
+	installerPlatformOf,
 	installerUrlAllowed,
 	isNewer,
 	parseRelease,
@@ -108,6 +109,41 @@ test("each system takes its own installer: the zip on Windows, the disk image on
 		url: dmg.browser_download_url,
 		sha256: null,
 	});
+});
+
+test("a Linux server takes the package for its processor; one with no package built for it, and no system, takes none", () => {
+	const tarball = (arch: string) => ({
+		name: `omp-webui-v0.12.0-linux-${arch}.tar.gz`,
+		state: "uploaded",
+		size: 3072,
+		browser_download_url: `${API}/download/omp-webui-v0.12.0-linux-${arch}.tar.gz`,
+	});
+	const dmg = {
+		name: "omp-webui-v0.12.0.dmg",
+		state: "uploaded",
+		size: 4096,
+		browser_download_url: `${API}/download/x`,
+	};
+	const all = release({}, [dmg, tarball("x64"), tarball("arm64")]);
+	expect(installerName("0.12.0", "linux-x64")).toBe("omp-webui-v0.12.0-linux-x64.tar.gz");
+	for (const arch of ["x64", "arm64"] as const) {
+		const parsed = parseRelease(all, API, `linux-${arch}`);
+		expect(parsed?.release.asset).toEqual({ name: `omp-webui-v0.12.0-linux-${arch}.tar.gz`, size: 3072 });
+		expect(parsed?.installer).toEqual({ url: tarball(arch).browser_download_url, sha256: null });
+	}
+	const nothing = parseRelease(all, API, null);
+	expect(nothing?.release.tag).toBe("v0.12.0");
+	expect(nothing?.release.asset).toBeNull();
+	expect(nothing?.installer).toBeNull();
+
+	// Which one a server shows: what it was started as, else its system's, and on Linux its processor's.
+	expect(installerPlatformOf("mac", "darwin", "arm64")).toBe("darwin");
+	expect(installerPlatformOf("windows", "win32", "x64")).toBe("win32");
+	expect(installerPlatformOf(null, "win32", "x64")).toBe("win32");
+	expect(installerPlatformOf(null, "darwin", "x64")).toBe("darwin");
+	expect(installerPlatformOf(null, "linux", "x64")).toBe("linux-x64");
+	expect(installerPlatformOf(null, "linux", "arm64")).toBe("linux-arm64");
+	expect(installerPlatformOf(null, "linux", "riscv64")).toBeNull();
 });
 
 test("a release this app cannot use is no release: no vX.Y.Z tag, a draft, a prerelease, a size that is no size", () => {

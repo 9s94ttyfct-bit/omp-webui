@@ -86,9 +86,17 @@ case "$1 $2" in
   esac
   printf '{"total_count":1,"workflow_runs":[%s]}\\n' "$runs" ;;
 "run download")
-  # The Windows launcher's zip, the artifact of the CI run asked for; STUB_NO_WINDOWS: the run has none.
-  [ -z "$STUB_NO_WINDOWS" ] || { echo "no artifact matches any of the names or patterns provided" >&2; exit 1; }
-  while [ $# -gt 0 ]; do if [ "$1" = -D ]; then : > "$2/omp-webui-windows-x64.zip"; fi; shift; done ;;
+  # The artifact of the CI run asked for (-n), the file CI uploads in it: the Windows launcher's zip or a Linux package's
+  # tarball. STUB_NO_WINDOWS: the run has no Windows zip; STUB_NO_LINUX: it has no arm64 Linux tarball.
+  name="" dir=""
+  while [ $# -gt 0 ]; do case "$1" in -n) name=$2 ;; -D) dir=$2 ;; esac; shift; done
+  missing() { echo "no artifact matches any of the names or patterns provided" >&2; exit 1; }
+  case "$name" in
+  omp-webui-windows-x64) [ -z "$STUB_NO_WINDOWS" ] || missing; : > "$dir/$name.zip" ;;
+  omp-webui-linux-arm64) [ -z "$STUB_NO_LINUX" ] || missing; : > "$dir/$name.tar.gz" ;;
+  omp-webui-linux-*) : > "$dir/$name.tar.gz" ;;
+  *) missing ;;
+  esac ;;
 esac`,
 	);
 	// Nothing is published to npm any more: a call to it is only logged, for the tests that say there is none.
@@ -419,7 +427,7 @@ test("--dry-run with no tag runs the macOS and the live tests, the app and the d
 	const r = await finish(release(["--dry-run"], {}, true));
 	expect(r.code).toBe(0);
 	expect(r.out).toContain(
-		`Dry run: CI, the macOS tests, the live tests, the app, the dmg and the Windows launcher passed on ${main} (origin/main), the commit ${TAG} would be made on`,
+		`Dry run: CI, the macOS tests, the live tests, the app, the dmg, the Windows launcher and the Linux packages passed on ${main} (origin/main), the commit ${TAG} would be made on`,
 	);
 	const seen = calls();
 	for (const step of ["bun run test:mac", "bun run test:live", "bun run app", "bun run dmg"])
@@ -482,15 +490,19 @@ test("--dry-run with an existing tag and --skip-tests builds the app and the dmg
 	expect(worktrees()).toHaveLength(1);
 });
 
-test("a release is the signed dmg and the Windows launcher of CI's passing run on a GitHub Release, and nothing is published to npm or GitHub Packages", async () => {
+test("a release is the signed dmg, the Windows launcher and the Linux packages of CI's passing run on a GitHub Release, and nothing is published to npm or GitHub Packages", async () => {
 	const r = await finish(release());
 	expect(r.out).toContain(`Released ${TAG}`);
 	expect(r.code).toBe(0);
 	const seen = calls();
 	const tag = TAG.replaceAll(".", "\\.");
-	expect(seen).toContain("gh run download 1 -n omp-webui-windows-x64");
+	for (const artifact of ["omp-webui-windows-x64", "omp-webui-linux-x64", "omp-webui-linux-arm64"]) {
+		expect(seen).toContain(`gh run download 1 -n ${artifact} `);
+	}
 	expect(seen).toMatch(
-		new RegExp(`gh release create ${tag} \\S+/dist/omp-webui-${tag}\\.dmg \\S+/omp-webui-${tag}-windows-x64\\.zip `),
+		new RegExp(
+			`gh release create ${tag} \\S+/dist/omp-webui-${tag}\\.dmg \\S+/omp-webui-${tag}-windows-x64\\.zip \\S+/omp-webui-${tag}-linux-x64\\.tar\\.gz \\S+/omp-webui-${tag}-linux-arm64\\.tar\\.gz `,
+		),
 	);
 	for (const never of ["npm ", "gh auth token", "packages", "NODE_AUTH_TOKEN"]) expect(seen).not.toContain(never);
 	expect(leftovers()).toEqual([]);
@@ -498,14 +510,16 @@ test("a release is the signed dmg and the Windows launcher of CI's passing run o
 	expect(seen.indexOf("gh api repos")).toBeLessThan(seen.indexOf("bun install"));
 });
 
-test("a CI run without the Windows launcher's zip stops the release before anything is built or tagged", async () => {
+test("a CI run without the Windows launcher's zip, or without a Linux package, stops the release before anything is built or tagged", async () => {
 	untag();
-	const r = await finish(release([], { STUB_NO_WINDOWS: "1" }, true));
-	expect(r.code).toBe(1);
-	expect(calls()).not.toContain("bun run");
-	expect(localTag()).toBe("");
-	expect(originTag()).toBe("");
-	expect(leftovers()).toEqual([]);
+	for (const missing of ["STUB_NO_WINDOWS", "STUB_NO_LINUX"]) {
+		const r = await finish(release([], { [missing]: "1" }, true));
+		expect(r.code, missing).toBe(1);
+		expect(calls()).not.toContain("bun run");
+		expect(localTag()).toBe("");
+		expect(originTag()).toBe("");
+		expect(leftovers()).toEqual([]);
+	}
 });
 
 test("SIGTERM in the middle removes the temporary directory and the worktree", async () => {

@@ -171,8 +171,8 @@ test("the server looks for a release soon after it starts, with no one asking, a
 	const state = await b.state();
 	expect(state).toMatchObject({ installed: pkg.version, newer: true, failure: null, latest: { tag: `v${NEWER}` } });
 	// The installer of this system: a server that is no app shows the one it would install here. The release has only the
-	// macOS disk image, so on Windows (whose installer is the zip) it has none.
-	expect(state.latest?.asset?.name ?? null).toBe(platform.id === "win32" ? null : `omp-webui-v${NEWER}.dmg`);
+	// macOS disk image, so on Windows and Linux (whose installers are the zip and the tarball) it has none.
+	expect(state.latest?.asset?.name ?? null).toBe(platform.id === "darwin" ? `omp-webui-v${NEWER}.dmg` : null);
 	const looks = fake.requests.filter((r) => r.path.endsWith("/releases/latest"));
 	expect(looks).toHaveLength(1);
 	expect(looks[0]?.headers["user-agent"]).toBe(`omp-webui/${pkg.version}`);
