@@ -86,8 +86,9 @@ export interface TunnelOptions {
 	onStatus?: (status: RemoteStatus) => void;
 	timings?: Partial<TunnelTimings>;
 	/**
-	 * Install by downloading Cloudflare's build instead of with Homebrew: on Linux and Windows (the default there), or where a
-	 * spec says so. `OMP_WEBUI_CLOUDFLARED_RELEASES` (in `env`) names another address of the latest release's description.
+	 * Install by downloading Cloudflare's build instead of with Homebrew: on Linux and Windows (the default there, unless
+	 * `OMP_WEBUI_BREW` names a brew to run: a spec's stand-in), or where a spec says so. `OMP_WEBUI_CLOUDFLARED_RELEASES` (in
+	 * `env`) names another address of the latest release's description.
 	 */
 	downloads?: boolean;
 	/** Which of Cloudflare's builds the download takes (default: this system's, `cloudflaredAsset`). */
@@ -282,7 +283,7 @@ export class Tunnel {
 
 	/** Whether `install` downloads Cloudflare's build rather than asking Homebrew (see `TunnelOptions.downloads`). */
 	private get downloads(): boolean {
-		return this.opts.downloads ?? platformId !== "darwin";
+		return this.opts.downloads ?? (platformId !== "darwin" && !this.env.OMP_WEBUI_BREW);
 	}
 
 	// ------------------------------------------------------------------ what there is

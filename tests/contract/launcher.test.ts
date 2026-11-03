@@ -86,7 +86,12 @@ test("a double-click starts the server on the next free port and opens its page,
 			expect(page.status).toBe(200);
 			expect(await page.text()).toContain("<html");
 		}
-		expect(first.output()).toContain("Close this window to stop it.");
+		// Said once the browser program has ended, which may be a moment after it wrote the address down.
+		await pollUntil(
+			() => first.output().includes("Close this window to stop it."),
+			`the closing words; output:\n${first.output()}`,
+			30_000,
+		);
 
 		// A second double-click opens the page of the server that runs, and starts nothing.
 		const second = await launch({ OMP_WEBUI_DATA_DIR: dataDir, OMP_WEBUI_PORT: String(taken.port) });

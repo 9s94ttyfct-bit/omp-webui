@@ -317,7 +317,7 @@ test("a process is started with the gate, and says in its first moments whether 
 	const argv = argvOf(log);
 	const at = argv.indexOf("--extension");
 	expect(at).toBeGreaterThan(-1);
-	expect(argv[at + 1]).toMatch(/gate\/extension\.ts$/);
+	expect(argv[at + 1]).toMatch(/gate[\\/]extension\.ts$/);
 	// The command line names the gate, but only a gate that ran says so: omp carries on without an extension it cannot load.
 	expect(live.gated).toBe(false);
 	writeFileSync(`${overlayOf()}.risk.loaded`, "1");
@@ -421,7 +421,8 @@ test("a state file that was overwritten is written again whatever its size and t
 	writeFileSync(file, forged);
 	utimesSync(file, before.atimeMs / 1000, before.mtimeMs / 1000);
 	expect(statSync(file).size).toBe(before.size);
-	expect(statSync(file).mtimeMs).toBe(before.mtimeMs);
+	// NTFS keeps times to 100 ns, so the time put back is the same to the microsecond, not to the last digit.
+	expect(statSync(file).mtimeMs).toBeCloseTo(before.mtimeMs, 3);
 	state.set(true);
 	expect(readFileSync(file, "utf8")).toBe(word);
 	// A file nobody touched is left alone.

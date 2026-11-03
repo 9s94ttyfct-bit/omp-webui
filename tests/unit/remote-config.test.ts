@@ -226,7 +226,7 @@ test("a change that would make the file untrustworthy is refused before anything
 });
 
 test("the file is <data dir>/remote.json unless OMP_WEBUI_REMOTE_CONFIG names another", () => {
-	expect(remoteConfigPath("/data", {})).toBe("/data/remote.json");
+	expect(remoteConfigPath("/data", {})).toBe(join("/data", "remote.json"));
 	expect(remoteConfigPath("/data", { OMP_WEBUI_REMOTE_CONFIG: "/elsewhere/r.json" })).toBe("/elsewhere/r.json");
-	expect(remoteConfigPath("/data", { OMP_WEBUI_REMOTE_CONFIG: "" })).toBe("/data/remote.json");
+	expect(remoteConfigPath("/data", { OMP_WEBUI_REMOTE_CONFIG: "" })).toBe(join("/data", "remote.json"));
 });

@@ -3039,7 +3039,10 @@ function describePaths(paths: readonly string[], ctx: RiskContext, cwd: string |
 	const lines = paths.slice(0, 20).map((p) => {
 		const abs = filePathOf(p, ctx, cwd);
 		const shown = abs !== null && ctx.windows ? windowsShown(abs) : abs;
-		return shown !== null && shown !== p ? `Path: ${p}\n  → ${shown}` : `Path: ${p}`;
+		// On Windows a path that differs only by case or by `/` for `\` is the same one: no arrow for it.
+		const same = (a: string, b: string) =>
+			ctx.windows ? a.replace(/\//g, "\\").toLowerCase() === b.replace(/\//g, "\\").toLowerCase() : a === b;
+		return shown !== null && !same(shown, p) ? `Path: ${p}\n  → ${shown}` : `Path: ${p}`;
 	});
 	if (paths.length > 20) lines.push(`… and ${paths.length - 20} more`);
 	return lines.join("\n");

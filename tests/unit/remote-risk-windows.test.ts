@@ -128,10 +128,13 @@ describe("Windows: what stays in the project, or only reads, is not asked about"
 });
 
 describe("Windows: tool calls name Windows paths", () => {
-	test("a file tool writing outside the project, in any case or slash, says where it leads in Windows' words", () => {
-		const risk = classifyToolCall("write", { path: "c:/users/me/Desktop/x.txt", content: "x" }, ctx);
-		expect(risk?.kinds).toEqual(["write_outside"]);
-		expect(risk?.detail).toContain("→ C:\\users\\me\\desktop\\x.txt");
+	test("a file tool writing outside the project says where it leads in Windows' words; a path that only differs by case or slash is not repeated", () => {
+		const relative = classifyToolCall("write", { path: "..\\..\\Users\\Me\\Desktop\\x.txt", content: "x" }, ctx);
+		expect(relative?.kinds).toEqual(["write_outside"]);
+		expect(relative?.detail).toContain("→ C:\\users\\me\\desktop\\x.txt");
+		const absolute = classifyToolCall("write", { path: "c:/users/me/Desktop/x.txt", content: "x" }, ctx);
+		expect(absolute?.kinds).toEqual(["write_outside"]);
+		expect(absolute?.detail).toBe("Path: c:/users/me/Desktop/x.txt");
 		expect(classifyToolCall("write", { path: "C:\\Work\\Proj\\src\\x.ts", content: "x" }, ctx)).toBeNull();
 		expect(classifyToolCall("edit", { path: "src\\x.ts", input: "" }, ctx)).toBeNull();
 	});
