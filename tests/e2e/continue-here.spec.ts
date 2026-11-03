@@ -70,3 +70,40 @@ test("Continue from here goes on from that reply in the conversation's own file,
 	await expect(rows).toHaveCount(2);
 	await expect(rows.filter({ has: page.getByLabel("Branch", { exact: true }) })).toHaveCount(1);
 });
+
+test("Send here sends an edited prompt in the conversation's own file, in place of the prompt, and keeps the conversation as it was as a branch", async ({
+	page,
+}) => {
+	const title = "Send here probe";
+	const file = writeChatSession(process.env.OMPW_E2E_AGENT_DIR as string, {
+		n: 0xc6,
+		title,
+		turns: [
+			{ prompt: "First question", reply: "First answer" },
+			{ prompt: "Second question", reply: "Second answer" },
+		],
+	});
+	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
+	const tap = await tapSocket(page);
+	// The edited prompt is taken and nothing is answered: no model is called.
+	tap.answer("prompt", () => ({ ok: true, data: {} }));
+	await page.goto("/");
+	await startLive(page, tap, title, "send-here");
+	await expect(page.getByText("Second answer", { exact: true })).toBeVisible();
+
+	const second = page.getByTestId("msg-user").filter({ hasText: "Second question" });
+	await second.hover();
+	await second.getByRole("button", { name: "Edit (creates a branch)" }).click();
+	await page.getByLabel("Edit message").fill("Second question, asked better");
+	await page.getByRole("button", { name: "Send here (keep the original as a branch)" }).click();
+
+	// The conversation stays in its own file, back to just before the edited prompt, and the edit is sent there.
+	await expect(page.getByText("Second answer", { exact: true })).toHaveCount(0);
+	await expect(page.getByText("First answer", { exact: true })).toBeVisible();
+	expect(tap.commands("fork")).toHaveLength(1);
+	expect(tap.commands("switch_session").map((c) => c.sessionPath)).toEqual([realpathSync(file)]);
+	expect(tap.commands("navigate_tree").map((c) => c.entryId)).toEqual(["t1p"]);
+	expect(tap.commands("branch")).toHaveLength(0);
+	await expect.poll(() => tap.commands("prompt").map((c) => c.message)).toEqual(["Second question, asked better"]);
+	await expect(sessionRow(page, title)).toHaveCount(2);
+});

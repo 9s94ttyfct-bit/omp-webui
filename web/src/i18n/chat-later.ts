@@ -173,6 +173,7 @@ export const en = {
 	siblingNext: "Next version",
 	userEditMessage: "Edit message",
 	userSendAsBranch: "Send as new branch",
+	userSendHere: "Send here (keep the original as a branch)",
 	userEditBusy: "The reply is still running. Send this edit once it has finished, or stop it.",
 	userAttachment: "Attachment",
 	userCopyMessage: "Copy message",

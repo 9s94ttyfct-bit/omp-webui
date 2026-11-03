@@ -50,11 +50,13 @@ test("Edit, Regenerate and Fork are not offered while a reply runs, and an open 
 	await expect(page.getByLabel("Edit message")).toHaveValue("Edit while replying, differently");
 	await expect(page.getByTestId("edit-busy")).toBeVisible();
 	await expect(page.getByRole("button", { name: "Send as new branch" })).toBeDisabled();
+	await expect(page.getByRole("button", { name: "Send here (keep the original as a branch)" })).toBeDisabled();
 
 	// The reply ends: the same editor can send.
 	tap.push({ t: "frame", liveId, frame: { type: "agent_end", messages: [] } });
 	await expect(page.getByTestId("edit-busy")).toHaveCount(0);
 	await expect(page.getByRole("button", { name: "Send as new branch" })).toBeEnabled();
+	await expect(page.getByRole("button", { name: "Send here (keep the original as a branch)" })).toBeEnabled();
 	await expect(regenerate(page)).toHaveCount(1);
 	expect(tap.commands("branch")).toHaveLength(0);
 });

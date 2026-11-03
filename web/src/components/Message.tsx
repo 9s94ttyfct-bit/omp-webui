@@ -49,6 +49,8 @@ export interface MessageActions {
 	 * the conversation stays the one the sidebar, its pin and its settings name, and goes on from this reply.
 	 */
 	continueFrom?: (entry: SessionEntry) => void;
+	/** Send an edited prompt in place of `entry` in this conversation's own file, the conversation as it was kept as a branch. */
+	editHere?: (entry: SessionEntry, text: string) => void;
 	switchSibling?: (entry: SessionEntry, to: SessionEntry) => void;
 	openSubagent?: (toolCallId: string) => void;
 	/** Set inside a subagent's transcript: that subagent, whose children a task card there starts (see `subagentsForToolCall`). */
@@ -244,7 +246,7 @@ function UserMessage({ entry, message, actions, siblings, readOnly }: RowProps) 
 						</Button>
 						<Button
 							size="sm"
-							variant="primary"
+							variant="outline"
 							disabled={(!draft.trim() && !files.length) || !actions.edit}
 							onClick={() => {
 								setEditing(false);
@@ -253,6 +255,17 @@ function UserMessage({ entry, message, actions, siblings, readOnly }: RowProps) 
 							}}
 						>
 							{t("chat.userSendAsBranch")}
+						</Button>
+						<Button
+							size="sm"
+							variant="primary"
+							disabled={(!draft.trim() && !files.length) || !actions.editHere}
+							onClick={() => {
+								setEditing(false);
+								if (entry) actions.editHere?.(entry, editedMessage(draft.trim(), files));
+							}}
+						>
+							{t("chat.userSendHere")}
 						</Button>
 					</div>
 				</div>

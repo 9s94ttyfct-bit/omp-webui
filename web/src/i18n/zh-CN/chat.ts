@@ -200,6 +200,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	siblingNext: "下一个版本",
 	userEditMessage: "编辑消息",
 	userSendAsBranch: "作为新分支发送",
+	userSendHere: "在此发送（原对话留作分支）",
 	userEditBusy: "回复仍在进行。请等它结束后再发送这次编辑，或先停止它。",
 	userAttachment: "附件",
 	userCopyMessage: "复制消息",

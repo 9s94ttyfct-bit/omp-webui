@@ -380,6 +380,20 @@ function assertIdle(id: string): void {
 }
 
 /**
+ * The conversation as it is kept as a branch beside it, and the process back on the conversation's own file at `entryId`
+ * (a reply: after it; a prompt: just before it, as omp's `navigate_tree` moves): omp's fork of the whole session makes the
+ * copy and moves the process there, `switch_session` brings it back, `navigate_tree` moves its leaf.
+ */
+async function keepAsBranchAndGoTo(id: string, entryId: string): Promise<void> {
+	const main = useApp.getState().lives[id]?.info.sessionFile;
+	if (!main) throw new Error(translate("chat.errNoFileYet"));
+	const forked = await socket.act<{ cancelled?: boolean }>(id, { type: "fork" });
+	if (forked?.cancelled) throw new Error(translate("chat.errForkCancelled"));
+	await socket.act(id, { type: "switch_session", sessionPath: main });
+	await socket.act(id, { type: "navigate_tree", entryId });
+}
+
+/**
  * Text (and pictures, and attached text files) put back in the composer: what a branch that was made, a prompt that was
  * refused and a queue withdrawn by Stop would lose. The files' blocks leave the text and come back as attachments.
  */
@@ -1078,17 +1092,34 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 						void run(translate("chat.errContinueHere"), async () => {
 							const id = await ensureLive();
 							assertIdle(id);
-							const main = useApp.getState().lives[id]?.info.sessionFile;
-							if (!main) throw new Error(translate("chat.errNoFileYet"));
-							// The whole conversation as it is goes to a branch beside it (omp's fork of the session, which moves the
-							// process there); the process comes back to the conversation's own file and goes on from the reply.
-							const forked = await socket.act<{ cancelled?: boolean }>(id, { type: "fork" });
-							if (forked?.cancelled) throw new Error(translate("chat.errForkCancelled"));
-							await socket.act(id, { type: "switch_session", sessionPath: main });
-							await socket.act(id, { type: "navigate_tree", entryId: entry.id });
+							await keepAsBranchAndGoTo(id, entry.id);
 							setViewLeaf(null);
 							await refreshEntries(id);
 							toast("success", translate("chat.toastContinuedHere"));
+						});
+					},
+			editHere: working
+				? undefined
+				: (entry, text) => {
+						const { fam, currentFile, ensureLive, run, setViewLeaf } = latest.current;
+						void run(translate("chat.errEdit"), async () => {
+							let images: PromptImage[] = [];
+							try {
+								const owner = destinationFor(fam, entry.id, currentFile)?.file ?? currentFile;
+								if (owner !== currentFile) throw new Error(translate("chat.errOpenBranch"));
+								images = await attachmentsOf(entry);
+								const id = await ensureLive();
+								await continueConversation(id);
+								assertIdle(id);
+								// A move to a prompt goes to just before it: the edit is sent where the prompt was, as another version of it.
+								await keepAsBranchAndGoTo(id, entry.id);
+								setViewLeaf(null);
+								await socket.rpc(id, { type: "prompt", message: text, images });
+							} catch (e) {
+								// The edit exists nowhere else: it goes back to the composer instead of vanishing with the error.
+								setDraft(toDraft(text, images));
+								throw e;
+							}
 						});
 					},
 			switchSibling: (_from, to) => {
