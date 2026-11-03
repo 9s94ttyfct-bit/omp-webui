@@ -36,8 +36,9 @@ test("Settings switches the interface to Chinese across key surfaces, and the ch
 	await expect(page.getByRole("heading", { name: zh(pages, "Settings") })).toBeVisible();
 	const sidebar = page.getByRole("complementary");
 	const nav = (english: string) => sidebar.getByRole("button", { name: zh(shell, english) });
-	// The shortcuts row left the sidebar with #639; the pages it holds are all still named here.
-	for (const label of ["New chat", "Usage & cost", "Commands & terminal", "Settings"]) {
+	// The shortcuts row left the sidebar with #639; the pages it holds are all still named here (Plugins took Commands &
+	// terminal's place, which is in Settings now).
+	for (const label of ["New chat", "Usage & cost", "Plugins", "Settings"]) {
 		await expect(nav(label)).toBeVisible();
 	}
 	await expect(sidebar).not.toContainText("Usage & cost");

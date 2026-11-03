@@ -34,6 +34,10 @@ const HARNESS = {
 		has: platformId === "win32" && Boolean(process.env.OMPW_LAUNCHER_EXE) && Boolean(process.env.OMPW_NEXT_ZIP),
 		why: "it installs an update of the built Windows launcher: Windows, with OMPW_LAUNCHER_EXE (the built omp-webui.exe) and OMPW_NEXT_ZIP (a build of it as a later release, zipped), which CI's windows-launcher job sets",
 	},
+	isolatedHome: {
+		has: platformId !== "win32",
+		why: "omp keeps its plugins under the home folder, which on Windows is the user profile (USERPROFILE): the test server's own HOME does not move it, so the runner's real ~/.omp would be the test's",
+	},
 	notWindowsYet: {
 		has: platformId !== "win32",
 		why: "it fails on Windows for a cause not found yet (an open issue of the Windows CI legs, see docs/TECHNICAL.md)",

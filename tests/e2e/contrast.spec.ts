@@ -22,8 +22,11 @@ for (const theme of ["light", "dark"] as const) {
 			await page.keyboard.press("ControlOrMeta+k");
 			ratios.palette = await contrastOf(page.getByTestId("palette-input"), "placeholder");
 			await page.keyboard.press("Escape");
-			await page.getByRole("button", { name: "Commands & terminal" }).click();
+			// Commands & terminal is a page of Settings; the Plugins page has fields of its own.
+			await page.goto("/#/settings/cli");
 			ratios["command filter"] = await contrastOf(page.getByLabel("Filter commands"), "placeholder");
+			await page.getByTestId("nav-plugins").click();
+			ratios["plugin spec"] = await contrastOf(page.getByTestId("manual-spec"), "placeholder");
 
 			const low = Object.entries(ratios).filter(([, r]) => r < 4.5);
 			expect(low, JSON.stringify(ratios)).toEqual([]);

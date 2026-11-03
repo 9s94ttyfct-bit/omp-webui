@@ -151,11 +151,15 @@ export interface UpgradeAvailable {
 	to: string;
 }
 
-/** `omp plugin upgrade --dry-run`: `[dry-run] Would upgrade <id> (<scope>): <from> -> <to>` per marketplace plugin. */
+/**
+ * `omp plugin upgrade --dry-run`, a line per marketplace plugin with a newer version: `[dry-run] Would upgrade <id>
+ * (<scope>): <from> -> <to>` (omp 18.16), or the same without the prefix, indented (`  <id> (<scope>): <from> -> <to>`,
+ * omp 18.12).
+ */
 export function parseUpgradePreview(text: string): UpgradeAvailable[] {
 	const out: UpgradeAvailable[] = [];
 	for (const line of Bun.stripANSI(text).split("\n")) {
-		const m = /^\[dry-run\] Would upgrade (\S+) \((user|project)\): (.+?) -> (.+)$/.exec(line.trim());
+		const m = /^(?:\[dry-run\] Would upgrade )?(\S+@\S+) \((user|project)\): (.+?) -> (.+)$/.exec(line.trim());
 		if (!m || !isPluginScope(m[2])) continue;
 		const from = m[3] === "undefined" || m[3] === "?" ? null : m[3];
 		out.push({ id: m[1], scope: m[2], from, to: m[4] });

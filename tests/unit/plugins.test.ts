@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import {
 	configValueProblem,
 	featureArgs,
@@ -33,7 +34,7 @@ describe("arguments", () => {
 		expect(pluginSpec("@scope/plugin@1.2.3", HOME)).toBe("@scope/plugin@1.2.3");
 		expect(pluginSpec("  github:user/repo#v1 ", HOME)).toBe("github:user/repo#v1");
 		expect(pluginSpec("name[feat1,feat2]", HOME)).toBe("name[feat1,feat2]");
-		expect(pluginSpec("~/plugins/mine", HOME)).toBe("/home/someone/plugins/mine");
+		expect(pluginSpec("~/plugins/mine", HOME)).toBe(join(HOME, "plugins", "mine"));
 		expect(pluginSpec("~", HOME)).toBe(HOME);
 		for (const bad of [
 			"--force",
@@ -84,7 +85,7 @@ describe("arguments", () => {
 		expect(planJob("install", { spec: "~/p", force: true }, HOME, HOME).args).toEqual([
 			"plugin",
 			"install",
-			"/home/someone/p",
+			join(HOME, "p"),
 			"--force",
 		]);
 		expect(planJob("uninstall", { id: "hello@market", scope: "user" }, HOME, HOME).args).toEqual([
@@ -187,6 +188,10 @@ describe("what omp prints", () => {
 			{ id: "other@localmk", scope: "project", from: "1.0.0", to: "1.1.0" },
 		]);
 		expect(parseUpgradePreview("[dry-run] All marketplace plugins are up to date")).toEqual([]);
+		// omp 18.12 prints the line without the prefix, indented.
+		expect(parseUpgradePreview("  greeter@testmarket (user): 1.0.0 -> 1.1.0\n")).toEqual([
+			{ id: "greeter@testmarket", scope: "user", from: "1.0.0", to: "1.1.0" },
+		]);
 	});
 
 	test("list --json: npm, a linked folder and marketplace plugins, with their upgrade and switch", () => {
