@@ -42,6 +42,10 @@ const HARNESS = {
 		has: platformId !== "win32",
 		why: "it fails on Windows for a cause not found yet (an open issue of the Windows CI legs, see docs/TECHNICAL.md)",
 	},
+	lanPeer: {
+		has: platformId !== "win32",
+		why: "a page from the network is stood in for by a connection from this computer's own network address, which Windows refuses to make to 127.0.0.1 (EADDRNOTAVAIL)",
+	},
 } as const;
 
 export type Need = Capability | keyof typeof HARNESS;

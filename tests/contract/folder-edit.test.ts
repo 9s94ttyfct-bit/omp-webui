@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { capabilities } from "../../server/platform/capabilities.ts";
 import { FOLDER_LIMITS, type FolderFile, type FolderSaved } from "../../shared/folder.ts";
 import { CSRF_HEADER, ERROR_HEADER, type FileTransfer, type TransferRecord } from "../../shared/transfer.ts";
 import { type AccessKey, AUD, EMAIL, HOSTNAME, type Jwks, makeKey, startJwks, TEAM } from "../support/access-jwt.ts";
@@ -168,7 +167,7 @@ describe("who may ask", () => {
 		expect(put.status).toBe(405);
 	});
 
-	test.skipIf(!capabilities.remoteAccess)("through the tunnel Access is needed as well", async () => {
+	test("through the tunnel Access is needed as well", async () => {
 		const { etag } = await text(tunnel, "notes.md");
 		const noJwt = await remote.fetch(
 			"/api/folder/file",
@@ -179,35 +178,32 @@ describe("who may ask", () => {
 		expect(onDisk("notes.md")).toBe("# Notes\n\nfirst\n");
 	});
 
-	test.skipIf(!capabilities.remoteAccess)(
-		"the setting is looked at on every request: a page that may not upload is not offered the editor and is refused",
-		async () => {
-			try {
-				const { etag } = await text(tunnel, "notes.md");
-				for (const [setting, code] of [
-					["download", "uploadOff"],
-					["off", "off"],
-				] as const) {
-					setTransfer(setting);
-					const answer = await read(tunnel, "notes.md");
-					expect(answer.body, setting).toMatchObject({ kind: "text", editable: false });
-					const refused = await save(tunnel, "notes.md", "x", etag);
-					expect([refused.status, refused.code], setting).toEqual([403, code]);
-					expect(onDisk("notes.md")).toBe("# Notes\n\nfirst\n");
-					// This computer's page is not the setting's.
-					expect((await read(here, "notes.md")).body).toMatchObject({ editable: true });
-				}
-				setTransfer("full");
-				expect((await read(tunnel, "notes.md")).body).toMatchObject({ editable: true });
-			} finally {
-				setTransfer("full");
+	test("the setting is looked at on every request: a page that may not upload is not offered the editor and is refused", async () => {
+		try {
+			const { etag } = await text(tunnel, "notes.md");
+			for (const [setting, code] of [
+				["download", "uploadOff"],
+				["off", "off"],
+			] as const) {
+				setTransfer(setting);
+				const answer = await read(tunnel, "notes.md");
+				expect(answer.body, setting).toMatchObject({ kind: "text", editable: false });
+				const refused = await save(tunnel, "notes.md", "x", etag);
+				expect([refused.status, refused.code], setting).toEqual([403, code]);
+				expect(onDisk("notes.md")).toBe("# Notes\n\nfirst\n");
+				// This computer's page is not the setting's.
+				expect((await read(here, "notes.md")).body).toMatchObject({ editable: true });
 			}
-		},
-	);
+			setTransfer("full");
+			expect((await read(tunnel, "notes.md")).body).toMatchObject({ editable: true });
+		} finally {
+			setTransfer("full");
+		}
+	});
 });
 
 /** This computer's page, and the tunnel's where remote access is (not on Windows: the server refuses it there). */
-const pages = capabilities.remoteAccess ? [here, tunnel] : [here];
+const pages = [here, tunnel];
 describe("saving what a page opened", () => {
 	for (const page of pages) {
 		test(`${page.name}: the read gives the etag, a save names it and answers the next, and the log says who`, async () => {

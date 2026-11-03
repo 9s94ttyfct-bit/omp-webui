@@ -3,7 +3,6 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GPU_MARKER } from "../../server/host-gpu-guard.ts";
-import { capabilities } from "../../server/platform/capabilities.ts";
 import { platform } from "../../server/platform/index.ts";
 import type { HostHistory, HostPoint, HostProc, HostSeries } from "../../shared/host.ts";
 import { type AccessKey, type Jwks, makeKey, startJwks } from "../support/access-jwt.ts";
@@ -265,49 +264,45 @@ describe("the socket: host_watch and host_sample", () => {
 		}
 	}, 60_000);
 
-	test.skipIf(!capabilities.remoteAccess)(
-		"the processes come only to a page that asks for them, and are listed only while one does",
-		async () => {
-			const plain = await connect(s);
-			const asking = await connect(s);
-			try {
-				const quiet = samplesOf(plain);
-				const loud = samplesOf(asking);
-				watch(plain, true);
-				watch(asking, true, { procs: true });
-				await pollUntil(() => loud.length >= 3 && quiet.length >= 3, "looks on both pages");
-				for (const m of quiet) expect(m.procs).toBeUndefined();
-				const procs = loud.at(-1)?.procs;
-				expect(procs).toBeDefined();
-				const server = procs?.find((p) => p.id === "server");
-				expect(server?.count).toBe(1);
-				expect(server?.rss).toBeGreaterThan(0);
-				// A share of one core from the second listing on; never negative.
-				expect(typeof server?.cpu === "number" && server.cpu >= 0).toBe(true);
-				for (const p of procs ?? []) {
-					// What a page may be told of a process is these four figures: no command line, path, user or pid. A field added
-					// to the row would reach every page, tunnel pages included, and has to be a decision made here.
-					expect(Object.keys(p).sort()).toEqual(["count", "cpu", "id", "rss"]);
-					expect(["server", "omp", "relay"]).toContain(p.id);
-					expect(p.count).toBeGreaterThanOrEqual(1);
-					expect(p.rss).toBeGreaterThanOrEqual(0);
-				}
-				// What `GET /api/host` says of them while a page asks.
-				expect((await history()).procs?.some((p) => p.id === "server")).toBe(true);
-
-				// The page that asked stops asking (it still watches the load): nothing is listed any more.
-				watch(asking, true);
-				await pollUntil(async () => (await history()).procs === null, "the processes no longer listed");
-				const seen = loud.length;
-				await pollUntil(() => loud.length >= seen + 2, "two more looks");
-				for (const m of loud.slice(seen)) expect(m.procs).toBeUndefined();
-			} finally {
-				plain.close();
-				asking.close();
+	test("the processes come only to a page that asks for them, and are listed only while one does", async () => {
+		const plain = await connect(s);
+		const asking = await connect(s);
+		try {
+			const quiet = samplesOf(plain);
+			const loud = samplesOf(asking);
+			watch(plain, true);
+			watch(asking, true, { procs: true });
+			await pollUntil(() => loud.length >= 3 && quiet.length >= 3, "looks on both pages");
+			for (const m of quiet) expect(m.procs).toBeUndefined();
+			const procs = loud.at(-1)?.procs;
+			expect(procs).toBeDefined();
+			const server = procs?.find((p) => p.id === "server");
+			expect(server?.count).toBe(1);
+			expect(server?.rss).toBeGreaterThan(0);
+			// A share of one core from the second listing on; never negative.
+			expect(typeof server?.cpu === "number" && server.cpu >= 0).toBe(true);
+			for (const p of procs ?? []) {
+				// What a page may be told of a process is these four figures: no command line, path, user or pid. A field added
+				// to the row would reach every page, tunnel pages included, and has to be a decision made here.
+				expect(Object.keys(p).sort()).toEqual(["count", "cpu", "id", "rss"]);
+				expect(["server", "omp", "relay"]).toContain(p.id);
+				expect(p.count).toBeGreaterThanOrEqual(1);
+				expect(p.rss).toBeGreaterThanOrEqual(0);
 			}
-		},
-		30_000,
-	);
+			// What `GET /api/host` says of them while a page asks.
+			expect((await history()).procs?.some((p) => p.id === "server")).toBe(true);
+
+			// The page that asked stops asking (it still watches the load): nothing is listed any more.
+			watch(asking, true);
+			await pollUntil(async () => (await history()).procs === null, "the processes no longer listed");
+			const seen = loud.length;
+			await pollUntil(() => loud.length >= seen + 2, "two more looks");
+			for (const m of loud.slice(seen)) expect(m.procs).toBeUndefined();
+		} finally {
+			plain.close();
+			asking.close();
+		}
+	}, 30_000);
 
 	test("what is not `true` for `procs` is not asking for them; a watch that is not `on` watches nothing", async () => {
 		const ws = await connect(s);
@@ -336,7 +331,7 @@ describe("the socket: host_watch and host_sample", () => {
 	}, 30_000);
 });
 
-describe.skipIf(!capabilities.remoteAccess)("a page that came in through the tunnel", () => {
+describe("a page that came in through the tunnel", () => {
 	test("reads the history, and the answer is the same shape as at this computer", async () => {
 		const res = await remote.fetch("/api/host");
 		expect(res.status).toBe(200);

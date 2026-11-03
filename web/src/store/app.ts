@@ -1652,10 +1652,9 @@ export function viewOfStep(now: View, next: View): View {
 	return next.browser ? { ...conversation, browser: true } : conversation;
 }
 
-/** Whether this page may ask for `/api/remote*`: it is not a remote page, and the server's system has remote access. */
+/** Whether this page may ask for `/api/remote*`: it is not a remote page. */
 function hasRemoteRoutes(): boolean {
-	const meta = useApp.getState().meta;
-	return !meta?.remote && meta?.capabilities?.remoteAccess !== false;
+	return !useApp.getState().meta?.remote;
 }
 
 let started = false;
@@ -1737,8 +1736,7 @@ export async function startApp(): Promise<void> {
 	if (res?.ok) useApp.setState({ meta: await res.json() });
 	// Before the page connects: whether omp is installed decides what it shows.
 	await ompApi.load().catch(() => {});
-	// The sidebar's indicator shows the tunnel; a page that came in through it is refused the routes and has no use for
-	// them, and a server whose system has remote access off (`capabilities.remoteAccess`) has none to give.
+	// The sidebar's indicator shows the tunnel; a page that came in through it is refused the routes and has no use for them.
 	if (hasRemoteRoutes()) void remoteApi.load();
 	socket.connect();
 }

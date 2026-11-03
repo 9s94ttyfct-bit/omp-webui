@@ -12,7 +12,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { capabilities } from "../../server/platform/capabilities.ts";
 import {
 	type ArchivePlan,
 	CSRF_HEADER,
@@ -188,7 +187,7 @@ const network: Page = {
  * Every kind of page: the tunnel's only where remote access is there (not on Windows: the server refuses it), the one on
  * the network only where there is a network to be on.
  */
-const pages: Page[] = [here, ...(capabilities.remoteAccess ? [tunnel] : []), ...(LAN === undefined ? [] : [network])];
+const pages: Page[] = [here, tunnel, ...(LAN === undefined ? [] : [network])];
 const elsewhere = pages.filter((p) => p !== here);
 
 const query = (over: Record<string, string> = {}) => new URLSearchParams({ file, ...over }).toString();
@@ -227,18 +226,15 @@ describe("who may ask", () => {
 		expect((await get(here, "README.md", { headers: { "sec-fetch-site": "same-origin" } })).status).toBe(200);
 	});
 
-	test.skipIf(!capabilities.remoteAccess)(
-		"through the tunnel Access is needed as well, and the page's own origin",
-		async () => {
-			const asked = (r: Parameters<typeof remote.fetch>[1]) =>
-				remote.fetch(`/api/folder/download?${query({ path: "README.md" })}`, r);
-			expect((await asked({})).status).toBe(200);
-			expect((await asked({ jwt: null })).status).toBe(403);
-			expect((await asked({ token: false })).status).toBe(401);
-			expect((await asked({ origin: "https://evil.example.test" })).status).toBe(403);
-			expect((await asked({ host: "evil.example.test" })).status).toBe(403);
-		},
-	);
+	test("through the tunnel Access is needed as well, and the page's own origin", async () => {
+		const asked = (r: Parameters<typeof remote.fetch>[1]) =>
+			remote.fetch(`/api/folder/download?${query({ path: "README.md" })}`, r);
+		expect((await asked({})).status).toBe(200);
+		expect((await asked({ jwt: null })).status).toBe(403);
+		expect((await asked({ token: false })).status).toBe(401);
+		expect((await asked({ origin: "https://evil.example.test" })).status).toBe(403);
+		expect((await asked({ host: "evil.example.test" })).status).toBe(403);
+	});
 
 	test("a write needs the CSRF header: without it no upload, no ZIP, no cancel is made", async () => {
 		for (const page of pages) {
@@ -409,16 +405,13 @@ describe("a folder as a ZIP", () => {
 		});
 	}
 
-	test.skipIf(!capabilities.remoteAccess)(
-		"a ticket is for the one who asked: another page that holds the token is not given the ZIP",
-		async () => {
-			const plan = (await (
-				await tunnel.send("/api/folder/archive", { method: "POST", body: JSON.stringify({ file, path: "src" }) })
-			).json()) as ArchivePlan;
-			expect(await failure(await here.send(plan.url))).toMatchObject({ status: 404, code: "gone" });
-			expect((await tunnel.send(plan.url)).status).toBe(200);
-		},
-	);
+	test("a ticket is for the one who asked: another page that holds the token is not given the ZIP", async () => {
+		const plan = (await (
+			await tunnel.send("/api/folder/archive", { method: "POST", body: JSON.stringify({ file, path: "src" }) })
+		).json()) as ArchivePlan;
+		expect(await failure(await here.send(plan.url))).toMatchObject({ status: 404, code: "gone" });
+		expect((await tunnel.send(plan.url)).status).toBe(200);
+	});
 });
 
 describe("an upload", () => {
@@ -581,23 +574,20 @@ describe("what this computer lets another page do", () => {
 		}
 	});
 
-	test.skipIf(!capabilities.remoteAccess)(
-		"the setting is looked at again on every request: no restart; a file nothing can be trusted of says no, no file at all says yes",
-		async () => {
-			const states: [FileTransfer | "broken" | undefined, number][] = [
-				["off", 403],
-				["full", 200],
-				["broken", 403],
-				["download", 200],
-				[undefined, 200],
-			];
-			for (const [value, status] of states) {
-				setTransfer(value);
-				expect((await get(tunnel, "README.md")).status, String(value)).toBe(status);
-			}
-			setTransfer("full");
-		},
-	);
+	test("the setting is looked at again on every request: no restart; a file nothing can be trusted of says no, no file at all says yes", async () => {
+		const states: [FileTransfer | "broken" | undefined, number][] = [
+			["off", 403],
+			["full", 200],
+			["broken", 403],
+			["download", 200],
+			[undefined, 200],
+		];
+		for (const [value, status] of states) {
+			setTransfer(value);
+			expect((await get(tunnel, "README.md")).status, String(value)).toBe(status);
+		}
+		setTransfer("full");
+	});
 
 	test("a page that is not on this computer cannot change the setting", async () => {
 		setTransfer("download");
@@ -639,24 +629,21 @@ describe("the log", () => {
 		}
 	});
 
-	test.skipIf(!capabilities.remoteAccess)(
-		"a request the person's rule said no to is in it, with who asked; one that only named nothing is not",
-		async () => {
-			setTransfer("full");
-			const before = logged().length;
-			await get(tunnel, ".env");
-			await get(tunnel, "../outside.txt");
-			await get(tunnel, "nothing.txt");
-			await get(tunnel, "src");
-			const added = logged().slice(before);
-			expect(added.map((l) => [l.who, l.path, l.status])).toEqual([
-				[EMAIL, ".env", "refused:secret"],
-				[EMAIL, "../outside.txt", "refused:outside"],
-			]);
-			setTransfer("off");
-			await get(tunnel, "README.md");
-			setTransfer("full");
-			expect(logged().at(-1)).toMatchObject({ who: EMAIL, path: "README.md", status: "refused:off" });
-		},
-	);
+	test("a request the person's rule said no to is in it, with who asked; one that only named nothing is not", async () => {
+		setTransfer("full");
+		const before = logged().length;
+		await get(tunnel, ".env");
+		await get(tunnel, "../outside.txt");
+		await get(tunnel, "nothing.txt");
+		await get(tunnel, "src");
+		const added = logged().slice(before);
+		expect(added.map((l) => [l.who, l.path, l.status])).toEqual([
+			[EMAIL, ".env", "refused:secret"],
+			[EMAIL, "../outside.txt", "refused:outside"],
+		]);
+		setTransfer("off");
+		await get(tunnel, "README.md");
+		setTransfer("full");
+		expect(logged().at(-1)).toMatchObject({ who: EMAIL, path: "README.md", status: "refused:off" });
+	});
 });

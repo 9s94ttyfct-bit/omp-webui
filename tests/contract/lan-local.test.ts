@@ -1,4 +1,4 @@
-// needs: remoteAccess
+// needs: lanPeer, posixShell
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

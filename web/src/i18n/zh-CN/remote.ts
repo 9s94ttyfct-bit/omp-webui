@@ -5,10 +5,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	// Settings › Remote access
 	settingsTitle: "远程访问",
 	settingsIntro:
-		"从任何地方打开这个应用：Cloudflare 隧道把 https://{hostname} 连到这台 Mac，Cloudflare Access 在放你进来之前先问你是谁。",
-	settingsRemoteRefused: "这个页面不在运行服务器的这台 Mac 上，所以这里不能改动隧道。",
-	settingsUnavailable:
-		"Windows 上暂时不能使用远程访问：要等风险分类器（检查远程页面的高风险命令）支持 Windows 路径之后才行。",
+		"从任何地方打开这个应用：Cloudflare 隧道把 https://{hostname} 连到这台电脑，Cloudflare Access 在放你进来之前先问你是谁。",
+	settingsRemoteRefused: "这个页面不在运行服务器的这台电脑上，所以这里不能改动隧道。",
 
 	// The state of the tunnel
 	stateOff: "已关闭",
@@ -91,7 +89,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	guideIntro: "在 Cloudflare 控制台里按这个顺序：",
 	guideApp: "Zero Trust › Access › Applications › Add an application › Self-hosted",
 	guideHostname:
-		"主机名填上面同一个，或者填一个能覆盖它的通配域名（*.example.com）：一个应用就能管下面所有 Mac，共用一个 AUD 标签",
+		"主机名填上面同一个，或者填一个能覆盖它的通配域名（*.example.com）：一个应用就能管下面所有电脑，共用一个 AUD 标签",
 	guidePolicy: "添加一条策略：Allow，并填上面的邮箱地址",
 	guideAud: "从应用里复制 AUD 标签，粘贴到上面",
 	guideSession:
@@ -103,13 +101,13 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	saveFailed: "无法保存设置：{error}",
 	saveDone: "设置已保存",
 
-	transferTitle: "把这些设置分享给另一台 Mac",
+	transferTitle: "把这些设置分享给另一台电脑",
 	transferHint:
-		"一个使用通配域名（*.example.com）的 Access 应用可以管下面所有的 Mac。在这里导出团队名、AUD 标签和允许的邮箱，在另一台 Mac 上导入，它就只需要填自己的主机名。文件里没有别的东西（没有主机名、隧道和任何凭据）。",
+		"一个使用通配域名（*.example.com）的 Access 应用可以管下面所有的电脑。在这里导出团队名、AUD 标签和允许的邮箱，在另一台电脑上导入，它就只需要填自己的主机名。文件里没有别的东西（没有主机名、隧道和任何凭据）。",
 	transferExport: "导出设置",
 	transferImport: "导入设置…",
 	transferExported: "已保存 {name}",
-	transferImported: "已把文件里的设置填进上面的表单。请核对，如果还没有主机名就填上这台 Mac 的主机名，然后保存。",
+	transferImported: "已把文件里的设置填进上面的表单。请核对，如果还没有主机名就填上这台电脑的主机名，然后保存。",
 	transferTooLarge: "这个文件太大，不像远程访问设置文件。",
 	transferNotJson: "这个文件不是 JSON。",
 	transferNotOurs: "这不是 omp-webui 导出的远程访问设置文件。",

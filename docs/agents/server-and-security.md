@@ -60,6 +60,7 @@ None stored by the app for these cards. Environment variables the server reads:
 | `OMP_WEBUI_HOST_GPU` | on | `0`: never read the GPU; `1`: try again after a start whose first GPU read did not finish. |
 | `OMP_WEBUI_REMOTE_CONFIG`, `OMP_WEBUI_GUARD_CONFIG` | in the data folder | Other paths for `remote.json`, `guard.json`. |
 | `OMP_WEBUI_CLOUDFLARED`, `OMP_WEBUI_BREW` | found on `PATH` | The `cloudflared` / `brew` to run. |
+| `OMP_WEBUI_CLOUDFLARED_RELEASES` | cloudflared's latest GitHub release | Where Install reads the release on Linux and Windows (for tests). |
 | `OMP_WEBUI_LOGIN_SHELL`, `OMP_WEBUI_DIST`, `OMP_WEBUI_AUTO_PORT`, `OMP_WEBUI_PARENT_PID`, `OMP_WEBUI_APP_BUNDLE` | set by the macOS app | Login shell to take the environment from, built page location, take the next free port, the app's pid (the server exits with it), the app bundle (for self-update). |
 
 ## API routes

@@ -67,8 +67,8 @@ export function setRemoteSnapshot(snapshot: RemoteSnapshot): void {
 }
 
 /**
- * The socket's `remote` message. Its status is shown at once (while `brew install` runs, `message` is the line it last
- * printed), and the whole answer is asked for again: a login or an install that ends changes `loggedIn` and `installed`,
+ * The socket's `remote` message. Its status is shown at once (while an install runs, `message` is what it last said),
+ * and the whole answer is asked for again: a login or an install that ends changes `loggedIn` and `installed`,
  * which `status.state` does not say.
  */
 export function onRemoteMessage(status: RemoteStatus): void {
@@ -142,7 +142,7 @@ export const remoteApi = {
 		});
 	},
 
-	/** Put `cloudflared` on this machine (Homebrew). Long: the card holds the button until it has ended. */
+	/** Put `cloudflared` on this machine (Homebrew on macOS, Cloudflare's own build elsewhere). Long: the card holds the button until it has ended. */
 	install: () => snapshotAction("install", "/api/remote/install"),
 
 	/**

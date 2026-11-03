@@ -3,8 +3,6 @@ import { join } from "node:path";
 import type { ServerMessage } from "../shared/protocol.ts";
 import { asciiLower, isRemoteOn, parseRemoteConfig, type RemoteConfig } from "../shared/remote.ts";
 import { DEFAULT_FILE_TRANSFER, type FileTransfer } from "../shared/transfer.ts";
-import { UNAVAILABLE } from "./platform/capabilities.ts";
-import { platform } from "./platform/index.ts";
 import type { RemoteAiHooks } from "./remote-ai.ts";
 import type { RemoteAuth, RemoteIdentity } from "./remote-auth.ts";
 import type { RemoteService } from "./remote-routes.ts";
@@ -59,12 +57,6 @@ export class LazyRemote {
 		private readonly ai?: RemoteAiHooks,
 		/** Told the settings after the card (or the AI help) saved a change of them. */
 		private readonly onSaved?: (config: RemoteConfig) => void,
-		/**
-		 * Whether the system has remote access at all (`capabilities.remoteAccess`; a test hands another system's). Where it
-		 * has not (Windows), the settings count as off whatever the file says, the tunnel is never started, and
-		 * `/api/remote*` answer 501 with the reason: the chain is never loaded.
-		 */
-		private readonly available: boolean = platform.capabilities.remoteAccess,
 	) {
 		this.file = process.env.OMP_WEBUI_REMOTE_CONFIG || join(dataDir, "remote.json");
 	}
@@ -144,7 +136,6 @@ export class LazyRemote {
 	 * effect without a restart of the server (the chain, once loaded, reads it itself on every request).
 	 */
 	private readOff(): RemoteConfig | null {
-		if (!this.available) return null;
 		let stamp = "";
 		try {
 			const stat = statSync(this.file);
@@ -175,10 +166,9 @@ export class LazyRemote {
 		return this.off;
 	}
 
-	/** The chain, loaded. It is loaded once, whatever asks for it first; never where the system has no remote access. */
+	/** The chain, loaded. It is loaded once, whatever asks for it first. */
 	private async load(): Promise<Chain> {
 		if (this.chain) return this.chain;
-		if (!this.available) throw new Error(UNAVAILABLE.remoteAccess);
 		if (!this.loading) {
 			this.loading = (async () => {
 				const [{ RemoteAuth }, { RemoteService }] = await Promise.all([
@@ -224,7 +214,6 @@ export class LazyRemote {
 		// The path is checked before the chain is loaded: a request for anything else must not load it.
 		const path = url.pathname;
 		if (path !== "/api/remote" && !path.startsWith("/api/remote/")) return null;
-		if (!this.available) return Response.json({ error: UNAVAILABLE.remoteAccess }, { status: 501 });
 		const chain = await this.load();
 		return chain.service.handle(req, url, peer);
 	}
@@ -243,11 +232,10 @@ export class LazyRemote {
 	 * The chain is loaded and started: the tunnel comes up when the settings ask for it.
 	 *
 	 * A tunnel a crashed server left behind is ended even when the settings do not ask for a tunnel: that is what the
-	 * record of it (a file beside the settings) is for. The chain is loaded for that only when the record is there. A
-	 * system without remote access starts nothing (it could never have started a tunnel either).
+	 * record of it (a file beside the settings) is for. The chain is loaded for that only when the record is there.
 	 */
 	start(): void {
-		if (!this.available || (!this.readOff() && !this.hasLeftover())) return;
+		if (!this.readOff() && !this.hasLeftover()) return;
 		void (async () => {
 			const chain = await this.load();
 			await chain.service.autostart();

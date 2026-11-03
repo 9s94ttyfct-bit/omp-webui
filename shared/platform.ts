@@ -8,12 +8,6 @@
 export type PlatformId = "darwin" | "linux" | "win32";
 
 export interface Capabilities {
-	/**
-	 * Remote access: the Cloudflare tunnel, Cloudflare Access pages and pages over a network address. Off where the
-	 * remote-risk classifier (`shared/remote-risk.ts`) does not know the system's paths and shells yet (Windows): a remote
-	 * page's risky commands could not be told from harmless ones there.
-	 */
-	remoteAccess: boolean;
 	/** omp and what it started end together: process groups (macOS, Linux), `taskkill /T` (Windows). */
 	processTreeKill: boolean;
 	/** A conversation's omp and everything under it can be frozen and thawed (Pause, parked conversations: SIGSTOP/SIGCONT). */

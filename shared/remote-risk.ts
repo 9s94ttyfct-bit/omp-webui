@@ -12,10 +12,11 @@ import { RISK_COMMAND, RISK_IN, type RiskKind } from "./risk-confirm.ts";
  * substitution as the command, `eval`, a script piped into a shell) cannot be read either, so it is `dynamic_command` and
  * asks. A call it does not recognise runs as the conversation's permission mode says. Read-only tools never need confirming.
  *
- * TODO(windows): it reads POSIX shells only (sh, bash, zsh and their quoting). A Windows omp runs `cmd.exe` or PowerShell,
- * whose quoting, paths (`C:\…`, `%USERPROFILE%`, `$env:HOME`), deletes (`del /s`, `rd /s /q`, `Remove-Item -Recurse`) and
- * dynamic commands (`iex`, `Invoke-Expression`, `& $cmd`) it does not know: there it would miss most of what it is for.
- * Remote access is to be turned off on Windows for that reason; this must be extended before it is offered there.
+ * On Windows (`RiskContext.windows`) it reads the same way: omp's `bash` tool runs every command in its own bash-like shell
+ * there too. Every path is compared in one view of its own (`C:\Users\Me` and `c:/users/me` are `/c/users/me`: Windows
+ * paths are not case-sensitive), `%USERPROFILE%`'s variables are known as `$HOME` is, a program's `.exe` is its name, and
+ * the PowerShell or `cmd.exe` script a command hands `powershell -Command` or `cmd /c` is read too (deletes, writes,
+ * `Invoke-Expression`, downloads run as code, the registry's Run keys, scheduled tasks, services, ACLs).
  */
 
 /** Where the call runs and what is its own: every other place is "outside the project". */
@@ -41,6 +42,11 @@ export interface RiskContext {
 	 * only the loopback spellings ask (see `ownApi`).
 	 */
 	hosts?: readonly string[];
+	/**
+	 * The process runs on Windows: the paths above are Windows paths, and what commands name is read as Windows reads it
+	 * (see the head of this file). Absent: a POSIX system.
+	 */
+	windows?: boolean;
 }
 
 /** What a risky call is: why (most serious first), and what the person is shown (the exact command or paths). */
@@ -96,6 +102,8 @@ const PROTECTED_HOME_FILES = table(
 );
 /** Folders whose files launchd starts, in the home folder or the system's: a lasting way to run something. */
 const LAUNCH_DIR = /\/Library\/Launch(Agents|Daemons)(\/|$)/;
+/** Windows' Startup folders (a user's and every user's): what is put there runs at each login. Compared in the lowercase view. */
+const STARTUP_DIR = /\/(?:appdata\/roaming|programdata)\/microsoft\/windows\/start menu\/programs\/startup(\/|$)/;
 
 /** Programs that only read what they are given: naming a protected place to one of them is not a change. */
 const READING_PROGRAMS = table(
@@ -182,13 +190,19 @@ const SECRET_SEGMENTS = table(".gnupg", ".aws");
 const SSH_NOT_SECRET = /^(.+\.pub|known_hosts(\.old)?|authorized_keys2?|config)$/;
 /** Files directly in the home folder that hold a password or a token. */
 const SECRET_HOME_FILES = table(".netrc", ".git-credentials", ".npmrc", ".pgpass", ".pypirc");
-/** Places under the home folder that hold tokens or keys: gh's login, docker's and kubectl's credentials, the keychains, gcloud's. */
+/**
+ * Places under the home folder that hold tokens or keys: gh's login, docker's and kubectl's credentials, the keychains,
+ * gcloud's, and where Windows keeps gpg's, gh's and gcloud's. Compared without case (macOS and Windows file names have none).
+ */
 const SECRET_HOME_PLACES = [
 	".config/gh/hosts.yml",
 	".docker/config.json",
 	".kube/config",
 	"Library/Keychains",
 	".config/gcloud",
+	"AppData/Roaming/gnupg",
+	"AppData/Roaming/GitHub CLI/hosts.yml",
+	"AppData/Roaming/gcloud",
 ];
 
 /** A path whose content is a credential: reading it hands over a key, a token or a password. */
@@ -203,7 +217,8 @@ function isSecret(abs: string, home: string): boolean {
 	}
 	const h = normalize(home);
 	if (parentOf(abs) === h && listed(SECRET_HOME_FILES, abs.slice(abs.lastIndexOf("/") + 1))) return true;
-	return SECRET_HOME_PLACES.some((p) => within(abs, `${h}/${p}`));
+	const lower = abs.toLowerCase();
+	return SECRET_HOME_PLACES.some((p) => within(lower, `${h}/${p}`.toLowerCase()));
 }
 
 const SHELLS = table("sh", "bash", "zsh", "dash", "ksh", "fish", "csh", "tcsh");
@@ -221,7 +236,8 @@ const CODE_INTERPRETERS = table(
 	"osascript",
 );
 const FETCHERS = table("curl", "wget", "fetch");
-const PRIVILEGE = table("sudo", "doas", "pkexec", "run0", "su");
+/** What runs a command with more rights: Windows' `runas`, `gsudo` and its own `sudo` among them. */
+const PRIVILEGE = table("sudo", "doas", "pkexec", "run0", "su", "runas", "gsudo");
 /** Programs whose job is to carry this computer onto the internet. */
 const TUNNELS = table("cloudflared", "ngrok", "bore", "frpc", "frps", "localtunnel", "serveo");
 const DELETERS = table("rm", "unlink", "rmdir", "shred", "srm");
@@ -238,6 +254,22 @@ const SYSTEM_PROGRAMS = table(
 	"newfs",
 	"newfs_apfs",
 	"newfs_hfs",
+	// Windows: the boot, the disks, the network's settings, the system's files, its event logs, its shadow copies.
+	"bcdedit",
+	"bcdboot",
+	"diskpart",
+	"format",
+	"netsh",
+	"wmic",
+	"vssadmin",
+	"fsutil",
+	"dism",
+	"sfc",
+	"cipher",
+	"manage-bde",
+	"reagentc",
+	"wevtutil",
+	"setx",
 );
 
 /** The most nested `$(…)`, `bash -c '…'` and `eval` that are looked into; what is deeper is not understood, so it asks. */
@@ -447,7 +479,7 @@ const CODE_CALL = new RegExp(
 );
 /** A program that works with the home folder: what it deletes or writes may well be in it, however the path is built. */
 const HOME_USE =
-	/\bPath\s*\.\s*home\s*\(|\bexpanduser\s*\(|\benviron\s*(?:\[\s*|\.get\s*\(\s*)["']HOME["']|\bgetenv\s*\(\s*["']HOME["']|\bhomedir\s*\(|\b(?:process|Bun|Deno)\.env(?:\.HOME\b|\[\s*["']HOME["']|\.get\(\s*["']HOME["'])|\$HOME\b|\$\{HOME\}|["'`]~\//;
+	/\bPath\s*\.\s*home\s*\(|\bexpanduser\s*\(|\benviron\s*(?:\[\s*|\.get\s*\(\s*)["'](?:HOME|USERPROFILE|APPDATA|LOCALAPPDATA)["']|\bgetenv\s*\(\s*["'](?:HOME|USERPROFILE|APPDATA|LOCALAPPDATA)["']|\bhomedir\s*\(|\b(?:process|Bun|Deno)\.env(?:\.(?:HOME|USERPROFILE|APPDATA|LOCALAPPDATA)\b|\[\s*["'](?:HOME|USERPROFILE|APPDATA|LOCALAPPDATA)["']|\.get\(\s*["'](?:HOME|USERPROFILE|APPDATA|LOCALAPPDATA)["'])|\$(?:env:)?(?:HOME|USERPROFILE|APPDATA|LOCALAPPDATA)\b|\$\{HOME\}|%(?:USERPROFILE|APPDATA|LOCALAPPDATA)%|["'`]~[/\\]/i;
 /**
  * `Path('/x').unlink()`, `Bun.file('/x').delete()`: a method called on a path written as a literal. The chain between the
  * path and the method is bounded (300 characters): an unbounded lazy span is quadratic on a long line with many `Path('…')`
@@ -488,6 +520,44 @@ function normalize(p: string): string {
 const parentOf = (p: string): string => (p === "/" ? "/" : normalize(`${p}/..`));
 const within = (p: string, dir: string): boolean => dir === "/" || p === dir || p.startsWith(`${dir}/`);
 
+/**
+ * A Windows path in the view every path is compared in there: `/` for `\`, the drive as the first folder (`C:\x` is `/c/x`,
+ * a share `\\host\share\x` is `/unc/host/share/x`), all of it lowercase (Windows does not tell `A` from `a`). A path in
+ * the view already is left as it is.
+ */
+function windowsView(p: string): string {
+	let s = p.replace(/\\/g, "/");
+	const drive = /^([A-Za-z]):(\/|$)/.exec(s);
+	if (drive) s = `/${drive[1]}/${s.slice(drive[0].length)}`;
+	else if (/^[A-Za-z]:/.test(s))
+		s = `/${s[0]}/${s.slice(2)}`; // `C:x`: relative to the drive's folder, taken as its root
+	else if (s.startsWith("//")) s = `/unc/${s.slice(2)}`;
+	return s.toLowerCase();
+}
+
+/** `ctx` with its places in the Windows view (see `windowsView`), once; a POSIX context as it is. */
+function viewed(ctx: RiskContext): RiskContext {
+	if (!ctx.windows || VIEWED.has(ctx)) return ctx;
+	const view = (list: readonly string[]) => list.map((p) => (p === "" ? p : normalize(windowsView(p))));
+	const out: RiskContext = {
+		...ctx,
+		roots: view(ctx.roots),
+		home: normalize(windowsView(ctx.home)),
+		temp: view(ctx.temp),
+		protect: view(ctx.protect),
+	};
+	VIEWED.add(out);
+	return out;
+}
+const VIEWED = new WeakSet<RiskContext>();
+
+/** A path of the Windows view as Windows writes it (`/c/users/me/x` is `C:\users\me\x`), for what the person is shown. */
+const windowsShown = (p: string): string => {
+	const drive = /^\/([a-z])(\/|$)/.exec(p);
+	if (drive) return `${drive[1].toUpperCase()}:\\${p.slice(drive[0].length).replace(/\//g, "\\")}`;
+	return p.startsWith("/unc/") ? `\\\\${p.slice(5).replace(/\//g, "\\")}` : p;
+};
+
 /** Places a program may be told to write that are no one's file. */
 const SAFE_DEVICES = table("/dev/null", "/dev/stdout", "/dev/stderr", "/dev/stdin", "/dev/tty", "/dev/zero");
 const isSafeDevice = (p: string): boolean => listed(SAFE_DEVICES, p) || p.startsWith("/dev/fd/");
@@ -504,7 +574,7 @@ function inTemp(abs: string, ctx: RiskContext): boolean {
 function isProtected(abs: string, ctx: RiskContext): boolean {
 	if (abs.split("/").some((s) => listed(PROTECTED_SEGMENTS, s))) return true;
 	if (ctx.protect.some((d) => d !== "" && within(abs, d))) return true;
-	if (LAUNCH_DIR.test(abs)) return true;
+	if (LAUNCH_DIR.test(abs) || (ctx.windows && STARTUP_DIR.test(abs))) return true;
 	return parentOf(abs) === normalize(ctx.home) && listed(PROTECTED_HOME_FILES, abs.slice(abs.lastIndexOf("/") + 1));
 }
 
@@ -514,13 +584,21 @@ function isProtected(abs: string, ctx: RiskContext): boolean {
  * would read or write, so there is one definition of such a place. `abs` is a real path; `protect` are the app's data
  * folders, omp's agent folder and the gate's own state, as the gate is given them.
  */
-export function isProtectedPath(abs: string, places: { home: string; protect: readonly string[] }): boolean {
-	return isProtected(normalize(abs), { roots: [], temp: [], ...places });
+export function isProtectedPath(
+	abs: string,
+	places: { home: string; protect: readonly string[]; windows?: boolean },
+): boolean {
+	const ctx = viewed({ roots: [], temp: [], ...places });
+	return isProtected(normalize(ctx.windows ? windowsView(abs) : abs), ctx);
 }
 
-/** Too much to delete or change in one go: the root, the home folder, and what is directly in either. */
+/**
+ * Too much to delete or change in one go: the root, the home folder, and what is directly in either; on Windows a drive
+ * and what is directly on it as well (`C:\`, `C:\Users`, `C:\Windows`).
+ */
 function isBroad(abs: string, ctx: RiskContext): boolean {
 	const home = normalize(ctx.home);
+	if (ctx.windows && abs.split("/").length <= 3) return true;
 	return abs === "/" || abs === home || parentOf(abs) === "/" || parentOf(abs) === home;
 }
 
@@ -529,8 +607,8 @@ function isBroad(abs: string, ctx: RiskContext): boolean {
  * command runs (`$DIR/x`, `/tmp/$(date)`) answers with the folder it is in, which is as much as can be said; a word that
  * starts with such a part has no folder: unknown.
  */
-function resolveWord(w: Word, cwd: string | null): string | null {
-	const text = w.text;
+function resolveWord(w: Word, cwd: string | null, ctx: RiskContext): string | null {
+	const text = ctx.windows ? windowsView(w.text) : w.text;
 	const cut = text.search(/[\uE000*?[{]/);
 	let base = text;
 	if (cut >= 0) {
@@ -620,7 +698,8 @@ function readBackticks(src: string, start: number): { text: string; end: number 
  * process substitution, redirections and here-documents, and where one command ends and the next begins (`;`, `&&`,
  * `||`, `&`, a new line, a pipe, parentheses, braces). It runs, expands and understands nothing else; it never throws.
  */
-function parseScript(src: string, home: string): Simple[][] {
+function parseScript(src: string, vars: Readonly<Record<string, string>>): Simple[][] {
+	const home = vars.HOME;
 	const pipelines: Simple[][] = [];
 	let stages: Simple[] = [];
 	let cur = emptySimple();
@@ -676,13 +755,13 @@ function parseScript(src: string, home: string): Simple[][] {
 		}
 		if (next === "{") {
 			const inner = readBalanced(src, i + 2, "{", "}");
-			if (inner.text === "HOME") ensure().text += home;
+			if (Object.hasOwn(vars, inner.text)) ensure().text += vars[inner.text];
 			else dynamic(undefined, /^[A-Za-z_][A-Za-z0-9_]*$/.test(inner.text) ? inner.text : undefined);
 			return inner.end;
 		}
 		const name = /^[A-Za-z_][A-Za-z0-9_]*/.exec(src.slice(i + 1, i + 80))?.[0];
 		if (name !== undefined) {
-			if (name === "HOME") ensure().text += home;
+			if (Object.hasOwn(vars, name)) ensure().text += vars[name];
 			else dynamic(undefined, name);
 			return i + 1 + name.length;
 		}
@@ -826,7 +905,26 @@ function parseScript(src: string, home: string): Simple[][] {
 
 // ---------------------------------------------------------------------------------------------------- commands
 
-const baseName = (s: string): string => s.slice(s.lastIndexOf("/") + 1);
+/**
+ * The name a command word runs: its last part (after `/`, or Windows' `\`), without case or Windows' `.exe`, `.cmd`, `.bat`,
+ * `.com` (`C:\Windows\System32\REG.EXE` runs `reg`; macOS and Windows find `RM` as `rm`).
+ */
+const baseName = (s: string): string =>
+	s
+		.slice(Math.max(s.lastIndexOf("/"), s.lastIndexOf("\\")) + 1)
+		.toLowerCase()
+		.replace(/\.(?:exe|cmd|bat|com)$/, "");
+
+/** The variables a command's words are read with: `$HOME`, and on Windows those that name the home's and the temp folders. */
+function knownVars(ctx: RiskContext): Record<string, string> {
+	const vars: Record<string, string> = { HOME: ctx.home };
+	if (!ctx.windows) return vars;
+	vars.USERPROFILE = ctx.home;
+	vars.APPDATA = `${ctx.home}/appdata/roaming`;
+	vars.LOCALAPPDATA = `${ctx.home}/appdata/local`;
+	if (ctx.temp[0]) vars.TEMP = vars.TMP = ctx.temp[0];
+	return vars;
+}
 const RESERVED = table("if", "then", "else", "elif", "do", "while", "until", "!", "time", "coproc", "exec", "builtin");
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
@@ -983,8 +1081,8 @@ function writtenInto(simple: Simple, cmd: Command | null): string | null {
 const opensSubstitution = (w: Word | undefined): boolean => w !== undefined && w.text === DYN && w.subs.length > 0;
 
 /** Whether a script runs one of `programs` as a command (`curl` in the `$(curl …)` that a shell is asked to run). */
-function mentions(src: string, programs: Table, home: string): boolean {
-	return parseScript(src, home).some((p) => p.some((s) => listed(programs, commandOf(s.words)?.name ?? "")));
+function mentions(src: string, programs: Table, vars: Readonly<Record<string, string>>): boolean {
+	return parseScript(src, vars).some((p) => p.some((s) => listed(programs, commandOf(s.words)?.name ?? "")));
 }
 
 /** `text` apart at the commas that are not inside a string or a bracket. */
@@ -1041,6 +1139,7 @@ function pathLiteral(argument: string, ctx: RiskContext): string | null {
 	if (s === null) return null;
 	if (s === "~") return normalize(ctx.home);
 	if (s.startsWith("~/")) return normalize(`${ctx.home}/${s.slice(2)}`);
+	if (ctx.windows && /^[A-Za-z]:[\\/]/.test(s)) return normalize(windowsView(s));
 	return s.startsWith("/") ? normalize(s) : null;
 }
 
@@ -1205,9 +1304,10 @@ function namesPrivateFile(w: Word, cwd: string | null, ctx: RiskContext): boolea
 	const dirs = ctx.protect.filter((d) => d !== "");
 	if (dirs.length === 0) return false;
 	// `--file=/…/token`: the value is what is named.
-	const text = w.text.startsWith("-") && w.text.includes("=") ? w.text.slice(w.text.indexOf("=") + 1) : w.text;
+	const given = w.text.startsWith("-") && w.text.includes("=") ? w.text.slice(w.text.indexOf("=") + 1) : w.text;
+	const text = ctx.windows ? windowsView(given) : given;
 	const last = text.slice(text.lastIndexOf("/") + 1);
-	const abs = resolveWord({ ...w, text }, cwd);
+	const abs = resolveWord({ ...w, text }, cwd, ctx);
 	if (abs === null) return false;
 	if (/[*?[\uE000]/.test(last))
 		return PRIVATE_SAMPLES.some((n) => globMatches(last, n)) && dirs.some((d) => within(abs, d));
@@ -1216,6 +1316,466 @@ function namesPrivateFile(w: Word, cwd: string | null, ctx: RiskContext): boolea
 
 /** The whole working tree as a git path: `.`, `./`, `:/`, `*`. */
 const wholeTree = (w: Word): boolean => /^(?:\.\/?|:\/\.?|\*)$/.test(w.text);
+
+// ---------------------------------------------------------------------------------------------------- Windows' shells
+
+/**
+ * A PowerShell (`ps`) or `cmd.exe` (`cmd`) script apart into its commands, each a list of words with its redirections, the
+ * way `parseScript` takes a POSIX one apart: quotes (`'…'`, `"…"`, PowerShell's `` ` `` and cmd's `^` escapes), variables
+ * (`$env:USERPROFILE`, `$HOME`, `%APPDATA%`: written out where `vars` knows them, else a part only known when it runs),
+ * sub-expressions (`$(…)`, a word's `subs`, which are PowerShell), comments, and where a command ends (`;`, `&&`, `||`, a
+ * new line, braces and parentheses: a script block's commands are read as the script's; `|` ends a stage of a pipeline,
+ * `&` a command of cmd's). It runs and understands nothing else; it never throws.
+ */
+function parseWindowsScript(src: string, lang: "ps" | "cmd", vars: Readonly<Record<string, string>>): Simple[][] {
+	const ps = lang === "ps";
+	const pipelines: Simple[][] = [];
+	let stages: Simple[] = [];
+	let cur = emptySimple();
+	let word = null as Word | null;
+	let redirect: string | null = null;
+	const endWord = (): void => {
+		if (word === null) return;
+		if (redirect !== null) cur.redirects.push({ op: redirect, target: word });
+		else cur.words.push(word);
+		redirect = null;
+		word = null;
+	};
+	const endSimple = (): void => {
+		endWord();
+		redirect = null;
+		if (cur.words.length > 0 || cur.redirects.length > 0) stages.push(cur);
+		cur = emptySimple();
+	};
+	const endPipeline = (): void => {
+		endSimple();
+		if (stages.length > 0) pipelines.push(stages);
+		stages = [];
+	};
+	const ensure = (): Word => {
+		word ??= emptyWord();
+		return word;
+	};
+	const dynamic = (sub?: string): void => {
+		const w = ensure();
+		w.dynamic = true;
+		w.text += DYN;
+		if (sub !== undefined) w.subs.push(sub);
+	};
+	/** The value of an environment variable the classifier knows (Windows does not tell `Temp` from `TEMP`). */
+	const known = (name: string): string | undefined => {
+		const key = Object.keys(vars).find((k) => k.toLowerCase() === name.toLowerCase());
+		return key === undefined ? undefined : vars[key];
+	};
+	/** PowerShell's `$…` at `i`; the answer is the index after it. */
+	const psVariable = (i: number): number => {
+		const next = src[i + 1];
+		if (next === "(") {
+			const inner = readBalanced(src, i + 2, "(", ")");
+			dynamic(inner.text);
+			return inner.end;
+		}
+		if (next === "{") {
+			const inner = readBalanced(src, i + 2, "{", "}");
+			const env = /^env:(.+)$/i.exec(inner.text)?.[1];
+			const value = env !== undefined ? known(env) : inner.text.toLowerCase() === "home" ? known("HOME") : undefined;
+			if (value !== undefined) ensure().text += value;
+			else dynamic();
+			return inner.end;
+		}
+		const name = /^(?:env:)?[A-Za-z_][A-Za-z0-9_]*/i.exec(src.slice(i + 1, i + 80))?.[0];
+		if (name !== undefined) {
+			const env = /^env:/i.test(name) ? name.slice(4) : null;
+			const value = env !== null ? known(env) : name.toLowerCase() === "home" ? known("HOME") : undefined;
+			if (value !== undefined) ensure().text += value;
+			else if (env === null && name.toLowerCase() === "null") ensure().text += "$null";
+			else dynamic();
+			return i + 1 + name.length;
+		}
+		if (next !== undefined && /[$?^_]/.test(next)) {
+			dynamic();
+			return i + 2;
+		}
+		ensure().text += "$";
+		return i + 1;
+	};
+	/** cmd's `%NAME%` (or a loop's `%%i`, an argument's `%1`, `%~dp0`) at `i`; the answer is the index after it. */
+	const cmdVariable = (i: number): number => {
+		const named = /^%([A-Za-z_][A-Za-z0-9_()]*)%/.exec(src.slice(i, i + 80));
+		if (named) {
+			const value = known(named[1]);
+			if (value !== undefined) ensure().text += value;
+			else dynamic();
+			return i + named[0].length;
+		}
+		const other = /^%(?:%?~?[A-Za-z0-9$:]*[A-Za-z0-9]|\*)/.exec(src.slice(i, i + 40));
+		if (other) {
+			dynamic();
+			return i + other[0].length;
+		}
+		ensure().text += "%";
+		return i + 1;
+	};
+	let i = 0;
+	while (i < src.length) {
+		const c = src[i];
+		const next = src[i + 1];
+		const atStart = word === null;
+		if (ps && c === "<" && next === "#") {
+			const end = src.indexOf("#>", i + 2);
+			i = end < 0 ? src.length : end + 2;
+		} else if (ps && c === "#" && atStart) {
+			while (i < src.length && src[i] !== "\n") i++;
+		} else if (!ps && atStart && cur.words.length === 0 && /^(?:@?rem(?:\s|$)|::)/i.test(src.slice(i, i + 5))) {
+			while (i < src.length && src[i] !== "\n") i++;
+		} else if (c === "\n" || c === "\r") {
+			endPipeline();
+			i++;
+		} else if (c === " " || c === "\t") {
+			endWord();
+			i++;
+		} else if (c === DYN) {
+			dynamic();
+			i++;
+		} else if ((ps && c === "`") || (!ps && c === "^")) {
+			// An escaped character, or a line that goes on.
+			if (next !== undefined && next !== "\n" && next !== "\r") ensure().text += next;
+			i += 2;
+		} else if (ps && c === "'") {
+			const w = ensure();
+			let j = i + 1;
+			while (j < src.length) {
+				if (src[j] === "'") {
+					if (src[j + 1] !== "'") break;
+					w.text += "'";
+					j += 2;
+					continue;
+				}
+				w.text += src[j];
+				j++;
+			}
+			i = j + 1;
+		} else if (c === '"') {
+			ensure();
+			let j = i + 1;
+			while (j < src.length) {
+				const d = src[j];
+				if (d === '"') {
+					if (!(ps && src[j + 1] === '"')) break;
+					ensure().text += '"';
+					j += 2;
+				} else if (ps && d === "`") {
+					if (src[j + 1] !== undefined) ensure().text += src[j + 1];
+					j += 2;
+				} else if (ps && d === "$") j = psVariable(j);
+				else if (!ps && d === "%") j = cmdVariable(j);
+				else if (d === DYN) {
+					dynamic();
+					j++;
+				} else {
+					ensure().text += d;
+					j++;
+				}
+			}
+			i = j + 1;
+		} else if (ps && c === "$") {
+			i = psVariable(i);
+		} else if (ps && c === "~" && atStart && (next === undefined || /[\s/\\;|)]/.test(next))) {
+			// PowerShell's own `~`: the home folder.
+			ensure().text += known("HOME") ?? "~";
+			i++;
+		} else if (!ps && c === "%") {
+			i = cmdVariable(i);
+		} else if (!ps && c === "!" && /^![A-Za-z_][A-Za-z0-9_]*!/.test(src.slice(i, i + 80))) {
+			// A variable of delayed expansion: only known when the command runs.
+			const name = /^![A-Za-z_][A-Za-z0-9_]*!/.exec(src.slice(i, i + 80))?.[0] ?? "!";
+			dynamic();
+			i += name.length;
+		} else if (c === ">" || (atStart && /[0-9*]/.test(c) && next === ">")) {
+			const op = /^[0-9*]?>>?(?:&[0-9])?/.exec(src.slice(i))?.[0] ?? ">";
+			endWord();
+			// `2>&1`: into another stream, not a file.
+			if (!/&[0-9]$/.test(op)) redirect = op;
+			i += op.length;
+		} else if (c === "<" && !ps) {
+			endWord();
+			redirect = "<";
+			i++;
+		} else if (c === "|") {
+			if (next === "|") {
+				endPipeline();
+				i += 2;
+			} else {
+				endSimple();
+				i++;
+			}
+		} else if (c === "&") {
+			if (next === "&") {
+				endPipeline();
+				i += 2;
+			} else if (ps) {
+				// PowerShell's call operator: the next word is the command (`& "C:\x\tool.exe" …`, `& $cmd`).
+				endWord();
+				i++;
+			} else {
+				endPipeline();
+				i++;
+			}
+		} else if ((ps && (c === ";" || c === "{" || c === "}")) || c === "(" || c === ")") {
+			endPipeline();
+			i++;
+		} else if (ps && c === "@" && (next === "(" || next === "{")) {
+			endPipeline();
+			i += 2;
+		} else {
+			ensure().text += c;
+			i++;
+		}
+	}
+	endPipeline();
+	return pipelines;
+}
+
+/** A word written out in full: a path a script names in a literal (`[IO.File]::Delete("C:\x")`). */
+const literalWord = (text: string): Word => ({ text, dynamic: false, subs: [] });
+
+/** What PowerShell calls its cmdlets by besides their names (`rm` is `Remove-Item` there, not the program). */
+const PS_ALIASES: Readonly<Record<string, string>> = {
+	ri: "remove-item",
+	rm: "remove-item",
+	rmdir: "remove-item",
+	del: "remove-item",
+	erase: "remove-item",
+	rd: "remove-item",
+	clc: "clear-content",
+	cli: "clear-item",
+	sc: "set-content",
+	ac: "add-content",
+	ni: "new-item",
+	md: "new-item",
+	mkdir: "new-item",
+	si: "set-item",
+	tee: "tee-object",
+	cpi: "copy-item",
+	copy: "copy-item",
+	cp: "copy-item",
+	mi: "move-item",
+	move: "move-item",
+	mv: "move-item",
+	rni: "rename-item",
+	ren: "rename-item",
+	sp: "set-itemproperty",
+	rp: "remove-itemproperty",
+	iex: "invoke-expression",
+	icm: "invoke-command",
+	saps: "start-process",
+	start: "start-process",
+	sl: "set-location",
+	cd: "set-location",
+	chdir: "set-location",
+	pushd: "push-location",
+	iwr: "invoke-webrequest",
+	irm: "invoke-restmethod",
+	gc: "get-content",
+	cat: "get-content",
+	type: "get-content",
+	sls: "select-string",
+	epcsv: "export-csv",
+};
+
+/** Cmdlets that only read what they are given (a credential named to one that shows content is still `secret_read`). */
+const PS_CONTENT_READERS = table("get-content", "select-string", "import-csv", "import-clixml", "format-hex");
+const PS_READERS = table(
+	"get-content",
+	"select-string",
+	"import-csv",
+	"import-clixml",
+	"format-hex",
+	"get-item",
+	"get-childitem",
+	"gci",
+	"ls",
+	"dir",
+	"gi",
+	"test-path",
+	"resolve-path",
+	"get-acl",
+	"get-filehash",
+	"get-itemproperty",
+	"gp",
+	"write-output",
+	"echo",
+	"write-host",
+);
+/** Cmdlets that change the system as a whole: its disks, its policies, its users, its firewall, its defences, its power. */
+const PS_SYSTEM = table(
+	"stop-computer",
+	"restart-computer",
+	"set-executionpolicy",
+	"format-volume",
+	"clear-disk",
+	"initialize-disk",
+	"remove-partition",
+	"set-disk",
+	"new-service",
+	"set-service",
+	"remove-service",
+	"new-localuser",
+	"set-localuser",
+	"remove-localuser",
+	"add-localgroupmember",
+	"remove-localgroupmember",
+	"set-mppreference",
+	"add-mppreference",
+	"remove-mppreference",
+	"set-netfirewallprofile",
+	"new-netfirewallrule",
+	"set-netfirewallrule",
+	"remove-netfirewallrule",
+	"disable-netfirewallrule",
+	"enable-psremoting",
+	"disable-computerrestore",
+	"set-timezone",
+);
+/** Cmdlets that start, stop or schedule something that lasts. */
+const PS_SCHEDULED = table(
+	"register-scheduledtask",
+	"set-scheduledtask",
+	"unregister-scheduledtask",
+	"start-scheduledtask",
+	"new-scheduledtaskaction",
+	"register-scheduledjob",
+	"start-service",
+	"stop-service",
+	"restart-service",
+	"suspend-service",
+);
+/** Downloads, and what runs a text as PowerShell: both in one script is a download run as code. */
+const PS_FETCH =
+	/\b(?:invoke-webrequest|iwr|invoke-restmethod|irm|start-bitstransfer|curl|wget)\b|\.download(?:string|data|file)(?:async)?\s*\(|net\.webclient|net\.http\.httpclient/i;
+const PS_RUN = /\b(?:invoke-expression|iex)\b|\|\s*&?\s*(?:powershell|pwsh)(?:\.exe)?\b|\[scriptblock\]::create/i;
+/** .NET's file calls in PowerShell: `[IO.File]::WriteAllText("C:\x", …)`, `[System.IO.Directory]::Delete("C:\x", $true)`. */
+const DOTNET_FILE_CALL = /\[(?:system\.)?io\.(file|directory)\]::(\w+)\(\s*(['"])([^'"\n]*)\3/gi;
+/** A registry path of PowerShell's (`HKCU:\…`, `Registry::HKEY_…`) or of `reg.exe` (`HKLM\…`, `HKEY_CURRENT_USER\…`). */
+const REGISTRY = /^(?:hk(?:cu|lm|cr|u|cc)|hkey_[a-z_]+|registry::)/i;
+/** Keys whose values Windows runs at login or start-up (or that replace what it starts): a lasting way to run something. */
+const RUN_KEY =
+	/currentversion[\\/]*(?:run|runonce|runservices|runservicesonce)(?:[\\/\s]|$)|policies[\\/]*explorer[\\/]*run|[\\/]winlogon(?:[\\/\s]|$)|image file execution options/i;
+
+/** A PowerShell parameter (`-Recurse`, `-rec`, `-Path:x`) given as a prefix of its name, as PowerShell takes it. */
+const isParam = (token: string, name: string, min = 1): boolean => {
+	const m = /^-([A-Za-z][\w-]*?)(?::.*)?$/.exec(token);
+	return m !== null && m[1].length >= min && name.startsWith(m[1].toLowerCase());
+};
+/** Parameters that take a value (named in full, or as an alias); the rest are switches. */
+const PS_VALUED = [
+	"path",
+	"literalpath",
+	"lp",
+	"pspath",
+	"destination",
+	"destinationpath",
+	"filepath",
+	"value",
+	"itemtype",
+	"type",
+	"name",
+	"newname",
+	"filter",
+	"include",
+	"exclude",
+	"encoding",
+	"erroraction",
+	"ea",
+	"warningaction",
+	"wa",
+	"informationaction",
+	"errorvariable",
+	"ev",
+	"outvariable",
+	"ov",
+	"credential",
+	"verb",
+	"argumentlist",
+	"args",
+	"workingdirectory",
+	"windowstyle",
+	"uri",
+	"outfile",
+	"method",
+	"body",
+	"headers",
+	"contenttype",
+	"computername",
+	"cn",
+	"session",
+	"scriptblock",
+	"command",
+	"propertytype",
+	"stream",
+	"inputobject",
+	"aclobject",
+	"delimiter",
+	"depth",
+];
+
+/** A PowerShell command's parameters: which are given, their values, and the positional words (`a,b` is two). */
+function psParams(args: readonly Word[]): {
+	has: (name: string, min?: number) => boolean;
+	values: (...names: string[]) => Word[];
+	positional: Word[];
+} {
+	const given: { token: string; value: Word | null }[] = [];
+	const positional: Word[] = [];
+	const split = (w: Word): Word[] =>
+		w.dynamic || !w.text.includes(",")
+			? [w]
+			: w.text
+					.split(",")
+					.filter((t) => t !== "")
+					.map((t) => ({ ...w, text: t }));
+	for (let i = 0; i < args.length; i++) {
+		const t = args[i].text;
+		const m = /^-([A-Za-z][\w-]*?)(?::(.*))?$/.exec(t);
+		if (m === null) {
+			positional.push(...split(args[i]));
+			continue;
+		}
+		const name = m[1].toLowerCase();
+		if (m[2] !== undefined) {
+			given.push({ token: `-${name}`, value: { ...args[i], text: m[2] } });
+			continue;
+		}
+		// A name in full or an alias, or three letters or more of one: its value is the next word.
+		const valued = PS_VALUED.some((v) => v === name || (name.length >= 3 && v.startsWith(name)));
+		if (valued && args[i + 1]) {
+			given.push({ token: `-${name}`, value: args[i + 1] });
+			i++;
+		} else given.push({ token: `-${name}`, value: null });
+	}
+	return {
+		has: (name, min = 1) => given.some((g) => isParam(g.token, name, min)),
+		values: (...names) =>
+			given
+				.filter((g) => g.value !== null && names.some((n) => g.token.slice(1) === n || isParam(g.token, n, 3)))
+				.flatMap((g) => split(g.value as Word)),
+		positional,
+	};
+}
+
+/** `-EncodedCommand`'s text: Base64 of UTF-16LE (null: not that). */
+function decodePowerShell(b64: string): string | null {
+	try {
+		const bin = atob(b64.trim());
+		if (bin.length % 2 !== 0) return null;
+		let out = "";
+		for (let i = 0; i < bin.length; i += 2)
+			out += String.fromCharCode(bin.charCodeAt(i) | (bin.charCodeAt(i + 1) << 8));
+		return out;
+	} catch {
+		return null;
+	}
+}
 
 /** What is found while a script is read. */
 class Scan {
@@ -1250,7 +1810,7 @@ class Scan {
 	/** A command writes (creates, changes) the place `w` points to: outside the project, or protected. */
 	write(w: Word, cwd: string | null): void {
 		for (const each of this.named(w)) {
-			const abs = resolveWord(each, cwd);
+			const abs = resolveWord(each, cwd, this.ctx);
 			if (abs === null) continue;
 			if (isProtected(abs, this.ctx)) this.add("protected");
 			else if (!inProject(abs, this.ctx) && !inTemp(abs, this.ctx)) this.add("write_outside");
@@ -1269,7 +1829,7 @@ class Scan {
 		// A loop's variable is no less unknown for the loop's list: a forced or recursive delete of it asks, as it always did.
 		if (strong && (each.length !== 1 || each[0] !== w)) this.add("delete_outside");
 		for (const one of each) {
-			const abs = resolveWord(one, cwd);
+			const abs = resolveWord(one, cwd, this.ctx);
 			if (abs === null) {
 				if (strong) {
 					this.add("delete_outside");
@@ -1295,7 +1855,7 @@ class Scan {
 		const each = this.named(w);
 		const several = each.length !== 1 || each[0] !== w;
 		for (const one of each) {
-			const abs = resolveWord(one, cwd);
+			const abs = resolveWord(one, cwd, this.ctx);
 			if (abs === null || isProtected(abs, this.ctx) || inProject(abs, this.ctx) || inTemp(abs, this.ctx)) continue;
 			this.add("delete_outside");
 			if (several || globby(one)) this.add("mass_delete");
@@ -1310,7 +1870,7 @@ class Scan {
 		}
 		if (selfAccess(src, this.ctx)) this.add("protected");
 		let here = cwd;
-		for (const pipeline of parseScript(src, this.ctx.home)) {
+		for (const pipeline of parseScript(src, knownVars(this.ctx))) {
 			const named = pipeline.map((s) => commandOf(s.words));
 			named.forEach((cmd, n) => {
 				if (cmd && listed(FETCHERS, cmd.name) && named.slice(n + 1).some((c) => c && readsStdinAsCode(c)))
@@ -1363,7 +1923,7 @@ class Scan {
 		if (name === "cd" || name === "pushd") {
 			const target = operands[0];
 			if (!target) return name === "cd" ? this.ctx.home : cwd;
-			return target.text === "-" ? null : resolveWord(target, cwd);
+			return target.text === "-" ? null : resolveWord(target, cwd, this.ctx);
 		}
 		if (listed(PRIVILEGE, name)) {
 			this.add("privilege");
@@ -1389,6 +1949,7 @@ class Scan {
 		if (name === "diskutil" && /^(erase|partition|zero|secure|reformat|apfs)/i.test(operands[0]?.text ?? ""))
 			this.add("system");
 		this.install(name, operands, opts);
+		this.windowsProgram(name, args, operands, body, cwd, depth);
 		if (name === "omp") {
 			const group = operands[0]?.text ?? "";
 			if (Object.hasOwn(OMP_CHANGES, group) && listed(OMP_CHANGES[group], operands[1]?.text ?? ""))
@@ -1406,7 +1967,7 @@ class Scan {
 
 		const runs = listed(SHELLS, name) || name === "eval" || name === "source" || name === ".";
 		// A download is `remote_exec`: the substitution it comes in is not said to be a command put together as well.
-		const fetched = runs && args.some((a) => a.subs.some((s) => mentions(s, FETCHERS, this.ctx.home)));
+		const fetched = runs && args.some((a) => a.subs.some((s) => mentions(s, FETCHERS, knownVars(this.ctx))));
 		if (fetched) this.add("remote_exec");
 		if (listed(SHELLS, name)) {
 			// A shell that is handed a script (`-c`), or reads one from its input (a here-document).
@@ -1525,19 +2086,24 @@ class Scan {
 			default:
 		}
 
-		// A command that is given a protected place is stopped unless it only reads.
-		if (!listed(READING_PROGRAMS, name) && args.some((a) => this.touchesProtected(a, cwd))) this.add("protected");
+		// A command that is given a protected place is stopped unless it only reads. A Windows shell's script is read for what
+		// each of its commands does with what it names (above), not as one word.
+		const scriptShell = name === "powershell" || name === "pwsh" || name === "cmd";
+		if (!scriptShell && !listed(READING_PROGRAMS, name) && args.some((a) => this.touchesProtected(a, cwd)))
+			this.add("protected");
 		// Reading a credential is asked about too, by any program that looks into the file (`cat`, `grep`, `cp`, `base64`).
-		if (!listed(METADATA_PROGRAMS, name) && args.some((a) => this.touchesSecret(a, cwd))) this.add("secret_read");
+		if (!scriptShell && !listed(METADATA_PROGRAMS, name) && args.some((a) => this.touchesSecret(a, cwd)))
+			this.add("secret_read");
 		return cwd;
 	}
 
 	/** A word that names a protected place: as a path, or as the value of an option (`--file=/…/.ssh/x`). */
 	private touchesProtected(w: Word, cwd: string | null): boolean {
 		if (w.text.startsWith("-") && !w.text.includes("=")) return false;
-		if (w.text.split(/[/=:,]/).some((p) => listed(PROTECTED_SEGMENTS, p))) return true;
-		if (this.ctx.protect.some((d) => d !== "" && w.text.includes(d))) return true;
-		const abs = w.text.startsWith("-") ? null : resolveWord(w, cwd);
+		const text = this.ctx.windows ? windowsView(w.text) : w.text;
+		if (text.split(/[/=:,]/).some((p) => listed(PROTECTED_SEGMENTS, p))) return true;
+		if (this.ctx.protect.some((d) => d !== "" && text.includes(d))) return true;
+		const abs = w.text.startsWith("-") ? null : resolveWord(w, cwd, this.ctx);
 		return abs !== null && isProtected(abs, this.ctx);
 	}
 
@@ -1552,7 +2118,7 @@ class Scan {
 		for (const part of text.split(/[=,]/)) {
 			const path = part.replace(/^@/, "");
 			if (path === "") continue;
-			const abs = resolveWord({ ...w, text: path }, cwd);
+			const abs = resolveWord({ ...w, text: path }, cwd, this.ctx);
 			if (abs !== null && isSecret(abs, this.ctx.home)) return true;
 		}
 		return false;
@@ -1565,7 +2131,7 @@ class Scan {
 		const given =
 			name === "chmod" ? /^([0-7]{3,4}|[ugoa]*[-+=][rwxXst,ugo+=-]*)$/.test(first) : !hasLong(opts, "--reference");
 		for (const t of given ? operands.slice(1) : operands) {
-			const abs = resolveWord(t, cwd);
+			const abs = resolveWord(t, cwd, this.ctx);
 			if (abs !== null && isProtected(abs, this.ctx)) this.add("protected");
 			else if (recursive && (abs === null || isBroad(abs, this.ctx) || !inProject(abs, this.ctx)))
 				this.add("permissions");
@@ -1591,7 +2157,7 @@ class Scan {
 		else this.write(dest, cwd);
 		if (name === "mv") {
 			// A move takes what it moves out of where it was; to a device that discards what it is given (`mv ~/x /dev/null`), it is a delete.
-			const target = resolveWord(dest, cwd);
+			const target = resolveWord(dest, cwd, this.ctx);
 			const discards = target !== null && isSafeDevice(target);
 			for (const s of sources) this.delete(s, cwd, discards, discards, discards);
 		}
@@ -1614,7 +2180,7 @@ class Scan {
 		// Where git works: the folder it was started in, or the one `-C` names (null: not known).
 		let dir: string | null = cwd;
 		while (i < args.length && args[i].text.startsWith("-")) {
-			if (args[i].text === "-C" && args[i + 1]) dir = resolveWord(args[i + 1], dir);
+			if (args[i].text === "-C" && args[i + 1]) dir = resolveWord(args[i + 1], dir, this.ctx);
 			i += listed(takesValue, args[i].text) ? 2 : 1;
 		}
 		const rest = args.slice(i + 1);
@@ -1749,7 +2315,7 @@ class Scan {
 		// What the search finds under its roots is deleted, not the roots themselves: only a root that is too broad matters.
 		const sweep = (recursive: boolean): void => {
 			for (const r of roots) {
-				const abs = resolveWord(r, cwd);
+				const abs = resolveWord(r, cwd, this.ctx);
 				this.delete(r, cwd, true, recursive && !(abs !== null && this.ctx.roots.includes(abs)), true);
 			}
 		};
@@ -1900,6 +2466,411 @@ class Scan {
 		if (reads) this.add("secret_read");
 	}
 
+	/**
+	 * Windows' own programs: its shells (the script handed to them is read), the registry, services, scheduled tasks,
+	 * ACLs, package managers and WSL. PowerShell runs on macOS and Linux too, so none of this asks what system it is on.
+	 */
+	private windowsProgram(
+		name: string,
+		args: Word[],
+		operands: Word[],
+		body: string | null,
+		cwd: string | null,
+		depth: number,
+	): void {
+		const lower = args.map((a) => a.text.toLowerCase());
+		const first = lower[0] ?? "";
+		switch (name) {
+			case "powershell":
+			case "pwsh":
+			case "powershell_ise":
+				this.powershellArgs(args, body, cwd, depth);
+				break;
+			case "cmd": {
+				const at = lower.findIndex((t) => /^\/[ckr]$/.test(t));
+				if (at >= 0) this.windowsText("cmd", args.slice(at + 1), cwd, depth);
+				else if (body !== null) this.cmdScript(body, cwd, depth + 1);
+				break;
+			}
+			case "runas": {
+				// `runas /user:Administrator "cmd /c …"`: the command line it runs (the right to it is `privilege` already).
+				const line = args.filter((a) => !a.text.startsWith("/")).at(-1);
+				if (line) this.windowsText("cmd", [line], cwd, depth);
+				break;
+			}
+			case "reg": {
+				const key = args[1]?.text ?? "";
+				if (/^(?:export|save)$/.test(first) && args[2]) this.write(args[2], cwd);
+				if (/^(?:add|delete|import|load|unload|copy|restore)$/.test(first))
+					this.add(RUN_KEY.test(key) ? "scheduled" : "system");
+				break;
+			}
+			case "sc": {
+				const verb = lower.find((t) => !t.startsWith("\\\\")) ?? "";
+				if (/^(?:create|delete|config|failure|sdset|privs|triggerinfo)$/.test(verb)) this.add("system");
+				else if (/^(?:start|stop|pause|continue)$/.test(verb)) this.add("scheduled");
+				break;
+			}
+			case "schtasks":
+				if (lower.some((t) => /^[/-](?:create|change|delete|run|end)$/.test(t))) this.add("scheduled");
+				break;
+			case "net":
+				if (
+					/^(?:user|localgroup|group|share|accounts)$/.test(first) &&
+					lower.some((t) => /^\/(?:add|delete|del|active)/.test(t))
+				)
+					this.add("system");
+				else if (/^(?:start|stop|pause|continue)$/.test(first) && operands.length > 1) this.add("scheduled");
+				break;
+			case "icacls":
+			case "cacls":
+			case "takeown":
+			case "attrib": {
+				const recursive = lower.some((t) => /^\/[tsr]$/.test(t));
+				const targets =
+					name === "takeown"
+						? args.filter((_, n) => lower[n - 1] === "/f")
+						: name === "attrib"
+							? args.filter((a) => !/^[+\-/]/.test(a.text))
+							: args.slice(0, 1);
+				for (const t of targets) {
+					const abs = resolveWord(t, cwd, this.ctx);
+					if (abs !== null && isProtected(abs, this.ctx)) this.add("protected");
+					else if (abs === null || !inProject(abs, this.ctx) || (recursive && isBroad(abs, this.ctx)))
+						this.add("permissions");
+				}
+				break;
+			}
+			case "winget":
+			case "choco":
+			case "scoop":
+				if (/^(?:install|uninstall|upgrade|update|remove|import|add)$/.test(first)) this.add("global_install");
+				break;
+			case "wsl": {
+				if (lower.some((t) => /^--(?:unregister|shutdown|terminate|install|import|set-default)/.test(t)))
+					this.add("system");
+				// `wsl [-d X] [-u Y] [--cd D] [-e|--exec|--] command …`: the command is read as a POSIX one.
+				let i = 0;
+				while (i < args.length && lower[i].startsWith("-")) {
+					if (/^(?:-e|--exec|--)$/.test(lower[i])) {
+						i++;
+						break;
+					}
+					i += /^(?:-d|--distribution|-u|--user|--cd)$/.test(lower[i]) ? 2 : 1;
+				}
+				const inner = commandOf(args.slice(i));
+				if (inner) this.command(inner, body, null, depth + 1);
+				break;
+			}
+			default:
+		}
+	}
+
+	/** `powershell`'s arguments: the command (`-Command`, the words after the options, `-EncodedCommand`) is read. */
+	private powershellArgs(args: Word[], body: string | null, cwd: string | null, depth: number): void {
+		for (let i = 0; i < args.length; i++) {
+			const t = args[i].text;
+			if (!/^[-/]/.test(t)) {
+				this.windowsText("ps", args.slice(i), cwd, depth);
+				return;
+			}
+			const n = t
+				.replace(/^[-/]+/, "")
+				.split(":")[0]
+				.toLowerCase();
+			if (n === "ex" || n === "ep" || (n.length >= 2 && "executionpolicy".startsWith(n))) i++;
+			else if (n !== "" && "command".startsWith(n)) {
+				const rest = args.slice(i + 1);
+				if (rest.length === 1 && rest[0].text === "-") {
+					if (body !== null) this.powershell(body, cwd, depth + 1);
+				} else this.windowsText("ps", rest, cwd, depth);
+				return;
+			} else if (n === "ec" || n === "e" || (n.length >= 2 && "encodedcommand".startsWith(n))) {
+				const value = args[i + 1];
+				const text = value && !value.dynamic ? decodePowerShell(value.text) : null;
+				if (text === null) this.dynamicCommand();
+				else this.powershell(text, cwd, depth + 1);
+				return;
+			} else if (n !== "" && "file".startsWith(n)) {
+				// A script by name: what it holds is not read here, as `bash script.sh` is not.
+				return;
+			} else if (
+				/^(?:w|wd|o|of|if|v|windowstyle|workingdirectory|outputformat|inputformat|version|configurationname|config|psconsolefile|custompipename|settingsfile)$/.test(
+					n,
+				)
+			)
+				i++;
+		}
+		if (body !== null) this.powershell(body, cwd, depth + 1);
+	}
+
+	/** The words a Windows shell is handed as one command line (`cmd /c del …`, `powershell -Command Remove-Item …`), read. */
+	private windowsText(lang: "ps" | "cmd", words: readonly Word[], cwd: string | null, depth: number): void {
+		if (words.length === 0) return;
+		const text = words.map((w) => w.text).join(" ");
+		if (lang === "ps") this.powershell(text, cwd, depth + 1);
+		else this.cmdScript(text, cwd, depth + 1);
+	}
+
+	/** A registry key is changed: one Windows runs at login is `scheduled`; any other is the system's (`system`). */
+	private registry(w: Word): void {
+		this.add(RUN_KEY.test(w.text) ? "scheduled" : "system");
+	}
+
+	/** A PowerShell script: each command, and what it is known to do (see the head of this file). */
+	powershell(src: string, cwd: string | null, depth: number): void {
+		if (depth > MAX_DEPTH) {
+			this.add("unreadable");
+			return;
+		}
+		if (selfAccess(src, this.ctx)) this.add("protected");
+		if (PS_FETCH.test(src) && PS_RUN.test(src)) this.add("remote_exec");
+		for (const m of src.matchAll(DOTNET_FILE_CALL)) {
+			const target = literalWord(m[4]);
+			const method = m[2].toLowerCase();
+			if (method === "delete")
+				this.delete(target, cwd, m[1].toLowerCase() === "directory", m[1].toLowerCase() === "directory");
+			else if (/^(?:write|append|create|copy|move|replace|settext|setattributes|encrypt)/.test(method))
+				this.write(target, cwd);
+		}
+		let here = cwd;
+		for (const pipeline of parseWindowsScript(src, "ps", knownVars(this.ctx)))
+			pipeline.forEach((stage, n) => {
+				here = this.psStage(stage, here, depth, n > 0);
+			});
+	}
+
+	/** One command of a PowerShell script; the answer is the folder the next one runs in. */
+	private psStage(simple: Simple, cwd: string | null, depth: number, piped: boolean): string | null {
+		for (const r of simple.redirects) if (r.target.text.toLowerCase() !== "$null") this.write(r.target, cwd);
+		for (const w of simple.words) {
+			if (namesPrivateFile(w, cwd, this.ctx)) this.add("protected");
+			for (const sub of w.subs) this.powershell(sub, cwd, depth + 1);
+		}
+		const [head, ...args] = simple.words;
+		if (!head) return cwd;
+		if (head.dynamic) {
+			this.dynamicCommand();
+			return cwd;
+		}
+		const name = baseName(head.text);
+		const cmdlet = Object.hasOwn(PS_ALIASES, name) ? PS_ALIASES[name] : name;
+		const p = psParams(args);
+		const paths = (...names: string[]): Word[] => [...p.values(...names), ...p.positional.slice(0, 1)];
+		const registered = (ws: readonly Word[]): Word[] => {
+			const reg = ws.filter((w) => REGISTRY.test(w.text));
+			for (const w of reg) this.registry(w);
+			return ws.filter((w) => !REGISTRY.test(w.text));
+		};
+		switch (cmdlet) {
+			case "set-location":
+			case "push-location": {
+				const target = p.values("path", "literalpath")[0] ?? p.positional[0];
+				return target ? resolveWord(target, cwd, this.ctx) : this.ctx.home;
+			}
+			case "remove-item": {
+				const recursive = p.has("recurse");
+				const strong = recursive || p.has("force");
+				for (const t of registered([...p.values("path", "literalpath", "lp"), ...p.positional]))
+					this.delete(t, cwd, strong, recursive);
+				break;
+			}
+			case "clear-content":
+			case "clear-item":
+				for (const t of registered(paths("path", "literalpath", "lp"))) this.overwrite(t, cwd);
+				break;
+			case "set-content":
+			case "add-content":
+			case "out-file":
+			case "new-item":
+			case "set-item":
+			case "tee-object":
+			case "export-csv":
+			case "export-clixml":
+				for (const t of registered(paths("path", "literalpath", "lp", "filepath"))) this.write(t, cwd);
+				break;
+			case "set-itemproperty":
+			case "new-itemproperty":
+			case "remove-itemproperty":
+			case "rename-itemproperty":
+			case "copy-itemproperty":
+			case "clear-itemproperty":
+				for (const t of registered(paths("path", "literalpath", "lp"))) this.write(t, cwd);
+				break;
+			case "copy-item":
+			case "move-item": {
+				const sources = registered([...p.values("path", "literalpath", "lp"), ...p.positional.slice(0, 1)]);
+				const dest = p.values("destination")[0] ?? p.positional[1];
+				if (dest) this.write(dest, cwd);
+				if (cmdlet === "move-item") for (const s of sources) this.delete(s, cwd, false, false);
+				else if (sources.some((s) => this.touchesSecret(s, cwd))) this.add("secret_read");
+				break;
+			}
+			case "rename-item":
+				for (const t of registered(paths("path", "literalpath", "lp"))) this.write(t, cwd);
+				break;
+			case "expand-archive":
+			case "compress-archive":
+				for (const t of [...p.values("destinationpath", "destination"), ...p.positional.slice(1, 2)])
+					this.write(t, cwd);
+				break;
+			case "invoke-webrequest":
+			case "invoke-restmethod":
+			case "start-bitstransfer":
+				for (const t of p.values("outfile", "destination")) this.write(t, cwd);
+				break;
+			case "set-acl":
+				for (const t of paths("path", "literalpath", "lp")) {
+					const abs = resolveWord(t, cwd, this.ctx);
+					if (abs !== null && isProtected(abs, this.ctx)) this.add("protected");
+					else if (abs === null || !inProject(abs, this.ctx)) this.add("permissions");
+				}
+				break;
+			case "invoke-expression": {
+				const code = p.values("command")[0] ?? p.positional[0];
+				if (piped || !code || code.dynamic) this.dynamicCommand();
+				else this.powershell(code.text, cwd, depth + 1);
+				break;
+			}
+			case "invoke-command":
+				if (p.values("computername", "cn", "session").length > 0) this.add("remote_shell");
+				break;
+			case "start-process": {
+				if (p.values("verb").some((v) => v.text.toLowerCase() === "runas")) this.add("privilege");
+				const file = p.values("filepath")[0] ?? p.positional[0];
+				if (file?.dynamic) this.dynamicCommand();
+				else if (file) {
+					const list = p.values("argumentlist", "args")[0] ?? p.positional[1];
+					const words = list
+						? list.text
+								.split(/\s+/)
+								.filter((t) => t !== "")
+								.map(literalWord)
+						: [];
+					this.command({ name: baseName(file.text), args: words, viaXargs: false }, null, cwd, depth + 1);
+				}
+				break;
+			}
+			default:
+				if (listed(PS_SYSTEM, cmdlet)) this.add("system");
+				else if (listed(PS_SCHEDULED, cmdlet)) this.add("scheduled");
+				else if (!listed(PS_READERS, cmdlet) && !cmdlet.includes("-")) {
+					// A program (`git`, `reg`, `npm`), run as the shell would run it.
+					this.command({ name, args, viaXargs: false }, null, cwd, depth + 1);
+					return cwd;
+				}
+		}
+		if (listed(PS_CONTENT_READERS, cmdlet) && args.some((a) => this.touchesSecret(a, cwd))) this.add("secret_read");
+		if (!listed(PS_READERS, cmdlet) && args.some((a) => this.touchesProtected(a, cwd))) this.add("protected");
+		return cwd;
+	}
+
+	/** A `cmd.exe` script: each command, and what it is known to do. */
+	cmdScript(src: string, cwd: string | null, depth: number): void {
+		if (depth > MAX_DEPTH) {
+			this.add("unreadable");
+			return;
+		}
+		if (selfAccess(src, this.ctx)) this.add("protected");
+		let here = cwd;
+		for (const pipeline of parseWindowsScript(src, "cmd", knownVars(this.ctx)))
+			for (const stage of pipeline) here = this.cmdStage(stage.words, stage.redirects, here, depth);
+	}
+
+	/** One command of a `cmd.exe` script; the answer is the folder the next one runs in. */
+	private cmdStage(words: Word[], redirects: readonly Redirect[], cwd: string | null, depth: number): string | null {
+		for (const r of redirects) {
+			if (r.op === "<") {
+				if (this.touchesSecret(r.target, cwd)) this.add("secret_read");
+			} else if (r.target.text.toLowerCase() !== "nul") this.write(r.target, cwd);
+		}
+		for (const w of words) if (namesPrivateFile(w, cwd, this.ctx)) this.add("protected");
+		const [head, ...args] = words;
+		if (!head) return cwd;
+		if (head.dynamic) {
+			this.dynamicCommand();
+			return cwd;
+		}
+		const name = baseName(head.text.replace(/^@/, ""));
+		// `if [not] exist x del x`, `for … do del %f`, `else …`: the command in it.
+		if (name === "do" || name === "else") return this.cmdStage(args, [], cwd, depth);
+		if (name === "if") {
+			let i = 0;
+			while (i < args.length && /^(?:not|\/i)$/i.test(args[i].text)) i++;
+			const test = args[i]?.text.toLowerCase() ?? "";
+			i += /^(?:exist|defined|errorlevel|cmdextversion)$/.test(test) ? 2 : args[i + 1]?.text === "==" ? 3 : 1;
+			return this.cmdStage(args.slice(i), [], cwd, depth);
+		}
+		const lower = args.map((a) => a.text.toLowerCase());
+		const has = (s: string): boolean => lower.some((t) => t === s || t.startsWith(`${s}:`));
+		// A switch (`/s`, `/grant:x`), not a path written out in the view (`/c/users/me`).
+		const operands = args.filter((a) => !/^\/[A-Za-z0-9?]+(?::.*)?$/.test(a.text));
+		switch (name) {
+			case "cd":
+			case "chdir":
+			case "pushd":
+				return operands[0] ? resolveWord(operands[0], cwd, this.ctx) : cwd;
+			case "del":
+			case "erase": {
+				const recursive = has("/s");
+				for (const t of operands) this.delete(t, cwd, recursive || has("/q") || has("/f"), recursive);
+				break;
+			}
+			case "rd":
+			case "rmdir": {
+				const recursive = has("/s");
+				for (const t of operands) this.delete(t, cwd, recursive || has("/q"), recursive);
+				break;
+			}
+			case "copy":
+			case "xcopy":
+				if (operands.length >= 2) this.write(operands[operands.length - 1], cwd);
+				if (operands.slice(0, -1).some((s) => this.touchesSecret(s, cwd))) this.add("secret_read");
+				break;
+			case "robocopy": {
+				const [from, to] = operands;
+				if (to) {
+					this.write(to, cwd);
+					if (has("/mir") || has("/purge")) this.delete(to, cwd, true, true, true);
+				}
+				if (from && (has("/move") || has("/mov"))) this.delete(from, cwd, true, true, true);
+				break;
+			}
+			case "move":
+				if (operands.length >= 2) {
+					this.write(operands[operands.length - 1], cwd);
+					for (const s of operands.slice(0, -1)) this.delete(s, cwd, false, false);
+				}
+				break;
+			case "ren":
+			case "rename":
+			case "md":
+			case "mkdir":
+			case "mklink":
+				if (operands[0]) this.write(operands[0], cwd);
+				for (const t of name === "md" || name === "mkdir" ? operands.slice(1) : []) this.write(t, cwd);
+				break;
+			case "type":
+				if (args.some((a) => this.touchesSecret(a, cwd))) this.add("secret_read");
+				return cwd;
+			case "set":
+			case "echo":
+			case "rem":
+			case "call":
+			case "start":
+			case "title":
+			case "pause":
+			case "exit":
+				return cwd;
+			default:
+				// A program (`git`, `reg`, `powershell`), run as the shell would run it.
+				this.command({ name, args, viaXargs: false }, null, cwd, depth + 1);
+				return cwd;
+		}
+		if (args.some((a) => this.touchesProtected(a, cwd))) this.add("protected");
+		return cwd;
+	}
+
 	/** Code handed to an interpreter (`python -c`, an `eval` cell): read line by line and string by string, as shell. */
 	code(code: string, cwd: string | null, depth: number): void {
 		this.inCode++;
@@ -1967,21 +2938,27 @@ const ORDER: readonly RiskKind[] = [
 
 const ordered = (found: ReadonlySet<RiskKind>): RiskKind[] => ORDER.filter((k) => found.has(k));
 
+/** Where a command starts, in the context's view (a Windows folder as every path is compared there). */
+const startIn = (cwd: string | null, ctx: RiskContext): string | null =>
+	cwd === null || !ctx.windows ? cwd : normalize(windowsView(cwd));
+
 /** The high-risk things `command` does, most serious first (empty: none that are known). `cwd`: where it starts. */
 export function classifyShell(
 	command: string,
 	ctx: RiskContext,
 	cwd: string | null = ctx.roots[0] ?? null,
 ): RiskKind[] {
-	const scan = new Scan(ctx);
-	scan.script(command, cwd, 0);
+	const view = viewed(ctx);
+	const scan = new Scan(view);
+	scan.script(command, startIn(cwd, view), 0);
 	return ordered(scan.kinds);
 }
 
 /** The high-risk things in the source of a program that a tool runs (an `eval` cell), most serious first. */
 export function classifyCode(code: string, ctx: RiskContext): RiskKind[] {
-	const scan = new Scan(ctx);
-	scan.code(code, ctx.roots[0] ?? null, 0);
+	const view = viewed(ctx);
+	const scan = new Scan(view);
+	scan.code(code, view.roots[0] ?? null, 0);
 	return ordered(scan.kinds);
 }
 
@@ -2008,8 +2985,8 @@ function pathText(raw: string, ctx: RiskContext): string | null {
 		if (scheme[1].toLowerCase() !== "file") return null;
 		s = decodeURIComponent(s.slice(scheme[0].length - 1));
 	}
-	// `archive.zip:member`, `data.db:table:key`: the file is what comes before.
-	const colon = s.indexOf(":");
+	// `archive.zip:member`, `data.db:table:key`: the file is what comes before (on Windows, after the drive's `C:`).
+	const colon = s.indexOf(":", ctx.windows && /^[A-Za-z]:/.test(s) ? 2 : 0);
 	if (colon > 0) s = s.slice(0, colon);
 	if (s === "~") s = ctx.home;
 	else if (s.startsWith("~/")) s = `${ctx.home}${s.slice(1)}`;
@@ -2019,7 +2996,7 @@ function pathText(raw: string, ctx: RiskContext): string | null {
 /** The file a path points to, or null for something that is not a file (an internal address: `local://`, `proc://`). */
 function filePathOf(raw: string, ctx: RiskContext, cwd: string | null): string | null {
 	const s = pathText(raw, ctx);
-	return s === null ? null : resolveWord({ text: s, dynamic: false, subs: [] }, cwd);
+	return s === null ? null : resolveWord({ text: s, dynamic: false, subs: [] }, cwd, ctx);
 }
 
 /** A file tool writes `raw`: protected, or outside the project. */
@@ -2061,7 +3038,8 @@ function editPaths(input: Record<string, unknown>): string[] {
 function describePaths(paths: readonly string[], ctx: RiskContext, cwd: string | null): string {
 	const lines = paths.slice(0, 20).map((p) => {
 		const abs = filePathOf(p, ctx, cwd);
-		return abs !== null && abs !== p ? `Path: ${p}\n  → ${abs}` : `Path: ${p}`;
+		const shown = abs !== null && ctx.windows ? windowsShown(abs) : abs;
+		return shown !== null && shown !== p ? `Path: ${p}\n  → ${shown}` : `Path: ${p}`;
 	});
 	if (paths.length > 20) lines.push(`… and ${paths.length - 20} more`);
 	return lines.join("\n");
@@ -2084,7 +3062,7 @@ export function classifyToolCall(tool: string, input: unknown, ctx: RiskContext,
 		return classify(
 			tool,
 			typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {},
-			ctx,
+			viewed(ctx),
 			depth,
 		);
 	} catch {
@@ -2110,7 +3088,7 @@ function readsToken(tool: string, input: Record<string, unknown>, ctx: RiskConte
 	const secrets = listed(CONTENT_TOOLS, tool.toLowerCase())
 		? given.filter((p) => {
 				const s = pathText(p, ctx);
-				const abs = s === null ? null : resolveWord({ text: s, dynamic: false, subs: [] }, root);
+				const abs = s === null ? null : resolveWord({ text: s, dynamic: false, subs: [] }, root, ctx);
 				return abs !== null && isSecret(abs, ctx.home);
 			})
 		: [];

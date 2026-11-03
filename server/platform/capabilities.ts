@@ -6,7 +6,6 @@ import type { Capabilities, Capability, PlatformId } from "../../shared/platform
  */
 const CAPABILITIES: Record<PlatformId, Capabilities> = {
 	darwin: {
-		remoteAccess: true,
 		processTreeKill: true,
 		pauseResume: true,
 		relay: true,
@@ -20,7 +19,6 @@ const CAPABILITIES: Record<PlatformId, Capabilities> = {
 		appShell: true,
 	},
 	linux: {
-		remoteAccess: true,
 		processTreeKill: true,
 		pauseResume: true,
 		relay: true,
@@ -34,7 +32,6 @@ const CAPABILITIES: Record<PlatformId, Capabilities> = {
 		appShell: false,
 	},
 	win32: {
-		remoteAccess: false,
 		processTreeKill: true,
 		pauseResume: false,
 		relay: false,
@@ -73,8 +70,6 @@ export const platformId: PlatformId = platformIdOf(process.platform);
  * capability that is false somewhere has a reason here (tests/unit/platform-adapter.test.ts keeps the list whole).
  */
 export const UNAVAILABLE: Record<Capability, string> = {
-	remoteAccess:
-		"Remote access is off on Windows: the check of risky commands from remote pages does not know Windows paths and shells yet",
 	processTreeKill: "Ending a process with what it started is not available on this system",
 	pauseResume: "Pausing a conversation is not available on this system yet",
 	relay: "Conversations that outlive the server are not available on this system yet",

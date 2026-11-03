@@ -19,10 +19,10 @@ test("every capability that is off somewhere has a reason to give", () => {
 			if (!on) expect(UNAVAILABLE[name as Capability], `${id} ${name}`).toBeTruthy();
 });
 
-test("remote access, pause and relays are off on Windows, on elsewhere", () => {
-	expect(capabilitiesFor("win32")).toMatchObject({ remoteAccess: false, pauseResume: false, relay: false });
+test("pause and relays are off on Windows, on elsewhere", () => {
+	expect(capabilitiesFor("win32")).toMatchObject({ pauseResume: false, relay: false });
 	for (const id of ["darwin", "linux"] as const)
-		expect(capabilitiesFor(id)).toMatchObject({ remoteAccess: true, pauseResume: true, relay: true });
+		expect(capabilitiesFor(id)).toMatchObject({ pauseResume: true, relay: true });
 });
 
 test("macOS and Linux run the same commands as before the adapter", () => {

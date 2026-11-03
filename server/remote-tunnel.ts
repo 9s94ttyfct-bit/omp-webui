@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import { isRecord } from "../shared/guards.ts";
@@ -12,14 +13,16 @@ import {
 } from "../shared/remote.ts";
 import { childEnv } from "./env.ts";
 import { type Ran, RunTimeout, run } from "./omp/run.ts";
+import { platformId } from "./platform/capabilities.ts";
 import { platform } from "./platform/index.ts";
 import type { RemoteStore } from "./remote-config.ts";
 
 /**
  * Remote access is a `cloudflared` the server runs: it carries `https://<hostname>` to this server, and Cloudflare Access
- * asks for a login in front of it. This is everything the server does with that program: find it, install it (Homebrew),
- * log in to Cloudflare, make the tunnel and point the hostname at it, run it, tell what it is doing, keep it running and
- * stop it with the server.
+ * asks for a login in front of it. This is everything the server does with that program: find it, install it (Homebrew on
+ * macOS; on Linux and Windows Cloudflare's own build, downloaded into the data dir and checked against the SHA-256 GitHub
+ * gives for it), log in to Cloudflare, make the tunnel and point the hostname at it, run it, tell what it is doing, keep it
+ * running and stop it with the server.
  *
  * What takes a moment and ends is a command bounded by a limit (`run`); what goes on (the login that waits for the
  * browser, the install, the tunnel itself) is a process the server reads line by line, also with a limit where it can
@@ -40,7 +43,7 @@ export class TunnelError extends Error {
 export interface TunnelTimings {
 	/** `cloudflared tunnel create` and `route dns`: a call to Cloudflare. */
 	quickMs: number;
-	/** `brew install cloudflared`. */
+	/** `brew install cloudflared`, or the download of cloudflared. */
 	installMs: number;
 	/** How long `cloudflared tunnel login` has to print the URL. */
 	loginUrlMs: number;
@@ -82,6 +85,41 @@ export interface TunnelOptions {
 	/** Told whenever what the page shows of the tunnel changes. */
 	onStatus?: (status: RemoteStatus) => void;
 	timings?: Partial<TunnelTimings>;
+	/**
+	 * Install by downloading Cloudflare's build instead of with Homebrew: on Linux and Windows (the default there), or where a
+	 * spec says so. `OMP_WEBUI_CLOUDFLARED_RELEASES` (in `env`) names another address of the latest release's description.
+	 */
+	downloads?: boolean;
+	/** Which of Cloudflare's builds the download takes (default: this system's, `cloudflaredAsset`). */
+	asset?: string;
+}
+
+/** GitHub's description of cloudflared's latest release: its assets, each with the SHA-256 GitHub computed of it. */
+const RELEASES = "https://api.github.com/repos/cloudflare/cloudflared/releases/latest";
+
+/** The name of Cloudflare's build of cloudflared for this system and processor (null: none; Windows on Arm runs x64). */
+export function cloudflaredAsset(id: typeof platformId, arch: string): string | null {
+	if (id === "linux") {
+		const names: Record<string, string> = { x64: "amd64", arm64: "arm64", arm: "arm", ia32: "386" };
+		return names[arch] ? `cloudflared-linux-${names[arch]}` : null;
+	}
+	if (id === "win32") return arch === "ia32" ? "cloudflared-windows-386.exe" : "cloudflared-windows-amd64.exe";
+	return null;
+}
+
+/** The SHA-256 of `asset` in a release: the asset's own `digest`, else the line the release notes give it. */
+export function assetDigest(release: unknown, asset: string): { url: string; sha256: string; tag: string } | null {
+	if (!isRecord(release) || !Array.isArray(release.assets)) return null;
+	const found = release.assets.find((a) => isRecord(a) && a.name === asset);
+	if (!isRecord(found) || typeof found.browser_download_url !== "string") return null;
+	const own = typeof found.digest === "string" ? /^sha256:([0-9a-f]{64})$/i.exec(found.digest)?.[1] : undefined;
+	const noted =
+		typeof release.body === "string"
+			? new RegExp(`^\\s*${asset.replace(/[.]/g, "\\.")}:\\s*([0-9a-f]{64})\\s*$`, "im").exec(release.body)?.[1]
+			: undefined;
+	const sha256 = (own ?? noted)?.toLowerCase();
+	if (!sha256) return null;
+	return { url: found.browser_download_url, sha256, tag: typeof release.tag_name === "string" ? release.tag_name : "" };
 }
 
 /** What a process that is read line by line came to. */
@@ -234,18 +272,32 @@ export class Tunnel {
 		this.timings = { ...DEFAULT_TIMINGS, ...opts.timings };
 		this.pidFile = join(opts.dataDir, "cloudflared.pid");
 		this.configFile = join(opts.dataDir, "cloudflared.yml");
+		this.ownDir = join(opts.dataDir, "cloudflared");
+		this.own = join(this.ownDir, platformId === "win32" ? "cloudflared.exe" : "cloudflared");
+	}
+
+	/** Where the downloaded cloudflared is kept (Linux, Windows): the app's own copy, which the next install replaces. */
+	private readonly ownDir: string;
+	private readonly own: string;
+
+	/** Whether `install` downloads Cloudflare's build rather than asking Homebrew (see `TunnelOptions.downloads`). */
+	private get downloads(): boolean {
+		return this.opts.downloads ?? platformId !== "darwin";
 	}
 
 	// ------------------------------------------------------------------ what there is
 
 	/**
 	 * The program: `OMP_WEBUI_CLOUDFLARED` when it is set (and then only that one: a spec must not find whatever the
-	 * machine has), else the first on `PATH` or where Homebrew puts it. Looked for at each ask: `brew install` puts it there.
+	 * machine has), else the first on `PATH` or where Homebrew puts it, else the copy the app downloaded. Looked for at each
+	 * ask: an install puts it there.
 	 */
 	private find(): string | null {
 		const override = this.env.OMP_WEBUI_CLOUDFLARED;
 		if (override) return platform.commands.isExecutable(override) ? override : null;
-		return platform.commands.which("cloudflared", this.dirs);
+		return (
+			platform.commands.which("cloudflared", this.dirs) ?? (platform.commands.isExecutable(this.own) ? this.own : null)
+		);
 	}
 
 	private findBrew(): string | null {
@@ -340,9 +392,16 @@ export class Tunnel {
 		return stream;
 	}
 
-	/** `brew install cloudflared`, with what brew prints going to the page while it runs. */
+	/**
+	 * Install cloudflared: on macOS `brew install cloudflared`, with what brew prints going to the page while it runs; on
+	 * Linux and Windows Cloudflare's own build (`download`).
+	 */
 	async install(): Promise<void> {
 		if (this.installed()) return;
+		if (this.downloads) {
+			await this.exclusive("The install", () => this.download());
+			return;
+		}
 		const brew = this.findBrew();
 		if (!brew) {
 			throw new TunnelError(
@@ -378,6 +437,66 @@ export class Tunnel {
 				this.setNote(null);
 			}
 		});
+	}
+
+	/**
+	 * Cloudflare's build of cloudflared for this system, from cloudflared's latest GitHub release, into the data dir: refused
+	 * unless its SHA-256 is the one the release gives for it, and put in place only whole (written beside, then renamed).
+	 */
+	private async download(): Promise<void> {
+		const asset = this.opts.asset ?? cloudflaredAsset(platformId, process.arch);
+		if (!asset) {
+			throw new TunnelError(
+				`Cloudflare publishes no cloudflared for this system (${platformId} ${process.arch}): install it another way (https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) and come back`,
+				400,
+			);
+		}
+		const deadline = AbortSignal.timeout(this.timings.installMs);
+		const fetched = async (url: string, what: string): Promise<Response> => {
+			let response: Response;
+			try {
+				response = await fetch(url, { signal: deadline, headers: { "user-agent": "omp-webui" } });
+			} catch (e) {
+				if (deadline.aborted)
+					throw new TunnelError(
+						`The download of cloudflared did not finish within ${seconds(this.timings.installMs)}`,
+						504,
+					);
+				throw new TunnelError(`${what} could not be fetched: ${(e as Error).message}`, 502);
+			}
+			if (!response.ok) throw new TunnelError(`${what} could not be fetched (HTTP ${response.status})`, 502);
+			return response;
+		};
+		this.setNote("Finding the latest cloudflared…");
+		try {
+			const releases = this.env.OMP_WEBUI_CLOUDFLARED_RELEASES || RELEASES;
+			const release: unknown = await (await fetched(releases, "cloudflared's latest release")).json().catch(() => null);
+			const found = assetDigest(release, asset);
+			if (!found)
+				throw new TunnelError(`cloudflared's latest release has no ${asset} with a SHA-256 to check it against`, 502);
+			this.setNote(`Downloading cloudflared ${found.tag}…`);
+			const bytes = new Uint8Array(await (await fetched(found.url, asset)).arrayBuffer());
+			const sha256 = createHash("sha256").update(bytes).digest("hex");
+			if (sha256 !== found.sha256)
+				throw new TunnelError(
+					`The downloaded ${asset} is not the one Cloudflare published (SHA-256 ${sha256}, expected ${found.sha256}): it was not installed`,
+					502,
+				);
+			mkdirSync(this.ownDir, { recursive: true });
+			const part = `${this.own}.part`;
+			try {
+				writeFileSync(part, bytes, { mode: 0o755 });
+				chmodSync(part, 0o755);
+				renameSync(part, this.own);
+			} catch (e) {
+				rmSync(part, { force: true });
+				throw new TunnelError(`cloudflared could not be saved in ${this.ownDir}: ${(e as Error).message}`, 500);
+			}
+			if (!this.installed())
+				throw new TunnelError("cloudflared was downloaded, but cannot be run from where it was saved", 502);
+		} finally {
+			this.setNote(null);
+		}
 	}
 
 	/**

@@ -2,7 +2,6 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { capabilities } from "../../server/platform/capabilities.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { DEFAULT_INSTRUCTION, type Question, type QuestionList, UNATTENDED_TOOL } from "../../shared/unattended.ts";
 import { type AccessKey, type Jwks, makeKey, startJwks } from "../support/access-jwt.ts";
@@ -289,64 +288,56 @@ test("a dismissed question leaves the open list and sends nothing", async () => 
 	c.ws.close();
 }, 120_000);
 
-test.skipIf(!capabilities.remoteAccess)(
-	"a remote page reads the list and answers under the rules of every remote message",
-	async () => {
-		const c = await conversation();
-		const q = await filed(c, "Which queue?", ["sqs", "nats"]);
-		const asRemote = (path: string, body?: unknown) =>
-			phone.fetch(
-				path,
-				{
-					method: body === undefined ? "GET" : "POST",
-					headers: { "content-type": "application/json", "x-omp-webui": "1" },
-				},
-				body === undefined ? undefined : JSON.stringify(body),
-			);
-		expect(
-			((await (await asRemote("/api/questions")).json()) as QuestionList).questions.some((x) => x.id === q.id),
-		).toBe(true);
-		// The instruction is read by any page and changed on this computer only.
-		expect((await asRemote("/api/unattended")).status).toBe(200);
-		const phoneEdit = await asRemote("/api/unattended", { instruction: "from a phone" });
-		expect(phoneEdit.status).toBe(403);
-		expect(((await phoneEdit.json()) as { error: string }).error).toContain(
-			"changed on the computer omp-webui runs on",
+test("a remote page reads the list and answers under the rules of every remote message", async () => {
+	const c = await conversation();
+	const q = await filed(c, "Which queue?", ["sqs", "nats"]);
+	const asRemote = (path: string, body?: unknown) =>
+		phone.fetch(
+			path,
+			{
+				method: body === undefined ? "GET" : "POST",
+				headers: { "content-type": "application/json", "x-omp-webui": "1" },
+			},
+			body === undefined ? undefined : JSON.stringify(body),
 		);
-		const answered = await asRemote("/api/questions/answer", { id: q.id, options: ["nats"] });
-		expect(answered.status, await answered.clone().text()).toBe(200);
-		const delivered = await requestWith('Answer to your question \\"Which queue?\\"');
-		expect(delivered.text).toContain("Chosen: nats");
-		c.ws.close();
+	expect(((await (await asRemote("/api/questions")).json()) as QuestionList).questions.some((x) => x.id === q.id)).toBe(
+		true,
+	);
+	// The instruction is read by any page and changed on this computer only.
+	expect((await asRemote("/api/unattended")).status).toBe(200);
+	const phoneEdit = await asRemote("/api/unattended", { instruction: "from a phone" });
+	expect(phoneEdit.status).toBe(403);
+	expect(((await phoneEdit.json()) as { error: string }).error).toContain("changed on the computer omp-webui runs on");
+	const answered = await asRemote("/api/questions/answer", { id: q.id, options: ["nats"] });
+	expect(answered.status, await answered.clone().text()).toBe(200);
+	const delivered = await requestWith('Answer to your question \\"Which queue?\\"');
+	expect(delivered.text).toContain("Chosen: nats");
+	c.ws.close();
 
-		// A conversation the gate does not cover (omp refuses `--trusted-extension` together with `--extension`) is not given a remote
-		// page's turn while "Confirm risky commands from remote pages" is on: the answer is refused and stays open; this computer's goes.
-		setRemote({ confirmRisky: true });
-		const own = join(root, "trusted.ts");
-		writeFileSync(own, "export default function () {}\n");
-		const t = await conversation(["--trusted-extension", own]);
-		// Its mode is on and it says what its omp does not carry; its own `ask` dialogs are still the server's to file.
-		expect(t.live.unattended).toEqual({ live: false, skipped: "trustedExtension" });
-		plan.call = {
-			name: "ask",
-			args: { questions: [{ id: "a", question: "Which topic?", options: [{ label: "x" }, { label: "y" }] }] },
-		};
-		await turn(t, "ASK-TRUSTED-646");
-		const asked = (await list()).questions.find((x) => x.question === "Which topic?");
-		expect(asked?.source).toBe("ask");
-		if (!asked) throw new Error("unreachable");
-		const refused = await asRemote("/api/questions/answer", { id: asked.id, options: ["x"] });
-		expect(refused.status).toBe(403);
-		expect(((await refused.json()) as { error: string }).error).toMatch(
-			/Confirm risky commands from remote pages is on/,
-		);
-		expect((await list()).questions.find((x) => x.id === asked.id)?.state).toBe("open");
-		expect((await answerOf(asked, { options: ["y"] })).status).toBe(200);
-		setRemote();
-		t.ws.close();
-	},
-	240_000,
-);
+	// A conversation the gate does not cover (omp refuses `--trusted-extension` together with `--extension`) is not given a remote
+	// page's turn while "Confirm risky commands from remote pages" is on: the answer is refused and stays open; this computer's goes.
+	setRemote({ confirmRisky: true });
+	const own = join(root, "trusted.ts");
+	writeFileSync(own, "export default function () {}\n");
+	const t = await conversation(["--trusted-extension", own]);
+	// Its mode is on and it says what its omp does not carry; its own `ask` dialogs are still the server's to file.
+	expect(t.live.unattended).toEqual({ live: false, skipped: "trustedExtension" });
+	plan.call = {
+		name: "ask",
+		args: { questions: [{ id: "a", question: "Which topic?", options: [{ label: "x" }, { label: "y" }] }] },
+	};
+	await turn(t, "ASK-TRUSTED-646");
+	const asked = (await list()).questions.find((x) => x.question === "Which topic?");
+	expect(asked?.source).toBe("ask");
+	if (!asked) throw new Error("unreachable");
+	const refused = await asRemote("/api/questions/answer", { id: asked.id, options: ["x"] });
+	expect(refused.status).toBe(403);
+	expect(((await refused.json()) as { error: string }).error).toMatch(/Confirm risky commands from remote pages is on/);
+	expect((await list()).questions.find((x) => x.id === asked.id)?.state).toBe("open");
+	expect((await answerOf(asked, { options: ["y"] })).status).toBe(200);
+	setRemote();
+	t.ws.close();
+}, 240_000);
 
 test("the instruction the person edits reaches the next turn of an unattended conversation, and Restore default undoes it", async () => {
 	const c = await conversation();

@@ -10,6 +10,7 @@ import {
 	type TransferKind,
 } from "../shared/transfer.ts";
 import { FolderError, inside, isSecretLooking, partsOf, type Resolved, resolveFor, rootOf } from "./folder.ts";
+import { platformId } from "./platform/capabilities.ts";
 import type { TransferLog } from "./transfer-log.ts";
 
 /**
@@ -198,7 +199,7 @@ export function startsPrograms(parts: readonly string[]): boolean {
 
 /** Whether `abs` (a real path) is a place nothing is carried out of or into unasked. */
 export const isProtected = (abs: string, env: TransferEnv): boolean =>
-	isProtectedPath(abs, { home: realHome(env.home), protect: env.protect });
+	isProtectedPath(abs, { home: realHome(env.home), protect: env.protect, windows: platformId === "win32" });
 
 /**
  * What a page that is not this computer's may read by its path: what the Files tab shows it, with one difference, the person's

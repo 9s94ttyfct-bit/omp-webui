@@ -8,10 +8,9 @@ export const en = {
 	// Settings › Remote access
 	settingsTitle: "Remote access",
 	settingsIntro:
-		"Reach this app from anywhere: a Cloudflare tunnel carries https://{hostname} to this Mac, and Cloudflare Access asks who you are before it lets you in.",
-	settingsRemoteRefused: "This page is not on the Mac the server runs on, so the tunnel cannot be changed from here.",
-	settingsUnavailable:
-		"Remote access is not available on Windows yet: it waits for the risk classifier (the check of risky commands from remote pages) to support Windows paths.",
+		"Reach this app from anywhere: a Cloudflare tunnel carries https://{hostname} to this computer, and Cloudflare Access asks who you are before it lets you in.",
+	settingsRemoteRefused:
+		"This page is not on the computer the server runs on, so the tunnel cannot be changed from here.",
 
 	// The state of the tunnel
 	stateOff: "Off",
@@ -92,7 +91,7 @@ export const en = {
 	guideIntro: "In the Cloudflare dashboard, in this order:",
 	guideApp: "Zero Trust › Access › Applications › Add an application › Self-hosted",
 	guideHostname:
-		"Give it the same hostname as above, or a wildcard that covers it (*.example.com): one application then serves every Mac under it, with one AUD tag",
+		"Give it the same hostname as above, or a wildcard that covers it (*.example.com): one application then serves every computer under it, with one AUD tag",
 	guidePolicy: "Add a policy: Allow, and the e-mail addresses above",
 	guideAud: "Copy the AUD tag from the application and paste it above",
 	guideSession:
@@ -104,15 +103,15 @@ export const en = {
 	saveFailed: "Could not save the settings: {error}",
 	saveDone: "Settings saved",
 
-	// Export and import of the settings a second Mac shares (team, AUD, allowed addresses)
-	transferTitle: "Share these settings with another Mac",
+	// Export and import of the settings a second computer shares (team, AUD, allowed addresses)
+	transferTitle: "Share these settings with another computer",
 	transferHint:
-		"One Access application with a wildcard domain (*.example.com) serves every Mac under it. Export the team, the AUD tag and the allowed e-mail addresses here and import them on the other Mac: it then needs only its own hostname. The file holds nothing else (no hostname, no tunnel, no credentials).",
+		"One Access application with a wildcard domain (*.example.com) serves every computer under it. Export the team, the AUD tag and the allowed e-mail addresses here and import them on the other computer: it then needs only its own hostname. The file holds nothing else (no hostname, no tunnel, no credentials).",
 	transferExport: "Export settings",
 	transferImport: "Import settings…",
 	transferExported: "Saved {name}",
 	transferImported:
-		"Imported the settings of the file into the form above. Check them, enter this Mac's hostname if it is not there, then Save.",
+		"Imported the settings of the file into the form above. Check them, enter this computer's hostname if it is not there, then Save.",
 	transferTooLarge: "That file is too large to be a remote access settings file.",
 	transferNotJson: "That file is not JSON.",
 	transferNotOurs: "That is not a remote access settings file exported from omp-webui.",

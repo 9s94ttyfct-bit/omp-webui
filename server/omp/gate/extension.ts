@@ -191,6 +191,8 @@ function contextFor(
 		protect: [...protect, ...(agent ? [agent, real(agent)] : [])],
 		...(ports ? { ports } : {}),
 		...(hosts ? { hosts } : {}),
+		// platform-allow: the gate runs inside omp, which has no platform adapter; the classifier reads Windows paths on Windows
+		...(process.platform === "win32" ? { windows: true } : {}),
 	};
 }
 

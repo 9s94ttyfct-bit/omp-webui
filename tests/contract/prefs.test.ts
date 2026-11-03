@@ -4,7 +4,6 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
-import { capabilities } from "../../server/platform/capabilities.ts";
 import { PREF, PREFS_ELEMENT_ID, type PrefsSnapshot } from "../../shared/prefs.ts";
 import { type AppServer, startAppServer } from "../support/app-server.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
@@ -191,40 +190,36 @@ test("changes the store does not keep are refused whole", async () => {
 	expect((await page(s)).snapshot?.values[PREF.theme]).toBeNull();
 });
 
-test.skipIf(!capabilities.remoteAccess)(
-	'the macOS shell asks what quitting does with its own token header, and "Don\'t ask again" writes the preference Settings shows',
-	async () => {
-		const s = await start(dataDir("quit-action"));
-		// The four requests the shell makes when it is asked to quit (macos/quit.swift): the token header, no cookie, no page.
-		const header = { "x-omp-webui-token": s.token };
-		for (const path of ["/api/lives", "/api/omp", "/api/prefs", "/api/remote"]) {
-			const res = await fetch(`http://127.0.0.1:${s.port}${path}`, { headers: header });
-			expect(res.status, path).toBe(200);
-		}
-		const read = async () =>
-			((await (await fetch(`http://127.0.0.1:${s.port}/api/prefs`, { headers: header })).json()) as PrefsSnapshot)
-				.values;
-		expect((await read())[PREF.quitAction]).toBeNull();
+test('the macOS shell asks what quitting does with its own token header, and "Don\'t ask again" writes the preference Settings shows', async () => {
+	const s = await start(dataDir("quit-action"));
+	// The four requests the shell makes when it is asked to quit (macos/quit.swift): the token header, no cookie, no page.
+	const header = { "x-omp-webui-token": s.token };
+	for (const path of ["/api/lives", "/api/omp", "/api/prefs", "/api/remote"]) {
+		const res = await fetch(`http://127.0.0.1:${s.port}${path}`, { headers: header });
+		expect(res.status, path).toBe(200);
+	}
+	const read = async () =>
+		((await (await fetch(`http://127.0.0.1:${s.port}/api/prefs`, { headers: header })).json()) as PrefsSnapshot).values;
+	expect((await read())[PREF.quitAction]).toBeNull();
 
-		const write = (changes: unknown) =>
-			fetch(`http://127.0.0.1:${s.port}/api/prefs`, {
-				method: "POST",
-				headers: { ...header, "content-type": "application/json", "x-omp-webui": "1" },
-				body: JSON.stringify({ changes }),
-			});
-		expect((await write({ [PREF.quitAction]: "background" })).status).toBe(200);
-		expect((await read())[PREF.quitAction]).toBe("background");
-		// The page the server serves next carries it, so that Settings shows it.
-		expect((await page(s)).snapshot?.values[PREF.quitAction]).toBe("background");
-		expect((await write({ [PREF.quitAction]: "quit" })).status).toBe(200);
-		expect((await read())[PREF.quitAction]).toBe("quit");
-		// Only the three answers are kept, and a change to it does not touch the others.
-		expect((await write({ [PREF.quitAction]: "sometimes" })).status).toBe(400);
-		expect((await read())[PREF.quitAction]).toBe("quit");
-		expect((await write({ [PREF.quitAction]: "ask" })).status).toBe(200);
-		expect((await read())[PREF.quitAction]).toBe("ask");
-	},
-);
+	const write = (changes: unknown) =>
+		fetch(`http://127.0.0.1:${s.port}/api/prefs`, {
+			method: "POST",
+			headers: { ...header, "content-type": "application/json", "x-omp-webui": "1" },
+			body: JSON.stringify({ changes }),
+		});
+	expect((await write({ [PREF.quitAction]: "background" })).status).toBe(200);
+	expect((await read())[PREF.quitAction]).toBe("background");
+	// The page the server serves next carries it, so that Settings shows it.
+	expect((await page(s)).snapshot?.values[PREF.quitAction]).toBe("background");
+	expect((await write({ [PREF.quitAction]: "quit" })).status).toBe(200);
+	expect((await read())[PREF.quitAction]).toBe("quit");
+	// Only the three answers are kept, and a change to it does not touch the others.
+	expect((await write({ [PREF.quitAction]: "sometimes" })).status).toBe(400);
+	expect((await read())[PREF.quitAction]).toBe("quit");
+	expect((await write({ [PREF.quitAction]: "ask" })).status).toBe(200);
+	expect((await read())[PREF.quitAction]).toBe("ask");
+});
 
 test("two servers on one data dir keep each other's changes, and the revision only goes up", async () => {
 	const dir = dataDir("two-live");
