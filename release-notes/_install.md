@@ -23,11 +23,12 @@
 
 ## Run omp-webui on Linux
 
-1. Download `omp-webui-vX.Y.Z-linux-x64.tar.gz` or `omp-webui-vX.Y.Z-linux-arm64.tar.gz` for your processor, then unpack and install it in a terminal:
+1. Download `omp-webui-vX.Y.Z-linux-x64.tar.gz` or `omp-webui-vX.Y.Z-linux-arm64.tar.gz` for your processor, then unpack and install it in a terminal (`arch` is `x64` or `arm64`, as in the file's name):
 
    ```sh
-   tar xzf omp-webui-vX.Y.Z-linux-x64.tar.gz
-   cd omp-webui-linux-x64
+   arch=x64
+   tar xzf omp-webui-vX.Y.Z-linux-$arch.tar.gz
+   cd omp-webui-linux-$arch
    ./install.sh
    ```
 
@@ -57,11 +58,12 @@
 
 ## 在 Linux 上运行 omp-webui
 
-1. 按你的处理器下载 `omp-webui-vX.Y.Z-linux-x64.tar.gz` 或 `omp-webui-vX.Y.Z-linux-arm64.tar.gz`，然后在终端里解压并安装：
+1. 按你的处理器下载 `omp-webui-vX.Y.Z-linux-x64.tar.gz` 或 `omp-webui-vX.Y.Z-linux-arm64.tar.gz`，然后在终端里解压并安装（`arch` 填 `x64` 或 `arm64`，与文件名一致）：
 
    ```sh
-   tar xzf omp-webui-vX.Y.Z-linux-x64.tar.gz
-   cd omp-webui-linux-x64
+   arch=x64
+   tar xzf omp-webui-vX.Y.Z-linux-$arch.tar.gz
+   cd omp-webui-linux-$arch
    ./install.sh
    ```
 
