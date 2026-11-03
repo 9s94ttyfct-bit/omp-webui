@@ -115,6 +115,26 @@ test.describe("mouse", () => {
 		expect(over.x).toBeLessThan(name.x + name.width);
 		expect(over.x + over.width).toBeLessThanOrEqual(marks.x);
 	});
+
+	test("the list stays where it is drawn when the search bar's chunk comes late (#42)", async ({ page }) => {
+		ownSession(0x48, SHORT);
+		let release = () => {};
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		await page.route("**/assets/SessionSearch-*.js", async (route) => {
+			await held;
+			await route.continue();
+		});
+		await page.goto("/");
+		const short = parts(page, SHORT);
+		await expect(short.item).toHaveCount(1, { timeout: 15_000 });
+		await expect(page.getByTestId("session-filter")).toHaveCount(0);
+		const before = await boxOf(short.item);
+		release();
+		await expect(page.getByTestId("session-filter")).toBeVisible();
+		expect(await boxOf(short.item)).toEqual(before);
+	});
 });
 
 const { defaultBrowserType: _browser, ...pixel } = devices["Pixel 5"];

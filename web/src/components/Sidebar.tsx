@@ -455,8 +455,11 @@ export function Sidebar() {
 			<div className="px-3">
 				<NavGroup variant="rows" surface="sidebar" group="top" remote={remotePage} />
 			</div>
-			{/* The search bar, its strings and the scorer travel in a chunk of their own: the sidebar is the first page. */}
-			<Suspense fallback={null}>
+			{/* The search bar, its strings and the scorer travel in a chunk of their own: the sidebar is the first page. Its
+			    place (`pt-2` and an `h-8` row) is kept while it comes, so the list never moves under a tap (#42). */}
+			<Suspense
+				fallback={firstRun ? null : <div aria-hidden className="h-10 shrink-0" data-testid="session-search-slot" />}
+			>
 				<SessionSearch
 					sessions={pool}
 					home={meta?.home}
