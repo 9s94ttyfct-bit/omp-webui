@@ -497,6 +497,7 @@
 		"composer-drafts.spec.ts › the automatic reload after an upgrade keeps what was typed": 3.5,
 		"composer-drafts.spec.ts › the new-chat page keeps its unsent message while a conversation is open": 2.3,
 		"composer-drafts.spec.ts › unsent messages and their images come back after a reload, for every conversation": 6.7,
+		"continue-here.spec.ts › Continue from here goes on from that reply in the conversation's own file, and keeps the conversation as it was as a branch": 15.0,
 		"contrast.spec.ts › dark theme › a destructive button's label is at least 4.5:1 on its fill": 1.9,
 		"contrast.spec.ts › dark theme › placeholders are at least 4.5:1 on the field behind them": 3.6,
 		"contrast.spec.ts › dark theme › the current and the highlighted row carry an accent bar and say so to assistive tech": 4.8,

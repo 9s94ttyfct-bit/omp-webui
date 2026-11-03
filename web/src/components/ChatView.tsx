@@ -1071,6 +1071,26 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 							toast("success", translate("chat.toastBranched"));
 						});
 					},
+			continueFrom: working
+				? undefined
+				: (entry) => {
+						const { ensureLive, run, setViewLeaf, toast } = latest.current;
+						void run(translate("chat.errContinueHere"), async () => {
+							const id = await ensureLive();
+							assertIdle(id);
+							const main = useApp.getState().lives[id]?.info.sessionFile;
+							if (!main) throw new Error(translate("chat.errNoFileYet"));
+							// The whole conversation as it is goes to a branch beside it (omp's fork of the session, which moves the
+							// process there); the process comes back to the conversation's own file and goes on from the reply.
+							const forked = await socket.act<{ cancelled?: boolean }>(id, { type: "fork" });
+							if (forked?.cancelled) throw new Error(translate("chat.errForkCancelled"));
+							await socket.act(id, { type: "switch_session", sessionPath: main });
+							await socket.act(id, { type: "navigate_tree", entryId: entry.id });
+							setViewLeaf(null);
+							await refreshEntries(id);
+							toast("success", translate("chat.toastContinuedHere"));
+						});
+					},
 			switchSibling: (_from, to) => {
 				const { fam, currentFile, navigateTo } = latest.current;
 				const dest = destinationFor(fam, to.id, currentFile);

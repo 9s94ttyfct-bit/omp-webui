@@ -9,6 +9,7 @@ import {
 	FileText,
 	GitBranch,
 	GitFork,
+	History,
 	Pencil,
 	RefreshCw,
 	ScrollText,
@@ -43,6 +44,11 @@ export interface MessageActions {
 	edit?: (entry: SessionEntry, text: string) => void;
 	regenerate?: (entry: SessionEntry) => void;
 	fork?: (entry: SessionEntry) => void;
+	/**
+	 * Continue the conversation from `entry` in its own file, the whole conversation as it was kept as a branch beside it:
+	 * the conversation stays the one the sidebar, its pin and its settings name, and goes on from this reply.
+	 */
+	continueFrom?: (entry: SessionEntry) => void;
 	switchSibling?: (entry: SessionEntry, to: SessionEntry) => void;
 	openSubagent?: (toolCallId: string) => void;
 	/** Set inside a subagent's transcript: that subagent, whose children a task card there starts (see `subagentsForToolCall`). */
@@ -362,6 +368,11 @@ export function TurnFooter({
 			{!readOnly && last && actions.fork ? (
 				<IconButton label={t("chat.footerBranchFrom")} size="sm" onClick={() => actions.fork?.(last)}>
 					<GitFork size={14} />
+				</IconButton>
+			) : null}
+			{!readOnly && last && actions.continueFrom ? (
+				<IconButton label={t("chat.footerContinueHere")} size="sm" onClick={() => actions.continueFrom?.(last)}>
+					<History size={14} />
 				</IconButton>
 			) : null}
 			<span className="ml-2 min-w-0">

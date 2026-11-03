@@ -15,6 +15,8 @@ import { expect, type Page, test } from "./fixtures.ts";
 const edit = (page: Page) => page.getByRole("button", { name: "Edit (creates a branch)" });
 const regenerate = (page: Page) => page.getByRole("button", { name: "Regenerate (new branch)" });
 const forks = (page: Page) => page.getByRole("button", { name: /^(Fork into a new conversation|Branch from here)/ });
+const continues = (page: Page) =>
+	page.getByRole("button", { name: "Continue from here (keep the original as a branch)" });
 
 async function open(page: Page, n: number, title: string): Promise<{ tap: SocketTap; liveId: string }> {
 	ownSession(n, title);
@@ -32,6 +34,7 @@ test("Edit, Regenerate and Fork are not offered while a reply runs, and an open 
 	await expect(edit(page)).toHaveCount(1);
 	await expect(regenerate(page)).toHaveCount(1);
 	await expect(forks(page)).toHaveCount(2);
+	await expect(continues(page)).toHaveCount(1);
 
 	await page.getByTestId("msg-user").first().hover();
 	await edit(page).click();
@@ -42,6 +45,7 @@ test("Edit, Regenerate and Fork are not offered while a reply runs, and an open 
 	await expect(edit(page)).toHaveCount(0);
 	await expect(regenerate(page)).toHaveCount(0);
 	await expect(forks(page)).toHaveCount(0);
+	await expect(continues(page)).toHaveCount(0);
 	// The editor is not closed on the user, and cannot send into the reply.
 	await expect(page.getByLabel("Edit message")).toHaveValue("Edit while replying, differently");
 	await expect(page.getByTestId("edit-busy")).toBeVisible();
