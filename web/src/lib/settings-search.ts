@@ -472,11 +472,19 @@ export const SETTINGS: readonly SettingEntry[] = [
 		target: '[data-testid="star-prompt-setting"]',
 	},
 	{
+		id: "cli",
+		group: "shell.sidebarNavCli",
+		label: "shell.sidebarNavCli",
+		hint: "pages.settingsCliHint",
+		aliases: ["cli", "terminal", "command", "commands", "shell", "run", "命令", "终端", "命令行", "命令与终端"],
+		target: '[data-setting="cli"]',
+	},
+	{
 		id: "config",
 		group: "pages.settingsConfig",
 		label: "pages.settingsConfig",
 		hint: "pages.settingsConfigHint",
-		aliases: ["cli", "terminal", "command", "命令", "终端", "配置"],
+		aliases: ["omp config", "models", "login", "plugin", "plugins", "update", "配置", "插件", "登录"],
 		target: '[data-setting="config"]',
 	},
 	{

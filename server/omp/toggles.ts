@@ -41,9 +41,12 @@ export function validPlugin(name: unknown): name is string {
 	return typeof name === "string" && PLUGIN_NAME.test(name);
 }
 
-/** omp's config is written from one place at a time here: two switches clicked together must not lose one. */
+/**
+ * omp's config and its plugins are written from one place at a time here: two switches clicked together must not lose
+ * one, and the Plugins page's changes (`plugins.ts`) wait their turn too.
+ */
 let writing: Promise<unknown> = Promise.resolve();
-function serialized<T>(work: () => Promise<T>): Promise<T> {
+export function serialized<T>(work: () => Promise<T>): Promise<T> {
 	const run = writing.then(work, work);
 	writing = run.catch(() => {});
 	return run;
@@ -128,12 +131,19 @@ export async function setPluginEnabled(
 ): Promise<boolean> {
 	const args = ["plugin", enabled ? "enable" : "disable", ...(scope ? ["--scope", scope] : []), name, "--json"];
 	await serialized(() => runJson(t.bin, args, t.cwd, t.env));
-	if (!omp) return false;
+	return omp ? reloadPlugins(omp) : false;
+}
+
+/**
+ * Tell a running omp to `/reload-plugins`. Returns whether it reloaded: an omp without the command picks a change up on its
+ * next start. `user`: the person asked this of the conversation, so a paused one answers it (`Live.rpc`).
+ */
+export async function reloadPlugins(omp: PluginProcess, user = true): Promise<boolean> {
 	// A line omp does not know goes to the model as a prompt: look for the command first.
-	const catalog = await omp.rpc({ type: "get_available_commands" }, { user: true });
+	const catalog = await omp.rpc({ type: "get_available_commands" }, { user });
 	const commands = catalog.success && isRecord(catalog.data) ? catalog.data.commands : undefined;
 	if (!hasCommand(commands, "reload-plugins")) return false;
-	return (await omp.command("/reload-plugins", { user: true })) !== null;
+	return (await omp.command("/reload-plugins", { user })) !== null;
 }
 
 /** An error with the HTTP status the page should get: omp's own words where it gave any. */

@@ -32,6 +32,7 @@ import * as pages from "./pages.ts";
 import type * as pagesLater from "./pages-later.ts";
 import * as panel from "./panel.ts";
 import type * as panelLater from "./panel-later.ts";
+import type * as plugins from "./plugins.ts";
 import type * as presetAgents from "./preset-agents.ts";
 import * as presets from "./presets.ts";
 import type * as presetsLater from "./presets-later.ts";
@@ -78,6 +79,7 @@ type LazyModules = {
 	drop: typeof drop;
 	navLayout: typeof navLayout;
 	browser: typeof browser;
+	plugins: typeof plugins;
 };
 type Modules = typeof MODULES & LazyModules;
 /**

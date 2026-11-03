@@ -2278,6 +2278,17 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		return handleUpload(req, url, { cwdOf: conversationCwd, dataDirs: [cfg.dataDir, ...knownDataDirs()] });
 	}
 	if (p === "/api/model-config" || p.startsWith("/api/model-config/")) return handleModelConfig(req, url, cfg);
+	if (p === "/api/plugins" || p.startsWith("/api/plugins/")) {
+		// The Plugins page: loaded on its first request. Open to every page that has the token, as the Commands & terminal
+		// page's runner is (it runs `omp plugin …` for such a page too); nothing changes while an import writes.
+		const { handlePlugins } = await import("./omp/plugins.ts");
+		return handlePlugins(req, url, {
+			bin: cfg.ompBin,
+			home: homedir(),
+			pool,
+			held: () => (importWriting ? heldByImport() : null),
+		});
+	}
 	if (p.startsWith("/api/controls/")) {
 		// Loaded on the first request: the toggles, the todo list and the session defaults are read when a panel opens (#585).
 		const { handleControls } = await import("./omp/controls.ts");

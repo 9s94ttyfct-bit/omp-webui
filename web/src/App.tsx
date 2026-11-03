@@ -36,6 +36,8 @@ const QuestionsPage = lazy(() => import("./components/QuestionsPage.tsx"));
 // The agent graph (#719): its layout, its strings and the live view it opens wait for the page to be opened.
 const AgentGraphPage = lazy(() => import("./components/AgentGraphPage.tsx"));
 const CliPage = lazy(() => import("./components/CliPage.tsx").then((m) => ({ default: m.CliPage })));
+// omp's plugins: the page, its strings and its requests wait for it to be opened.
+const PluginsPage = lazy(() => import("./components/PluginsPage.tsx").then((m) => ({ default: m.PluginsPage })));
 const SettingsPage = lazy(() => import("./components/SettingsPage.tsx").then((m) => ({ default: m.SettingsPage })));
 const Palette = lazy(() => import("./components/Palette.tsx").then((m) => ({ default: m.Palette })));
 const ChangeFolderDialog = lazy(() =>
@@ -302,6 +304,7 @@ export function App() {
 										run={view.run}
 									/>
 								) : null}
+								{view.kind === "plugins" ? <PluginsPage /> : null}
 								{view.kind === "settings" ? <SettingsPage /> : null}
 							</Suspense>
 						</ErrorBoundary>

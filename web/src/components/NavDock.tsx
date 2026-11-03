@@ -17,7 +17,7 @@ const { Chunk, preload, retry } = lazyChunk(() => import("./NavLinks.tsx").then(
 preload();
 
 /** The pages, as `lib/nav-layout.ts` names them: that module is part of the chunk, so what is needed of it is repeated here. */
-const PAGES = ["agents", "usage", "memory", "cli", "settings", "guard"];
+const PAGES = ["agents", "usage", "memory", "plugins", "settings", "guard"];
 const GROUPS = ["top", "bottom", "hidden"];
 
 /**
@@ -36,7 +36,8 @@ function shown({ surface, group, remote }: NavGroupProps): number {
 	let n = 0;
 	for (const g of GROUPS) {
 		const list = stored?.[g];
-		if (Array.isArray(list)) for (const id of list) if (counts(id) && g === group) n++;
+		// `cli` is what `plugins` was stored as before it took that place (see `RENAMED` of `lib/nav-layout.ts`).
+		if (Array.isArray(list)) for (const id of list) if (counts(id === "cli" ? "plugins" : id) && g === group) n++;
 	}
 	if (group === "bottom") for (const id of PAGES) if (counts(id)) n++;
 	return n;

@@ -1,0 +1,108 @@
+/**
+ * Strings for the Plugins page: omp's plugins, installed and offered by the marketplaces, changed with omp's own
+ * `omp plugin` command. Not in `MODULES` of `index.ts`: the page is a lazy chunk and registers them (`registerStrings`);
+ * the Chinese ones are in the zh-CN pack. Plugin names, versions, descriptions and what omp prints are omp's, never
+ * translated.
+ */
+export const en = {
+	title: "Plugins",
+	intro:
+		"omp's plugins: what is installed, what your marketplaces offer, and their health. Changes are made with omp's own `omp plugin` command; open conversations reload their plugins after each.",
+	refresh: "Refresh",
+	sections: "Sections of the Plugins page",
+	folder: "Folder",
+	folderHome: "Home folder (your plugins)",
+	folderHint:
+		"Run in a project's folder, omp lists that project's own plugins with yours, and installs one for the project there.",
+	loadError: "Couldn't list the plugins",
+
+	installedTitle: "Installed",
+	installedEmpty: "No plugin is installed",
+	installedEmptyHint: "Install one from a marketplace below, or by its npm package, git URL or folder.",
+	sourceNpm: "npm",
+	sourceLinked: "folder",
+	scopeUser: "user",
+	scopeProject: "project",
+	shadowed: "The project's copy is the one omp loads.",
+	enabledLabel: "{name} enabled",
+	upgrade: "Upgrade",
+	upgradeTo: "Upgrade to {version}",
+	newer: "{version} available",
+	upgradeAll: "Upgrade all ({count})",
+	upgradeAllTitle: "Upgrade these plugins?",
+	upgradeAllBody: "omp would upgrade:",
+	upgradeCheckFailed: "Newer versions could not be checked: {error}",
+	uninstall: "Uninstall",
+	uninstallTitle: "Uninstall {name}?",
+	uninstallBody:
+		"omp removes it ({scope}). Open conversations reload their plugins; one that cannot needs a restart to let it go.",
+	features: "Features",
+	featuresTitle: "Features of {name}",
+	featuresHint: "Optional parts of the plugin. Until you choose, omp turns on the ones marked default.",
+	featureDefault: "default",
+	settings: "Settings",
+	settingsTitle: "Settings of {name}",
+	settingsNone: "This plugin declares no settings.",
+	settingsSecretSet: "set (hidden)",
+	settingsNotSet: "not set",
+	settingsDefault: "default",
+	settingsValue: "Value of {key}",
+	settingsReset: "Reset to default",
+	settingsEnv: "also read from {env}",
+	save: "Save",
+	confirm: "Confirm",
+
+	discoverTitle: "Discover",
+	discoverHint: "The plugins of every marketplace you added.",
+	discoverFilter: "Filter plugins…",
+	discoverFilterAria: "Filter the marketplaces' plugins",
+	discoverNoMarkets: "Add a marketplace below to see what it offers.",
+	discoverNone: "No plugin matches.",
+	installedIn: "installed ({scopes})",
+	install: "Install",
+	installScopeAria: "Install {name} for",
+
+	manualTitle: "Install from npm, git or a folder",
+	manualHint:
+		"An npm package (`name`, `name@1.2.3`, `name[feature]`), `github:user/repo`, a git URL, a folder on the computer omp runs on (`~/…` or a full path), or `name@marketplace`.",
+	manualLabel: "Package, URL or folder",
+	scope: "Scope",
+	scopeHint:
+		"The scope is for a marketplace plugin (`name@marketplace`); packages, git and folders are installed for you.",
+	scopeProjectNeedsFolder: "Choose a project folder above to install for a project.",
+
+	marketsTitle: "Marketplaces",
+	marketsHint:
+		"Catalogs of plugins: a GitHub repository (`owner/repo`), a git URL or a folder with a `marketplace.json`.",
+	marketsEmpty: "No marketplace is added.",
+	marketAdd: "Add",
+	marketAddLabel: "Marketplace to add",
+	marketUpdate: "Update",
+	marketUpdateAll: "Update all",
+	marketRemove: "Remove",
+	marketRemoveTitle: "Remove the marketplace {name}?",
+	marketRemoveBody: "Its catalog is no longer offered. Plugins installed from it stay installed.",
+	marketError: "Its catalog could not be read: {error}",
+
+	doctorTitle: "Doctor",
+	doctorHint: "Checks omp's plugin folder, its packages and each plugin's manifest; Fix repairs what omp can.",
+	doctorRun: "Run checks",
+	doctorFix: "Fix",
+	doctorAllOk: "Everything is in order.",
+	doctorFixed: "fixed",
+	statusOk: "ok",
+	statusWarning: "warning",
+	statusError: "error",
+
+	jobRunning: "Running…",
+	jobDone: "Done",
+	jobFailed: "Failed",
+	jobDismiss: "Dismiss",
+	jobOutput: "What omp printed",
+	busy: "Another change is running: wait for it to finish.",
+	reloaded: "Reloaded its plugins: {names}",
+	restart: "Needs a restart to see it (Restart in its panel): {names}",
+	paused: "Paused, sees it after a resume and a restart: {names}",
+	conversation: "a new conversation",
+	changed: "Done.",
+};

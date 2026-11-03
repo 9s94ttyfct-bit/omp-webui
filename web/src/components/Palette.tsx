@@ -2,7 +2,17 @@ import * as Dialog from "@radix-ui/react-dialog";
 import type { SearchHit } from "@shared/protocol.ts";
 import type { QuickPrompt } from "@shared/quick-prompts.ts";
 import { Command } from "cmdk";
-import { Archive, ListChecks, MessageSquare, MessageSquarePlus, Search, Send, Target, Zap } from "lucide-react";
+import {
+	Archive,
+	ListChecks,
+	MessageSquare,
+	MessageSquarePlus,
+	Search,
+	Send,
+	SquareTerminal,
+	Target,
+	Zap,
+} from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import "../i18n/later.ts";
@@ -270,6 +280,10 @@ export function Palette() {
 											<n.icon size={15} /> {t(n.labelKey)}
 										</Command.Item>
 									))}
+									{/* Not on the bars (a page of Settings, where the Plugins page took its place), but a place to go. */}
+									<Command.Item className={item} data-testid="palette-go-cli" onSelect={() => go({ kind: "cli" })}>
+										<SquareTerminal size={15} /> {t("shell.sidebarNavCli")}
+									</Command.Item>
 									{/* Not on the bars (#693: a conversation's are a tab of its panel), but every conversation's page is a place to go. */}
 									<Command.Item
 										className={item}

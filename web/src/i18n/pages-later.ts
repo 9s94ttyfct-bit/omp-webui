@@ -221,7 +221,11 @@ export const en = {
 	shortcutQuickPromptsHint: "Sends the prompt to the conversation on screen, as its ⚡ menu does.",
 	settingsConfig: "omp configuration",
 	settingsConfigHint:
-		"omp's own settings (models, providers, tools, MCP, plugins…) are managed by omp. Open them in the built-in terminal; changes apply to new sessions.",
+		"omp's own settings (models, providers, tools, MCP…) are managed by omp: these open its commands in Commands & terminal, and plugins have a page of their own. Changes apply to new sessions.",
+	settingsCliHint:
+		"Every omp command and flag, with its help, run in a real terminal on the computer omp-webui runs on (interactive ones too).",
+	settingsCliOpen: "Open Commands & terminal",
+	settingsCliBack: "Back to Settings",
 	settingsRunning: "Running sessions",
 	settingsNewSession: "new session",
 	settingsNoProcesses: "No omp processes are open from this browser.",

@@ -78,6 +78,7 @@ export const en = {
 	sidebarNavAgents: "Agent graph",
 	sidebarNavUsage: "Usage & cost",
 	sidebarNavCli: "Commands & terminal",
+	sidebarNavPlugins: "Plugins",
 	sidebarNavMemory: "Memory",
 	sidebarNavSettings: "Settings",
 	sidebarNavGuard: "Guard",

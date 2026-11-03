@@ -28,7 +28,8 @@ export interface NavGroupProps {
 /** A group of the sidebar: one labelled row per item, as the pages' entries always were. */
 function Rows({ surface, group, remote }: Omit<NavGroupProps, "variant">) {
 	const t = useT();
-	const view = useApp((s) => s.view);
+	// Commands & terminal is a page of Settings: the bar marks Settings while it is shown.
+	const current = useApp((s) => (s.view.kind === "cli" ? "settings" : s.view.kind));
 	const setView = useApp((s) => s.setView);
 	const items = navItemsIn(useNavLayout(), surface, group, { remote });
 	return (
@@ -43,7 +44,7 @@ function Rows({ surface, group, remote }: Omit<NavGroupProps, "variant">) {
 				<button
 					key={item.id}
 					type="button"
-					aria-current={view.kind === item.id ? "page" : undefined}
+					aria-current={current === item.id ? "page" : undefined}
 					data-nav-item={item.id}
 					data-nav-group={group}
 					data-nav-surface={surface}
@@ -51,7 +52,7 @@ function Rows({ surface, group, remote }: Omit<NavGroupProps, "variant">) {
 					// `touch-none`: a finger moving on a row is a drag (pointer events the page hears), not a scroll of the list.
 					className={cx(
 						"flex w-full touch-none select-none items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm",
-						view.kind === item.id ? "bg-hover text-fg" : "text-muted hover:bg-hover hover:text-fg",
+						current === item.id ? "bg-hover text-fg" : "text-muted hover:bg-hover hover:text-fg",
 					)}
 					onPointerDown={startNavPress}
 					onClick={() => setView({ kind: item.id } as never)}
@@ -66,7 +67,7 @@ function Rows({ surface, group, remote }: Omit<NavGroupProps, "variant">) {
 /** A group of the rail: one icon button per item, its name a tooltip and its `aria-label`. */
 function Icons({ surface, group, remote }: Omit<NavGroupProps, "variant">) {
 	const t = useT();
-	const view = useApp((s) => s.view);
+	const current = useApp((s) => (s.view.kind === "cli" ? "settings" : s.view.kind));
 	const setView = useApp((s) => s.setView);
 	const items = navItemsIn(useNavLayout(), surface, group, { remote });
 	return (
@@ -88,8 +89,8 @@ function Icons({ surface, group, remote }: Omit<NavGroupProps, "variant">) {
 				>
 					<IconButton
 						label={t(item.labelKey)}
-						active={view.kind === item.id}
-						aria-current={view.kind === item.id ? "page" : undefined}
+						active={current === item.id}
+						aria-current={current === item.id ? "page" : undefined}
 						data-testid={`rail-${item.id}`}
 						onClick={() => setView({ kind: item.id } as never)}
 					>

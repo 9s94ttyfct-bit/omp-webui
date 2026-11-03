@@ -93,8 +93,10 @@ test("every control still shows some focus cue", async ({ page }) => {
 	await page.keyboard.press("Escape");
 	await expect(page.getByTestId("palette-input")).toHaveCount(0);
 
-	// Commands page.
-	await page.getByRole("button", { name: "Commands & terminal" }).click();
+	// Commands page (a page of Settings: opened by its address).
+	await page.evaluate(() => {
+		location.hash = "#/settings/cli";
+	});
 	await expect(page.getByTestId("cli-page")).toBeVisible();
 	await check("command filter", page.getByLabel("Filter commands"));
 	await check("command line", page.getByTestId("cli-line"));

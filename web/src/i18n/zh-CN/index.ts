@@ -17,6 +17,7 @@ export * as navLayout from "./nav-layout.ts";
 export * as omp from "./omp.ts";
 export * as pages from "./pages.ts";
 export * as panel from "./panel.ts";
+export * as plugins from "./plugins.ts";
 export * as presetAgents from "./preset-agents.ts";
 export * as presets from "./presets.ts";
 export * as quickPrompts from "./quick-prompts.ts";

@@ -34,7 +34,7 @@ A preset is a named set of models for every role plus an optional thinking level
 
 - **Settings › Models & accounts** (`#/settings/models`): cards **Accounts**, **Model roles**, **Model presets** (also Full / Light, Guidance and the quota floor, documented elsewhere).
 - Conversation composer: model picker, thinking level, **Presets** menu.
-- **Settings › App & system › omp configuration**: the buttons `omp models` and `omp login` open omp's own commands on the Commands & terminal page.
+- **Settings › App & system › omp configuration**: the buttons `omp models` and `omp login` open omp's own commands on the Commands & terminal page (a page of Settings, `#/settings/cli`).
 
 ## Settings
 

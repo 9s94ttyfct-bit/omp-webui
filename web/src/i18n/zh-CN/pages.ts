@@ -234,7 +234,10 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	shortcutQuickPromptsHint: "把这条指令发送到屏幕上的对话，和它的 ⚡ 菜单一样。",
 	settingsConfig: "omp 配置",
 	settingsConfigHint:
-		"omp 自身的设置（模型、提供商、工具、MCP、插件等）由 omp 管理。可在内置终端中打开；更改将应用于新对话。",
+		"omp 自身的设置（模型、提供商、工具、MCP 等）由 omp 管理：这些按钮会在“命令与终端”中打开对应命令，插件有自己的页面。更改将应用于新对话。",
+	settingsCliHint: "omp 的每个命令和参数及其帮助，在 omp-webui 所在电脑上的真实终端中运行（包括交互式命令）。",
+	settingsCliOpen: "打开命令与终端",
+	settingsCliBack: "返回设置",
 	settingsRunning: "运行中的对话",
 	settingsNewSession: "新对话",
 	settingsNoProcesses: "此浏览器没有打开任何 omp 进程。",

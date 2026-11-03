@@ -83,7 +83,10 @@ export type View =
 	| { kind: "agents"; file?: string }
 	/** The questions of unattended mode (#646); `file`: only the ones of this conversation. */
 	| { kind: "questions"; file?: string }
+	/** Commands & terminal, a page of Settings (`#/settings/cli[/<command>]`; the old `#/cli…` addresses open it too). */
 	| { kind: "cli"; command?: string; run?: string[] }
+	/** omp's plugins (`#/plugins`). */
+	| { kind: "plugins" }
 	/** `page`: one of Settings' pages (`#/settings/<page>`); none opens the page last shown. */
 	| { kind: "settings"; page?: SettingsPageId };
 
@@ -325,8 +328,8 @@ export function hashOf(v: View): string {
 	if (v.kind === "chat" && v.liveId) return `#/live/${v.liveId}${full}`;
 	if (v.kind === "settings" && v.page) return `#/settings/${v.page}`;
 	if (v.kind === "agents") return v.file ? `#/agents/${encodeURIComponent(v.file)}` : "#/agents";
-	if (["usage", "memory", "guard", "questions", "settings"].includes(v.kind)) return `#/${v.kind}`;
-	if (v.kind === "cli") return v.command ? `#/cli/${encodeURIComponent(v.command)}` : "#/cli";
+	if (["usage", "memory", "guard", "questions", "settings", "plugins"].includes(v.kind)) return `#/${v.kind}`;
+	if (v.kind === "cli") return v.command ? `#/settings/cli/${encodeURIComponent(v.command)}` : "#/settings/cli";
 	if (v.kind === "new" && v.cwd) return `#/new?cwd=${encodeURIComponent(v.cwd)}`;
 	return "#/";
 }
@@ -366,7 +369,16 @@ export function viewFromHash(): View {
 			const { target, ...full } = splitFull(h.slice(6));
 			return { kind: "chat", file: null, liveId: target, ...full };
 		}
-		if (["/usage", "/memory", "/guard", "/questions", "/settings"].includes(h)) return { kind: h.slice(1) } as View;
+		if (["/usage", "/memory", "/guard", "/questions", "/settings", "/plugins"].includes(h))
+			return { kind: h.slice(1) } as View;
+		// Commands & terminal: under Settings, and at its old address (a bookmark, a link in a note) as before.
+		for (const base of ["/settings/cli", "/cli"]) {
+			if (h === base) return { kind: "cli" };
+			if (h.startsWith(`${base}/`)) {
+				const command = decodeURIComponent(h.slice(base.length + 1));
+				return command ? { kind: "cli", command } : { kind: "cli" };
+			}
+		}
 		if (h === "/agents") return { kind: "agents" };
 		if (h.startsWith("/agents/")) {
 			const file = decodeURIComponent(h.slice("/agents/".length));
@@ -376,8 +388,6 @@ export function viewFromHash(): View {
 			const page = h.slice("/settings/".length);
 			return isSettingsPage(page) ? { kind: "settings", page } : { kind: "settings" };
 		}
-		if (h.startsWith("/cli"))
-			return { kind: "cli", command: h.length > 5 ? decodeURIComponent(h.slice(5)) : undefined };
 		if (h.startsWith("/new?")) {
 			const cwd = new URLSearchParams(h.slice("/new?".length)).get("cwd");
 			return cwd ? { kind: "new", cwd } : { kind: "new" };
@@ -1661,7 +1671,11 @@ export async function startApp(): Promise<void> {
 			run: () => window.open(target, "_blank", "noopener,noreferrer"),
 		});
 	});
-	useApp.setState({ view: viewFromHash() });
+	const opened = viewFromHash();
+	useApp.setState({ view: opened });
+	// An old address (`#/cli…`, Commands & terminal before it moved into Settings) is shown as the one it has now.
+	if (opened.kind === "cli" && location.hash !== hashOf(opened))
+		history.replaceState(history.state, "", hashOf(opened));
 	findViewedProcess();
 	// The page's first entry has no id yet: give it one, so that Back to it finds what is kept for it.
 	const entry = entryIdOf(history.state) ?? newEntryId();
@@ -1670,6 +1684,8 @@ export async function startApp(): Promise<void> {
 	window.addEventListener("popstate", (e) => {
 		const id = entryIdOf(e.state);
 		const next = viewFromHash();
+		// An old address typed or followed in this page (`#/cli…`) is shown as the one it has now.
+		if (next.kind === "cli" && location.hash !== hashOf(next)) history.replaceState(history.state, "", hashOf(next));
 		const view = viewOfStep(useApp.getState().view, next);
 		whenFree(
 			view,

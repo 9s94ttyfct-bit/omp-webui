@@ -121,6 +121,30 @@ test("Settings' pages are #/settings/<page>; an unknown page is Settings at the 
 	expect(viewFromHash()).toEqual({ kind: "settings" });
 });
 
+test("Commands & terminal is #/settings/cli[/<command>], and its old #/cli addresses open it too", () => {
+	useApp.getState().setView({ kind: "cli", command: "plugin" });
+	expect(historyLog.at(-1)).toBe("push #/settings/cli/plugin");
+	expect(viewFromHash()).toEqual({ kind: "cli", command: "plugin" });
+	useApp.getState().setView({ kind: "cli" });
+	expect(historyLog.at(-1)).toBe("push #/settings/cli");
+	expect(viewFromHash()).toEqual({ kind: "cli" });
+	location.hash = "#/cli";
+	expect(viewFromHash()).toEqual({ kind: "cli" });
+	location.hash = "#/cli/config";
+	expect(viewFromHash()).toEqual({ kind: "cli", command: "config" });
+	location.hash = "#/cli/";
+	expect(viewFromHash()).toEqual({ kind: "cli" });
+	// `cli` is no page of Settings' own: `#/settings/cli` is never read as one.
+	location.hash = "#/settings/cli";
+	expect(viewFromHash()).toEqual({ kind: "cli" });
+});
+
+test("the Plugins page is #/plugins", () => {
+	useApp.getState().setView({ kind: "plugins" });
+	expect(historyLog.at(-1)).toBe("push #/plugins");
+	expect(viewFromHash()).toEqual({ kind: "plugins" });
+});
+
 test("New chat in a folder is #/new?cwd=<folder>, and the address opens it there again; #/new and #/ are New chat", () => {
 	useApp.getState().setView({ kind: "new", cwd: "/tmp/a b&c" });
 	expect(historyLog.at(-1)).toBe(`push #/new?cwd=${encodeURIComponent("/tmp/a b&c")}`);

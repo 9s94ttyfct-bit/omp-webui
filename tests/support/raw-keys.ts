@@ -38,6 +38,7 @@ import { en as presets } from "../../web/src/i18n/presets.ts";
 import { en as presetsLater } from "../../web/src/i18n/presets-later.ts";
 import { en as projectGroups } from "../../web/src/i18n/project-groups.ts";
 import { en as projects } from "../../web/src/i18n/projects.ts";
+import { en as plugins } from "../../web/src/i18n/plugins.ts";
 import { en as push } from "../../web/src/i18n/push.ts";
 import { en as questions } from "../../web/src/i18n/questions.ts";
 import { en as quickPrompts } from "../../web/src/i18n/quick-prompts.ts";
@@ -82,6 +83,7 @@ export const NAMESPACES: Record<string, object[]> = {
 	macs: [macs],
 	push: [push],
 	settingsHelp: [settingsHelp],
+	plugins: [plugins],
 };
 
 const KEYS = new Set<string>();

@@ -1,0 +1,144 @@
+import { isRecord } from "./guards.ts";
+
+/**
+ * The Plugins page (`#/plugins`): omp's plugins as omp's own CLI (`omp plugin …`) reports them, and the changes the page
+ * asks the server to make with it. See `server/omp/plugins.ts`.
+ */
+
+export type PluginScope = "user" | "project";
+export const PLUGIN_SCOPES: readonly PluginScope[] = ["user", "project"];
+export const isPluginScope = (v: unknown): v is PluginScope => v === "user" || v === "project";
+
+/** Something the server could not read from omp, in omp's own words. */
+export interface PluginsFailure {
+	error: string;
+}
+
+export function isPluginsFailure(v: unknown): v is PluginsFailure {
+	return isRecord(v) && typeof v.error === "string";
+}
+
+/** One optional feature of a plugin (its `omp.features` in `package.json`). */
+export interface PluginFeature {
+	name: string;
+	description: string | null;
+	/** On when the person has not chosen the plugin's features. */
+	default: boolean;
+	/** On now: the chosen features, or the defaults when none were chosen. */
+	enabled: boolean;
+}
+
+/**
+ * One installed plugin. `npm` covers git installs too, as `omp plugin list` groups them; `linked` is a local folder
+ * (`omp plugin link`, or `omp plugin install <path>`); `marketplace` came from a marketplace's catalog.
+ */
+export interface InstalledPlugin {
+	/** What omp's CLI names it by: the package name, or `name@marketplace`. */
+	id: string;
+	name: string;
+	source: "npm" | "linked" | "marketplace";
+	marketplace: string | null;
+	scope: PluginScope;
+	version: string | null;
+	description: string | null;
+	enabled: boolean;
+	/** A user-scoped marketplace plugin that the folder also has: the folder's copy is the one omp loads. */
+	shadowedBy?: "project";
+	/** Where omp has it on disk. */
+	path: string | null;
+	/** Its optional features; empty when it has none (marketplace plugins have none omp can switch). */
+	features: PluginFeature[];
+	/** Whether it declares settings (`omp plugin config`). */
+	hasSettings: boolean;
+	/** A newer version in its marketplace's catalog (`omp plugin upgrade --dry-run`); null: none, or not a marketplace plugin. */
+	upgrade: { from: string | null; to: string } | null;
+}
+
+/** One plugin of a configured marketplace's catalog (`omp plugin discover <marketplace>`). */
+export interface CatalogPlugin {
+	name: string;
+	version: string | null;
+	description: string | null;
+	marketplace: string;
+	/** The scopes it is installed in (as `name@marketplace`). */
+	installed: PluginScope[];
+}
+
+/** A configured marketplace (`omp plugin marketplace list`). */
+export interface PluginMarketplace {
+	name: string;
+	/** Where omp fetches its catalog from: `owner/repo`, a URL or a local folder. */
+	source: string;
+	/** Why its catalog could not be read (`omp plugin discover`); its plugins are then not listed. */
+	error?: string;
+}
+
+/** `GET /api/plugins`: each part on its own, so that one omp could not answer does not hide the rest. */
+export interface PluginsData {
+	/** The folder omp's CLI ran in: its project-scoped plugins are listed with the user's. */
+	cwd: string;
+	/** The folder is the home folder: there is no project, so nothing can be installed for one. */
+	home: boolean;
+	installed: InstalledPlugin[] | PluginsFailure;
+	marketplaces: PluginMarketplace[] | PluginsFailure;
+	catalog: CatalogPlugin[] | PluginsFailure;
+	/** Why the check for newer versions failed; null when it answered (each plugin's `upgrade` says what it found). */
+	upgradeError: string | null;
+}
+
+/** One check of `omp plugin doctor`. */
+export interface PluginCheck {
+	name: string;
+	status: "ok" | "warning" | "error";
+	message: string;
+	fixed?: boolean;
+}
+
+/** One setting a plugin declares, as the page shows it: the value of a secret one is never sent to a page. */
+export interface PluginSetting {
+	key: string;
+	type: string | null;
+	description: string | null;
+	env: string | null;
+	secret: boolean;
+	/** Set by the person (not only its default). */
+	set: boolean;
+	/** The value in force (its default when not set), as text; null for a secret one and for one with no value. */
+	value: string | null;
+}
+
+/** What a running conversation did after a change: reloaded its plugins, or needs a restart (or a resume) to see it. */
+export interface PluginReload {
+	liveId: string;
+	sessionFile: string | null;
+	state: "reloaded" | "restart" | "paused";
+}
+
+/** The changes the page makes through a job (`POST /api/plugins/jobs`). */
+export const PLUGIN_JOB_ACTIONS = [
+	"install",
+	"uninstall",
+	"upgrade",
+	"doctor-fix",
+	"marketplace-add",
+	"marketplace-remove",
+	"marketplace-update",
+] as const;
+export type PluginJobAction = (typeof PLUGIN_JOB_ACTIONS)[number];
+
+/** One change carried out by omp's CLI, with what it printed so far (`GET /api/plugins/jobs/<id>`). */
+export interface PluginJob {
+	id: string;
+	action: PluginJobAction;
+	/** The command, as it would be typed in a terminal. */
+	command: string;
+	state: "running" | "done" | "failed";
+	/** What omp printed so far (its last part when it printed a lot). */
+	output: string;
+	/** omp's own words for why it failed. */
+	error: string | null;
+	startedAt: number;
+	endedAt: number | null;
+	/** What each running conversation did with the change (empty when the change is not one a conversation loads). */
+	reloads: PluginReload[];
+}

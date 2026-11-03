@@ -43,7 +43,7 @@ The default for new conversations is set in Settings; unset, it follows omp's ow
 A dialog (header button *Loaded in this chat*, the ⋯ menu, or typing `/status`, `/extensions` or `/skills`) listing what the conversation's omp process has: tools (offered, mounted at `xd://`, not enabled), MCP servers and their tools, slash commands by source, skills, plugins and stream rules. Switches:
 
 - **Skill**: writes `skill:<name>` into omp's global `disabledExtensions` (`omp config set`); a running omp picks it up without restart. Global; a folder's own `.omp/config.yml` may override it (the dialog says so).
-- **Plugin**: runs `omp plugin enable|disable` in the conversation's folder, then `/reload-plugins` on its omp. Not in Light mode.
+- **Plugin**: runs `omp plugin enable|disable` in the conversation's folder, then `/reload-plugins` on its omp. Not in Light mode. Installing, upgrading, removing, features and settings of plugins, and the marketplaces, are on the Plugins page (sidebar **Plugins**, see [plugins.md](plugins.md)), whose changes are reloaded by every running Full conversation the same way. The dialog and the page change plugins one at a time, in turn.
 - **MCP server**: runs the conversation's `/mcp enable|disable <name>`, writing `enabled` in the folder's `.omp/mcp.json` or the user's `mcp.json`. omp connects MCP servers only at start, so the dialog offers **Restart omp to apply** once the conversation is idle. Not for names with a space, servers defined in both files, or Light conversations.
 
 **Restart omp** ends the conversation's omp only when it is idle (not working, waiting for an answer, or paused) and the page resumes the same session file in a new process.

@@ -38,6 +38,8 @@ export interface RunOptions {
 	 * dropped). Without it the output is read whole.
 	 */
 	maxBytes?: number;
+	/** Told what the command prints as it prints it (stdout and stderr alike), for a page that shows its progress. */
+	onOutput?: (text: string) => void;
 }
 
 /** What a command with a `maxBytes` limit keeps of its stderr. */
@@ -80,6 +82,20 @@ async function readCapped(
 	return { text, truncated };
 }
 
+/** All of `stream` as text, each piece told to `onText` as it arrives. */
+async function readTold(stream: ReadableStream<Uint8Array>, onText: (text: string) => void): Promise<string> {
+	const decoder = new TextDecoder();
+	let text = "";
+	for await (const chunk of stream) {
+		const piece = decoder.decode(chunk, { stream: true });
+		if (piece) onText(piece);
+		text += piece;
+	}
+	const rest = decoder.decode();
+	if (rest) onText(rest);
+	return text + rest;
+}
+
 /**
  * Run `argv` with no input and read what it prints. A command that takes longer than `timeoutMs` is killed (with what it
  * started) and the promise rejects with a `RunTimeout`; a command that cannot be started rejects with the system's error.
@@ -107,8 +123,12 @@ export async function run(argv: string[], opts: RunOptions): Promise<Ran> {
 			);
 		}, opts.timeoutMs);
 	});
-	const finished =
-		opts.maxBytes === undefined
+	const told = opts.onOutput;
+	const finished = told
+		? Promise.all([readTold(proc.stdout, told), readTold(proc.stderr, told), proc.exited]).then(
+				([stdout, stderr, code]): Ran => ({ code, stdout, stderr }),
+			)
+		: opts.maxBytes === undefined
 			? Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]).then(
 					([stdout, stderr, code]): Ran => ({ code, stdout, stderr }),
 				)

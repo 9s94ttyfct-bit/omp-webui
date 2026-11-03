@@ -1,4 +1,4 @@
-import { BarChart3, Brain, type LucideIcon, Network, ScanEye, Settings, SquareTerminal } from "lucide-react";
+import { BarChart3, Brain, type LucideIcon, Network, Puzzle, ScanEye, Settings } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import type { MessageKey } from "../i18n/index.ts";
 
@@ -13,10 +13,11 @@ import type { MessageKey } from "../i18n/index.ts";
  * Settings. A page that came through the tunnel does not get the guard's item, as Settings does not.
  *
  * The Questions page is not among them (#693): a conversation's questions are a tab of its right panel, which opens the
- * page of every conversation's; a stored layout that names it is read without it.
+ * page of every conversation's; a stored layout that names it is read without it. Nor is Commands & terminal: it is a page
+ * of Settings, and the Plugins page took its place; a stored layout that names `cli` has `plugins` there instead.
  */
 
-export const NAV_ITEM_IDS = ["agents", "usage", "memory", "cli", "settings", "guard"] as const;
+export const NAV_ITEM_IDS = ["agents", "usage", "memory", "plugins", "settings", "guard"] as const;
 /** An item is named as the page it opens (`View.kind`). */
 export type NavItemId = (typeof NAV_ITEM_IDS)[number];
 
@@ -34,7 +35,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
 	{ id: "agents", labelKey: "shell.sidebarNavAgents", icon: Network },
 	{ id: "usage", labelKey: "shell.sidebarNavUsage", icon: BarChart3 },
 	{ id: "memory", labelKey: "shell.sidebarNavMemory", icon: Brain },
-	{ id: "cli", labelKey: "shell.sidebarNavCli", icon: SquareTerminal },
+	{ id: "plugins", labelKey: "shell.sidebarNavPlugins", icon: Puzzle },
 	{ id: "settings", labelKey: "shell.sidebarNavSettings", icon: Settings },
 	// The guard's own sign is an eye (a reviewer looking at each call): the shields are the permission modes (C1).
 	{ id: "guard", labelKey: "shell.sidebarNavGuard", icon: ScanEye, remoteHidden: true },
@@ -64,7 +65,7 @@ export interface NavLayout {
 function defaults(): NavLayout {
 	const surface = (): NavSurfaceLayout => ({
 		top: [],
-		bottom: ["agents", "usage", "memory", "cli", "settings", "guard"],
+		bottom: ["agents", "usage", "memory", "plugins", "settings", "guard"],
 		hidden: [],
 	});
 	return { sidebar: surface(), rail: surface() };
@@ -77,8 +78,14 @@ export function defaultNavLayout(): NavLayout {
 
 /** localStorage key (device-local: the layout of this browser, or of this app on this Mac). */
 export const NAV_LAYOUT_KEY = "ompw.navLayout";
-/** The shape of what is written: read again when the items or the grouping change (an older copy is migrated, not refused). */
-export const NAV_LAYOUT_VERSION = 1;
+/**
+ * The shape of what is written: read again when the items or the grouping change (an older copy is migrated, not refused).
+ * 2: `cli` (Commands & terminal, now in Settings) became `plugins`.
+ */
+export const NAV_LAYOUT_VERSION = 2;
+
+/** Items a stored layout may name by an older id, and the item that took their place. */
+const RENAMED: ReadonlyMap<unknown, NavItemId> = new Map([["cli", "plugins"]]);
 
 function surfaceOf(raw: unknown, surface: NavSurface): NavSurfaceLayout {
 	const base = defaults()[surface];
@@ -88,8 +95,10 @@ function surfaceOf(raw: unknown, surface: NavSurface): NavSurfaceLayout {
 		for (const group of NAV_GROUPS) {
 			const list = (raw as Record<string, unknown>)[group];
 			if (!Array.isArray(list)) continue;
-			for (const value of list) {
-				// An item this version does not know (removed, or written by a newer one) and a repeat are left out.
+			for (const stored of list) {
+				// An item that took another's place stays where that one was put; an item this version does not know (removed,
+				// or written by a newer one) and a repeat are left out.
+				const value = RENAMED.get(stored) ?? stored;
 				if (!isNavItemId(value) || seen.has(value)) continue;
 				seen.add(value);
 				out[group].push(value);

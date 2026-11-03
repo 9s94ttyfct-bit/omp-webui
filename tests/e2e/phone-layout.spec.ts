@@ -119,7 +119,13 @@ test.describe("phone", () => {
 		expect(await smallFields(page), "search").toEqual([]);
 		await page.keyboard.press("Escape");
 
-		await page.getByRole("button", { name: "Commands & terminal" }).click();
+		await page.getByRole("button", { name: "Plugins" }).click();
+		await expect(page.getByTestId("plugins-page")).toBeVisible();
+		expect(await smallFields(page), "plugins").toEqual([]);
+		// Commands & terminal is a page of Settings now; its address opens it.
+		await page.evaluate(() => {
+			location.hash = "#/settings/cli";
+		});
 		await expect(page.getByTestId("cli-page")).toBeVisible();
 		expect(await smallFields(page), "commands").toEqual([]);
 

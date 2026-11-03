@@ -26,6 +26,7 @@ The docs are English only, by choice. Agents running inside omp-webui read the s
 - [Models, roles, presets and accounts](docs/agents/models.md): provider logins, model roles, presets, favourites
 - [Model guidance](docs/agents/model-guidance.md): standing instructions on which models subagents use
 - [Memory](docs/agents/memory.md): what omp remembers, and the Memory page
+- [Plugins](docs/agents/plugins.md): the Plugins page: installed plugins, marketplaces, installing, upgrading and omp's plugin health check
 - [Full / Light mode](docs/agents/light-mode.md): lighter conversations and local model servers
 - [Updates of the app and of omp](docs/agents/updates.md): checking, installing and dismissing updates
 - [The macOS app](docs/agents/macos-app.md): quitting, the menu bar icon, keeping the Mac awake, windows onto other Macs

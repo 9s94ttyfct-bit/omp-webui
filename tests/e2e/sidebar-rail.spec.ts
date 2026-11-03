@@ -35,8 +35,8 @@ test.describe("beside the page (1400 px)", () => {
 		);
 		await rail(page).getByRole("button", { name: "Usage & cost" }).click();
 		await expect(page.getByTestId("usage-page")).toBeVisible();
-		await rail(page).getByRole("button", { name: "Commands & terminal" }).click();
-		await expect(page.getByTestId("cli-page")).toBeVisible();
+		await rail(page).getByRole("button", { name: "Plugins" }).click();
+		await expect(page.getByTestId("plugins-page")).toBeVisible();
 		await rail(page)
 			.getByRole("button", { name: /^Search/ })
 			.click();
