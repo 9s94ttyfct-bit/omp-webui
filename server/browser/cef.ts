@@ -9,11 +9,18 @@ import { type CdpMessage, type CdpTransport, TransportListeners } from "./transp
  * they do with CfT.
  *
  * The browser-level `Target` domain is answered here, from the app's list of pages: discovery, auto-attach, browser
- * sessions (`attachToBrowserTarget`, one per conversation's connection), flat page sessions. A page is made by the app
+ * sessions (`attachToBrowserTarget`, one per conversation's connection, and a flat session of the browser target, which
+ * Puppeteer's `browser.target().createCDPSession()` makes), flat page sessions. A page is made by the app
  * (`create`), never by CEF's `Target.createTarget`, which would open a window of its own. Everything said on a page
  * session goes to that page's channel, its ids renumbered so that the sessions of one page never clash, and every event
  * of a page goes to every session on it. A browser-level command that is not about targets goes through the first
  * page's channel (CEF answers the browser domains there), or is refused when there is no page.
+ *
+ * Downloads: on a page's channel `Browser.setDownloadBehavior` sets where every page's downloads go, but the download
+ * events come only on the channel of the page that downloads. So the behaviour a browser session sets is given to every
+ * page (pages made later too, and again after a page that held it closes, which resets it), and the download events of
+ * every page go to each browser session that asked for them. The latest session still holding one wins; when none is
+ * left the browser's default is back.
  */
 
 /** A page as the app tells it. */
@@ -116,10 +123,12 @@ export class CefLink {
 	}
 }
 
-/** A browser-level session: the root one (`""`) or a browser session of a connection. */
+/** A browser-level session: the root one (`""`), a browser session of a connection, or a session of the browser target. */
 interface Context {
 	discover: boolean;
 	autoAttach: boolean;
+	/** A session of the browser target: the session it was attached in, told when it ends. */
+	parent?: string;
 }
 
 interface PageSession {
@@ -247,6 +256,8 @@ export class CefTransport implements CdpTransport {
 	private readonly creating = new Map<number, { id: number; context: string }>();
 	/** What each session set on each page that lasts (`LASTING`): page → state → session → its command, latest last. */
 	private readonly lasting = new Map<string, Map<string, Map<string, { method: string; params: unknown }>>>();
+	/** The download behaviour each browser session set (`Browser.setDownloadBehavior`), latest last. */
+	private readonly downloads = new Map<string, Record<string, unknown>>();
 	private nextSession = 1;
 	private nextWire = freshIds();
 	private nextReq = freshIds();
@@ -302,6 +313,7 @@ export class CefTransport implements CdpTransport {
 				this.emit(context, added ? "Target.targetCreated" : "Target.targetInfoChanged", { targetInfo: info });
 			if (added && c.autoAttach) this.attach(context, targetId);
 		}
+		if (added && this.downloads.size > 0) this.applyDownloads([targetId]);
 	}
 
 	/** @internal */
@@ -325,6 +337,8 @@ export class CefTransport implements CdpTransport {
 		for (const [context, c] of this.contexts)
 			if (c.discover) this.emit(context, "Target.targetDestroyed", { targetId });
 		this.lasting.delete(targetId);
+		// A page that held the download behaviour took it with it (Chrome resets it): the others are given it again.
+		if (this.downloads.size > 0) this.applyDownloads(this.link.pages.keys());
 	}
 
 	/** @internal */
@@ -372,6 +386,9 @@ export class CefTransport implements CdpTransport {
 			(m.method === "Target.attachedToTarget" || m.method === "Target.detachedFromTarget") && typeof child === "string";
 		if (isChild && m.method === "Target.attachedToTarget") this.children.set(child as string, { targetId });
 		if (isChild && m.method === "Target.detachedFromTarget") this.children.delete(child as string);
+		// The page's downloads: to each browser session that asked for download events (they come only on this channel).
+		if (m.method.startsWith("Browser."))
+			for (const [context, p] of this.downloads) if (p.eventsEnabled === true) this.emit(context, m.method, m.params);
 		// A request held by an interception is the session's that holds the interception now: two that both let it go would clash.
 		const fetching = m.method.startsWith("Fetch.") ? this.setter(targetId, "fetch") : null;
 		for (const [sessionId, s] of this.sessions) {
@@ -449,6 +466,11 @@ export class CefTransport implements CdpTransport {
 		};
 	}
 
+	/** The browser itself, as a target: what Puppeteer's `browser.target()` is. */
+	private browserInfo(): TargetInfo & Record<string, unknown> {
+		return { targetId: BROWSER_TARGET, type: "browser", title: "", url: "", attached: true, canAccessOpener: false };
+	}
+
 	private browserLevel(context: string, m: CdpMessage) {
 		const p = (m.params ?? {}) as Record<string, unknown>;
 		const c = this.contexts.get(context) as Context;
@@ -456,9 +478,11 @@ export class CefTransport implements CdpTransport {
 		switch (m.method) {
 			case "Target.setDiscoverTargets":
 				c.discover = p.discover === true;
-				if (c.discover)
+				if (c.discover) {
+					this.emit(context, "Target.targetCreated", { targetInfo: this.browserInfo() });
 					for (const targetId of this.link.pages.keys())
 						this.emit(context, "Target.targetCreated", { targetInfo: this.info(targetId) });
+				}
 				return this.reply(m, {}, at);
 			case "Target.setAutoAttach":
 				c.autoAttach = p.autoAttach === true;
@@ -470,12 +494,8 @@ export class CefTransport implements CdpTransport {
 			case "Target.getTargets":
 				return this.reply(m, { targetInfos: [...this.link.pages.keys()].map((id) => this.info(id)) }, at);
 			case "Target.getTargetInfo": {
-				if (typeof p.targetId !== "string")
-					return this.reply(
-						m,
-						{ targetInfo: { targetId: BROWSER_TARGET, type: "browser", title: "", url: "", attached: true } },
-						at,
-					);
+				if (typeof p.targetId !== "string" || p.targetId === BROWSER_TARGET)
+					return this.reply(m, { targetInfo: this.browserInfo() }, at);
 				const info = this.info(p.targetId);
 				return info ? this.reply(m, { targetInfo: info }, at) : this.noTarget(m, at);
 			}
@@ -492,16 +512,26 @@ export class CefTransport implements CdpTransport {
 			case "Target.activateTarget":
 				return this.link.pages.has(String(p.targetId)) ? this.reply(m, {}, at) : this.noTarget(m, at);
 			case "Target.attachToTarget": {
+				if (p.targetId === BROWSER_TARGET) {
+					// A session of the browser itself: a browser session made in this one, and told there.
+					const sessionId = `B${this.nextSession++}`;
+					this.contexts.set(sessionId, { discover: false, autoAttach: false, parent: context });
+					this.emit(context, "Target.attachedToTarget", {
+						sessionId,
+						targetInfo: this.browserInfo(),
+						waitingForDebugger: false,
+					});
+					return this.reply(m, { sessionId }, at);
+				}
 				if (typeof p.targetId !== "string" || !this.link.pages.has(p.targetId)) return this.noTarget(m, at);
 				const sessionId = this.attach(context, p.targetId);
 				return this.reply(m, { sessionId }, at);
 			}
 			case "Target.detachFromTarget": {
 				const sessionId = String(p.sessionId);
-				// A connection's browser session: it goes, with the page sessions made in it.
+				// A browser session: it goes, with the sessions made in it.
 				if (sessionId !== "" && this.contexts.has(sessionId)) {
-					this.contexts.delete(sessionId);
-					for (const [id, s] of [...this.sessions]) if (s.context === sessionId) this.release(id);
+					this.dropContext(sessionId);
 					return this.reply(m, {}, at);
 				}
 				const s = this.sessions.get(sessionId);
@@ -528,6 +558,16 @@ export class CefTransport implements CdpTransport {
 			// The browser is the app's: a connection that closes it ends only itself (the proxy says so to its client).
 			case "Browser.close":
 				return this.reply(m, {}, at);
+			case "Browser.setDownloadBehavior": {
+				const first = this.link.pages.keys().next();
+				if (first.done) return this.error(m, -32000, "The built-in browser has no page to carry this", at);
+				this.downloads.delete(context);
+				if (p.behavior !== "default") this.downloads.set(context, p);
+				// Answered by the first page; every other page is set alike, for its own download events.
+				this.forward(first.value, { id: m.id, method: m.method, params: this.downloadBehavior() }, context);
+				this.applyDownloads([...this.link.pages.keys()].slice(1));
+				return;
+			}
 			default: {
 				if (!m.method || !BROWSER_DOMAINS.some((d) => m.method?.startsWith(d)))
 					return this.error(m, -32601, `'${m.method}' wasn't found`, at);
@@ -536,6 +576,35 @@ export class CefTransport implements CdpTransport {
 				this.forward(first.value, m, context);
 			}
 		}
+	}
+
+	/**
+	 * The download behaviour the pages are to have: the latest one a browser session still holds, with the download events
+	 * on while any session wants them; none: the browser's default.
+	 */
+	private downloadBehavior(): Record<string, unknown> {
+		const held = [...this.downloads.values()];
+		const latest = held.at(-1);
+		if (!latest) return { behavior: "default", eventsEnabled: false };
+		return { ...latest, eventsEnabled: held.some((p) => p.eventsEnabled === true) };
+	}
+
+	/** Gives `targets` the download behaviour (sent without an id: its answer is nobody's). */
+	private applyDownloads(targets: Iterable<string>): void {
+		const params = this.downloadBehavior();
+		for (const targetId of targets) this.forward(targetId, { method: "Browser.setDownloadBehavior", params }, "");
+	}
+
+	/** A browser session ends: the sessions made in it go too, and the download behaviour it held. */
+	private dropContext(context: string): void {
+		const c = this.contexts.get(context);
+		if (!c) return;
+		this.contexts.delete(context);
+		for (const [id, other] of [...this.contexts]) if (other.parent === context) this.dropContext(id);
+		for (const [id, s] of [...this.sessions]) if (s.context === context) this.release(id);
+		if (c.parent !== undefined && this.contexts.has(c.parent))
+			this.emit(c.parent, "Target.detachedFromTarget", { sessionId: context, targetId: BROWSER_TARGET });
+		if (this.downloads.delete(context)) this.applyDownloads(this.link.pages.keys());
 	}
 
 	/** A new flat session on the page, made in `context` and told there. */

@@ -9,15 +9,19 @@ import type { CdpMessage, MuxChannel } from "./transport.ts";
  * Each connection gets a browser session of its own in the engine (`Target.attachToBrowserTarget`), so its target
  * discovery and auto-attach are its own, and passes through what it says unchanged but for:
  *
- * - target events, `Target.getTargets` and auto-attached sessions of the browser session: only the conversation's pages
+ * - target events, `Target.getTargets` and auto-attached sessions of its browser sessions: only the conversation's pages
  *   (a session attached to another's page is resumed and detached at once, so it is never held waiting for this one);
- * - a command naming another conversation's page or session: refused with `-32000 "Not this conversation's page"`;
+ * - its own browser target (the one its browser session is, which Puppeteer's `browser.target()` is): told of and
+ *   attachable (flat), for what is said on a session of the browser itself (`Browser.setDownloadBehavior` and the
+ *   download events, which omp's downloads use). Such a session is another browser session of the connection, filtered
+ *   as the first is; another connection's browser target is never told of nor attachable;
+ * - a command naming another conversation's page or session is refused with `-32000 "Not this conversation's page"`;
  * - a page it creates, or one its pages open, becomes the conversation's; while any page is being created, events of a
  *   page with no owner yet are held until it is known whose it is, then given or dropped, in order;
  * - `Browser.close` ends this connection, not the browser, and a browser session of a browser session is refused.
  *
- * A connection with no page gets a blank one before anything is answered. Whole-browser commands (cookies, downloads)
- * pass through: the agent is the person's own.
+ * A connection with no page gets a blank one before anything is answered. Whole-browser commands (cookies, downloads,
+ * permissions) pass through: the agent is the person's own.
  */
 
 export const NOT_THIS_CONVERSATION = "Not this conversation's page";
@@ -122,6 +126,9 @@ export class CdpProxy {
 	}
 }
 
+/** Commands that may name the connection's own browser target. */
+const ON_BROWSER_TARGET = new Set(["Target.attachToTarget", "Target.getTargetInfo"]);
+
 export class ProxyConnection {
 	private channel: MuxChannel | null = null;
 	/** The engine session that stands for this connection's root: its browser session, or the page's. */
@@ -135,11 +142,17 @@ export class ProxyConnection {
 	/** Calls of the proxy itself (negative ids, never the client's). */
 	private readonly own = new Map<number, (m: CdpMessage) => void>();
 	private nextOwn = -1;
-	/** Targets and sessions this connection was told of: what ends them is told too. */
-	private readonly seenTargets = new Set<string>();
+	/** Targets and sessions this connection was told of, per browser session: what ends them is told too. */
+	private readonly seenTargets = new Map<string, Set<string>>();
 	private readonly seenSessions = new Set<string>();
 	/** Sessions let go of (`release`): another conversation's pages, of which nothing more is passed on. */
 	private readonly released = new Set<string>();
+	/** The browser target its root session is (null for a page's connection). */
+	private browserTarget: string | null = null;
+	/** Its browser sessions: the root, and sessions attached to its browser target. What they say of targets is filtered. */
+	private readonly browserSessions = new Set<string>();
+	/** Calls of the client attaching to its browser target: the session in the answer is a browser session. */
+	private readonly browserAttaches = new Set<number>();
 
 	constructor(
 		private readonly host: EngineHost,
@@ -168,6 +181,11 @@ export class ProxyConnection {
 			const session = (attached.result as { sessionId?: string } | undefined)?.sessionId;
 			if (!session) throw new Error(attached.error?.message ?? "the browser gave no session");
 			this.root = session;
+			if (this.target === null) {
+				this.browserSessions.add(session);
+				const own = await this.call("Target.getTargetInfo", {}, session);
+				this.browserTarget = (own.result as { targetInfo?: TargetInfo } | undefined)?.targetInfo?.targetId ?? null;
+			}
 			this.ready = true;
 			for (const text of this.inbox.splice(0)) this.message(text);
 		} catch (e) {
@@ -194,12 +212,16 @@ export class ProxyConnection {
 			this.reply({ id: msg.id, error: { code: -32000, message: refusal }, sessionId: msg.sessionId });
 			return;
 		}
-		if (msg.method === "Browser.close" && msg.sessionId === undefined) {
-			this.reply({ id: msg.id, result: {} });
+		// Said on any of its sessions (a session of the browser target is one too), it ends this connection only.
+		if (msg.method === "Browser.close") {
+			this.reply({ id: msg.id, result: {}, sessionId: msg.sessionId });
 			this.end("Browser.close");
 			return;
 		}
 		if (msg.method === "Target.createTarget") this.registry.creatingPage();
+		const named = (msg.params as { targetId?: unknown } | undefined)?.targetId;
+		if (msg.method === "Target.attachToTarget" && named !== undefined && named === this.browserTarget)
+			this.browserAttaches.add(msg.id);
 		this.asked.set(msg.id, msg.method);
 		this.channel?.send({ ...msg, sessionId: msg.sessionId ?? this.root ?? undefined });
 	}
@@ -233,7 +255,7 @@ export class ProxyConnection {
 				// Every tab waiting behind it is asked about now, not one after the other.
 				for (const m of this.outbox) {
 					const info = (m.params as { targetInfo?: TargetInfo } | undefined)?.targetInfo;
-					if (m.id === undefined && m.sessionId === undefined && info?.type === "tab") this.registry.resolve(info);
+					if (m.id === undefined && this.browserLevel(m.sessionId) && info?.type === "tab") this.registry.resolve(info);
 				}
 				return;
 			}
@@ -245,11 +267,24 @@ export class ProxyConnection {
 	private refusal(msg: CdpMessage): string | null {
 		if (REFUSED.has(msg.method ?? "")) return `${msg.method} is not available here`;
 		if (msg.sessionId !== undefined && !this.channel?.owns(msg.sessionId)) return NOT_THIS_CONVERSATION;
-		const params = (msg.params ?? {}) as { targetId?: unknown; sessionId?: unknown };
+		const params = (msg.params ?? {}) as { targetId?: unknown; sessionId?: unknown; flatten?: unknown };
+		if (params.targetId !== undefined && params.targetId === this.browserTarget) {
+			// The browser itself: read, or attached to as a flat session (another browser session of this connection).
+			if (!ON_BROWSER_TARGET.has(msg.method ?? "")) return `${msg.method} is not available for the browser`;
+			if (msg.method === "Target.attachToTarget" && params.flatten !== true)
+				return "The browser can be attached to only as a flat session (flatten: true)";
+			return null;
+		}
 		if (typeof params.targetId === "string" && this.registry.ownerOfTarget(params.targetId) !== this.owner)
 			return NOT_THIS_CONVERSATION;
 		if (typeof params.sessionId === "string" && !this.channel?.owns(params.sessionId)) return NOT_THIS_CONVERSATION;
 		return null;
+	}
+
+	/** Whether a message on `sessionId` (none: the root) is said on one of the connection's browser sessions. */
+	private browserLevel(sessionId: string | undefined): boolean {
+		const session = sessionId ?? this.root;
+		return session !== null && this.browserSessions.has(session);
 	}
 
 	private fromEngine(m: CdpMessage): void {
@@ -268,7 +303,11 @@ export class ProxyConnection {
 				const targetId = (m.result as { targetId?: string } | undefined)?.targetId ?? null;
 				// Owned before anything else is decided: held events of the page are this conversation's now.
 				this.registry.created(targetId, targetId ? this.owner : null);
-				if (targetId) this.seenTargets.add(targetId);
+				if (targetId) this.seen(m.sessionId).add(targetId);
+			}
+			if (this.browserAttaches.delete(m.id)) {
+				const session = (m.result as { sessionId?: string } | undefined)?.sessionId;
+				if (session) this.browserSessions.add(session);
 			}
 			if (method === "Target.getTargets" && m.result) {
 				const infos = (m.result as { targetInfos: TargetInfo[] }).targetInfos ?? [];
@@ -276,14 +315,16 @@ export class ProxyConnection {
 					...m,
 					result: {
 						...(m.result as object),
-						targetInfos: infos.filter((t) => this.registry.resolve(t) === this.owner),
+						targetInfos: infos.filter(
+							(t) => t.targetId === this.browserTarget || this.registry.resolve(t) === this.owner,
+						),
 					},
 				};
 			}
 		}
 		const atRoot = m.sessionId === this.root;
 		const out: CdpMessage = atRoot ? { ...m, sessionId: undefined } : m;
-		if (atRoot && m.id === undefined && this.target === null && TARGET_EVENTS.has(m.method ?? "")) {
+		if (m.id === undefined && this.browserLevel(m.sessionId) && TARGET_EVENTS.has(m.method ?? "")) {
 			this.outbox.push(out);
 			this.pump();
 			return;
@@ -296,52 +337,73 @@ export class ProxyConnection {
 		this.reply(out);
 	}
 
+	/** The targets told of on a browser session (none: the root). */
+	private seen(sessionId: string | undefined): Set<string> {
+		const key = sessionId ?? this.root ?? "";
+		let set = this.seenTargets.get(key);
+		if (!set) {
+			set = new Set();
+			this.seenTargets.set(key, set);
+		}
+		return set;
+	}
+
 	/** What becomes of a held message: target events by their page's owner, anything else in its turn. */
 	private decide(m: CdpMessage): Decision {
 		if (m.sessionId !== undefined && this.released.has(m.sessionId)) return "drop";
-		if (m.id !== undefined || m.sessionId !== undefined || !TARGET_EVENTS.has(m.method ?? "")) return "deliver";
+		if (m.id !== undefined || !this.browserLevel(m.sessionId) || !TARGET_EVENTS.has(m.method ?? "")) return "deliver";
 		const p = (m.params ?? {}) as { targetInfo?: TargetInfo; targetId?: string; sessionId?: string };
 		const targetId = p.targetInfo?.targetId ?? p.targetId;
+		const seen = this.seen(m.sessionId);
 		if (m.method === "Target.detachedFromTarget" && p.sessionId) {
 			// A session let go of is detached now: nothing more can be said on it.
 			this.released.delete(p.sessionId);
+			if (this.browserSessions.delete(p.sessionId)) this.seenTargets.delete(p.sessionId);
 			if (!this.seenSessions.delete(p.sessionId)) return "drop";
 			return "deliver";
 		}
 		if (!targetId) return "deliver";
 		if (m.method === "Target.targetDestroyed" || m.method === "Target.targetCrashed") {
-			if (m.method === "Target.targetDestroyed" ? this.seenTargets.delete(targetId) : this.seenTargets.has(targetId))
-				return "deliver";
+			if (m.method === "Target.targetDestroyed" ? seen.delete(targetId) : seen.has(targetId)) return "deliver";
 			return "drop";
 		}
-		const owner = p.targetInfo ? this.registry.resolve(p.targetInfo) : this.registry.ownerOfTarget(targetId);
-		if (owner === this.owner) {
-			this.seenTargets.add(targetId);
-			if (m.method === "Target.attachedToTarget" && p.sessionId) this.seenSessions.add(p.sessionId);
+		// The browser itself: its own browser target, never another connection's (each browser session is one).
+		const browser = p.targetInfo?.type === "browser" || targetId === this.browserTarget;
+		const owner = browser
+			? null
+			: p.targetInfo
+				? this.registry.resolve(p.targetInfo)
+				: this.registry.ownerOfTarget(targetId);
+		if (browser ? targetId === this.browserTarget : owner === this.owner) {
+			seen.add(targetId);
+			if (m.method === "Target.attachedToTarget" && p.sessionId) {
+				this.seenSessions.add(p.sessionId);
+				if (browser) this.browserSessions.add(p.sessionId);
+			}
 			return "deliver";
 		}
-		if (owner === null && this.registry.pending) return "hold";
-		if (m.method === "Target.attachedToTarget" && p.sessionId) this.release(p.sessionId);
+		if (!browser && owner === null && this.registry.pending) return "hold";
+		if (m.method === "Target.attachedToTarget" && p.sessionId) this.release(p.sessionId, m.sessionId ?? this.root);
 		return "drop";
 	}
 
-	/** Lets go of a session auto-attached to a page that is not this conversation's: resumed, then detached. */
-	private release(sessionId: string): void {
+	/** Lets go of a session auto-attached (on browser session `parent`) to a page that is not this conversation's. */
+	private release(sessionId: string, parent: string | null): void {
 		this.released.add(sessionId);
 		this.channel?.send({ id: this.nextOwn--, method: "Runtime.runIfWaitingForDebugger", sessionId });
 		this.channel?.send({
 			id: this.nextOwn--,
 			method: "Target.detachFromTarget",
 			params: { sessionId },
-			sessionId: this.root ?? undefined,
+			sessionId: parent ?? undefined,
 		});
 	}
 
-	private call(method: string, params: object): Promise<CdpMessage> {
+	private call(method: string, params: object, sessionId?: string): Promise<CdpMessage> {
 		const id = this.nextOwn--;
 		return new Promise((resolve) => {
 			this.own.set(id, resolve);
-			this.channel?.send({ id, method, params });
+			this.channel?.send({ id, method, params, ...(sessionId ? { sessionId } : {}) });
 		});
 	}
 

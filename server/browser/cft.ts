@@ -69,6 +69,9 @@ function launch(
 			// cookies are kept by the data folder's own permissions instead, as Playwright and Puppeteer run Chrome.
 			"--use-mock-keychain",
 			"--password-store=basic",
+			// Chrome's WebMCP (`navigator.modelContext`, a page's declared tools), which omp's `webmcpList`/`webmcpInvoke`
+			// read through CDP: still behind a flag, so pages being developed here can be tried with them.
+			"--enable-features=WebMCP",
 			...extra,
 		],
 		{ stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"] },

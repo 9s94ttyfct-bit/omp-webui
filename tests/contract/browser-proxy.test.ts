@@ -78,6 +78,11 @@ test("each conversation's puppeteer sees its own blank page, and never the other
 	expect(await b.pages()).toHaveLength(2);
 	const titlesA = await Promise.all((await a.pages()).map((p) => p.title()));
 	expect(titlesA).toEqual(["ompw-a"]);
+	// Every page is its window's active one: A's, older than B's new tab, still renders (engine.ts `keepVisible`).
+	expect(await pagesA[0].evaluate(() => document.visibilityState)).toBe("visible");
+	expect(await pagesA[0].evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve("frame"))))).toBe(
+		"frame",
+	);
 
 	// owners.json says whose the page is; a registry read back for the same engine says so too.
 	const saved = JSON.parse(readFileSync(owners, "utf8")) as { generation: string; targets: Record<string, string> };
@@ -85,6 +90,76 @@ test("each conversation's puppeteer sees its own blank page, and never the other
 	const again = new PageRegistry(owners);
 	again.load(saved.generation);
 	expect(again.ownerOfTarget(pageA)).toBe(A);
+}, 60_000);
+
+test("a conversation's downloads: its puppeteer's session of the browser sets the folder and hears the download, and sees none of the other's pages", async () => {
+	const site = Bun.serve({
+		port: 0,
+		hostname: "127.0.0.1",
+		fetch: (req) =>
+			new URL(req.url).pathname === "/f.txt"
+				? new Response("ompw download\n", { headers: { "content-disposition": 'attachment; filename="f.txt"' } })
+				: new Response('<a id="d" href="/f.txt">f</a>', { headers: { "content-type": "text/html" } }),
+	});
+	const folder = join(data, "downloads-a");
+	try {
+		const a = await connect(TA);
+		const b = await connect(TB);
+		// omp's downloads: `browser.target().createCDPSession()`, then the browser's download behaviour and events there.
+		const session = await a.target().createCDPSession();
+		const done = new Promise<{ state: string; filePath?: string }>((resolve) =>
+			session.on("Browser.downloadProgress", (e) => {
+				if (e.state !== "inProgress") resolve(e);
+			}),
+		);
+		await session.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: folder, eventsEnabled: true });
+		const [page] = await a.pages();
+		await page.goto(`http://127.0.0.1:${site.port}/`);
+		await page.click("#d");
+		const progress = await done;
+		expect(progress.state).toBe("completed");
+		expect(progress.filePath).toBe(join(folder, "f.txt"));
+		expect(readFileSync(join(folder, "f.txt"), "utf8")).toBe("ompw download\n");
+
+		// The other conversation's session of its browser sees its own browser and pages only.
+		expect(String(b.target().type())).toBe("browser");
+		const other = await b.target().createCDPSession();
+		const { targetInfos } = await other.send("Target.getTargets");
+		expect(targetInfos.map((t) => t.url)).not.toContain(`http://127.0.0.1:${site.port}/`);
+		const theirs = (await session.send("Target.getTargetInfo")).targetInfo.targetId;
+		await expect(other.send("Target.attachToTarget", { targetId: theirs, flatten: true })).rejects.toThrow(
+			/Not this conversation's page/,
+		);
+		await other.detach();
+		await session.detach();
+	} finally {
+		site.stop(true);
+	}
+}, 60_000);
+
+test("a page's WebMCP tools are offered to the conversation's agent (the browser runs with WebMCP on)", async () => {
+	const site = Bun.serve({
+		port: 0,
+		hostname: "127.0.0.1",
+		fetch: () =>
+			new Response('<form toolname="greet" tooldescription="Greets"><input name="who"></form>', {
+				headers: { "content-type": "text/html" },
+			}),
+	});
+	try {
+		const a = await connect(TA);
+		const [page] = await a.pages();
+		await page.goto(`http://127.0.0.1:${site.port}/`);
+		const session = await page.createCDPSession();
+		const names: string[] = [];
+		session.on("WebMCP.toolsAdded", (e) => names.push(...e.tools.map((t) => t.name)));
+		// omp's `webmcpList`: enabling the domain replays the page's tools.
+		await session.send("WebMCP.enable");
+		expect(names).toEqual(["greet"]);
+		await session.detach();
+	} finally {
+		site.stop(true);
+	}
 }, 60_000);
 
 test("the endpoint refuses an unknown token and anything sent by a page", async () => {

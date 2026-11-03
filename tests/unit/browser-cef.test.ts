@@ -92,12 +92,13 @@ test("the browser's targets are the app's pages, and the app makes and closes th
 	client.on<{ targetInfo: TargetInfo }>("Target.targetCreated", (p) => created.push(p.targetInfo.targetId));
 	client.on<{ targetId: string }>("Target.targetDestroyed", (p) => destroyed.push(p.targetId));
 	await client.call("Target.setDiscoverTargets", { discover: true });
-	expect(created).toEqual(["A".repeat(32)]);
+	// The browser itself first, as Chrome tells it (Puppeteer's `browser.target()`), then the pages.
+	expect(created).toEqual(["ompw-cef-browser", "A".repeat(32)]);
 
 	const { targetId } = await client.call<{ targetId: string }>("Target.createTarget", { url: "https://example.com/" });
 	expect(app.told.find((m) => m.t === "create")).toMatchObject({ url: "https://example.com/" });
 	// Heard of before it was answered, as Chrome tells it.
-	expect(created).toEqual(["A".repeat(32), targetId]);
+	expect(created).toEqual(["ompw-cef-browser", "A".repeat(32), targetId]);
 	const { targetInfos } = await client.call<{ targetInfos: TargetInfo[] }>("Target.getTargets");
 	expect(ids(targetInfos)).toEqual(ids([{ targetId: "A".repeat(32) } as TargetInfo, { targetId } as TargetInfo]));
 	expect(targetInfos.find((t) => t.targetId === targetId)?.url).toBe("https://example.com/");
@@ -365,4 +366,66 @@ test("over the app's pages each conversation sees its own, and a page its page o
 	app.answer = () => ({ frameTree: { frame: { id: "F" } } });
 	expect((await a.call("Page.getFrameTree", {}, sessionId)).result).toEqual({ frameTree: { frame: { id: "F" } } });
 	expect(app.cdpTo(pageA).some((c) => c.method === "Page.getFrameTree")).toBe(true);
+});
+
+test("a session of the browser (omp's downloads) sets where every page's downloads go and hears every page's download events, until it ends", async () => {
+	const app = new FakeApp();
+	const registry = new PageRegistry(join(work, "owners-downloads.json"));
+	const host = new EngineHost(registry, async () => ({
+		transport: startCefEngine(app.link),
+		generation: app.link.run,
+		fresh: false,
+	}));
+	const proxy = new CdpProxy(host, registry);
+	const a = new Client();
+	a.conn = proxy.connect("/s/a.jsonl", a);
+	await a.call("Target.setDiscoverTargets", { discover: true, filter: [{}] });
+	const created = a.got
+		.filter((m) => m.method === "Target.targetCreated")
+		.map((m) => (m.params as { targetInfo: TargetInfo }).targetInfo.type);
+	expect(created).toEqual(["browser", "page"]);
+	const own = ((await a.call("Target.getTargetInfo")).result as { targetInfo: TargetInfo }).targetInfo;
+	expect(own.type).toBe("browser");
+	const [pageA] = registry.pagesOf("/s/a.jsonl");
+	const other = app.open("https://example.com/");
+
+	// Puppeteer's `browser.target().createCDPSession()`.
+	const { sessionId } = (await a.call("Target.attachToTarget", { targetId: own.targetId, flatten: true })).result as {
+		sessionId: string;
+	};
+	const behavior = { behavior: "allow", downloadPath: "/tmp/ompw-downloads", eventsEnabled: true };
+	expect((await a.call("Browser.setDownloadBehavior", behavior, sessionId)).result).toEqual({});
+	const downloadsOf = (targetId: string) =>
+		app.told.flatMap((m) => {
+			if (m.t !== "cdp" || m.targetId !== targetId) return [];
+			const c = JSON.parse(m.message) as { method: string; params: Record<string, unknown> };
+			return c.method === "Browser.setDownloadBehavior" ? [c.params] : [];
+		});
+	// Every page is set (each page's channel carries only its own downloads' events), a page made later too.
+	expect(downloadsOf(pageA)).toEqual([behavior]);
+	expect(downloadsOf(other)).toEqual([behavior]);
+	const later = app.open("https://example.org/");
+	expect(downloadsOf(later)).toEqual([behavior]);
+
+	// A download of any page is heard on the session that asked for the events.
+	const will = { frameId: later, guid: "g1", url: "https://example.org/f", suggestedFilename: "f" };
+	app.event(later, "Browser.downloadWillBegin", will);
+	app.event(later, "Browser.downloadProgress", { guid: "g1", state: "completed", filePath: "/tmp/ompw-downloads/f" });
+	expect(a.got.filter((m) => m.method?.startsWith("Browser.download")).map((m) => [m.method, m.sessionId])).toEqual([
+		["Browser.downloadWillBegin", sessionId],
+		["Browser.downloadProgress", sessionId],
+	]);
+
+	// A page that closes takes the behaviour with it in CEF: the others are given it again.
+	app.close(other);
+	expect(downloadsOf(later)).toEqual([behavior, behavior]);
+
+	// The session ends: the browser's default is back, and the conversation is told its session went.
+	await a.call("Target.detachFromTarget", { sessionId });
+	expect(downloadsOf(pageA).at(-1)).toEqual({ behavior: "default", eventsEnabled: false });
+	expect(
+		a.got
+			.filter((m) => m.method === "Target.detachedFromTarget")
+			.map((m) => (m.params as { sessionId: string }).sessionId),
+	).toEqual([sessionId]);
 });

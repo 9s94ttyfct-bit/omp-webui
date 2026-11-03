@@ -256,6 +256,9 @@ class App : public CefApp, public CefBrowserProcessHandler {
     // Never the macOS keychain ("Chromium Safe Storage"): it would ask the person for their login password. The profile's
     // cookies are kept by the data folder's own permissions instead, as for Chrome for Testing (server/browser/cft.ts).
     line->AppendSwitch("use-mock-keychain");
+    // Chrome's WebMCP (a page's declared tools), which the agents' browser tool reads through CDP: still behind a flag,
+    // as for Chrome for Testing (server/browser/cft.ts).
+    line->AppendSwitchWithValue("enable-features", "WebMCP");
   }
 
   // The helpers are the app's own bundles, not CEF's; each is told where the framework is.

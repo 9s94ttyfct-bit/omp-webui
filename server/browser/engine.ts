@@ -13,6 +13,11 @@ export interface EngineStart {
 	generation: string;
 	/** Pages without an owner are closed (an engine just started: its first blank tab is nobody's). */
 	fresh: boolean;
+	/**
+	 * Every page is kept as if it were its window's active one (`keepVisible` below): Chrome for Testing, where the pages
+	 * are tabs of one headless window and all but the newest would be hidden. CEF's pages are each a view of their own.
+	 */
+	keepVisible?: boolean;
 }
 
 /** How long a tab with no page yet is given after it was asked (one that is closing, or crashed, has none to give). */
@@ -24,10 +29,13 @@ export class Engine {
 	/** Settles when the engine's connection has ended and the browser it started (CfT) has exited: its profile is free. */
 	readonly ended: Promise<string>;
 	private readonly ensuring = new Map<string, Promise<void>>();
+	/** Pages the server keeps visible (a session of its own on each, with focus emulation on). */
+	private readonly shown = new Set<string>();
 
 	constructor(
 		private readonly transport: CdpTransport,
 		private readonly registry: PageRegistry,
+		private readonly keepPagesVisible = false,
 	) {
 		this.ended = new Promise<string>((resolve) => transport.onClose(resolve)).then(async (why) => {
 			await transport.exited?.catch(() => {});
@@ -39,9 +47,15 @@ export class Engine {
 
 	/** Starts tracking the engine's targets; closes nobody's pages of a fresh engine. */
 	async init(fresh: boolean): Promise<void> {
-		this.client.on<{ targetInfo: TargetInfo }>("Target.targetCreated", (p) => this.registry.track(p.targetInfo));
+		this.client.on<{ targetInfo: TargetInfo }>("Target.targetCreated", (p) => {
+			this.registry.track(p.targetInfo);
+			if (this.keepPagesVisible && p.targetInfo.type === "page") void this.keepVisible(p.targetInfo.targetId);
+		});
 		this.client.on<{ targetInfo: TargetInfo }>("Target.targetInfoChanged", (p) => this.registry.track(p.targetInfo));
-		this.client.on<{ targetId: string }>("Target.targetDestroyed", (p) => this.registry.untrack(p.targetId));
+		this.client.on<{ targetId: string }>("Target.targetDestroyed", (p) => {
+			this.registry.untrack(p.targetId);
+			this.shown.delete(p.targetId);
+		});
 		this.registry.setEngine(this);
 		await this.client.call("Target.setDiscoverTargets", { discover: true });
 		if (!fresh) return;
@@ -49,6 +63,27 @@ export class Engine {
 		for (const t of targetInfos)
 			if (t.type === "page" && this.registry.ownerOfTarget(t.targetId) === null)
 				await this.close(t.targetId).catch(() => {});
+	}
+
+	/**
+	 * Keeps a page as if it were its window's active one, for as long as it lives: a session of the server's own on it
+	 * with focus emulation on. Chrome for Testing holds the pages as tabs of one headless window, so every page but the
+	 * newest would be hidden (`document.visibilityState` "hidden", no animation frames, no IntersectionObserver), and
+	 * an older conversation's page would stall what its agent and its Browser tab do there.
+	 */
+	private async keepVisible(targetId: string): Promise<void> {
+		if (this.shown.has(targetId)) return;
+		this.shown.add(targetId);
+		try {
+			const { sessionId } = await this.client.call<{ sessionId: string }>("Target.attachToTarget", {
+				targetId,
+				flatten: true,
+			});
+			await this.client.call("Emulation.setFocusEmulationEnabled", { enabled: true }, sessionId);
+		} catch {
+			// Closed before it was reached: nothing to keep.
+			this.shown.delete(targetId);
+		}
 	}
 
 	/** A new page for `owner`; its id. */
@@ -134,9 +169,9 @@ export class EngineHost {
 	ready(): Promise<Engine> {
 		if (this.engine) return Promise.resolve(this.engine);
 		this.starting ??= (async () => {
-			const { transport, generation, fresh } = await this.start();
+			const { transport, generation, fresh, keepVisible } = await this.start();
 			this.registry.load(generation);
-			const engine = new Engine(transport, this.registry);
+			const engine = new Engine(transport, this.registry, keepVisible);
 			transport.onClose((why) => {
 				if (this.engine === engine) this.engine = null;
 				this.registry.setEngine(null);

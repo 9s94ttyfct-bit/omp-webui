@@ -3,19 +3,21 @@ import { type CdpMessage, type CdpTransport, TransportListeners } from "../../se
 
 /**
  * A browser for unit tests that answers the browser-level Target domain the way Chrome does (browser sessions, target
- * discovery, auto-attach, flat page sessions, pages opening pages), events before the answer that caused them. Any other
+ * discovery, auto-attach, flat page sessions, pages opening pages), events before the answer that caused them. Each
+ * browser session is a browser target of its own (as `Target.attachToBrowserTarget` makes one in Chrome), told of in
+ * discovery and attachable (a session of the browser itself, `browser.target().createCDPSession()`). Any other
  * command is answered `{}`; `emitOnPage` stands for what a page does on its own (a console message, a frame).
  */
 
 type Session =
-	| { kind: "browser"; discover: boolean; autoAttach: boolean }
+	| { kind: "browser"; targetId: string; discover: boolean; autoAttach: boolean; parent?: string }
 	| { kind: "page"; targetId: string; parent: string | undefined };
 
 export class FakeBrowser implements CdpTransport {
 	readonly listeners = new TransportListeners();
 	readonly targets = new Map<string, TargetInfo>();
 	readonly sessions = new Map<string | undefined, Session>([
-		[undefined, { kind: "browser", discover: false, autoAttach: false }],
+		[undefined, { kind: "browser", targetId: "BROWSER-ROOT", discover: false, autoAttach: false }],
 	]);
 	/** Every command the browser was sent, with its session. */
 	readonly log: { method: string; sessionId?: string; params?: unknown }[] = [];
@@ -87,14 +89,22 @@ export class FakeBrowser implements CdpTransport {
 		switch (m.method) {
 			case "Target.attachToBrowserTarget": {
 				const sessionId = `B${++this.n}`;
-				this.sessions.set(sessionId, { kind: "browser", discover: false, autoAttach: false });
+				this.sessions.set(sessionId, {
+					kind: "browser",
+					targetId: `BROWSER-${sessionId}`,
+					discover: false,
+					autoAttach: false,
+				});
 				return reply({ sessionId });
 			}
 			case "Target.setDiscoverTargets":
 				if (session.kind === "browser") {
 					session.discover = p.discover === true;
-					if (session.discover)
+					if (session.discover) {
+						for (const t of new Set(this.browserTargets()))
+							this.emit(m.sessionId, "Target.targetCreated", { targetInfo: { targetId: t, type: "browser", url: "" } });
 						for (const t of this.targets.values()) this.emit(m.sessionId, "Target.targetCreated", { targetInfo: t });
+					}
 				}
 				return reply({});
 			case "Target.setAutoAttach":
@@ -105,14 +115,37 @@ export class FakeBrowser implements CdpTransport {
 				return reply({});
 			case "Target.getTargets":
 				return reply({ targetInfos: [...this.targets.values()] });
+			case "Target.getTargetInfo": {
+				const targetId = typeof p.targetId === "string" ? p.targetId : session.targetId;
+				if (this.browserTargets().includes(targetId))
+					return reply({ targetInfo: { targetId, type: "browser", url: "" } });
+				return reply({ targetInfo: this.targets.get(targetId) ?? {} });
+			}
 			case "Target.createTarget":
 				return reply({ targetId: this.create(String(p.url)) });
-			case "Target.attachToTarget":
-				return reply({ sessionId: this.attach(m.sessionId, String(p.targetId)) });
+			case "Target.attachToTarget": {
+				const targetId = String(p.targetId);
+				if (!this.browserTargets().includes(targetId)) return reply({ sessionId: this.attach(m.sessionId, targetId) });
+				// A session of the browser itself: a browser session, told of where it was asked for.
+				const sessionId = `B${++this.n}`;
+				this.sessions.set(sessionId, {
+					kind: "browser",
+					targetId,
+					discover: false,
+					autoAttach: false,
+					parent: m.sessionId,
+				});
+				this.emit(m.sessionId, "Target.attachedToTarget", {
+					sessionId,
+					targetInfo: { targetId, type: "browser", url: "" },
+					waitingForDebugger: false,
+				});
+				return reply({ sessionId });
+			}
 			case "Target.detachFromTarget": {
 				const child = this.sessions.get(String(p.sessionId));
 				this.sessions.delete(String(p.sessionId));
-				if (child?.kind === "page")
+				if (child?.kind === "page" || (child?.kind === "browser" && child.parent !== undefined))
 					this.emit(m.sessionId, "Target.detachedFromTarget", { sessionId: p.sessionId, targetId: child.targetId });
 				return reply({});
 			}
@@ -134,5 +167,10 @@ export class FakeBrowser implements CdpTransport {
 			default:
 				return reply({});
 		}
+	}
+
+	/** The browser targets: one for each browser session there is (its sessions of the browser target share it). */
+	private browserTargets(): string[] {
+		return [...this.sessions.values()].flatMap((s) => (s.kind === "browser" ? [s.targetId] : []));
 	}
 }

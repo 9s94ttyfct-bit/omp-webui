@@ -72,8 +72,13 @@ test("a conversation hears of, lists and attaches to its own pages only", async 
 	const [pageB] = registry.pagesOf("/s/b.jsonl");
 	expect(pageA).toBeDefined();
 	expect(pageB).toBeDefined();
+	// Pages: its own browser target is told of too (see below).
 	expect(
-		a.events("Target.targetCreated").map((e) => (e.params as { targetInfo: TargetInfo }).targetInfo.targetId),
+		a
+			.events("Target.targetCreated")
+			.map((e) => (e.params as { targetInfo: TargetInfo }).targetInfo)
+			.filter((t) => t.type === "page")
+			.map((t) => t.targetId),
 	).toEqual([pageA]);
 	expect(targetIds(await a.call("Target.getTargets"))).toEqual([pageA]);
 	expect(targetIds(await b.call("Target.getTargets"))).toEqual([pageB]);
@@ -167,6 +172,71 @@ test("Browser.close ends the connection, not the browser", async () => {
 	expect(a.closed?.code).toBe(1000);
 	expect(browser.log.some((l) => l.method === "Browser.close")).toBe(false);
 	expect(registry.pagesOf("/s/a.jsonl")).toHaveLength(1);
+});
+
+test("a session of its own browser target (omp's downloads) is a browser session of the conversation's: filtered as its first, and never another's", async () => {
+	const { registry, browser, connect } = await world();
+	const a = connect("/s/a.jsonl");
+	const b = connect("/s/b.jsonl");
+	await b.call("Target.getTargets");
+	await a.call("Target.setDiscoverTargets", { discover: true, filter: [{}] });
+	const [pageA] = registry.pagesOf("/s/a.jsonl");
+	const [pageB] = registry.pagesOf("/s/b.jsonl");
+	const info = (m: CdpMessage) => (m.params as { targetInfo: TargetInfo }).targetInfo;
+	const own = ((await a.call("Target.getTargetInfo")).result as { targetInfo: TargetInfo }).targetInfo.targetId;
+	const theirs = ((await b.call("Target.getTargetInfo")).result as { targetInfo: TargetInfo }).targetInfo.targetId;
+	expect(own).not.toBe(theirs);
+	// Told of its own browser (Puppeteer's `browser.target()`) and its page; never of the other's browser session.
+	expect(a.events("Target.targetCreated").map((e) => [info(e).type, info(e).targetId])).toEqual([
+		["browser", own],
+		["page", pageA],
+	]);
+
+	expect((await a.call("Target.attachToTarget", { targetId: theirs, flatten: true })).error?.message).toBe(
+		NOT_THIS_CONVERSATION,
+	);
+	expect((await a.call("Target.attachToTarget", { targetId: own })).error?.message).toContain("flat");
+	expect((await a.call("Target.closeTarget", { targetId: own })).error?.message).toContain("not available");
+	expect(browser.log.some((l) => l.method === "Target.closeTarget")).toBe(false);
+
+	const attached = await a.call("Target.attachToTarget", { targetId: own, flatten: true });
+	const session = (attached.result as { sessionId: string }).sessionId;
+	expect(a.events("Target.attachedToTarget").map((e) => info(e).type)).toEqual(["browser"]);
+
+	// On that session too: its own browser and pages only, and the other's page let go of at once.
+	const before = a.got.length;
+	await a.call("Target.setDiscoverTargets", { discover: true, filter: [{}] }, session);
+	await a.call("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, session);
+	await Bun.sleep(5);
+	const onSession = a.got.slice(before).filter((m) => m.sessionId === session && m.method?.startsWith("Target."));
+	expect(onSession.map((m) => [m.method, info(m).targetId])).toEqual([
+		["Target.targetCreated", own],
+		["Target.targetCreated", pageA],
+		["Target.attachedToTarget", pageA],
+	]);
+	expect(JSON.stringify(a.got)).not.toContain(pageB);
+	expect(
+		browser.log.filter((l) => l.method === "Target.detachFromTarget" && l.sessionId === session).map((l) => l.params),
+	).toHaveLength(1);
+	expect([...browser.sessions.values()].filter((s) => s.kind === "page" && s.targetId === pageB)).toHaveLength(0);
+
+	// What is said of the browser there reaches it; Browser.close there ends the connection, not the browser.
+	await a.call(
+		"Browser.setDownloadBehavior",
+		{ behavior: "allow", downloadPath: "/tmp/x", eventsEnabled: true },
+		session,
+	);
+	expect(browser.log.find((l) => l.method === "Browser.setDownloadBehavior")?.sessionId).toBe(session);
+	await a.call("Target.detachFromTarget", { sessionId: session });
+	expect(a.events("Target.detachedFromTarget").map((e) => (e.params as { sessionId: string }).sessionId)).toEqual([
+		session,
+	]);
+	const again = (
+		(await a.call("Target.attachToTarget", { targetId: own, flatten: true })).result as { sessionId: string }
+	).sessionId;
+	expect((await a.call("Browser.close", {}, again)).result).toEqual({});
+	expect(a.closed?.code).toBe(1000);
+	expect(browser.log.some((l) => l.method === "Browser.close")).toBe(false);
 });
 
 test("Clear while a conversation's connection waits for the engine to start ends it with the reason, never leaves it hanging", async () => {
