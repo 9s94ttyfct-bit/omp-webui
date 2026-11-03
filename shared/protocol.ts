@@ -490,7 +490,14 @@ export type ClientMessage =
 	 * `PUSH_PRESENCE_TTL_MS` after the last time it did. Said when the page's focus, visibility or view changes, when the socket
 	 * opens, and every `PUSH_HEARTBEAT_MS` while in use.
 	 */
-	| { t: "presence"; device: string; visible: boolean; liveId?: string | null; file?: string | null };
+	| { t: "presence"; device: string; visible: boolean; liveId?: string | null; file?: string | null }
+	/**
+	 * What a page on this computer shows while it is in use (its tab shown and its window focused): a conversation, by its process
+	 * and its file (`null` for none), or neither (not in use, or no conversation shown). Said when that changes and when the socket
+	 * opens. The conversation is seen: the macOS app's menu bar ✓ for its finished run goes (`ShellEvents.look`). A page that is
+	 * not on this computer is not listened to.
+	 */
+	| { t: "seen"; liveId: string | null; file: string | null };
 
 // ---------------------------------------------------------------- server → client
 

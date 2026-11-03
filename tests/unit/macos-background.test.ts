@@ -200,9 +200,10 @@ test.skipIf(!mac)(
 			rule,
 			quit("Quit omp-webui"),
 		]);
-		// What the person has seen of the finished runs: a server's first count is seen, news until they look, and a new epoch
-		// (a server that began again) starts over; a state with no epoch is of the one before.
-		expect(report.watch).toEqual([0, 2, 2, 0, 1, 0, 1, 3]);
+		// What the person has seen of the finished runs: what the server names is news until the menu says it or a page shows it,
+		// a run that finishes again is news again, and a new epoch (a server that began again) starts over; a state with no epoch
+		// is of the one before.
+		expect(report.watch).toEqual([2, 0, 1, 1, 0, 1, 1, 2]);
 		// The window that is closed keeps the Questions page for its next page, once.
 		expect(report.route).toEqual(["#/questions", null]);
 	},
@@ -276,7 +277,7 @@ interface ModeReport {
 	};
 	againClosing: number;
 	attention: Record<
-		"first" | "ran" | "looked" | "whileOpen" | "closed" | "one" | "active" | "epoch" | "chineseFinished",
+		"first" | "ran" | "looked" | "seenByPage" | "one" | "pageSaw" | "allSeen" | "epoch" | "chineseFinished",
 		{ titles: string[]; buttonTitle: string }
 	> & { asked: number; opened: number };
 	counts: { titles: string[]; buttonTitle: string };
@@ -337,24 +338,22 @@ test.skipIf(!guiTests)(
 			"退出 omp-webui",
 		]);
 		// Open questions and finished runs (#705). The icon counts the dialogs and the questions together; the menu says how many
-		// questions wait (a line that opens the Questions page) and how many runs finished since the person looked. A server's
-		// first count is what the person has seen already; the next is news, with a ✓ on the icon, until the menu opens or the
-		// app becomes the active one. The menu that is open goes on saying what it said, and a new epoch starts over.
+		// questions wait (a line that opens the Questions page) and how many runs finished that no page here has shown. A run is
+		// news, with a ✓ on the icon, until the menu opens and says it, or a page shows its conversation (the server stops naming
+		// it); a new epoch starts over.
 		const waiting = ["Open omp-webui", "", "1 conversation needs your input", "2 questions waiting"];
 		const tail = ["Pause All Conversations", "", "Quit omp-webui"];
+		const finished = (n: number) => (n === 1 ? "1 conversation finished" : `${n} conversations finished`);
 		expect(m.attention.first).toEqual({ titles: [...waiting, ...tail], buttonTitle: " 3" });
-		expect(m.attention.ran).toEqual({ titles: [...waiting, "2 conversations finished", ...tail], buttonTitle: " 3 ✓" });
-		expect(m.attention.looked).toEqual({
-			titles: [...waiting, "2 conversations finished", ...tail],
-			buttonTitle: " 3",
-		});
-		expect(m.attention.whileOpen).toEqual(m.attention.looked);
-		expect(m.attention.closed).toEqual(m.attention.first);
-		expect(m.attention.one).toEqual({ titles: [...waiting, "1 conversation finished", ...tail], buttonTitle: " 3 ✓" });
-		expect(m.attention.active).toEqual(m.attention.first);
+		expect(m.attention.ran).toEqual({ titles: [...waiting, finished(2), ...tail], buttonTitle: " 3 ✓" });
+		expect(m.attention.looked).toEqual({ titles: [...waiting, finished(2), ...tail], buttonTitle: " 3" });
+		expect(m.attention.seenByPage).toEqual({ titles: [...waiting, finished(1), ...tail], buttonTitle: " 3" });
+		expect(m.attention.one).toEqual({ titles: [...waiting, finished(2), ...tail], buttonTitle: " 3 ✓" });
+		expect(m.attention.pageSaw).toEqual(m.attention.seenByPage);
+		expect(m.attention.allSeen).toEqual(m.attention.first);
 		expect(m.attention.epoch).toEqual({
-			titles: ["Open omp-webui", "", "No conversations working", "", "Quit omp-webui"],
-			buttonTitle: "",
+			titles: ["Open omp-webui", "", "No conversations working", finished(1), "", "Quit omp-webui"],
+			buttonTitle: " ✓",
 		});
 		expect(m.attention.chineseFinished).toEqual({
 			titles: ["打开 omp-webui", "", "没有正在工作的对话", "1 个问题等待回答", "2 个对话已完成", "", "退出 omp-webui"],

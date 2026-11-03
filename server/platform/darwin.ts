@@ -110,5 +110,7 @@ export function createDarwin(deps: SystemDeps): Platform {
 			const mac = await macosVersion();
 			return mac ? `macOS ${mac} (${arch()})` : `darwin ${release()} (${arch()})`;
 		},
+		// The app registers itself (`SMAppService`, macos/loginitem.swift): a server has no program of its own to name.
+		loginItem: null,
 	};
 }

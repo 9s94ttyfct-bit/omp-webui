@@ -62,28 +62,32 @@ final class ScreenHandoff {
 
 // MARK: - The menu bar icon
 
-/// What the person has seen of the runs that finished (#705): the server counts them from its start (`ShellState.finished`, per
-/// `epoch`), and the icon says how many came since the person last looked, which is when its menu opens or the app becomes the
-/// active one (its window comes to the front). A new epoch is a server that began again: its count starts over, and the person
-/// has seen what there was when the app first heard of it. A state that names no epoch (a test's) is of the epoch before.
+/// What the person has seen of the runs that finished (#705): the server names each run that finished and that no page on this
+/// computer has shown since (`ShellState.unseen`, a token each; a window, pop-out or tab here that shows the conversation while
+/// it is in use takes it off). The icon puts a ✓ beside itself while there is one its menu has not said either: opening the menu
+/// is looking at what it says. A new epoch is a server that began again, with tokens of its own. A state that names no epoch (a
+/// test's) is of the epoch before.
 struct FinishedWatch: Equatable {
 	private(set) var epoch: String?
-	private var finished = 0
-	private var seen = 0
+	/// The finished runs nobody here has looked at, as the last state named them.
+	private(set) var tokens: [String] = []
+	/// Those of them the menu has said: the person saw them there.
+	private var said: Set<String> = []
 
-	/// Runs that ended since the person last looked.
-	var unseen: Int { max(0, finished - seen) }
+	/// Runs that finished, that no page here has shown and the menu has not said: what the ✓ is for.
+	var unseen: Int { tokens.filter { !said.contains($0) }.count }
 
-	mutating func hear(finished: Int, epoch: String?) {
+	mutating func hear(unseen: [String], epoch: String?) {
 		if let epoch, epoch != self.epoch {
 			self.epoch = epoch
-			seen = finished
+			said = []
 		}
-		self.finished = finished
+		tokens = unseen
+		said.formIntersection(unseen)
 	}
 
-	/// The person looks: what finished so far is seen.
-	mutating func look() { seen = finished }
+	/// The menu opens and says them: they are seen.
+	mutating func look() { said.formUnion(tokens) }
 }
 
 /// One line of the menu bar icon's menu.
@@ -111,8 +115,8 @@ struct StatusLine: Equatable {
 /// The menu: Open; what is going on, and Pause all or Resume all when there is something to pause or to resume; what is left
 /// of each provider's quota; Quit. What is going on is how many conversations work, how many wait for an answer and how many
 /// are paused, as the server counts them (`shellCounts` in server/shell-events.ts): each is counted once. Then, when any are,
-/// the unattended questions that wait (a line that opens the Questions page) and the runs that finished since the person last
-/// looked (`unseenFinished`, #705).
+/// the unattended questions that wait (a line that opens the Questions page) and the runs that finished and no page here has
+/// shown since (`unseenFinished`, #705).
 func statusMenu(state: ShellState, quota: [String], language: ShellLanguage, unseenFinished: Int = 0) -> [StatusLine] {
 	let zh = language == .zh
 	var lines = [StatusLine(role: .open, title: zh ? "打开 \(appName)" : "Open \(appName)"), StatusLine(role: .separator, title: "")]
@@ -147,7 +151,7 @@ func statusMenu(state: ShellState, quota: [String], language: ShellLanguage, uns
 }
 
 /// What the icon says beside itself: how many are waiting for the person, conversations at a dialog and open unattended
-/// questions together (the rest is in the menu), and a ✓ when a run finished since they last looked (`finished`: how many).
+/// questions together (the rest is in the menu), and a ✓ when a run finished that the person has not seen (`finished`: how many).
 func statusTitle(asking: Int, questions: Int = 0, finished: Int = 0) -> String {
 	var parts: [String] = []
 	if asking + questions > 0 { parts.append("\(asking + questions)") }
@@ -184,18 +188,18 @@ func statusIcon() -> NSImage {
 }
 
 /// The app's icon in the menu bar: there when `install`ed, gone when `remove`d. It is there while the app runs in the
-/// background, and beside its window too unless Settings says otherwise (`BackgroundMode.showAlways`).
+/// background, and beside its window too unless Settings says otherwise (`BackgroundMode.showAlways`). A click opens the app (its
+/// window, as Open does); a right click, or a click with Control held, opens the menu.
 final class StatusMenu: NSObject, NSMenuDelegate {
 	private let language: () -> ShellLanguage
 	private let actions: [StatusLine.Role: () -> Void]
 	private let opening: () -> Void
 	private var item: NSStatusItem?
+	/// The menu: not the item's own (that would open it on every click), put on it only while a right click shows it.
+	private let menu = NSMenu()
 	private var state = ShellState()
 	private var quota: [String] = []
 	private var watch = FinishedWatch()
-	/// The runs the menu that is open said had finished: the person has seen them by opening it (`menuNeedsUpdate`), and the
-	/// menu keeps saying so until it closes, whatever the stream says meanwhile. Nil while no menu is open.
-	private var shownFinished: Int?
 
 	/// `opening`: the menu is about to open (the quota is read again, when it is old: `update(quota:)` puts it in). `questions`:
 	/// the line "N questions waiting" is chosen (the window opens on the Questions page).
@@ -207,12 +211,14 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 		self.language = language
 		actions = [.open: open, .quit: quit, .pauseAll: pauseAll, .resumeAll: resumeAll, .questions: questions]
 		self.opening = opening
+		super.init()
+		menu.delegate = self
 	}
 
 	var isInstalled: Bool { item != nil }
 
 	/// The menu as it is when it opens: the lines it holds, in order (a separator is an empty one).
-	var titles: [String] { item?.menu?.items.map { $0.isSeparatorItem ? "" : $0.title } ?? [] }
+	var titles: [String] { item == nil ? [] : menu.items.map { $0.isSeparatorItem ? "" : $0.title } }
 
 	/// What the icon shows beside itself.
 	var buttonTitle: String? { item?.button?.title }
@@ -223,9 +229,9 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 		made.button?.image = statusIcon()
 		made.button?.imagePosition = .imageLeading
 		made.button?.toolTip = appName
-		let menu = NSMenu()
-		menu.delegate = self
-		made.menu = menu
+		made.button?.target = self
+		made.button?.action = #selector(clicked(_:))
+		made.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
 		item = made
 		render()
 	}
@@ -240,14 +246,26 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 	/// server's run that said it (a new one starts what the person has seen of finished runs over).
 	func update(_ state: ShellState, epoch: String? = nil) {
 		self.state = state
-		watch.hear(finished: state.finished, epoch: epoch)
+		watch.hear(unseen: state.unseen, epoch: epoch)
 		render()
 	}
 
-	/// The person looks: the app became the active one, its window is in front. Runs that finished so far are seen.
-	func look() {
-		watch.look()
-		render()
+	/// A click on the icon: the left button opens the app; the right one, or the left with Control held, opens the menu.
+	func click(secondary: Bool) {
+		if secondary { showMenu() } else { choose(.open) }
+	}
+
+	@objc private func clicked(_ sender: NSStatusBarButton) {
+		let event = NSApp.currentEvent
+		click(secondary: event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true)
+	}
+
+	/// The menu under the icon, as a status item opens its own: put on the item for this one click, which tracks it until it closes.
+	private func showMenu() {
+		guard let item, let button = item.button else { return }
+		item.menu = menu
+		button.performClick(nil)
+		item.menu = nil
 	}
 
 	/// What is left of each provider's quota, in words (`GET /api/shell/quota`): shown now, also in a menu that is open.
@@ -257,18 +275,11 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 	}
 
 	/// The menu is built when it opens, in the language of the moment (the person may have changed it while the app was away). It
-	/// says which runs finished since the person last looked, and that is looking.
+	/// says how many runs finished that no page here has shown, and that is looking: the ✓ goes.
 	func menuNeedsUpdate(_ menu: NSMenu) {
-		shownFinished = watch.unseen
 		watch.look()
 		render()
 		opening()
-	}
-
-	/// Not rebuilt here: AppKit closes the menu before it performs the action of the line that was chosen, and a line that is gone
-	/// does nothing. The next time it opens it is built again (`menuNeedsUpdate`).
-	func menuDidClose(_ menu: NSMenu) {
-		shownFinished = nil
 	}
 
 	/// What a click on a line does (also what a test does for a click).
@@ -281,11 +292,10 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 	}
 
 	private func render() {
-		guard let item, let menu = item.menu else { return }
+		guard let item else { return }
 		item.button?.title = statusTitle(asking: state.asking, questions: state.questions, finished: watch.unseen)
 		menu.removeAllItems()
-		let finished = (shownFinished ?? 0) + watch.unseen
-		for line in statusMenu(state: state, quota: quota, language: language(), unseenFinished: finished) {
+		for line in statusMenu(state: state, quota: quota, language: language(), unseenFinished: watch.tokens.count) {
 			switch line.role {
 			case .separator: menu.addItem(.separator())
 			case .info:

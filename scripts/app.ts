@@ -178,6 +178,7 @@ try {
 		"macos/browserlink.swift",
 		"macos/downloads.swift",
 		"macos/droppaths.swift",
+		"macos/loginitem.swift",
 		"macos/mainwindow.swift",
 		"macos/navigation.swift",
 		"macos/notifications.swift",

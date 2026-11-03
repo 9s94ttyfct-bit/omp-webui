@@ -168,6 +168,14 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	settingsMenuIcon: "始终显示菜单栏图标",
 	settingsMenuIconHint:
 		"图标会显示哪些对话在工作、哪些需要你，可以暂停或继续所有对话，并显示剩余额度。关闭后，只在应用于后台运行时显示。",
+	settingsLoginStart: "开机启动",
+	settingsLoginStartSwitch: "登录时在后台启动 omp-webui",
+	settingsLoginStartHintApp:
+		"不会打开窗口：点菜单栏图标、点通知或再次打开 omp-webui 即可显示。它会出现在 macOS 的「系统设置 › 通用 › 登录项」里。",
+	settingsLoginStartHintLauncher:
+		"服务器启动后不会打开页面；再次打开 omp-webui 即可看到。Windows 上它的窗口最小化在任务栏里（关掉它就会停止 omp-webui）；Linux 上它没有窗口，用 `omp-webui --stop` 停止。",
+	settingsLoginStartApproval: "macOS 正在等你在「系统设置 › 通用 › 登录项」里允许它。",
+	settingsLoginStartFailed: "无法更改开机启动：{error}",
 	settingsSleep: "睡眠",
 	settingsSleepIntro: "omp-webui 对 Mac 休眠的处理，以及休眠之后会告诉你什么。",
 	settingsKeepAwake: "有对话在工作时让 Mac 保持唤醒",

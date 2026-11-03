@@ -117,3 +117,70 @@ test("--version prints the version and ends: no server, no page, no data folder"
 	expect(existsSync(folder)).toBe(false);
 	expect(pages()).toHaveLength(before);
 }, 60_000);
+
+test("--background starts the server and opens no page; --stop stops it", async () => {
+	const folder = join(root, "background-data");
+	const before = pages().length;
+	const run = await launch({ OMP_WEBUI_DATA_DIR: folder }, ["--background"]);
+	await pollUntil(
+		() => run.output().includes("running in the background"),
+		`the server to start; output:\n${run.output()}`,
+		60_000,
+	);
+	// Started again in the background while it runs: nothing more, and still no page.
+	const again = await launch({ OMP_WEBUI_DATA_DIR: folder }, ["--background"]);
+	expect(await again.exited).toBe(0);
+	expect(again.output()).toContain("already running");
+	expect(pages()).toHaveLength(before);
+
+	const stop = await launch({ OMP_WEBUI_DATA_DIR: folder }, ["--stop"]);
+	expect(await stop.exited).toBe(0);
+	expect(stop.output()).toContain("omp-webui is stopped.");
+	await run.exited;
+	const none = await launch({ OMP_WEBUI_DATA_DIR: folder }, ["--stop"]);
+	expect(await none.exited).toBe(0);
+	expect(none.output()).toContain("not running");
+}, 120_000);
+
+// The built program only: it is what the entry names (from source the program is Bun, and the switch is not offered).
+test.skipIf(!exe)(
+	"Start at login writes the system's entry for the program, and takes it away",
+	async () => {
+		const folder = join(root, "login-data");
+		const config = join(root, "xdg");
+		const run = await launch({ OMP_WEBUI_DATA_DIR: folder, XDG_CONFIG_HOME: config }, ["--background"]);
+		await pollUntil(
+			() => run.output().includes("running in the background"),
+			`the server to start; output:\n${run.output()}`,
+			60_000,
+		);
+		const port = Number(/port (\d+)/.exec(run.output())?.[1]);
+		const token = readFileSync(join(folder, "token"), "utf8").trim();
+		const headers = { "x-omp-webui-token": token, "x-omp-webui": "1", "content-type": "application/json" };
+		const url = `http://127.0.0.1:${port}/api/login-start`;
+		const set = async (on: boolean) =>
+			(await fetch(url, { method: "POST", headers, body: JSON.stringify({ on }) })).json() as Promise<unknown>;
+		expect(await (await fetch(url, { headers })).json()).toEqual({ available: true, on: false });
+		try {
+			expect(await set(true)).toEqual({ available: true, on: true });
+			if (process.platform === "linux") {
+				const entry = readFileSync(join(config, "autostart", "omp-webui.desktop"), "utf8");
+				expect(entry).toContain(`Exec="${exe}" --background`);
+			} else {
+				const value = Bun.spawnSync([
+					"reg",
+					"query",
+					"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+					"/v",
+					"omp-webui",
+				]);
+				expect(value.stdout.toString()).toContain(`start "" /min "${exe}" --background`);
+			}
+		} finally {
+			expect(await set(false)).toEqual({ available: true, on: false });
+		}
+		if (process.platform === "linux") expect(existsSync(join(config, "autostart", "omp-webui.desktop"))).toBe(false);
+		await launch({ OMP_WEBUI_DATA_DIR: folder }, ["--stop"]);
+	},
+	120_000,
+);

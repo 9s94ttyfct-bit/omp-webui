@@ -18,13 +18,15 @@ import type { LiveInfo } from "../shared/protocol.ts";
  * response of newline-delimited JSON, `GET /api/shell/events?lang=<en|zh-CN>&epoch=<id>&since=<n>`, for this computer's pages
  * only (the route is `isLocalOnlyRoute`'s: a page that came through the tunnel or over the network is refused it, token or not):
  *
- * - `{ t: "state", epoch, working, asking, paused, menuIcon, questions, finished }`: how many conversations work, how many wait
+ * - `{ t: "state", epoch, working, asking, paused, menuIcon, questions, unseen }`: how many conversations work, how many wait
  *   for an answer, how many are paused (the menu bar icon offers Resume all for those), whether the menu bar icon is shown while
  *   the app has its window too (Settings › Quitting, `ompw.menuIcon`; it always is while the app runs in the background), how
  *   many unattended questions are open (#646: asked by an agent, not yet answered or dismissed; the icon counts them with the
- *   conversations that wait, and its menu opens the Questions page) and how many runs have ended in this epoch (a running count,
- *   whether or not notifications are on: the same ending as a `finished` notice; the app keeps what the person has seen of it,
- *   to put a ✓ beside the icon for the rest). First when the response begins (so a reader that reconnects has them as they are
+ *   conversations that wait, and its menu opens the Questions page) and the runs that ended and nobody here has looked at since
+ *   (`unseen`: one token for each such conversation, new each time it finishes; the app puts a ✓ beside the icon while there is
+ *   one it has not shown in its menu). A run that ends while a page on this computer is in use and shows its conversation is
+ *   seen as it ends; the others are seen when such a page shows the conversation (`look`: any window, pop-out or tab here),
+ *   whether or not notifications are on. First when the response begins (so a reader that reconnects has them as they are
  *   now) and again whenever one changes. `epoch` names this server's run: a reader that sees another one forgets what it had read.
  * - `{ t: "attention", seq, id, kind, title, body, liveId, file }`: a conversation needs somebody (`asking`: a dialog waits, a
  *   tool approval or a question; `finished`: its run ended), with the words the page's own notifications have, in the
@@ -54,9 +56,15 @@ export type ShellCounts = WorkCounts & { paused: number };
 
 /**
  * What a state message says: the counts, whether the icon is wanted while the app has its window, how many unattended questions
- * are open and how many runs have finished since the server began.
+ * are open and the finished runs nobody here has looked at (a token each, in the order they finished).
  */
-export type ShellState = ShellCounts & { menuIcon: boolean; questions: number; finished: number };
+export type ShellState = ShellCounts & { menuIcon: boolean; questions: number; unseen: string[] };
+
+/** What a page on this computer in use shows (`look`): a conversation by its process, its file, or both. */
+export interface Shown {
+	liveId: string | null;
+	file: string | null;
+}
 
 /** The counts of the processes the server lists: a paused one is frozen, and counts for neither working nor waiting. */
 export function shellCounts(infos: Iterable<LiveInfo>): ShellCounts {
@@ -128,7 +136,11 @@ const sameState = (a: ShellState, b: ShellState) =>
 	a.paused === b.paused &&
 	a.menuIcon === b.menuIcon &&
 	a.questions === b.questions &&
-	a.finished === b.finished;
+	a.unseen.join("\n") === b.unseen.join("\n");
+
+/** Whether a page that shows `shown` shows the conversation of process `liveId` with file `file`. */
+const shows = (shown: Shown, liveId: string, file: string | null) =>
+	shown.liveId === liveId || (file !== null && shown.file === file);
 
 export class ShellEvents {
 	/** What was last known of each process that runs: what the next announcement is compared with. */
@@ -140,8 +152,12 @@ export class ShellEvents {
 	/** This run of the server: a reader's `since` means something only in the epoch it was read in. */
 	private readonly epoch = crypto.randomUUID();
 	private seq = 0;
-	/** How many runs ended since this server began: counted whether or not an app reads, or notifications are on. */
+	/** Runs that ended and nobody here has looked at since, by process: the token the state names it by, and its file. */
+	private readonly unseen = new Map<string, { token: string; file: string | null }>();
+	/** How many runs ended since this server began: what makes each `unseen` token new. */
 	private finished = 0;
+	/** What each page on this computer shows while it is in use (`look`), by its socket. */
+	private readonly looking = new Map<object, Shown>();
 	private recent: Kept[] = [];
 	/** An app has read at least once: notices are kept from then on, also while it is not reading. */
 	private recording = false;
@@ -186,12 +202,40 @@ export class ShellEvents {
 			const now = factsOf(info);
 			const kinds = attentionOf(this.known.get(info.liveId), now);
 			this.known.set(info.liveId, now);
-			if (kinds.includes("finished")) this.finished++;
+			if (kinds.includes("finished")) this.finishedRun(info);
 			if (this.recording) {
 				for (const kind of kinds) this.queue = this.queue.then(() => this.attention(info, kind)).catch(report);
 			}
 		}
 		if (this.readers.size > 0) this.counts();
+	}
+
+	/** A run ended: unseen unless a page on this computer in use shows its conversation now. */
+	private finishedRun(info: LiveInfo): void {
+		this.finished++;
+		for (const shown of this.looking.values()) if (shows(shown, info.liveId, info.sessionFile)) return;
+		// Put last again: the tokens are in the order the runs finished.
+		this.unseen.delete(info.liveId);
+		this.unseen.set(info.liveId, { token: `${info.liveId}:${this.finished}`, file: info.sessionFile });
+	}
+
+	/**
+	 * A page on this computer (`page`: its socket) is in use and shows `shown`, or (null) is not in use or shows no conversation,
+	 * or is gone. What it shows is seen: the ✓ of its runs that finished goes.
+	 */
+	look(page: object, shown: Shown | null): void {
+		if (shown === null || (shown.liveId === null && shown.file === null)) {
+			this.looking.delete(page);
+			return;
+		}
+		this.looking.set(page, shown);
+		let changed = false;
+		for (const [liveId, run] of this.unseen)
+			if (shows(shown, liveId, run.file)) {
+				this.unseen.delete(liveId);
+				changed = true;
+			}
+		if (changed && this.readers.size > 0) this.counts();
 	}
 
 	/**
@@ -254,7 +298,7 @@ export class ShellEvents {
 			...shellCounts(this.deps.lives()),
 			menuIcon: this.deps.prefs().menuIcon,
 			questions: this.deps.questions(),
-			finished: this.finished,
+			unseen: [...this.unseen.values()].map((run) => run.token),
 		};
 	}
 

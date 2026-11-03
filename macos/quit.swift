@@ -39,17 +39,17 @@ enum ShellLanguage: Equatable {
 // MARK: - What the server says
 
 /// What a state line says: how many conversations work, wait for an answer and are paused, whether the menu bar icon is wanted
-/// while the app has its window too (Settings › Quitting), how many unattended questions are open, and how many runs have
-/// finished in this server's run (a running count: what the person has seen of it is the icon's to keep, `FinishedWatch`). A
-/// server from before these said none of them: none is paused, the icon is wanted (the default), no question waits and no run
-/// finished.
+/// while the app has its window too (Settings › Quitting), how many unattended questions are open, and the runs that finished
+/// and no page on this computer has shown since (a token each: what the person has seen in the menu is the icon's to keep,
+/// `FinishedWatch`). A server from before these said none of them: none is paused, the icon is wanted (the default), no question
+/// waits and no run is unseen.
 struct ShellState: Equatable {
 	var working = 0
 	var asking = 0
 	var paused = 0
 	var menuIcon = true
 	var questions = 0
-	var finished = 0
+	var unseen: [String] = []
 }
 
 /// What is running that a quit would touch: conversations that are working (`/api/lives`), ones that are paused, ones that

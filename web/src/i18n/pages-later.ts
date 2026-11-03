@@ -154,6 +154,14 @@ export const en = {
 	settingsMenuIcon: "Always show the menu bar icon",
 	settingsMenuIconHint:
 		"The icon shows what is working and what needs you, pauses or resumes every conversation, and shows what is left of your quota. Off: it is only there while the app runs in the background.",
+	settingsLoginStart: "Start at login",
+	settingsLoginStartSwitch: "Start omp-webui in the background when you log in",
+	settingsLoginStartHintApp:
+		"No window opens: the menu bar icon, a notification or opening omp-webui brings it. macOS lists it in System Settings › General › Login Items.",
+	settingsLoginStartHintLauncher:
+		"The server starts without opening its page; open omp-webui to see it. On Windows its window waits minimized in the taskbar (closing it stops omp-webui); on Linux it has no window, and `omp-webui --stop` stops it.",
+	settingsLoginStartApproval: "macOS waits for you to allow it in System Settings › General › Login Items.",
+	settingsLoginStartFailed: "Start at login could not be changed: {error}",
 	settingsSleep: "Sleep",
 	settingsSleepIntro: "What omp-webui does about the Mac going to sleep, and what it says afterwards.",
 	settingsKeepAwake: "Keep the Mac awake while a conversation works",

@@ -65,26 +65,18 @@ func model() -> [String: Any] {
 		statusTitle(asking: 2, questions: 3), statusTitle(asking: 0, questions: 0, finished: 1),
 		statusTitle(asking: 1, questions: 1, finished: 4),
 	]
-	// What the person has seen of the runs that finished: the first count of a server's run is what there was, later ones are news
-	// until the person looks, and a server that began again starts it over. A state that names no epoch is of the one before.
+	// What the person has seen of the runs that finished: what the server names is news until the menu says it or a page shows it
+	// (the server stops naming it), a run that finishes again is news again, and a server that began again starts it over. A state
+	// that names no epoch is of the one before.
 	var watch = FinishedWatch()
 	var unseen: [Int] = []
-	watch.hear(finished: 3, epoch: "E1")
-	unseen.append(watch.unseen)
-	watch.hear(finished: 5, epoch: "E1")
-	unseen.append(watch.unseen)
-	watch.hear(finished: 5, epoch: "E1")
-	unseen.append(watch.unseen)
-	watch.look()
-	unseen.append(watch.unseen)
-	watch.hear(finished: 6, epoch: "E1")
-	unseen.append(watch.unseen)
-	watch.hear(finished: 1, epoch: "E2")
-	unseen.append(watch.unseen)
-	watch.hear(finished: 2, epoch: "E2")
-	unseen.append(watch.unseen)
-	watch.hear(finished: 4, epoch: nil)
-	unseen.append(watch.unseen)
+	for (names, epoch, looks) in [
+		(["a:1", "b:2"], "E1", false), ([], "E1", true), (["a:1", "b:2", "c:3"], "E1", false), (["b:2", "c:3"], "E1", false),
+		(["b:2"], "E1", false), (["b:2", "a:4"], "E1", false), (["b:2"], "E2", false), (["b:2", "x:1"], nil, false),
+	] as [([String], String?, Bool)] {
+		if looks { watch.look() } else { watch.hear(unseen: names, epoch: epoch) }
+		unseen.append(watch.unseen)
+	}
 	out["watch"] = unseen
 	// The window that is closed keeps the view the menu bar icon's questions line asks for, for the page it opens next.
 	let closed = MainWindow(make: parts)
@@ -237,37 +229,37 @@ func modeReport() -> [String: Any] {
 	language = .en
 
 	// Questions that wait and runs that finished (#705). The icon counts dialogs and questions together, and a ✓ says that a run
-	// finished since the person looked: opening the menu is looking, and the menu goes on saying it until it closes. A server's
-	// first state says what the person has seen already.
-	status.update(ShellState(working: 0, asking: 1, questions: 2, finished: 5), epoch: "E1")
-	let first = ["titles": status.titles, "buttonTitle": status.buttonTitle as Any] as [String: Any]
-	status.update(ShellState(working: 0, asking: 1, questions: 2, finished: 7), epoch: "E1")
-	let ran = ["titles": status.titles, "buttonTitle": status.buttonTitle as Any] as [String: Any]
+	// finished that nobody here has seen: a page that shows it takes it off the server's list, and opening the menu is looking at
+	// what it says (the menu goes on saying how many no page has shown).
+	let snap = { ["titles": status.titles, "buttonTitle": status.buttonTitle as Any] as [String: Any] }
+	status.update(ShellState(working: 0, asking: 1, questions: 2, unseen: []), epoch: "E1")
+	let first = snap()
+	status.update(ShellState(working: 0, asking: 1, questions: 2, unseen: ["a:1", "b:2"]), epoch: "E1")
+	let ran = snap()
 	status.menuNeedsUpdate(NSMenu())
-	let looked = ["titles": status.titles, "buttonTitle": status.buttonTitle as Any] as [String: Any]
-	status.update(ShellState(working: 0, asking: 1, questions: 2, finished: 7), epoch: "E1")
-	let whileOpen = ["titles": status.titles, "buttonTitle": status.buttonTitle as Any] as [String: Any]
-	status.menuDidClose(NSMenu())
-	status.update(ShellState(working: 0, asking: 1, questions: 2, finished: 7), epoch: "E1")
-	let closed = ["titles": status.titles, "buttonTitle": status.buttonTitle as Any] as [String: Any]
-	// One more, and the app becomes the active one: that is looking too.
-	status.update(ShellState(working: 0, asking: 1, questions: 2, finished: 8), epoch: "E1")
-	let one = ["titles": status.titles, "buttonTitle": status.buttonTitle as Any] as [String: Any]
-	status.look()
-	let active = ["titles": status.titles, "buttonTitle": status.buttonTitle as Any] as [String: Any]
-	// A server that began again counts from nothing, and what the person has seen starts over with it.
-	status.update(ShellState(working: 0, asking: 0, questions: 0, finished: 1), epoch: "E2")
-	let epoch = ["titles": status.titles, "buttonTitle": status.buttonTitle as Any] as [String: Any]
-	status.update(ShellState(working: 0, asking: 0, questions: 1, finished: 3), epoch: "E2")
+	let looked = snap()
+	// A page shows a: one is left that no page has shown, and the menu has said it.
+	status.update(ShellState(working: 0, asking: 1, questions: 2, unseen: ["b:2"]), epoch: "E1")
+	let seenByPage = snap()
+	// One more finishes: the ✓ is back, until a page shows it.
+	status.update(ShellState(working: 0, asking: 1, questions: 2, unseen: ["b:2", "c:3"]), epoch: "E1")
+	let one = snap()
+	status.update(ShellState(working: 0, asking: 1, questions: 2, unseen: ["b:2"]), epoch: "E1")
+	let pageSaw = snap()
+	status.update(ShellState(working: 0, asking: 1, questions: 2, unseen: []), epoch: "E1")
+	let allSeen = snap()
+	// A server that began again has names of its own, and nothing of them was said.
+	status.update(ShellState(working: 0, asking: 0, questions: 0, unseen: ["x:1"]), epoch: "E2")
+	let epoch = snap()
+	status.update(ShellState(working: 0, asking: 0, questions: 1, unseen: ["x:1", "y:2"]), epoch: "E2")
 	language = .zh
 	status.menuNeedsUpdate(NSMenu())
-	let chineseFinished = ["titles": status.titles, "buttonTitle": status.buttonTitle as Any] as [String: Any]
-	status.menuDidClose(NSMenu())
+	let chineseFinished = snap()
 	language = .en
 	status.choose(.questions)
 	out["attention"] = [
-		"first": first, "ran": ran, "looked": looked, "whileOpen": whileOpen, "closed": closed, "one": one, "active": active,
-		"epoch": epoch, "chineseFinished": chineseFinished, "asked": asked, "opened": opened,
+		"first": first, "ran": ran, "looked": looked, "seenByPage": seenByPage, "one": one, "pageSaw": pageSaw,
+		"allSeen": allSeen, "epoch": epoch, "chineseFinished": chineseFinished, "asked": asked, "opened": opened,
 	]
 
 	// A click on a line that says something does nothing; Pause all and Resume all are the app's; Open is the app's `showWindow`.
@@ -277,7 +269,8 @@ func modeReport() -> [String: Any] {
 	status.choose(.pauseAll)
 	status.choose(.resumeAll)
 	out["pauseResume"] = ["paused": paused, "resumed": resumed, "opened": opened, "quit": quit]
-	status.choose(.open)
+	// A click on the icon itself (not a right click) opens the app, as Open does.
+	status.click(secondary: false)
 	spin(0.5)
 	out["reopened"] = [
 		"policy": policy(), "windows": appWindows(), "window": main.window != nil, "icon": status.isInstalled, "active": background.isActive,

@@ -51,6 +51,8 @@ declare global {
 				ompwView?: Handler;
 				/** The Mac app's own window: its native CEF view over the Browser tab (see `BrowserBridgeMessage`). */
 				ompwBrowser?: Handler;
+				/** The Mac app's login item (Settings › Start at login, `web/src/lib/login-start.ts`). */
+				ompwLogin?: Handler;
 			};
 		};
 	}

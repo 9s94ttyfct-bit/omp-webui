@@ -153,6 +153,14 @@ export interface LockOps {
 	holders(lockPath: string, proc: string): Promise<number[]>;
 }
 
+/** Starting the launcher in the background at login, for this user. */
+export interface LoginItemOps {
+	/** Whether this user's login starts omp-webui now (the entry this server writes; `home`: the user's home folder). */
+	read(home: string): Promise<boolean>;
+	/** Start `program` with `--background` at login, or (`program` null) stop doing so. Throws what failed. */
+	write(home: string, program: string | null): Promise<void>;
+}
+
 export interface Platform {
 	readonly id: PlatformId;
 	readonly capabilities: Capabilities;
@@ -177,4 +185,9 @@ export interface Platform {
 	skipPaths(home: string): string[];
 	/** The machine as a bug report names it: `macOS 15.1 (arm64)`, `linux 6.8.0 (x64)`. */
 	describe(): Promise<string>;
+	/**
+	 * Starting the launcher at login, in the background (Settings › App & system › Start at login): an XDG autostart entry on
+	 * Linux, the user's `Run` key on Windows. Null on macOS, where the app registers itself (`SMAppService`).
+	 */
+	readonly loginItem: LoginItemOps | null;
 }

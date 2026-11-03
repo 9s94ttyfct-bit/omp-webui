@@ -20,6 +20,11 @@
  * which page was opened.
  *
  * `omp-webui --version` prints the version and ends (no server, no page): the updater checks a staged program with it.
+ *
+ * `omp-webui --background` is what the system starts at login when Settings › Start at login is on (server/login-start.ts):
+ * the server starts and no page is opened (nor is one when this data folder's server already runs). On Windows its console
+ * window is minimized (the `Run` value starts it with `start /min`); on Linux it has no terminal, and `omp-webui --stop`
+ * stops it (it stops this data folder's server, however it was started).
  */
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -34,12 +39,16 @@ if (process.argv.slice(2).includes("--version")) {
 	process.exit(0);
 }
 
+const background = process.argv.slice(2).includes("--background");
 const folder = dirname(process.execPath);
 const web = join(folder, "web");
 if (!process.env.OMP_WEBUI_DIST && existsSync(web)) process.env.OMP_WEBUI_DIST = web;
-// The folder this program came in (it and `web/`, as the release's zip holds them) is what the updater replaces. Run from
-// source (`bun server/launcher.ts`) the program is Bun, and nothing beside it is ours.
-if (existsSync(web)) process.env.OMP_WEBUI_APP_FOLDER = folder;
+// The folder this program came in (it and `web/`, as the release's zip holds them) is what the updater replaces, and the
+// program is what starts at login. Run from source (`bun server/launcher.ts`) the program is Bun, and nothing beside it is ours.
+if (existsSync(web)) {
+	process.env.OMP_WEBUI_APP_FOLDER = folder;
+	process.env.OMP_WEBUI_LAUNCHER ??= process.execPath;
+}
 process.env.OMP_WEBUI_PORT_WINDOW ??= "1";
 
 /** The page of the server on `port`, signed in. */
@@ -67,7 +76,23 @@ async function holdWindow(): Promise<void> {
 try {
 	const { dataDir } = loadConfig();
 	const running = runningServer(dataDir);
+	if (process.argv.slice(2).includes("--stop")) {
+		if (!running) {
+			console.log("omp-webui is not running.");
+			process.exit(0);
+		}
+		process.kill(running.pid, "SIGTERM");
+		const until = Date.now() + 15_000;
+		while (runningServer(dataDir) && Date.now() < until) await Bun.sleep(100);
+		if (runningServer(dataDir)) throw new Error(`the server (pid ${running.pid}) did not stop within 15 s`);
+		console.log("omp-webui is stopped.");
+		process.exit(0);
+	}
 	if (running) {
+		if (background) {
+			console.log(`omp-webui is already running (port ${running.port}).`);
+			process.exit(0);
+		}
 		console.log(`omp-webui is already running (port ${running.port}): opening its page.`);
 		await openPage(pageOf(dataDir, running.port));
 		process.exit(0);
@@ -76,8 +101,12 @@ try {
 	await import("./main.ts");
 	const self = runningServer(dataDir);
 	if (!self) throw new Error("the server did not record the port it listens on");
-	await openPage(pageOf(dataDir, self.port));
-	console.log("\nomp-webui is running and its page is open in your browser. Close this window to stop it.");
+	if (background) {
+		console.log(`\nomp-webui is running in the background (port ${self.port}). Open omp-webui again to see its page.`);
+	} else {
+		await openPage(pageOf(dataDir, self.port));
+		console.log("\nomp-webui is running and its page is open in your browser. Close this window to stop it.");
+	}
 } catch (e) {
 	console.error(`omp-webui could not start: ${(e as Error).message}`);
 	await holdWindow();

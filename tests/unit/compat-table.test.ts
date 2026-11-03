@@ -207,6 +207,9 @@ describe("docs/TECHNICAL.md › How it stays compatible with omp updates names",
 		"--quiet",
 		"--short",
 		"--count",
+		// The launcher's own (server/launcher.ts: Start at login, and stopping it).
+		"--background",
+		"--stop",
 	]);
 
 	test("every flag it passes, checks for, or refuses", () => {

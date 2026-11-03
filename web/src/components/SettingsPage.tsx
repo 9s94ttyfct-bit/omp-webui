@@ -21,6 +21,7 @@ import { ApprovalSettings } from "./ApprovalSettings.tsx";
 import { CompactAtSettings } from "./CompactAtSettings.tsx";
 import { CompactWhereSettings } from "./CompactWhereSettings.tsx";
 import { DropSettings } from "./DropSettings.tsx";
+import { LoginStartSettings } from "./LoginStartSettings.tsx";
 import { ModelConfigSettings } from "./ModelConfigSettings.tsx";
 import { ModeSettings } from "./ModeSettings.tsx";
 import { OmpSettings } from "./OmpSettings.tsx";
@@ -433,6 +434,7 @@ export function SettingsPage() {
 							<BrowserSettings />
 						</Suspense>
 						<QuitSettings />
+						<LoginStartSettings />
 						<Suspense fallback={null}>
 							<SleepSettings />
 						</Suspense>

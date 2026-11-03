@@ -3,8 +3,8 @@ import Foundation
 // What the server tells the app on its own (#627): one response that does not end, `GET /api/shell/events`, of newline-delimited
 // JSON (server/shell-events.ts has the protocol). The app's notifications and the menu bar icon's menu come from it, so that
 // neither needs a window or a page: how many conversations work and how many wait for an answer, how many unattended questions
-// are open and how many runs finished (#705), and a notification for each conversation that needs somebody, with its words (in
-// the language the person saved, else this Mac's).
+// are open and which runs finished that no page here has shown (#705), and a notification for each conversation that needs
+// somebody, with its words (in the language the person saved, else this Mac's).
 
 /// Where it is read, under the server's origin.
 let shellEventsPath = "api/shell/events"
@@ -32,9 +32,10 @@ func parseShellMessage(_ line: String) -> ShellMessage? {
 		let paused = max(0, json["paused"] as? Int ?? 0)
 		let menuIcon = json["menuIcon"] as? Bool ?? true
 		let questions = max(0, json["questions"] as? Int ?? 0)
-		let finished = max(0, json["finished"] as? Int ?? 0)
+		// Strings only; anything else in the list is damage, and left out.
+		let unseen = (json["unseen"] as? [Any] ?? []).compactMap { ($0 as? String).flatMap { $0.isEmpty ? nil : $0 } }
 		return .state(
-			ShellState(working: working, asking: asking, paused: paused, menuIcon: menuIcon, questions: questions, finished: finished),
+			ShellState(working: working, asking: asking, paused: paused, menuIcon: menuIcon, questions: questions, unseen: unseen),
 			epoch: epoch)
 	case "attention":
 		guard let id = json["id"] as? String, !id.isEmpty, let title = json["title"] as? String, let body = json["body"] as? String,

@@ -1,10 +1,10 @@
 import { statSync } from "node:fs";
 import { arch, freemem, release, totalmem } from "node:os";
-import { delimiter, extname, join } from "node:path";
+import { delimiter, extname, join, win32 as windowsPath } from "node:path";
 import type { PsRow } from "../host-parse.ts";
 import { capabilitiesFor } from "./capabilities.ts";
 import { probe, treesOf } from "./system.ts";
-import type { CommandOps, Platform, ProcessEntry, ProcessOps, ShellOps, SystemDeps } from "./types.ts";
+import type { CommandOps, LoginItemOps, Platform, ProcessEntry, ProcessOps, ShellOps, SystemDeps } from "./types.ts";
 
 /**
  * Windows, as far as it can go without native calls: processes are listed with PowerShell's CIM
@@ -18,6 +18,39 @@ const POWERSHELL = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command
 const CIM_MS = 15_000;
 /** omp's README installer for Windows, as its own header gives the standalone-binary form. */
 const PS_INSTALLER = "& ([scriptblock]::Create((irm https://omp.sh/install.ps1))) -Binary";
+/** The key whose values Windows starts at this user's login. */
+const RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+const RUN_VALUE = "omp-webui";
+
+/**
+ * What the `Run` value starts: the launcher with `--background`, its console window minimized (`start /min`), so that it is in
+ * the taskbar and closing it stops the server, as with a double-click.
+ */
+export function runCommand(systemRoot: string, program: string): string {
+	if (program.includes('"')) throw new Error(`${program} cannot be named in a Run value`);
+	return `"${windowsPath.join(systemRoot, "System32", "cmd.exe")}" /d /c start "" /min "${program}" --background`;
+}
+
+/** The `Run` value, read and written with the system's own `reg.exe`. */
+function runKey(deps: SystemDeps): LoginItemOps {
+	const root = deps.env.SystemRoot || "C:\\Windows";
+	const reg = windowsPath.join(root, "System32", "reg.exe");
+	const query = async () =>
+		(await deps.run([reg, "query", RUN_KEY, "/v", RUN_VALUE], { timeoutMs: 10_000 })).code === 0;
+	return {
+		read: query,
+		async write(_home, program) {
+			const argv =
+				program === null
+					? [reg, "delete", RUN_KEY, "/v", RUN_VALUE, "/f"]
+					: [reg, "add", RUN_KEY, "/v", RUN_VALUE, "/t", "REG_SZ", "/d", runCommand(root, program), "/f"];
+			const r = await deps.run(argv, { timeoutMs: 10_000 });
+			// Deleting a value that is not there fails, and leaves what was asked for.
+			if (r.code !== 0 && (program !== null || (await query())))
+				throw new Error(r.stderr.trim() || `reg.exe exit ${r.code}`);
+		},
+	};
+}
 
 /** One process as CIM describes it. */
 interface CimProcess extends ProcessEntry {
@@ -269,5 +302,6 @@ export function createWin32(deps: SystemDeps): Platform {
 		socketTemp: deps.env.TEMP ?? deps.env.TMP ?? ".",
 		skipPaths: (home) => [join(home, "AppData")],
 		describe: async () => `win32 ${release()} (${arch()})`,
+		loginItem: runKey(deps),
 	};
 }

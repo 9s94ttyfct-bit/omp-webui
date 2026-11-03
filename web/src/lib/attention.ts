@@ -15,6 +15,7 @@ import {
 	shellRequest,
 	shellStatus,
 } from "./shell-notify.ts";
+import { socket } from "./ws.ts";
 
 /**
  * Telling someone who is not looking at a conversation that it needs them: the tab's title carries a count of the conversations
@@ -233,6 +234,44 @@ function tellShellWhatIsShown(): () => void {
 	});
 }
 
+/**
+ * Tell the server what this page shows while it is in use (its tab shown and its window focused; `seen` in
+ * `shared/protocol.ts`): a run of that conversation that finished is seen, and the macOS app's menu bar ✓ for it goes, whatever
+ * window, pop-out or tab of this computer shows it. Said when that changes and whenever the socket connects again. A page that
+ * is not on this computer does not say it (the server would not listen).
+ */
+function tellServerWhatIsSeen(): () => void {
+	let said = "";
+	const say = (force: boolean) => {
+		if (!socket.connected || useApp.getState().meta?.remote === true) return;
+		const { view, lives } = useApp.getState();
+		const shown = windowInUse() ? shownConversation(view, lives) : null;
+		const message = { t: "seen", liveId: shown?.liveId ?? null, file: shown?.file ?? null } as const;
+		const key = JSON.stringify(message);
+		if (!force && key === said) return;
+		said = key;
+		socket.post(message);
+	};
+	const changed = () => say(false);
+	const forget = socket.onStatus((connected) => connected && say(true));
+	const unsubscribe = useApp.subscribe((state, prev) => {
+		// A view that names a process shows it whatever the processes do; one that names only a file follows them.
+		const follows = state.view.kind === "chat" && state.view.liveId === null && state.lives !== prev.lives;
+		if (state.view !== prev.view || follows) changed();
+	});
+	document.addEventListener("visibilitychange", changed);
+	window.addEventListener("focus", changed);
+	window.addEventListener("blur", changed);
+	say(true);
+	return () => {
+		forget();
+		unsubscribe();
+		document.removeEventListener("visibilitychange", changed);
+		window.removeEventListener("focus", changed);
+		window.removeEventListener("blur", changed);
+	};
+}
+
 // ------------------------------------------------------------------ the page
 
 /**
@@ -251,6 +290,7 @@ export function startAttention(): () => void {
 	const stopShell = inShell() ? followShell() : inRemoteShell() ? followRemoteShell() : undefined;
 	// The shell shows the notifications; what it cannot know is which conversation this page shows.
 	const stopTelling = stopShell ? tellShellWhatIsShown() : undefined;
+	const stopSeen = tellServerWhatIsSeen();
 	// Web Push, for a browser that turned it on: where this page stands (on screen or not), and a click on a notification.
 	let closed = false;
 	if (pushOn()) void import("./push-presence.ts").then((m) => closed || m.startPushPage());
@@ -277,6 +317,7 @@ export function startAttention(): () => void {
 		stopRepo();
 		stopShell?.();
 		stopTelling?.();
+		stopSeen();
 		closed = true;
 		document.removeEventListener("visibilitychange", onVisibility);
 		document.title = base;

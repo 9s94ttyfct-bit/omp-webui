@@ -121,7 +121,7 @@ const settle = async () => {
 	for (let turn = 0; turn < 10; turn++) await new Promise<void>((resolve) => setImmediate(resolve));
 };
 
-/** A state message as the server says it: the counts given, the menu bar icon wanted, no question open, no run finished. */
+/** A state message as the server says it: the counts given, the menu bar icon wanted, no question open, no finished run unseen. */
 const st = (working: number, asking: number, paused: number, over: Partial<ShellState> = {}) => ({
 	t: "state" as const,
 	working,
@@ -129,7 +129,7 @@ const st = (working: number, asking: number, paused: number, over: Partial<Shell
 	paused,
 	menuIcon: true,
 	questions: 0,
-	finished: 0,
+	unseen: [] as string[],
 	...over,
 });
 
@@ -210,31 +210,31 @@ test("how many unattended questions are open is told when one is filed, answered
 	await later.cancel();
 });
 
-test("a run that ended is counted, with notifications on or off and whether or not an app reads, and told even when no other count changes (#705)", async () => {
+test("a run that ended is unseen, with notifications on or off and whether or not an app reads, and told even when no other count changes (#705)", async () => {
 	const w = world();
 	w.prefs.notify = false;
-	// Nobody reads yet: the run is counted all the same.
+	// Nobody reads yet: the run is unseen all the same.
 	w.announce("a", { streaming: true });
 	w.announce("a", { streaming: false });
 	const app = reader(w);
-	expect(await app.message()).toEqual(st(0, 0, 0, { finished: 1 }));
+	expect(await app.message()).toEqual(st(0, 0, 0, { unseen: ["a:1"] }));
 
 	// A conversation that asks and is answered, and one that is paused or ended, are no run that finished.
 	w.announce("b", { streaming: true });
-	expect(await app.message()).toEqual(st(1, 0, 0, { finished: 1 }));
+	expect(await app.message()).toEqual(st(1, 0, 0, { unseen: ["a:1"] }));
 	w.announce("b", { asking: true });
-	expect(await app.message()).toEqual(st(0, 1, 0, { finished: 1 }));
+	expect(await app.message()).toEqual(st(0, 1, 0, { unseen: ["a:1"] }));
 	w.announce("b", { asking: false });
-	expect(await app.message()).toEqual(st(1, 0, 0, { finished: 1 }));
+	expect(await app.message()).toEqual(st(1, 0, 0, { unseen: ["a:1"] }));
 	w.announce("b", { pausedAt: 1 });
-	expect(await app.message()).toEqual(st(0, 0, 1, { finished: 1 }));
+	expect(await app.message()).toEqual(st(0, 0, 1, { unseen: ["a:1"] }));
 	// The turn of a paused conversation ends: working, waiting and paused are as they were, and the run is told still.
 	w.announce("b", { streaming: false });
-	expect(await app.message()).toEqual(st(0, 0, 1, { finished: 2 }));
-	// The process is gone: no run ended.
+	expect(await app.message()).toEqual(st(0, 0, 1, { unseen: ["a:1", "b:2"] }));
+	// The process is gone: no run ended, and its run that did is still unseen.
 	w.lives.delete("b");
 	w.events.note(info("b", { exited: true }));
-	expect(await app.message()).toEqual(st(0, 0, 0, { finished: 2 }));
+	expect(await app.message()).toEqual(st(0, 0, 0, { unseen: ["a:1", "b:2"] }));
 	await settle();
 	expect(app.seen.some((m) => m !== "ping" && m.t === "attention")).toBe(false);
 	await app.cancel();
@@ -264,7 +264,7 @@ test("a conversation that starts to ask, and one whose run ends, are told with t
 	w.announce("a", { asking: false });
 	expect(await app.message()).toEqual(st(1, 0, 0));
 	w.announce("a", { streaming: false });
-	expect(await app.message()).toEqual(st(0, 0, 0, { finished: 1 }));
+	expect(await app.message()).toEqual(st(0, 0, 0, { unseen: ["a:1"] }));
 	expect(await app.message()).toMatchObject({
 		t: "attention",
 		kind: "finished",
@@ -424,7 +424,7 @@ test("nothing is built or kept for an app that is not reading, and nothing is re
 	await settle();
 	expect(w.events.listeners).toBe(0);
 	const app = reader(w);
-	expect(await app.message()).toEqual(st(0, 0, 0, { finished: 1 }));
+	expect(await app.message()).toEqual(st(0, 0, 0, { unseen: ["a:1"] }));
 	await settle();
 	expect(app.seen).toHaveLength(1);
 	await app.cancel();
@@ -629,4 +629,45 @@ test("remote readers end when remote access changes, and not this computer's; th
 	await gone.message();
 	await expect(gone.next()).rejects.toThrow("the stream ended");
 	expect(w.events.listeners).toBe(0);
+});
+
+test("a finished run is seen when a page here in use shows its conversation: then, or already as it ends", async () => {
+	const w = world();
+	w.prefs.notify = false;
+	const app = reader(w);
+	expect(await app.message()).toEqual(st(0, 0, 0));
+	const window = {};
+	const popout = {};
+	for (const id of ["a", "b", "c"]) {
+		w.announce(id, { streaming: true });
+		await app.message();
+	}
+	w.announce("a", { streaming: false });
+	await app.message();
+	w.announce("b", { streaming: false });
+	expect(await app.message()).toEqual(st(1, 0, 0, { unseen: ["a:1", "b:2"] }));
+
+	// A page shows b by its file only (a saved conversation's view): b is seen.
+	w.events.look(window, { liveId: null, file: "/sessions/b.jsonl" });
+	expect(await app.message()).toEqual(st(1, 0, 0, { unseen: ["a:1"] }));
+	// A pop-out shows c while its run ends: it is seen as it ends.
+	w.events.look(popout, { liveId: "c", file: null });
+	w.announce("c", { streaming: false });
+	expect(await app.message()).toEqual(st(0, 0, 0, { unseen: ["a:1"] }));
+	// The pop-out is put away (not in use), and c runs and ends again: unseen now.
+	w.events.look(popout, null);
+	w.announce("c", { streaming: true });
+	await app.message();
+	w.announce("c", { streaming: false });
+	expect(await app.message()).toEqual(st(0, 0, 0, { unseen: ["a:1", "c:4"] }));
+	// a ends again: a new token, last.
+	w.announce("a", { streaming: true });
+	await app.message();
+	w.announce("a", { streaming: false });
+	expect(await app.message()).toEqual(st(0, 0, 0, { unseen: ["c:4", "a:5"] }));
+	// A look at what has nothing unseen says nothing new.
+	w.events.look(window, { liveId: "b", file: null });
+	w.events.look(window, { liveId: "a", file: "/sessions/a.jsonl" });
+	expect(await app.message()).toEqual(st(0, 0, 0, { unseen: ["c:4"] }));
+	await app.cancel();
 });

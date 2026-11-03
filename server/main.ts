@@ -70,6 +70,7 @@ import {
 	stopStaleServer,
 } from "./instance.ts";
 import { FINISH_WAIT_MS, heldByImport, type Live, LivePool, type Subscriber, stopKindOf } from "./live.ts";
+import { LOGIN_START_PATH, LoginStart } from "./login-start.ts";
 import { boundHosts, listenOnLoopback, loopbackRequiredByApp, needsLoopbackListener } from "./loopback-listener.ts";
 import type { MemoryService } from "./memory/routes.ts";
 import type { MigrateService } from "./migrate/service.ts";
@@ -714,6 +715,9 @@ sleepDetector.start();
 setInterval(() => {
 	keepAwake.setCount(workingIds(pool.list()).length > 0);
 }, 1000).unref();
+
+/** Settings › Start at login, for the launcher (see `LoginStart`). */
+const loginStart = new LoginStart();
 
 /** What the macOS app is told on its own: its notifications and its menu bar icon (see `ShellEvents`). */
 const shellEvents = new ShellEvents({
@@ -1459,6 +1463,9 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			if (req.method !== "POST") return fail("POST or DELETE required", 405);
 			ptys.expectDetach();
 			return json({ held: true });
+		case LOGIN_START_PATH:
+			// Settings › Start at login (local-only), for the launcher on Windows and Linux (see `LoginStart`).
+			return loginStart.handle(req);
 		case "/api/shell/quota": {
 			// The menu bar icon's quota lines (local-only: `/api/shell`), in the saved language, else the app's (`lang`). omp is
 			// asked through the same cache as the page's quota pills: an icon opened often starts no more `omp usage` than they do.
@@ -2645,6 +2652,14 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 				: undefined;
 			return pushHub?.presence(ws.data, msg.device, msg.visible, shown);
 		}
+		case "seen": {
+			// Only a page on this computer: the ✓ is for the person at it.
+			if (!ws.data.local || ws.data.closed) return;
+			return shellEvents.look(ws.data, {
+				liveId: typeof msg.liveId === "string" ? msg.liveId : null,
+				file: typeof msg.file === "string" ? msg.file : null,
+			});
+		}
 	}
 }
 
@@ -3001,6 +3016,7 @@ const listen = (hostname: string, port: number) =>
 				folder.drop(ws.data);
 				host.unwatch(ws.data);
 				pushHub?.dropOwner(ws.data);
+				shellEvents.look(ws.data, null);
 				for (const id of ws.data.attached) {
 					const live = pool.get(id);
 					if (live) {

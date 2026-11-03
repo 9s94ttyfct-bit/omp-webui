@@ -164,8 +164,8 @@ test.skipIf(!mac)(
 			clamped,
 			restart,
 		] = report.pure.parsed;
-		// A server from before `paused`, `menuIcon`, `questions` and `finished`: nothing paused, the icon wanted (the default), no
-		// question open and no run finished.
+		// A server from before `paused`, `menuIcon`, `questions` and `unseen`: nothing paused, the icon wanted (the default), no
+		// question open and no run unseen.
 		expect(full).toEqual({
 			t: "state",
 			working: 2,
@@ -173,7 +173,7 @@ test.skipIf(!mac)(
 			paused: 0,
 			menuIcon: true,
 			questions: 0,
-			finished: 0,
+			unseen: [],
 			epoch: "E1",
 		});
 		expect(newer).toEqual({
@@ -183,10 +183,11 @@ test.skipIf(!mac)(
 			paused: 3,
 			menuIcon: false,
 			questions: 0,
-			finished: 0,
+			unseen: [],
 			epoch: "E1",
 		});
-		// The open questions and the finished runs (#705), as the server counts them; counts that cannot be are none.
+		// The open questions and the finished runs nobody here has seen (#705), as the server names them; counts that cannot be
+		// are none, and what is not a name in the list is left out.
 		expect(counted).toEqual({
 			t: "state",
 			working: 1,
@@ -194,7 +195,7 @@ test.skipIf(!mac)(
 			paused: 0,
 			menuIcon: true,
 			questions: 3,
-			finished: 7,
+			unseen: ["L1:3", "L2:7"],
 			epoch: "E1",
 		});
 		expect(clamped).toEqual({
@@ -204,7 +205,7 @@ test.skipIf(!mac)(
 			paused: 0,
 			menuIcon: true,
 			questions: 0,
-			finished: 0,
+			unseen: ["L1:3"],
 			epoch: "E1",
 		});
 		// Counts that cannot be: no count. A state that does not say whose run it is is not one.
@@ -259,9 +260,9 @@ test.skipIf(!mac)(
 		const { heard, marks, silentAfterStop, stoppedAt } = report.stream;
 		// The first response: the state and the notice, the rest of its lines passed over; then it ended, and the next one began.
 		expect(heard.slice(0, 3)).toEqual([
-			{ t: "state", working: 1, asking: 0, paused: 0, menuIcon: true, questions: 0, finished: 0, epoch: "E1" },
+			{ t: "state", working: 1, asking: 0, paused: 0, menuIcon: true, questions: 0, unseen: [], epoch: "E1" },
 			{ t: "attention", seq: 3, id: "L1", title: "Fix the build", body: "Finished", liveId: "L1", file: "/s/a.jsonl" },
-			{ t: "state", working: 0, asking: 1, paused: 0, menuIcon: true, questions: 0, finished: 0, epoch: "E1" },
+			{ t: "state", working: 0, asking: 1, paused: 0, menuIcon: true, questions: 0, unseen: [], epoch: "E1" },
 		]);
 		expect(marks.afterA).toBe(3);
 		// The same address again changed nothing; another address is followed, and the response of the first is let go.
@@ -273,7 +274,7 @@ test.skipIf(!mac)(
 			paused: 0,
 			menuIcon: true,
 			questions: 0,
-			finished: 0,
+			unseen: [],
 			epoch: "E2",
 		});
 		expect(marks.afterB).toBe(4);

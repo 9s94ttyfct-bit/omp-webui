@@ -24,7 +24,7 @@ func plain(_ message: ShellMessage) -> [String: Any] {
 	case .state(let state, let epoch):
 		return [
 			"t": "state", "working": state.working, "asking": state.asking, "paused": state.paused, "menuIcon": state.menuIcon,
-			"questions": state.questions, "finished": state.finished, "epoch": epoch,
+			"questions": state.questions, "unseen": state.unseen, "epoch": epoch,
 		]
 	case .attention(let banner, let seq):
 		return [
@@ -59,8 +59,8 @@ func pure() -> [String: Any] {
 		"[1,2]",
 		"",
 		#"{"t":"state","working":0,"asking":0,"paused":3,"menuIcon":false,"epoch":"E1"}"#,
-		#"{"t":"state","working":1,"asking":2,"paused":0,"menuIcon":true,"questions":3,"finished":7,"epoch":"E1"}"#,
-		#"{"t":"state","working":0,"asking":0,"questions":-2,"finished":"many","epoch":"E1"}"#,
+		#"{"t":"state","working":1,"asking":2,"paused":0,"menuIcon":true,"questions":3,"unseen":["L1:3","L2:7"],"epoch":"E1"}"#,
+		#"{"t":"state","working":0,"asking":0,"questions":-2,"unseen":["L1:3",4,"",null],"epoch":"E1"}"#,
 		#"{"t":"browserRestart"}"#,
 	]
 	var splitter = LineSplitter()

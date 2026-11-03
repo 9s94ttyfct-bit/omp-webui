@@ -127,7 +127,7 @@ test("this computer's page with the token is given the state as newline-delimite
 		paused: 0,
 		menuIcon: true,
 		questions: 0,
-		finished: 0,
+		unseen: [],
 	});
 	app.close();
 });
@@ -162,9 +162,14 @@ test("a turn that stops for an approval and ends tells the app, once each, in th
 	const deny = (approval.options as string[]).find((o) => /^Deny/i.test(o));
 	ws.send(JSON.stringify({ t: "ui_response", liveId: live.liveId, response: { id: approval.id, value: deny } }));
 	await frames.next((f) => f.type === "agent_end");
-	await app.message(isState(0, 0));
+	const ended = await app.message(isState(0, 0));
 	const finished = await app.attention("finished", live.liveId);
 	expect(finished).toMatchObject({ kind: "finished", body: "Finished", liveId: live.liveId });
+	// Nobody here looked at it: the run is unseen until a page on this computer in use shows the conversation.
+	const ofThis = (m: ShellMessage) => m.t === "state" && m.unseen.some((token) => token.startsWith(`${live.liveId}:`));
+	expect(ofThis(ended)).toBe(true);
+	ws.send(JSON.stringify({ t: "seen", liveId: live.liveId, file: null }));
+	expect(ofThis(await app.message((m) => m.t === "state"))).toBe(false);
 	await request(ws, { t: "close", liveId: live.liveId });
 	ws.close();
 	app.close();

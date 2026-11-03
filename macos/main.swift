@@ -184,7 +184,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 				questions: { [unowned self] in self.showQuestions() }))
 		// Listening from the start: the announcement of a logout comes before any quit.
 		_ = sessionEnd
-		showWindow()
+		// Started by the system at login (Settings › Start at login, macos/loginitem.swift): no window, as Run in Background leaves
+		// the app; the menu bar icon, a notification or opening the app again brings it.
+		if launchedAtLogin() { background.enter {} } else { showWindow() }
 		startServer()
 	}
 
@@ -292,12 +294,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 	func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
 		showWindow()
 		return false
-	}
-
-	/// The app is the active one, which is its window coming to the front: the person looks, and the runs that finished until now
-	/// are seen (the icon's ✓ goes).
-	func applicationDidBecomeActive(_ notification: Notification) {
-		background?.status.look()
 	}
 
 	/// The window in front on the Questions page, made if the app has none (the menu bar icon's line "N questions waiting").
@@ -664,6 +660,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 		config.userContentController.addScriptMessageHandler(
 			notifications, contentWorld: .page, name: NotificationBridge.handlerName)
 		config.userContentController.addScriptMessageHandler(drops, contentWorld: .page, name: DropPaths.handlerName)
+		config.userContentController.addScriptMessageHandler(
+			LoginBridge(origin: { [unowned self] in self.origin }), contentWorld: .page, name: LoginBridge.handlerName)
 		// The Browser tab lays CEF's view of its page over itself in this window only, while CEF runs; without the handler the
 		// tab draws the screencast (as in pop-outs and windows onto other Macs, whose configurations never have it).
 		if CEFHost.running() { config.userContentController.add(browserBridge, name: BrowserBridge.handlerName) }

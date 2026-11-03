@@ -131,7 +131,7 @@ beforeEach(() => {
 	};
 	globals.document = page;
 	globals.Notification = FakeNotification;
-	globals.window = { focus: () => {} };
+	globals.window = { focus: () => {}, addEventListener: () => {}, removeEventListener: () => {} };
 	FakeNotification.permission = "granted";
 	FakeNotification.asked = 0;
 	FakeNotification.answer = "granted";

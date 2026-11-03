@@ -1,10 +1,52 @@
+import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { readdir, readFile, readlink } from "node:fs/promises";
 import { arch, release, totalmem } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { parseMeminfo } from "../host-parse.ts";
 import { capabilitiesFor } from "./capabilities.ts";
 import { posixCommands, posixHostProcesses, posixProcesses, posixShell } from "./posix.ts";
-import type { LockOps, Platform, ProcessOps, SystemDeps } from "./types.ts";
+import type { LockOps, LoginItemOps, Platform, ProcessOps, SystemDeps } from "./types.ts";
+
+/**
+ * The XDG autostart entry that starts the launcher at login (Settings › Start at login): `Exec` runs it with `--background`,
+ * with no terminal. A path the entry cannot quote plainly (a quote, a backtick, `$`, `\`, `%`, a line break: what the
+ * package's install.sh refuses too) is refused.
+ */
+export function autostartEntry(program: string): string {
+	if (/["`$\\%\n\r]/.test(program)) throw new Error(`${program} cannot be named in an autostart entry`);
+	return [
+		"[Desktop Entry]",
+		"Type=Application",
+		"Name=omp-webui",
+		"Comment=Starts omp-webui in the background",
+		`Exec="${program}" --background`,
+		"Terminal=false",
+		"NoDisplay=true",
+		"X-GNOME-Autostart-enabled=true",
+		"",
+	].join("\n");
+}
+
+/** `~/.config/autostart/omp-webui.desktop` (`XDG_CONFIG_HOME`'s): on while it is there and not turned off in it. */
+function autostart(deps: SystemDeps): LoginItemOps {
+	const file = (home: string) =>
+		join(deps.env.XDG_CONFIG_HOME || join(home, ".config"), "autostart", "omp-webui.desktop");
+	return {
+		async read(home) {
+			const text = deps.readFile(file(home));
+			// A desktop's own switch for the entry writes one of these into it.
+			return text !== null && !/^(Hidden\s*=\s*true|X-GNOME-Autostart-enabled\s*=\s*false)\s*$/im.test(text);
+		},
+		async write(home, program) {
+			const path = file(home);
+			if (program === null) return rmSync(path, { force: true });
+			const text = autostartEntry(program);
+			mkdirSync(dirname(path), { recursive: true });
+			writeFileSync(`${path}.tmp`, text);
+			renameSync(`${path}.tmp`, path);
+		},
+	};
+}
 
 /**
  * Linux: when the process started in the kernel's ticks since boot (`/proc/<pid>/stat`, field 22) and which boot, and
@@ -116,5 +158,6 @@ export function createLinux(deps: SystemDeps): Platform {
 		socketTemp: "/tmp",
 		skipPaths: () => [],
 		describe: async () => `linux ${release()} (${arch()})`,
+		loginItem: autostart(deps),
 	};
 }
