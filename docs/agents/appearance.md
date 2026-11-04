@@ -44,7 +44,7 @@ Synced preferences are stored on the server in `ui-prefs.json` in the data folde
 
 | Route | Methods | Access | Purpose |
 |---|---|---|---|
-| `/api/prefs` | GET, POST | token (POST changing `ompw.keepAwake`: this computer only; changing `ompw.browser`: this computer or a verified Access sign-in) | GET returns the snapshot `{ id, rev, values }` of every synced preference (null where unset). POST `{ changes: { <key>: string \| null } }` sets or forgets keys; the whole request is refused (400) on an unknown key, a non-string value, a value over 16 KiB or a value the app never writes. A change is broadcast to every open page. |
+| `/api/prefs` | GET, POST | token (POST changing `ompw.keepAwake`: this computer only; changing `ompw.browser` or `ompw.browserAutoUpdate`: this computer or a verified Access sign-in) | GET returns the snapshot `{ id, rev, values }` of every synced preference (null where unset). POST `{ changes: { <key>: string \| null } }` sets or forgets keys; the whole request is refused (400) on an unknown key, a non-string value, a value over 16 KiB or a value the app never writes. A change is broadcast to every open page. |
 
 ## Limits and caveats
 

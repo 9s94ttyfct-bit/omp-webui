@@ -52,7 +52,7 @@ None stored by the app for these cards. Environment variables the server reads:
 | `OMP_WEBUI_AUTH` | on | `off` disables the token (not recommended). |
 | `OMP_BIN` | `omp` | The omp executable. |
 | `PI_CODING_AGENT_DIR` | `~/.omp/agent` | omp's agent directory (sessions are read from its `sessions/`). |
-| `OMP_WEBUI_UPDATE_CHECK` | on | `off`: no automatic look-ups for newer omp or app releases. |
+| `OMP_WEBUI_UPDATE_CHECK` | on | `off`: no automatic look-ups for newer omp or app releases, or for a newer built-in browser. |
 | `OMP_WEBUI_UPDATE_INTERVAL_MS` | 6 hours | How often omp releases are looked up. |
 | `OMP_WEBUI_AUTO_TITLE` | on | `off`: never ask omp to title a conversation. |
 | `OMP_WEBUI_FAMILY_DEADLINE_MS` | `60000` | Time limit to read one conversation for the page before answering 503. |

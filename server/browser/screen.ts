@@ -266,6 +266,8 @@ export class ScreenHub {
 	private readonly bySession = new Map<string, PageView>();
 	private readonly clients = new Set<ScreenClient>();
 	private readonly wired = new WeakSet<Engine>();
+	/** When a Browser tab last stopped showing one of the pages (ms since the epoch; 0: never). */
+	lastUse = 0;
 
 	constructor(
 		readonly host: EngineHost,
@@ -302,6 +304,13 @@ export class ScreenHub {
 	/** @internal */
 	forget(client: ScreenClient): void {
 		this.clients.delete(client);
+	}
+
+	/** Browser tabs that show one of the pages now. */
+	get watching(): number {
+		let n = 0;
+		for (const c of this.clients) if (c.targetId !== null) n++;
+		return n;
 	}
 
 	/** @internal The page's information for its conversation's tabs. */
@@ -531,6 +540,7 @@ export class ScreenClient {
 		this.targetId = null;
 		if (view) {
 			view.watchers.delete(this);
+			this.hub.lastUse = Date.now();
 			void view.cast();
 		}
 	}

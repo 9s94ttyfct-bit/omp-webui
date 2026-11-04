@@ -58,7 +58,7 @@ Other stored values:
 | `omp.json` in the data folder | `autoUpdate` | `true`, `false` | `false` | **Update omp automatically**. Set through `/api/omp/settings`. |
 | `omp.json` in the data folder | `onboarding` | `true`, `false` | `false` | The first-time setup is pending (set after an install, or by **Run the first-time setup again**). |
 
-Environment: `OMP_WEBUI_UPDATE_CHECK=off` stops the automatic look-ups for both omp-webui and omp (Check now still works); `OMP_WEBUI_UPDATE_INTERVAL_MS` changes how often omp is looked up.
+Environment: `OMP_WEBUI_UPDATE_CHECK=off` stops the automatic look-ups for both omp-webui and omp (Check now still works), and the built-in browser's automatic updates (Settings › Browser); `OMP_WEBUI_UPDATE_INTERVAL_MS` changes how often omp is looked up.
 
 ## API routes
 

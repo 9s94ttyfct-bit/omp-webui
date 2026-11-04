@@ -588,6 +588,7 @@
     "tests/unit/tool-open.test.ts": 4,
     "tests/unit/user-message.test.ts": 4,
     "tests/unit/ansi.test.ts": 3,
-    "tests/unit/child-env.test.ts": 3
+    "tests/unit/child-env.test.ts": 3,
+    "tests/unit/browser-autoupdate.test.ts": 600
   }
 }

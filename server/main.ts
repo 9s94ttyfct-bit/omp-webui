@@ -794,7 +794,9 @@ function applyPrefs(changes: unknown): PrefsSnapshot {
 			if (snapshot.values[PREF.browser] === "off")
 				browser.turnOff().catch((e: unknown) => console.error(`omp-webui: turning the browser off: ${String(e)}`));
 			void pool.syncBrowser();
+			browser.autoUpdateChanged();
 		}
+		if (before.values[PREF.browserAutoUpdate] !== snapshot.values[PREF.browserAutoUpdate]) browser.autoUpdateChanged();
 	}
 	return snapshot;
 }
@@ -1641,14 +1643,15 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				// while they work. Its key is refused with the rest, not silently dropped, so the page can say why.
 				if (!onThisComputer.has(req) && isRecord(body?.changes) && Object.hasOwn(body.changes, PREF.keepAwake))
 					return fail("Keep the Mac awake is changed on the computer omp-webui runs on", 403);
-				// Whether conversations have a browser at all is the person's who manages the browser (`canManageBrowser`).
+				// Whether conversations have a browser at all, and whether it updates itself, are the person's who manages the
+				// browser (`canManageBrowser`).
 				if (
 					isRecord(body?.changes) &&
-					Object.hasOwn(body.changes, PREF.browser) &&
+					(Object.hasOwn(body.changes, PREF.browser) || Object.hasOwn(body.changes, PREF.browserAutoUpdate)) &&
 					!canManageBrowser(remoteOf.get(req) ?? null, onThisComputer.has(req))
 				)
 					return fail(
-						"The browser is turned on and off from this computer, or from a page signed in with your account",
+						"The browser is turned on and off, and its automatic updates, from this computer, or from a page signed in with your account",
 						403,
 					);
 				try {
@@ -3097,6 +3100,10 @@ if (
 ) {
 	void appUpdater().catch((e) => console.warn(`omp-webui: updates: ${(e as Error).message}`));
 }
+// The built-in browser's automatic updates (Settings › Browser): a look a minute after start and every 24 hours, while the
+// person wants them. They follow `OMP_WEBUI_UPDATE_CHECK=off` too, as every look of the server's own does.
+if (process.env.OMP_WEBUI_UPDATE_CHECK !== "off")
+	browser.startAutoUpdate(() => !browserOff() && uiPrefs.snapshot().values[PREF.browserAutoUpdate] !== "off");
 // Remote access turned off, or its settings changed (another team, application, hostname, allow-list): the remote pages
 // that came in under the old ones are closed, and come back through the Access check again; their conversations go on as
 // they were. A switch that does not decide who comes in (confirm risky commands, file transfer, shells) is read where it

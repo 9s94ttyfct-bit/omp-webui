@@ -72,6 +72,7 @@ const SENSITIVE = [
 	"mode.json:offline.tools",
 	"ompw.appUpdateCheck",
 	"ompw.browser",
+	"ompw.browserAutoUpdate",
 	"ompw.keepAwake",
 	"ompw.notify",
 	"ompw.unattended",

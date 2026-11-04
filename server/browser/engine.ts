@@ -197,6 +197,11 @@ export class EngineHost {
 		return this.engine;
 	}
 
+	/** Whether an engine runs or is starting (an update must not change what it runs from under it). */
+	get active(): boolean {
+		return this.engine !== null || this.starting !== null;
+	}
+
 	/** Ends the engine (Clear, an update, the server stopping); `onEnd` listeners hear `why`. */
 	async stop(why: string): Promise<void> {
 		const engine = this.engine ?? (this.starting ? await this.starting.catch(() => null) : null);

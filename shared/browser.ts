@@ -8,6 +8,20 @@ export type EngineKind = "cft" | "cef";
 
 export type BrowserJobKind = "install" | "update" | "clear" | "uninstall";
 
+/**
+ * What the last automatic update check came to (Settings › Browser, `ompw.browserAutoUpdate`): `upToDate`, nothing newer;
+ * `waiting`, `version` is downloaded and checked, and is switched to once no conversation uses the browser (Chrome for
+ * Testing); `updated`, switched to `version` (CEF: the one the app loads from its next start); `failed`, `error` says why,
+ * and the next check tries again.
+ */
+export interface BrowserAutoCheck {
+	/** When it ended, in milliseconds since the epoch. */
+	at: number;
+	result: "upToDate" | "waiting" | "updated" | "failed";
+	version: string | null;
+	error: string | null;
+}
+
 export interface BrowserState {
 	/** Grows with every change: a page keeps the newest it was told. */
 	rev: number;
@@ -17,10 +31,12 @@ export interface BrowserState {
 	latest: string | null;
 	/** What runs now; `received`/`total` in bytes (total 0 while unknown, and for a clear or an uninstall). */
 	job: { kind: BrowserJobKind; received: number; total: number } | null;
-	/** Why the last job or check failed, in words; null when it did not. */
+	/** Why the last job or check failed, in words; null when it did not. An automatic update's failure is `autoCheck`'s. */
 	error: string | null;
 	/** CEF only: the app has to restart for the installed version, a clear or an uninstall to take effect. */
 	restartNeeded: boolean;
+	/** The last automatic update check since the server started; null before one. */
+	autoCheck: BrowserAutoCheck | null;
 	/** Whether the page told may install, update, clear and uninstall (this computer, or a verified Access sign-in). */
 	canManage: boolean;
 }

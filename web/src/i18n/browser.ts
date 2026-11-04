@@ -93,6 +93,15 @@ export const en = {
 	enabledHint:
 		"Off: no Browser tab, and the agents of your conversations have no browser tool at all, until you turn it on again.",
 	offNote: "The built-in browser is off. Agents have no browser tool.",
+	autoUpdateTitle: "Update the built-in browser automatically",
+	autoUpdateHint:
+		"Looks for a newer version when the server starts and once a day, and downloads it in the background. Chrome for Testing switches to it when no conversation is using the browser; the Mac app uses it from its next start.",
+	autoUpToDate: "Up to date, checked {time}.",
+	autoWaiting:
+		"Version {version} is downloaded (checked {time}); it is used once no conversation is using the browser.",
+	autoUpdated: "Updated to {version}, checked {time}.",
+	autoUpdatedCef: "Updated to {version} (checked {time}); the app uses it from its next start.",
+	autoFailed: "Last check failed ({time}): {error}. It is tried again at the next check.",
 	uninstall: "Uninstall",
 	uninstallHint:
 		"Removes the browser and everything it kept: logins, cookies, storage and the cache. You can install it again.",

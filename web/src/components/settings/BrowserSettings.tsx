@@ -1,3 +1,4 @@
+import type { BrowserAutoCheck } from "@shared/browser.ts";
 import { BROWSER_SIZE_BOUNDS, DESKTOP_SIZE, formatBrowserSize, parseBrowserSize } from "@shared/browser-protocol.ts";
 import { PREF } from "@shared/prefs.ts";
 import { Globe, TriangleAlert } from "lucide-react";
@@ -6,6 +7,7 @@ import { en } from "../../i18n/browser.ts";
 import { registerStrings, useT } from "../../i18n/index.ts";
 import { formatProgress, progressPercent } from "../../lib/app-update.ts";
 import { storedBrowserSize } from "../../lib/browser-size.ts";
+import { fmtTime } from "../../lib/format.ts";
 import { reloadPanes } from "../../lib/panel-panes.ts";
 import { onPrefsChanged, setPref } from "../../lib/prefs.ts";
 import { useApp } from "../../store/app.ts";
@@ -17,7 +19,8 @@ registerStrings("browser", en);
 
 /**
  * Settings › Browser (docs/agents/browser.md): whether the built-in browser is used at all (`ompw.browser`: off, no Browser
- * tab and no browser tool for the agents), which engine this server drives (CEF inside the Mac app, Chrome for Testing when
+ * tab and no browser tool for the agents), whether it updates itself (`ompw.browserAutoUpdate`, on by default, with what
+ * the last automatic check came to), which engine this server drives (CEF inside the Mac app, Chrome for Testing when
  * the server runs alone), the version installed and the newest one, Install / Update with progress and Cancel, and Clear
  * browser data and Uninstall, which ask first. The server decides who may manage it (`canManage`: this computer, or a page
  * signed in through Access); a page that may not sees the versions and no buttons. Under it, the size new pages are laid out at.
@@ -29,12 +32,17 @@ export function BrowserSettings() {
 	const [busy, setBusy] = useState<"check" | "install" | "clear" | "uninstall" | null>(null);
 	const [asking, setAsking] = useState<"clear" | "uninstall" | null>(null);
 	const [on, setOn] = useState(() => localStorage.getItem(PREF.browser) !== "off");
+	const [auto, setAuto] = useState(() => localStorage.getItem(PREF.browserAutoUpdate) !== "off");
 
 	useEffect(() => {
 		browserApi.load().catch(() => {});
 	}, []);
 	useEffect(
-		() => onPrefsChanged((keys) => keys.includes(PREF.browser) && setOn(localStorage.getItem(PREF.browser) !== "off")),
+		() =>
+			onPrefsChanged((keys) => {
+				if (keys.includes(PREF.browser)) setOn(localStorage.getItem(PREF.browser) !== "off");
+				if (keys.includes(PREF.browserAutoUpdate)) setAuto(localStorage.getItem(PREF.browserAutoUpdate) !== "off");
+			}),
 		[],
 	);
 
@@ -81,6 +89,23 @@ export function BrowserSettings() {
 					{t("browser.offNote")}
 				</p>
 			)}
+			<label className="flex cursor-pointer items-start gap-3 text-sm">
+				<input
+					type="checkbox"
+					className="mt-1 accent-[var(--accent)]"
+					data-testid="browser-auto-update"
+					checked={auto}
+					disabled={!state?.canManage}
+					onChange={(e) => {
+						setPref(PREF.browserAutoUpdate, e.target.checked ? null : "off");
+						setAuto(e.target.checked);
+					}}
+				/>
+				<span>
+					{t("browser.autoUpdateTitle")}
+					<span className="block text-xs text-muted">{t("browser.autoUpdateHint")}</span>
+				</span>
+			</label>
 			{state ? (
 				<>
 					<dl className="divide-y divide-border rounded-xl border border-border text-sm">
@@ -112,6 +137,7 @@ export function BrowserSettings() {
 							{t("browser.upToDate")}
 						</p>
 					) : null}
+					{auto && state.autoCheck ? <AutoCheckLine check={state.autoCheck} cef={cef} /> : null}
 					{job ? (
 						<div
 							className="space-y-2 rounded-xl border border-border bg-bg-soft px-3 py-2.5"
@@ -286,6 +312,30 @@ export function BrowserSettings() {
 				</div>
 			</Modal>
 		</section>
+	);
+}
+
+/** What the last automatic update check came to, and when (never an error toast: a failure waits for the next check). */
+function AutoCheckLine({ check, cef }: { check: BrowserAutoCheck; cef: boolean }) {
+	const t = useT();
+	const vars = { time: fmtTime(check.at), version: check.version ?? "", error: check.error ?? "" };
+	const text =
+		check.result === "failed"
+			? t("browser.autoFailed", vars)
+			: check.result === "waiting"
+				? t("browser.autoWaiting", vars)
+				: check.result === "updated"
+					? t(cef ? "browser.autoUpdatedCef" : "browser.autoUpdated", vars)
+					: t("browser.autoUpToDate", vars);
+	return (
+		<p
+			className={cx("text-xs", check.result === "failed" ? "text-warning" : "text-muted")}
+			role="status"
+			data-testid="browser-auto-check"
+			data-result={check.result}
+		>
+			{text}
+		</p>
 	);
 }
 

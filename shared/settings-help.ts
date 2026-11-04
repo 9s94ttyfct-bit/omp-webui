@@ -87,6 +87,8 @@ export const PREF_CLASS: Readonly<Record<PrefKey, SettingClass>> = {
 	[PREF.browserSize]: "normal",
 	// Whether conversations have a browser tool at all; the server refuses it to a page that may not manage the browser.
 	[PREF.browser]: "sensitive",
+	// Whether the browser downloads and switches to new versions by itself; the same gate as the browser's switch.
+	[PREF.browserAutoUpdate]: "sensitive",
 	// What each conversation's guard was under before the header's switch turned it off.
 	[PREF.guardBefore]: "unavailable",
 	[PREF.animations]: "normal",

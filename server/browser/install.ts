@@ -1,9 +1,16 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { BROWSER_NOT_HERE, type BrowserJobKind, type BrowserState, type EngineKind } from "../../shared/browser.ts";
+import {
+	BROWSER_NOT_HERE,
+	type BrowserAutoCheck,
+	type BrowserJobKind,
+	type BrowserState,
+	type EngineKind,
+} from "../../shared/browser.ts";
 import { platform } from "../platform/index.ts";
 import type { RemoteIdentity } from "../remote-auth.ts";
+import { isNewer } from "./autoupdate.ts";
 import { canManageBrowser } from "./gate.ts";
 
 /**
@@ -15,11 +22,12 @@ import { canManageBrowser } from "./gate.ts";
  *   `include/cef_api_versions.h` lists the API version the app was built against (`CEF_API_VERSION`); size and SHA-1 are
  *   the index's. A build without it is remembered and passed over for the next older one.
  * - `cft-profile/`, `cef-profile/`: each engine's own profile (logins, cookies, storage).
- * - `current.json`: what is installed, and a clear of CEF's profile, or the removal of CEF and its profile, the app does
- *   at its next start.
+ * - `current.json`: what is installed, a CfT version an automatic update downloaded and switches to once nobody uses the
+ *   browser (`cftNext`), and a clear of CEF's profile, or the removal of CEF and its profile, the app does at its next start.
  *
  * A download goes to `<version>.download`, is checked, unpacked into `<version>.part` and renamed into place: nothing
- * half-made is ever taken for an install, and what a failed or cancelled job left is removed.
+ * half-made is ever taken for an install, and what a failed or cancelled job left is removed. The automatic update
+ * (`autoupdate.ts`) downloads the same way, with `autoUpdate` and `switchToNext`.
  */
 
 export const CFT_VERSIONS_URL =
@@ -55,6 +63,8 @@ function cftExecutable(platform: CftPlatform): string {
 
 interface Current {
 	cft?: { version: string; platform: CftPlatform };
+	/** CfT: a newer version an automatic update put in `cft/<version>/`, the one used once nobody uses the browser. */
+	cftNext?: { version: string; platform: CftPlatform };
 	cef?: { version: string };
 	/** CEF's profile is deleted by the app before CEF starts again. */
 	clearPending?: boolean;
@@ -90,6 +100,8 @@ export interface BrowserInstallerOptions {
 	downloadBase?: string | null;
 	hooks?: BrowserHooks;
 	idleMs?: number;
+	/** The clock `autoCheck` is told by (tests). */
+	now?: () => number;
 }
 
 class Cancelled extends Error {
@@ -114,6 +126,7 @@ export class BrowserInstaller {
 	private job: BrowserState["job"] = null;
 	private error: string | null = null;
 	private restartNeeded = false;
+	private autoCheck: BrowserAutoCheck | null = null;
 	private abort: AbortController | null = null;
 	private lastProgressAt = 0;
 	private readonly listeners = new Set<() => void>();
@@ -146,6 +159,7 @@ export class BrowserInstaller {
 			job: this.job ? { ...this.job } : null,
 			error: this.error,
 			restartNeeded: this.restartNeeded,
+			autoCheck: this.autoCheck ? { ...this.autoCheck } : null,
 			canManage,
 		};
 	}
@@ -184,13 +198,79 @@ export class BrowserInstaller {
 	}
 
 	/** Installs the newest version, or updates to it. Settles when the job ends (it never throws). */
-	install(): Promise<void> {
-		if (this.job) return Promise.resolve();
+	async install(): Promise<void> {
+		if (this.job) return;
 		const kind: BrowserJobKind = this.current[this.opts.engine] ? "update" : "install";
-		return this.run(kind, async (signal) => {
+		await this.run(kind, async (signal) => {
 			if (this.opts.engine === "cft") await this.installCft(signal);
 			else await this.installCef(signal);
 		});
+	}
+
+	/** CfT: the newer version an automatic update downloaded, switched to once nobody uses the browser; null when none. */
+	get waiting(): string | null {
+		return this.opts.engine === "cft" ? (this.current.cftNext?.version ?? null) : null;
+	}
+
+	/**
+	 * The automatic update (`autoupdate.ts` decides when): looks up the newest version where Update does and, when it is
+	 * newer than the installed one, downloads and checks it as Update does, as an `update` job the card shows (and can
+	 * cancel). CfT's waits beside the installed one (`cftNext`) for `switchToNext`. CEF's is the one the app loads from its
+	 * next start, at once: the running app keeps the old one, and removes it when it starts again; it is not asked to
+	 * restart. What came of it is `autoCheck` (and the answer), never `error`. Null when it did not look: nothing is
+	 * installed, or a job runs.
+	 */
+	async autoUpdate(): Promise<BrowserAutoCheck | null> {
+		const installed = this.current[this.opts.engine]?.version;
+		if (!installed || this.job) return null;
+		let newest: string | null;
+		try {
+			const signal = AbortSignal.timeout(this.opts.idleMs ?? IDLE_MS);
+			newest =
+				this.opts.engine === "cft"
+					? (await this.cftRelease(signal)).version
+					: ((await this.cefCandidates(signal))[0]?.version ?? null);
+		} catch (e) {
+			return this.noteAuto("failed", null, words(e));
+		}
+		if (newest !== null) this.latest = newest;
+		if (newest === null || !isNewer(newest, installed)) return this.noteAuto("upToDate", null, null);
+		if (newest === this.waiting) return this.noteAuto("waiting", newest, null);
+		// The person started a job meanwhile: it is theirs, and the next check looks again.
+		if (this.job) return null;
+		let done = null as string | null;
+		const end = await this.run(
+			"update",
+			async (signal) => {
+				done = this.opts.engine === "cft" ? await this.installCft(signal, true) : await this.installCef(signal, true);
+			},
+			true,
+		);
+		if (end.cancelled) return null;
+		if (end.error !== null) return this.noteAuto("failed", null, end.error);
+		if (done === null) return this.noteAuto("upToDate", null, null);
+		return this.noteAuto(done === this.waiting ? "waiting" : "updated", done, null);
+	}
+
+	/**
+	 * CfT: switches to the version the automatic update downloaded (`autoupdate.ts` calls it when nobody uses the browser):
+	 * the engine stops, the new version is the installed one, the old one's folder goes, and the engine starts again if it
+	 * ran. Null when there is nothing to switch to, or a job runs.
+	 */
+	async switchToNext(): Promise<BrowserAutoCheck | null> {
+		const next = this.current.cftNext;
+		if (this.opts.engine !== "cft" || !next || this.job) return null;
+		if (!existsSync(join(this.opts.root, "cft", next.version, cftExecutable(next.platform)))) {
+			// Its folder went (removed by hand): the next check downloads it again.
+			const { cftNext: _, ...rest } = this.current;
+			this.write(rest);
+			this.emit();
+			return null;
+		}
+		const end = await this.run("update", () => this.switchCft(next), true);
+		if (end.cancelled) return null;
+		if (end.error !== null) return this.noteAuto("failed", null, end.error);
+		return this.noteAuto("updated", next.version, null);
 	}
 
 	cancel(): void {
@@ -201,9 +281,9 @@ export class BrowserInstaller {
 	 * Clears the engine's profile. CfT: stops it, deletes the profile, starts it again. CEF: the profile is open in the app,
 	 * so the app deletes it at its next start, and is asked to restart now.
 	 */
-	clear(): Promise<void> {
-		if (this.job) return Promise.resolve();
-		return this.run("clear", async () => {
+	async clear(): Promise<void> {
+		if (this.job) return;
+		await this.run("clear", async () => {
 			if (this.opts.engine === "cft") {
 				await this.hooks.stopEngine?.("The browser restarted to clear its data");
 				try {
@@ -225,12 +305,12 @@ export class BrowserInstaller {
 	 * start, and the app is asked to restart now. Either way nothing is installed from now on, so no conversation is given
 	 * the browser's endpoint any more.
 	 */
-	uninstall(): Promise<void> {
-		if (this.job) return Promise.resolve();
-		return this.run("uninstall", async () => {
+	async uninstall(): Promise<void> {
+		if (this.job) return;
+		await this.run("uninstall", async () => {
 			if (this.opts.engine === "cft") {
 				await this.hooks.stopEngine?.("The browser was uninstalled");
-				const { cft: _, ...rest } = this.current;
+				const { cft: _, cftNext: __, ...rest } = this.current;
 				this.write(rest);
 				for (const name of ["cft", "cft-profile"]) rmSync(join(this.opts.root, name), { recursive: true, force: true });
 				return;
@@ -245,61 +325,112 @@ export class BrowserInstaller {
 
 	// ------------------------------------------------------------------ jobs
 
-	private async run(kind: BrowserJobKind, body: (signal: AbortSignal) => Promise<void>): Promise<void> {
+	/**
+	 * Runs a job, and says how it ended: `error`, its words (also the state's `error`, unless `quiet`: an automatic update's
+	 * failure is told in `autoCheck` instead), or `cancelled`.
+	 */
+	private async run(
+		kind: BrowserJobKind,
+		body: (signal: AbortSignal) => Promise<void>,
+		quiet = false,
+	): Promise<{ error: string | null; cancelled: boolean }> {
 		const abort = new AbortController();
 		this.abort = abort;
 		this.job = { kind, received: 0, total: 0 };
-		this.error = null;
+		if (!quiet) this.error = null;
 		this.emit();
+		let error: string | null = null;
 		try {
 			await body(abort.signal);
 		} catch (e) {
-			if (!(e instanceof Cancelled) && !abort.signal.aborted) this.error = words(e);
+			if (!(e instanceof Cancelled) && !abort.signal.aborted) error = words(e);
 		} finally {
 			this.removeLeftovers();
 			this.abort = null;
 			this.job = null;
+			if (!quiet && error !== null) this.error = error;
 			this.emit();
 		}
+		return { error, cancelled: abort.signal.aborted };
 	}
 
-	private async installCft(signal: AbortSignal): Promise<void> {
+	/**
+	 * Installs CfT's newest Stable, or updates to it: at once, or, for the automatic update (`auto`), only when it is newer
+	 * than the installed version, and kept waiting beside it as `cftNext`. The version put in place; null when none was.
+	 */
+	private async installCft(signal: AbortSignal, auto = false): Promise<string | null> {
 		if (!this.platform) throw new JobError("Chrome for Testing is not built for this computer's system");
 		const release = await this.cftRelease(signal);
 		this.latest = release.version;
 		const before = this.current.cft;
-		if (before?.version === release.version && before.platform === this.platform) return;
+		if (before?.version === release.version && before.platform === this.platform) return null;
+		if (auto && before && !isNewer(release.version, before.version)) return null;
+		const next = { version: release.version, platform: this.platform };
 		const dir = join(this.opts.root, "cft");
-		mkdirSync(dir, { recursive: true });
-		const file = join(dir, `${release.version}.download`);
-		const got = await this.download(release.url, file, signal);
-		const listed = /(?:^|,)\s*md5=([A-Za-z0-9+/=]+)/.exec(got.goog ?? "")?.[1];
-		if (!listed) throw new JobError("Google's storage listed no checksum for Chrome for Testing");
-		if (listed !== got.md5) throw new JobError("The Chrome for Testing download is damaged (checksum differs)");
-		const part = join(dir, `${release.version}.part`);
-		await unpack(file, part, "zip", signal);
-		if (!existsSync(join(part, cftExecutable(this.platform))))
-			throw new JobError("The Chrome for Testing download holds no Chrome");
-		renameSync(part, join(dir, release.version));
-		rmSync(file, { force: true });
+		const waiting = this.current.cftNext;
+		// An automatic update downloaded it already: Update takes it as it is.
+		const ready =
+			waiting?.version === next.version &&
+			waiting.platform === next.platform &&
+			existsSync(join(dir, next.version, cftExecutable(next.platform)));
+		if (!ready) {
+			mkdirSync(dir, { recursive: true });
+			const file = join(dir, `${release.version}.download`);
+			const got = await this.download(release.url, file, signal);
+			const listed = /(?:^|,)\s*md5=([A-Za-z0-9+/=]+)/.exec(got.goog ?? "")?.[1];
+			if (!listed) throw new JobError("Google's storage listed no checksum for Chrome for Testing");
+			if (listed !== got.md5) throw new JobError("The Chrome for Testing download is damaged (checksum differs)");
+			const part = join(dir, `${release.version}.part`);
+			await unpack(file, part, "zip", signal);
+			if (!existsSync(join(part, cftExecutable(this.platform))))
+				throw new JobError("The Chrome for Testing download holds no Chrome");
+			rmSync(join(dir, release.version), { recursive: true, force: true });
+			renameSync(part, join(dir, release.version));
+			rmSync(file, { force: true });
+		}
+		if (auto && before) {
+			// The version it replaces goes with the switch; one that waited before this one goes now (nothing runs it).
+			if (waiting && waiting.version !== next.version)
+				rmSync(join(dir, waiting.version), { recursive: true, force: true });
+			this.write({ ...this.current, cftNext: next });
+			return next.version;
+		}
+		await this.switchCft(next);
+		return next.version;
+	}
+
+	/**
+	 * `next`, unpacked in `cft/`, is the installed CfT from now on: a running engine is stopped first and started again after
+	 * (when it ran), and the versions it replaced go.
+	 */
+	private async switchCft(next: { version: string; platform: CftPlatform }): Promise<void> {
+		const before = this.current.cft;
 		if (before) await this.hooks.stopEngine?.("The browser restarted for an update");
-		this.write({ ...this.current, cft: { version: release.version, platform: this.platform } });
+		const { cftNext: _, ...rest } = this.current;
+		this.write({ ...rest, cft: next });
 		if (before) {
 			this.prune();
 			await this.hooks.startEngine?.();
 		}
 	}
 
-	private async installCef(signal: AbortSignal): Promise<void> {
-		const candidates = await this.cefCandidates(signal);
-		if (candidates.length === 0) throw new JobError(`No CEF build for this app (API version ${CEF_API_VERSION})`);
-		this.latest = candidates[0].version;
+	/**
+	 * Installs CEF's newest stable build that lists the app's API version, or updates to it; for the automatic update
+	 * (`auto`), only one newer than the installed version, and the app is not asked to restart. The version put in place;
+	 * null when none was.
+	 */
+	private async installCef(signal: AbortSignal, auto = false): Promise<string | null> {
+		const all = await this.cefCandidates(signal);
+		if (all.length === 0) throw new JobError(`No CEF build for this app (API version ${CEF_API_VERSION})`);
+		this.latest = all[0].version;
+		const installed = this.current.cef?.version;
+		const candidates = auto && installed ? all.filter((build) => isNewer(build.version, installed)) : all;
 		const dir = join(this.opts.root, "cef");
 		mkdirSync(dir, { recursive: true });
 		for (const build of candidates) {
-			if (build.version === this.current.cef?.version) return;
+			if (build.version === installed) return null;
 			// Uninstalled, and the app has not removed it yet (it is loaded): installing it again keeps it.
-			if (existsSync(join(dir, build.version))) return this.adoptCef(build.version);
+			if (existsSync(join(dir, build.version))) return this.adoptCef(build.version, auto);
 			const file = join(dir, `${build.version}.download`);
 			const got = await this.download(
 				`${this.sources.cefFiles}${encodeURIComponent(build.name)}`,
@@ -325,21 +456,32 @@ export class BrowserInstaller {
 			}
 			renameSync(join(part, top), join(dir, build.version));
 			rmSync(part, { recursive: true, force: true });
-			return this.adoptCef(build.version);
+			return this.adoptCef(build.version, auto);
 		}
+		// Every newer build lacks the app's API version: the installed one stays the newest for this app.
+		if (auto && installed) return null;
 		throw new JobError(`No CEF build for this app (API version ${CEF_API_VERSION})`);
 	}
 
 	/**
-	 * `version`, unpacked in `cef/`, is the one the app loads from its next start. Installed again before the app removed what
-	 * was uninstalled: it no longer removes it, and the profile still goes.
+	 * `version`, unpacked in `cef/`, is the one the app loads from its next start, and the app is asked to restart now
+	 * (not by the automatic update, `quietly`: the new version waits for the app's next start). Installed again before the
+	 * app removed what was uninstalled: it no longer removes it, and the profile still goes.
 	 */
-	private adoptCef(version: string): void {
+	private adoptCef(version: string, quietly = false): string {
 		const { uninstallPending, ...rest } = this.current;
 		this.write({ ...rest, ...(uninstallPending ? { clearPending: true } : {}), cef: { version } });
 		this.latest = version;
 		this.restartNeeded = true;
-		this.hooks.requestAppRestart?.();
+		if (!quietly) this.hooks.requestAppRestart?.();
+		return version;
+	}
+
+	/** What the automatic update came to, told to the pages. */
+	private noteAuto(result: BrowserAutoCheck["result"], version: string | null, error: string | null): BrowserAutoCheck {
+		this.autoCheck = { at: (this.opts.now ?? Date.now)(), result, version, error };
+		this.emit();
+		return { ...this.autoCheck };
 	}
 
 	private async cftRelease(signal: AbortSignal): Promise<{ version: string; url: string }> {
@@ -471,15 +613,15 @@ export class BrowserInstaller {
 	}
 
 	/**
-	 * Leftovers, and CfT versions other than the current one (nothing runs them: the server starts CfT). CEF's older
-	 * versions are the app's to remove, before it loads CEF: one may be loaded in it now.
+	 * Leftovers, and CfT versions other than the current one and the one an automatic update downloaded (nothing runs them:
+	 * the server starts CfT). CEF's older versions are the app's to remove, before it loads CEF: one may be loaded in it now.
 	 */
 	private prune(): void {
 		this.removeLeftovers();
 		const dir = join(this.opts.root, "cft");
 		if (!existsSync(dir)) return;
-		for (const name of readdirSync(dir))
-			if (name !== this.current.cft?.version) rmSync(join(dir, name), { recursive: true, force: true });
+		const keep = new Set([this.current.cft?.version, this.current.cftNext?.version]);
+		for (const name of readdirSync(dir)) if (!keep.has(name)) rmSync(join(dir, name), { recursive: true, force: true });
 	}
 
 	private emit(): void {

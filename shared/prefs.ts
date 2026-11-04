@@ -129,6 +129,12 @@ export const PREF = {
 	 * conversation's overlay), until it is turned on again. Changed only where the browser is managed (`canManageBrowser`).
 	 */
 	browser: "ompw.browser",
+	/**
+	 * Whether the built-in browser updates itself: `on` (the default) or `off`. On, the server looks for a newer version a
+	 * minute after it starts and every 24 hours, downloads it in the background and switches to it once no conversation
+	 * uses the browser (`server/browser/autoupdate.ts`). Changed only where the browser is managed (`canManageBrowser`).
+	 */
+	browserAutoUpdate: "ompw.browserAutoUpdate",
 } as const;
 
 export type PrefKey = (typeof PREF)[keyof typeof PREF];
@@ -224,6 +230,7 @@ const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 	[PREF.animationIntensity]: oneOf(ANIMATION_INTENSITIES),
 	[PREF.browserSize]: (v) => parseBrowserSize(v) !== null,
 	[PREF.browser]: switchValue,
+	[PREF.browserAutoUpdate]: switchValue,
 };
 
 /** Whether `value` is something the app ever writes under `key` (length is checked apart: `MAX_PREF_LENGTH`). */

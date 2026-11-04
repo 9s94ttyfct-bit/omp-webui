@@ -215,6 +215,7 @@
 		"browser-settings.spec.ts › Settings › Browser shows the engine and version; Install shows its progress and Cancel stops it; Install again installs": 2,
 		"browser-settings.spec.ts › Uninstall asks first: Cancel keeps the browser, Uninstall removes it, and Install installs it again": 2.1,
 		"browser-settings.spec.ts › a page that may not manage the browser sees the versions and no buttons": 1.5,
+		"browser-settings.spec.ts › automatic updates are on by default and their switch is the synced preference; a failed check shows in the card, not as an error": 8.0,
 		"browser-settings.spec.ts › the browser can be turned off and on again, which is the synced preference": 2.9,
 		"browser-settings.spec.ts › the card speaks Chinese, and Settings' search finds it by its name": 1.5,
 		"browser-settings.spec.ts › the size of new pages is kept as the synced preference, within bounds": 2.6,

@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { EngineKind } from "../../shared/browser.ts";
 import type { RemoteIdentity } from "../remote-auth.ts";
+import { BrowserAutoUpdater, type BrowserUse } from "./autoupdate.ts";
 import { type AppSocket, CefLink, startCefEngine } from "./cef.ts";
 import type { EngineHost, EngineStart } from "./engine.ts";
 import type { BrowserInstaller } from "./install.ts";
@@ -66,8 +67,45 @@ export class LazyBrowser {
 	#service: BrowserService | null = null;
 	/** CEF: the app's connection on `/browser-engine` (the engine is started on it), null while it is not connected. */
 	#link: CefLink | null = null;
+	#auto: BrowserAutoUpdater | null = null;
 
 	constructor(private readonly opts: LazyBrowserOptions) {}
+
+	/**
+	 * Automatic updates (`autoupdate.ts`), the first look a minute from now. `wanted` says whether the person wants them now
+	 * (Settings › Browser: the switch on, and the browser not turned off). Nothing of the browser is loaded for a look while
+	 * nothing is installed.
+	 */
+	startAutoUpdate(wanted: () => boolean): void {
+		this.#auto ??= new BrowserAutoUpdater({
+			wanted,
+			installer: async () => {
+				if (!existsSync(join(this.opts.dataDir, "browser", "current.json"))) return null;
+				const { installer } = await this.service();
+				return installer.state(false).installed ? installer : null;
+			},
+			use: () => this.use(),
+			log: (line) => console.warn(line),
+		});
+		this.#auto.start();
+	}
+
+	/** The automatic update's switch, or the browser, was turned on or off: it looks again soon. */
+	autoUpdateChanged(): void {
+		this.#auto?.wake();
+	}
+
+	/** What uses the browser now: the engine, the conversations' connections and the Browser tabs that show a page. */
+	private use(): BrowserUse {
+		const service = this.#service;
+		if (!service) return { engine: false, connections: 0, watchers: 0, lastUse: 0 };
+		return {
+			engine: service.host.active,
+			connections: service.proxy.open,
+			watchers: service.screen.watching,
+			lastUse: Math.max(service.proxy.lastUse, service.screen.lastUse),
+		};
+	}
 
 	/**
 	 * The app connected on `/browser-engine` (CEF): the engine is on this connection from now on; one before it ends, and the
@@ -236,8 +274,9 @@ export class LazyBrowser {
 		return this.service();
 	}
 
-	/** The server is stopping: the engine it started ends with it. */
+	/** The server is stopping: the engine it started ends with it, and no look comes any more. */
 	async stop(): Promise<void> {
+		this.#auto?.stop();
 		await this.#service?.host.stop("The server stopped");
 	}
 }

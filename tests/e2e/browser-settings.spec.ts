@@ -200,6 +200,42 @@ test("the browser can be turned off and on again, which is the synced preference
 	await expect(page.getByTestId("browser-off")).toHaveCount(0);
 });
 
+test("automatic updates are on by default and their switch is the synced preference; a failed check shows in the card, not as an error", async ({
+	page,
+}) => {
+	const failed = (state: BrowserState): BrowserState => ({
+		...state,
+		autoCheck: { at: Date.UTC(2026, 10, 3, 9, 30), result: "failed", version: null, error: "The download stalled" },
+	});
+	await page.route("**/api/browser", async (route) =>
+		route.fulfill({ json: failed((await (await route.fetch()).json()) as BrowserState) }),
+	);
+	const tap = await tapSocket(page);
+	tap.rewrite((msg) => (msg.t === "browser_state" ? { ...msg, state: failed(msg.state as BrowserState) } : msg));
+	await openCard(page);
+	const stored = () =>
+		page.evaluate(() =>
+			fetch("/api/prefs")
+				.then((r) => r.json())
+				.then((p) => p.values["ompw.browserAutoUpdate"]),
+		);
+	const auto = page.getByTestId("browser-auto-update");
+	await expect(auto).toBeChecked();
+	const line = page.getByTestId("browser-auto-check");
+	await expect(line).toHaveAttribute("data-result", "failed");
+	await expect(line).toContainText("Last check failed");
+	await expect(line).toContainText("The download stalled. It is tried again at the next check.");
+	await expect(page.getByTestId("browser-error")).toHaveCount(0);
+	await auto.uncheck();
+	await expect.poll(stored).toBe("off");
+	await expect(line).toHaveCount(0);
+	await page.reload();
+	await expect(page.getByTestId("browser-auto-update")).not.toBeChecked();
+	await page.getByTestId("browser-auto-update").check();
+	await expect.poll(stored).toBeNull();
+	await expect(page.getByTestId("browser-auto-check")).toHaveAttribute("data-result", "failed");
+});
+
 test("the size of new pages is kept as the synced preference, within bounds", async ({ page }) => {
 	await openCard(page);
 	await page.getByTestId("browser-size-width").fill("1440");
@@ -234,6 +270,7 @@ test("a page that may not manage the browser sees the versions and no buttons", 
 	);
 	await expect(page.getByTestId("browser-installed")).toBeVisible();
 	await expect(page.getByTestId("browser-enabled")).toBeDisabled();
+	await expect(page.getByTestId("browser-auto-update")).toBeDisabled();
 	for (const id of ["browser-install", "browser-update", "browser-check", "browser-clear", "browser-uninstall"])
 		await expect(card(page).getByTestId(id)).toHaveCount(0);
 });

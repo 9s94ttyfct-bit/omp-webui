@@ -54,6 +54,8 @@ type Decision = "deliver" | "drop" | "hold";
 
 export class CdpProxy {
 	private readonly connections = new Set<ProxyConnection>();
+	/** When a conversation last asked for the browser, or a connection of one ended (ms since the epoch; 0: never). */
+	lastUse = 0;
 
 	constructor(
 		private readonly host: EngineHost,
@@ -72,6 +74,7 @@ export class CdpProxy {
 	 * (`ws://<host>/browser-cdp/<token>`).
 	 */
 	async http(owner: string, rest: string, base: string): Promise<Response> {
+		this.lastUse = Date.now();
 		try {
 			const engine = await this.host.ready();
 			if (rest === "/json/version" || rest === "/json/version/") {
@@ -112,12 +115,19 @@ export class CdpProxy {
 
 	/** A WebSocket of the conversation: the whole (filtered) browser, or one of its pages (`target`). */
 	connect(owner: string, socket: ProxySocket, target: string | null = null): ProxyConnection {
-		const connection = new ProxyConnection(this.host, this.registry, owner, socket, target, () =>
-			this.connections.delete(connection),
-		);
+		this.lastUse = Date.now();
+		const connection = new ProxyConnection(this.host, this.registry, owner, socket, target, () => {
+			this.connections.delete(connection);
+			this.lastUse = Date.now();
+		});
 		this.connections.add(connection);
 		void connection.start();
 		return connection;
+	}
+
+	/** The conversations' connections open now. */
+	get open(): number {
+		return this.connections.size;
 	}
 
 	/** Ends the conversation's connections (its pages were closed). */
