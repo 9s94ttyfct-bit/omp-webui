@@ -80,7 +80,8 @@ test("every control still shows some focus cue", async ({ page }) => {
 	await check("projects folder", page.getByTestId("new-project-root-change"));
 	await check("options", page.getByRole("button", { name: /^Options/ }));
 	await check("sidebar filter", page.getByTestId("session-filter"));
-	await check("project list", page.getByLabel("Project"));
+	await check("folder filter", page.getByTestId("folder-filter"));
+	await check("new project", page.getByTestId("projects-new"));
 	await check("new chat", page.getByTestId("new-chat"));
 	await check("session row", page.getByTestId("session-item").first());
 	await check("session menu", page.getByTestId("session-menu").first());

@@ -68,8 +68,9 @@ import { Button, cx, IconButton, Kbd, Modal, Spinner } from "./ui.tsx";
 const { Chunk: SessionSearch, preload: preloadSearch } = lazyChunk(() =>
 	import("./SessionSearch.tsx").then((m) => ({ default: m.SessionSearch })),
 );
-// The sidebar's projects: a chunk of their own, fetched with the list, in a box of their heading's height meanwhile.
-const { Chunk: ProjectsSection } = lazyChunk(() =>
+// The sidebar's projects: a chunk of their own, fetched as the sidebar mounts. The list waits for it (one boundary round
+// both): drawn first, it would move down when the projects came above it, under a tap (#42).
+const { Chunk: ProjectsSection, preload: preloadProjects } = lazyChunk(() =>
 	import("./ProjectsSection.tsx").then((m) => ({ default: m.ProjectsSection })),
 );
 
@@ -176,6 +177,9 @@ export function Sidebar() {
 	useEffect(() => {
 		if (hasSessions) preloadSearch();
 	}, [hasSessions]);
+	useEffect(() => {
+		preloadProjects();
+	}, []);
 	const archivedCount = useMemo(() => sessions.filter((s) => archivedSet.has(s.file)).length, [sessions, archivedSet]);
 	/** No conversation exists yet: there is nothing to filter, so the sidebar says how to start instead. */
 	const firstRun = sessionsLoaded && !sessions.some((s) => s.messageCount > 0 || liveFiles.has(s.file));
@@ -289,14 +293,25 @@ export function Sidebar() {
 		const row = e.target.closest<HTMLElement>('[data-testid="session-item"]');
 		const session = row?.dataset.file ? sessions.find((s) => s.file === row.dataset.file) : undefined;
 		if (!session) return;
-		// The drag is a module of its own, fetched by the press: nothing of it is in the first paint.
+		// The drag is a module of its own, fetched by the press: nothing of it is in the first paint. A tap is over before the
+		// module comes the first time; a press that has ended is not started (on a touch screen its hold would begin a drag
+		// with no finger on the screen, which took the next Escape).
 		const press = e.nativeEvent;
-		void import("../lib/session-drag.ts").then((m) =>
+		let released = false;
+		const release = (ev: PointerEvent) => {
+			if (ev.pointerId === press.pointerId) released = true;
+		};
+		window.addEventListener("pointerup", release, true);
+		window.addEventListener("pointercancel", release, true);
+		void import("../lib/session-drag.ts").then((m) => {
+			window.removeEventListener("pointerup", release, true);
+			window.removeEventListener("pointercancel", release, true);
+			if (released) return;
 			m.startSessionPress(press, session.file, sessionLabel(session), ({ project }) => {
 				const target = useApp.getState().chatProjects.find((p) => p.id === project);
 				if (target && membership.get(session.file)?.project !== target.id) void moveToProject([session.id], target);
-			}),
-		);
+			});
+		});
 	});
 
 	const [pending, setPending] = useState<{
@@ -557,8 +572,8 @@ export function Sidebar() {
 					focusFirst={focusFirstRow}
 				/>
 			</Suspense>
-			{showProjects && sessionsLoaded ? (
-				<Suspense fallback={<div aria-hidden className="h-8 shrink-0" />}>
+			<Suspense fallback={<div aria-hidden className="min-h-0 flex-1" />}>
+				{showProjects && sessionsLoaded ? (
 					<ProjectsSection
 						projects={chatProjects}
 						rows={projectRows}
@@ -575,67 +590,67 @@ export function Sidebar() {
 						onAction={actionRow}
 						onSelect={selectRow}
 					/>
-				</Suspense>
-			) : null}
-			<SessionList
-				groups={groups}
-				labels={projectLabels}
-				showArchived={showArchived}
-				marks={marks}
-				hits={hits}
-				ranked={searching}
-				focusFirst={focusFirstRow}
-				actions={listActions}
-				foldable={
-					pinnedCount
-						? {
-								label: pinnedLabel,
-								folded: pinnedFolded,
-								count: pinnedCount,
-								onToggle: () => setPinnedFolded(!pinnedFolded),
-							}
-						: undefined
-				}
-				before={
-					<>
-						{!sessionsLoaded ? <SessionsPending /> : null}
-						{sessionsLoaded && !visible.length ? (
-							firstRun ? (
-								<div className="px-4 py-8 text-center" data-testid="sidebar-onboarding">
-									<MessageSquarePlus size={22} className="mx-auto mb-2 text-accent" aria-hidden />
-									<div className="text-sm font-medium">{t("shell.sidebarFirstRunTitle")}</div>
-									<p className="mt-1 text-xs text-muted">{t("shell.sidebarFirstRunHint")}</p>
-								</div>
-							) : showArchived && !archivedCount ? (
-								<div className="px-4 py-8 text-center" data-testid="sidebar-archived-empty">
-									<Archive size={22} className="mx-auto mb-2 text-faint" aria-hidden />
-									<div className="text-sm font-medium">{t("shell.sidebarArchivedEmpty")}</div>
-									<p className="mt-1 text-xs text-muted">{t("shell.sidebarArchivedHint")}</p>
-								</div>
-							) : (
-								<div className="px-3 py-6 text-center text-xs text-muted" data-testid="sidebar-empty">
-									{showArchived
-										? t("shell.sidebarArchivedEmpty")
-										: results?.searching
-											? t("shell.sidebarNoMatch")
-											: t("shell.sidebarEmpty")}
-								</div>
-							)
-						) : null}
-					</>
-				}
-				activeFile={activeFile}
-				pinSet={pinSet}
-				archivedSet={archivedSet}
-				liveFiles={liveFiles}
-				selecting={selecting}
-				selected={selected}
-				onOpen={openRow}
-				onTogglePin={pinRow}
-				onToggleArchive={archiveRow}
-				onAction={actionRow}
-				onSelect={selectRow}
-			/>
+				) : null}
+				<SessionList
+					groups={groups}
+					labels={projectLabels}
+					showArchived={showArchived}
+					marks={marks}
+					hits={hits}
+					ranked={searching}
+					focusFirst={focusFirstRow}
+					actions={listActions}
+					foldable={
+						pinnedCount
+							? {
+									label: pinnedLabel,
+									folded: pinnedFolded,
+									count: pinnedCount,
+									onToggle: () => setPinnedFolded(!pinnedFolded),
+								}
+							: undefined
+					}
+					before={
+						<>
+							{!sessionsLoaded ? <SessionsPending /> : null}
+							{sessionsLoaded && !visible.length ? (
+								firstRun ? (
+									<div className="px-4 py-8 text-center" data-testid="sidebar-onboarding">
+										<MessageSquarePlus size={22} className="mx-auto mb-2 text-accent" aria-hidden />
+										<div className="text-sm font-medium">{t("shell.sidebarFirstRunTitle")}</div>
+										<p className="mt-1 text-xs text-muted">{t("shell.sidebarFirstRunHint")}</p>
+									</div>
+								) : showArchived && !archivedCount ? (
+									<div className="px-4 py-8 text-center" data-testid="sidebar-archived-empty">
+										<Archive size={22} className="mx-auto mb-2 text-faint" aria-hidden />
+										<div className="text-sm font-medium">{t("shell.sidebarArchivedEmpty")}</div>
+										<p className="mt-1 text-xs text-muted">{t("shell.sidebarArchivedHint")}</p>
+									</div>
+								) : (
+									<div className="px-3 py-6 text-center text-xs text-muted" data-testid="sidebar-empty">
+										{showArchived
+											? t("shell.sidebarArchivedEmpty")
+											: results?.searching
+												? t("shell.sidebarNoMatch")
+												: t("shell.sidebarEmpty")}
+									</div>
+								)
+							) : null}
+						</>
+					}
+					activeFile={activeFile}
+					pinSet={pinSet}
+					archivedSet={archivedSet}
+					liveFiles={liveFiles}
+					selecting={selecting}
+					selected={selected}
+					onOpen={openRow}
+					onTogglePin={pinRow}
+					onToggleArchive={archiveRow}
+					onAction={actionRow}
+					onSelect={selectRow}
+				/>
+			</Suspense>
 			{selecting ? (
 				// Two rows: what is chosen and how to choose, then what to do with it. The actions say what they do in words:
 				// two icons alone beside "All" were a guess.
