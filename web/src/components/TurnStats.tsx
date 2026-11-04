@@ -33,7 +33,8 @@ function Figures({
 	const t = useT();
 	return (
 		<>
-			{tokens ? (
+			{/* A turn that used nothing (it failed before the model answered) has no figures to give, not "in 0 out 0". */}
+			{tokens && tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite > 0 ? (
 				<>
 					{/* The TUI's "in": what was sent and not read from the cache. */}
 					<span className={ITEM} data-stat="in">
@@ -150,9 +151,11 @@ export function TurnStatsLine({ entries, messages }: { entries: SessionEntry[]; 
 					</span>
 				) : null}
 				<Figures tokens={stats} ttftMs={stats.ttftMs} tokensPerSecond={stats.tokensPerSecond} />
-				<span className={ITEM} data-stat="cost">
-					{fmtCost(stats.cost)}
-				</span>
+				{stats.cost > 0 || stats.input + stats.output + stats.cacheRead + stats.cacheWrite > 0 ? (
+					<span className={ITEM} data-stat="cost">
+						{fmtCost(stats.cost)}
+					</span>
+				) : null}
 			</span>
 		</Tip>
 	);

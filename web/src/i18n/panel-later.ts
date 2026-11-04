@@ -142,8 +142,8 @@ export const en = {
 	statActive: "Time worked",
 	statActiveValue: "{time} (subagents {sub})",
 	statMessagesValue: "{user} user · {assistant} assistant",
-	statsLive: "Message and tool call counts from omp's",
-	statsLiveEnd: "; tokens and cost are the whole conversation's, subagents and advisors included.",
+	statsLive:
+		"Message and tool call counts are omp's own; tokens and cost are the whole conversation's, subagents and advisors included.",
 	infoByModel: "By model",
 	infoByModelRow: "{n} req · {tokens} · {cost}",
 	infoFile: "File: {file}",

@@ -254,6 +254,15 @@ describe("jobs the agent waits on", () => {
 		expect(ids(rows)).toEqual(["B", "A", "D", "C"]);
 	});
 
+	test("one call's subagents are in the call's order, as its task card lists them; a later call's come first", () => {
+		const rows = jobRows({
+			Reviewer: live("Reviewer", "running", { parentToolCallId: "call_1", index: 1, startedAt: NOW - 9000 }),
+			Scout: live("Scout", "running", { parentToolCallId: "call_1", index: 0, startedAt: NOW - 9500 }),
+			Later: live("Later", "running", { parentToolCallId: "call_2", index: 0, startedAt: NOW - 1000 }),
+		});
+		expect(ids(rows)).toEqual(["Later", "Scout", "Reviewer"]);
+	});
+
 	test("are none when nothing is running", () => {
 		expect(jobRows({ A: live("A", "completed", { parentToolCallId: "call_1" }) })).toEqual([]);
 		expect(jobRows(undefined)).toEqual([]);

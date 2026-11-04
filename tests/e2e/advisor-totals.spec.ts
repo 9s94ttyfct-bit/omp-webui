@@ -94,7 +94,7 @@ test("while omp runs, an advisor that goes on writing moves every total once, wi
 	await topTab(page, /Info/).click();
 	// The Info tab's tokens and cost are the whole conversation's, the advisor's included, read once (#687); omp gives the counts.
 	await expect(info(page).locator('[data-stat="Total cost"]')).toHaveText("$1.012345");
-	await expect(info(page).getByText(/Message and tool call counts from omp/)).toBeVisible();
+	await expect(info(page).getByText(/Message and tool call counts are omp's own/)).toBeVisible();
 
 	// omp tells that an advisor's cost changed (once its transcript was read back on a resume) without saying how much: it
 	// is no source of figures, and counts for nothing.

@@ -374,6 +374,7 @@ export const en = {
 	agentsMainWorking: "working",
 	agentsStalled: "stalled",
 	agentsTokens: "{n} tokens",
+	agentsTokensAll: "{n} tokens in all",
 	agentsTools: "{n} tools",
 	agentsToolsOne: "1 tool",
 	agentsMessages: "{n} messages from {from} to {to}",

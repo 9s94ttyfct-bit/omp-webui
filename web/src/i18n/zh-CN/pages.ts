@@ -384,6 +384,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	agentsTools: "{n} 次工具调用",
 	agentsToolsOne: "1 次工具调用",
 	agentsTokens: "{n} token",
+	agentsTokensAll: "共 {n} token",
 	agentsMessages: "{from} 发给 {to} 的 {n} 条消息",
 	agentsMessagesOne: "{from} 发给 {to} 的 1 条消息",
 	agentsBroadcasts: "发给所有代理的 {n} 条消息",

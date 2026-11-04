@@ -466,12 +466,7 @@ function SessionInfo({
 					</div>
 				))}
 			</dl>
-			{stats ? (
-				<div className="text-xs text-faint">
-					{t("panel.statsLive")} <code>get_session_stats</code>
-					{t("panel.statsLiveEnd")}
-				</div>
-			) : null}
+			{stats ? <div className="text-xs text-faint">{t("panel.statsLive")}</div> : null}
 			{byModel.length ? (
 				<div>
 					<div className="mb-1.5 text-xs font-semibold">{t("panel.infoByModel")}</div>

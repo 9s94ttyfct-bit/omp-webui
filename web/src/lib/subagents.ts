@@ -123,10 +123,29 @@ export function agentRows(
 		);
 	}
 	const all = [...rows.values()];
-	// Ties by id: a row's place must not depend on the order frames, the registry and transcripts arrived in (#640).
+	// The newest first, but the subagents one call started together in the call's order, as its task card lists them: a
+	// batch sorts by when its first member started, then by its place in the call. Ties by id: a row's place must not
+	// depend on the order frames, the registry and transcripts arrived in (#640).
+	const batchStart = new Map<string, number>();
+	for (const r of all) {
+		const call = r.live?.parentToolCallId;
+		if (r.running && call) batchStart.set(call, Math.min(batchStart.get(call) ?? Infinity, r.startedAt ?? 0));
+	}
+	const startOf = (r: AgentRow) => {
+		const call = r.live?.parentToolCallId;
+		return (call ? batchStart.get(call) : undefined) ?? r.startedAt ?? 0;
+	};
 	const running = all
 		.filter((r) => r.running)
-		.sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0) || (a.id > b.id ? 1 : -1));
+		.sort(
+			(a, b) =>
+				startOf(b) - startOf(a) ||
+				(a.live?.parentToolCallId ?? "").localeCompare(b.live?.parentToolCallId ?? "") ||
+				(a.live?.index !== undefined && b.live?.index !== undefined
+					? a.live.index - b.live.index
+					: (b.startedAt ?? 0) - (a.startedAt ?? 0)) ||
+				(a.id > b.id ? 1 : -1),
+		);
 	const inQueue = waiting.flatMap((q) => rows.get(q.id) ?? []);
 	return [...running, ...inQueue, ...all.filter((r) => !r.running && r.status !== QUEUED)];
 }

@@ -281,7 +281,13 @@ function Conversation({ file, title }: { file: string; title: string }) {
 		(compact: boolean) => agentGraph(rows, live?.tools, { open, keep, compact, grid }),
 		[rows, live?.tools, open, keep, grid],
 	);
-	const totals = useMemo(() => graphTotals(rows, now, paused), [rows, now, paused]);
+	// The counts are the subagents'; what was used is the whole conversation's (its own requests and theirs), labelled so:
+	// the strip said "0 tokens" while the main agent's card above it said 53k.
+	const totals = useMemo(() => {
+		const of = graphTotals(rows, now, paused);
+		const own = summary ? ownUsage(summary) : null;
+		return own ? { ...of, tokens: of.tokens + own.tokens, cost: of.cost + own.cost } : of;
+	}, [rows, now, paused, summary]);
 	const main = mainLines(t, title, live, summary, mainWorking, now);
 	const [chosen, setChosen] = useState<string | null>(null);
 	const row = chosen ? rows.find((r) => r.id === chosen) : undefined;
@@ -417,7 +423,7 @@ function Summary({ totals, children }: { totals: GraphTotals; children?: ReactNo
 				{totals.queued ? (
 					<span data-testid="agents-queued-count">{t("pages.agentsQueuedCount", { n: totals.queued })}</span>
 				) : null}
-				<span>{t("pages.agentsTokens", { n: fmtTokens(totals.tokens) })}</span>
+				<span>{t("pages.agentsTokensAll", { n: fmtTokens(totals.tokens) })}</span>
 				<span>{fmtCost(totals.cost)}</span>
 			</span>
 			{children}
