@@ -20,9 +20,12 @@ test("a local plugin is installed, switched and uninstalled from the Plugins pag
 	await expect(page).toHaveURL(/#\/plugins$/);
 	await expect(page.getByTestId("plugins-installed")).toBeVisible();
 
+	// Installing by package, URL or folder is in the Discover tab; the card is in Installed.
+	await page.getByTestId("plugins-tab-discover").click();
 	await page.getByTestId("manual-spec").fill(folder);
 	await page.getByTestId("manual-install").click();
 	await expect(page.getByTestId("plugins-outcome")).toHaveAttribute("data-state", "done", { timeout: 60_000 });
+	await page.getByTestId("plugins-tab-installed").click();
 	const card = page.locator('[data-testid="plugin-card"][data-plugin="e2e-local-plugin"]');
 	await expect(card).toHaveAttribute("data-enabled", "true");
 	await expect(card).toContainText("0.3.0");

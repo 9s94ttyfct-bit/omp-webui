@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { lstatSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { isRecord } from "../../shared/guards.ts";
+import type { McpAdded } from "../../shared/mcp-registry.ts";
 import {
 	type CatalogPlugin,
 	type InstalledPlugin,
@@ -19,6 +20,24 @@ import {
 	type PluginsFailure,
 } from "../../shared/plugins.ts";
 import type { Live, LivePool } from "../live.ts";
+import { mcpConfigs } from "./loaded.ts";
+import {
+	addToMcpConfig,
+	fetchServer,
+	McpRegistryError,
+	mapServer,
+	problemText,
+	searchRegistry,
+	validConfigName,
+} from "./mcp-registry.ts";
+import {
+	asksToConfirmScripts,
+	parseSkillList,
+	parseSkillSearch,
+	validSkillId,
+	validSkillQuery,
+	validSkillSpec,
+} from "./plugin-skills.ts";
 import { type Ran, RunTimeout, run, withTimeout } from "./run.ts";
 import { reloadPlugins, serialized, validPlugin } from "./toggles.ts";
 
@@ -326,6 +345,8 @@ export interface PluginsDeps {
 	bin: string;
 	/** The home folder: omp's CLI runs there when no project is named. */
 	home: string;
+	/** omp's agent directory: its `mcp.json` is the user's MCP config, where the MCP section adds a server. */
+	agentDir: string;
 	pool: LivePool;
 	/** Why nothing may be changed now (an import writes the files omp runs on), or null. */
 	held: () => Error | null;
@@ -559,6 +580,24 @@ export function planJob(action: PluginJobAction, body: Record<string, unknown>, 
 			if (!validMarketplace(body.name)) throw new PluginsError("Name the marketplace to update", 400);
 			return { args: ["plugin", "marketplace", "update", body.name], timeoutMs: FETCH_MS, reload: false };
 		}
+		case "skill-install": {
+			if (!validSkillSpec(body.spec)) throw new PluginsError("Name the skill as @scope/name[@version]", 400);
+			// The user's skills unless a project is chosen: without `-g` omp installs into the folder's `.omp/skills.json`.
+			const scope = scopeOf(body.scope, cwd, home) ?? "user";
+			const args = ["skill", "install", body.spec, ...(scope === "user" ? ["-g"] : [])];
+			// Only after the person agreed to what omp listed (see `PluginJob.confirm`).
+			if (body.yes === true) args.push("-y");
+			return { args, timeoutMs: FETCH_MS, reload: true };
+		}
+		case "skill-uninstall": {
+			if (!validSkillId(body.id)) throw new PluginsError("Name the skill to uninstall as @scope/name", 400);
+			const scope = scopeOf(body.scope, cwd, home) ?? "user";
+			return {
+				args: ["skill", "uninstall", body.id, ...(scope === "user" ? ["-g"] : [])],
+				timeoutMs: LOCAL_MS,
+				reload: true,
+			};
+		}
 	}
 }
 
@@ -591,6 +630,7 @@ function startJob(deps: PluginsDeps, action: PluginJobAction, plan: JobPlan, cwd
 			(e: unknown) => {
 				job.state = "failed";
 				job.error = e instanceof Error ? e.message : String(e);
+				if (action === "skill-install" && asksToConfirmScripts(job.error)) job.confirm = "scripts";
 			},
 		)
 		.finally(() => {
@@ -656,6 +696,21 @@ async function route(req: Request, url: URL, deps: PluginsDeps): Promise<Respons
 			}
 			case "/api/plugins/jobs":
 				return json({ running });
+			case "/api/plugins/skills":
+				return json({ installed: parseSkillList(await cliJson(deps.bin, ["skill", "list", "--json"], cwd)) });
+			case "/api/plugins/skills/search": {
+				const query = q.get("q");
+				if (!validSkillQuery(query)) return fail("Search for a word or two (not a flag)", 400);
+				return json(parseSkillSearch(await cliJson(deps.bin, ["skill", "search", query.trim(), "--json"], cwd)));
+			}
+			case "/api/plugins/mcp/search": {
+				const configs = await mcpConfigs(deps.agentDir, cwd);
+				const found = await searchRegistry(q.get("q") ?? "", q.get("cursor") || null, {
+					...configs.project.servers,
+					...configs.user.servers,
+				});
+				return json({ ...found, taken: Object.keys(configs.user.servers) });
+			}
 		}
 		return fail("Not found", 404);
 	}
@@ -705,8 +760,53 @@ async function route(req: Request, url: URL, deps: PluginsDeps): Promise<Respons
 			const settings = parseConfig(await cliJson(deps.bin, ["plugin", "config", "list", name, "--json"], cwd));
 			return json({ settings, reloads });
 		}
+		case "/api/plugins/mcp":
+			return json(await addMcpServer(deps, body));
 	}
 	return fail("Not found", 404);
+}
+
+/** The values a way of running an MCP server was given: text by its input's key, none of them a control character. */
+function mcpValues(raw: unknown): Record<string, string> {
+	if (raw === undefined || raw === null) return {};
+	if (!isRecord(raw)) throw new PluginsError("values must be an object of texts", 400);
+	const entries = Object.entries(raw);
+	if (entries.length > 100) throw new PluginsError("Too many values", 400);
+	for (const [key, value] of entries) {
+		if (key.length > 200 || typeof value !== "string" || value.length > 8000 || CONTROL.test(value))
+			// The value itself is never repeated: it may be a secret.
+			throw new PluginsError(`The value of ${key.slice(0, 200)} must be one line of text`, 400);
+	}
+	return raw as Record<string, string>;
+}
+
+/**
+ * Add one way of running a registry server to the user's `mcp.json`. The entry is worked out from the registry's own
+ * answer, fetched again here (never from what the page sends), with the values the person gave.
+ */
+async function addMcpServer(deps: PluginsDeps, body: Record<string, unknown>): Promise<McpAdded> {
+	const { server, version, option, name } = body;
+	if (typeof server !== "string" || typeof version !== "string") throw new PluginsError("Name the server", 400);
+	if (typeof option !== "string" || !/^(?:package|remote):\d{1,3}$/.test(option))
+		throw new PluginsError("Choose how to run it", 400);
+	if (!validConfigName(name))
+		throw new PluginsError(
+			"The name may hold letters, digits, dashes, underscores, dots, colons and single spaces (100 at most)",
+			400,
+		);
+	const values = mcpValues(body.values);
+	mayChange(deps);
+	const mapped = mapServer(await fetchServer(server, version), values).find((m) => m.option.id === option);
+	if (!mapped) throw new PluginsError(`${server} has no ${option}`, 404);
+	if (mapped.option.problem) throw new PluginsError(problemText(mapped.option.problem), 422);
+	if (mapped.missing.length > 0 || !mapped.entry) {
+		const labels = mapped.missing.map((key) => mapped.option.inputs.find((i) => i.key === key)?.label ?? key);
+		throw new PluginsError(`Fill in ${labels.join(", ")}`, 400);
+	}
+	const entry = mapped.entry;
+	const file = join(deps.agentDir, "mcp.json");
+	await serialized(() => addToMcpConfig(file, name, entry));
+	return { name, file };
 }
 
 /** `/api/plugins*`: open to every page that has the token, as the Commands & terminal page's runner is. */
@@ -714,7 +814,7 @@ export async function handlePlugins(req: Request, url: URL, deps: PluginsDeps): 
 	try {
 		return await route(req, url, deps);
 	} catch (e) {
-		if (e instanceof PluginsError) return fail(e.message, e.status);
+		if (e instanceof PluginsError || e instanceof McpRegistryError) return fail(e.message, e.status);
 		return fail(e instanceof Error ? e.message : String(e), 500);
 	}
 }

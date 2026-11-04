@@ -123,6 +123,8 @@ export const PLUGIN_JOB_ACTIONS = [
 	"marketplace-add",
 	"marketplace-remove",
 	"marketplace-update",
+	"skill-install",
+	"skill-uninstall",
 ] as const;
 export type PluginJobAction = (typeof PLUGIN_JOB_ACTIONS)[number];
 
@@ -141,4 +143,45 @@ export interface PluginJob {
 	endedAt: number | null;
 	/** What each running conversation did with the change (empty when the change is not one a conversation loads). */
 	reloads: PluginReload[];
+	/**
+	 * What omp asks before it does it again: `scripts`, a registry skill that ships scripts, which omp installs from a page
+	 * only with `--yes` (it cannot ask there). The page lists what omp printed and asks the person.
+	 */
+	confirm?: "scripts";
+}
+
+// ------------------------------------------------------------------ skills
+
+/** One skill omp discovers (`omp skill list --json`), wherever it comes from. */
+export interface InstalledSkill {
+	name: string;
+	description: string | null;
+	/** Where omp found it, as omp names the provider: `skillshare` (its registry), `claude-plugins`, `custom`, `agents`… */
+	provider: string;
+	/** `user` or `project`, as omp reports it. */
+	level: string;
+	/** Its `SKILL.md`. */
+	path: string | null;
+	/** Hidden from the model's list (its frontmatter says so); it can still be asked for by name. */
+	hidden: boolean;
+	/** A skill installed from omp's registry (`omp skill install`): its id and version, what Uninstall needs. */
+	registry: { id: string; version: string } | null;
+}
+
+/** One skill of omp's registry, skills.omp.sh (`omp skill search --json`). */
+export interface SkillHit {
+	/** `@scope/name`: what `omp skill install` takes. */
+	id: string;
+	version: string | null;
+	description: string | null;
+	weeklyDownloads: number | null;
+	publisher: string | null;
+	keywords: string[];
+	deprecated: string | null;
+}
+
+/** `GET /api/plugins/skills/search`. */
+export interface SkillSearch {
+	total: number;
+	hits: SkillHit[];
 }

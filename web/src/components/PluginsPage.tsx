@@ -1,3 +1,4 @@
+import type { McpAdded } from "@shared/mcp-registry.ts";
 import {
 	type CatalogPlugin,
 	type InstalledPlugin,
@@ -10,40 +11,73 @@ import {
 	type PluginsData,
 } from "@shared/plugins.ts";
 import {
+	addedMarketplace,
+	RECOMMENDED_MARKETPLACES,
+	type RecommendedKind,
+	type RecommendedName,
+	WEB_CATALOGS,
+} from "@shared/plugins-catalogs.ts";
+import {
 	ArrowUpCircle,
 	CircleAlert,
 	CircleCheck,
 	Download,
+	Plus,
 	Puzzle,
 	RefreshCw,
+	Sparkles,
 	Stethoscope,
 	Store,
 	Trash2,
 	TriangleAlert,
 	Wrench,
 } from "lucide-react";
-import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type FormEvent,
+	type KeyboardEvent,
+	lazy,
+	type ReactNode,
+	Suspense,
+	useCallback,
+	useEffect,
+	useId,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { useShallow } from "zustand/react/shallow";
 import { type MessageKey, registerStrings, type Translate, useT } from "../i18n/index.ts";
 import { en } from "../i18n/plugins.ts";
 import { type JobRequest, pluginsApi } from "../lib/plugins-api.ts";
 import { useApp } from "../store/app.ts";
 import { LoadError } from "./LoadError.tsx";
+import { Confirm, SCOPE_KEY, ScopePicker, Section, WebLinks } from "./plugins/parts.tsx";
 import { Select } from "./Select.tsx";
 import { Switch } from "./Switch.tsx";
-import { Badge, Button, CardHeader, cx, Empty, Modal, Spinner, WithCode } from "./ui.tsx";
+import { Badge, Button, cx, Empty, Modal, Spinner, WithCode } from "./ui.tsx";
 
 // This chunk carries its own English strings: the first page does not (see `registerStrings`).
 registerStrings("plugins", en);
 
+// The Skills and MCP tabs have requests and dialogs of their own: they load when their tab is first opened.
+const SkillsTab = lazy(() => import("./plugins/SkillsTab.tsx"));
+const McpTab = lazy(() => import("./plugins/McpTab.tsx"));
+
 /**
- * The Plugins page (`#/plugins`): omp's plugins, read and changed with omp's own `omp plugin` command on the computer
- * omp-webui runs on (`/api/plugins*`). Installed plugins with their switch, upgrade, uninstall, features and settings; the
- * marketplaces' catalogs; installing by package, git URL or folder; the marketplaces themselves; and omp's health check.
+ * The Plugins page (`#/plugins`): omp's plugins, skills and MCP servers, read and changed with omp's own `omp plugin` and
+ * `omp skill` commands on the computer omp-webui runs on (`/api/plugins*`), in tabs:
+ * - Installed: installed plugins with their switch, upgrade, uninstall, features and settings; omp's health check.
+ * - Discover: well-known marketplaces to add with one click, the added marketplaces' catalogs, installing by package, git
+ *   URL or folder.
+ * - Skills: every skill omp discovers, and omp's skill registry (`omp skill search|install|uninstall`).
+ * - MCP: the official MCP Registry, searched by the server, and a server of it added to omp's MCP configuration.
+ * - Marketplaces: the marketplaces themselves.
  *
  * A change that takes long (an install, an upgrade, a marketplace fetched with git) runs as a job on the server: the page
  * shows what omp prints as it goes, then lists the plugins again and says which open conversations reloaded their plugins
  * and which need a restart. One change at a time: the controls wait while one runs.
+ *
+ * The tabs are written out here, as the Guard page's are, not taken from Radix (see `GuardPage.tsx`).
  */
 
 const JOB_POLL_MS = 400;
@@ -51,9 +85,16 @@ const JOB_POLL_MS = 400;
 const RECENT_FOLDERS = 15;
 
 /** What the last change did: a job (with what omp printed), or a quick change that answered at once. */
-type Outcome = { job: PluginJob } | { error: string } | { reloads: PluginReload[] };
+type Outcome = { job: PluginJob } | { error: string } | { reloads: PluginReload[] } | { mcp: McpAdded };
 
-const SCOPE_KEY: Record<PluginScope, MessageKey> = { user: "plugins.scopeUser", project: "plugins.scopeProject" };
+type Tab = "installed" | "discover" | "skills" | "mcp" | "marketplaces";
+const TABS: readonly { value: Tab; label: MessageKey }[] = [
+	{ value: "installed", label: "plugins.tabInstalled" },
+	{ value: "discover", label: "plugins.tabDiscover" },
+	{ value: "skills", label: "plugins.tabSkills" },
+	{ value: "mcp", label: "plugins.tabMcp" },
+	{ value: "marketplaces", label: "plugins.tabMarketplaces" },
+];
 
 export function PluginsPage() {
 	const t = useT();
@@ -66,12 +107,20 @@ export function PluginsPage() {
 	const [outcome, setOutcome] = useState<Outcome | null>(null);
 	/** A quick change in flight (a switch, features, a setting): what it is about, for its spinner. */
 	const [pending, setPending] = useState<string | null>(null);
+	/** Counts the changes that ended: the tabs that read lists of their own (Skills) read them again. */
+	const [changes, setChanges] = useState(0);
+	const [tab, setTab] = useState<Tab>("installed");
+	/** The last job asked for: a skill install omp refused for its scripts is asked again from it, with `yes`. */
+	const asked = useRef<JobRequest | null>(null);
 	const loads = useRef(0);
+	const ids = useId();
+	const triggers = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
 
 	const load = useCallback(() => {
 		const mine = ++loads.current;
 		setLoading(true);
 		setError(null);
+		setChanges((n) => n + 1);
 		pluginsApi
 			.list(cwd)
 			.then((d) => mine === loads.current && setData(d))
@@ -119,6 +168,7 @@ export function PluginsPage() {
 
 	const start = useCallback(
 		(request: JobRequest) => {
+			asked.current = request;
 			pluginsApi
 				.startJob(request, cwd)
 				.then((started) => setOutcome({ job: started }))
@@ -146,6 +196,10 @@ export function PluginsPage() {
 		},
 		[load],
 	);
+	// A skill install omp refused because the skill ships scripts: asked again with `--yes`, once the person agreed.
+	const retry = asked.current;
+	const confirmScripts =
+		job?.confirm === "scripts" && retry?.action === "skill-install" ? () => start({ ...retry, yes: true }) : undefined;
 
 	// The folders the person works in, newest first: a project's own plugins are listed and installed there.
 	const folders = useMemo(() => {
@@ -164,6 +218,23 @@ export function PluginsPage() {
 	const installed = data && !isPluginsFailure(data.installed) ? data.installed : null;
 	const projectAllowed = data ? !data.home : cwd !== null;
 
+	// Left and Right move between the tabs, Home and End go to the first and last: the keys of a tab list.
+	const onTabKey = (e: KeyboardEvent, at: number) => {
+		const last = TABS.length - 1;
+		const keys: Record<string, number> = {
+			ArrowRight: at === last ? 0 : at + 1,
+			ArrowLeft: at === 0 ? last : at - 1,
+			Home: 0,
+			End: last,
+		};
+		const to = keys[e.key];
+		if (to === undefined) return;
+		e.preventDefault();
+		setTab(TABS[to].value);
+		triggers.current[TABS[to].value]?.focus();
+	};
+
+	const needsList = tab === "installed" || tab === "discover" || tab === "marketplaces";
 	return (
 		<div className="h-full min-w-0 flex-1 overflow-y-auto" data-testid="plugins-page">
 			<div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
@@ -199,50 +270,111 @@ export function PluginsPage() {
 					<span className="text-xs text-muted">{t("plugins.folderHint")}</span>
 				</label>
 
-				{outcome ? <OutcomePanel outcome={outcome} onDismiss={() => setOutcome(null)} /> : null}
-				{error ? <LoadError title={t("plugins.loadError")} error={error} onRetry={load} /> : null}
-				{!data && !error ? (
-					<div className="flex justify-center py-12">
-						<Spinner />
-					</div>
+				{outcome ? (
+					<OutcomePanel outcome={outcome} onDismiss={() => setOutcome(null)} onConfirmScripts={confirmScripts} />
 				) : null}
 
-				{data ? (
-					<>
-						<InstalledSection
-							data={data}
-							busy={busy}
-							pending={pending}
-							cwd={cwd}
-							onToggle={(p, on) =>
-								void quick(`enable:${p.id}:${p.scope}`, () =>
-									pluginsApi.setEnabled(p.id, p.source === "marketplace" ? p.scope : null, on, cwd),
-								)
-							}
-							onUpgrade={(p) =>
-								start({
-									action: "upgrade",
-									id: p.id,
-									scope: p.source === "marketplace" ? p.scope : null,
-								})
-							}
-							onUpgradeAll={() => start({ action: "upgrade" })}
-							onUninstall={(p) =>
-								start({ action: "uninstall", id: p.id, scope: p.source === "marketplace" ? p.scope : null })
-							}
-							quick={quick}
-						/>
-						<DiscoverSection
-							data={data}
-							busy={busy}
-							projectAllowed={projectAllowed}
-							onInstall={(p, scope) => start({ action: "install", spec: `${p.name}@${p.marketplace}`, scope })}
-						/>
-						<ManualSection
-							busy={busy}
-							projectAllowed={projectAllowed}
-							onInstall={(spec, scope) => start({ action: "install", spec, scope })}
-						/>
+				<div>
+					<div
+						role="tablist"
+						aria-label={t("plugins.sections")}
+						className="flex gap-1 overflow-x-auto border-b border-border"
+						data-testid="plugins-tabs"
+					>
+						{TABS.map((x, at) => (
+							<button
+								key={x.value}
+								type="button"
+								role="tab"
+								id={`${ids}-tab-${x.value}`}
+								ref={(el) => {
+									triggers.current[x.value] = el;
+								}}
+								aria-selected={tab === x.value}
+								aria-controls={`${ids}-panel-${x.value}`}
+								tabIndex={tab === x.value ? 0 : -1}
+								data-testid={`plugins-tab-${x.value}`}
+								className={cx(
+									"-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-accent",
+									tab === x.value ? "border-accent text-fg" : "border-transparent text-muted hover:text-fg",
+								)}
+								onClick={() => setTab(x.value)}
+								onKeyDown={(e) => onTabKey(e, at)}
+							>
+								{t(x.label)}
+							</button>
+						))}
+					</div>
+				</div>
+
+				<div
+					role="tabpanel"
+					id={`${ids}-panel-${tab}`}
+					aria-labelledby={`${ids}-tab-${tab}`}
+					className="-mt-2 flex flex-col gap-6"
+					data-testid={`plugins-panel-${tab}`}
+				>
+					{needsList && error ? <LoadError title={t("plugins.loadError")} error={error} onRetry={load} /> : null}
+					{needsList && !data && !error ? (
+						<div className="flex justify-center py-12">
+							<Spinner />
+						</div>
+					) : null}
+
+					{data && tab === "installed" ? (
+						<>
+							<InstalledSection
+								data={data}
+								busy={busy}
+								pending={pending}
+								cwd={cwd}
+								onToggle={(p, on) =>
+									void quick(`enable:${p.id}:${p.scope}`, () =>
+										pluginsApi.setEnabled(p.id, p.source === "marketplace" ? p.scope : null, on, cwd),
+									)
+								}
+								onUpgrade={(p) =>
+									start({
+										action: "upgrade",
+										id: p.id,
+										scope: p.source === "marketplace" ? p.scope : null,
+									})
+								}
+								onUpgradeAll={() => start({ action: "upgrade" })}
+								onUninstall={(p) =>
+									start({ action: "uninstall", id: p.id, scope: p.source === "marketplace" ? p.scope : null })
+								}
+								quick={quick}
+							/>
+							<DoctorSection
+								cwd={cwd}
+								busy={busy}
+								onFix={() => start({ action: "doctor-fix" })}
+								installed={installed}
+							/>
+						</>
+					) : null}
+					{data && tab === "discover" ? (
+						<>
+							<RecommendedSection
+								data={data}
+								busy={busy}
+								onAdd={(source) => start({ action: "marketplace-add", source })}
+							/>
+							<DiscoverSection
+								data={data}
+								busy={busy}
+								projectAllowed={projectAllowed}
+								onInstall={(p, scope) => start({ action: "install", spec: `${p.name}@${p.marketplace}`, scope })}
+							/>
+							<ManualSection
+								busy={busy}
+								projectAllowed={projectAllowed}
+								onInstall={(spec, scope) => start({ action: "install", spec, scope })}
+							/>
+						</>
+					) : null}
+					{data && tab === "marketplaces" ? (
 						<MarketplacesSection
 							data={data}
 							busy={busy}
@@ -250,11 +382,124 @@ export function PluginsPage() {
 							onUpdate={(name) => start({ action: "marketplace-update", name })}
 							onRemove={(name) => start({ action: "marketplace-remove", name })}
 						/>
-						<DoctorSection cwd={cwd} busy={busy} onFix={() => start({ action: "doctor-fix" })} installed={installed} />
-					</>
-				) : null}
+					) : null}
+					<Suspense
+						fallback={
+							<div className="flex justify-center py-12">
+								<Spinner />
+							</div>
+						}
+					>
+						{tab === "skills" ? (
+							<SkillsTab
+								cwd={cwd}
+								busy={busy}
+								projectAllowed={projectAllowed}
+								changes={changes}
+								onJob={start}
+								onShowLibraries={() => setTab("discover")}
+							/>
+						) : null}
+						{tab === "mcp" ? <McpTab cwd={cwd} busy={busy} onAdded={(added) => setOutcome({ mcp: added })} /> : null}
+					</Suspense>
+				</div>
 			</div>
 		</div>
+	);
+}
+
+// ------------------------------------------------------------------ recommended marketplaces
+
+/** What each recommended marketplace offers, in the page's words (`shared/plugins-catalogs.ts` has the list). */
+const RECOMMENDED_TEXT: Record<RecommendedName, MessageKey> = {
+	"claude-plugins-official": "plugins.rec_claudePluginsOfficial",
+	"claude-community": "plugins.rec_claudeCommunity",
+	"knowledge-work-plugins": "plugins.rec_knowledgeWork",
+	"claude-code-workflows": "plugins.rec_codeWorkflows",
+	"superpowers-marketplace": "plugins.rec_superpowers",
+	"compound-engineering-plugin": "plugins.rec_compoundEngineering",
+	"claude-code-plugins-plus": "plugins.rec_pluginsPlus",
+	"chrome-devtools-plugins": "plugins.rec_chromeDevtools",
+	"anthropic-agent-skills": "plugins.rec_anthropicSkills",
+	trailofbits: "plugins.rec_trailOfBits",
+	"addy-web-quality-skills": "plugins.rec_webQuality",
+};
+
+const KIND_TITLE: Record<RecommendedKind, MessageKey> = {
+	plugins: "plugins.recPluginsTitle",
+	skills: "plugins.recSkillsTitle",
+};
+
+function RecommendedSection({
+	data,
+	busy,
+	onAdd,
+}: {
+	data: PluginsData;
+	busy: boolean;
+	onAdd: (source: string) => void;
+}) {
+	const t = useT();
+	const configured = isPluginsFailure(data.marketplaces) ? null : data.marketplaces;
+	return (
+		<Section
+			id="recommended"
+			title={t("plugins.recTitle")}
+			icon={<Sparkles size={16} className="text-accent" />}
+			hint={<WithCode text={t("plugins.recHint")} />}
+		>
+			{(["plugins", "skills"] as const).map((kind) => (
+				<div key={kind} className="mt-2 first:mt-0">
+					<h3 className="text-xs font-semibold uppercase tracking-wide text-faint">{t(KIND_TITLE[kind])}</h3>
+					<ul className="divide-y divide-border">
+						{RECOMMENDED_MARKETPLACES.filter((m) => m.kind === kind).map((m) => {
+							const added = configured ? addedMarketplace(m, configured) : null;
+							return (
+								<li
+									key={m.name}
+									className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5"
+									data-testid="recommended-marketplace"
+									data-marketplace={m.name}
+									data-added={added !== null}
+								>
+									<div className="min-w-0 flex-1 basis-56">
+										<div className="flex flex-wrap items-center gap-1.5">
+											<a
+												href={`https://github.com/${m.repo}`}
+												target="_blank"
+												rel="noopener noreferrer"
+												className="break-all font-mono text-sm font-medium hover:underline"
+											>
+												{m.repo}
+											</a>
+											{m.official ? <Badge tone="accent">{t("plugins.recOfficial")}</Badge> : null}
+											{m.anthropic ? <Badge>{t("plugins.recAnthropic")}</Badge> : null}
+										</div>
+										<p className="mt-1 text-xs text-muted">{t(RECOMMENDED_TEXT[m.name])}</p>
+									</div>
+									{added ? (
+										<Badge tone="success">{t("plugins.recAdded", { name: added.name })}</Badge>
+									) : (
+										<Button
+											size="sm"
+											variant="primary"
+											disabled={busy || configured === null}
+											onClick={() => onAdd(m.repo)}
+											data-testid="recommended-add"
+										>
+											<Plus size={13} /> {t("plugins.recAdd")}
+										</Button>
+									)}
+								</li>
+							);
+						})}
+					</ul>
+				</div>
+			))}
+			<div className="mt-3">
+				<WebLinks label={t("plugins.webPlugins")} catalogs={WEB_CATALOGS.plugins} testId="plugins-web-catalogs" />
+			</div>
+		</Section>
 	);
 }
 
@@ -295,9 +540,20 @@ function ReloadSummary({ reloads }: { reloads: PluginReload[] }) {
 	);
 }
 
-function OutcomePanel({ outcome, onDismiss }: { outcome: Outcome; onDismiss: () => void }) {
+function OutcomePanel({
+	outcome,
+	onDismiss,
+	onConfirmScripts,
+}: {
+	outcome: Outcome;
+	onDismiss: () => void;
+	/** A skill omp did not install because it ships scripts: install it with them, once the person agrees. */
+	onConfirmScripts?: () => void;
+}) {
 	const t = useT();
+	const [scripts, setScripts] = useState(false);
 	const job = "job" in outcome ? outcome.job : null;
+	const mcp = "mcp" in outcome ? outcome.mcp : null;
 	const failed = "error" in outcome || job?.state === "failed";
 	const error = "error" in outcome ? outcome.error : (job?.error ?? null);
 	const reloads = "reloads" in outcome ? outcome.reloads : (job?.reloads ?? []);
@@ -348,81 +604,42 @@ function OutcomePanel({ outcome, onDismiss }: { outcome: Outcome; onDismiss: () 
 					</pre>
 				</details>
 			) : null}
+			{mcp ? (
+				<p className="mt-2 text-sm text-muted" data-testid="plugins-outcome-mcp">
+					{t("plugins.mcpAddedOutcome", { name: mcp.name, file: mcp.file })}
+				</p>
+			) : null}
+			{onConfirmScripts ? (
+				<div className="mt-2 flex flex-wrap items-center gap-2">
+					<p className="min-w-0 flex-1 text-xs text-warning">{t("plugins.skillScriptsHint")}</p>
+					<Button size="sm" onClick={() => setScripts(true)} data-testid="skill-scripts-review">
+						<TriangleAlert size={13} /> {t("plugins.skillScriptsReview")}
+					</Button>
+					<Confirm
+						open={scripts}
+						onOpenChange={setScripts}
+						title={t("plugins.skillScriptsTitle")}
+						body={
+							<>
+								<p>{t("plugins.skillScriptsBody")}</p>
+								<pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-code p-2 font-mono text-xs">
+									{error}
+								</pre>
+							</>
+						}
+						action={t("plugins.skillScriptsInstall")}
+						danger
+						testId="skill-scripts-confirm"
+						onConfirm={onConfirmScripts}
+					/>
+				</div>
+			) : null}
 			{!failed && reloads.length > 0 ? (
 				<div className="mt-2">
 					<ReloadSummary reloads={reloads} />
 				</div>
 			) : null}
 		</section>
-	);
-}
-
-// ------------------------------------------------------------------ installed
-
-function Section({
-	id,
-	title,
-	icon,
-	hint,
-	action,
-	children,
-}: {
-	id: string;
-	title: string;
-	icon: ReactNode;
-	hint?: ReactNode;
-	action?: ReactNode;
-	children: ReactNode;
-}) {
-	return (
-		<section
-			className="rounded-2xl border border-border bg-surface p-4"
-			aria-labelledby={`plugins-${id}-title`}
-			data-testid={`plugins-${id}`}
-		>
-			<CardHeader title={<span id={`plugins-${id}-title`}>{title}</span>} icon={icon} hint={hint} action={action} />
-			{children}
-		</section>
-	);
-}
-
-function Confirm({
-	open,
-	onOpenChange,
-	title,
-	body,
-	action,
-	danger,
-	onConfirm,
-	testId,
-}: {
-	open: boolean;
-	onOpenChange: (open: boolean) => void;
-	title: string;
-	body: ReactNode;
-	action: string;
-	danger?: boolean;
-	onConfirm: () => void;
-	testId: string;
-}) {
-	const t = useT();
-	return (
-		<Modal open={open} onOpenChange={onOpenChange} title={title}>
-			<div className="text-sm text-muted">{body}</div>
-			<div className="mt-4 flex flex-wrap justify-end gap-2">
-				<Button onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
-				<Button
-					variant={danger ? "danger" : "primary"}
-					data-testid={testId}
-					onClick={() => {
-						onOpenChange(false);
-						onConfirm();
-					}}
-				>
-					{action}
-				</Button>
-			</div>
-		</Modal>
 	);
 }
 
@@ -760,35 +977,6 @@ function SettingRow({
 }
 
 // ------------------------------------------------------------------ discover and install
-
-function ScopePicker({
-	value,
-	onChange,
-	projectAllowed,
-	label,
-	testId,
-}: {
-	value: PluginScope;
-	onChange: (scope: PluginScope) => void;
-	projectAllowed: boolean;
-	label: string;
-	testId: string;
-}) {
-	const t = useT();
-	return (
-		<Select
-			tone="compact"
-			aria-label={label}
-			data-testid={testId}
-			value={value}
-			onValueChange={(v) => onChange(v === "project" ? "project" : "user")}
-			className="w-28 shrink-0"
-		>
-			<option value="user">{t("plugins.scopeUser")}</option>
-			{projectAllowed ? <option value="project">{t("plugins.scopeProject")}</option> : null}
-		</Select>
-	);
-}
 
 function CatalogRow({
 	plugin,

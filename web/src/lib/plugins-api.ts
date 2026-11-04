@@ -1,5 +1,7 @@
 import { isRecord } from "@shared/guards.ts";
+import type { McpAdded, McpAddRequest, McpSearch } from "@shared/mcp-registry.ts";
 import type {
+	InstalledSkill,
 	PluginCheck,
 	PluginJob,
 	PluginJobAction,
@@ -7,6 +9,7 @@ import type {
 	PluginScope,
 	PluginSetting,
 	PluginsData,
+	SkillSearch,
 } from "@shared/plugins.ts";
 
 /**
@@ -55,4 +58,15 @@ export const pluginsApi = {
 	job: (id: string) => request<{ job: PluginJob }>(`/api/plugins/jobs/${encodeURIComponent(id)}`).then((r) => r.job),
 	/** The job running now, if any (a page opened while one runs follows it). */
 	running: () => request<{ running: PluginJob | null }>("/api/plugins/jobs").then((r) => r.running),
+	/** Every skill omp discovers in the folder (`omp skill list --json`). */
+	skills: (cwd: string | null) =>
+		request<{ installed: InstalledSkill[] }>(`/api/plugins/skills${query({ cwd })}`).then((r) => r.installed),
+	/** omp's skill registry (`omp skill search`). */
+	searchSkills: (q: string, cwd: string | null) =>
+		request<SkillSearch>(`/api/plugins/skills/search${query({ q, cwd })}`),
+	/** The official MCP Registry, searched by the server; `cursor`: the next page. */
+	searchMcp: (q: string, cursor: string | null, cwd: string | null) =>
+		request<McpSearch>(`/api/plugins/mcp/search${query({ q, cursor, cwd })}`),
+	/** Add one way of running a registry server to the user's `mcp.json`. */
+	addMcp: (add: McpAddRequest, cwd: string | null) => post<McpAdded>("/api/plugins/mcp", { ...add, cwd }),
 };

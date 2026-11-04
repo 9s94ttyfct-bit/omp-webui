@@ -2307,11 +2307,13 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 	if (p === "/api/model-config" || p.startsWith("/api/model-config/")) return handleModelConfig(req, url, cfg);
 	if (p === "/api/plugins" || p.startsWith("/api/plugins/")) {
 		// The Plugins page: loaded on its first request. Open to every page that has the token, as the Commands & terminal
-		// page's runner is (it runs `omp plugin …` for such a page too); nothing changes while an import writes.
+		// page's runner is (it runs `omp plugin …` and `omp skill …` for such a page too); nothing changes while an import
+		// writes. Its MCP section writes the user's `mcp.json` in omp's agent directory.
 		const { handlePlugins } = await import("./omp/plugins.ts");
 		return handlePlugins(req, url, {
 			bin: cfg.ompBin,
 			home: homedir(),
+			agentDir: cfg.agentDir,
 			pool,
 			held: () => (importWriting ? heldByImport() : null),
 		});
