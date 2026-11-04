@@ -4,6 +4,7 @@ import { setPref } from "../lib/prefs.ts";
 import type * as browser from "./browser.ts";
 import * as chat from "./chat.ts";
 import type * as chatLater from "./chat-later.ts";
+import type * as chatProjects from "./chat-projects.ts";
 import type * as ci from "./ci.ts";
 import * as common from "./common.ts";
 // Not imported for its values: the English strings of a namespace that only a lazily loaded chunk uses are registered by
@@ -36,7 +37,6 @@ import type * as plugins from "./plugins.ts";
 import type * as presetAgents from "./preset-agents.ts";
 import * as presets from "./presets.ts";
 import type * as presetsLater from "./presets-later.ts";
-import type * as projectGroups from "./project-groups.ts";
 import type * as projects from "./projects.ts";
 import type * as push from "./push.ts";
 import type * as questions from "./questions.ts";
@@ -112,7 +112,7 @@ type LazyKey =
 	| `memory.${Extract<keyof typeof memory.en, string>}`
 	| `host.${Extract<keyof typeof host.en, string>}`
 	| `projects.${Extract<keyof typeof projects.en, string>}`
-	| `projectGroups.${Extract<keyof typeof projectGroups.en, string>}`
+	| `chatProjects.${Extract<keyof typeof chatProjects.en, string>}`
 	| `macs.${Extract<keyof typeof macs.en, string>}`
 	| `push.${Extract<keyof typeof push.en, string>}`
 	| `questions.${Extract<keyof typeof questions.en, string>}`

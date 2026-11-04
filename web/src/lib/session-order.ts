@@ -75,6 +75,11 @@ export interface GroupInput {
 	ranked: boolean;
 	/** The Pinned group is folded: its heading is listed, its rows are not. */
 	pinnedFolded: boolean;
+	/**
+	 * The files of the conversations in a sidebar project: they are listed under their project, not by date. Pinned keeps
+	 * them (a pin is the person's way to have one at the top), and a search lists every match, in a project or not.
+	 */
+	inProject?: ReadonlySet<string>;
 }
 
 /** The name the list shows a conversation by: its title, else the start of its first message. */
@@ -95,7 +100,7 @@ export function sessionGroups(input: GroupInput): [string, SessionSummary[]][] {
 	// A search shows every match: a fold would hide one that matched.
 	if (pinned.length) out.push([input.pinnedLabel, input.pinnedFolded && !ranked ? [] : pinned]);
 	const dated = out.length;
-	let rest = sessions.filter((s) => !pinSet.has(s.file));
+	let rest = sessions.filter((s) => !pinSet.has(s.file) && (ranked || !input.inProject?.has(s.file)));
 	if (ranked) {
 		pushByDate(out, rest, (s) => dateOf(s.modifiedAt), dated);
 		return out;

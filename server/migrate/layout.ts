@@ -189,6 +189,8 @@ const DATA_FILES = new Set([
 	"ui-prefs.json",
 	"favorite-models.json",
 	"archived.json",
+	"chat-projects.json",
+	// The project groups of #636: read once, by the first read of the projects on a computer that has none yet.
 	"project-groups.json",
 	"approval.json",
 	"guard.json",

@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { type ApprovalMode, approvalModeNeeds, isApprovalMode } from "../shared/approval.ts";
 import { factsOf, noticeLang, working } from "../shared/attention.ts";
+import { chatProjectOfScope } from "../shared/chat-projects.ts";
 import { CI_SCOPES } from "../shared/ci.ts";
 import { compactAtOf } from "../shared/compact-at.ts";
 import { type ErrorInfo, errorInfoOf } from "../shared/error-info.ts";
@@ -45,6 +46,7 @@ import { canManageBrowser } from "./browser/gate.ts";
 import { cdpPath, engineHere, LazyBrowser } from "./browser/lazy.ts";
 import type { ProxyConnection } from "./browser/proxy.ts";
 import type { ScreenClient } from "./browser/screen.ts";
+import { ChatProjectError, ChatProjectStore } from "./chat-projects.ts";
 import { compressResponse, serveStatic } from "./compress.ts";
 import { loadConfig } from "./config.ts";
 import { guardAgainstStrayErrors } from "./crash-guard.ts";
@@ -108,7 +110,6 @@ import { UnattendedService } from "./omp/unattended/service.ts";
 import { InstructionError } from "./omp/unattended/store.ts";
 import { platform } from "./platform/index.ts";
 import { PrefsError, UiPrefs } from "./prefs.ts";
-import { ProjectGroupError, ProjectGroupStore } from "./project-groups.ts";
 import { PtyManager, runsOmpShell, terminalDir } from "./pty.ts";
 import type { PushHub } from "./push/hub.ts";
 import type { RemoteIdentity } from "./remote-auth.ts";
@@ -461,8 +462,19 @@ const actions = new SessionActions(
 const pins = new SessionPins(cfg.agentDir, cfg.dataDir, store, actions);
 const favoriteModels = new ListPref(cfg.dataDir, "favorite-models");
 const archived = new ListPref(cfg.dataDir, "archived");
-// The sidebar's project groups (#636) are the person's, not one page's: a change is said to every page.
-const projectGroups = new ProjectGroupStore(cfg.dataDir, () => broadcastAll({ t: "project_groups" }));
+// The sidebar's projects are the person's, not one page's: a change is said to every page. The conversations are asked for
+// once, by the first read, to make projects of the project groups of #636 (`ChatProjectStore.migrate`).
+const chatProjects = new ChatProjectStore(
+	cfg.dataDir,
+	async () => (await store.list()).map((s) => ({ id: s.id, cwd: s.cwd })),
+	() => broadcastAll({ t: "chat_projects" }),
+);
+/**
+ * New chats started in a project (`OpenTarget.project`), by their process: the conversation is put in the project when the
+ * first message is sent to it (`rpc`), by which time its session id is known and its file is about to be written. A warm-up
+ * process that is closed without a message never puts anything in a project.
+ */
+const projectOfNewChat = new Map<string, string>();
 const uiPrefs = new UiPrefs(cfg.dataDir);
 // The other Macs this one knows (#628): pages read the list in `/api/meta`, only a page on this computer changes it.
 const savedMacs = new SavedMacs(savedMacsPath(cfg.dataDir), () => broadcastAll({ t: "macs_changed" }));
@@ -1158,9 +1170,12 @@ async function sessionTarget(file: string): Promise<SessionTarget> {
 /**
  * The folder the conversation a Files-tab request names works in: its running process's when it has one, else the folder
  * its session file records. The page names the conversation and never a folder, so that what it can read is bounded by
- * the conversations it can name (see `server/folder-routes.ts`).
+ * the conversations it can name (see `server/folder-routes.ts`). The Files panel of a sidebar project names the project
+ * instead (`chatProjectScope`): its folder is the one this server's list of projects keeps for it.
  */
 async function conversationCwd(liveId: string | null, file: string | null): Promise<string | null> {
+	const project = chatProjectOfScope(file);
+	if (project !== null) return chatProjects.folderOf(project);
 	const running = liveId ? pool.get(liveId) : undefined;
 	if (running && !running.info.exited) return running.info.cwd;
 	const known = file ? store.resolveSessionPath(file) : null;
@@ -2205,43 +2220,45 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				return json(archived.set(files as string[], body.archived === true));
 			}
 			return json(archived.list());
-		case "/api/project-groups":
-		case "/api/project-groups/create":
-		case "/api/project-groups/rename":
-		case "/api/project-groups/collapse":
-		case "/api/project-groups/move":
-		case "/api/project-groups/reorder":
-		case "/api/project-groups/delete": {
-			// The sidebar's project groups (#636): writable from every page that holds the token, as the pins and the archive
-			// are (they are how a page looks at the list, not a setting of this computer), and never touching a folder.
-			if (p === "/api/project-groups" && req.method !== "POST") return json(projectGroups.list());
+		case "/api/chat-projects":
+		case "/api/chat-projects/create":
+		case "/api/chat-projects/rename":
+		case "/api/chat-projects/folder":
+		case "/api/chat-projects/collapse":
+		case "/api/chat-projects/assign":
+		case "/api/chat-projects/reorder":
+		case "/api/chat-projects/delete": {
+			// The sidebar's projects: writable from every page that holds the token, as the pins and the archive are (they are
+			// how a page looks at the list, not a setting of this computer). A folder is checked to be one, as the folder
+			// picker lists them to every page; nothing on disk is changed.
+			if (p === "/api/chat-projects" && req.method !== "POST") return json(await chatProjects.list());
 			if (req.method !== "POST") return fail("POST required", 405);
 			const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
 			const id = typeof body.id === "string" ? body.id : "";
+			const name = typeof body.name === "string" ? body.name : "";
+			// A folder that is not a string is none; one that is a string the store checks.
+			const folder = typeof body.folder === "string" ? body.folder : null;
+			const sessions: unknown[] = Array.isArray(body.sessions) ? body.sessions : [];
 			try {
 				switch (p) {
-					case "/api/project-groups/create":
-						return json(await projectGroups.create(typeof body.name === "string" ? body.name : ""));
-					case "/api/project-groups/rename":
-						return json(await projectGroups.rename(id, typeof body.name === "string" ? body.name : ""));
-					case "/api/project-groups/collapse":
-						return json(await projectGroups.setCollapsed(id, body.collapsed === true));
-					case "/api/project-groups/move":
-						return json(
-							await projectGroups.move(
-								typeof body.cwd === "string" ? body.cwd : "",
-								typeof body.group === "string" ? body.group : null,
-								typeof body.at === "number" ? body.at : null,
-							),
-						);
-					case "/api/project-groups/reorder":
-						return json(await projectGroups.reorder(id, typeof body.delta === "number" && body.delta < 0 ? -1 : 1));
+					case "/api/chat-projects/create":
+						return json(await chatProjects.create(name, folder, sessions));
+					case "/api/chat-projects/rename":
+						return json(await chatProjects.rename(id, name));
+					case "/api/chat-projects/folder":
+						return json(await chatProjects.setFolder(id, folder));
+					case "/api/chat-projects/collapse":
+						return json(await chatProjects.setCollapsed(id, body.collapsed === true));
+					case "/api/chat-projects/assign":
+						return json(await chatProjects.assign(sessions, typeof body.project === "string" ? body.project : null));
+					case "/api/chat-projects/reorder":
+						return json(await chatProjects.reorder(id, typeof body.delta === "number" && body.delta < 0 ? -1 : 1));
 					default:
-						// No DELETE from a page's button without a body: the id names the group either way.
-						return json(await projectGroups.remove(id));
+						// No DELETE from a page's button without a body: the id names the project either way.
+						return json(await chatProjects.remove(id));
 				}
 			} catch (e) {
-				if (e instanceof ProjectGroupError) return fail(e.message, e.status, errorInfoOf(e) ?? undefined);
+				if (e instanceof ChatProjectError) return fail(e.message, e.status, errorInfoOf(e) ?? undefined);
 				throw e;
 			}
 		}
@@ -2395,6 +2412,11 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 				target = { ...target, guidance: asked ?? undefined };
 			}
 			const live = await pool.open(target, cwdOfSessionFile);
+			if (target.kind === "new" && typeof target.project === "string" && target.project !== "") {
+				// What is no longer running has no first message coming: its entry goes with this one's arrival.
+				for (const liveId of projectOfNewChat.keys()) if (!pool.get(liveId)) projectOfNewChat.delete(liveId);
+				projectOfNewChat.set(live.info.liveId, target.project);
+			}
 			attach(live);
 			reply({ t: "reply", req: msg.req, ok: true, data: live.attached() });
 			if (!ws.data.closed) live.resync(ws.data.sub);
@@ -2462,6 +2484,17 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 				if (refusal) return reply({ t: "reply", req: msg.req, ok: false, error: refusal });
 			}
 			touch(live);
+			// A new chat started in a project is put there with its first message (`projectOfNewChat`).
+			const project = projectOfNewChat.get(live.info.liveId);
+			const sessionId = live.info.sessionId;
+			if (project && sessionId && (drivesTurn(msg.command) || msg.command.type === "bash")) {
+				projectOfNewChat.delete(live.info.liveId);
+				await chatProjects
+					.assign([sessionId], project)
+					.catch((e: unknown) =>
+						console.warn(`omp-webui: a new chat was not put in its project: ${(e as Error).message}`),
+					);
+			}
 			const call = {
 				user: msg.user === true,
 				written: msg.ack === true ? () => reply({ t: "ack", req: msg.req }) : undefined,

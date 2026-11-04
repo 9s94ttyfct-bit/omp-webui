@@ -7,6 +7,7 @@
 import { en as browser } from "../../web/src/i18n/browser.ts";
 import { en as chat } from "../../web/src/i18n/chat.ts";
 import { en as chatLater } from "../../web/src/i18n/chat-later.ts";
+import { en as chatProjects } from "../../web/src/i18n/chat-projects.ts";
 import { en as ci } from "../../web/src/i18n/ci.ts";
 import { en as common } from "../../web/src/i18n/common.ts";
 import { en as controlsHelp } from "../../web/src/i18n/controls-help.ts";
@@ -37,7 +38,6 @@ import { en as plugins } from "../../web/src/i18n/plugins.ts";
 import { en as presetAgents } from "../../web/src/i18n/preset-agents.ts";
 import { en as presets } from "../../web/src/i18n/presets.ts";
 import { en as presetsLater } from "../../web/src/i18n/presets-later.ts";
-import { en as projectGroups } from "../../web/src/i18n/project-groups.ts";
 import { en as projects } from "../../web/src/i18n/projects.ts";
 import { en as push } from "../../web/src/i18n/push.ts";
 import { en as questions } from "../../web/src/i18n/questions.ts";
@@ -79,7 +79,7 @@ export const NAMESPACES: Record<string, object[]> = {
 	host: [host],
 	memory: [memory],
 	projects: [projects],
-	projectGroups: [projectGroups],
+	chatProjects: [chatProjects],
 	macs: [macs],
 	push: [push],
 	settingsHelp: [settingsHelp],

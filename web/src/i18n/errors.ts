@@ -65,11 +65,12 @@ export const en = {
 	dirNotWritable: "No permission to make folders in {path}.",
 	projectsNotHere: "The projects folder is changed on the computer omp-webui runs on.",
 	projectsFolderShape: "Name the folder, or choose the default.",
-	// The page words the reason from `problem` (project-groups namespace); this is what a page that does not know it shows.
-	groupNameInvalid: "That name cannot be used for a group.",
-	groupProjectInvalid: "A project is named by the folder its conversations run in.",
-	groupUnknown: "That group is no longer there.",
-	groupFull: "The groups hold as many projects as they can. Take one out first.",
+	// The page words the reason from `problem` (chatProjects namespace); this is what a page that does not know it shows.
+	projectNameInvalid: "That name cannot be used for a project.",
+	projectFolderInvalid: "A project's folder must be an existing folder.",
+	projectSessionInvalid: "That conversation cannot be put in a project.",
+	projectUnknown: "That project is no longer there.",
+	projectFull: "The projects hold as many conversations as they can. Take some out first.",
 
 	// An omp install or update that did not finish
 	jobCancelled: "Cancelled",

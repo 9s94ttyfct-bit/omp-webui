@@ -10,7 +10,7 @@ settings: auto-title, keep-thinking, tool-timer
 
 ### The list
 
-- Every omp session is listed, grouped by date (Today, Yesterday, Previous 7 days, Previous 30 days, …) and filterable by project. Conversations started with `--profile` or `--session-dir` are listed too; subagent and advisor transcripts are counted in their conversation, not listed on their own.
+- Every omp session is listed, grouped by date (Today, Yesterday, Previous 7 days, Previous 30 days, …) and filterable by folder. Above the list by date is the **Projects** section: named groups of conversations (see `projects-and-git`); a conversation in a project is listed under it and not by date. Conversations started with `--profile` or `--session-dir` are listed too; subagent and advisor transcripts are counted in their conversation, not listed on their own.
 - **Sort** (button at the right of the list's first line): *Last activity* (default; date groups), *Created* (date groups by start time) or *Name A–Z* (one list under *By name*). In every order pinned conversations come first (in pin order), then conversations working now (running, waiting for the user's answer, or held by the quota floor).
 - **Pinned** group: its heading folds/unfolds the pinned rows (the fold is remembered). Pins are omp's own (`session-pins.json` in omp's folder): `/pin` typed in a conversation or a terminal shows here, and a sidebar pin is what `omp --resume` lists first. A sidebar pin is made by a short-lived omp on a new session (`/pin <id>`), never by resuming the conversation, so it never forks it.
 - **Row marks**: Pinned, Branch, and the live state: *Running*, *Open*, *Needs your input*, *Waiting for the quota to reset*, *Paused*, Light mode's feather.
@@ -38,7 +38,7 @@ Edit a prompt or regenerate a reply to create a branch and flip between versions
 
 ## Where it is
 
-- Sidebar (left): New chat, the filter row (with the project funnel button), then *Select*, the sort button and *Archived* on the list's first line, then the list.
+- Sidebar (left): New chat, the filter row (with the **Folder** funnel button: a flat list of folders), the **Projects** section, then *Select*, the sort button and *Archived* on the list's first line, then the list. A conversation's ⋯ menu has *Move to project ›*; *Select* has *Move to project*.
 - ⌘K / Ctrl+K anywhere: search palette.
 - Conversation header: rename pencil, download button (export).
 - Settings › Conversations & files › Conversations: *Name new conversations automatically*, *Keep thinking expanded*, *Show how long tool calls run* (All tool calls / Shell commands only / Off).

@@ -3,7 +3,7 @@ import { type RefObject, useEffect, useMemo, useState } from "react";
 import { useT } from "../i18n/index.ts";
 import { api } from "../lib/api.ts";
 import { contentMatches, type DateRange, pageOf, rankSessions, type SearchResults } from "../lib/session-search.ts";
-import { ProjectFilter } from "./ProjectFilter.tsx";
+import { FolderFilter } from "./FolderFilter.tsx";
 import { RangeFilter } from "./RangeFilter.tsx";
 
 /** How many conversations one ask for content matches is for, and what "More results" adds (#717). */
@@ -18,12 +18,12 @@ const CONTENT_DEBOUNCE_MS = 250;
 const INDEXING_RETRY_MS = 3000;
 
 /**
- * The sidebar's search bar: the filter field, the project filter and the date range, and the ranking behind them.
+ * The sidebar's search bar: the filter field, the folder filter and the date range, and the ranking behind them.
  *
- * It is a chunk of its own: the sidebar is on the first page, and the scorer and the names people call a project are not
- * worth its weight there (a library of conversations is searched many times a day, but the first paint is not one of
- * them). `preload` fetches it as soon as the sidebar has conversations. It owns the three controls and hands the list it
- * comes to up with `onResults`, so the list itself stays the sidebar's.
+ * It is a chunk of its own: the sidebar is on the first page, and the scorer is not worth its weight there (a library of
+ * conversations is searched many times a day, but the first paint is not one of them). `preload` fetches it as soon as the
+ * sidebar has conversations. It owns the three controls and hands the list it comes to up with `onResults`, so the list
+ * itself stays the sidebar's.
  */
 export function SessionSearch({
 	sessions,
@@ -34,7 +34,7 @@ export function SessionSearch({
 }: {
 	/** The conversations there are, before the three filters. */
 	sessions: SessionSummary[];
-	/** The person's home, so a project is named `~/…` as elsewhere. */
+	/** The person's home, so a folder is named `~/…` as elsewhere. */
 	home: string | undefined;
 	/** Nothing to filter yet: the bar is not drawn (the sidebar says how to start instead). */
 	firstRun: boolean;
@@ -43,25 +43,25 @@ export function SessionSearch({
 	focusFirst: RefObject<(() => void) | null>;
 }) {
 	const t = useT();
-	const [project, setProject] = useState<string>("all");
+	const [folder, setFolder] = useState<string>("all");
 	const [filter, setFilter] = useState("");
 	const [range, setRange] = useState<DateRange>("all");
 	/** One `now` per ranking: the date range must not drift between the rows of one list. */
 	const [now, setNow] = useState(() => Date.now());
-	const projects = useMemo(() => {
+	const folders = useMemo(() => {
 		const m = new Map<string, number>();
 		for (const s of sessions) m.set(s.cwd, (m.get(s.cwd) ?? 0) + 1);
 		return [...m.entries()].sort((a, b) => b[1] - a[1]);
 	}, [sessions]);
-	// A filter on a project with no conversation left (its last one was just deleted) is no filter: the dropdown has no
-	// such option and shows "All projects", so the list must too.
-	const shownProject = project === "all" || projects.some(([cwd]) => cwd === project) ? project : "all";
+	// A filter on a folder with no conversation left (its last one was just deleted) is no filter: the list of folders has
+	// no such row and shows "All folders", so the list must too.
+	const shownFolder = folder === "all" || folders.some(([cwd]) => cwd === folder) ? folder : "all";
 	useEffect(() => {
-		if (shownProject !== project) setProject(shownProject);
-	}, [shownProject, project]);
+		if (shownFolder !== folder) setFolder(shownFolder);
+	}, [shownFolder, folder]);
 	const ranked = useMemo(
-		() => rankSessions(sessions, { query: filter, project: shownProject, range, archived: false }, now),
-		[sessions, filter, shownProject, range, now],
+		() => rankSessions(sessions, { query: filter, folder: shownFolder, range, archived: false }, now),
+		[sessions, filter, shownFolder, range, now],
 	);
 	const searching = filter.trim() !== "";
 	const query = filter.trim();
@@ -109,9 +109,8 @@ export function SessionSearch({
 	const current = found && found.query === query && [...query].length >= CONTENT_MIN ? found : null;
 	/** The conversations the filters keep whatever was typed: a content match outside them is not listed. */
 	const scope = useMemo(
-		() =>
-			rankSessions(sessions, { query: "", project: shownProject, range, archived: false }, now).map((r) => r.session),
-		[sessions, shownProject, range, now],
+		() => rankSessions(sessions, { query: "", folder: shownFolder, range, archived: false }, now).map((r) => r.session),
+		[sessions, shownFolder, range, now],
 	);
 	const content = useMemo(
 		() =>
@@ -169,13 +168,7 @@ export function SessionSearch({
 					}}
 					className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-surface px-2.5 text-sm outline-none placeholder:text-faint focus:border-faint"
 				/>
-				<ProjectFilter
-					value={shownProject}
-					onChange={setProject}
-					total={sessions.length}
-					projects={projects}
-					home={home}
-				/>
+				<FolderFilter value={shownFolder} onChange={setFolder} total={sessions.length} folders={folders} home={home} />
 				<RangeFilter value={range} onChange={setRange} />
 			</div>
 			{/* How many the search found, and how it is moved through: a search the keyboard can walk, as the palette's. */}

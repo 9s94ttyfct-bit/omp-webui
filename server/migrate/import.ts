@@ -114,9 +114,12 @@ const LIST_FILES = new Set(["archived.json", "interviews.json", "favorite-models
 const LIST_KEYS: Record<string, Record<string, string>> = {
 	"marketplaces.json": { marketplaces: "name" },
 	"session-roots.json": { roots: "dir" },
-	// The sidebar's project groups (#636): a group is merged by its id, so a person's groups here are kept as they are and the
-	// archive's are added beside them. Two machines' groups have ids of their own, so the two lists are added together; should
-	// both name one project folder, the page shows it once (the first group in the list has it, `parseGroups`).
+	// The sidebar's projects: a project is merged by its id, so a person's projects here are kept as they are and the archive's
+	// are added beside them; should both put one conversation in a project, the first project in the list has it
+	// (`parseChatProjects`).
+	"chat-projects.json": { projects: "id" },
+	// The project groups of #636, which the first read of the projects makes projects of on a computer that has none yet:
+	// merged by id as they always were.
 	"project-groups.json": { groups: "id" },
 	// Unattended mode's questions (#646): merged by id, so the archive's questions are added beside the ones here.
 	"questions.json": { questions: "id" },

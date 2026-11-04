@@ -5,7 +5,7 @@ import { MODEL_FLAGS, runsLocal } from "@shared/offline.ts";
 import { PREF } from "@shared/prefs.ts";
 import type { ProjectsInfo } from "@shared/projects.ts";
 import type { CliFlag } from "@shared/protocol.ts";
-import { FastForward, RotateCw, SlidersHorizontal, Target } from "lucide-react";
+import { FastForward, FolderKanban, RotateCw, SlidersHorizontal, Target } from "lucide-react";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { type MessageKey, useT } from "../i18n/index.ts";
@@ -191,9 +191,13 @@ function PickersSkeleton() {
 	);
 }
 
-/** `cwd`: the folder the view opened New chat in (`#/new?cwd=`); none: the page picks. */
-export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
+/**
+ * `cwd`: the folder the view opened New chat in (`#/new?cwd=`); none: the page picks. `project`: the sidebar project the
+ * conversation is put in (`#/new?project=`): the server does it with the first message (`OpenTarget.project`).
+ */
+export function NewChat({ cwd: openedIn, project }: { cwd?: string; project?: string } = {}) {
 	const t = useT();
+	const inProject = useApp((s) => (project ? (s.chatProjects.find((p) => p.id === project)?.name ?? null) : null));
 	const { sessions, meta, setView, toast } = useApp(
 		useShallow((s) => ({
 			sessions: s.sessions,
@@ -369,6 +373,7 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 					id = await openLive({
 						kind: "new",
 						cwd,
+						...(project ? { project } : {}),
 						args: argsKey ? argsKey.split("\u0000") : [],
 						// The server's own default until it has told the page which it is: a start that names a mode would guess.
 						...(useMode.getState().state ? { mode } : {}),
@@ -474,6 +479,7 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 			id = await openLive({
 				kind: "new",
 				cwd: path,
+				...(project ? { project } : {}),
 				args: argsKey ? argsKey.split("\u0000") : [],
 				...(useMode.getState().state ? { mode } : {}),
 				approvalMode: approvalAtStart.current,
@@ -642,6 +648,14 @@ export function NewChat({ cwd: openedIn }: { cwd?: string } = {}) {
 				<h1 className="mb-8 text-center font-serif text-3xl tracking-tight sm:text-4xl">
 					<span className="text-accent">✻</span> {greeting(t)}
 				</h1>
+				{inProject ? (
+					<p
+						className="-mt-5 mb-6 flex items-center justify-center gap-1.5 text-sm text-muted"
+						data-testid="new-chat-project"
+					>
+						<FolderKanban size={14} aria-hidden /> {t("shell.sidebarNewChatProject", { name: inProject })}
+					</p>
+				) : null}
 				{/* One line: where the conversation starts (its menu holds the other choices and the recent folders), the new
 				    project's name with the note under it, and the meter and Options at the right. They line up on the top line. */}
 				<div className="mb-3 flex items-start gap-2">

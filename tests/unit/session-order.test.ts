@@ -95,3 +95,18 @@ test("a stored order that is no order is the default", () => {
 	expect(sessionSortOf("created")).toBe("created");
 	expect(sessionSortOf("random")).toBe("activity");
 });
+
+test("a conversation in a project is listed under it, not by date; Pinned and a search still list it", () => {
+	const inProject = new Set(["a", "p"]);
+	expect(groups({ inProject })).toEqual([
+		["Pinned", ["p"]],
+		["Yesterday", ["b"]],
+		["Older", ["old"]],
+	]);
+	expect(groups({ inProject, sort: "title" })).toEqual([
+		["Pinned", ["p"]],
+		["By name", ["b", "old"]],
+	]);
+	// A search's results are every match, in a project or not.
+	expect(groups({ inProject, ranked: true }).flatMap(([, files]) => files)).toEqual(["p", "a", "b", "old"]);
+});

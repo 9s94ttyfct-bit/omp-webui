@@ -1035,3 +1035,15 @@ html[data-pane-drag] * {
 	user-select: none;
 	-webkit-user-select: none;
 }
+/* A conversation dragged onto a sidebar project (`lib/session-drag.ts`): the same cursor and no text selected, and the project
+ * under the pointer marked as the place it lands. */
+html[data-session-dragging],
+html[data-session-dragging] * {
+	cursor: grabbing;
+	user-select: none;
+	-webkit-user-select: none;
+}
+[data-project-drop][data-drop-over] {
+	background: var(--accent-soft);
+	box-shadow: inset 0 0 0 1px var(--accent);
+}

@@ -1,11 +1,11 @@
 import type { ApprovalMode } from "@shared/approval.ts";
+import type { ChatProjects } from "@shared/chat-projects.ts";
 import type { CompactAt, CompactSettings } from "@shared/compact-at.ts";
 import type { DirListing } from "@shared/dirs.ts";
 import type { ErrorParams } from "@shared/error-info.ts";
 import type { SavedMac } from "@shared/macs.ts";
 import type { ConversationModels } from "@shared/model-config.ts";
 import type { Capabilities } from "@shared/platform.ts";
-import type { ProjectGroups } from "@shared/project-groups.ts";
 import type {
 	CliHelp,
 	CliInventory,
@@ -286,11 +286,11 @@ const enc = encodeURIComponent;
 export const api = {
 	meta: () => get<Meta>("/api/meta"),
 	/**
-	 * The sidebar's project groups (#636), kept by the server in this app's data. It is read with the session list on
-	 * every page (`store.loadSessions`), so it lives here with the other reads the first page makes; changing one is the
-	 * lazy list's (`lib/project-groups.ts`).
+	 * The sidebar's projects, kept by the server in this app's data. They are read with the session list on every page
+	 * (`store.loadSessions`), so the read lives here with the other reads the first page makes; changing them is
+	 * `lib/chat-projects.ts`'s.
 	 */
-	projectGroups: () => get<ProjectGroups>("/api/project-groups"),
+	chatProjects: () => get<ChatProjects>("/api/chat-projects"),
 	diagnostics: () => get<Diagnostics>("/api/diagnostics"),
 	/** Whether the project repository is public (the server asks GitHub, cached); null when it cannot tell. */
 	repoPublic: () => get<{ public: boolean | null }>("/api/repo"),

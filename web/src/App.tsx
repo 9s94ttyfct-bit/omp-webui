@@ -18,6 +18,7 @@ import { useChangeFolder } from "./lib/change-folder.ts";
 import { type ChatKey, nextChatKey } from "./lib/chat-key.ts";
 import { lazyChunk } from "./lib/lazy-chunk.ts";
 import { PANEL_SHEET_QUERY, useMediaQuery } from "./lib/media.ts";
+import { useProjectAsk } from "./lib/project-actions.ts";
 import { showShortcutsSettings } from "./lib/shortcut-view.ts";
 import { matches, typingInField } from "./lib/shortcuts.ts";
 import { attachLive, requestGoal, useApp } from "./store/app.ts";
@@ -39,6 +40,12 @@ const CliPage = lazy(() => import("./components/CliPage.tsx").then((m) => ({ def
 // omp's plugins: the page, its strings and its requests wait for it to be opened.
 const PluginsPage = lazy(() => import("./components/PluginsPage.tsx").then((m) => ({ default: m.PluginsPage })));
 const SettingsPage = lazy(() => import("./components/SettingsPage.tsx").then((m) => ({ default: m.SettingsPage })));
+// A sidebar project's page (`#/project/<id>`): its conversations and its folder in the Files panel.
+const ProjectPage = lazy(() => import("./components/ProjectPage.tsx").then((m) => ({ default: m.ProjectPage })));
+// The dialogs of the sidebar's projects (name, folder, delete): asked for from the sidebar, a menu or a project's page.
+const ProjectDialogs = lazy(() =>
+	import("./components/ProjectDialogs.tsx").then((m) => ({ default: m.ProjectDialogs })),
+);
 const Palette = lazy(() => import("./components/Palette.tsx").then((m) => ({ default: m.Palette })));
 const ChangeFolderDialog = lazy(() =>
 	import("./components/ChangeFolderDialog.tsx").then((m) => ({ default: m.ChangeFolderDialog })),
@@ -137,6 +144,7 @@ export function App() {
 	}, [feedbackOpen]);
 	// "Change folder…" (a conversation's menu, its status line): the picker loads when it is first asked for, and stays.
 	const changeFolderAsked = useChangeFolder((s) => s.ask !== null);
+	const projectAsked = useProjectAsk((s) => s.ask !== null);
 	const [changeFolderWanted, setChangeFolderWanted] = useState(false);
 	useEffect(() => {
 		if (changeFolderAsked) setChangeFolderWanted(true);
@@ -290,8 +298,11 @@ export function App() {
 										reading={view.reading}
 									/>
 								) : null}
-								{/* Keyed by the folder it was opened in: New chat in another folder starts over, as a new page. */}
-								{view.kind === "new" ? <NewChat key={view.cwd ?? ""} cwd={view.cwd} /> : null}
+								{/* Keyed by the folder and the project it was opened in: New chat in another starts over, as a new page. */}
+								{view.kind === "new" ? (
+									<NewChat key={`${view.cwd ?? ""}\u0000${view.project ?? ""}`} cwd={view.cwd} project={view.project} />
+								) : null}
+								{view.kind === "project" ? <ProjectPage key={view.id} id={view.id} /> : null}
 								{view.kind === "usage" ? <UsagePage /> : null}
 								{view.kind === "memory" ? <MemoryPage /> : null}
 								{view.kind === "guard" ? <GuardPage /> : null}
@@ -338,6 +349,17 @@ export function App() {
 				<ErrorBoundary fallback={() => null} onError={() => toast("error", t("shell.errorSessionMenuLoad"))}>
 					<Suspense fallback={null}>
 						<ChangeFolderDialog />
+					</Suspense>
+				</ErrorBoundary>
+			) : null}
+			{projectAsked ? (
+				<ErrorBoundary
+					resetKey={projectAsked}
+					fallback={() => null}
+					onError={() => toast("error", t("shell.errorProjectMenuLoad"))}
+				>
+					<Suspense fallback={null}>
+						<ProjectDialogs />
 					</Suspense>
 				</ErrorBoundary>
 			) : null}

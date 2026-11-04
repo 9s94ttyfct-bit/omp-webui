@@ -1,10 +1,14 @@
+import * as Menu from "@radix-ui/react-dropdown-menu";
 import { working } from "@shared/attention.ts";
+import { projectsOf } from "@shared/chat-projects.ts";
 import type { SessionSummary } from "@shared/protocol.ts";
 import {
 	Archive,
 	ArchiveRestore,
 	ArrowLeft,
 	ArrowUpDown,
+	FolderKanban,
+	FolderPlus,
 	ListChecks,
 	MessageSquarePlus,
 	PanelLeftClose,
@@ -15,6 +19,7 @@ import {
 	type CSSProperties,
 	type MouseEvent,
 	type ReactNode,
+	type PointerEvent as ReactPointerEvent,
 	Suspense,
 	useCallback,
 	useEffect,
@@ -30,6 +35,7 @@ import { forgetDraft } from "../lib/drafts.ts";
 import { dateGroup } from "../lib/format.ts";
 import { lazyChunk } from "../lib/lazy-chunk.ts";
 import { useLayout } from "../lib/panel-widths.ts";
+import { askProject, moveToProject } from "../lib/project-actions.ts";
 import {
 	SESSION_SORTS,
 	type SessionSort,
@@ -61,6 +67,10 @@ import { Button, cx, IconButton, Kbd, Modal, Spinner } from "./ui.tsx";
 // to search (the sidebar is the first page, and none of this belongs in it).
 const { Chunk: SessionSearch, preload: preloadSearch } = lazyChunk(() =>
 	import("./SessionSearch.tsx").then((m) => ({ default: m.SessionSearch })),
+);
+// The sidebar's projects: a chunk of their own, fetched with the list, in a box of their heading's height meanwhile.
+const { Chunk: ProjectsSection } = lazyChunk(() =>
+	import("./ProjectsSection.tsx").then((m) => ({ default: m.ProjectsSection })),
 );
 
 /** How many titles the bulk-delete confirmation lists before it sums up the rest. */
@@ -126,6 +136,9 @@ export function Sidebar() {
 			loadSessions: s.loadSessions,
 		})),
 	);
+	const { chatProjects, chatProjectsExcluded } = useApp(
+		useShallow((s) => ({ chatProjects: s.chatProjects, chatProjectsExcluded: s.chatProjectsExcluded })),
+	);
 	const setShowArchived = useCallback((on: boolean) => set({ sidebarArchived: on }), [set]);
 	// Equal for every token of a streamed reply (only a process starting, stopping, asking or pausing changes it).
 	const liveDots = useApp(useShallow((s) => liveDotsOf(s.lives)));
@@ -181,6 +194,43 @@ export function Sidebar() {
 			if (dot === "running" || dot === "needsInput" || dot === "quotaHeld") out.add(file);
 		return out;
 	}, [liveFiles]);
+	/** Each conversation's project, by file: its own, or the one of the conversation it came from (`projectsOf`). */
+	const membership = useMemo(
+		() => projectsOf(sessions, chatProjects, chatProjectsExcluded),
+		[sessions, chatProjects, chatProjectsExcluded],
+	);
+	/** The projects are above the list by date; the archive and a search's results are one list of their own. */
+	const showProjects = !showArchived && !searching;
+	/** The conversations of each project the list shows (the filters apply to them too), newest first. */
+	const projectRows = useMemo(() => {
+		const out = new Map<string, SessionSummary[]>();
+		if (!showProjects) return out;
+		for (const s of visible) {
+			const project = membership.get(s.file)?.project;
+			if (project === undefined) continue;
+			const list = out.get(project);
+			if (list) list.push(s);
+			else out.set(project, [s]);
+		}
+		for (const list of out.values()) list.sort((a, b) => b.modifiedAt - a.modifiedAt);
+		return out;
+	}, [visible, membership, showProjects]);
+	/** What the list by date leaves out: the conversations listed under a project. */
+	const inProject = useMemo(
+		() => new Set([...projectRows.values()].flatMap((list) => list.map((s) => s.file))),
+		[projectRows],
+	);
+	/** A search's results say which project each match is in, as a small label. */
+	const projectLabels = useMemo(() => {
+		if (!searching) return undefined;
+		const names = new Map(chatProjects.map((p) => [p.id, p.name]));
+		const out = new Map<string, string>();
+		for (const [file, m] of membership) {
+			const name = names.get(m.project);
+			if (name) out.set(file, name);
+		}
+		return out;
+	}, [searching, membership, chatProjects]);
 	// Also invalidates `groups` when the language changes (dateGroup reads the language itself).
 	const pinnedLabel = t("shell.sidebarPinned");
 	const byNameLabel = t("shell.sidebarByName");
@@ -197,20 +247,57 @@ export function Sidebar() {
 			byNameLabel,
 			ranked: searching,
 			pinnedFolded,
+			inProject,
 		});
 		// Content matches are not grouped with the names: every name match comes first, a pinned content match too.
 		return content?.length ? [...named, [inMessagesLabel, content] as [string, SessionSummary[]]] : named;
-	}, [visible, pins, sort, workingFiles, pinnedLabel, byNameLabel, searching, pinnedFolded, content, inMessagesLabel]);
+	}, [
+		visible,
+		pins,
+		sort,
+		workingFiles,
+		pinnedLabel,
+		byNameLabel,
+		searching,
+		pinnedFolded,
+		content,
+		inMessagesLabel,
+		inProject,
+	]);
 	/** How many pinned conversations the list holds: what the folded Pinned heading says it hides (#700). */
 	const pinnedCount = useMemo(() => {
 		const shown = new Set(visible.map((s) => s.file));
 		return pins.filter((f) => shown.has(f)).length;
 	}, [visible, pins]);
-	/** Rows in display order: the range a shift-click selects, and the only rows the selection acts on. */
-	const rows = useMemo(() => groups.flatMap(([, list]) => list), [groups]);
+	/**
+	 * Rows in display order: the range a shift-click selects, and the only rows the selection acts on. The conversations of
+	 * the open projects come first, as they are drawn; a pinned one is under its project too, and counted once.
+	 */
+	const rows = useMemo(() => {
+		const shownInProjects = chatProjects.filter((p) => !p.collapsed).flatMap((p) => projectRows.get(p.id) ?? []);
+		const out = new Map<string, SessionSummary>();
+		for (const s of [...shownInProjects, ...groups.flatMap(([, list]) => list)])
+			if (!out.has(s.file)) out.set(s.file, s);
+		return [...out.values()];
+	}, [groups, chatProjects, projectRows]);
 	const order = useMemo(() => rows.map((s) => s.file), [rows]);
 	/** The selected rows that are showing. A filter can hide selected rows; what is not shown is not counted or acted on. */
 	const chosen = useMemo(() => rows.filter((s) => selected.has(s.file)), [rows, selected]);
+	/** A conversation's row dragged onto a project's (`lib/session-drag.ts`) is put in that project. */
+	const pressRow = useStable((e: ReactPointerEvent<HTMLElement>) => {
+		if (selecting || !(e.target instanceof Element)) return;
+		const row = e.target.closest<HTMLElement>('[data-testid="session-item"]');
+		const session = row?.dataset.file ? sessions.find((s) => s.file === row.dataset.file) : undefined;
+		if (!session) return;
+		// The drag is a module of its own, fetched by the press: nothing of it is in the first paint.
+		const press = e.nativeEvent;
+		void import("../lib/session-drag.ts").then((m) =>
+			m.startSessionPress(press, session.file, sessionLabel(session), ({ project }) => {
+				const target = useApp.getState().chatProjects.find((p) => p.id === project);
+				if (target && membership.get(session.file)?.project !== target.id) void moveToProject([session.id], target);
+			}),
+		);
+	});
 
 	const [pending, setPending] = useState<{
 		action: SessionAction;
@@ -336,6 +423,8 @@ export function Sidebar() {
 		"inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted hover:bg-hover hover:text-fg aria-pressed:bg-hover aria-pressed:text-fg";
 	const listButton =
 		"inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted hover:bg-hover hover:text-fg aria-pressed:bg-hover aria-pressed:text-fg";
+	const menuItem =
+		"flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none data-[highlighted]:bg-hover max-md:min-h-11";
 	const archivedLabel = archivedCount
 		? t("shell.sidebarArchivedCount", { n: archivedCount })
 		: t("shell.sidebarArchived");
@@ -410,7 +499,7 @@ export function Sidebar() {
 		</>
 	);
 	return (
-		<SidebarFrame>
+		<SidebarFrame onPointerDown={pressRow}>
 			<div className="flex items-center gap-1 px-3 pt-3 pb-2">
 				<button
 					type="button"
@@ -468,8 +557,29 @@ export function Sidebar() {
 					focusFirst={focusFirstRow}
 				/>
 			</Suspense>
+			{showProjects && sessionsLoaded ? (
+				<Suspense fallback={<div aria-hidden className="h-8 shrink-0" />}>
+					<ProjectsSection
+						projects={chatProjects}
+						rows={projectRows}
+						activeProject={view.kind === "project" ? view.id : null}
+						activeFile={activeFile}
+						pinSet={pinSet}
+						archivedSet={archivedSet}
+						liveFiles={liveFiles}
+						selecting={selecting}
+						selected={selected}
+						onOpen={openRow}
+						onTogglePin={pinRow}
+						onToggleArchive={archiveRow}
+						onAction={actionRow}
+						onSelect={selectRow}
+					/>
+				</Suspense>
+			) : null}
 			<SessionList
 				groups={groups}
+				labels={projectLabels}
 				showArchived={showArchived}
 				marks={marks}
 				hits={hits}
@@ -574,6 +684,52 @@ export function Sidebar() {
 							<Trash2 size={14} /> {t("shell.sidebarDeleteSelected")}
 						</Button>
 					</div>
+					{showArchived ? null : (
+						// Move to project: the projects, or a new one made for what is chosen. It does not change their folders.
+						<Menu.Root>
+							<Menu.Trigger asChild>
+								<Button size="sm" className="w-full" disabled={!chosen.length} data-testid="selection-move">
+									<FolderKanban size={14} /> {t("shell.sidebarMoveSelected")}
+								</Button>
+							</Menu.Trigger>
+							<Menu.Portal>
+								<Menu.Content
+									side="top"
+									align="start"
+									sideOffset={4}
+									className="z-50 max-h-[60vh] min-w-48 overflow-y-auto rounded-xl border border-border bg-surface p-1 shadow-2xl"
+								>
+									{chatProjects.map((p) => (
+										<Menu.Item
+											key={p.id}
+											className={menuItem}
+											data-testid="selection-move-to"
+											data-project={p.id}
+											onSelect={() =>
+												void moveToProject(
+													chosen.map((s) => s.id),
+													p,
+												).then((ok) => ok && stopSelecting())
+											}
+										>
+											<span className="min-w-0 flex-1 truncate">{p.name}</span>
+										</Menu.Item>
+									))}
+									{chatProjects.length ? <Menu.Separator className="my-1 h-px bg-border" /> : null}
+									<Menu.Item
+										className={menuItem}
+										data-testid="selection-move-new"
+										onSelect={() => {
+											askProject({ kind: "new", sessions: chosen.map((s) => s.id) });
+											stopSelecting();
+										}}
+									>
+										<FolderPlus size={14} /> {t("shell.sidebarNewProjectItem")}
+									</Menu.Item>
+								</Menu.Content>
+							</Menu.Portal>
+						</Menu.Root>
+					)}
 				</div>
 			) : (
 				<div className="border-t border-border">
@@ -687,7 +843,14 @@ export function Sidebar() {
  * reachable by a wheel, a finger and Tab. The handle is the frame's: it stands outside the box, which a scroll
  * container would clip.
  */
-function SidebarFrame({ children }: { children: ReactNode }) {
+function SidebarFrame({
+	children,
+	onPointerDown,
+}: {
+	children: ReactNode;
+	/** A press anywhere in the column: a conversation's row may be dragged onto a project from it. */
+	onPointerDown?: (e: ReactPointerEvent<HTMLElement>) => void;
+}) {
 	const t = useT();
 	const { width } = useLayout();
 	return (
@@ -697,7 +860,9 @@ function SidebarFrame({ children }: { children: ReactNode }) {
 			aria-label={t("shell.sidebarAria")}
 		>
 			<ResizeHandle kind="sidebar" label={t("shell.resizeSidebar")} className="left-full max-[900px]:hidden" />
-			<div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">{children}</div>
+			<div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain" onPointerDown={onPointerDown}>
+				{children}
+			</div>
 		</aside>
 	);
 }

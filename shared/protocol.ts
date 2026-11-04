@@ -72,6 +72,11 @@ export type OpenTarget =
 			/** Whether the advisor reviews the conversation (see `shared/advisor.ts`); absent: omp's configuration decides. */
 			advisor?: boolean;
 			mode?: Mode;
+			/**
+			 * The sidebar project the conversation starts in (`shared/chat-projects.ts`, its id): the server puts it there with
+			 * its first message, so a page closed right after sending does not leave it out.
+			 */
+			project?: string;
 	  };
 
 /**
@@ -539,8 +544,8 @@ export type ServerMessage =
 	| { t: "favorite_models"; models: string[] }
 	/** The questions of unattended mode (#646) changed, from any page or any conversation: what every page shows of them, as counts (the list is `GET /api/questions`). */
 	| { t: "questions"; counts: QuestionCounts }
-	/** The sidebar's project groups changed, from any page: every page asks for them again (`/api/project-groups`). */
-	| { t: "project_groups" }
+	/** The sidebar's projects changed, from any page: every page asks for them again (`/api/chat-projects`). */
+	| { t: "chat_projects" }
 	/** omp's global config.yml was written (model roles, presets, settings): views of it refetch. */
 	| { t: "model_config_changed" }
 	/**

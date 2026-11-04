@@ -2,7 +2,7 @@ import { fuzzyMatch } from "@shared/fuzzy.ts";
 import type { SessionSummary } from "@shared/protocol.ts";
 
 /**
- * What the sidebar's search asks of the list: a fuzzy match on the conversation's name, the project and range filters
+ * What the sidebar's search asks of the list: a fuzzy match on the conversation's name, the folder and range filters
  * beside it, and the order the results come in (best match first, then the most recent).
  */
 
@@ -14,8 +14,8 @@ export const DATE_RANGES: readonly DateRange[] = ["today", "week", "month", "all
 export interface SessionFilters {
 	/** What has been typed in the filter field; empty filters nothing out. */
 	query: string;
-	/** The folder of the project to list, or `all`. */
-	project: string;
+	/** The folder whose conversations to list (a conversation's `cwd`), or `all`. */
+	folder: string;
 	range: DateRange;
 	/** Whether archived conversations are the ones listed (the sidebar's archive view). */
 	archived: boolean;
@@ -171,7 +171,7 @@ export function rankSessions(
 	const query = filters.query.trim();
 	const out: RankedSession[] = [];
 	for (const s of sessions) {
-		if (filters.project !== "all" && s.cwd !== filters.project) continue;
+		if (filters.folder !== "all" && s.cwd !== filters.folder) continue;
 		if (start !== null && s.modifiedAt < start) continue;
 		if (!query) {
 			out.push({ session: s, score: 0, positions: [] });

@@ -50,6 +50,8 @@ interface Props {
 	session: SessionSummary;
 	/** Where a search matched the row's name: those characters are marked (see `Mark`). */
 	mark?: readonly number[];
+	/** The project the conversation is in, shown as a small label in a search's results (the list by date leaves them out). */
+	badge?: string;
 	/** The line of the message the sidebar's search found the conversation by (#717), shown under its name. */
 	snippet?: string;
 	active: boolean;
@@ -107,6 +109,7 @@ const UNREACHABLE = "pointer-events-none group-hover:pointer-events-auto group-f
 export const SessionItem = memo(function SessionItem({
 	session: s,
 	mark,
+	badge,
 	snippet,
 	active,
 	pinned,
@@ -196,6 +199,14 @@ export const SessionItem = memo(function SessionItem({
 				<span data-testid="session-title" className="min-w-0 flex-1 truncate">
 					<Mark text={sessionLabel(s)} positions={mark ?? []} />
 				</span>
+				{badge ? (
+					<span
+						className="max-w-24 shrink-0 truncate rounded bg-hover px-1 text-xs text-faint"
+						data-testid="session-project-label"
+					>
+						{badge}
+					</span>
+				) : null}
 				{trail}
 				{snippet === undefined ? null : (
 					// The whole width under the name: a line of the message is what says why the row is listed.

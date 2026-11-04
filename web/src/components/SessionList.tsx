@@ -46,6 +46,8 @@ const MENU = '[data-testid="session-menu"]';
 interface Props {
 	/** The rows by date group, in display order. */
 	groups: [string, SessionSummary[]][];
+	/** The project each row is in, by file, for a search's results to show as a small label. */
+	labels?: ReadonlyMap<string, string>;
 	/** The archive's own title above the rows. */
 	showArchived: boolean;
 	/** Where the filter matched each row's name, by file: the row marks those characters. */
@@ -96,6 +98,7 @@ interface Props {
  */
 export function SessionList({
 	groups,
+	labels,
 	showArchived,
 	marks,
 	hits,
@@ -272,6 +275,7 @@ export function SessionList({
 										<SessionItem
 											session={entry.session}
 											mark={marks?.get(entry.session.file)}
+											badge={labels?.get(entry.session.file)}
 											snippet={hits?.get(entry.session.file)?.snippet}
 											active={activeFile === entry.session.file}
 											pinned={pinSet.has(entry.session.file)}

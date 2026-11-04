@@ -56,11 +56,12 @@ export const zh: Record<keyof typeof en, string> = {
 	dirNotWritable: "没有权限在 {path} 里创建文件夹。",
 	projectsNotHere: "项目文件夹要在运行 omp-webui 的电脑上更改。",
 	projectsFolderShape: "请指定文件夹，或选择默认。",
-	// 具体的名称问题由页面根据 `problem` 说明（project-groups 命名空间）。
-	groupNameInvalid: "这个名称不能用作分组名。",
-	groupProjectInvalid: "项目由它的对话所在的文件夹来标识。",
-	groupUnknown: "这个分组已经不存在了。",
-	groupFull: "分组里的项目已经达到上限。请先移出一个。",
+	// 具体的名称问题由页面根据 `problem` 说明（chatProjects 命名空间）。
+	projectNameInvalid: "这个名称不能用作项目名。",
+	projectFolderInvalid: "项目的文件夹必须是一个已存在的文件夹。",
+	projectSessionInvalid: "这个对话不能放进项目。",
+	projectUnknown: "这个项目已经不存在了。",
+	projectFull: "项目里的对话已经达到上限。请先移出一些。",
 
 	// An omp install or update that did not finish
 	jobCancelled: "已取消",

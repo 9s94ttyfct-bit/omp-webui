@@ -56,11 +56,12 @@ export const ERROR_CODES = [
 	// The projects folder (server/main.ts, /api/projects): moved from a page that is not at this computer, or named wrongly.
 	"projectsNotHere",
 	"projectsFolderShape",
-	// The sidebar's project groups (#636): a name or a project a change cannot use.
-	"groupNameInvalid",
-	"groupProjectInvalid",
-	"groupUnknown",
-	"groupFull",
+	// The sidebar's projects (server/chat-projects.ts): a name, a folder or a conversation a change cannot use.
+	"projectNameInvalid",
+	"projectFolderInvalid",
+	"projectSessionInvalid",
+	"projectUnknown",
+	"projectFull",
 	// An omp install or update that did not finish (server/omp/lifecycle.ts).
 	"jobCancelled",
 	"jobCouldNotRun",

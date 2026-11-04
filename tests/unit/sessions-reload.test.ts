@@ -46,7 +46,7 @@ beforeEach(() => {
 		const url = String(input);
 		requests.push(url);
 		// A fresh parse every time, as from the network.
-		if (url === "/api/project-groups") return Response.json({ groups: [], problem: null });
+		if (url === "/api/chat-projects") return Response.json({ projects: [], excluded: [], problem: null });
 		return Response.json(url === "/api/sessions" ? JSON.parse(JSON.stringify(server)) : []);
 	}) as typeof fetch);
 	useApp.setState({ sessions: [], pins: [], archived: [], sessionsLoaded: false, sessionsError: null, toasts: [] });

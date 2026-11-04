@@ -1,32 +1,32 @@
 import { writeChatSession } from "../support/chat-session.ts";
 import { writeSimpleSession } from "../support/fixtures.ts";
+import { chooseFolder, folderTrigger } from "../support/folder-filter.ts";
 import { boxOf } from "../support/geometry.ts";
 import { sessionRow } from "../support/live.ts";
-import { chooseProject, projectTrigger } from "../support/project-groups.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /**
  * The sidebar's controls above the conversation list (no model call): New chat, the filter with the
- * project filter beside it, and the list's own actions (Select, the archive) on the list's first line, so that the list
+ * folder filter beside it, and the list's own actions (Select, the archive) on the list's first line, so that the list
  * starts high and keeps its room. Every control is still there and still works.
  */
 
 /** The sidebar, in any language: the column that holds the conversation list. */
 const sidebar = (page: Page) => page.locator("aside", { has: page.getByTestId("session-list") });
 const firstRow = (page: Page) => page.getByTestId("session-item").first();
-const project = (page: Page) => projectTrigger(page);
+const folder = (page: Page) => folderTrigger(page);
 
 test.describe("at 1400 x 700", () => {
 	test.use({ viewport: { width: 1400, height: 700 } });
 
-	test("the list starts high: the filter and the project filter share a row, Select is not a row of its own", async ({
+	test("the list starts high: the filter and the folder filter share a row, Select is not a row of its own", async ({
 		page,
 	}) => {
 		await page.goto("/");
 		await expect(firstRow(page)).toBeVisible();
 		const filter = await boxOf(page.getByTestId("session-filter"));
-		const funnel = await boxOf(project(page));
-		expect(funnel.width, "the project filter is a 32px button").toBe(32);
+		const funnel = await boxOf(folder(page));
+		expect(funnel.width, "the folder filter is a 32px button").toBe(32);
 		expect(funnel.height).toBe(32);
 		expect(funnel.y, "level with the filter field").toBe(filter.y);
 		expect(funnel.x, "to its right").toBeGreaterThan(filter.x + filter.width);
@@ -46,7 +46,7 @@ test.describe("at 1400 x 700", () => {
 		expect(row.y, "the first conversation starts at most 224px down").toBeLessThanOrEqual(224);
 	});
 
-	test("the project filter still filters, says what it filters by, and the list's actions still work", async ({
+	test("the folder filter still filters, says what it filters by, and the list's actions still work", async ({
 		page,
 	}) => {
 		const agentDir = process.env.OMPW_E2E_AGENT_DIR as string;
@@ -59,15 +59,15 @@ test.describe("at 1400 x 700", () => {
 		});
 		await page.goto("/");
 		await expect(sessionRow(page, "Chrome heron")).toHaveCount(1, { timeout: 15_000 });
-		const funnel = project(page);
-		await expect(funnel).toHaveAttribute("title", /^Project: All projects \(\d+\)$/);
+		const funnel = folder(page);
+		await expect(funnel).toHaveAttribute("title", /^Folder: All folders \(\d+\)$/);
 
-		await chooseProject(page, cwd);
+		await chooseFolder(page, cwd);
 		await expect(page.getByTestId("session-item")).toHaveCount(1);
-		await expect(funnel, "the funnel names the project").toHaveAttribute("title", `Project: ${cwd}`);
+		await expect(funnel, "the funnel names the folder").toHaveAttribute("title", `Folder: ${cwd}`);
 		await expect(funnel.locator("span[aria-hidden]"), "and wears a dot while it filters").toHaveCount(1);
 
-		await chooseProject(page, null);
+		await chooseFolder(page, null);
 		await expect(funnel.locator("span[aria-hidden]")).toHaveCount(0);
 		await expect(page.getByTestId("session-item")).not.toHaveCount(1);
 

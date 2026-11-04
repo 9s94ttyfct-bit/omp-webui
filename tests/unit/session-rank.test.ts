@@ -50,7 +50,7 @@ function session(
 
 const filters = (o: Partial<SessionFilters> = {}): SessionFilters => ({
 	query: "",
-	project: "all",
+	folder: "all",
 	range: "all",
 	archived: false,
 	...o,
@@ -169,7 +169,7 @@ describe("the project, the date range and the archive", () => {
 			session(1, { project: "alpha", cwd: "/work/alpha" }),
 			session(2, { project: "beta", cwd: "/work/beta" }),
 		];
-		expect(titles(rankSessions(all, filters({ project: "/work/beta" }), NOW))).toEqual(["Session 2"]);
+		expect(titles(rankSessions(all, filters({ folder: "/work/beta" }), NOW))).toEqual(["Session 2"]);
 	});
 
 	test("today starts at local midnight, and the week and month count back from now", () => {

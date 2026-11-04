@@ -1,4 +1,4 @@
-import type { ProjectGroup } from "@shared/project-groups.ts";
+import type { ChatProject } from "@shared/chat-projects.ts";
 import type { SessionSummary } from "@shared/protocol.ts";
 
 /**
@@ -48,9 +48,9 @@ export function shareStrings(prev: string[], next: string[]): string[] {
 	return prev.length === next.length && prev.every((s, i) => s === next[i]) ? prev : next;
 }
 
-/** `next`, or the array it replaces when both hold the same groups in the same order (a change that changes nothing). */
-export function shareGroups(prev: ProjectGroup[], next: ProjectGroup[]): ProjectGroup[] {
-	return prev.length === next.length && prev.every((g, i) => JSON.stringify(g) === JSON.stringify(next[i]))
+/** `next`, or the array it replaces when both hold the same projects in the same order (a change that changes nothing). */
+export function shareProjects(prev: ChatProject[], next: ChatProject[]): ChatProject[] {
+	return prev.length === next.length && prev.every((p, i) => JSON.stringify(p) === JSON.stringify(next[i]))
 		? prev
 		: next;
 }

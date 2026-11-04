@@ -1,11 +1,11 @@
 import type { ApprovalMode } from "@shared/approval.ts";
+import type { ChatProject } from "@shared/chat-projects.ts";
 import type { ExitInfo, ExitReport } from "@shared/exit.ts";
 import type { Goal } from "@shared/goal.ts";
 import { hostResult, PROPOSE_GOAL_TOOL, readProposal } from "@shared/guided-goal.ts";
 import { bashRunOf, EMPTY_HOLD } from "@shared/held-state.ts";
 import type { PanelState } from "@shared/panel-state.ts";
 import { PREF } from "@shared/prefs.ts";
-import type { ProjectGroup } from "@shared/project-groups.ts";
 import type {
 	LiveAttached,
 	LiveInfo,
@@ -28,7 +28,7 @@ import { enterEntry, entryIdOf, entryState, keepReading, newEntryId, type Readin
 import { onLoginNotice, onRemoteMessage, remoteApi } from "../lib/remote.ts";
 import { noteServerTime, serverOffsetMs } from "../lib/server-clock.ts";
 import { isSettingsPage, type SettingsPageId } from "../lib/settings-pages.ts";
-import { applySessionChanges, shareGroups, shareSessions, shareStrings } from "../lib/share.ts";
+import { applySessionChanges, shareProjects, shareSessions, shareStrings } from "../lib/share.ts";
 import { type Palette, storedPalette, storedTheme } from "../lib/theme.ts";
 import { webUrl } from "../lib/web-url.ts";
 import { ReplyError, socket } from "../lib/ws.ts";
@@ -74,8 +74,13 @@ export type View =
 			/** The conversation's built-in browser shown full screen over the page (`#/s/<file>/browser`); not with `agent`. */
 			browser?: true;
 	  }
-	/** New chat; `cwd`: in this folder (an entry point that knows its folder), else in a new project (the default). */
-	| { kind: "new"; cwd?: string }
+	/**
+	 * New chat; `cwd`: in this folder (an entry point that knows its folder), else in a new project folder (the default);
+	 * `project`: a sidebar project the conversation is put in with its first message (`OpenTarget.project`).
+	 */
+	| { kind: "new"; cwd?: string; project?: string }
+	/** A sidebar project's own page (`#/project/<id>`): its conversations, New chat in it, and its folder in the Files panel. */
+	| { kind: "project"; id: string }
 	| { kind: "usage" }
 	/** omp's memory, a page of Settings (`#/settings/memory`; the old `#/memory` address opens it too). */
 	| { kind: "memory" }
@@ -126,10 +131,12 @@ interface AppState {
 	pins: string[];
 	/** Archived session files: hidden from the main list (a web UI preference). */
 	archived: string[];
-	/** The sidebar's project groups (#636), in their order: the folders the person put in them, kept by the server. */
-	projectGroups: ProjectGroup[];
-	/** Why the groups could not be read as they were kept (null: they were, or there are none). */
-	projectGroupsProblem: string | null;
+	/** The sidebar's projects, in their order, as the server keeps them (`shared/chat-projects.ts`). */
+	chatProjects: ChatProject[];
+	/** The session ids taken out of a project on purpose (`ChatProjects.excluded`). */
+	chatProjectsExcluded: string[];
+	/** Why the projects could not be read as they were kept (null: they were, or there are none). */
+	chatProjectsProblem: string | null;
 	/** `provider/id` of loved models, shown first in the model picker (a web UI preference). */
 	favoriteModels: string[];
 	view: View;
@@ -199,8 +206,9 @@ export const useApp = create<AppState>((set, get) => ({
 	sessions: [],
 	favoriteModels: [],
 	archived: [],
-	projectGroups: [],
-	projectGroupsProblem: null,
+	chatProjects: [],
+	chatProjectsExcluded: [],
+	chatProjectsProblem: null,
 	sessionsLoaded: false,
 	sessionsError: null,
 	pins: [],
@@ -242,16 +250,16 @@ export const useApp = create<AppState>((set, get) => ({
 		try {
 			// Once there is a list, the server is asked only for what changed since its last answer.
 			const since = get().sessionsLoaded ? sessionsCursor : null;
-			const [answer, pins, archived, groups] = await Promise.all([
+			const [answer, pins, archived, projects] = await Promise.all([
 				api.sessions(since),
 				sessionActions.pins().catch(() => get().pins),
 				sessionActions.archived().catch(() => get().archived),
-				// The project groups (#636) come with the list they group: one read for the sidebar's list and its groups.
-				// A server that does not know them (`[]`, or nothing that is a list) leaves the groups as they are: the
-				// sidebar is the list's, and no page keeps a conversation from opening for want of a project group.
+				// The projects come with the list they group: one read for the sidebar's list and its projects. A server that
+				// does not know them (nothing that is a list) leaves them as they are: no page keeps a conversation from
+				// opening for want of a project.
 				api
-					.projectGroups()
-					.then((answer) => (Array.isArray(answer?.groups) ? answer : null))
+					.chatProjects()
+					.then((answer) => (Array.isArray(answer?.projects) ? answer : null))
 					.catch(() => null),
 			]);
 			sessionsCursor = answer.cursor;
@@ -263,8 +271,11 @@ export const useApp = create<AppState>((set, get) => ({
 						: applySessionChanges(get().sessions, answer.changed, answer.removed),
 				pins: shareStrings(get().pins, pins),
 				archived: shareStrings(get().archived, archived),
-				projectGroups: groups ? shareGroups(get().projectGroups, groups.groups) : get().projectGroups,
-				projectGroupsProblem: groups ? groups.problem : get().projectGroupsProblem,
+				chatProjects: projects ? shareProjects(get().chatProjects, projects.projects) : get().chatProjects,
+				chatProjectsExcluded: projects
+					? shareStrings(get().chatProjectsExcluded, Array.isArray(projects.excluded) ? projects.excluded : [])
+					: get().chatProjectsExcluded,
+				chatProjectsProblem: projects ? projects.problem : get().chatProjectsProblem,
 				sessionsLoaded: true,
 				sessionsError: null,
 			});
@@ -332,7 +343,13 @@ export function hashOf(v: View): string {
 	if (v.kind === "memory") return "#/settings/memory";
 	if (["usage", "guard", "questions", "settings", "plugins"].includes(v.kind)) return `#/${v.kind}`;
 	if (v.kind === "cli") return v.command ? `#/settings/cli/${encodeURIComponent(v.command)}` : "#/settings/cli";
-	if (v.kind === "new" && v.cwd) return `#/new?cwd=${encodeURIComponent(v.cwd)}`;
+	if (v.kind === "project") return `#/project/${encodeURIComponent(v.id)}`;
+	if (v.kind === "new" && (v.cwd || v.project)) {
+		const q = new URLSearchParams();
+		if (v.cwd) q.set("cwd", v.cwd);
+		if (v.project) q.set("project", v.project);
+		return `#/new?${q}`;
+	}
 	return "#/";
 }
 
@@ -391,9 +408,15 @@ export function viewFromHash(): View {
 			const page = h.slice("/settings/".length);
 			return isSettingsPage(page) ? { kind: "settings", page } : { kind: "settings" };
 		}
+		if (h.startsWith("/project/")) {
+			const id = decodeURIComponent(h.slice("/project/".length));
+			if (id) return { kind: "project", id };
+		}
 		if (h.startsWith("/new?")) {
-			const cwd = new URLSearchParams(h.slice("/new?".length)).get("cwd");
-			return cwd ? { kind: "new", cwd } : { kind: "new" };
+			const q = new URLSearchParams(h.slice("/new?".length));
+			const cwd = q.get("cwd");
+			const project = q.get("project");
+			return { kind: "new", ...(cwd ? { cwd } : {}), ...(project ? { project } : {}) };
 		}
 	} catch {
 		// A truncated or hand-edited address (`#/s/%`) names nothing to open.
@@ -1605,8 +1628,8 @@ export function onServer(msg: ServerMessage): void {
 		case "sessions_changed":
 			scheduleSessionsReload();
 			return;
-		case "project_groups":
-			// Another page (or this one's other tab) changed the groups: read them again, without waiting for a session change.
+		case "chat_projects":
+			// Another page (or this one's other tab) changed the projects: read them again, without waiting for a session change.
 			void useApp.getState().loadSessions();
 			return;
 		case "remote":

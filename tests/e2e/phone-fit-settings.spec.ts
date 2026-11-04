@@ -1,8 +1,8 @@
 import { DEFAULT_REMOTE_CONFIG, type RemoteSnapshot } from "../../shared/remote.ts";
 import { NO_REMOTE_AI } from "../../shared/remote-ai.ts";
+import { folderPopover, openFolders } from "../support/folder-filter.ts";
 import { openSidebar } from "../support/live.ts";
 import { distance, pixelsAt } from "../support/pixels.ts";
-import { openProjects, projectPopover } from "../support/project-groups.ts";
 import { type Box, boxOf } from "../support/style.ts";
 import { devices, expect, type Locator, type Page, test } from "./fixtures.ts";
 
@@ -284,12 +284,12 @@ function suite(): void {
 		expect(intersect(nameBox, await boxOf(row.getByTestId("running-status")))).toBe(false);
 	});
 
-	test("the sidebar's project list has its Close button on one line", async ({ page }) => {
+	test("the sidebar's folder list has its Close button on one line", async ({ page }) => {
 		await page.goto("/");
 		// On a phone the sidebar is a drawer, closed at first.
 		await openSidebar(page);
-		await openProjects(page);
-		const close = projectPopover(page).getByRole("button", { name: /^(Close|关闭)$/ });
+		await openFolders(page);
+		const close = folderPopover(page).getByRole("button", { name: /^(Close|关闭)$/ });
 		await expect(close).toBeVisible();
 		expect(await linesOf(close)).toBe(1);
 		const box = await boxOf(close);
