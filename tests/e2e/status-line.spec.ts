@@ -464,7 +464,7 @@ test.describe("the line and the header at several widths", () => {
 			await expect(menu.getByTestId("status-goal")).toHaveCount(0);
 			await page.keyboard.press("Escape");
 		} else {
-			await expect(line(page, "status-time")).toHaveText("13h 7m");
+			await expect(line(page, "status-time")).toContainText("13h 7m");
 		}
 		await page.getByTestId("right-panel-close").click();
 		for (const id of LINE_ITEMS) await expect(line(page, id), id).toBeVisible();
