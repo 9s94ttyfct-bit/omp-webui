@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { type GuardConfig, type LiveGuard, parseGuardWord } from "../../shared/guard.ts";
 import { en } from "../../web/src/i18n/guard.ts";
 import { zh } from "../../web/src/i18n/zh-CN/guard.ts";
+import { boxOf } from "../support/geometry.ts";
 import { ownSession, sessionRow, startLive } from "../support/live.ts";
 import type { TestServer } from "../support/server.ts";
 import { tapSocket } from "../support/socket-tap.ts";
@@ -228,7 +229,7 @@ test("a page that is not this computer's has the switch shown and not usable, sa
 	expect(asked).toEqual([]);
 });
 
-test("a narrow window keeps the switch in the header beside the menu, and nothing spills out; in Chinese", async ({
+test("a narrow window keeps the switch in the header beside This session or the menu, and nothing spills out; in Chinese", async ({
 	page,
 }) => {
 	await openChat(page, 0x6b13, "Guard toggle narrow", "zh-CN");
@@ -236,15 +237,21 @@ test("a narrow window keeps the switch in the header beside the menu, and nothin
 	await expect(toggle).toHaveAttribute("aria-label", fill(zh.toggleStateOn, { mode: zh.modeReviewer }));
 	await toggle.click();
 	await expect(toggle).toHaveAttribute("aria-label", zh.toggleStateOff);
+	const header = page.locator("header").filter({ has: page.getByTestId("chat-title") });
 	for (const width of [600, 390, 320]) {
 		await page.setViewportSize({ width, height: 800 });
-		await expect(page.getByTestId("chat-more")).toBeVisible();
 		await expect(toggle).toBeVisible();
-		const header = page.locator("header").filter({ has: page.getByTestId("chat-title") });
-		const spill = await header.evaluate((el) => el.scrollWidth - el.clientWidth);
-		expect(spill, `header at ${width}px`).toBeLessThanOrEqual(0);
-		const [box, menu] = [await toggle.boundingBox(), await page.getByTestId("chat-more").boundingBox()];
-		// Inside the window, and beside the menu that holds This session.
-		expect(box && menu && box.x >= 0 && box.x + box.width <= width && menu.x - (box.x + box.width) < 48).toBe(true);
+		// The header gives way in the frame after the resize: what spills out is measured once it has.
+		await expect
+			.poll(() => header.evaluate((el) => el.scrollWidth - el.clientWidth), { message: `header at ${width}px` })
+			.toBeLessThanOrEqual(0);
+		// A phone's header has no room for every button beside the title.
+		if (width < 600) await expect(page.getByTestId("chat-more")).toBeVisible();
+		const box = await boxOf(toggle);
+		expect(box.x >= 0 && box.x + box.width <= width, `inside the window at ${width}px`).toBe(true);
+		// Beside This session while it is on the header; once it has gone into the menu, beside the menu that holds it.
+		const session = header.getByTestId("session-controls");
+		const next = await boxOf((await session.count()) > 0 ? session : page.getByTestId("chat-more"));
+		expect(next.x - (box.x + box.width), `beside it at ${width}px`).toBeLessThan(16);
 	}
 });

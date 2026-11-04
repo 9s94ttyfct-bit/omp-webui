@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type StubRegistry, startStubRegistry, writeFakePluginsOmp } from "../support/plugins-stubs.ts";
@@ -152,6 +152,63 @@ test("the Skills tab lists the skills omp has, and installs a registry skill; on
 	await page.getByTestId("skill-uninstall-confirm").click();
 	await expect(page.getByTestId("plugins-outcome")).toContainText("omp skill uninstall @acme/pdf-tools -g");
 	await expect(installed).toHaveCount(0);
+});
+
+test("the Overview lists the updates a check finds; some are installed, then the rest, and the marketplaces in bulk", async ({
+	page,
+}) => {
+	// What omp has: an older registry skill for the user, and a marketplace plugin with a newer version in its catalog.
+	const file = join(s.home, ".fake-plugins-omp.json");
+	const held = JSON.parse(readFileSync(file, "utf8"));
+	held.skills = [{ id: "@acme/pdf-tools", version: "1.1.0", global: true }];
+	held.plugins = [{ id: "hello@market", scope: "user", version: "1.0.0", latest: "1.1.0" }];
+	held.marketplaces = [
+		{ name: "market", source: "someone/market" },
+		{ name: "other", source: "someone/other" },
+	];
+	writeFileSync(file, JSON.stringify(held));
+
+	await page.goto(`${s.url}/?token=${s.accessToken}#/plugins`);
+	await expect(page.getByTestId("plugins-tab-overview")).toHaveAttribute("aria-selected", "true");
+	await expect(page.getByTestId("plugins-stat-installed")).toContainText("1");
+	await page.getByTestId("updates-check").click();
+	const rows = page.getByTestId("update-row");
+	await expect(rows).toHaveCount(2);
+	await expect(page.getByTestId("plugins-stat-updates")).toContainText("2");
+	const skill = rows.filter({ hasText: "@acme/pdf-tools" });
+	await expect(skill.getByTestId("update-versions")).toHaveText("1.1.0 → 1.2.0");
+	await expect(rows.filter({ hasText: "hello@market" }).getByTestId("update-versions")).toHaveText("1.0.0 → 1.1.0");
+	// A check refreshed the marketplaces' catalogs first.
+	expect(readFileSync(join(s.home, ".fake-plugins-omp.calls"), "utf8")).toContain('["plugin","marketplace","update"]');
+
+	await skill.getByTestId("update-select").check();
+	await page.getByTestId("updates-selected").click();
+	await expect(page.getByTestId("updates-confirm")).toBeVisible();
+	await page.getByTestId("updates-confirm").click();
+	await expect(page.getByTestId("plugins-outcome")).toHaveAttribute("data-state", "done");
+	await expect(page.getByTestId("plugins-outcome")).toContainText("omp skill update @acme/pdf-tools -g");
+	await expect(rows).toHaveCount(1);
+
+	await page.getByTestId("updates-all").click();
+	await page.getByTestId("updates-confirm").click();
+	await expect(page.getByTestId("plugins-outcome")).toContainText("omp plugin upgrade hello@market --scope user");
+	await expect(page.getByTestId("updates-none")).toBeVisible();
+	const now = JSON.parse(readFileSync(file, "utf8"));
+	expect(now.plugins[0].version).toBe("1.1.0");
+	expect(now.skills[0].version).toBe("1.2.0");
+
+	// Two marketplaces of several, refreshed together: each in turn.
+	await page.getByTestId("plugins-tab-marketplaces").click();
+	for (const name of ["market", "other"])
+		await page
+			.locator(`[data-testid="marketplace"][data-marketplace="${name}"]`)
+			.getByTestId("marketplace-select")
+			.check();
+	await page.getByTestId("markets-update-selected").click();
+	await expect(page.getByTestId("plugins-outcome")).toHaveAttribute("data-state", "done");
+	await expect(page.getByTestId("plugins-outcome")).toContainText(
+		"omp plugin marketplace update market\nomp plugin marketplace update other",
+	);
 });
 
 test.describe("in Chinese", () => {

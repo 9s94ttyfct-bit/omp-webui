@@ -243,6 +243,7 @@
     "tests/contract/feedback.test.ts": 546,
     "tests/unit/document-text.test.ts": 522,
     "tests/unit/highlighter.test.ts": 502,
+    "tests/unit/plugin-updates.test.ts": 502,
     "tests/unit/pool-starting.test.ts": 492,
     "tests/unit/auto-title.test.ts": 488,
     "tests/unit/project-watches.test.ts": 484,

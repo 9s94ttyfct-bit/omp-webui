@@ -136,6 +136,7 @@ export const PLUGIN_JOB_ACTIONS = [
 	"marketplace-update",
 	"skill-install",
 	"skill-uninstall",
+	"update",
 ] as const;
 export type PluginJobAction = (typeof PLUGIN_JOB_ACTIONS)[number];
 
@@ -143,12 +144,12 @@ export type PluginJobAction = (typeof PLUGIN_JOB_ACTIONS)[number];
 export interface PluginJob {
 	id: string;
 	action: PluginJobAction;
-	/** The command, as it would be typed in a terminal. */
+	/** The command, as it would be typed in a terminal; several on lines of their own for a job of several steps. */
 	command: string;
 	state: "running" | "done" | "failed";
 	/** What omp printed so far (its last part when it printed a lot). */
 	output: string;
-	/** omp's own words for why it failed. */
+	/** omp's own words for why it failed (for a job of several steps: each step that failed). */
 	error: string | null;
 	startedAt: number;
 	endedAt: number | null;
@@ -159,6 +160,61 @@ export interface PluginJob {
 	 * only with `--yes` (it cannot ask there). The page lists what omp printed and asks the person.
 	 */
 	confirm?: "scripts";
+	/** Started by the automatic update (`ompw.extensionsAutoUpdate`), not by the person. */
+	auto?: boolean;
+}
+
+// ------------------------------------------------------------------ updates
+
+/**
+ * A newer version of something installed: a marketplace plugin (its catalog's version, `omp plugin upgrade --dry-run`), an
+ * npm plugin (the npm registry's `latest`), or a registry skill (skills.omp.sh's `latest`). `folder`: the project folder of
+ * a project-scoped one, null for the user's.
+ */
+export interface PluginUpdate {
+	/** What the page names it by when it asks for it to be updated (`POST /api/plugins/jobs`, `update`). */
+	key: string;
+	kind: "plugin" | "skill";
+	/** `name@marketplace`, an npm package name, or `@scope/name`. */
+	id: string;
+	source: "marketplace" | "npm" | "registry";
+	scope: PluginScope;
+	folder: string | null;
+	from: string | null;
+	to: string;
+}
+
+/** Something installed that is not checked for a newer version, and why (the page says it, with what to do instead). */
+export interface UncheckedUpdate {
+	kind: "plugin" | "skill";
+	id: string;
+	scope: PluginScope;
+	folder: string | null;
+	/** `git`: an npm plugin installed from git or a folder spec, whose newer version is known only by reinstalling it. */
+	reason: "git" | "error";
+	detail: string | null;
+}
+
+/** `GET /api/plugins/updates`: the last check, and the automatic update. */
+export interface UpdatesState {
+	/** A check runs now (refreshing the marketplaces first). */
+	checking: boolean;
+	checkedAt: number | null;
+	updates: PluginUpdate[];
+	unchecked: UncheckedUpdate[];
+	/** What could not be read in the last check, in omp's words (one line each). */
+	errors: string[];
+	/** The project folders the check looked in (those of recent conversations with plugins or skills of their own). */
+	folders: string[];
+	auto: {
+		/** `ompw.extensionsAutoUpdate`: check every 6 hours and install what is newer once nothing is busy. */
+		on: boolean;
+		nextCheckAt: number | null;
+		/** What an install that is due waits for; null when it waits for nothing. */
+		waitingFor: { working: number; asking: number; paused: number; waiting: number } | null;
+		/** The last automatic install: when, how many, and why it failed (null when it did not). */
+		last: { at: number; count: number; error: string | null } | null;
+	};
 }
 
 // ------------------------------------------------------------------ skills

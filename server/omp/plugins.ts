@@ -18,6 +18,8 @@ import {
 	type PluginSetting,
 	type PluginsData,
 	type PluginsFailure,
+	type PluginUpdate,
+	type UpdatesState,
 } from "../../shared/plugins.ts";
 import type { Live, LivePool } from "../live.ts";
 import { mcpConfigs } from "./loaded.ts";
@@ -37,6 +39,14 @@ import {
 	validSkillQuery,
 	validSkillSpec,
 } from "./plugin-skills.ts";
+import {
+	type CheckResult,
+	checkUpdates,
+	type NpmLatest,
+	parseUpgradePreview,
+	type UpgradeAvailable,
+	updateStep,
+} from "./plugin-updates.ts";
 import { type Ran, RunTimeout, run, withTimeout } from "./run.ts";
 import {
 	followGlobalList,
@@ -229,29 +239,6 @@ export function readCatalogDetails(agentDir: string): Map<string, CatalogDetails
 	return out;
 }
 
-export interface UpgradeAvailable {
-	id: string;
-	scope: PluginScope;
-	from: string | null;
-	to: string;
-}
-
-/**
- * `omp plugin upgrade --dry-run`, a line per marketplace plugin with a newer version: `[dry-run] Would upgrade <id>
- * (<scope>): <from> -> <to>` (omp 18.16), or the same without the prefix, indented (`  <id> (<scope>): <from> -> <to>`,
- * omp 18.12).
- */
-export function parseUpgradePreview(text: string): UpgradeAvailable[] {
-	const out: UpgradeAvailable[] = [];
-	for (const line of Bun.stripANSI(text).split("\n")) {
-		const m = /^(?:\[dry-run\] Would upgrade )?(\S+@\S+) \((user|project)\): (.+?) -> (.+)$/.exec(line.trim());
-		if (!m || !isPluginScope(m[2])) continue;
-		const from = m[3] === "undefined" || m[3] === "?" ? null : m[3];
-		out.push({ id: m[1], scope: m[2], from, to: m[4] });
-	}
-	return out;
-}
-
 /** The features a manifest declares and which are on: the chosen ones, else the defaults (`enabledFeatures` null). */
 export function featuresOf(manifest: unknown, enabledFeatures: unknown): PluginFeature[] {
 	const declared = isRecord(manifest) && isRecord(manifest.features) ? manifest.features : {};
@@ -418,6 +405,18 @@ export interface PluginsDeps {
 	pool: LivePool;
 	/** Why nothing may be changed now (an import writes the files omp runs on), or null. */
 	held: () => Error | null;
+	updates: UpdatesDeps;
+}
+
+/** What the update check and the automatic update read from the rest of the server. */
+export interface UpdatesDeps {
+	/** `ompw.extensionsAutoUpdate` is on. */
+	autoOn: () => boolean;
+	/** The conversations an install would reload under them (`conversationsHeld`). */
+	conversations: () => NonNullable<UpdatesState["auto"]["waitingFor"]>;
+	/** Project folders with plugins or skills of their own (from the conversations' folders). */
+	folders: () => Promise<string[]>;
+	npmLatest: NpmLatest;
 }
 
 /** omp's words for a command that failed: what it printed to stderr, else to stdout. */
@@ -598,12 +597,21 @@ function shown(args: string[]): string {
 	return ["omp", ...args].map((a) => (/[\s"']/.test(a) ? `'${a.replaceAll("'", "'\\''")}'` : a)).join(" ");
 }
 
-interface JobPlan {
+/** One command of a job, in `cwd` (the job's folder when none). */
+interface JobStep {
 	args: string[];
+	cwd?: string;
+}
+
+/** What a job runs: one command, or several in turn (each runs even when one before it failed). */
+type JobPlan = {
 	timeoutMs: number;
 	/** Whether a running conversation loads what it changes (a marketplace's catalog it does not). */
 	reload: boolean;
-}
+} & ({ args: string[] } | { steps: JobStep[] });
+
+/** The commands a job runs, in turn. */
+export const stepsOf = (plan: JobPlan): JobStep[] => ("steps" in plan ? plan.steps : [{ args: plan.args }]);
 
 /** The command a job runs, from what the page asked: every argument checked. */
 export function planJob(action: PluginJobAction, body: Record<string, unknown>, cwd: string, home: string): JobPlan {
@@ -649,6 +657,17 @@ export function planJob(action: PluginJobAction, body: Record<string, unknown>, 
 			return { args: ["plugin", "marketplace", "remove", body.name], timeoutMs: LOCAL_MS, reload: false };
 		}
 		case "marketplace-update": {
+			// Several named: each in turn (`names`); none: every one (omp's `update` without a name).
+			if (Array.isArray(body.names)) {
+				const names = [...new Set(body.names)];
+				if (names.length === 0 || names.length > 100 || !names.every(validMarketplace))
+					throw new PluginsError("Name the marketplaces to update", 400);
+				return {
+					steps: names.map((name) => ({ args: ["plugin", "marketplace", "update", name] })),
+					timeoutMs: FETCH_MS,
+					reload: false,
+				};
+			}
 			if (body.name === undefined || body.name === null)
 				return { args: ["plugin", "marketplace", "update"], timeoutMs: FETCH_MS, reload: false };
 			if (!validMarketplace(body.name)) throw new PluginsError("Name the marketplace to update", 400);
@@ -672,16 +691,26 @@ export function planJob(action: PluginJobAction, body: Record<string, unknown>, 
 				reload: true,
 			};
 		}
+		case "update":
+			// What is updated is the last check's (`planUpdate`), never what the page names beyond its keys.
+			throw new PluginsError("An update is planned from the last check", 500);
 	}
 }
 
 /** Start a job: it runs in the background, and its record says how far it is. */
-function startJob(deps: PluginsDeps, action: PluginJobAction, plan: JobPlan, cwd: string): PluginJob {
+function startJob(
+	deps: PluginsDeps,
+	action: PluginJobAction,
+	plan: JobPlan,
+	cwd: string,
+	after?: (job: PluginJob, failed: ReadonlySet<number>) => void,
+): PluginJob {
 	mayChange(deps);
+	const steps = stepsOf(plan);
 	const job: PluginJob = {
 		id: randomBytes(8).toString("hex"),
 		action,
-		command: shown(plan.args),
+		command: steps.map((s) => shown(s.args)).join("\n"),
 		state: "running",
 		output: "",
 		error: null,
@@ -695,23 +724,217 @@ function startJob(deps: PluginsDeps, action: PluginJobAction, plan: JobPlan, cwd
 		const next = job.output + Bun.stripANSI(text);
 		job.output = next.length > OUTPUT_CHARS ? next.slice(-OUTPUT_CHARS) : next;
 	};
-	void serialized(() => cli(deps.bin, plan.args, cwd, plan.timeoutMs, told))
-		.then(
-			async () => {
-				if (plan.reload) job.reloads = await reloadConversations(deps.pool).catch(() => []);
-				job.state = "done";
-			},
-			(e: unknown) => {
-				job.state = "failed";
-				job.error = e instanceof Error ? e.message : String(e);
-				if (action === "skill-install" && asksToConfirmScripts(job.error)) job.confirm = "scripts";
-			},
-		)
-		.finally(() => {
-			job.endedAt = Date.now();
-			if (running === job) running = null;
-		});
+	const failed = new Set<number>();
+	const run = async () => {
+		const failures: string[] = [];
+		for (const [i, step] of steps.entries()) {
+			// A job of several steps shows each command before what it printed.
+			if (steps.length > 1) told(`${job.output ? "\n" : ""}$ ${shown(step.args)}\n`);
+			try {
+				await cli(deps.bin, step.args, step.cwd ?? cwd, plan.timeoutMs, told);
+			} catch (e) {
+				failed.add(i);
+				if (steps.length === 1) throw e;
+				failures.push(`${shown(step.args)}: ${e instanceof Error ? e.message : String(e)}`);
+			}
+		}
+		if (failures.length > 0) throw new Error(failures.join("\n"));
+	};
+	void (async () => {
+		let error: string | null = null;
+		try {
+			await serialized(run);
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
+		}
+		// Even after a step failed, what the others changed is loaded; the job ends once that is done.
+		if (plan.reload && failed.size < steps.length) job.reloads = await reloadConversations(deps.pool).catch(() => []);
+		job.error = error;
+		if (error !== null && action === "skill-install" && asksToConfirmScripts(error)) job.confirm = "scripts";
+		job.endedAt = Date.now();
+		job.state = error === null ? "done" : "failed";
+		if (running === job) running = null;
+		try {
+			after?.(job, failed);
+		} finally {
+			if (pendingInstall) setTimeout(() => tryAutoInstall(), 0);
+		}
+	})();
 	return job;
+}
+
+// ------------------------------------------------------------------ updates
+
+/** A test's shorter interval (`OMPW_EXTENSIONS_*_MS`), read when it is due, else the real one. */
+const interval = (env: string, ms: number) => (): number => Number(process.env[env]) || ms;
+/** How often the automatic update looks, and how soon after it was turned on (or the server started). */
+const checkEveryMs = interval("OMPW_EXTENSIONS_CHECK_MS", 6 * 60 * 60_000);
+const firstCheckMs = interval("OMPW_EXTENSIONS_FIRST_CHECK_MS", 60_000);
+/** How often an install that is due looks again whether the conversations are idle. */
+const retryInstallMs = interval("OMPW_EXTENSIONS_RETRY_MS", 30_000);
+
+type Held = NonNullable<UpdatesState["auto"]["waitingFor"]>;
+
+let lastCheck: (CheckResult & { at: number; folders: string[] }) | null = null;
+let checking: Promise<void> | null = null;
+let autoDeps: PluginsDeps | null = null;
+let checkTimer: ReturnType<typeof setTimeout> | null = null;
+let nextCheckAt: number | null = null;
+/** The automatic update found something newer and installs it once nothing is busy. */
+let pendingInstall = false;
+let installTimer: ReturnType<typeof setTimeout> | null = null;
+let waitingFor: Held | null = null;
+let autoLast: UpdatesState["auto"]["last"] = null;
+
+function updatesState(deps: PluginsDeps): UpdatesState {
+	return {
+		checking: checking !== null,
+		checkedAt: lastCheck?.at ?? null,
+		updates: lastCheck?.updates ?? [],
+		unchecked: lastCheck?.unchecked ?? [],
+		errors: lastCheck?.errors ?? [],
+		folders: lastCheck?.folders ?? [],
+		auto: { on: deps.updates.autoOn(), nextCheckAt, waitingFor, last: autoLast },
+	};
+}
+
+/**
+ * A check: the marketplaces' catalogs are fetched again (in turn with every change, as a job's are), then each source is
+ * read (`checkUpdates`). One at a time: a second ask while one runs waits for it.
+ */
+function check(deps: PluginsDeps): Promise<void> {
+	checking ??= (async () => {
+		try {
+			const errors: string[] = [];
+			const marketplaces = await cli(deps.bin, ["plugin", "marketplace", "list"], deps.home)
+				.then(parseMarketplaceList)
+				.catch((e: unknown) => {
+					errors.push(`marketplaces: ${failed(e).error.split("\n")[0]}`);
+					return [];
+				});
+			if (marketplaces.length > 0)
+				await serialized(() => cli(deps.bin, ["plugin", "marketplace", "update"], deps.home, FETCH_MS)).catch(
+					(e: unknown) => errors.push(`marketplaces: ${failed(e).error.split("\n")[0]}`),
+				);
+			const folders = await deps.updates.folders().catch(() => []);
+			const found = await checkUpdates({
+				run: (args, cwd) => cli(deps.bin, args, cwd),
+				npmLatest: deps.updates.npmLatest,
+				home: deps.home,
+				folders,
+			});
+			lastCheck = { ...found, errors: [...errors, ...found.errors], at: Date.now(), folders };
+		} finally {
+			checking = null;
+		}
+	})();
+	return checking;
+}
+
+/** The updates the page asked for (by key, or every one), as the last check found them. */
+function planUpdate(body: Record<string, unknown>, home: string): { plan: JobPlan; chosen: PluginUpdate[] } {
+	const all = lastCheck?.updates ?? [];
+	const keys = body.keys === "all" ? all.map((u) => u.key) : body.keys;
+	if (!Array.isArray(keys) || keys.length === 0 || !keys.every((k) => typeof k === "string"))
+		throw new PluginsError('Name the updates to install (keys, or "all")', 400);
+	const chosen = all.filter((u) => keys.includes(u.key));
+	if (chosen.length !== new Set(keys).size)
+		throw new PluginsError("Some of these updates are no longer listed: check again", 409);
+	return {
+		plan: { steps: chosen.map((u) => updateStep(u, home)), timeoutMs: FETCH_MS, reload: true },
+		chosen,
+	};
+}
+
+/** Start an update job; what it brought in leaves the list. */
+function startUpdate(deps: PluginsDeps, body: Record<string, unknown>, auto: boolean): PluginJob {
+	const { plan, chosen } = planUpdate(body, deps.home);
+	const job = startJob(deps, "update", plan, deps.home, (done, failedSteps) => {
+		const installed = new Set(chosen.filter((_, i) => !failedSteps.has(i)).map((u) => u.key));
+		if (lastCheck) lastCheck = { ...lastCheck, updates: lastCheck.updates.filter((u) => !installed.has(u.key)) };
+		if (auto) autoLast = { at: Date.now(), count: installed.size, error: done.error };
+	});
+	if (auto) job.auto = true;
+	return job;
+}
+
+const busyCount = (h: Held): number => h.working + h.asking + h.paused + h.waiting;
+
+/** A due automatic install starts once no conversation works, asks, is paused or waits, and no other change runs. */
+function tryAutoInstall(): void {
+	if (installTimer) clearTimeout(installTimer);
+	installTimer = null;
+	const deps = autoDeps;
+	if (!deps || !pendingInstall || !deps.updates.autoOn()) {
+		pendingInstall = false;
+		waitingFor = null;
+		return;
+	}
+	if ((lastCheck?.updates.length ?? 0) === 0) {
+		pendingInstall = false;
+		waitingFor = null;
+		return;
+	}
+	const held = deps.updates.conversations();
+	waitingFor = busyCount(held) > 0 ? held : null;
+	if (!waitingFor && !running && !deps.held() && !checking) {
+		pendingInstall = false;
+		try {
+			startUpdate(deps, { keys: "all" }, true);
+			return;
+		} catch (e) {
+			autoLast = { at: Date.now(), count: 0, error: failed(e).error };
+			return;
+		}
+	}
+	installTimer = setTimeout(tryAutoInstall, retryInstallMs());
+	installTimer.unref?.();
+}
+
+function scheduleCheck(inMs: number): void {
+	if (checkTimer) clearTimeout(checkTimer);
+	nextCheckAt = Date.now() + inMs;
+	checkTimer = setTimeout(() => void autoCheck(), inMs);
+	checkTimer.unref?.();
+}
+
+async function autoCheck(): Promise<void> {
+	const deps = autoDeps;
+	if (!deps?.updates.autoOn()) return;
+	try {
+		await check(deps);
+	} catch (e) {
+		autoLast = { at: Date.now(), count: 0, error: failed(e).error };
+	}
+	if (!deps.updates.autoOn()) return;
+	scheduleCheck(checkEveryMs());
+	pendingInstall = (lastCheck?.updates.length ?? 0) > 0;
+	tryAutoInstall();
+}
+
+/**
+ * The automatic update (`ompw.extensionsAutoUpdate`), started at the server's start and again whenever the setting
+ * changes: on, it looks soon (or when the last look is 6 hours old) and then every 6 hours, and installs everything newer
+ * once nothing is busy (what a check already found, at once); off, it stops, and nothing it waited to install is installed.
+ */
+export function autoUpdates(deps: PluginsDeps): void {
+	autoDeps = deps;
+	if (!deps.updates.autoOn()) {
+		if (checkTimer) clearTimeout(checkTimer);
+		if (installTimer) clearTimeout(installTimer);
+		checkTimer = installTimer = null;
+		nextCheckAt = null;
+		pendingInstall = false;
+		waitingFor = null;
+		return;
+	}
+	if (checkTimer) return;
+	const age = lastCheck ? Date.now() - lastCheck.at : Number.POSITIVE_INFINITY;
+	scheduleCheck(Math.max(firstCheckMs(), checkEveryMs() - age));
+	if ((lastCheck?.updates.length ?? 0) > 0) {
+		pendingInstall = true;
+		tryAutoInstall();
+	}
 }
 
 // ------------------------------------------------------------------ quick changes
@@ -770,6 +993,8 @@ async function route(req: Request, url: URL, deps: PluginsDeps): Promise<Respons
 			}
 			case "/api/plugins/jobs":
 				return json({ running });
+			case "/api/plugins/updates":
+				return json(updatesState(deps));
 			case "/api/plugins/skills":
 				return json(await readSkills(skillDeps(deps), cwd));
 			case "/api/plugins/skills/file": {
@@ -801,8 +1026,24 @@ async function route(req: Request, url: URL, deps: PluginsDeps): Promise<Respons
 		case "/api/plugins/jobs": {
 			const action = PLUGIN_JOB_ACTIONS.find((a) => a === body.action);
 			if (!action) return fail(`action must be one of ${PLUGIN_JOB_ACTIONS.join(", ")}`, 400);
+			if (action === "update") return json({ job: startUpdate(deps, body, false) }, 202);
 			const plan = planJob(action, body, cwd, deps.home);
 			return json({ job: startJob(deps, action, plan, cwd) }, 202);
+		}
+		case "/api/plugins/updates/check": {
+			const held = deps.held();
+			if (held) return fail(held.message, 409);
+			// Answered at once: the page asks again (`GET /api/plugins/updates`) until `checking` is false. With the
+			// automatic update on, what it finds is installed as an automatic check's would be.
+			void check(deps)
+				.then(() => {
+					if (!deps.updates.autoOn() || (lastCheck?.updates.length ?? 0) === 0) return;
+					autoDeps ??= deps;
+					pendingInstall = true;
+					tryAutoInstall();
+				})
+				.catch(() => {});
+			return json(updatesState(deps), 202);
 		}
 		case "/api/plugins/enable": {
 			if (!validPlugin(body.id) || typeof body.enabled !== "boolean") return fail("id and enabled required", 400);

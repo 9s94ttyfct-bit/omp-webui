@@ -7,8 +7,9 @@ import { expect, type Page, test } from "./fixtures.ts";
 
 /**
  * The chat header has the room of its column. With little room (a phone, or a window whose sidebar and side panel
- * take most of it) the title keeps at least 120 px, the quota pill stays on one line, and the rest sits in a menu.
- * Long titles and folder paths end in an ellipsis and show in full as a tooltip (no model call).
+ * take most of it) the title keeps at least 120 px, the quota pill stays on one line, and what does not fit beside the
+ * title gives way into a menu, one item at a time. Long titles and folder paths end in an ellipsis and show in full as
+ * a tooltip (no model call).
  */
 
 const quota = [
@@ -159,7 +160,7 @@ test.describe("phone", () => {
 test.describe("window", () => {
 	test.use({ viewport: { width: 1280, height: 800 } });
 
-	test("the header follows the room its column has: the side panel takes room, closing it gives it back", async ({
+	test("the header follows the room its column has: the side panel takes some of it, closing it gives it back", async ({
 		page,
 	}) => {
 		await startLiveChat(page, 0xb7, "Header probe window");
@@ -167,12 +168,26 @@ test.describe("window", () => {
 		for (const id of BESIDE_THE_TITLE) await expect(page.getByTestId(id), id).toBeVisible();
 		await expect(page.getByTestId("chat-more")).toHaveCount(0);
 
-		// The panel (400 px) leaves 592 px: too little for all of it beside the title.
+		// The panel (400 px) leaves 592 px: too little for all of it beside the title, and the least needed give way one
+		// at a time into the menu. What still fits stays: each is on the header or in the menu, never both.
 		await page.getByTestId("toggle-panel").click();
 		await expect(page.getByTestId("right-panel")).toBeVisible();
 		await expect(page.getByTestId("chat-more")).toBeVisible();
-		for (const id of BESIDE_THE_TITLE) await expect(page.getByTestId(id), id).toHaveCount(0);
+		const header = page.locator("header").filter({ has: page.getByTestId("chat-title") });
+		const onHeader: string[] = [];
+		for (const id of BESIDE_THE_TITLE) if ((await header.getByTestId(id).count()) > 0) onHeader.push(id);
+		expect(onHeader.length, "some of it still fits beside the title").toBeGreaterThan(0);
+		expect(onHeader.length, "not all of it").toBeLessThan(BESIDE_THE_TITLE.length);
+		// This session goes after Export and the cost.
+		expect(onHeader).toContain("session-controls");
+		expect(onHeader).not.toContain("export-html");
+		await page.getByTestId("chat-more").click();
+		const menu = page.getByTestId("chat-more-panel");
+		for (const id of BESIDE_THE_TITLE)
+			await expect(menu.getByTestId(id), id).toHaveCount(onHeader.includes(id) ? 0 : 1);
+		await page.keyboard.press("Escape");
 		expect((await boxOf(page.getByTestId("chat-title"))).width).toBeGreaterThanOrEqual(120);
+		expect(await header.evaluate((el) => el.scrollWidth <= el.clientWidth), "nothing hangs off the header").toBe(true);
 
 		await page.getByTestId("right-panel-close").click();
 		await expect(page.getByTestId("chat-more")).toHaveCount(0);

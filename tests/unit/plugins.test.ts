@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
+import { parseUpgradePreview } from "../../server/omp/plugin-updates.ts";
 import {
 	configValueProblem,
 	featureArgs,
@@ -10,10 +11,10 @@ import {
 	parseDoctor,
 	parseInstalled,
 	parseMarketplaceList,
-	parseUpgradePreview,
 	planJob,
 	pluginSpec,
 	splitMarketplaceId,
+	stepsOf,
 	validConfigKey,
 	validFeature,
 	validMarketplace,
@@ -28,6 +29,7 @@ import { validPlugin } from "../../server/omp/toggles.ts";
 
 const HOME = "/home/someone";
 const PROJECT = "/work/project";
+const argsOf = (plan: ReturnType<typeof planJob>) => stepsOf(plan)[0].args;
 
 describe("arguments", () => {
 	test("a spec is one line and never a flag; ~/ is the home folder", () => {
@@ -75,37 +77,44 @@ describe("arguments", () => {
 	});
 
 	test("each job runs exactly the command it names, its arguments checked", () => {
-		expect(planJob("install", { spec: "hello@market", scope: "project" }, PROJECT, HOME).args).toEqual([
+		expect(argsOf(planJob("install", { spec: "hello@market", scope: "project" }, PROJECT, HOME))).toEqual([
 			"plugin",
 			"install",
 			"hello@market",
 			"--scope",
 			"project",
 		]);
-		expect(planJob("install", { spec: "~/p", force: true }, HOME, HOME).args).toEqual([
+		expect(argsOf(planJob("install", { spec: "~/p", force: true }, HOME, HOME))).toEqual([
 			"plugin",
 			"install",
 			join(HOME, "p"),
 			"--force",
 		]);
-		expect(planJob("uninstall", { id: "hello@market", scope: "user" }, HOME, HOME).args).toEqual([
+		expect(argsOf(planJob("uninstall", { id: "hello@market", scope: "user" }, HOME, HOME))).toEqual([
 			"plugin",
 			"uninstall",
 			"hello@market",
 			"--scope",
 			"user",
 		]);
-		expect(planJob("upgrade", {}, HOME, HOME).args).toEqual(["plugin", "upgrade"]);
-		expect(planJob("upgrade", { id: "pkg" }, HOME, HOME).args).toEqual(["plugin", "upgrade", "pkg"]);
-		expect(planJob("doctor-fix", {}, HOME, HOME).args).toEqual(["plugin", "doctor", "--fix"]);
-		expect(planJob("marketplace-add", { source: "owner/repo" }, HOME, HOME).args).toEqual([
+		expect(argsOf(planJob("upgrade", {}, HOME, HOME))).toEqual(["plugin", "upgrade"]);
+		expect(argsOf(planJob("upgrade", { id: "pkg" }, HOME, HOME))).toEqual(["plugin", "upgrade", "pkg"]);
+		expect(argsOf(planJob("doctor-fix", {}, HOME, HOME))).toEqual(["plugin", "doctor", "--fix"]);
+		expect(argsOf(planJob("marketplace-add", { source: "owner/repo" }, HOME, HOME))).toEqual([
 			"plugin",
 			"marketplace",
 			"add",
 			"owner/repo",
 		]);
-		expect(planJob("marketplace-update", {}, HOME, HOME).args).toEqual(["plugin", "marketplace", "update"]);
-		expect(planJob("marketplace-remove", { name: "m" }, HOME, HOME).args).toEqual([
+		expect(argsOf(planJob("marketplace-update", {}, HOME, HOME))).toEqual(["plugin", "marketplace", "update"]);
+		// Several marketplaces chosen: each refreshed on its own, in turn.
+		expect(stepsOf(planJob("marketplace-update", { names: ["a", "b", "a"] }, HOME, HOME))).toEqual([
+			{ args: ["plugin", "marketplace", "update", "a"] },
+			{ args: ["plugin", "marketplace", "update", "b"] },
+		]);
+		expect(() => planJob("marketplace-update", { names: ["--all"] }, HOME, HOME)).toThrow(PluginsError);
+		expect(() => planJob("marketplace-update", { names: [] }, HOME, HOME)).toThrow(PluginsError);
+		expect(argsOf(planJob("marketplace-remove", { name: "m" }, HOME, HOME))).toEqual([
 			"plugin",
 			"marketplace",
 			"remove",

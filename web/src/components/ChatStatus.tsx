@@ -1,16 +1,16 @@
 import type { FamilyStats, SessionEntry } from "@shared/protocol.ts";
 import { Clock, Cpu, FolderOpen, Target, TriangleAlert, Users, Zap } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
 import { askChangeFolder } from "../lib/change-folder.ts";
 import { contextLevel } from "../lib/context-usage.ts";
 import { fmtCost, fmtCostExact, shortPath } from "../lib/format.ts";
-import { useCrampedRow } from "../lib/media.ts";
+import { useFitSteps } from "../lib/media.ts";
 import { useStartConfig } from "../lib/model-config.ts";
 import { useNow } from "../lib/now.ts";
 import { fmtElapsed, fmtWindow } from "../lib/stat-format.ts";
-import { statusItems } from "../lib/status-line.ts";
+import { type StatusFold, statusFolds, statusItems, statusSteps } from "../lib/status-line.ts";
 import { activeMs } from "../lib/turn-stats.ts";
 import { usageLimitLabel } from "../lib/usage-limit.ts";
 import { openAgent } from "../store/agents.ts";
@@ -25,7 +25,8 @@ import { cx, PathTail, Tip } from "./ui.tsx";
 /**
  * The TUI's bottom line, under the composer: how long the agent has worked, the model and its thinking level, the goal's
  * budget, the folder, the cost (this conversation's own and its subagents'), the context window and the agents running.
- * A narrow column keeps the model, the context and the agents here; the rest goes to the header's menu (`StatusMenuRows`).
+ * It is one row: where its column has too little room for all of it, its least needed items give way one at a time
+ * (`STATUS_STEPS`), to the header (the folder) or to the header's menu (`StatusMenuRows`).
  */
 
 const ITEM = "inline-flex items-center gap-1 whitespace-nowrap";
@@ -33,24 +34,8 @@ const ICON = "shrink-0 text-faint";
 /** The context meter's colour by how full it is (`contextLevel`; a subagent's figure has the same thresholds). */
 const LEVEL_BAR = { ok: "bg-accent", warn: "bg-warning", high: "bg-danger" } as const;
 
-/** Fewer characters of the branch than this (about five) are not worth showing: the chip is its icon instead. */
-const BRANCH_MIN_PX = 32;
-
-/**
- * Whether the narrow line, laid out with the branch's name on it, leaves that name truncated to less than
- * `BRANCH_MIN_PX`; or has no branch's name to give way first. Asked by `useCrampedRow` of the line with
- * `data-no-branch-name` off: the model's name keeps its whole width then (`min-w-max`), and the branch's is what shrinks.
- */
-function branchCramps(line: HTMLElement): boolean {
-	const branch = line.querySelector<HTMLElement>('[data-testid="status-git-name"]');
-	if (!branch) return true;
-	// To the fraction of a pixel: `scrollWidth` and `clientWidth` are whole pixels and can be equal while the name is short
-	// of its width by a fraction, which is enough for an ellipsis ("ma…" for "main" on a line full to the pixel).
-	const box = branch.getBoundingClientRect().width;
-	const words = document.createRange();
-	words.selectNodeContents(branch);
-	return words.getBoundingClientRect().width > box + 0.01 && box < BRANCH_MIN_PX;
-}
+/** The least of the folder's path worth showing (about a dozen characters): shorter than that, it goes to the header. */
+const CWD_MIN_PX = 80;
 
 export interface StatusProps {
 	live: LiveState | undefined;
@@ -108,13 +93,13 @@ export function ChatStatus({
 	cost,
 	agentsRunning,
 	savedThinking,
-	compact,
+	onFolds,
 }: StatusProps & {
 	cwd: string | undefined;
 	/** The conversation's session file (null before its first reply): what "Change folder…" moves. */
 	file: string | null;
-	/** Only the primary items: the rest are in the header's menu. */
-	compact: boolean;
+	/** Told what the line has put elsewhere for want of room, whenever that changes: the header shows it instead. */
+	onFolds: (folds: StatusFold[]) => void;
 }) {
 	const t = useT();
 	const home = useApp((s) => s.meta?.home);
@@ -135,42 +120,79 @@ export function ChatStatus({
 	// The branch, the changed files and the pull request of the folder.
 	useGitSync(cwd, streaming, lastEntry);
 	const repo = useGit((s) => (cwd ? s.byCwd[cwd]?.git : undefined));
-	// On the narrow one-row line the model's name has the room first: while the branch's name is on the line, the model's
-	// keeps its whole width and the branch's is what gives way. Where that leaves less than a few readable characters of
-	// the branch (or there is no branch), the branch is its icon and counts alone (`data-no-branch-name`, answered in
-	// `GitChips`; its name is then the chip's title and is read out), and the model's name may give way in its turn.
-	const [line, setLine] = useState<HTMLDivElement | null>(null);
-	const noBranchName = useCrampedRow(compact ? line : null, "data-no-branch-name", branchCramps) && compact;
+	const pr = useGit((s) => (cwd ? s.byCwd[cwd]?.pr?.number : undefined));
 
 	const spent = cost.main > 0 || cost.subagents > 0 || cost.advisor > 0;
-	const shown = compact
-		? [model, ctx, agentsRunning, limitText, repo]
-		: [status.worked, model, goal, cwd, spent, ctx, agentsRunning, limitText, repo];
+	// The line is one row, and shows as much of itself as its room holds: what does not fit gives way one item at a time,
+	// the least needed first (`STATUS_STEPS`). Until then nothing on it is cut short: an item gives way whole, and only
+	// the item whose turn it is ends in an ellipsis on its way out (the folder, the branch's name, at last the model's).
+	const steps = statusSteps({
+		cwd: Boolean(cwd),
+		time: Boolean(status.worked),
+		goal: Boolean(goal),
+		cost: spent,
+		branch: Boolean(repo),
+		model: Boolean(model || limitText),
+	});
+	const [line, setLine] = useState<HTMLDivElement | null>(null);
+	// What the line holds, but for the figures that only grow as a turn runs (the time, the cost, the context): a change
+	// of it starts the line again from its fullest form.
+	const holds = JSON.stringify([
+		steps,
+		model?.name,
+		model?.thinking,
+		model?.resolved,
+		fast,
+		usageLimit?.stage,
+		cwd,
+		repo?.branch,
+		pr,
+		goal?.status,
+		Boolean(ctx),
+		agentsRunning > 0,
+	]);
+	// The header shows what the line has put elsewhere once the line has found its form, not each form on the way to it.
+	const told = useRef<string | null>(null);
+	const tell = (folds: StatusFold[]) => {
+		const key = folds.join(" ");
+		if (key === told.current) return;
+		told.current = key;
+		onFolds(folds);
+	};
+	const taken = useFitSteps(line, steps.length, holds, (k) => tell(statusFolds(steps, k)));
+	const off = new Set(steps.slice(0, taken));
+	// A line with nothing on it has put nothing elsewhere; nor has one that is gone.
+	useLayoutEffect(() => {
+		if (!line) tell([]);
+	});
+	// biome-ignore lint/correctness/useExhaustiveDependencies: on unmount only; `onFolds` is the parent's state setter.
+	useLayoutEffect(() => () => onFolds([]), []);
+
+	const shown = [status.worked, model, goal, cwd, spent, ctx, agentsRunning, limitText, repo];
 	if (!shown.some(Boolean)) return null;
+	// The model's name, and the usage limit beside it, keep their whole width until everything before them has given way.
+	const modelShrinks = off.has("model-short") ? "min-w-0" : "shrink-0";
 	return (
 		<div
 			ref={setLine}
-			className={cx(
-				"mt-1.5 flex min-h-6 items-center gap-x-3.5 gap-y-0.5 px-2 text-xs tabular-nums text-muted",
-				// The narrow line keeps to one row (it has only the model, the context, the agents and the branch): the branch and
-				// then the model give way with an ellipsis instead of the context figure going to a row of its own.
-				compact ? "flex-nowrap" : "flex-wrap",
-			)}
+			className="mt-1.5 flex min-h-6 flex-nowrap items-center gap-x-3.5 px-2 text-xs tabular-nums text-muted"
 			data-testid="chat-status"
-			data-no-branch-name={noBranchName ? "" : undefined}
+			data-folds={statusFolds(steps, taken).join(" ") || undefined}
+			data-no-branch-name={off.has("branch-icon") ? "" : undefined}
 		>
-			{!compact && status.worked ? (
-				<span className={ITEM} title={t("chat.statusWorked", { value: status.worked })} data-testid="status-time">
+			{status.worked && !off.has("time") ? (
+				<span
+					className={cx(ITEM, "shrink-0")}
+					title={t("chat.statusWorked", { value: status.worked })}
+					data-testid="status-time"
+				>
 					<Clock size={11} className={ICON} aria-hidden />
 					<span className="sr-only">{t("chat.statusWorkedLabel")} </span>
 					{status.worked}
 				</span>
 			) : null}
 			{model ? (
-				<span
-					className={cx(ITEM, compact ? "min-w-max [[data-no-branch-name]_&]:min-w-0" : "min-w-0")}
-					data-testid="status-model"
-				>
+				<span className={cx(ITEM, modelShrinks)} data-testid="status-model">
 					<Cpu size={11} className={ICON} aria-hidden />
 					<span className="truncate" data-testid="status-model-name">
 						{model.name}
@@ -194,7 +216,7 @@ export function ChatStatus({
 			) : null}
 			{limitText && usageLimit ? (
 				<span
-					className={cx(ITEM, "min-w-0 text-warning")}
+					className={cx(ITEM, modelShrinks, "text-warning")}
 					title={limitText}
 					data-testid="status-usage-limit"
 					data-stage={usageLimit.stage}
@@ -204,32 +226,40 @@ export function ChatStatus({
 					<span className="truncate">{limitText}</span>
 				</span>
 			) : null}
-			{compact ? <GitChips cwd={cwd} /> : null}
-			{!compact && goal ? (
-				<span className={ITEM} title={goal.objective} data-testid="status-goal" data-status={goal.status}>
+			{goal && !off.has("goal") ? (
+				<span
+					className={cx(ITEM, "shrink-0")}
+					title={goal.objective}
+					data-testid="status-goal"
+					data-status={goal.status}
+				>
 					<Target size={11} className={ICON} aria-hidden />
 					{status.goalText}
 					{status.goalNote ? <span className="text-faint">{status.goalNote}</span> : null}
 				</span>
 			) : null}
-			{!compact && cwd ? (
+			{cwd && !off.has("cwd") ? (
 				// The folder is also the way to another one (omp's `/move`, see `ChangeFolderDialog`); not while a turn runs.
 				<button
 					type="button"
-					className={cx(ITEM, "min-w-0 max-w-[14rem] rounded-sm hover:text-fg disabled:hover:text-inherit")}
+					className={cx(
+						ITEM,
+						off.has("cwd-short") ? "min-w-0" : "shrink-0",
+						"max-w-[14rem] rounded-sm hover:text-fg disabled:hover:text-inherit",
+					)}
 					title={t("shell.changeFolderStatus", { folder: cwd })}
 					disabled={streaming}
 					onClick={() => askChangeFolder({ file, liveId, cwd })}
 					data-testid="status-cwd"
 				>
 					<FolderOpen size={11} className={ICON} aria-hidden />
-					<PathTail path={shortPath(cwd, home)} />
+					<PathTail path={shortPath(cwd, home)} data-fit-min={off.has("cwd-short") ? CWD_MIN_PX : undefined} />
 				</button>
 			) : null}
-			{!compact ? <GitChips cwd={cwd} /> : null}
-			{!compact && spent ? (
+			<GitChips cwd={cwd} name={off.has("branch-icon") ? "icon" : off.has("branch-short") ? "short" : "whole"} />
+			{spent && !off.has("cost") ? (
 				<span
-					className={ITEM}
+					className={cx(ITEM, "shrink-0")}
 					title={
 						cost.advisor > 0
 							? t("chat.statusCostTitleAdvisor", {
@@ -255,7 +285,7 @@ export function ChatStatus({
 			) : null}
 			{ctx ? (
 				<span
-					className={ITEM}
+					className={cx(ITEM, "shrink-0")}
 					title={t("chat.contextTip", {
 						tokens: ctx.tokens.toLocaleString(),
 						window: ctx.contextWindow.toLocaleString(),
@@ -281,7 +311,7 @@ export function ChatStatus({
 						data-testid="status-agents"
 						data-running={agentsRunning}
 						// A button the size of a fingertip without growing the line: the margins take back what the padding adds.
-						className={`${ITEM} -mx-1.5 -my-1 rounded-md px-1.5 py-1 hover:bg-hover hover:text-fg`}
+						className={`${ITEM} -mx-1.5 -my-1 shrink-0 rounded-md px-1.5 py-1 hover:bg-hover hover:text-fg`}
 						onClick={() => openAgent(null)}
 					>
 						<Users size={11} className={ICON} aria-hidden />
@@ -294,12 +324,20 @@ export function ChatStatus({
 }
 
 /**
- * What a narrow column folds out of the line into the header's menu: how long the agent has worked and the goal's
- * budget. The folder and the cost are the header's own, and the menu lists the cost with its subagents' share.
+ * What the line has put in the header's menu for want of room (`folds`): how long the agent has worked and the goal's
+ * budget. The folder and the cost it puts elsewhere are the header's own: its path, and its cost chip (on the header, or
+ * in this menu with its subagents' share).
  */
-export function StatusMenuRows({ live, entries, stats }: Pick<StatusProps, "live" | "entries" | "stats">) {
+export function StatusMenuRows({
+	live,
+	entries,
+	stats,
+	folds,
+}: Pick<StatusProps, "live" | "entries" | "stats"> & { folds: readonly StatusFold[] }) {
 	const t = useT();
-	const { worked, goal, goalText, goalNote } = useStatus(live, entries, undefined, stats);
+	const status = useStatus(live, entries, undefined, stats);
+	const worked = folds.includes("time") ? status.worked : null;
+	const goal = folds.includes("goal") ? status.goal : undefined;
 	if (!worked && !goal) return null;
 	return (
 		<dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
@@ -324,8 +362,8 @@ export function StatusMenuRows({ live, entries, stats }: Pick<StatusProps, "live
 						data-testid="status-goal"
 						data-status={goal.status}
 					>
-						{goalText}
-						{goalNote ? <span className="ml-1 text-faint">{goalNote}</span> : null}
+						{status.goalText}
+						{status.goalNote ? <span className="ml-1 text-faint">{status.goalNote}</span> : null}
 					</dd>
 				</>
 			) : null}

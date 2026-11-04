@@ -54,7 +54,7 @@ import { attachedBytes, MAX_TOTAL_IMAGE_BYTES } from "../lib/images.ts";
 import { endedWell } from "../lib/live-motion.ts";
 import { openLoaded } from "../lib/loaded.ts";
 import { MdOpenContext } from "../lib/md-open.ts";
-import { useNarrowerThanContent } from "../lib/media.ts";
+import { useFitSteps } from "../lib/media.ts";
 import { messageOf, type PromptImage, promptImages, roleOf, textOf } from "../lib/messages.ts";
 import { useModelCatalog, useStartConfig } from "../lib/model-config.ts";
 import { namedFrom, selectedThinking } from "../lib/models.ts";
@@ -68,6 +68,7 @@ import { savedSettings } from "../lib/session-settings.ts";
 import { matches, typingInField } from "../lib/shortcuts.ts";
 import { isCommand } from "../lib/slash.ts";
 import type { StartLive } from "../lib/start-live.ts";
+import { type HeaderStep, headerSteps, type StatusFold } from "../lib/status-line.ts";
 import { stopTurn, type Withdrawn } from "../lib/stop.ts";
 import { isWorking } from "../lib/subagents.ts";
 import type { HeaderUsage } from "../lib/totals.ts";
@@ -164,15 +165,6 @@ interface Props {
 /** What the header shows of a conversation: everything it used, and each side's share when it has subagents. */
 type Usage = HeaderUsage;
 
-/** Below this width of the chat column the header swaps its readouts and buttons for one menu. */
-const COMPACT_HEADER_PX = 704;
-/**
- * The room the header keeps for the title (and the folder under it) beside the wide form's readouts and buttons: two
- * providers' quota, the cost and the buttons can take more than `COMPACT_HEADER_PX`, and the title was squeezed to nothing.
- * With the header's padding and the gap before the buttons.
- */
-const HEADER_TITLE_ROOM_PX = 200 + 32 + 8;
-
 /** How long the place Back put the reader at is held while what is above it settles (pictures decode, code is coloured). */
 const SETTLE_MS = 1000;
 
@@ -233,11 +225,13 @@ function SessionCost({ usage, tip }: { usage: Usage; tip: boolean }) {
 }
 
 /**
- * What a narrow header keeps behind one button: the readouts and buttons that sit beside the title when the chat
- * column has room for them (cost, session settings, rename, export, goal). The context share is not among them: the
- * status line under the composer shows it (#454).
+ * What the header has no room for, behind one button: the readouts and buttons that sit beside the title when the chat
+ * column has room for them (`HEADER_STEPS`: Rename, Export, Loaded, the cost, Goal, This session), and what the status
+ * line under the composer has put here (`status`, `StatusMenuRows`). It lists exactly those: what is still on the header
+ * or the line is not repeated here. The context share is never among them: the status line keeps it (#454).
  */
 function HeaderMenu({
+	folded,
 	usage,
 	controls,
 	onRename,
@@ -247,6 +241,8 @@ function HeaderMenu({
 	onLoaded,
 	status,
 }: {
+	/** What the header has put in the menu. */
+	folded: ReadonlySet<HeaderStep>;
 	usage: Usage;
 	/** What the gear opens: the process's settings, which it starts omp for when none runs (see `StartLive`). */
 	controls: { live: LiveState | undefined; start: StartLive } | undefined;
@@ -256,7 +252,7 @@ function HeaderMenu({
 	/** A goal exists: the row shows it instead of offering to set one. */
 	hasGoal: boolean;
 	onLoaded: () => void;
-	/** The status line's items a narrow column folds into the menu. */
+	/** The status line's items it has put in the menu, or nothing. */
 	status: ReactNode;
 }) {
 	const t = useT();
@@ -275,6 +271,11 @@ function HeaderMenu({
 		after.current = action;
 		setOpen(false);
 	};
+	const session = folded.has("session") ? controls : undefined;
+	const rename = folded.has("rename") ? onRename : undefined;
+	const exportHtml = folded.has("export") ? onExport : undefined;
+	const figures = folded.has("cost") || session !== undefined || status !== null;
+	const actions = rename || exportHtml || folded.has("goal") || folded.has("loaded");
 	return (
 		<Popover.Root open={open} onOpenChange={setOpen}>
 			<span ref={button} className="inline-flex shrink-0">
@@ -304,53 +305,178 @@ function HeaderMenu({
 						if (action) setTimeout(action, 0);
 					}}
 				>
-					<div className="space-y-2 px-2 pt-1 pb-2">
-						<div className="flex items-center justify-between">
-							<div className="text-sm font-semibold">{t("panel.controlsTitle")}</div>
-							{controls ? (
-								<IconButton
-									label={t("panel.controlsTrigger")}
-									data-testid="session-controls"
-									onClick={() => afterClose(() => panel.current?.open())}
+					{figures ? (
+						<div className="space-y-2 px-2 pt-1 pb-2">
+							<div className="flex items-center justify-between">
+								<div className="text-sm font-semibold">{t("panel.controlsTitle")}</div>
+								{session ? (
+									<IconButton
+										label={t("panel.controlsTrigger")}
+										data-testid="session-controls"
+										onClick={() => afterClose(() => panel.current?.open())}
+									>
+										<SlidersHorizontal size={16} />
+									</IconButton>
+								) : null}
+							</div>
+							{folded.has("cost") ? (
+								<>
+									<SessionCost usage={usage} tip={false} />
+									<UsageBreakdown usage={usage} className="grid grid-cols-2 gap-x-3 text-xs text-muted" />
+								</>
+							) : null}
+							{status}
+						</div>
+					) : null}
+					{actions ? (
+						<div className={cx(figures && "border-t border-border pt-1")}>
+							{rename ? (
+								<button type="button" className={row} onClick={() => afterClose(rename)}>
+									<Pencil size={15} /> {t("common.rename")}
+								</button>
+							) : null}
+							{exportHtml ? (
+								<button
+									type="button"
+									className={row}
+									data-testid="export-html"
+									onClick={() => {
+										setOpen(false);
+										exportHtml();
+									}}
 								>
-									<SlidersHorizontal size={16} />
-								</IconButton>
+									<Download size={15} /> {t("chat.exportHtml")}
+								</button>
+							) : null}
+							{folded.has("goal") ? (
+								<button type="button" className={row} data-testid="open-goal" onClick={() => afterClose(onGoal)}>
+									<Target size={15} /> {t(hasGoal ? "chat.showGoal" : "chat.setGoal")}
+								</button>
+							) : null}
+							{folded.has("loaded") ? (
+								<button type="button" className={row} data-testid="open-loaded" onClick={() => afterClose(onLoaded)}>
+									<Layers size={15} /> {t("loaded.title")}
+								</button>
 							) : null}
 						</div>
-						<SessionCost usage={usage} tip={false} />
-						<UsageBreakdown usage={usage} className="grid grid-cols-2 gap-x-3 text-xs text-muted" />
-						{status}
-					</div>
-					<div className="border-t border-border pt-1">
-						{onRename ? (
-							<button type="button" className={row} onClick={() => afterClose(onRename)}>
-								<Pencil size={15} /> {t("common.rename")}
-							</button>
-						) : null}
-						{onExport ? (
-							<button
-								type="button"
-								className={row}
-								data-testid="export-html"
-								onClick={() => {
-									setOpen(false);
-									onExport();
-								}}
-							>
-								<Download size={15} /> {t("chat.exportHtml")}
-							</button>
-						) : null}
-						<button type="button" className={row} data-testid="open-goal" onClick={() => afterClose(onGoal)}>
-							<Target size={15} /> {t(hasGoal ? "chat.showGoal" : "chat.setGoal")}
-						</button>
-						<button type="button" className={row} data-testid="open-loaded" onClick={() => afterClose(onLoaded)}>
-							<Layers size={15} /> {t("loaded.title")}
-						</button>
-					</div>
+					) : null}
 				</Popover.Content>
 			</Popover.Portal>
-			{controls ? <SessionControls ref={panel} anchor={button} live={controls.live} start={controls.start} /> : null}
+			{session ? <SessionControls ref={panel} anchor={button} live={session.live} start={session.start} /> : null}
 		</Popover.Root>
+	);
+}
+
+/** The least of the title the header keeps beside its readouts and buttons, until nothing else can give way. */
+const TITLE_MIN_PX = 160;
+
+/** How much the header's quota says: its own provider's meter and the providers' names, the figures, or each figure alone. */
+type QuotaForm = "full" | "short" | "terse";
+
+/**
+ * The chat's header: the title, and beside it as many of its readouts and buttons as its column has room for. What does
+ * not fit gives way one at a time (`HEADER_STEPS`), into the menu at its end (`HeaderMenu`), which is there while it holds
+ * anything: what the header put there, or what the status line did (`statusFolds`).
+ */
+function ChatHeader({
+	title,
+	quota,
+	quotaForms,
+	usage,
+	onRename,
+	onExport,
+	controls,
+	guard,
+	goal,
+	onLoaded,
+	panelToggle,
+	status,
+	statusInMenu,
+	holds,
+}: {
+	/** The title with its folder under it; `rename` with its Rename button, `floor` the least room its words keep. */
+	title: (rename: boolean, floor: number | undefined) => ReactNode;
+	quota: (form: QuotaForm) => ReactNode;
+	/** The quota's shorter forms that say less than the one before (`quota-short`, `quota-terse`). */
+	quotaForms: { short: boolean; terse: boolean };
+	usage: Usage;
+	onRename: (() => void) | undefined;
+	onExport: (() => void) | undefined;
+	controls: { live: LiveState | undefined; start: StartLive } | undefined;
+	/** The guard's switch, for a conversation whose process has a guard. */
+	guard: ReactNode;
+	goal: { held: boolean; expanded: boolean; toggle: () => void; open: () => void };
+	onLoaded: () => void;
+	panelToggle: ReactNode;
+	/** The status line's items in the menu (`StatusMenuRows`), and whether there are any. */
+	status: ReactNode;
+	statusInMenu: boolean;
+	/** What the header holds besides its steps (the title, the folder): a change of it measures the header afresh. */
+	holds: string;
+}) {
+	const t = useT();
+	const steps = headerSteps({
+		rename: onRename !== undefined,
+		export: onExport !== undefined,
+		session: controls !== undefined,
+		quotaShort: quotaForms.short,
+		quotaTerse: quotaForms.terse,
+	});
+	const [bar, setBar] = useState<HTMLElement | null>(null);
+	const taken = useFitSteps(bar, steps.length, JSON.stringify([steps, statusInMenu, guard !== null, holds]));
+	const off = new Set(steps.slice(0, taken));
+	const menu = statusInMenu || steps.slice(0, taken).some((s) => s !== "quota-short" && s !== "quota-terse");
+	const sessionShown = controls !== undefined && !off.has("session");
+	// The guard's switch sits beside This session, or beside the menu that holds it. Beside This session its place is held
+	// while its chunk loads, and while no process runs, so that the buttons beside it do not move by its width when the
+	// conversation starts or ends; beside the menu there is no room to hold for it, and the menu does not move either way.
+	const guardSlot = <span aria-hidden className="h-8 w-8 shrink-0" data-testid="guard-toggle-slot" />;
+	return (
+		<header ref={setBar} className="flex h-13 shrink-0 items-center gap-2 border-b border-border px-4">
+			{title(!off.has("rename") && onRename !== undefined, taken < steps.length ? TITLE_MIN_PX : undefined)}
+			<div className="flex shrink-0 items-center gap-2">
+				{off.has("cost") ? null : <SessionCost usage={usage} tip />}
+				{quota(off.has("quota-terse") ? "terse" : off.has("quota-short") ? "short" : "full")}
+				{onExport && !off.has("export") ? (
+					<IconButton label={t("chat.exportHtml")} data-testid="export-html" onClick={onExport}>
+						<Download size={16} />
+					</IconButton>
+				) : null}
+				{off.has("session") ? null : (guard ?? guardSlot)}
+				{sessionShown ? <SessionControls live={controls.live} start={controls.start} /> : null}
+				{off.has("goal") ? null : (
+					<IconButton
+						label={t(goal.held ? "chat.showGoal" : "chat.setGoal")}
+						active={goal.expanded}
+						aria-expanded={goal.held ? goal.expanded : undefined}
+						onClick={goal.toggle}
+						data-testid="open-goal"
+					>
+						<Target size={16} />
+					</IconButton>
+				)}
+				{off.has("loaded") ? null : (
+					<IconButton label={t("loaded.title")} onClick={onLoaded} data-testid="open-loaded">
+						<Layers size={16} />
+					</IconButton>
+				)}
+				{panelToggle}
+				{off.has("session") ? guard : null}
+				{menu ? (
+					<HeaderMenu
+						folded={off}
+						usage={usage}
+						controls={controls}
+						onRename={onRename}
+						onExport={onExport}
+						onGoal={goal.open}
+						hasGoal={goal.held}
+						onLoaded={onLoaded}
+						status={statusInMenu ? status : null}
+					/>
+				) : null}
+			</div>
+		</header>
 	);
 }
 
@@ -458,10 +584,12 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 	const [draft, setDraft] = useState<ComposerDraft | null>(null);
 	const summary = sessions.find((s) => s.file === currentFile);
 	const isArchived = currentFile !== null && archived.includes(currentFile);
-	// The header has the room of this column, not of the window: the sidebar and the side panel take some of it.
-	const [column, setColumn] = useState<HTMLDivElement | null>(null);
-	const [headerTools, setHeaderTools] = useState<HTMLDivElement | null>(null);
-	const compact = useNarrowerThanContent(column, COMPACT_HEADER_PX, headerTools, HEADER_TITLE_ROOM_PX);
+	// What the status line under the composer has put elsewhere for want of room (`ChatStatus`): the header shows it then.
+	const [statusFolds, setStatusFolds] = useState<readonly StatusFold[]>([]);
+	const onStatusFolds = useCallback(
+		(folds: StatusFold[]) => setStatusFolds((was) => (was.join() === folds.join() ? was : folds)),
+		[],
+	);
 	// A file, or a file's change, open large over this column (`BigView`): the panel opens it, and it is kept for this
 	// conversation alone — the key the panel's tree is kept under (see `store/big.ts`).
 	const chatKey = currentFile ?? liveId ?? "";
@@ -1293,19 +1421,19 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 		if (currentFile) void downloadExport(currentFile).catch((e) => toast("error", e.message));
 	};
 	// Long titles and paths end in an ellipsis; hovering shows them in full.
-	// The status line under the composer shows the folder (a wide column: a narrow one folds the status line into the menu,
-	// without it), so the header names the folder's repository there and the path is not said twice. A folder outside git
-	// has no repository, and a narrow column has no other place for the path: the header shows the path then.
-	const repoInHeader = !compact && repoName !== null;
-	const titleBlock = (
+	// The status line under the composer shows the folder while it has room for it, so the header names the folder's
+	// repository then and the path is not said twice. A folder outside git has no repository, and a line that has put the
+	// folder out for want of room has no other place for the path: the header shows the path then.
+	const repoInHeader = !statusFolds.includes("cwd") && repoName !== null;
+	const titleBlock = (rename: boolean, floor?: number) => (
 		<div className="min-w-0 flex-1">
 			<div className="flex items-center gap-2">
-				<h1 className="truncate text-sm font-semibold" data-testid="chat-title" title={title}>
+				<h1 className="truncate text-sm font-semibold" data-testid="chat-title" title={title} data-fit-min={floor}>
 					{title}
 				</h1>
 				<ModeBadge info={live?.info} />
 				{live?.planMode && !live.exited ? <PlanBadge /> : null}
-				{!compact && ready && currentFile ? (
+				{rename ? (
 					<IconButton label={t("common.rename")} size="xs" onClick={() => setRenaming(title)}>
 						<Pencil size={12} />
 					</IconButton>
@@ -1375,46 +1503,46 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 	);
 	// The header shows the provider's remaining quota, not the context share: the composer already shows the context
 	// (#454). The conversation's own model gets a meter and the window's reset; the other providers it has used get
-	// their figure alone, so a mixed conversation still fits.
-	const quota = quotaProviders.length ? (
-		<div className="flex shrink-0 items-center gap-2 whitespace-nowrap" data-testid="quota-pills">
-			{quotaProviders.map((p) => {
-				const own = p === currentProvider;
-				return (
-					<Quota
-						key={p}
-						provider={p}
-						active={own && (streaming || bashRunning)}
-						variant={own && !compact ? "bar" : "pill"}
-						model={own ? live?.state?.model?.id : null}
-						showName={quotaProviders.length > 1 && !compact}
-						terse={quotaProviders.length > 1 && compact}
-						file={currentFile}
-					/>
-				);
-			})}
-		</div>
-	) : null;
-	// The guard's switch, beside This session (in a narrow header, beside the menu that holds it). Only a conversation whose
-	// process has a guard (`LiveInfo.guard`) has one; its place is held while its chunk loads, and while no process runs,
-	// so that the buttons beside it do not move by its width when the conversation starts or ends.
-	const guardSlot = <span aria-hidden className="h-8 w-8 shrink-0" data-testid="guard-toggle-slot" />;
+	// their figure alone, so a mixed conversation still fits. Where the header is short of room it says less (`QuotaForm`).
+	const ownQuota = currentProvider !== undefined && quotaProviders.includes(currentProvider);
+	const quota = (form: QuotaForm) =>
+		quotaProviders.length ? (
+			<div className="flex shrink-0 items-center gap-2 whitespace-nowrap" data-testid="quota-pills">
+				{quotaProviders.map((p) => {
+					const own = p === currentProvider;
+					return (
+						<Quota
+							key={p}
+							provider={p}
+							active={own && (streaming || bashRunning)}
+							variant={own && form === "full" ? "bar" : "pill"}
+							model={own ? live?.state?.model?.id : null}
+							showName={quotaProviders.length > 1 && form === "full"}
+							terse={quotaProviders.length > 1 && form === "terse"}
+							file={currentFile}
+						/>
+					);
+				})}
+			</div>
+		) : null;
+	// The guard's switch, for a conversation whose process has a guard (`LiveInfo.guard`); its place is held while its
+	// chunk loads (see `ChatHeader`, which holds it while no process runs too).
 	const guardToggle =
 		liveId && live?.info.guard ? (
-			<Suspense fallback={guardSlot}>
+			<Suspense fallback={<span aria-hidden className="h-8 w-8 shrink-0" data-testid="guard-toggle-slot" />}>
 				<GuardToggle liveId={liveId} />
 			</Suspense>
-		) : (
-			guardSlot
-		);
+		) : null;
 
 	// Until the transcript is here there is a spinner, or the reason it failed with a Retry. The cost, Export, Goal
 	// and the composer would only act on a conversation that is not on screen yet, so they wait too.
 	if (!ready) {
 		return (
 			<div className="relative flex h-full min-w-0 flex-1">
-				<div ref={setColumn} className="flex h-full min-w-0 flex-1 flex-col">
-					<header className="flex h-13 shrink-0 items-center gap-2 border-b border-border px-4">{titleBlock}</header>
+				<div className="flex h-full min-w-0 flex-1 flex-col">
+					<header className="flex h-13 shrink-0 items-center gap-2 border-b border-border px-4">
+						{titleBlock(false)}
+					</header>
 					<div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
 						{loadErrorBox ? (
 							loadErrorBox
@@ -1434,53 +1562,29 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 			<div className="relative flex h-full min-w-0 flex-1">
 				{/* The large view covers this column, not the panel: the file it shows is opened from the panel, which stays usable. */}
 				<div className="relative flex min-w-0 flex-1">
-					<div ref={setColumn} className={cx("flex h-full min-w-0 flex-1 flex-col", big && "invisible")}>
-						<header className="flex h-13 shrink-0 items-center gap-2 border-b border-border px-4">
-							{titleBlock}
-							{compact ? (
-								<>
-									{quota}
-									{panelToggle}
-									{/* A narrow header has no room to hold for it: the menu at its end does not move either way. */}
-									{liveId && live?.info.guard ? guardToggle : null}
-									<HeaderMenu
-										usage={usage}
-										controls={canAct ? { live, start: startLive } : undefined}
-										onRename={currentFile ? () => setRenaming(title) : undefined}
-										onExport={currentFile ? exportHtml : undefined}
-										onGoal={() => openGoal()}
-										hasGoal={goalOpenNow}
-										onLoaded={openLoaded}
-										status={<StatusMenuRows live={live} entries={fileEntries} stats={figures} />}
-									/>
-								</>
-							) : (
-								<div ref={setHeaderTools} className="flex shrink-0 items-center gap-2">
-									<SessionCost usage={usage} tip />
-									{quota}
-									{currentFile ? (
-										<IconButton label={t("chat.exportHtml")} data-testid="export-html" onClick={exportHtml}>
-											<Download size={16} />
-										</IconButton>
-									) : null}
-									{guardToggle}
-									{canAct ? <SessionControls live={live} start={startLive} /> : null}
-									<IconButton
-										label={t(goalOpenNow ? "chat.showGoal" : "chat.setGoal")}
-										active={goalExpanded}
-										aria-expanded={goalOpenNow ? goalExpanded : undefined}
-										onClick={toggleGoal}
-										data-testid="open-goal"
-									>
-										<Target size={16} />
-									</IconButton>
-									<IconButton label={t("loaded.title")} onClick={openLoaded} data-testid="open-loaded">
-										<Layers size={16} />
-									</IconButton>
-									{panelToggle}
-								</div>
-							)}
-						</header>
+					<div className={cx("flex h-full min-w-0 flex-1 flex-col", big && "invisible")}>
+						<ChatHeader
+							title={titleBlock}
+							quota={quota}
+							quotaForms={{ short: ownQuota || quotaProviders.length > 1, terse: quotaProviders.length > 1 }}
+							usage={usage}
+							onRename={currentFile ? () => setRenaming(title) : undefined}
+							onExport={currentFile ? exportHtml : undefined}
+							controls={canAct ? { live, start: startLive } : undefined}
+							guard={guardToggle}
+							goal={{ held: goalOpenNow, expanded: goalExpanded, toggle: toggleGoal, open: () => openGoal() }}
+							onLoaded={openLoaded}
+							panelToggle={panelToggle}
+							status={<StatusMenuRows live={live} entries={fileEntries} stats={figures} folds={statusFolds} />}
+							statusInMenu={statusFolds.includes("time") || statusFolds.includes("goal")}
+							holds={JSON.stringify([
+								title,
+								repoInHeader ? repoName : cwd,
+								isArchived,
+								live?.planMode,
+								live?.info.mode,
+							])}
+						/>
 						{guardUnavailable ? (
 							<Suspense fallback={null}>
 								<GuardNotice homes={guardHomes} />
@@ -1778,7 +1882,7 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 									cost={{ main: totals.main.cost, subagents: totals.subagents.cost, advisor: totals.advisor.cost }}
 									agentsRunning={totals.subagents.running}
 									savedThinking={saved.thinking}
-									compact={compact}
+									onFolds={onStatusFolds}
 								/>
 								<p className="mt-1.5 text-center text-xs text-faint">
 									{busy ? t("chat.working") : t("chat.disclaimer")}

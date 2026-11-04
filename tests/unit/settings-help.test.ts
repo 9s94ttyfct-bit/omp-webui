@@ -74,6 +74,7 @@ const SENSITIVE = [
 	"ompw.appUpdateCheck",
 	"ompw.browser",
 	"ompw.browserAutoUpdate",
+	"ompw.extensionsAutoUpdate",
 	"ompw.keepAwake",
 	"ompw.notify",
 	"ompw.unattended",

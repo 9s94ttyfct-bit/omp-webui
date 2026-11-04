@@ -4,21 +4,29 @@ import { join } from "node:path";
 import { RECOMMENDED_MARKETPLACES } from "../../shared/plugins-catalogs.ts";
 
 /**
- * A stand-in for the `omp plugin …` and `omp skill …` the Plugins page runs, for its Discover, Skills and MCP tests with
- * no network: marketplaces are added by name only (a recommended repository gets its catalog's name), omp's skill registry
- * is two skills (one ships scripts). What it holds is kept in `~/.fake-plugins-omp.json` (the test's own HOME), written
+ * A stand-in for the `omp plugin …` and `omp skill …` the Plugins page runs, for its Discover, Skills, MCP and Updates
+ * tests with no network: marketplaces are added by name only (a recommended repository gets its catalog's name), omp's
+ * skill registry is two skills (one ships scripts), and marketplace plugins with a newer version are what a test writes
+ * into the state (`upgrade --dry-run` lists them, `upgrade <id> --scope` brings them in; `skill info`/`skill update` do
+ * the same for registry skills). What it holds is kept in `~/.fake-plugins-omp.json` (the test's own HOME), written
  * whole by a change only (the server runs several listings at once), and every command line it was given is a line of
  * `~/.fake-plugins-omp.calls`. Printed as omp 18.16 prints it. Anything else is the long-run stand-in (`long-fake-omp.ts`).
  */
 
 interface State {
 	marketplaces: { name: string; source: string }[];
-	/** Registry skills installed: id, version, and whether for the user (`-g`). */
-	skills: { id: string; version: string; global: boolean }[];
+	/** Registry skills installed: id, version, and whether for the user (`-g`), else for the project folder `folder`. */
+	skills: { id: string; version: string; global: boolean; folder?: string }[];
+	/**
+	 * Marketplace plugins installed (a test writes them into the state file): the version installed and the one their
+	 * marketplace's catalog has; a project one is the project folder `folder`'s.
+	 */
+	plugins?: { id: string; scope: "user" | "project"; folder?: string; version: string; latest: string }[];
 	/** The global `disabledExtensions`. */
 	disabled?: string[];
 }
 
+/** The registry's skills: `version` is its `latest`; an older one is installed by naming it (`@acme/pdf-tools@1.1.0`). */
 const REGISTRY_SKILLS = [
 	{ scope: "acme", name: "pdf-tools", version: "1.2.0", description: "Fill in and read PDF forms.", scripts: false },
 	{ scope: "acme", name: "shell-helpers", version: "0.3.1", description: "Small shell helpers.", scripts: true },
@@ -63,10 +71,35 @@ if (argv[0] !== "plugin" && argv[0] !== "skill" && argv[0] !== "config") {
 		} else if (verb === "marketplace" && words[0] === "remove") {
 			state.marketplaces = state.marketplaces.filter((m) => m.name !== words[1]);
 			writeCatalogs();
+		} else if (verb === "marketplace" && words[0] === "update") {
+			console.log(`✔ Updated ${words[1] ?? "all marketplaces"}`);
 		} else if (verb === "discover") {
 			console.log(`  example-plugin@1.0.0\n    An example plugin of ${words[0]}`);
 		} else if (verb === "list") {
-			console.log(JSON.stringify({ npm: [], marketplace: [] }));
+			const here = (p: NonNullable<State["plugins"]>[number]) => p.scope === "user" || p.folder === process.cwd();
+			const marketplace = (state.plugins ?? []).filter(here).map((p) => ({
+				id: p.id,
+				scope: p.scope,
+				entries: [{ scope: p.scope, version: p.version, installPath: join(homedir(), "mp", p.id), enabled: true }],
+			}));
+			console.log(JSON.stringify({ npm: [], marketplace }));
+		} else if (verb === "upgrade" && rest.includes("--dry-run")) {
+			// Each folder lists the user's plugins and its own.
+			const due = (state.plugins ?? []).filter(
+				(p) => p.version !== p.latest && (p.scope === "user" || p.folder === process.cwd()),
+			);
+			if (due.length === 0) console.log("[dry-run] All marketplace plugins are up to date");
+			for (const p of due) console.log(`[dry-run] Would upgrade ${p.id} (${p.scope}): ${p.version} -> ${p.latest}`);
+		} else if (verb === "upgrade" && words[0]) {
+			const scope = rest[rest.indexOf("--scope") + 1];
+			const p = (state.plugins ?? []).find(
+				(x) => x.id === words[0] && x.scope === scope && (scope === "user" || x.folder === process.cwd()),
+			);
+			if (!p) fail(`Failed to upgrade: ${words[0]} is not installed (${scope})`);
+			else {
+				p.version = p.latest;
+				console.log(`Upgraded ${p.id} (${scope}) to ${p.version}`);
+			}
 		} else if (verb === "doctor") {
 			console.log("[]");
 		}
@@ -94,16 +127,26 @@ if (argv[0] !== "plugin" && argv[0] !== "skill" && argv[0] !== "config") {
 					source: "custom:user",
 					hide: false,
 				},
-				...state.skills.map((s) => {
-					const [scope, name] = s.id.slice(1).split("/");
-					return {
-						name,
-						description: REGISTRY_SKILLS.find((r) => r.name === name)?.description,
-						filePath: join(home, ".omp", "skillshare", `@${scope}`, name, s.version, "SKILL.md"),
-						source: `skillshare:${s.global ? "user" : "project"}`,
-						hide: false,
-					};
-				}),
+				...state.skills
+					.filter((s) => s.global || s.folder === process.cwd())
+					.map((s) => {
+						const [scope, name] = s.id.slice(1).split("/");
+						return {
+							name,
+							description: REGISTRY_SKILLS.find((r) => r.name === name)?.description,
+							filePath: join(
+								s.global ? home : process.cwd(),
+								".omp",
+								"skillshare",
+								`@${scope}`,
+								name,
+								s.version,
+								"SKILL.md",
+							),
+							source: `skillshare:${s.global ? "user" : "project"}`,
+							hide: false,
+						};
+					}),
 			];
 			const on = skills.filter((s) => !off.has(`skill:${s.name}`));
 			console.log(JSON.stringify({ skills: on, warnings: [] }));
@@ -123,19 +166,31 @@ if (argv[0] !== "plugin" && argv[0] !== "skill" && argv[0] !== "config") {
 				}),
 			);
 			console.log(JSON.stringify({ total: hits.length, page: 1, perPage: 20, hits }, null, 2));
-		} else if (verb === "install") {
+		} else if (verb === "info") {
+			const skill = REGISTRY_SKILLS.find((s) => words[0] === `@${s.scope}/${s.name}`);
+			if (!skill) fail(`error ${words[0]} was not found in the registry`);
+			else
+				console.log(
+					JSON.stringify({ scope: skill.scope, name: skill.name, distTags: { latest: skill.version } }, null, 2),
+				);
+		} else if (verb === "install" || verb === "update") {
 			const spec = words[0];
 			const skill = REGISTRY_SKILLS.find((s) => spec.startsWith(`@${s.scope}/${s.name}`));
 			if (!skill) fail(`error @${spec} was not found in the registry`);
 			else {
 				const id = `@${skill.scope}/${skill.name}`;
+				const global = rest.includes("-g");
+				const mine = (s: State["skills"][number]) =>
+					s.id === id && s.global === global && (global || s.folder === process.cwd());
+				if (verb === "update" && !state.skills.some(mine)) fail(`error ${id} is not installed`);
+				const version = verb === "install" && spec.length > id.length + 1 ? spec.slice(id.length + 1) : skill.version;
 				if (skill.scripts && !rest.includes("-y"))
 					fail(
-						`error ${id}@${skill.version} ships scripts:\n  scripts/run.sh (executable)\nRefusing to install scripts without confirmation; re-run with --yes to allow them.`,
+						`error ${id}@${version} ships scripts:\n  scripts/run.sh (executable)\nRefusing to install scripts without confirmation; re-run with --yes to allow them.`,
 					);
-				state.skills = state.skills.filter((s) => s.id !== id);
-				state.skills.push({ id, version: skill.version, global: rest.includes("-g") });
-				console.log(`+ ${id}@${skill.version}`);
+				state.skills = state.skills.filter((s) => !mine(s));
+				state.skills.push({ id, version, global, ...(global ? {} : { folder: process.cwd() }) });
+				console.log(`+ ${id}@${version}`);
 			}
 		} else if (verb === "uninstall") {
 			if (!state.skills.some((s) => s.id === words[0])) fail(`error ${words[0]} is not installed`);

@@ -6,11 +6,17 @@ import { cx } from "./ui.tsx";
 
 const ITEM = "inline-flex items-center gap-1 whitespace-nowrap";
 
+/** Fewer characters of the branch than this (about five) are not worth showing: the chip is its icon instead. */
+const BRANCH_MIN_PX = 32;
+
 /**
  * The TUI's git segments of the status line: the branch with how many files are staged (`+`), changed (`~`) and
  * untracked (`?`), and the pull request of the branch when `gh` knows one. Nothing for a folder outside a repository.
+ * `name` is how much of the branch's name the line has room for (see `STATUS_STEPS`): all of it (up to a long name's
+ * ellipsis), as much as fits down to `BRANCH_MIN_PX`, or none, the chip its icon and counts, the name in its title and
+ * kept for readers of the screen.
  */
-export function GitChips({ cwd }: { cwd: string | undefined }) {
+export function GitChips({ cwd, name }: { cwd: string | undefined; name: "whole" | "short" | "icon" }) {
 	const t = useT();
 	const folder = useGit((s) => (cwd ? s.byCwd[cwd] : undefined));
 	const git = folder?.git;
@@ -47,10 +53,7 @@ export function GitChips({ cwd }: { cwd: string | undefined }) {
 	return (
 		<>
 			<span
-				// On the narrow one-row status line the branch's name gives way first, before the model's (which keeps its width
-				// while this one is shown); when not even a few readable characters of it fit, the line sets `data-no-branch-name`
-				// (see `ChatStatus`) and the chip is its icon and counts, the name in its title and kept for readers of the screen.
-				className={cx(ITEM, "min-w-0 max-w-[16rem] [[data-no-branch-name]_&]:shrink-0")}
+				className={cx(ITEM, "max-w-[16rem]", name === "short" ? "min-w-0" : "shrink-0")}
 				title={title}
 				data-testid="status-git"
 				data-branch={git.branch}
@@ -59,9 +62,10 @@ export function GitChips({ cwd }: { cwd: string | undefined }) {
 				<GitBranch size={11} className={cx("shrink-0", clean ? "text-success" : "text-warning")} aria-hidden />
 				{git.detached ? <span className="sr-only">{t("chat.statusGitDetached", { branch: git.branch })}</span> : null}
 				<span
-					className="truncate [[data-no-branch-name]_&]:sr-only"
+					className={name === "icon" ? "sr-only" : "truncate"}
 					aria-hidden={git.detached || undefined}
 					data-testid="status-git-name"
+					data-fit-min={name === "short" ? BRANCH_MIN_PX : undefined}
 				>
 					{git.branch}
 				</span>
@@ -77,7 +81,7 @@ export function GitChips({ cwd }: { cwd: string | undefined }) {
 			</span>
 			{pr ? (
 				<a
-					className={cx(ITEM, "rounded-sm hover:text-fg hover:underline")}
+					className={cx(ITEM, "shrink-0 rounded-sm hover:text-fg hover:underline")}
 					href={pr.url}
 					target="_blank"
 					rel="noreferrer noopener"

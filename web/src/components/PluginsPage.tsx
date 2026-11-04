@@ -52,6 +52,7 @@ import { type JobRequest, pluginsApi } from "../lib/plugins-api.ts";
 import { useApp } from "../store/app.ts";
 import { LoadError } from "./LoadError.tsx";
 import { Confirm, FilterSelect, facets, SCOPE_KEY, ScopePicker, Section, WebLinks } from "./plugins/parts.tsx";
+import { OverviewStats, UpdatesSection, useUpdates } from "./plugins/UpdatesSection.tsx";
 import { Select } from "./Select.tsx";
 import { Switch } from "./Switch.tsx";
 import { Badge, Button, cx, Empty, Modal, Spinner, WithCode } from "./ui.tsx";
@@ -66,12 +67,14 @@ const McpTab = lazy(() => import("./plugins/McpTab.tsx"));
 /**
  * The Plugins page (`#/plugins`): omp's plugins, skills and MCP servers, read and changed with omp's own `omp plugin` and
  * `omp skill` commands on the computer omp-webui runs on (`/api/plugins*`), in tabs:
- * - Installed: installed plugins with their switch, upgrade, uninstall, features and settings; omp's health check.
+ * - Overview: how many plugins, skills and marketplaces there are (each opens its tab), the updates (newer plugins and
+ *   registry skills, chosen and installed together; the automatic update) and omp's health check.
+ * - Plugins: installed plugins with their switch, upgrade, uninstall, features and settings.
+ * - Skills: every skill omp discovers, and omp's skill registry (`omp skill search|install|uninstall`).
+ * - Marketplaces: the marketplaces themselves, refreshed one, several or all at once.
  * - Discover: well-known marketplaces to add with one click, the added marketplaces' catalogs, installing by package, git
  *   URL or folder.
- * - Skills: every skill omp discovers, and omp's skill registry (`omp skill search|install|uninstall`).
  * - MCP: the official MCP Registry, searched by the server, and a server of it added to omp's MCP configuration.
- * - Marketplaces: the marketplaces themselves.
  *
  * A change that takes long (an install, an upgrade, a marketplace fetched with git) runs as a job on the server: the page
  * shows what omp prints as it goes, then lists the plugins again and says which open conversations reloaded their plugins
@@ -87,13 +90,14 @@ const RECENT_FOLDERS = 15;
 /** What the last change did: a job (with what omp printed), or a quick change that answered at once. */
 type Outcome = { job: PluginJob } | { error: string } | { reloads: PluginReload[] } | { mcp: McpAdded };
 
-type Tab = "installed" | "discover" | "skills" | "mcp" | "marketplaces";
+type Tab = "overview" | "installed" | "skills" | "marketplaces" | "discover" | "mcp";
 const TABS: readonly { value: Tab; label: MessageKey }[] = [
+	{ value: "overview", label: "plugins.tabOverview" },
 	{ value: "installed", label: "plugins.tabInstalled" },
-	{ value: "discover", label: "plugins.tabDiscover" },
 	{ value: "skills", label: "plugins.tabSkills" },
-	{ value: "mcp", label: "plugins.tabMcp" },
 	{ value: "marketplaces", label: "plugins.tabMarketplaces" },
+	{ value: "discover", label: "plugins.tabDiscover" },
+	{ value: "mcp", label: "plugins.tabMcp" },
 ];
 
 export function PluginsPage() {
@@ -109,7 +113,9 @@ export function PluginsPage() {
 	const [pending, setPending] = useState<string | null>(null);
 	/** Counts the changes that ended: the tabs that read lists of their own (Skills) read them again. */
 	const [changes, setChanges] = useState(0);
-	const [tab, setTab] = useState<Tab>("installed");
+	const [tab, setTab] = useState<Tab>("overview");
+	const updates = useUpdates();
+	const refreshUpdates = updates.refresh;
 	/** The last job asked for: a skill install omp refused for its scripts is asked again from it, with `yes`. */
 	const asked = useRef<JobRequest | null>(null);
 	const loads = useRef(0);
@@ -146,7 +152,10 @@ export function PluginsPage() {
 					if (gone) return;
 					setOutcome({ job: next });
 					if (next.state === "running") timer = setTimeout(poll, JOB_POLL_MS);
-					else load();
+					else {
+						load();
+						refreshUpdates();
+					}
 				})
 				.catch(() => {
 					if (!gone) timer = setTimeout(poll, JOB_POLL_MS * 4);
@@ -157,7 +166,7 @@ export function PluginsPage() {
 			gone = true;
 			clearTimeout(timer);
 		};
-	}, [jobId, load]);
+	}, [jobId, load, refreshUpdates]);
 	// A page opened while a change runs (in another tab) follows it.
 	useEffect(() => {
 		pluginsApi
@@ -235,6 +244,13 @@ export function PluginsPage() {
 	};
 
 	const needsList = tab === "installed" || tab === "discover" || tab === "marketplaces";
+	const open = (to: Tab | "updates") => {
+		if (to !== "updates") {
+			setTab(to);
+			return;
+		}
+		document.querySelector('[data-testid="plugins-updates"]')?.scrollIntoView({ behavior: "smooth", block: "start" });
+	};
 	return (
 		<div className="h-full min-w-0 flex-1 overflow-y-auto" data-testid="plugins-page">
 			<div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 pt-4 pb-6 sm:px-6 sm:py-8">
@@ -278,7 +294,7 @@ export function PluginsPage() {
 					<div
 						role="tablist"
 						aria-label={t("plugins.sections")}
-						className="flex gap-1 overflow-x-auto border-b border-border"
+						className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-border"
 						data-testid="plugins-tabs"
 					>
 						{TABS.map((x, at) => (
@@ -321,30 +337,17 @@ export function PluginsPage() {
 						</div>
 					) : null}
 
-					{data && tab === "installed" ? (
+					{tab === "overview" ? (
 						<>
-							<InstalledSection
-								data={data}
+							<OverviewStats data={data} cwd={cwd} updates={updates.state} changes={changes} onOpen={open} />
+							<UpdatesSection
+								updates={updates.state}
+								error={updates.error}
 								busy={busy}
-								pending={pending}
-								cwd={cwd}
-								onToggle={(p, on) =>
-									void quick(`enable:${p.id}:${p.scope}`, () =>
-										pluginsApi.setEnabled(p.id, p.source === "marketplace" ? p.scope : null, on, cwd),
-									)
-								}
-								onUpgrade={(p) =>
-									start({
-										action: "upgrade",
-										id: p.id,
-										scope: p.source === "marketplace" ? p.scope : null,
-									})
-								}
-								onUpgradeAll={() => start({ action: "upgrade" })}
-								onUninstall={(p) =>
-									start({ action: "uninstall", id: p.id, scope: p.source === "marketplace" ? p.scope : null })
-								}
-								quick={quick}
+								home={home}
+								onCheck={updates.check}
+								onRefresh={updates.refresh}
+								onJob={start}
 							/>
 							<DoctorSection
 								cwd={cwd}
@@ -353,6 +356,31 @@ export function PluginsPage() {
 								installed={installed}
 							/>
 						</>
+					) : null}
+					{data && tab === "installed" ? (
+						<InstalledSection
+							data={data}
+							busy={busy}
+							pending={pending}
+							cwd={cwd}
+							onToggle={(p, on) =>
+								void quick(`enable:${p.id}:${p.scope}`, () =>
+									pluginsApi.setEnabled(p.id, p.source === "marketplace" ? p.scope : null, on, cwd),
+								)
+							}
+							onUpgrade={(p) =>
+								start({
+									action: "upgrade",
+									id: p.id,
+									scope: p.source === "marketplace" ? p.scope : null,
+								})
+							}
+							onUpgradeAll={() => start({ action: "upgrade" })}
+							onUninstall={(p) =>
+								start({ action: "uninstall", id: p.id, scope: p.source === "marketplace" ? p.scope : null })
+							}
+							quick={quick}
+						/>
 					) : null}
 					{data && tab === "discover" ? (
 						<>
@@ -380,6 +408,7 @@ export function PluginsPage() {
 							busy={busy}
 							onAdd={(source) => start({ action: "marketplace-add", source })}
 							onUpdate={(name) => start({ action: "marketplace-update", name })}
+							onUpdateMany={(names) => start({ action: "marketplace-update", names })}
 							onRemove={(name) => start({ action: "marketplace-remove", name })}
 						/>
 					) : null}
@@ -586,7 +615,10 @@ function OutcomePanel({
 					</Button>
 				)}
 			</div>
-			{job ? <code className="mt-2 block break-all font-mono text-xs text-muted">{job.command}</code> : null}
+			{job ? (
+				<code className="mt-2 block whitespace-pre-wrap break-all font-mono text-xs text-muted">{job.command}</code>
+			) : null}
+			{job?.auto ? <p className="mt-1 text-xs text-faint">{t("plugins.jobAuto")}</p> : null}
 			{error ? (
 				<p className="mt-2 whitespace-pre-wrap break-words text-sm text-danger" data-testid="plugins-outcome-error">
 					{error}
@@ -1284,18 +1316,23 @@ function MarketplacesSection({
 	busy,
 	onAdd,
 	onUpdate,
+	onUpdateMany,
 	onRemove,
 }: {
 	data: PluginsData;
 	busy: boolean;
 	onAdd: (source: string) => void;
 	onUpdate: (name: string | null) => void;
+	onUpdateMany: (names: string[]) => void;
 	onRemove: (name: string) => void;
 }) {
 	const t = useT();
 	const [source, setSource] = useState("");
 	const [removing, setRemoving] = useState<string | null>(null);
+	const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
 	const list = isPluginsFailure(data.marketplaces) ? null : data.marketplaces;
+	// Only marketplaces still listed stay chosen.
+	const picked = list?.filter((m) => chosen.has(m.name)).map((m) => m.name) ?? [];
 	return (
 		<Section
 			id="marketplaces"
@@ -1304,9 +1341,24 @@ function MarketplacesSection({
 			hint={<WithCode text={t("plugins.marketsHint")} />}
 			action={
 				list && list.length > 0 ? (
-					<Button size="sm" disabled={busy} onClick={() => onUpdate(null)} data-testid="markets-update-all">
-						<RefreshCw size={13} /> {t("plugins.marketUpdateAll")}
-					</Button>
+					<div className="flex flex-wrap gap-2">
+						{list.length > 1 ? (
+							<Button
+								size="sm"
+								disabled={busy || picked.length === 0}
+								onClick={() => {
+									onUpdateMany(picked);
+									setChosen(new Set());
+								}}
+								data-testid="markets-update-selected"
+							>
+								{t("plugins.updatesSelected", { count: picked.length })}
+							</Button>
+						) : null}
+						<Button size="sm" disabled={busy} onClick={() => onUpdate(null)} data-testid="markets-update-all">
+							<RefreshCw size={13} /> {t("plugins.marketUpdateAll")}
+						</Button>
+					</div>
 				) : undefined
 			}
 		>
@@ -1325,6 +1377,23 @@ function MarketplacesSection({
 							data-testid="marketplace"
 							data-marketplace={m.name}
 						>
+							{list.length > 1 ? (
+								<input
+									type="checkbox"
+									className="accent-[var(--accent)]"
+									checked={chosen.has(m.name)}
+									aria-label={t("plugins.updatesSelectOne", { name: m.name })}
+									onChange={(e) =>
+										setChosen((c) => {
+											const next = new Set(c);
+											if (e.target.checked) next.add(m.name);
+											else next.delete(m.name);
+											return next;
+										})
+									}
+									data-testid="marketplace-select"
+								/>
+							) : null}
 							<div className="min-w-0 flex-1 basis-56">
 								<div className="font-mono text-sm font-medium">{m.name}</div>
 								<div className="break-all text-xs text-muted">{m.source}</div>

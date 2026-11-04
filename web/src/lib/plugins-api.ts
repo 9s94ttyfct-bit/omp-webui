@@ -12,6 +12,7 @@ import type {
 	SkillSearch,
 	SkillSwitchScope,
 	SkillsData,
+	UpdatesState,
 } from "@shared/plugins.ts";
 
 /**
@@ -78,4 +79,8 @@ export const pluginsApi = {
 		request<McpSearch>(`/api/plugins/mcp/search${query({ q, cursor, cwd })}`),
 	/** Add one way of running a registry server to the user's `mcp.json`. */
 	addMcp: (add: McpAddRequest, cwd: string | null) => post<McpAdded>("/api/plugins/mcp", { ...add, cwd }),
+	/** The last update check, and the automatic update. */
+	updates: () => request<UpdatesState>("/api/plugins/updates"),
+	/** A check starts (marketplaces refreshed first); ask `updates` again until `checking` is false. */
+	checkUpdates: () => post<UpdatesState>("/api/plugins/updates/check", {}),
 };

@@ -5,7 +5,7 @@ import { boxOf } from "../support/geometry.ts";
 import { openSidebar, startLive } from "../support/live.ts";
 import { topTab } from "../support/panel.ts";
 import { type SocketTap, tapSocket } from "../support/socket-tap.ts";
-import { expect, type Page, test } from "./fixtures.ts";
+import { expect, type Locator, type Page, test } from "./fixtures.ts";
 
 /**
  * The status line under the composer (the TUI's bottom line `13h › Opus 5.5 › Goal 1.5M › ~/omp › $173.34 (+198.96)
@@ -276,26 +276,181 @@ test.describe("phone", () => {
 	});
 });
 
-test.describe("a window with the side panel open", () => {
-	test.use({ viewport: { width: 1280, height: 800 } });
+/**
+ * What the line can show, and what the header can show beside its title (each is on one of them, or in the menu).
+ * `rename` is the header's Rename (a pencil beside the title, a row in the menu).
+ */
+const LINE_ITEMS = [
+	"status-time",
+	"status-model",
+	"status-goal",
+	"status-cwd",
+	"status-cost",
+	"status-context",
+	"status-agents",
+];
+const HEADER_ITEMS = ["rename", "session-cost", "export-html", "session-controls", "open-goal", "open-loaded"];
 
-	test("the line follows the room its column has, as the header does", async ({ page }) => {
-		await openRunning(page, 0xa7);
-		for (const id of ["status-time", "status-goal", "status-cwd", "status-cost"]) {
-			await expect(line(page, id), id).toBeVisible();
+/** What the line and the header show at the page's width now, whether they keep to their row, and what the menu lists. */
+async function layoutNow(page: Page) {
+	// Two frames: what the resize changed is measured, and what that gave way is drawn.
+	await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+	const header = page.locator("header").filter({ has: page.getByTestId("chat-title") });
+	const renameIn = async (root: Locator) =>
+		(await root.getByRole("button", { name: "Rename", exact: true }).count()) > 0 ? ["rename"] : [];
+	const shown = await page.evaluate(
+		({ lineItems, headerItems }) => {
+			const header = document.querySelector<HTMLElement>("header:has([data-testid=chat-title])");
+			const line = document.querySelector<HTMLElement>("[data-testid=chat-status]");
+			if (!header || !line) throw new Error("no header or status line");
+			const on = (root: HTMLElement, ids: string[]) => ids.filter((id) => root.querySelector(`[data-testid="${id}"]`));
+			const room = line.getBoundingClientRect();
+			const items = [...line.children].map((c) => c.getBoundingClientRect()).filter((b) => b.width > 0);
+			return {
+				line: on(line, lineItems),
+				header: on(header, headerItems),
+				folds: line.dataset.folds ?? "",
+				// One row, every item inside the line and after the one before it: nothing overlaps.
+				lineOneRow: room.height < 28,
+				lineInside: items.every((b) => b.left >= room.left - 0.5 && b.right <= room.right + 0.5),
+				lineApart: items.every((b, i) => i === 0 || b.left >= items[i - 1].right),
+				headerInside: header.scrollWidth <= header.clientWidth,
+				headerHeight: header.getBoundingClientRect().height,
+				title: document.querySelector("[data-testid=chat-title]")?.getBoundingClientRect().width ?? 0,
+				hasMenu: Boolean(header.querySelector("[data-testid=chat-more]")),
+			};
+		},
+		{ lineItems: LINE_ITEMS, headerItems: HEADER_ITEMS.filter((id) => id !== "rename") },
+	);
+	shown.header.unshift(...(await renameIn(header)));
+	let menu: string[] = [];
+	if (shown.hasMenu) {
+		await page.getByTestId("chat-more").click();
+		const panel = page.getByTestId("chat-more-panel");
+		await expect(panel).toBeVisible();
+		menu = await panel.evaluate(
+			(el, ids) => ids.filter((id) => el.querySelector(`[data-testid="${id}"]`)),
+			[...HEADER_ITEMS.filter((id) => id !== "rename"), "status-time", "status-goal"],
+		);
+		menu.unshift(...(await renameIn(panel)));
+		await page.keyboard.press("Escape");
+		await expect(panel).toHaveCount(0);
+	}
+	return { ...shown, menu };
+}
+
+test.describe("the line and the header at several widths", () => {
+	test.use({ viewport: { width: 1400, height: 900 } });
+
+	test("a wider column shows more; nothing overlaps or wraps; what is not shown is in the menu, and only that", async ({
+		page,
+	}) => {
+		await openRunning(page, 0xaa);
+		await expect(line(page, "status-context")).toHaveAttribute("data-percent", "39");
+		await expect(line(page, "status-agents")).toHaveAttribute("data-running", "2");
+		const panel = page.getByTestId("right-panel");
+		// The sidebar put away (a 48 px rail), so that narrowing the window opens no drawer over the page.
+		await page.getByRole("button", { name: "Hide sidebar" }).click();
+		// From the widest column to the narrowest: the rail's 48 px and the side panel's 400 px take from the window's.
+		const widths = [
+			{ width: 1400, panel: false },
+			{ width: 1568, panel: true },
+			{ width: 800, panel: false },
+			{ width: 1100, panel: true },
+			{ width: 390, panel: false },
+		];
+		let before = Number.POSITIVE_INFINITY;
+		for (const { width, panel: open } of widths) {
+			const where = `${width} px${open ? " with the side panel" : ""}`;
+			// The panel is closed while the window is wide: below 1024 px it is a sheet over the column.
+			if (!open && (await panel.isVisible())) await page.getByTestId("right-panel-close").click();
+			await page.setViewportSize({ width, height: 900 });
+			if (open && !(await panel.isVisible())) await page.getByTestId("toggle-panel").click();
+			await expect(panel).toBeVisible({ visible: open });
+			const s = await layoutNow(page);
+
+			expect(s.lineOneRow, `${where}: the line is one row`).toBe(true);
+			expect(s.lineInside && s.lineApart, `${where}: the line's items are apart, inside it`).toBe(true);
+			expect(s.headerInside, `${where}: nothing hangs off the header`).toBe(true);
+			expect(s.headerHeight, `${where}: the header is one row`).toBeLessThanOrEqual(53);
+			expect(s.title, `${where}: the title keeps its room`).toBeGreaterThanOrEqual(90);
+			// The figures that matter most never leave the line.
+			for (const id of ["status-model", "status-context", "status-agents"])
+				expect(s.line, `${where}: ${id}`).toContain(id);
+			// The header's own items are beside the title or in the menu, never both, never neither.
+			for (const id of HEADER_ITEMS) {
+				expect(Number(s.header.includes(id)) + Number(s.menu.includes(id)), `${where}: ${id} once`).toBe(1);
+			}
+			// The line's working time and goal are on it or in the menu; the folder on it or in the header (its path then);
+			// the cost on it, or the header's own cost (on the header or in the menu) says it.
+			for (const id of ["status-time", "status-goal"]) {
+				expect(Number(s.line.includes(id)) + Number(s.menu.includes(id)), `${where}: ${id} once`).toBe(1);
+			}
+			expect(s.line.includes("status-cwd"), `${where}: the folder is on the line or folded`).toBe(
+				!s.folds.split(" ").includes("cwd"),
+			);
+			// The menu is there while it lists something: what is not shown, and only that (above).
+			expect(s.hasMenu, `${where}: a menu only for what is not shown`).toBe(s.menu.length > 0);
+			const count = s.line.length + s.header.length;
+			expect(count, `${where}: no more shown than in a wider column`).toBeLessThanOrEqual(before);
+			before = count;
+			if (width === 1568) {
+				// The window of the screenshot this was asked for: the line has room for the model, the context, the folder
+				// and the cost (and the rest of its figures), not only one of them.
+				for (const id of [
+					"status-model",
+					"status-context",
+					"status-cwd",
+					"status-cost",
+					"status-time",
+					"status-goal",
+				]) {
+					expect(s.line, `${where}: ${id}`).toContain(id);
+				}
+			}
+			if (width === 1400) {
+				expect(s.menu, "a wide window has nothing to fold").toEqual([]);
+				expect(s.line).toEqual(LINE_ITEMS);
+			}
+			if (width === 390) {
+				expect(s.line).toEqual(["status-model", "status-context", "status-agents"]);
+				expect(s.menu).toEqual(
+					expect.arrayContaining(["rename", "session-cost", "export-html", "status-time", "status-goal"]),
+				);
+			}
 		}
-		// The panel (400 px) leaves 592 px: the folder, the cost, the goal and the time move into the menu.
+
+		// The header's menu and the line follow the column both ways: back at the widest, everything is out again.
+		await page.setViewportSize({ width: 1400, height: 900 });
+		const wide = await layoutNow(page);
+		expect(wide.line).toEqual(LINE_ITEMS);
+		expect(wide.header).toEqual(HEADER_ITEMS);
+		expect(wide.menu).toEqual([]);
+	});
+
+	test("with the side panel open the line keeps the figures it has room for, and closing the panel gives the rest back", async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 1280, height: 800 });
+		await openRunning(page, 0xa7);
+		for (const id of LINE_ITEMS) await expect(line(page, id), id).toBeVisible();
+		// The panel (400 px) leaves the column 592 px: the folder and the working time give way, the goal and the cost
+		// stay. The folder is the header's path then; the working time is in the menu.
 		await line(page, "status-agents").click();
 		await expect(page.getByTestId("right-panel")).toBeVisible();
-		await expect(page.getByTestId("chat-more")).toBeVisible();
-		for (const id of ["status-time", "status-goal", "status-cwd", "status-cost"]) {
-			await expect(page.getByTestId(id), id).toHaveCount(0);
-		}
-		await expect(line(page, "status-model")).toBeVisible();
-		await page.getByTestId("right-panel-close").click();
-		for (const id of ["status-time", "status-goal", "status-cwd", "status-cost"]) {
+		await expect(page.getByTestId("chat-status")).toHaveAttribute("data-folds", "cwd time");
+		for (const id of ["status-model", "status-goal", "status-cost", "status-context", "status-agents"]) {
 			await expect(line(page, id), id).toBeVisible();
 		}
+		await expect(page.getByTestId("status-cwd")).toHaveCount(0);
+		await expect(page.getByTestId("chat-cwd")).toContainText("ompw-fixture-project");
+		await page.getByTestId("chat-more").click();
+		await expect(page.getByTestId("chat-more-panel").getByTestId("status-time")).toHaveText("13h 7m");
+		await expect(page.getByTestId("chat-more-panel").getByTestId("status-goal")).toHaveCount(0);
+		await page.keyboard.press("Escape");
+		await page.getByTestId("right-panel-close").click();
+		for (const id of LINE_ITEMS) await expect(line(page, id), id).toBeVisible();
+		await expect(page.getByTestId("chat-status")).not.toHaveAttribute("data-folds");
 	});
 });
 

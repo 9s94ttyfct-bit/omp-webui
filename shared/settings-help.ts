@@ -92,6 +92,8 @@ export const PREF_CLASS: Readonly<Record<PrefKey, SettingClass>> = {
 	[PREF.browser]: "sensitive",
 	// Whether the browser downloads and switches to new versions by itself; the same gate as the browser's switch.
 	[PREF.browserAutoUpdate]: "sensitive",
+	// Whether omp's plugins and skills install newer versions by themselves (code that conversations then run).
+	[PREF.extensionsAutoUpdate]: "sensitive",
 	// What each conversation's guard was under before the header's switch turned it off.
 	[PREF.guardBefore]: "unavailable",
 	[PREF.animations]: "normal",

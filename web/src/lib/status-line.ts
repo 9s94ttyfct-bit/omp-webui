@@ -59,3 +59,95 @@ export function statusItems(
 				: undefined,
 	};
 }
+
+/**
+ * What the status line gives way with when its one row has too little room for all of it, the first first (see
+ * `useFitSteps`). Its lowest items go first: the folder is shortened and then left to the header, which names it in
+ * full then; the working time, the goal's budget and the cost go to the header's menu (the cost is the header's own
+ * chip, which says it with its subagents' share); then the branch's name is shortened, and then only its icon (its name
+ * in its title). Last the model's name ends in an ellipsis. The context, the agents running, the usage limit and the
+ * pull request stay on the line.
+ */
+export const STATUS_STEPS = [
+	"cwd-short",
+	"cwd",
+	"time",
+	"goal",
+	"cost",
+	"branch-short",
+	"branch-icon",
+	"model-short",
+] as const;
+export type StatusStep = (typeof STATUS_STEPS)[number];
+/** What the line can put elsewhere (the folder in the header, the rest in its menu). */
+export type StatusFold = "cwd" | "time" | "goal" | "cost";
+
+/** The items the line has: a step for an item it does not have would change nothing, and is not one of its steps. */
+export interface StatusHas {
+	cwd: boolean;
+	time: boolean;
+	goal: boolean;
+	cost: boolean;
+	branch: boolean;
+	model: boolean;
+}
+
+const STATUS_STEP_ITEM: Record<StatusStep, keyof StatusHas> = {
+	"cwd-short": "cwd",
+	cwd: "cwd",
+	time: "time",
+	goal: "goal",
+	cost: "cost",
+	"branch-short": "branch",
+	"branch-icon": "branch",
+	"model-short": "model",
+};
+
+/** The line's steps for the items it has, in their order. */
+export function statusSteps(has: StatusHas): StatusStep[] {
+	return STATUS_STEPS.filter((step) => has[STATUS_STEP_ITEM[step]]);
+}
+
+/** What the first `taken` of `steps` have put off the line, in the order they went. */
+export function statusFolds(steps: readonly StatusStep[], taken: number): StatusFold[] {
+	return steps
+		.slice(0, taken)
+		.filter((step): step is StatusFold => step === "cwd" || step === "time" || step === "goal" || step === "cost");
+}
+
+/**
+ * What the chat's header gives way with when the room beside its title is short, the first first (see `useFitSteps`):
+ * Rename, Export, the Loaded list, the cost and Goal go to its menu, then This session (its gear is in the menu then,
+ * and the guard's switch moves beside the menu), and last the quota is written shorter: the conversation's own
+ * provider's without its meter, the providers' names left out, and then each one's figure alone. The title keeps its
+ * room until nothing else can give way; the side panel's button, the guard's switch and the quota always stay.
+ */
+export const HEADER_STEPS = [
+	"rename",
+	"export",
+	"loaded",
+	"cost",
+	"goal",
+	"session",
+	"quota-short",
+	"quota-terse",
+] as const;
+export type HeaderStep = (typeof HEADER_STEPS)[number];
+
+/** The header's steps for what it has: Rename and Export need a saved file, This session omp or a file to start it from. */
+export function headerSteps(has: {
+	rename: boolean;
+	export: boolean;
+	session: boolean;
+	/** The quota has a long form: its own provider's meter, or the names of more than one provider. */
+	quotaShort: boolean;
+	/** More than one provider's quota, which each say their figure alone in the tersest form. */
+	quotaTerse: boolean;
+}): HeaderStep[] {
+	return HEADER_STEPS.filter((step) => {
+		if (step === "rename" || step === "export" || step === "session") return has[step];
+		if (step === "quota-short") return has.quotaShort;
+		if (step === "quota-terse") return has.quotaTerse;
+		return true;
+	});
+}

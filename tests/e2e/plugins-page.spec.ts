@@ -18,7 +18,9 @@ test("a local plugin is installed, switched and uninstalled from the Plugins pag
 	await page.goto("/#/");
 	await page.getByTestId("nav-plugins").click();
 	await expect(page).toHaveURL(/#\/plugins$/);
-	await expect(page.getByTestId("plugins-installed")).toBeVisible();
+	// The Overview opens first: the updates and omp's health check.
+	await expect(page.getByTestId("plugins-updates")).toBeVisible();
+	await expect(page.getByTestId("plugins-doctor")).toBeVisible();
 
 	// Installing by package, URL or folder is in the Discover tab; the card is in Installed.
 	await page.getByTestId("plugins-tab-discover").click();

@@ -154,6 +154,13 @@ export const PREF = {
 	 * uses the browser (`server/browser/autoupdate.ts`). Changed only where the browser is managed (`canManageBrowser`).
 	 */
 	browserAutoUpdate: "ompw.browserAutoUpdate",
+	/**
+	 * Whether omp's plugins, skills and marketplaces update themselves: `on`, or `off` (the default). On, the server looks a
+	 * minute after it starts (or after it was turned on) and every 6 hours, refreshing the marketplaces' catalogs, and
+	 * installs every newer plugin and registry skill once no conversation works, asks, is paused or waits
+	 * (`server/omp/plugins.ts`, `autoUpdates`).
+	 */
+	extensionsAutoUpdate: "ompw.extensionsAutoUpdate",
 } as const;
 
 export type PrefKey = (typeof PREF)[keyof typeof PREF];
@@ -276,6 +283,7 @@ const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 	[PREF.browserSize]: (v) => parseBrowserSize(v) !== null,
 	[PREF.browser]: switchValue,
 	[PREF.browserAutoUpdate]: switchValue,
+	[PREF.extensionsAutoUpdate]: switchValue,
 };
 
 /** Whether `value` is something the app ever writes under `key` (length is checked apart: `MAX_PREF_LENGTH`). */

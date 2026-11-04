@@ -20,11 +20,13 @@ import {
 	validSkillQuery,
 	validSkillSpec,
 } from "../../server/omp/plugin-skills.ts";
-import { PluginsError, planJob } from "../../server/omp/plugins.ts";
+import { PluginsError, planJob, stepsOf } from "../../server/omp/plugins.ts";
 import { addedMarketplace, RECOMMENDED_MARKETPLACES, WEB_CATALOGS } from "../../shared/plugins-catalogs.ts";
 import { en } from "../../web/src/i18n/plugins.ts";
 import { zh } from "../../web/src/i18n/zh-CN/plugins.ts";
 import { REGISTRY_SERVERS } from "../support/plugins-stubs.ts";
+
+const argsOf = (plan: ReturnType<typeof planJob>) => stepsOf(plan)[0].args;
 
 /**
  * The Plugins page's Discover, Skills and MCP tabs, their server side: the curated marketplaces, what `omp skill` prints
@@ -182,16 +184,16 @@ describe("omp skill", () => {
 	});
 
 	test("install and uninstall: for the user (-g) unless a project is chosen; --yes only when asked", () => {
-		expect(planJob("skill-install", { spec: "@acme/pdf-tools" }, HOME, HOME).args).toEqual([
+		expect(argsOf(planJob("skill-install", { spec: "@acme/pdf-tools" }, HOME, HOME))).toEqual([
 			"skill",
 			"install",
 			"@acme/pdf-tools",
 			"-g",
 		]);
 		expect(
-			planJob("skill-install", { spec: "@acme/pdf-tools@1.2.0", scope: "project", yes: true }, PROJECT, HOME).args,
+			argsOf(planJob("skill-install", { spec: "@acme/pdf-tools@1.2.0", scope: "project", yes: true }, PROJECT, HOME)),
 		).toEqual(["skill", "install", "@acme/pdf-tools@1.2.0", "-y"]);
-		expect(planJob("skill-uninstall", { id: "@acme/pdf-tools", scope: "user" }, PROJECT, HOME).args).toEqual([
+		expect(argsOf(planJob("skill-uninstall", { id: "@acme/pdf-tools", scope: "user" }, PROJECT, HOME))).toEqual([
 			"skill",
 			"uninstall",
 			"@acme/pdf-tools",

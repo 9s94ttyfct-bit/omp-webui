@@ -689,6 +689,48 @@ function appUpdater(): Promise<AppUpdater> {
 	return loadingUpdater;
 }
 
+/** What the Plugins page and the automatic update of plugins and skills read from the rest of the server. */
+async function pluginsDeps(): Promise<import("./omp/plugins.ts").PluginsDeps> {
+	const { registryLatest } = await import("./omp/plugin-updates.ts");
+	const home = homedir();
+	return {
+		bin: cfg.ompBin,
+		home,
+		agentDir: cfg.agentDir,
+		neutral: cfg.dataDir,
+		pool,
+		held: () => (importWriting ? heldByImport() : null),
+		updates: {
+			autoOn: () => uiPrefs.snapshot().values[PREF.extensionsAutoUpdate] === "on",
+			conversations: conversationsHeld,
+			// The folders of the conversations whose project has plugins (`.omp/plugins`) or registry skills of its own.
+			folders: async () => {
+				const seen = new Set<string>();
+				for (const s of await store.list()) if (s.cwd && s.cwd !== home) seen.add(s.cwd);
+				return [...seen].filter(
+					(d) =>
+						existsSync(join(d, ".omp", "plugins", "installed_plugins.json")) ||
+						existsSync(join(d, ".omp", "skills.json")),
+				);
+			},
+			npmLatest: registryLatest(),
+		},
+	};
+}
+
+let extensionUpdatesLoaded = false;
+/** Plugins and skills updating themselves (`ompw.extensionsAutoUpdate`): loaded only once it is on. */
+async function startExtensionUpdates(): Promise<void> {
+	if (uiPrefs.snapshot().values[PREF.extensionsAutoUpdate] !== "on" && !extensionUpdatesLoaded) return;
+	extensionUpdatesLoaded = true;
+	try {
+		const { autoUpdates } = await import("./omp/plugins.ts");
+		autoUpdates(await pluginsDeps());
+	} catch (e) {
+		console.warn(`omp-webui: plugin updates: ${(e as Error).message}`);
+	}
+}
+
 /**
  * Sleep (#647): the Mac is kept from going to *idle* sleep while a conversation works, and a sleep it did go through is
  * noticed and said in the transcripts of the conversations it interrupted.
@@ -820,6 +862,9 @@ function applyPrefs(changes: unknown): StoreSnapshot {
 		if (before.values[PREF.browserAutoUpdate] !== snapshot.values[PREF.browserAutoUpdate]) browser.autoUpdateChanged();
 		// Installing by itself was turned on (or off): look now whether it may start, and say what it waits for.
 		if (before.values[PREF.appAutoUpdate] !== snapshot.values[PREF.appAutoUpdate]) void updater?.autoTry();
+		// Plugins and skills updating themselves was turned on (or off): it looks within a minute (or stops).
+		if (before.values[PREF.extensionsAutoUpdate] !== snapshot.values[PREF.extensionsAutoUpdate])
+			void startExtensionUpdates();
 	}
 	return snapshot;
 }
@@ -2330,14 +2375,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		// page's runner is (it runs `omp plugin …` and `omp skill …` for such a page too); nothing changes while an import
 		// writes. Its MCP section writes the user's `mcp.json` in omp's agent directory.
 		const { handlePlugins } = await import("./omp/plugins.ts");
-		return handlePlugins(req, url, {
-			bin: cfg.ompBin,
-			home: homedir(),
-			agentDir: cfg.agentDir,
-			neutral: cfg.dataDir,
-			pool,
-			held: () => (importWriting ? heldByImport() : null),
-		});
+		return handlePlugins(req, url, await pluginsDeps());
 	}
 	if (p.startsWith("/api/controls/")) {
 		// Loaded on the first request: the toggles, the todo list and the session defaults are read when a panel opens (#585).
@@ -3160,6 +3198,9 @@ if (
 // person wants them. They follow `OMP_WEBUI_UPDATE_CHECK=off` too, as every look of the server's own does.
 if (process.env.OMP_WEBUI_UPDATE_CHECK !== "off")
 	browser.startAutoUpdate(() => !browserOff() && uiPrefs.snapshot().values[PREF.browserAutoUpdate] !== "off");
+// Plugins, skills and marketplaces updating themselves (`ompw.extensionsAutoUpdate`, off unless turned on): a look a
+// minute after start and every 6 hours.
+void startExtensionUpdates();
 // Remote access turned off, or its settings changed (another team, application, hostname, allow-list): the remote pages
 // that came in under the old ones are closed, and come back through the Access check again; their conversations go on as
 // they were. A switch that does not decide who comes in (confirm risky commands, file transfer, shells) is read where it

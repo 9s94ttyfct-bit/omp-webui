@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { GoalStatus } from "../../shared/goal.ts";
 import type { LiveInfo, SessionEntry } from "../../shared/protocol.ts";
-import { statusItems } from "../../web/src/lib/status-line.ts";
+import { headerSteps, STATUS_STEPS, statusFolds, statusItems, statusSteps } from "../../web/src/lib/status-line.ts";
 import { activeMs } from "../../web/src/lib/turn-stats.ts";
 import { initialLive, type LiveState } from "../../web/src/store/live.ts";
 import type { TurnClock } from "../../web/src/store/turn-clock.ts";
@@ -138,5 +138,58 @@ describe("the goal", () => {
 			expect(statusItems(live({ goal: goal(status) }), 0, null, 0).goal).toBeUndefined();
 		}
 		expect(statusItems(live({ goal: null }), 0, null, 0).goal).toBeUndefined();
+	});
+});
+
+describe("what gives way where the room is short", () => {
+	const all = { cwd: true, time: true, goal: true, cost: true, branch: true, model: true };
+
+	test("the line's least needed items go first, one at a time; the context and the agents are never among them", () => {
+		expect(statusSteps(all)).toEqual([...STATUS_STEPS]);
+		expect(STATUS_STEPS).toEqual([
+			"cwd-short",
+			"cwd",
+			"time",
+			"goal",
+			"cost",
+			"branch-short",
+			"branch-icon",
+			"model-short",
+		]);
+	});
+
+	test("an item the line does not have is no step of it", () => {
+		expect(statusSteps({ ...all, cwd: false, goal: false, branch: false })).toEqual(["time", "cost", "model-short"]);
+	});
+
+	test("what has gone off the line is what the steps taken put elsewhere, never a name only shortened", () => {
+		const steps = statusSteps(all);
+		expect(statusFolds(steps, 0)).toEqual([]);
+		expect(statusFolds(steps, 1)).toEqual([]);
+		expect(statusFolds(steps, 2)).toEqual(["cwd"]);
+		expect(statusFolds(steps, 4)).toEqual(["cwd", "time", "goal"]);
+		expect(statusFolds(steps, steps.length)).toEqual(["cwd", "time", "goal", "cost"]);
+	});
+
+	test("the header puts its buttons in its menu before This session, and shortens the quota last", () => {
+		const every = { rename: true, export: true, session: true, quotaShort: true, quotaTerse: true };
+		expect(headerSteps(every)).toEqual([
+			"rename",
+			"export",
+			"loaded",
+			"cost",
+			"goal",
+			"session",
+			"quota-short",
+			"quota-terse",
+		]);
+		// A conversation not saved yet has nothing to rename or export; one provider has no tersest form.
+		expect(headerSteps({ ...every, rename: false, export: false, quotaTerse: false })).toEqual([
+			"loaded",
+			"cost",
+			"goal",
+			"session",
+			"quota-short",
+		]);
 	});
 });
