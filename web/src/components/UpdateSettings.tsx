@@ -32,6 +32,8 @@ const Markdown = lazy(() => import("./Markdown.tsx").then((m) => ({ default: m.M
 
 /** Automatic checks are on unless the user turned them off. */
 const autoCheckOn = () => localStorage.getItem(PREF.appUpdateCheck) !== "off";
+/** Installing by itself is off unless the user turned it on. */
+const autoInstallOn = () => localStorage.getItem(PREF.appAutoUpdate) === "on";
 
 /** A line that says why the last look gave no answer: neutral when there is no release, a warning otherwise. */
 function CheckFailureLine({ failure }: { failure: CheckFailure }) {
@@ -131,6 +133,7 @@ export function UpdateSettings() {
 	const state = useAppUpdate((s) => s.state);
 	const loaded = useAppUpdate((s) => s.loaded);
 	const [auto, setAuto] = useState(autoCheckOn);
+	const [autoInstall, setAutoInstall] = useState(autoInstallOn);
 	/** A request of this page is on its way: the buttons wait for it, whatever the server's state already says. */
 	const [busy, setBusy] = useState<"check" | "install" | null>(null);
 	/** What a refused install said, until the next click. */
@@ -143,12 +146,19 @@ export function UpdateSettings() {
 		if (!remotePage) void appUpdateApi.load().catch(() => {});
 	}, [remotePage]);
 	// Another window chose whether the app looks on its own.
-	useEffect(() => onPrefsChanged((keys) => keys.includes(PREF.appUpdateCheck) && setAuto(autoCheckOn())), []);
+	useEffect(
+		() =>
+			onPrefsChanged((keys) => {
+				if (keys.includes(PREF.appUpdateCheck)) setAuto(autoCheckOn());
+				if (keys.includes(PREF.appAutoUpdate)) setAutoInstall(autoInstallOn());
+			}),
+		[],
+	);
 
 	if (remotePage) {
 		return (
 			<section className="rounded-2xl border border-border bg-surface p-4" data-testid="update-settings">
-				<CardHeader icon={<Download size={16} />} title={t("update.title")} />
+				<CardHeader title={t("update.title")} />
 				<p className="text-sm text-muted" data-testid="update-refused">
 					{t("update.remoteRefused")}
 				</p>
@@ -243,7 +253,7 @@ export function UpdateSettings() {
 	if (!state) {
 		return (
 			<section className="rounded-2xl border border-border bg-surface p-4" data-testid="update-settings">
-				<CardHeader icon={<Download size={16} />} title={t("update.title")} hint={t("update.hint")} />
+				<CardHeader title={t("update.title")} hint={t("update.hint")} />
 				{loaded ? (
 					<div className="flex flex-wrap items-center gap-2">
 						<p className="min-w-0 flex-1 basis-56 text-sm text-muted" role="status">
@@ -271,7 +281,7 @@ export function UpdateSettings() {
 
 	return (
 		<section className="rounded-2xl border border-border bg-surface p-4" data-testid="update-settings">
-			<CardHeader icon={<Download size={16} />} title={t("update.title")} hint={t("update.hint")} />
+			<CardHeader title={t("update.title")} hint={t("update.hint")} />
 
 			{outcome && outcomeText ? (
 				<div
@@ -456,6 +466,32 @@ export function UpdateSettings() {
 			) : null}
 
 			{autoCheck}
+			{can.allowed ? (
+				<label className="mt-3 flex cursor-pointer items-start gap-3 text-sm">
+					<input
+						type="checkbox"
+						className="mt-1 accent-[var(--accent)]"
+						data-testid="update-auto-install"
+						checked={autoInstall}
+						onChange={(e) => {
+							setPref(PREF.appAutoUpdate, e.target.checked ? "on" : "off");
+							setAutoInstall(e.target.checked);
+						}}
+					/>
+					<span>
+						{t("update.autoInstall")}
+						<span className="block text-xs text-muted">{t("update.autoInstallHint")}</span>
+						{autoInstall && state.autoHeld && latest ? (
+							<span className="mt-1 block text-xs text-muted" role="status" data-testid="update-auto-held">
+								{t("update.autoHeld", {
+									version: latest.tag,
+									n: state.autoHeld.working + state.autoHeld.asking + state.autoHeld.paused + state.autoHeld.waiting,
+								})}
+							</span>
+						) : null}
+					</span>
+				</label>
+			) : null}
 			{dialog}
 		</section>
 	);

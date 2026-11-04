@@ -43,10 +43,14 @@ function shown({ surface, group, remote }: NavGroupProps): number {
 	return n;
 }
 
-/** The room the rows of a group take (a row is 36 px with 2 px between, a rail's icon 32 px with 4 px between). */
+/** The room the rows of a group take (a row is 36 px with 2 px between, a rail's icon 32 px with 4 px between; a strip is one row of icons). */
 function Reserve(props: NavGroupProps) {
 	const n = shown(props);
 	if (!n) return null;
+	if (props.variant === "strip")
+		return (
+			<div aria-hidden data-reserved="true" data-testid={`nav-strip-${props.surface}-${props.group}`} className="h-8" />
+		);
 	const [row, gap] = props.variant === "rows" ? [36, 2] : [32, 4];
 	return (
 		<div

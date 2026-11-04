@@ -1,6 +1,7 @@
 import type { OmpRelease } from "@shared/omp-install.ts";
 import { CircleCheck, ExternalLink, RefreshCw, TriangleAlert } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
 import { jobErrorText } from "../lib/error-text.ts";
 import { describeHolds, needsYou } from "../lib/omp-holds.ts";

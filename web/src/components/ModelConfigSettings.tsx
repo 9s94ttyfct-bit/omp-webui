@@ -1,6 +1,5 @@
 import { projectOverrides } from "@shared/model-config.ts";
 import { PREF } from "@shared/prefs.ts";
-import { Cpu } from "lucide-react";
 import { useEffect, useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
@@ -35,7 +34,7 @@ export function ModelConfigSettings() {
 	if (!config) {
 		return (
 			<section className="rounded-2xl border border-border bg-surface p-4" data-testid="model-roles">
-				<CardHeader icon={<Cpu size={16} />} title={t("presets.rolesTitle")} />
+				<CardHeader title={t("presets.rolesTitle")} />
 				{error ? (
 					<div className="flex flex-wrap items-center gap-3 break-words text-sm text-danger">
 						{t("presets.listFailed", { error })}

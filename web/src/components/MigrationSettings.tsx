@@ -21,7 +21,7 @@ import {
 	type MigratePlan,
 	type MigrateProgress,
 } from "@shared/migrate.ts";
-import { ArrowRightLeft, Check, CircleAlert, Copy, Download, Loader2, RefreshCw, Upload } from "lucide-react";
+import { Check, CircleAlert, Copy, Download, Loader2, RefreshCw, Upload } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { addStrings, type MessageKey, useLang, useT, type Vars } from "../i18n/index.ts";
 import { en } from "../i18n/migrate.ts";
@@ -1171,7 +1171,7 @@ export function MigrationSettings() {
 				data-testid="migrate-settings"
 				data-index-title={t("migrate.indexTitle")}
 			>
-				<CardHeader icon={<ArrowRightLeft size={16} />} title={t("migrate.title")} />
+				<CardHeader title={t("migrate.title")} />
 				<p className="text-sm text-muted" data-testid="migrate-refused">
 					{t("migrate.refused")}
 				</p>
@@ -1287,7 +1287,7 @@ export function MigrationSettings() {
 			data-testid="migrate-settings"
 			data-index-title={t("migrate.indexTitle")}
 		>
-			<CardHeader icon={<ArrowRightLeft size={16} />} title={t("migrate.title")} hint={t("migrate.intro")} />
+			<CardHeader title={t("migrate.title")} hint={t("migrate.intro")} />
 			<p className="mb-3 flex items-start gap-1.5 text-xs text-warning" data-testid="migrate-not-encrypted">
 				<CircleAlert size={14} className="mt-px shrink-0" />
 				<span>{t("migrate.notEncrypted")}</span>

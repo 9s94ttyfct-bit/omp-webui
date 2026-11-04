@@ -342,7 +342,6 @@ export function SettingsHelpCard({ where }: { where: string }) {
 		<section className="rounded-2xl border border-border bg-surface p-4" data-testid="settings-help">
 			<CardHeader
 				title={t("settingsHelp.title")}
-				icon={<MessageCircleQuestion size={16} className="text-accent" aria-hidden />}
 				hint={t("settingsHelp.intro")}
 				action={
 					<Button

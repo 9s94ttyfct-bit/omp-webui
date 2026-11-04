@@ -4,8 +4,9 @@ import { useSyncExternalStore } from "react";
 import { onPrefsChanged, setPref } from "./prefs.ts";
 
 /**
- * The order of the sidebar's conversations (#701) and the Pinned group's fold (#700), both preferences the person chose
- * (`ompw.sessionSort`, `ompw.pinnedFolded`, kept in step with the server by `lib/prefs.ts`), and the grouping they make:
+ * The order of the sidebar's conversations (#701), the Pinned group's fold (#700) and the footer's fold, preferences the
+ * person chose (`ompw.sessionSort`, `ompw.pinnedFolded`, `ompw.navFolded`, kept in step with the server by
+ * `lib/prefs.ts`), and the grouping they make:
  *
  * - `activity` (the default): by last activity, under date headings (Today, Yesterday, …), as the list always was;
  * - `created`: by when each conversation started, under the date headings of that;
@@ -24,11 +25,13 @@ export const sessionSortOf = (v: string | null): SessionSort => SESSION_SORTS.fi
 
 const sortNow = (): SessionSort => sessionSortOf(localStorage.getItem(PREF.sessionSort));
 const pinnedFoldedNow = (): boolean => localStorage.getItem(PREF.pinnedFolded) === "on";
+const navFoldedNow = (): boolean => localStorage.getItem(PREF.navFolded) === "on";
+const KEYS: readonly string[] = [PREF.sessionSort, PREF.pinnedFolded, PREF.navFolded];
 
 const changed = new Set<() => void>();
 function subscribe(fn: () => void): () => void {
 	changed.add(fn);
-	const stop = onPrefsChanged((keys) => (keys.includes(PREF.sessionSort) || keys.includes(PREF.pinnedFolded)) && fn());
+	const stop = onPrefsChanged((keys) => keys.some((k) => KEYS.includes(k)) && fn());
 	return () => {
 		changed.delete(fn);
 		stop();
@@ -48,12 +51,21 @@ export function setPinnedFolded(folded: boolean): void {
 	tell();
 }
 
+export function setNavFolded(folded: boolean): void {
+	setPref(PREF.navFolded, folded ? "on" : "off");
+	tell();
+}
+
 export function useSessionSort(): SessionSort {
 	return useSyncExternalStore(subscribe, sortNow, () => "activity");
 }
 
 export function usePinnedFolded(): boolean {
 	return useSyncExternalStore(subscribe, pinnedFoldedNow, () => false);
+}
+
+export function useNavFolded(): boolean {
+	return useSyncExternalStore(subscribe, navFoldedNow, () => false);
 }
 
 export interface GroupInput {

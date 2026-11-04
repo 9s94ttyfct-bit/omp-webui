@@ -42,6 +42,7 @@ function state(over: Partial<AppUpdateState> = {}): AppUpdateState {
 		job: null,
 		failed: null,
 		outcome: null,
+		autoHeld: null,
 		...over,
 	};
 }

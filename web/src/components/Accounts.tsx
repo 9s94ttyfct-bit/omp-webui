@@ -1,5 +1,5 @@
 import type { LiveInfo } from "@shared/protocol.ts";
-import { ChevronRight, CircleCheck, ExternalLink, KeyRound, LogIn, LogOut, Plus } from "lucide-react";
+import { ChevronRight, CircleCheck, ExternalLink, LogIn, LogOut, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import "../i18n/later.ts";
@@ -275,11 +275,7 @@ export function Accounts({
 	}, [helperGone]);
 	return (
 		<section className="rounded-2xl border border-border bg-surface p-4" data-testid="accounts">
-			<CardHeader
-				icon={<KeyRound size={16} />}
-				title={t("pages.accTitle")}
-				hint={<WithCode text={t("pages.accIntro")} />}
-			/>
+			<CardHeader title={t("pages.accTitle")} hint={<WithCode text={t("pages.accIntro")} />} />
 			<Button
 				size="sm"
 				className="mb-3"

@@ -1,5 +1,5 @@
 import type { InstallMethod } from "@shared/omp-install.ts";
-import { ExternalLink, Package, RefreshCw } from "lucide-react";
+import { ExternalLink, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import "../i18n/later.ts";
 import { type MessageKey, useT } from "../i18n/index.ts";
@@ -60,7 +60,6 @@ export function OmpSettings() {
 	return (
 		<section className="rounded-2xl border border-border bg-surface p-4" data-testid="omp-settings">
 			<CardHeader
-				icon={<Package size={16} />}
 				title={t("omp.settingsTitle")}
 				// From a remote page this card still updates omp, unlike the app's Updates card: it says on which computer.
 				hint={remotePage ? t("omp.settingsRemoteNote") : undefined}

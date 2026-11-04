@@ -18,7 +18,7 @@ const stored = async (): Promise<string | null> => {
 		headers: { "x-omp-webui-token": process.env.OMPW_E2E_ACCESS_TOKEN as string },
 	});
 	const snapshot: PrefsSnapshot = await res.json();
-	return snapshot.values[PREF.btwModel];
+	return snapshot.values[PREF.btwModel] ?? null;
 };
 
 /**

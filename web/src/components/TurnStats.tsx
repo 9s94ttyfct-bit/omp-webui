@@ -5,6 +5,7 @@ import { useLang, useT } from "../i18n/index.ts";
 import { fmtCost, fmtCostExact, fmtDuration, fmtTime, fmtTokens } from "../lib/format.ts";
 import { useLiveMotion, useOnBeat } from "../lib/live-motion.ts";
 import type { AgentMessage } from "../lib/messages.ts";
+import { useModelCatalog } from "../lib/model-config.ts";
 import { useNow } from "../lib/now.ts";
 import { fmtElapsed, fmtFinished, fmtRate } from "../lib/stat-format.ts";
 import { liveTurn, stepStats, type TurnStats, turnStats, unsavedSteps } from "../lib/turn-stats.ts";
@@ -122,7 +123,10 @@ export function TurnStatsLine({ entries, messages }: { entries: SessionEntry[]; 
 		() => turnStats(messages.flatMap((m, i) => stepStats(m, entries[i]?.timestamp) ?? [])),
 		[entries, messages],
 	);
+	// The models by the names the picker and the status line use (the catalog's), the id where the catalog has none.
+	const catalog = useModelCatalog(Boolean(stats?.models.length));
 	if (!stats) return null;
+	const names = stats.models.map((id) => catalog?.find((m) => m.id === id)?.name ?? id);
 	const detail = <TurnDetail stats={stats} />;
 	return (
 		// Under the line, not over it: the line ends the message, and a tip that flipped up covered the reply it describes.
@@ -136,13 +140,13 @@ export function TurnStatsLine({ entries, messages }: { entries: SessionEntry[]; 
 				data-requests={stats.requests}
 			>
 				{stats.models.length ? (
-					<span className={ITEM} data-stat="model">
-						{stats.models.join(", ")}
+					<span className={ITEM} data-stat="model" title={stats.models.join(", ")}>
+						{names.join(", ")}
 					</span>
 				) : null}
 				{stats.finishedAt ? (
 					<time className={ITEM} data-stat="finished" dateTime={new Date(stats.finishedAt).toISOString()}>
-						{fmtFinished(stats.finishedAt, Date.now(), lang)}
+						{t("chat.statFinished", { time: fmtFinished(stats.finishedAt, Date.now(), lang) })}
 					</time>
 				) : null}
 				{stats.elapsedMs !== undefined ? (

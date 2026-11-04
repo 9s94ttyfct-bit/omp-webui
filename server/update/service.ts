@@ -17,6 +17,7 @@ import type {
 	AppRelease,
 	AppUpdateState,
 	CheckFailure,
+	Conversations,
 	InstallBlock,
 	UpdateFailure,
 	UpdateJob,
@@ -56,8 +57,9 @@ import { canWriteIn, powershellCommand, stageWindows, startHidden, WINDOWS_EXE }
 
 /**
  * The app's own updates (#571), as the server runs them: it looks for a newer release (at start and every six hours,
- * cheaply), and on a click downloads the installer, checks it, puts the new version next to the installed one and hands
- * over to a helper that swaps them once the app has quit. Two installs: the macOS app's (a signed disk image, `helper.sh`)
+ * cheaply), and on a click (or by itself, `autoInstall`) downloads the installer, checks it, puts the new version next to
+ * the installed one and hands over to a helper that swaps them once the app has quit. Two installs: the macOS app's (a
+ * signed disk image, `helper.sh`)
  * and the Windows launcher's (a zip, `windows.ts` and `helper.ps1`), by the `InstallTarget` the server was started as.
  * Created on first use (`server/main.ts` loads this module lazily): a server that is never asked and has no timer due
  * never loads it.
@@ -72,14 +74,6 @@ export type InstallTarget = { kind: "mac"; bundle: string } | { kind: "windows";
 /** The path an install replaces: the bundle, or the folder. */
 const pathOf = (target: InstallTarget): string => (target.kind === "mac" ? target.bundle : target.folder);
 
-/** What the pool of conversations holds, as the page's confirmation needs it (`UpdateRefusal` `replying`). */
-export interface Conversations {
-	working: number;
-	asking: number;
-	paused: number;
-	waiting: number;
-}
-
 export interface UpdaterOptions {
 	dataDir: string;
 	/** The version running now. */
@@ -93,12 +87,20 @@ export interface UpdaterOptions {
 	/** The timers run: at start and every `intervalMs`, when `autoChecks()` says the user wants them. */
 	automatic: boolean;
 	autoChecks(): boolean;
+	/**
+	 * Install a newer release by itself (`ompw.appAutoUpdate`, read at each look): once it is known with an installer for
+	 * this system and no conversation is working, asking, paused or waiting. A release whose automatic install failed, was
+	 * cancelled or was rolled back is not tried again by itself.
+	 */
+	autoInstall(): boolean;
 	conversations(): Conversations;
 	/** Every change, for the pages (local ones only). */
 	broadcast(state: AppUpdateState): void;
 	/** How long after `start` the first look is made; 0: at once (the server starts the updater itself some time after it starts). */
 	firstCheckMs?: number;
 	intervalMs?: number;
+	/** How often an automatic install looks whether it may start (`AUTO_MS`); a test's shorter one. */
+	autoMs?: number;
 	/** How long the helper waits for the app to quit, and for the new one to say it is up. */
 	quitSecs?: number;
 	startSecs?: number;
@@ -134,6 +136,8 @@ export interface InstallRefusal {
 }
 
 const INTERVAL_MS = 6 * 60 * 60_000;
+/** How often an automatic install looks whether it may start (the conversations it waits for may have finished). */
+const AUTO_MS = 60_000;
 /** The app in the installer (scripts/dmg.ts puts it at the image's root under this name). */
 const APP_NAME = "omp-webui.app";
 /** The room an install needs, in installer sizes: the image, the copy of the app, and the old app kept beside the new one. */
@@ -194,6 +198,10 @@ export class AppUpdater {
 	private cancel: AbortController | null = null;
 	private failed: UpdateFailure | null = null;
 	private outcome: UpdateOutcome | null = null;
+	/** The conversations an automatic install waits for (`AppUpdateState.autoHeld`). */
+	private autoHeld: Conversations | null = null;
+	/** The release the running install was started for by itself, not on a click; null otherwise. */
+	private autoTag: string | null = null;
 	/** The running app has a signature to compare a download with; null until looked at (the macOS app). */
 	private signed: boolean | null = null;
 	/** This user can make and rename things beside the install folder; null until looked at (the Windows launcher). */
@@ -241,6 +249,7 @@ export class AppUpdater {
 			job: this.job ? { ...this.job } : null,
 			failed: this.failed,
 			outcome: this.outcome,
+			autoHeld: this.autoHeld,
 		};
 	}
 
@@ -292,6 +301,8 @@ export class AppUpdater {
 		}
 		await this.sweep();
 		this.outcome = readOutcome(this.paths);
+		// An update that was rolled back is not tried again by itself (it would restart the app at every start).
+		if (this.outcome?.ok === false) this.skipAuto(this.outcome.to);
 		this.acknowledge();
 		this.clearLeftovers();
 		if (this.worthShowing()) this.emit();
@@ -365,17 +376,62 @@ export class AppUpdater {
 		}
 	}
 
-	/** Look soon after start and then every six hours, while the user wants it (`autoChecks`, read at each look). */
+	/**
+	 * Look soon after start and then every six hours, while the user wants it (`autoChecks`, read at each look); and, every
+	 * minute, whether an automatic install may start (`autoTry`).
+	 */
 	start(): void {
 		if (!this.opts.automatic || this.timers.length > 0) return;
 		const look = () => {
-			if (this.opts.autoChecks()) void this.check();
+			if (this.opts.autoChecks()) void this.check().then(() => this.autoTry());
 		};
 		const first = setTimeout(look, this.opts.firstCheckMs ?? 0);
 		const every = setInterval(look, this.opts.intervalMs ?? INTERVAL_MS);
-		first.unref();
-		every.unref();
-		this.timers.push(first, every);
+		const auto = setInterval(() => void this.autoTry(), this.opts.autoMs ?? AUTO_MS);
+		for (const t of [first, every, auto]) t.unref();
+		this.timers.push(first, every, auto);
+	}
+
+	/** The release an automatic install will not try again, as its version (`auto-skip.json`); null when none. */
+	private skippedAuto(): string | null {
+		const skip = readJson(this.paths.autoSkip);
+		return isRecord(skip) && typeof skip.version === "string" ? skip.version : null;
+	}
+
+	private skipAuto(version: string): void {
+		writeJson(this.paths.autoSkip, { version });
+	}
+
+	/**
+	 * Install the newer release by itself when the user wants that (`autoInstall`), this copy can, a release with an
+	 * installer is known and was not given up on, and nothing would be stopped or left waiting: no conversation working,
+	 * asking, paused or waiting. Otherwise says what it waits for, when it is the conversations.
+	 */
+	async autoTry(): Promise<void> {
+		await this.ready;
+		const release = this.parsed?.release;
+		const wanted =
+			this.opts.autoInstall() &&
+			this.job === null &&
+			this.installBlock() === null &&
+			release !== undefined &&
+			this.parsed?.installer != null &&
+			isNewer(release, this.opts.installed) &&
+			this.skippedAuto() !== release.version;
+		const held = wanted ? this.opts.conversations() : null;
+		const waits = held !== null && held.working + held.asking + held.paused + held.waiting > 0;
+		const autoHeld = waits ? held : null;
+		if (JSON.stringify(autoHeld) !== JSON.stringify(this.autoHeld)) {
+			this.autoHeld = autoHeld;
+			this.emit();
+		}
+		if (!wanted || waits || !release) return;
+		this.autoTag = release.tag;
+		const started = await this.install(release.tag, false);
+		if (!("state" in started)) {
+			this.autoTag = null;
+			console.warn(`omp-webui: the automatic update to ${release.tag} did not start: ${started.error}`);
+		}
 	}
 
 	/** The server is going away: a download stops and is removed; an update that was handed over goes on without it. */
@@ -588,7 +644,10 @@ export class AppUpdater {
 			rmSync(staged, { recursive: true, force: true });
 			removeFiles(part, file);
 			this.job = null;
+			// An automatic install that failed or was cancelled is not started again by itself: the card offers it.
+			if (this.autoTag === job.tag) this.skipAuto(release.version);
 		}
+		if (this.autoTag === job.tag) this.autoTag = null;
 		this.failed = failure;
 		this.cancel = null;
 		this.emit();
@@ -832,6 +891,7 @@ export class AppUpdater {
 			removeFiles(this.paths.handover);
 			this.outcome = { ok: false, from: handover.from, to: handover.to, at: this.now(), problem: "quitTimeout" };
 		}
+		if (this.outcome?.ok === false) this.skipAuto(handover.to);
 		this.job = null;
 		this.emit();
 	}
@@ -850,6 +910,8 @@ export class AppUpdater {
 			case "/api/update/check":
 				if (!post) return json({ error: "POST required" }, 405);
 				await this.check();
+				// A newer release it found may be installed by itself at once (`autoInstall`), not a minute later.
+				await this.autoTry();
 				return json(this.snapshot());
 			case "/api/update/install": {
 				if (!post) return json({ error: "POST required" }, 405);

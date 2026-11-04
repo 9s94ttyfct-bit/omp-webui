@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
 import { rankModels } from "../lib/model-rank.ts";
-import { modelLabel, sharedLabels } from "../lib/models.ts";
+import { modelLabel, sharedLabels, snapshotDate } from "../lib/models.ts";
 import { matches, useShortcutLabel } from "../lib/shortcuts.ts";
 import type { ModelInfo } from "../store/live.ts";
 import { Mark } from "./Mark.tsx";
@@ -22,10 +22,13 @@ export function ModelName({
 	/** Where the query matched the name: marked, so the row says why it is listed. */
 	positions?: readonly number[];
 }) {
+	// Two models of one name are told apart by the day a dated snapshot was made, and by their ids under the names.
+	const date = shared ? snapshotDate(model.id) : null;
 	return (
 		<span className="flex min-w-0 flex-1 flex-col">
 			<span className="truncate">
 				<Mark text={modelLabel(model)} positions={positions ?? []} />
+				{date ? <span className="text-muted"> ({date})</span> : null}
 			</span>
 			{shared ? <span className="truncate text-xs text-faint">{model.id}</span> : null}
 		</span>

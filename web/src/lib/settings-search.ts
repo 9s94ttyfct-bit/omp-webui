@@ -84,6 +84,14 @@ export const SETTINGS: readonly SettingEntry[] = [
 		target: '[data-testid="reset-layout"]',
 	},
 	{
+		id: "device-prefs",
+		group: "pages.settingsAppearance",
+		label: "pages.settingsDevicePrefs",
+		hint: "pages.settingsDevicePrefsHint",
+		aliases: ["sync", "per device", "phone", "同步", "设备", "手机", "布局", "外观"],
+		target: '[data-testid="device-prefs"]',
+	},
+	{
 		id: "animations",
 		group: "pages.settingsAppearance",
 		label: "pages.settingsAnimations",

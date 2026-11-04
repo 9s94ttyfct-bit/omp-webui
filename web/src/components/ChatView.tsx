@@ -56,8 +56,8 @@ import { openLoaded } from "../lib/loaded.ts";
 import { MdOpenContext } from "../lib/md-open.ts";
 import { useNarrowerThanContent } from "../lib/media.ts";
 import { messageOf, type PromptImage, promptImages, roleOf, textOf } from "../lib/messages.ts";
-import { useStartConfig } from "../lib/model-config.ts";
-import { selectedThinking } from "../lib/models.ts";
+import { useModelCatalog, useStartConfig } from "../lib/model-config.ts";
+import { namedFrom, selectedThinking } from "../lib/models.ts";
 import { providersUsed } from "../lib/quota.ts";
 import { placeAnchor, type Reading, readAnchor, registerReader } from "../lib/reading.ts";
 import { promptsOf } from "../lib/recall.ts";
@@ -744,7 +744,12 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 		return headCarried.derive(above.carry, headTracker.path(fam.idx, headLeaf));
 	}, [headTracker, headCarried, fam, headLeaf, leaf, wholePath, above.carry, endCarry, headEndCarry]);
 	const saved = useMemo(() => savedSettings(headPath), [headPath]);
-	const shownModel = live?.state?.model ?? saved.model;
+	// A saved conversation's model is its provider and id: its name comes from the catalog, so the picker reads the same
+	// before and after omp starts. The catalog is only asked for when there is a name to find.
+	const needsName = !live?.state?.model && saved.model !== undefined && !saved.model.name;
+	const catalog = useModelCatalog(needsName);
+	const savedNamed = useMemo(() => (saved.model ? namedFrom(saved.model, catalog) : undefined), [saved.model, catalog]);
+	const shownModel = live?.state?.model ?? savedNamed;
 	const thinking = selectedThinking(live, saved.thinking, useStartConfig(live));
 	const savedApproval = useSavedApproval(currentFile, !liveId);
 	/** The controls that need omp can be used: omp runs, or can be started from the conversation's file. */
@@ -1391,13 +1396,17 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 		</div>
 	) : null;
 	// The guard's switch, beside This session (in a narrow header, beside the menu that holds it). Only a conversation whose
-	// process has a guard (`LiveInfo.guard`) has one; its place is held while its chunk loads.
+	// process has a guard (`LiveInfo.guard`) has one; its place is held while its chunk loads, and while no process runs,
+	// so that the buttons beside it do not move by its width when the conversation starts or ends.
+	const guardSlot = <span aria-hidden className="h-8 w-8 shrink-0" data-testid="guard-toggle-slot" />;
 	const guardToggle =
 		liveId && live?.info.guard ? (
-			<Suspense fallback={<span aria-hidden className="h-8 w-8 shrink-0" />}>
+			<Suspense fallback={guardSlot}>
 				<GuardToggle liveId={liveId} />
 			</Suspense>
-		) : null;
+		) : (
+			guardSlot
+		);
 
 	// Until the transcript is here there is a spinner, or the reason it failed with a Retry. The cost, Export, Goal
 	// and the composer would only act on a conversation that is not on screen yet, so they wait too.
@@ -1432,7 +1441,8 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 								<>
 									{quota}
 									{panelToggle}
-									{guardToggle}
+									{/* A narrow header has no room to hold for it: the menu at its end does not move either way. */}
+									{liveId && live?.info.guard ? guardToggle : null}
 									<HeaderMenu
 										usage={usage}
 										controls={canAct ? { live, start: startLive } : undefined}

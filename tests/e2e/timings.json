@@ -97,6 +97,7 @@
 		"app-update.spec.ts › installing › an installer that fails the checks (tampered) says what was wrong, with its values, and installs nothing": 0,
 		"app-update.spec.ts › installing › an installer that fails the checks (wrongVersion) says what was wrong, with its values, and installs nothing": 0,
 		"app-update.spec.ts › installing › conversations that are replying › installing asks first; Cancel keeps everything, Update anyway starts": 0,
+		"app-update.spec.ts › installing › ticking Install updates automatically, with nothing working, installs the newer release by itself": 0,
 		"app-update.spec.ts › no reachable release is a quiet line, and nothing asks again by itself": 17.9,
 		"approval-details.spec.ts › a long command is all there: tall, scrolling to its last line, with a bar and a line saying there is more": 6.3,
 		"approval-details.spec.ts › a short command has no scrolling and no line about more": 6.1,

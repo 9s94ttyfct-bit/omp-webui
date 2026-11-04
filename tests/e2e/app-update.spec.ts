@@ -366,6 +366,26 @@ test.describe("installing", () => {
 		}
 	});
 
+	test("ticking Install updates automatically, with nothing working, installs the newer release by itself", async ({
+		page,
+	}) => {
+		const { run, stop } = await serve("good");
+		try {
+			await openCard(page, run);
+			const auto = page.getByTestId("update-auto-install");
+			await expect(auto).not.toBeChecked();
+			await auto.check();
+			await expect.poll(async () => (await prefs(run)).values[PREF.appAutoUpdate]).toBe("on");
+			// No click on Download and install: the server starts it, and it goes as far as the handover.
+			await expect(page.getByTestId("update-progress")).toHaveAttribute("data-phase", "handover", {
+				timeout: 60_000,
+			});
+			await expect.poll(() => (run.flag ? existsSync(run.flag) : false)).toBe(true);
+		} finally {
+			await stop();
+		}
+	});
+
 	test("Cancel stops a download: no failure, and the install is offered again", async ({ page }) => {
 		const { fake, run, stop } = await serve("good");
 		try {

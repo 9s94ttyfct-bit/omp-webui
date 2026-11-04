@@ -3,7 +3,16 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { UiPrefs } from "../../server/prefs.ts";
-import { PREF, PREFS_ELEMENT_ID, PREFS_SYNC_KEY, syncMarker } from "../../shared/prefs.ts";
+import {
+	DEVICE_PREF_KEYS,
+	isDevicePref,
+	PREF,
+	PREFS_ELEMENT_ID,
+	PREFS_SYNC_KEY,
+	pageSnapshot,
+	perDevice,
+	syncMarker,
+} from "../../shared/prefs.ts";
 import type * as PrefsModule from "../../web/src/lib/prefs.ts";
 import { type FakePage, runPrepaint } from "../support/prepaint.ts";
 
@@ -57,15 +66,18 @@ const posts = () => requests.filter((r) => r.method === "POST");
 /**
  * Load the page as `server` serves it at an origin holding `stored`, and start the page's sync. `served: false` is a
  * page that came without the preferences in it (the dev server's). `storage`: another tab's, for a tab of the same origin.
+ * `onThisComputer: false` is a page from elsewhere (a phone through the tunnel): the stand-in for `fetch` answers it as
+ * `/api/prefs` in main.ts does, without the device keys, and drops what it says of them (`requests` keeps what it sent).
  */
 async function open(
 	server: UiPrefs,
 	stored: Record<string, string> = {},
 	served = true,
 	shared?: Map<string, string>,
+	onThisComputer = true,
 ): Promise<Origin> {
 	const storage = shared ?? new Map(Object.entries(stored));
-	const html = served ? server.inject("<html><head><script>x</script></head></html>") : "";
+	const html = served ? server.inject("<html><head><script>x</script></head></html>", onThisComputer) : "";
 	const block = new RegExp(`id="${PREFS_ELEMENT_ID}">([\\s\\S]*?)</script>`).exec(html)?.[1] ?? null;
 	const painted = { ...runPrepaint(block, storage), before: new Map(storage) };
 
@@ -93,7 +105,11 @@ async function open(
 			requests.push({ method, changes });
 			if (outage === "offline") throw new TypeError("fetch failed");
 			if (typeof outage === "number") return Response.json({ error: "no" }, { status: outage });
-			return Response.json(method === "POST" ? server.apply(changes) : server.snapshot());
+			const kept =
+				onThisComputer || !changes || !perDevice(server.snapshot())
+					? changes
+					: Object.fromEntries(Object.entries(changes).filter(([k]) => !isDevicePref(k)));
+			return Response.json(pageSnapshot(method === "POST" ? server.apply(kept) : server.snapshot(), onThisComputer));
 		},
 	};
 	Object.assign(globals, stubs);
@@ -406,5 +422,105 @@ describe("a change made on another page", () => {
 		expect(a.storage.has(PREF.sidebarWidth)).toBe(false);
 		const values = server.snapshot().values;
 		expect([values[PREF.theme], values[PREF.palette], values[PREF.sidebarWidth]]).toEqual([null, "omp", null]);
+	});
+});
+
+describe("a page that is not on this computer", () => {
+	/** The device keys the requests since `requests` was last emptied carried: a page from elsewhere sends none. */
+	const deviceKeysSent = () => posts().flatMap((r) => Object.keys(r.changes ?? {}).filter(isDevicePref));
+
+	test("keeps its own look and layout, and takes and sends the rest", async () => {
+		const server = new UiPrefs(dir);
+		const desk = await open(server);
+		desk.prefs.setPref(PREF.theme, "dark");
+		desk.prefs.setPref(PREF.lang, "en");
+		desk.prefs.setPref(PREF.sidebarWidth, "400");
+		desk.prefs.setPref(PREF.autoTitle, "off");
+		await desk.hide();
+
+		// A phone in a light, Chinese context, with a side panel of its own width: none of it is the server's to say.
+		requests.length = 0;
+		const mine = { [PREF.theme]: "light", [PREF.lang]: "zh-CN", [PREF.panelWidth]: "320" };
+		const phone = await open(server, mine, true, undefined, false);
+		expect(Object.fromEntries(phone.painted.before)).toMatchObject({ ...mine, [PREF.autoTitle]: "off" });
+		expect(phone.painted.before.has(PREF.sidebarWidth)).toBe(false);
+		expect(posts()).toEqual([]);
+		// Level with all the store keeps for it.
+		expect(phone.storage.get(PREFS_SYNC_KEY)).toBe(syncMarker(server.snapshot()));
+
+		phone.prefs.setPref(PREF.theme, "system");
+		phone.prefs.setPref(PREF.palette, "hermes");
+		phone.prefs.setPref(PREF.autoTitle, "on");
+		await phone.hide();
+		expect(deviceKeysSent()).toEqual([]);
+		expect(posts()).toHaveLength(1);
+		const stored = server.snapshot().values;
+		expect([stored[PREF.theme], stored[PREF.palette], stored[PREF.autoTitle]]).toEqual(["dark", null, "on"]);
+		expect(phone.storage.get(PREFS_SYNC_KEY)).toBe(syncMarker(server.snapshot()));
+
+		// The desk takes the phone's other choice, and its own change of look does not reach the phone.
+		desk.use();
+		desk.prefs.receiveSnapshot(server.snapshot());
+		expect([desk.storage.get(PREF.theme), desk.storage.get(PREF.autoTitle)]).toEqual(["dark", "on"]);
+		desk.prefs.setPref(PREF.theme, "light");
+		desk.prefs.setPref(PREF.sidebarWidth, "450");
+		desk.prefs.setPref(PREF.autoTitle, "off");
+		await desk.hide();
+		phone.use();
+		phone.prefs.receiveSnapshot(pageSnapshot(server.snapshot(), false));
+		expect(phone.storage.get(PREF.theme)).toBe("system");
+		expect(phone.storage.get(PREF.palette)).toBe("hermes");
+		expect(phone.storage.has(PREF.sidebarWidth)).toBe(false);
+		expect(phone.storage.get(PREF.autoTitle)).toBe("off");
+		expect(phone.storage.get(PREFS_SYNC_KEY)).toBe(syncMarker(server.snapshot()));
+
+		// Opened again behind the store (the desk changed something since): the store's word for what it keeps, the phone's
+		// own for the rest.
+		desk.use();
+		desk.prefs.setPref(PREF.autoTitle, "on");
+		await desk.hide();
+		requests.length = 0;
+		const again = await open(server, {}, true, phone.storage, false);
+		const own = Object.fromEntries(DEVICE_PREF_KEYS.map((k) => [k, again.storage.get(k) ?? null]));
+		expect(own).toEqual({
+			...Object.fromEntries(DEVICE_PREF_KEYS.map((k) => [k, null])),
+			[PREF.theme]: "system",
+			[PREF.palette]: "hermes",
+			[PREF.lang]: "zh-CN",
+			[PREF.panelWidth]: "320",
+		});
+		expect(again.storage.get(PREF.autoTitle)).toBe("on");
+		expect(posts()).toEqual([]);
+		expect(Object.fromEntries(DEVICE_PREF_KEYS.map((k) => [k, server.snapshot().values[k]]))).toMatchObject({
+			[PREF.theme]: "light",
+			[PREF.lang]: "en",
+			[PREF.sidebarWidth]: "450",
+			[PREF.palette]: null,
+			[PREF.panelWidth]: null,
+		});
+	});
+
+	test("with the look and layout made to follow the person, takes this computer's and sends its own", async () => {
+		const server = new UiPrefs(dir);
+		const desk = await open(server);
+		desk.prefs.setPref(PREF.theme, "dark");
+		await desk.hide();
+		const phone = await open(server, { [PREF.theme]: "light" }, true, undefined, false);
+		expect(phone.storage.get(PREF.theme)).toBe("light");
+
+		// Switched off on the desk: the phone is given the desk's look, and takes it over its own.
+		desk.use();
+		desk.prefs.setPref(PREF.devicePrefs, "off");
+		await desk.hide();
+		phone.use();
+		phone.prefs.receiveSnapshot(pageSnapshot(server.snapshot(), false));
+		expect(phone.storage.get(PREF.theme)).toBe("dark");
+
+		// And what it chooses now reaches the server, for every page.
+		requests.length = 0;
+		phone.prefs.setPref(PREF.theme, "system");
+		await phone.hide();
+		expect(deviceKeysSent()).toEqual([PREF.theme]);
+		expect(server.snapshot().values[PREF.theme]).toBe("system");
 	});
 });

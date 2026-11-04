@@ -10,6 +10,7 @@ import {
 	useEffect,
 	useMemo,
 	useRef,
+	useState,
 } from "react";
 import { useT } from "../i18n/index.ts";
 import type { ContentMatch } from "../lib/session-search.ts";
@@ -68,6 +69,11 @@ interface Props {
 	 * headings are left out (a date would cut a ranking into pieces).
 	 */
 	ranked?: boolean;
+	/**
+	 * While `ranked`, the groups whose heading is drawn all the same: the ones that are not matches of the name as typed
+	 * (letters spread over a name, a project's name, what was said in the conversation), which the heading says.
+	 */
+	headed?: ReadonlySet<string>;
 	/** What shows in place of the rows (the spinner, the error, "nothing here") and before them. */
 	before: ReactNode;
 	/** The list's actions (Select, the archive), drawn at the right of its first line. */
@@ -104,6 +110,7 @@ export function SessionList({
 	marks,
 	hits,
 	ranked,
+	headed,
 	focusFirst,
 	before,
 	actions,
@@ -130,17 +137,16 @@ export function SessionList({
 		const out: Entry[] = [];
 		let pinnedHeading = false;
 		for (const [label, list] of groups) {
-			// A search's results are one ranked list: its groups are the caller's order, not dates to head. The content
-			// matches are the exception: they are not name matches, and the heading says so.
-			const found = list[0] !== undefined && hits?.has(list[0].file) === true;
-			if (!ranked || found) {
+			// A search's results are one ranked list: its groups are the caller's order, not dates to head. The groups of
+			// looser matches are the exception: they are not the name as typed, and their heading says so.
+			if (!ranked || headed?.has(label)) {
 				if (foldable?.label === label) pinnedHeading = true;
 				else out.push({ kind: "heading", key: `heading:${label}`, label });
 			}
 			for (const session of list) out.push({ kind: "session", key: session.file, session });
 		}
 		return { entries: out, pinnedHeading };
-	}, [groups, ranked, foldable?.label, hits]);
+	}, [groups, ranked, foldable?.label, headed]);
 	const indexOfFile = useMemo(() => {
 		const m = new Map<string, number>();
 		entries.forEach((e, i) => {
@@ -245,6 +251,36 @@ export function SessionList({
 	};
 
 	const fold = pinnedHeading ? foldable : undefined;
+	// The heading of the group at the top of the list stays there while its rows scroll under it (a list scrolled into
+	// "Previous 30 days" said nowhere which days it showed), and the next group's heading pushes it up as it arrives. Placed
+	// from the scroll position itself: the virtualizer renders again only when its range of rows changes.
+	const [stuck, setStuck] = useState<{ label: string; shift: number } | null>(null);
+	useEffect(() => {
+		const el = navRef.current;
+		if (!el) return;
+		const place = () => {
+			const offset = el.scrollTop;
+			const top = offset > 0 ? virtualizer.getVirtualItemForOffset(offset) : undefined;
+			let next: { label: string; shift: number } | null = null;
+			if (top) {
+				let h = top.index;
+				while (h >= 0 && entries[h]?.kind !== "heading") h--;
+				const heading = entries[h];
+				// A heading that is itself at the top, whole, needs no copy of it.
+				if (heading?.kind === "heading" && !(h === top.index && top.start >= offset)) {
+					let k = h + 1;
+					while (k < entries.length && entries[k]?.kind !== "heading") k++;
+					const start = virtualizer.measurementsCache[k]?.start;
+					const shift = start === undefined ? 0 : Math.min(0, start - offset - HEADING_HEIGHT);
+					if (shift > -HEADING_HEIGHT) next = { label: heading.label, shift };
+				}
+			}
+			setStuck((was) => (was?.label === next?.label && was?.shift === next?.shift ? was : next));
+		};
+		place();
+		el.addEventListener("scroll", place, { passive: true });
+		return () => el.removeEventListener("scroll", place);
+	}, [entries, virtualizer]);
 	return (
 		<nav
 			className="mt-1 flex min-h-32 flex-1 flex-col"
@@ -267,6 +303,14 @@ export function SessionList({
 			) : null}
 			<div ref={navRef} className="@container min-h-0 flex-1 overflow-y-auto px-2 pb-2" data-testid="session-scroll">
 				{before}
+				{stuck ? (
+					// No room of its own (`h-0`): it lies over the first rows, on the sidebar's colour, so they pass under it.
+					<div className="sticky top-0 z-10 h-0" data-testid="session-sticky-heading">
+						<div className="bg-bg-soft" style={{ transform: `translateY(${stuck.shift}px)` }}>
+							<ListHeading first label={stuck.label} actions={null} />
+						</div>
+					</div>
+				) : null}
 				{entries.length ? (
 					<div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
 						{virtualizer.getVirtualItems().map((v) => {

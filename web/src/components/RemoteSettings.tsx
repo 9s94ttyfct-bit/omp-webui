@@ -6,7 +6,6 @@ import {
 	Copy,
 	ExternalLink,
 	FolderSync,
-	Globe,
 	Loader2,
 	ShieldQuestion,
 	Sparkles,
@@ -211,7 +210,7 @@ export function RemoteSettings() {
 	if (remotePage) {
 		return (
 			<section className="rounded-2xl border border-border bg-surface p-4" data-testid="remote-settings">
-				<CardHeader icon={<Globe size={16} />} title={t("remote.settingsTitle")} />
+				<CardHeader title={t("remote.settingsTitle")} />
 				<p className="text-sm text-muted" data-testid="remote-refused">
 					{t("remote.settingsRemoteRefused")}
 				</p>
@@ -221,7 +220,7 @@ export function RemoteSettings() {
 	if (!loaded) {
 		return (
 			<section className="rounded-2xl border border-border bg-surface p-4" data-testid="remote-settings">
-				<CardHeader icon={<Globe size={16} />} title={t("remote.settingsTitle")} />
+				<CardHeader title={t("remote.settingsTitle")} />
 				<Spinner />
 			</section>
 		);
@@ -278,7 +277,6 @@ export function RemoteSettings() {
 	return (
 		<section className="rounded-2xl border border-border bg-surface p-4" data-testid="remote-settings">
 			<CardHeader
-				icon={<Globe size={16} />}
 				title={t("remote.settingsTitle")}
 				hint={t("remote.settingsIntro", { hostname: config.hostname || "omp.example.com" })}
 			/>

@@ -1,6 +1,6 @@
 import { PREF } from "@shared/prefs.ts";
 import { INSTRUCTION_MAX, type UnattendedSettings as Settings } from "@shared/unattended.ts";
-import { MoonStar, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { useT } from "../i18n/index.ts";
 import { setPref } from "../lib/prefs.ts";
@@ -64,11 +64,7 @@ export function UnattendedSettings() {
 	};
 	return (
 		<section className="rounded-2xl border border-border bg-surface p-4" data-testid="unattended-settings">
-			<CardHeader
-				title={t("questions.settingsTitle")}
-				icon={<MoonStar size={16} className="text-accent" />}
-				hint={t("questions.settingsIntro")}
-			/>
+			<CardHeader title={t("questions.settingsTitle")} hint={t("questions.settingsIntro")} />
 			<label className="flex cursor-pointer items-start gap-3 text-sm">
 				<input
 					type="checkbox"

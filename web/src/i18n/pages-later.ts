@@ -37,6 +37,9 @@ export const en = {
 	settingsResetLayout: "Reset to default size",
 	settingsResetLayoutHint:
 		"Drag the edge of the sidebar or the side panel to resize it. The sizes are remembered; this puts both back to their default size.",
+	settingsDevicePrefs: "Each device keeps its own look and layout",
+	settingsDevicePrefsHint:
+		"Theme, palette, language, panel sizes and panes, and the folded sidebar footer: a phone or another computer keeps its own and does not change this one's (the windows and browsers on this computer share theirs). Off: every device shows the same.",
 	settingsAnimations: "Live animations",
 	settingsAnimationsHint:
 		"Motion that follows what the agent does: a caret that breathes at the end of the text being written and a glow on the running time, a moving bar on a running tool card, particles along the agent graph's lines when agents start, message or report back to each other, and a short burst when a turn or a goal ends well. Nothing moves while the agent is idle.",

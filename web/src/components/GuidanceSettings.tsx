@@ -7,7 +7,7 @@ import {
 	newGuidanceId,
 } from "@shared/model-guidance.ts";
 import { PREF } from "@shared/prefs.ts";
-import { Copy, Plus, RotateCcw, Sparkles, Trash2 } from "lucide-react";
+import { Copy, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useT } from "../i18n/index.ts";
 import { guidanceApi } from "../lib/guidance-api.ts";
@@ -99,7 +99,6 @@ export function GuidanceSettings() {
 		<section className="rounded-2xl border border-border bg-surface p-4" data-testid="guidance-settings">
 			<CardHeader
 				title={t("guidance.title")}
-				icon={<Sparkles size={16} className="text-accent" />}
 				hint={t("guidance.settingsIntro")}
 				action={
 					local ? (

@@ -5,7 +5,6 @@ import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from "rea
 import { useShallow } from "zustand/react/shallow";
 import { ErrorBoundary, ErrorScreen } from "./components/ErrorBoundary.tsx";
 import { NewChat } from "./components/NewChat.tsx";
-import { OmpUpdateNotice } from "./components/OmpUpdateNotice.tsx";
 import { Rail } from "./components/Rail.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { Toasts } from "./components/Toasts.tsx";
@@ -60,6 +59,11 @@ const Onboarding = lazy(() => import("./components/Onboarding.tsx").then((m) => 
 // The feedback dialog: opened from the sidebar or a shortcut, never on the first paint.
 const { Chunk: Feedback, retry: retryFeedback } = lazyChunk(() =>
 	import("./components/Feedback.tsx").then((m) => ({ default: m.Feedback })),
+);
+// The strip about omp itself (a newer release, an update under way, a version outside the range): it says something only
+// once omp's state has come, after the first paint, so it is not in the first page load.
+const OmpUpdateNotice = lazy(() =>
+	import("./components/OmpUpdateNotice.tsx").then((m) => ({ default: m.OmpUpdateNotice })),
 );
 
 function PageFallback() {
@@ -265,12 +269,17 @@ export function App() {
 							{t("shell.appReconnecting")}
 						</div>
 					) : null}
-					<OmpUpdateNotice />
-					{/* Where the sidebar is a drawer its toggle floats over the page's top left corner: a chat's header leaves room beside it, any other page starts below it. Beside the page, the rail has the toggle. */}
+					{/* A chunk that cannot be loaded leaves the strip out: the rest of the page stays. */}
+					<ErrorBoundary fallback={() => null}>
+						<Suspense fallback={null}>
+							<OmpUpdateNotice />
+						</Suspense>
+					</ErrorBoundary>
+					{/* Where the sidebar is a drawer its toggle floats over the page's top left corner: a chat's header leaves room beside it, any other page starts below it (by as much as the toggle needs, with the page's own top padding: a phone had some 80 px of nothing above a title). Beside the page, the rail has the toggle. */}
 					<div
 						className={cx(
 							"relative flex min-h-0 flex-1",
-							floatingToggle && (view.kind === "chat" ? "[&_header]:pl-12" : "pt-12"),
+							floatingToggle && (view.kind === "chat" ? "[&_header]:pl-12" : "pt-8"),
 						)}
 					>
 						{floatingToggle ? (

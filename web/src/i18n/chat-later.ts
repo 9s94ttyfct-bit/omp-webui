@@ -189,6 +189,8 @@ export const en = {
 	usageStep: "#{n} in {input} · out {output} · cache read {cacheRead} · cache write {cacheWrite} · {cost}",
 
 	// The figures of a turn (the TUI's stats line): what omp recorded of its requests
+	// Said beside the reply's own start time above it: two clock times that read alike must say which is which.
+	statFinished: "finished {time}",
 	statTook: "took {value}",
 	statRunning: "running {value}",
 	statInput: "in {n}",

@@ -280,7 +280,7 @@ export function UsagePage() {
 	const fresh = o?.totalRequests === 0 && sessionsLoaded && sessions.length === 0;
 	return (
 		<div className="h-full flex-1 overflow-y-auto" data-testid="usage-page">
-			<div className="mx-auto max-w-6xl space-y-6 px-6 py-8">
+			<div className="mx-auto max-w-6xl space-y-6 px-6 pt-4 pb-8 sm:pt-8">
 				<div className="flex flex-wrap items-center gap-3">
 					<BarChart3 className="shrink-0 text-accent" />
 					<h1 className="text-xl font-semibold">{t("pages.usageTitle")}</h1>

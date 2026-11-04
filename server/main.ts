@@ -30,7 +30,7 @@ import {
 	type SessionGuidance,
 } from "../shared/model-guidance.ts";
 import { isMode } from "../shared/offline.ts";
-import { PREF, type PrefsSnapshot } from "../shared/prefs.ts";
+import { isDevicePref, PREF, pageSnapshot, perDevice, type StoreSnapshot } from "../shared/prefs.ts";
 import { type ClientMessage, type LiveAttached, MAX_WS_MESSAGE_BYTES, type ServerMessage } from "../shared/protocol.ts";
 import { PUSH_API } from "../shared/push.ts";
 import { REMOTE_SHELL_OFF } from "../shared/remote.ts";
@@ -38,6 +38,7 @@ import { replyMessages } from "../shared/reply-parts.ts";
 import { slimAnswer } from "../shared/slim.ts";
 import { concurrencyOf } from "../shared/subagent-concurrency.ts";
 import { answerMessage, cleanAnswer, instructionProblemText } from "../shared/unattended.ts";
+import type { Conversations } from "../shared/update.ts";
 import type { UploadFailure } from "../shared/upload.ts";
 import { DEFAULT_USAGE_RANGE, isUsageRange } from "../shared/usage-range.ts";
 import { Auth } from "./auth.ts";
@@ -133,7 +134,7 @@ import { NOTIFY_EVENTS_PATH, SHELL_EVENTS_PATH, ShellEvents } from "./shell-even
 import { KeepAwake, SleepDetector, spawnCaffeinate, workingIds } from "./sleep.ts";
 import { isLocalOnlyRoute, isThisComputer } from "./this-computer.ts";
 import type { TransferEnv } from "./transfer-core.ts";
-import type { AppUpdater, Conversations, InstallTarget } from "./update/service.ts";
+import type { AppUpdater, InstallTarget } from "./update/service.ts";
 import { APP_VERSION } from "./version.ts";
 import { WorkerDeadlineError } from "./worker-deadline.ts";
 import { WsOutbox } from "./ws-out.ts";
@@ -600,6 +601,13 @@ function broadcastLocal(msg: ServerMessage): void {
 	for (const ws of sockets) if (ws.data.local) ws.data.out?.send(text);
 }
 
+/** Tell every open page what the preferences are now, each as it is given them (`pageSnapshot`: its device's keys or not). */
+function broadcastPrefs(snapshot: StoreSnapshot): void {
+	const here = JSON.stringify({ t: "prefs", snapshot } satisfies ServerMessage);
+	const elsewhere = JSON.stringify({ t: "prefs", snapshot: pageSnapshot(snapshot, false) } satisfies ServerMessage);
+	for (const ws of sockets) ws.data.out?.send(ws.data.local ? here : elsewhere);
+}
+
 /**
  * The built-in browser (docs/agents/browser.md): its install state goes to every page the server lets in, each told whether
  * it may install, update and clear (this computer, or a verified Access sign-in; see `canManageBrowser`).
@@ -666,6 +674,7 @@ function appUpdater(): Promise<AppUpdater> {
 				api: appUpdateApi,
 				automatic: automaticAppUpdates,
 				autoChecks: () => uiPrefs.snapshot().values[PREF.appUpdateCheck] !== "off",
+				autoInstall: () => uiPrefs.snapshot().values[PREF.appAutoUpdate] === "on",
 				conversations: conversationsHeld,
 				broadcast: (state) => broadcastLocal({ t: "app_update", state }),
 				// The Windows launcher is this server: after the handover it ends itself, as a quit of the app would.
@@ -792,11 +801,11 @@ pool.onAnnounce((info) => {
  * takes effect now, and the macOS app shows its menu bar icon or not as Settings says. Settings' own cards and Ask agent
  * for help change them through this.
  */
-function applyPrefs(changes: unknown): PrefsSnapshot {
+function applyPrefs(changes: unknown): StoreSnapshot {
 	const before = uiPrefs.snapshot();
 	const snapshot = uiPrefs.apply(changes);
 	if (snapshot.rev !== before.rev) {
-		broadcastAll({ t: "prefs", snapshot });
+		broadcastPrefs(snapshot);
 		pool.syncRisk();
 		applyKeepAwake();
 		shellEvents.prefsChanged();
@@ -809,6 +818,8 @@ function applyPrefs(changes: unknown): PrefsSnapshot {
 			browser.autoUpdateChanged();
 		}
 		if (before.values[PREF.browserAutoUpdate] !== snapshot.values[PREF.browserAutoUpdate]) browser.autoUpdateChanged();
+		// Installing by itself was turned on (or off): look now whether it may start, and say what it waits for.
+		if (before.values[PREF.appAutoUpdate] !== snapshot.values[PREF.appAutoUpdate]) void updater?.autoTry();
 	}
 	return snapshot;
 }
@@ -942,7 +953,7 @@ function migrateService(): Promise<MigrateService> {
 				pool.syncRisk();
 				modes.reload();
 				await store.refresh(true);
-				broadcastAll({ t: "prefs", snapshot: uiPrefs.snapshot() });
+				broadcastPrefs(uiPrefs.snapshot());
 				broadcastAll({ t: "sessions_changed" });
 				broadcastAll({ t: "model_config_changed" });
 				// What an import brought of unattended mode: the questions (a file the import wrote), and the instruction the
@@ -1669,14 +1680,21 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 						"The browser is turned on and off, and its automatic updates, from this computer, or from a page signed in with your account",
 						403,
 					);
+				// How the app looks and is laid out belongs to the device (`DEVICE_PREF_KEYS`, while `perDevice`): what a page that
+				// is not on this computer says of it stays on that page, and is dropped here rather than refused, so that the rest
+				// of its change still goes through.
+				const changes =
+					!onThisComputer.has(req) && perDevice(uiPrefs.snapshot()) && isRecord(body?.changes)
+						? Object.fromEntries(Object.entries(body.changes).filter(([key]) => !isDevicePref(key)))
+						: body?.changes;
 				try {
-					return json(applyPrefs(body?.changes));
+					return json(pageSnapshot(applyPrefs(changes), onThisComputer.has(req)));
 				} catch (e) {
 					if (e instanceof PrefsError) return fail(e.message);
 					throw e;
 				}
 			}
-			return json(uiPrefs.snapshot());
+			return json(pageSnapshot(uiPrefs.snapshot(), onThisComputer.has(req)));
 		case "/api/pins":
 			if (req.method === "POST") {
 				const body = (await req.json()) as { file?: unknown; pinned?: unknown };
@@ -2708,7 +2726,7 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
  */
 async function serveIndex(req: Request, file: string): Promise<Response> {
 	if (!auth.allowed(req) && !givesCookie(req)) return serveStatic(req, file, false);
-	const html = uiPrefs.inject(await Bun.file(file).text());
+	const html = uiPrefs.inject(await Bun.file(file).text(), onThisComputer.has(req));
 	return compressResponse(
 		req,
 		new Response(html, { headers: { "content-type": "text/html;charset=utf-8", "cache-control": "no-store" } }),

@@ -30,6 +30,11 @@ export interface SearchResults {
 	/** Whether a query is narrowing the list: the rows are then one ranked list, not date groups. */
 	searching: boolean;
 	/**
+	 * The matches that do not have the query in their name as typed (its letters spread over the name, or the project's
+	 * name matched): listed after the others under a heading of their own, so that they do not read as the best matches.
+	 */
+	loose: ReadonlySet<string>;
+	/**
 	 * The conversations found by what was said in them and not by their name (#717), best first: listed after every
 	 * name match, in a group of their own.
 	 */

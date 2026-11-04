@@ -47,8 +47,9 @@ describe("finding a setting", () => {
 
 	test("a sentence under a setting counts only when it has the word whole: its scattered letters, or a piece of a word, do not", () => {
 		// "theme" spelled itself out of letters across dozens of hints, and then out of the letters of a few labels that are
-		// whole sentences ("Keep the Mac awake while a conversation works"): 26, then 5 settings, 3 of them unrelated.
-		expect(ids("theme")).toEqual(["theme", "palette"]);
+		// whole sentences ("Keep the Mac awake while a conversation works"): 26, then 5 settings, 3 of them unrelated. The
+		// one sentence that has the word whole is the switch that keeps the theme per device, after the two that name it.
+		expect(ids("theme")).toEqual(["theme", "palette", "device-prefs"]);
 		expect(ids("ntfctns")).not.toContain("remote-shell");
 		// "After the first reply, omp generates a title …" is the automatic title's hint.
 		expect(ids("reply")).toContain("auto-title");
@@ -66,8 +67,8 @@ describe("finding a setting", () => {
 
 	test("a label outranks an alias, and an alias a sentence under a setting", () => {
 		const found = (query: string) => flattenSettings(searchSettings(query, text));
-		// "Theme" is the theme's name and the palette's nickname: the one it names comes first.
-		expect(found("theme").map((hit) => hit.entry.id)).toEqual(["theme", "palette"]);
+		// "Theme" is the theme's name and the palette's nickname: the one it names comes first, a sentence's mention last.
+		expect(found("theme").map((hit) => hit.entry.id)).toEqual(["theme", "palette", "device-prefs"]);
 		expect(found("theme")[0]?.score).toBeGreaterThan(found("theme")[1]?.score ?? 0);
 		// Both are a label and a sentence under another setting: "model" names the roles card, and is only said in the rest.
 		const model = found("model");
@@ -94,8 +95,8 @@ describe("the two languages", () => {
 		expect(ids("自动命名", zhText)).toContain("auto-title");
 	});
 
-	test("the theme settings are all found for 主题: the theme and the palette, in that order and nothing else", () => {
-		expect(ids("主题", zhText)).toEqual(["theme", "palette"]);
+	test("the theme settings are all found for 主题: the theme, the palette and the per-device switch, in that order", () => {
+		expect(ids("主题", zhText)).toEqual(["theme", "palette", "device-prefs"]);
 		// And the palette by each of its Chinese names.
 		for (const name of ["配色", "调色板", "配色方案"]) expect(ids(name, zhText), name).toContain("palette");
 		expect(ids("theme", zhText)).toEqual(["theme", "palette"]);

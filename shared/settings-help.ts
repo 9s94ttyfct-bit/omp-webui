@@ -56,8 +56,9 @@ export const PREF_CLASS: Readonly<Record<PrefKey, SettingClass>> = {
 	[PREF.usageDays]: "unavailable",
 	[PREF.star]: "unavailable",
 	[PREF.dismissed]: "unavailable",
-	// The app's own update checks.
+	// The app's own update checks, and installing updates by itself (which restarts the app).
 	[PREF.appUpdateCheck]: "sensitive",
+	[PREF.appAutoUpdate]: "sensitive",
 	[PREF.quitAction]: "normal",
 	[PREF.menuIcon]: "normal",
 	// Remembered answers of the drop dialog: "insert the path" in the app, a copy sent to the server in a browser.
@@ -78,6 +79,8 @@ export const PREF_CLASS: Readonly<Record<PrefKey, SettingClass>> = {
 	[PREF.guidanceCheck]: "normal",
 	[PREF.sessionSort]: "normal",
 	[PREF.pinnedFolded]: "normal",
+	[PREF.navFolded]: "normal",
+	[PREF.devicePrefs]: "normal",
 	[PREF.usageRange]: "normal",
 	[PREF.controlsAdvanced]: "normal",
 	[PREF.graphGrid]: "normal",

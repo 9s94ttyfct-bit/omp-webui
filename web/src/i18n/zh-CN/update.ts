@@ -98,4 +98,8 @@ export const zh: Record<keyof typeof en, string> = {
 	// The setting
 	auto: "自动检查更新",
 	autoHint: "启动时检查一次，之后每 6 小时检查一次。无论是否开启，“立即检查”都可以用。",
+	autoInstall: "自动安装更新",
+	autoInstallHint:
+		"在没有对话正在运行、暂停或等待时，自动下载、校验并安装新版本，然后重启应用。自动安装失败的版本不会再自动重试，需要你手动安装。",
+	autoHeld: "等对话结束后会自动安装 {version}（还有 {n} 个对话未结束）。",
 };

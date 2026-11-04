@@ -70,6 +70,7 @@ const SENSITIVE = [
 	"mode.json:offline.mcp",
 	"mode.json:offline.skills",
 	"mode.json:offline.tools",
+	"ompw.appAutoUpdate",
 	"ompw.appUpdateCheck",
 	"ompw.browser",
 	"ompw.browserAutoUpdate",

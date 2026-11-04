@@ -134,8 +134,10 @@ test("a finished turn says when it finished, how long it took and what it used",
 	const line = page.getByTestId("msg-usage").first();
 	// Two requests, added up: the turn started with the first and ended with the last.
 	await expect(line).toHaveAttribute("data-requests", "2");
-	await expect(stat(line, "model")).toHaveText("claude-haiku-5-5");
-	await expect(stat(line, "finished")).toHaveText("10:49:50");
+	// The model's name from the catalog, as the picker gives it; its id in the tooltip.
+	await expect(stat(line, "model")).toHaveText("Claude Haiku 5.5");
+	await expect(stat(line, "model")).toHaveAttribute("title", "claude-haiku-5-5");
+	await expect(stat(line, "finished")).toHaveText("finished 10:49:50");
 	await expect(stat(line, "finished")).toHaveAttribute("datetime", "2026-01-09T10:49:50.000Z");
 	await expect(stat(line, "took")).toHaveText("took 5m 6s");
 	await expect(stat(line, "in")).toHaveText("in 790");
@@ -152,7 +154,7 @@ test("what omp did not record of a turn is left out, not guessed", async ({ page
 	const line = page.getByTestId("msg-usage").last();
 	await expect(line).toHaveAttribute("data-requests", "1");
 	// The saved entry says when it ended, and the message when it began.
-	await expect(stat(line, "finished")).toHaveText("10:51:04");
+	await expect(stat(line, "finished")).toHaveText("finished 10:51:04");
 	await expect(stat(line, "took")).toHaveText("took 3.5s");
 	await expect(stat(line, "in")).toHaveText("in 15");
 	await expect(stat(line, "out")).toHaveText("out 20");

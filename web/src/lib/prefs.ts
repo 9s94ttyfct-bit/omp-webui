@@ -24,6 +24,10 @@ import {
  *
  * Other pages show a change as it is made: the server tells every open page (`receiveSnapshot`), and another tab of the same
  * origin is also heard through the storage event. What the page shows is repainted by whoever subscribed (`onPrefsChanged`).
+ *
+ * A page that is not on this computer is given no device keys (`DEVICE_PREF_KEYS`, `pageSnapshot`): what it chose of its
+ * look and layout stays in its own localStorage. A key a snapshot does not carry is therefore left alone here, never read
+ * as "none", and never sent (`keeps`).
  */
 
 const DEBOUNCE_MS = 250;
@@ -61,10 +65,17 @@ function announce(keys: PrefKey[]): void {
 	if (keys.length > 0) for (const fn of changeListeners) fn(keys);
 }
 
-/** Remember a preference (null forgets it): in localStorage now, on the server shortly. */
+/**
+ * Whether the server keeps `key` for this page: every key until the page has met the server's copy, then each key its
+ * snapshot carries (not the device keys, for a page that is not on this computer).
+ */
+const keeps = (key: PrefKey): boolean => told === null || told[key] !== undefined;
+
+/** Remember a preference (null forgets it): in localStorage now, on the server shortly (if the server keeps it for this page). */
 export function setPref(key: PrefKey, value: string | null): void {
 	if (value === null) localStorage.removeItem(key);
 	else localStorage.setItem(key, value);
+	if (!keeps(key)) return;
 	pending.set(key, value);
 	if (started && timer === undefined) {
 		timer = setTimeout(() => {
@@ -80,18 +91,25 @@ export const prefStorage: Pick<Storage, "getItem" | "setItem"> = {
 	setItem: (key, value) => (isPrefKey(key) ? setPref(key, value) : localStorage.setItem(key, value)),
 };
 
-/** This origin now holds exactly what the server does: say so, so that the next visit knows it need not take the server's word. */
+/**
+ * This origin now holds exactly what the server does (of the keys the server keeps for it): say so, so that the next visit
+ * knows it need not take the server's word.
+ */
 function markIfCurrent(snapshot: PrefsSnapshot): void {
-	if (pending.size === 0 && PREF_KEYS.every((k) => localStorage.getItem(k) === snapshot.values[k])) {
+	if (
+		pending.size === 0 &&
+		PREF_KEYS.every((k) => snapshot.values[k] === undefined || localStorage.getItem(k) === snapshot.values[k])
+	) {
 		localStorage.setItem(PREFS_SYNC_KEY, syncMarker(snapshot));
 	}
 }
 
 async function send(keepalive: boolean): Promise<void> {
 	if (pending.size === 0) return;
-	// What the server would refuse is not sent: one such key would take the whole request down with it.
+	// What the server would refuse is not sent: one such key would take the whole request down with it. Nor is what it does
+	// not keep for this page (`keeps`): a key set before the page met the server's copy may be one.
 	const changes: PrefsChanges = Object.fromEntries(
-		[...pending].filter(([k, v]) => v === null || (v.length <= MAX_PREF_LENGTH && isValidPref(k, v))),
+		[...pending].filter(([k, v]) => keeps(k) && (v === null || (v.length <= MAX_PREF_LENGTH && isValidPref(k, v)))),
 	);
 	pending.clear();
 	if (Object.keys(changes).length === 0) return;
@@ -151,8 +169,8 @@ async function fetchSnapshot(): Promise<PrefsSnapshot | null> {
 	}
 }
 
-const localValues = (): PrefsSnapshot["values"] =>
-	Object.fromEntries(PREF_KEYS.map((k) => [k, localStorage.getItem(k)])) as PrefsSnapshot["values"];
+const localValues = (): Record<PrefKey, string | null> =>
+	Object.fromEntries(PREF_KEYS.map((k) => [k, localStorage.getItem(k)])) as Record<PrefKey, string | null>;
 
 function writeLocal(changes: PrefsChanges): PrefKey[] {
 	const changed: PrefKey[] = [];
@@ -178,10 +196,13 @@ export function receiveSnapshot(snapshot: PrefsSnapshot): void {
 		seen = { id: snapshot.id, rev: snapshot.rev };
 		const take: PrefsChanges = {};
 		for (const key of PREF_KEYS) {
-			if (pending.has(key) || inflight.has(key)) continue;
+			const theirs = snapshot.values[key];
+			if (theirs === undefined || pending.has(key) || inflight.has(key)) continue;
 			const here = localStorage.getItem(key);
-			if (told && here !== told[key] && here !== snapshot.values[key]) continue;
-			take[key] = snapshot.values[key];
+			// A key the server did not carry for this page before (a device key, until the look and layout were made to follow
+			// the person everywhere) has no earlier word of the server's to tell an edit here from: the server's is taken.
+			if (told && told[key] !== undefined && here !== told[key] && here !== theirs) continue;
+			take[key] = theirs;
 		}
 		told = snapshot.values;
 		announce(writeLocal(take));

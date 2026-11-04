@@ -215,6 +215,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	usageSummary: "{requests} · 输入 {input} · 输出 {output} · 缓存读取 {cacheRead} · 缓存写入 {cacheWrite} · {cost}",
 	usageStep: "#{n} 输入 {input} · 输出 {output} · 缓存读取 {cacheRead} · 缓存写入 {cacheWrite} · {cost}",
 
+	statFinished: "完成于 {time}",
 	statTook: "用时 {value}",
 	statRunning: "已运行 {value}",
 	statInput: "输入 {n}",

@@ -1,6 +1,6 @@
 import type { UsageReport } from "@shared/protocol.ts";
 import { floorOf } from "@shared/quota-floor.ts";
-import { ChevronRight, Hourglass } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { type FormEvent, useEffect, useId, useMemo, useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
@@ -189,11 +189,7 @@ export function QuotaFloorSettings() {
 	);
 	return (
 		<section className="rounded-2xl border border-border bg-surface p-4" data-testid="quota-floor-settings">
-			<CardHeader
-				title={t("pages.settingsQuotaFloor")}
-				icon={<Hourglass size={16} className="text-accent" />}
-				hint={t("pages.settingsQuotaFloorIntro")}
-			/>
+			<CardHeader title={t("pages.settingsQuotaFloor")} hint={t("pages.settingsQuotaFloorIntro")} />
 			{floors === null ? (
 				error ? null : (
 					<div className="flex justify-center py-6">

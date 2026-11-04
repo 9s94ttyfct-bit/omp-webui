@@ -14,16 +14,10 @@ import { join } from "node:path";
 import pkg from "../../package.json";
 import { capabilities } from "../../server/platform/capabilities.ts";
 import { MAX_LOG_BYTES, rotateLog } from "../../server/update/files.ts";
-import {
-	AppUpdater,
-	type Conversations,
-	type InstallTarget,
-	relaunchCommand,
-	type UpdaterOptions,
-} from "../../server/update/service.ts";
+import { AppUpdater, type InstallTarget, relaunchCommand, type UpdaterOptions } from "../../server/update/service.ts";
 import { attach, detach } from "../../server/update/steps.ts";
 import { isRecord } from "../../shared/guards.ts";
-import type { AppUpdateState, UpdateSnapshot } from "../../shared/update.ts";
+import type { AppUpdateState, Conversations, UpdateSnapshot } from "../../shared/update.ts";
 import { type FakeReleases, startFakeReleases } from "../support/fake-releases.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
 import { buildFixtures, disposeFixtures, type Fixtures, NEWER, type Variant } from "../support/update-fixtures.ts";
@@ -164,6 +158,7 @@ exit 0
 		api: o.api ?? fake.url,
 		automatic: false,
 		autoChecks: () => true,
+		autoInstall: () => false,
 		conversations: () => o.conversations ?? none,
 		broadcast: (s) => states.push(s),
 		now: () => Date.now() + offset,
@@ -280,6 +275,7 @@ function optionsOf(w: World): UpdaterOptions {
 		api: fake.url,
 		automatic: false,
 		autoChecks: () => true,
+		autoInstall: () => false,
 		conversations: () => none,
 		broadcast: () => {},
 	};
@@ -365,6 +361,7 @@ test("it looks soon after it starts and then on its timer, while the user wants 
 		...optionsOf(w),
 		automatic: true,
 		autoChecks: () => wanted,
+		autoInstall: () => false,
 		firstCheckMs: 20,
 		intervalMs: 80,
 		now: (() => {
@@ -389,6 +386,7 @@ test("it looks soon after it starts and then on its timer, while the user wants 
 		firstCheckMs: 0,
 		intervalMs: 20,
 		autoChecks: () => true,
+		autoInstall: () => false,
 	});
 	off.start();
 	await Bun.sleep(150);
@@ -565,6 +563,50 @@ test.skipIf(!mac)(
 		await w.updater.install(`v${NEWER}`, true);
 		expect(state(w).failed).toBeNull();
 		await until(w, "the handover", (s) => s.job?.phase === "handover");
+	},
+	90_000,
+);
+
+test.skipIf(!mac)(
+	"installing by itself waits for every conversation to finish, then installs once; off, it never starts",
+	async () => {
+		let on = false;
+		let held: Conversations = { working: 1, asking: 0, paused: 1, waiting: 0 };
+		const w = world({ options: { autoInstall: () => on, conversations: () => held } });
+		fake.publish({ tag: `v${NEWER}`, dmg: fixtures.installers.good?.dmg });
+		await w.updater.check();
+		// Off: nothing starts and nothing is said to wait.
+		await w.updater.autoTry();
+		expect(state(w)).toMatchObject({ job: null, autoHeld: null });
+		// On, while a conversation works and another is paused: it waits, and says for what.
+		on = true;
+		await w.updater.autoTry();
+		expect(state(w)).toMatchObject({ job: null, autoHeld: { working: 1, paused: 1 } });
+		expect(w.signals).toHaveLength(0);
+		// Nothing left: it starts by itself and goes as far as the handover.
+		held = none;
+		await w.updater.autoTry();
+		expect(state(w).autoHeld).toBeNull();
+		expect(state(w).job).not.toBeNull();
+		await until(w, "the handover", (s) => s.job?.phase === "handover");
+	},
+	90_000,
+);
+
+test.skipIf(!mac)(
+	"a release whose automatic install failed is not tried again by itself; a click still installs it",
+	async () => {
+		const w = world({ options: { autoInstall: () => true } });
+		const tampered = fixtures.installers.tampered;
+		fake.publish({ tag: tampered?.tag ?? "", dmg: tampered?.dmg });
+		await w.updater.check();
+		await w.updater.autoTry();
+		await until(w, "the refusal", (s) => s.failed !== null);
+		await w.updater.autoTry();
+		expect(state(w).job).toBeNull();
+		expect(existsSync(join(w.data, "update", "auto-skip.json"))).toBe(true);
+		// What the card offers is the person's own: it starts.
+		expect("state" in (await w.updater.install(tampered?.tag ?? "", true))).toBe(true);
 	},
 	90_000,
 );

@@ -1,5 +1,5 @@
 import type { PushDevice } from "@shared/push.ts";
-import { BellRing, Check, Smartphone, TriangleAlert } from "lucide-react";
+import { Check, Smartphone, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { type MessageKey, useT } from "../i18n/index.ts";
 import { ApiError } from "../lib/api.ts";
@@ -92,7 +92,7 @@ export function PushSettings() {
 			data-testid="push-settings"
 			data-index-title={t("push.indexTitle")}
 		>
-			<CardHeader title={t("push.title")} icon={<BellRing size={16} />} hint={t("push.hint")} />
+			<CardHeader title={t("push.title")} hint={t("push.hint")} />
 			{support === "ok" ? (
 				<div className="flex items-start gap-3">
 					<Switch

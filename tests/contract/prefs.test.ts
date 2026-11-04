@@ -247,10 +247,13 @@ test("two servers on one data dir keep each other's changes, and the revision on
 	expect((await page(b)).snapshot).toEqual(third);
 });
 
-/** The messages a page's WebSocket receives, from the moment it is open. */
-async function listen(s: AppServer): Promise<{ messages: { t: string; snapshot?: PrefsSnapshot }[]; close(): void }> {
+/** The messages a page's WebSocket receives, from the moment it is open (`headers`: more of what its requests carry). */
+async function listen(
+	s: AppServer,
+	headers: Record<string, string> = {},
+): Promise<{ messages: { t: string; snapshot?: PrefsSnapshot }[]; close(): void }> {
 	const ws = new WebSocket(`ws://127.0.0.1:${s.port}/ws`, {
-		headers: { Origin: `http://127.0.0.1:${s.port}`, Cookie: `ompw_token=${s.token}` },
+		headers: { Origin: `http://127.0.0.1:${s.port}`, Cookie: `ompw_token=${s.token}`, ...headers },
 	} as unknown as string[]);
 	const messages: { t: string; snapshot?: PrefsSnapshot }[] = [];
 	ws.onmessage = (ev) => messages.push(JSON.parse(String(ev.data)));
@@ -287,4 +290,66 @@ test("a change is told to every open page, and only a change that alters somethi
 	expect((await told(one, 2)).map((m) => m.snapshot?.rev)).toEqual([1, 2]);
 	one.close();
 	two.close();
+});
+
+test("a page that is not on this computer keeps its own look and layout: neither side's reaches the other, the rest syncs both ways", async () => {
+	const s = await start(dataDir("device"));
+	// A proxy in front of the server (the tunnel, a reverse proxy): the page is not on this computer, whatever it names.
+	const away = { "x-forwarded-for": "203.0.113.9" };
+	const here = await listen(s);
+	const phone = await listen(s, away);
+	const last = async (l: typeof here, rev: number) => {
+		const until = Date.now() + 5000;
+		const at = () => l.messages.findLast((m) => m.t === "prefs" && m.snapshot?.rev === rev)?.snapshot;
+		while (!at() && Date.now() < until) await Bun.sleep(20);
+		return at()?.values;
+	};
+	const read = async (headers: Record<string, string> = {}) =>
+		(
+			(await (
+				await fetch(`http://127.0.0.1:${s.port}/api/prefs`, { headers: { ...as(s), ...headers } })
+			).json()) as PrefsSnapshot
+		).values;
+
+	// This computer's look and language, and a preference that follows the person.
+	await setPrefs(s, { [PREF.theme]: "dark", [PREF.lang]: "en", [PREF.autoTitle]: "off" });
+	expect(await last(here, 1)).toMatchObject({ [PREF.theme]: "dark", [PREF.lang]: "en", [PREF.autoTitle]: "off" });
+	const toPhone = await last(phone, 1);
+	expect(toPhone?.[PREF.autoTitle]).toBe("off");
+	for (const key of [PREF.theme, PREF.lang, PREF.sidebarWidth, PREF.panelPanes])
+		expect(toPhone).not.toHaveProperty(key);
+	expect(await read(away)).not.toHaveProperty(PREF.theme);
+	const served = (await page(s, { ...as(s), ...away })).snapshot;
+	expect(served?.values).not.toHaveProperty(PREF.theme);
+	expect(served?.values[PREF.autoTitle]).toBe("off");
+	expect((await page(s)).snapshot?.values[PREF.theme]).toBe("dark");
+
+	// The phone, in a light, Chinese context: its look stays on it, the rest of its change goes through.
+	const fromPhone = await setPrefs(
+		s,
+		{ [PREF.theme]: "light", [PREF.lang]: "zh-CN", [PREF.autoTitle]: "on" },
+		{ "x-omp-webui": "1", ...away },
+	);
+	expect(fromPhone.status).toBe(200);
+	const answer = (await fromPhone.json()) as PrefsSnapshot;
+	expect(answer.values).not.toHaveProperty(PREF.theme);
+	expect(answer.values[PREF.autoTitle]).toBe("on");
+	expect(await read()).toMatchObject({ [PREF.theme]: "dark", [PREF.lang]: "en", [PREF.autoTitle]: "on" });
+	expect(await last(here, 2)).toMatchObject({ [PREF.theme]: "dark", [PREF.lang]: "en", [PREF.autoTitle]: "on" });
+
+	// This computer's next change of theme does not reach the phone (it is told of the change, with nothing of it).
+	await setPrefs(s, { [PREF.theme]: "light" });
+	expect((await last(here, 3))?.[PREF.theme]).toBe("light");
+	const third = await last(phone, 3);
+	expect(third?.[PREF.autoTitle]).toBe("on");
+	expect(third).not.toHaveProperty(PREF.theme);
+
+	// The person turns per-device off: the phone is told this computer's look, and its own change of it now counts.
+	await setPrefs(s, { [PREF.devicePrefs]: "off" });
+	expect((await last(phone, 4))?.[PREF.theme]).toBe("light");
+	const offPhone = await setPrefs(s, { [PREF.theme]: "system" }, { "x-omp-webui": "1", ...away });
+	expect(((await offPhone.json()) as PrefsSnapshot).values[PREF.theme]).toBe("system");
+	expect((await read())[PREF.theme]).toBe("system");
+	here.close();
+	phone.close();
 });

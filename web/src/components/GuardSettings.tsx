@@ -1,6 +1,6 @@
 import { GUARD_MODES, type GuardConfig } from "@shared/guard.ts";
 import { type PolicyStatus, policyStatus } from "@shared/guard-policy.ts";
-import { Check, CircleAlert, ScanEye } from "lucide-react";
+import { Check, CircleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { type MessageKey, useT } from "../i18n/index.ts";
 import { guardApi } from "../lib/guard-api.ts";
@@ -98,7 +98,7 @@ export function GuardSettings() {
 
 	return (
 		<section className="rounded-2xl border border-border bg-surface p-4" data-testid="guard-settings">
-			<CardHeader icon={<ScanEye size={16} />} title={t("guard.title")} hint={t("guard.guardIntro")} />
+			<CardHeader title={t("guard.title")} hint={t("guard.guardIntro")} />
 			<fieldset className="space-y-1" disabled={config === null}>
 				<legend className="mb-1.5 text-sm">{t("guard.guardTitle")}</legend>
 				{GUARD_MODES.map((mode) => {

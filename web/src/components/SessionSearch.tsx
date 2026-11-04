@@ -132,6 +132,7 @@ export function SessionSearch({
 			sessions: ranked.map((r) => r.session),
 			marks: new Map(ranked.filter((r) => r.positions.length).map((r) => [r.session.file, r.positions] as const)),
 			searching,
+			loose: new Set(searching ? ranked.filter((r) => !r.positions.length).map((r) => r.session.file) : []),
 			content: searching ? content.sessions : [],
 			hits: searching ? content.hits : new Map(),
 		});

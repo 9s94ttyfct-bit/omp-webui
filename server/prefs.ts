@@ -8,7 +8,8 @@ import {
 	PREF_KEYS,
 	PREFS_ELEMENT_ID,
 	type PrefKey,
-	type PrefsSnapshot,
+	pageSnapshot,
+	type StoreSnapshot,
 } from "../shared/prefs.ts";
 
 /** A change the store refuses: the whole request is rejected, nothing is applied. */
@@ -76,14 +77,14 @@ export class UiPrefs {
 		renameSync(tmp, this.file);
 	}
 
-	snapshot(): PrefsSnapshot {
+	snapshot(): StoreSnapshot {
 		this.refresh();
-		const values = Object.fromEntries(PREF_KEYS.map((k) => [k, this.values.get(k) ?? null])) as PrefsSnapshot["values"];
+		const values = Object.fromEntries(PREF_KEYS.map((k) => [k, this.values.get(k) ?? null])) as StoreSnapshot["values"];
 		return { id: this.id, rev: this.rev, values };
 	}
 
 	/** Set (a string) or forget (null) keys. A change that alters nothing leaves the revision alone. */
-	apply(changes: unknown): PrefsSnapshot {
+	apply(changes: unknown): StoreSnapshot {
 		if (typeof changes !== "object" || changes === null || Array.isArray(changes)) {
 			throw new PrefsError("changes must be an object");
 		}
@@ -108,12 +109,13 @@ export class UiPrefs {
 	}
 
 	/**
-	 * `html` with the snapshot in front of its first script, where the page's inline script finds it before first paint.
+	 * `html` with the snapshot in front of its first script, where the page's inline script finds it before first paint:
+	 * as the page is given it (`pageSnapshot`: without the device keys for a page that is not `onThisComputer`).
 	 * A script element of a type the browser does not run is a data block: the page's CSP does not apply to it, and
 	 * its text stays what it is. `<` is escaped so that no value can end the element or open a comment.
 	 */
-	inject(html: string): string {
-		const json = JSON.stringify(this.snapshot()).replaceAll("<", "\\u003c");
+	inject(html: string, onThisComputer: boolean): string {
+		const json = JSON.stringify(pageSnapshot(this.snapshot(), onThisComputer)).replaceAll("<", "\\u003c");
 		const block = `<script type="application/json" id="${PREFS_ELEMENT_ID}">${json}</script>`;
 		// A function, so that `$&` and the like inside a value are not read as replacement patterns.
 		return html.replace(/<script\b/i, (first) => `${block}${first}`);

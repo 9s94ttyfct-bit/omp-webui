@@ -255,7 +255,8 @@ export function liveTurn(entries: SessionEntry[], leafId: string | null): { tall
 /**
  * How long the agent has worked in a conversation (the TUI's clock in its status line): each prompt's turn lasts until
  * the last entry written before the next prompt, so the time nobody was asking anything is left out. A command the
- * user ran ends a turn without starting one. A turn still running counts up to its last saved entry.
+ * user ran ends a turn without starting one. A turn still running counts up to its last saved entry, or up to `now` (on the
+ * entries' clock) when the caller knows it is still running: the figure then counts up as the status line's does.
  *
  * A page that holds only the end of a long conversation has the server's clock for the whole file (`base`, as of the entry
  * it names) and goes on from it with the entries after that one.
@@ -263,10 +264,12 @@ export function liveTurn(entries: SessionEntry[], leafId: string | null): { tall
 export function activeMs(
 	entries: readonly SessionEntry[],
 	base?: Pick<FamilyStats, "through" | "clock"> | null,
+	now?: number,
 ): number {
 	const rest = base ? entriesAfter(entries, base.through) : null;
 	const clock = base && rest ? stepClock(base.clock, rest, 0) : activeClocks.run(entries);
-	return clock.total + (clock.start !== null ? clock.end - clock.start : 0);
+	if (clock.start === null) return clock.total;
+	return clock.total + Math.max(clock.end, now ?? 0) - clock.start;
 }
 
 type ActiveClock = FamilyStats["clock"];

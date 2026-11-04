@@ -142,6 +142,14 @@ export interface UpdateOutcome {
 	problem?: "quitTimeout" | "verify" | "swap" | "didNotStart" | "rollbackFailed";
 }
 
+/** What the pool of conversations holds, as an install's confirmation needs it (`UpdateRefusal` `replying`). */
+export interface Conversations {
+	working: number;
+	asking: number;
+	paused: number;
+	waiting: number;
+}
+
 /** What the server tells the page about the app's own updates. */
 export interface AppUpdateState {
 	/** Names this run of the server; with `rev` it orders states (a page keeps the newest, see `store/omp.ts`). */
@@ -167,6 +175,11 @@ export interface AppUpdateState {
 	failed: UpdateFailure | null;
 	/** How the last update ended; cleared by `dismiss`. */
 	outcome: UpdateOutcome | null;
+	/**
+	 * An automatic install (`ompw.appAutoUpdate`) that would start now but waits for these conversations to finish; null
+	 * when none waits.
+	 */
+	autoHeld: Conversations | null;
 }
 
 /** The answer of every `/api/update*` route. */

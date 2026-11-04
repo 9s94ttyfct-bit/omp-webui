@@ -1,7 +1,7 @@
 ---
 title: Appearance and layout
-summary: Theme, colour palette, live animations, language, sidebar and side panel widths, the side panel's two panes, and which pages the sidebar and rail offer.
-settings: theme, palette, animations, animation-intensity, reset-layout, nav-layout, language
+summary: Theme, colour palette, live animations, language, sidebar and side panel widths, the side panel's two panes, which pages the sidebar and rail offer, and whether the look and layout are kept per device.
+settings: theme, palette, animations, animation-intensity, reset-layout, device-prefs, nav-layout, language
 ---
 
 # Appearance and layout
@@ -26,16 +26,19 @@ settings: theme, palette, animations, animation-intensity, reset-layout, nav-lay
 
 ## Settings
 
+"Device preference": while **Each device keeps its own look and layout** (Settings › Look & layout › Appearance, `ompw.devicePrefs`) is on (the default), kept by the server for the pages of this computer only (every port, the Mac app, a browser on `127.0.0.1`/`localhost`); a page through the tunnel or on a network address keeps its own value in its localStorage and never sends it. With it off, a device preference is synced like the others, and a page elsewhere takes this computer's values when it is switched off. "Synced preference": the same on every page.
+
 | Key | Values | Default | Effect |
 |---|---|---|---|
-| `ompw.theme` | `dark`, `light`, `system` | `dark` | Synced preference. Light/dark mode; `system` follows the OS. |
-| `ompw.palette` | `claude`, `chatgpt`, `terminal`, `omp`, `hermes` | `claude` | Synced preference. Colour palette of the whole app. |
+| `ompw.devicePrefs` | `on`, `off` | unset (= `on`) | Synced preference. Whether the device preferences below (theme, palette, language, sidebar and side panel widths, panes, `ompw.navFolded`) are kept per device (`on`) or the same on every page (`off`). |
+| `ompw.theme` | `dark`, `light`, `system` | `dark` | Device preference. Light/dark mode; `system` follows the OS. |
+| `ompw.palette` | `claude`, `chatgpt`, `terminal`, `omp`, `hermes` | `claude` | Device preference. Colour palette of the whole app. |
 | `ompw.animations` | `on`, `off` | unset (= `off`) | Synced preference. Live animations (caret and running-time glow while generating, tool card bar, agent graph particles, completion burst). Off whatever it says while the system asks for reduced motion. |
 | `ompw.animationIntensity` | `subtle`, `normal`, `lively` | unset (= `normal`) | Synced preference. How much the live animations move; used only while `ompw.animations` is `on`. |
-| `ompw.lang` | `en`, `zh-CN` | unset: `zh-CN` if the browser language starts with `zh`, else `en` | Synced preference. UI language. |
-| `ompw.sidebarWidth` | whole number of pixels, 1–4 digits | unset: 288 | Synced preference. Sidebar width; the page clamps it to 200–480 px and to the room left for the conversation (at least 480 px). Unset by *Reset to default size*. Not used below 900 px window width (the sidebar is a drawer). |
-| `ompw.panelWidth` | whole number of pixels, 1–4 digits | unset: 400 | Synced preference. Side panel width; clamped to 280–720 px. Unset by *Reset to default size*. Not used on phone layouts (the panel is a sheet). |
-| `ompw.panelPanes` | JSON pane layout (rows of tab ids per pane, the tab each pane shows, the collapsed pane, the divider share) | unset: the default rows above | Synced preference. Side panel pane layout; the default layout is stored as unset. Unknown tab ids are dropped; tabs a later version adds go to their default row. |
+| `ompw.lang` | `en`, `zh-CN` | unset: `zh-CN` if the browser language starts with `zh`, else `en` | Device preference. UI language. |
+| `ompw.sidebarWidth` | whole number of pixels, 1–4 digits | unset: 288 | Device preference. Sidebar width; the page clamps it to 200–480 px and to the room left for the conversation (at least 480 px). Unset by *Reset to default size*. Not used below 900 px window width (the sidebar is a drawer). |
+| `ompw.panelWidth` | whole number of pixels, 1–4 digits | unset: 400 | Device preference. Side panel width; clamped to 280–720 px. Unset by *Reset to default size*. Not used on phone layouts (the panel is a sheet). |
+| `ompw.panelPanes` | JSON pane layout (rows of tab ids per pane, the tab each pane shows, the collapsed pane, the divider share) | unset: the default rows above | Device preference. Side panel pane layout; the default layout is stored as unset. Unknown tab ids are dropped; tabs a later version adds go to their default row. |
 | `ompw.navLayout` | JSON `{ v: 2, sidebar, rail }`, each `{ top, bottom, hidden }` lists of `agents`, `usage`, `memory`, `plugins`, `settings`, `guard` | unset: every page in `bottom` | Per-device localStorage key (never synced: the rail of a phone is not that of a desktop). Arrangement of the sidebar and rail pages. A copy written before Plugins (`v: 1`) that names `cli` is read with `plugins` in that place (never twice); an unknown id is dropped and a page it does not name goes to its default group. |
 
 Synced preferences are stored on the server in `ui-prefs.json` in the data folder (`~/.omp-webui` for the web version; Application Support for the macOS app) and applied to every page and port before first paint.

@@ -7,7 +7,7 @@ import "../i18n/later.ts";
 import { LANGS, type Lang, useLang, useT } from "../i18n/index.ts";
 import { setNotifications, useNotify } from "../lib/attention.ts";
 import { resetAllWidths } from "../lib/panel-widths.ts";
-import { setPref } from "../lib/prefs.ts";
+import { onPrefsChanged, setPref } from "../lib/prefs.ts";
 import { useSectionIndex } from "../lib/section-index.ts";
 import { SETTINGS_PAGE_LABEL } from "../lib/settings-page-labels.ts";
 import { lastSettingsPage, pageOfElement, rememberSettingsPage, type SettingsPageId } from "../lib/settings-pages.ts";
@@ -73,6 +73,33 @@ const SettingsHelpCard = lazy(() => import("./SettingsHelp.tsx").then((m) => ({ 
 const BrowserSettings = lazy(() =>
 	import("./settings/BrowserSettings.tsx").then((m) => ({ default: m.BrowserSettings })),
 );
+
+const devicePrefsNow = () => localStorage.getItem(PREF.devicePrefs) !== "off";
+
+/** Whether the look and layout are kept per device (`ompw.devicePrefs`, on by default): the same on every page. */
+function DevicePrefsSetting() {
+	const t = useT();
+	const [on, setOn] = useState(devicePrefsNow);
+	useEffect(() => onPrefsChanged((keys) => keys.includes(PREF.devicePrefs) && setOn(devicePrefsNow())), []);
+	return (
+		<label className="mt-3 flex cursor-pointer items-start gap-3 text-sm">
+			<input
+				type="checkbox"
+				className="mt-1 accent-[var(--accent)]"
+				data-testid="device-prefs"
+				checked={on}
+				onChange={(e) => {
+					setPref(PREF.devicePrefs, e.target.checked ? "on" : "off");
+					setOn(e.target.checked);
+				}}
+			/>
+			<span>
+				{t("pages.settingsDevicePrefs")}
+				<span className="block text-xs text-muted">{t("pages.settingsDevicePrefsHint")}</span>
+			</span>
+		</label>
+	);
+}
 
 export function SettingsPage() {
 	const t = useT();
@@ -221,7 +248,7 @@ export function SettingsPage() {
 		// this box; without it they sit against the app shell, beyond the window, and focusing one scrolls the shell.
 		// `@container`: the index below lays itself out by this box's width, not the window's.
 		<div ref={setScroller} className="@container relative h-full flex-1 overflow-y-auto" data-testid="settings-page">
-			<div ref={setColumn} className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-8">
+			<div ref={setColumn} className="mx-auto flex max-w-2xl flex-col gap-6 px-6 pt-4 pb-8 sm:pt-8">
 				<h1 className="flex items-center gap-2 text-xl font-semibold">
 					<Settings className="text-accent" /> {t("pages.settingsTitle")}
 				</h1>
@@ -283,6 +310,7 @@ export function SettingsPage() {
 								</Button>
 								<span className="text-xs text-muted">{t("pages.settingsResetLayoutHint")}</span>
 							</div>
+							<DevicePrefsSetting />
 						</section>
 						{/* Which pages the sidebar and the rail offer, and where (#654): a chunk of its own, for the keyboard's way to what a drag does. */}
 						<Suspense fallback={null}>
@@ -392,11 +420,7 @@ export function SettingsPage() {
 						</Suspense>
 						{/* omp's long-term memory is a page of Settings: this card opens it. */}
 						<section className="rounded-2xl border border-border bg-surface p-4" data-setting="memory">
-							<CardHeader
-								title={t("shell.sidebarNavMemory")}
-								icon={<Brain size={16} className="text-accent" />}
-								hint={t("pages.settingsMemoryHint")}
-							/>
+							<CardHeader title={t("shell.sidebarNavMemory")} hint={t("pages.settingsMemoryHint")} />
 							<Button data-testid="settings-open-memory" onClick={() => setView({ kind: "memory" })}>
 								<Brain size={14} /> {t("pages.settingsMemoryOpen")}
 							</Button>
@@ -455,11 +479,7 @@ export function SettingsPage() {
 						</Suspense>
 						<StarPromptSetting />
 						<section className="rounded-2xl border border-border bg-surface p-4" data-setting="cli">
-							<CardHeader
-								title={t("shell.sidebarNavCli")}
-								icon={<SquareTerminal size={16} className="text-accent" />}
-								hint={t("pages.settingsCliHint")}
-							/>
+							<CardHeader title={t("shell.sidebarNavCli")} hint={t("pages.settingsCliHint")} />
 							<Button data-testid="settings-open-cli" onClick={() => setView({ kind: "cli" })}>
 								<SquareTerminal size={14} /> {t("pages.settingsCliOpen")}
 							</Button>

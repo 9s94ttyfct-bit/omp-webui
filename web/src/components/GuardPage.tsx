@@ -104,7 +104,8 @@ export default function GuardPage() {
 	};
 
 	return shell(
-		<>
+		// The same column as Usage & cost: centred, as wide as a table of figures needs, not the whole window.
+		<div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col">
 			<div className="px-4 pt-6 sm:px-6">
 				{title}
 				<p className="mt-1 max-w-prose text-xs text-muted">{t("guard.pageHint")}</p>
@@ -160,6 +161,6 @@ export default function GuardPage() {
 					{tab === "bench" ? <GuardBench /> : null}
 				</Suspense>
 			</div>
-		</>,
+		</div>,
 	);
 }

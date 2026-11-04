@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PrefsError, UiPrefs } from "../../server/prefs.ts";
 import {
+	DEVICE_PREF_KEYS,
 	MAX_PREF_LENGTH,
 	PREF,
 	PREF_KEYS,
@@ -11,8 +12,10 @@ import {
 	PREFS_SYNC_KEY,
 	type PrefKey,
 	type PrefsSnapshot,
+	pageSnapshot,
 	parseSyncMarker,
 	reconcile,
+	type StoreSnapshot,
 	syncMarker,
 } from "../../shared/prefs.ts";
 import { runPrepaint } from "../support/prepaint.ts";
@@ -184,7 +187,7 @@ describe("the server's store", () => {
 		expect(s.rev).toBe(2);
 		expect([s.values[PREF.theme], s.values[PREF.lang], s.values[PREF.sidebarWidth]]).toEqual([null, null, null]);
 		expect([s.values[PREF.palette], s.values[PREF.panelWidth]]).toEqual(["omp", "500"]);
-		expect(prefs.inject("<script>")).not.toContain("blue");
+		expect(prefs.inject("<script>", true)).not.toContain("blue");
 	});
 
 	test("two servers on one data dir do not overwrite each other: a change is merged into what the file holds, and the revision only goes up", () => {
@@ -243,6 +246,7 @@ describe("the server's store", () => {
 		prefs.apply({ [PREF.cwd]: hostile });
 		const html = prefs.inject(
 			"<html><head><script>prepaint()</script></head><body><script src=a.js></script></body></html>",
+			true,
 		);
 		const open = `<script type="application/json" id="${PREFS_ELEMENT_ID}">`;
 		expect(html.indexOf(open)).toBeGreaterThan(0);
@@ -256,16 +260,41 @@ describe("the server's store", () => {
 	});
 
 	test("a page with no script is left as it is", () => {
-		expect(new UiPrefs(dir).inject("<html><body>hi</body></html>")).toBe("<html><body>hi</body></html>");
+		expect(new UiPrefs(dir).inject("<html><body>hi</body></html>", true)).toBe("<html><body>hi</body></html>");
+	});
+
+	test("a page that is not on this computer is given no device keys, in the page as anywhere else", () => {
+		const prefs = new UiPrefs(dir);
+		const full = prefs.apply({ [PREF.theme]: "light", [PREF.lang]: "zh-CN", [PREF.autoTitle]: "off" });
+		const away = pageSnapshot(full, false);
+		expect([away.id, away.rev]).toEqual([full.id, full.rev]);
+		expect(Object.keys(away.values).sort()).toEqual(PREF_KEYS.filter((k) => !DEVICE_PREF_KEYS.includes(k)).sort());
+		expect(away.values[PREF.autoTitle]).toBe("off");
+		expect(pageSnapshot(full, true)).toEqual(full);
+
+		const open = `<script type="application/json" id="${PREFS_ELEMENT_ID}">`;
+		const carried = (html: string) =>
+			JSON.parse(html.slice(html.indexOf(open) + open.length, html.indexOf("</script>", html.indexOf(open))));
+		expect(carried(prefs.inject("<script>", false))).toEqual(away);
+		expect(carried(prefs.inject("<script>", true))).toEqual(full);
+	});
+
+	test("with the look and layout following the person (ompw.devicePrefs off) every page is given every key", () => {
+		const prefs = new UiPrefs(dir);
+		const full = prefs.apply({ [PREF.theme]: "light", [PREF.devicePrefs]: "off" });
+		expect(pageSnapshot(full, false)).toEqual(full);
+		// Back on: the device keys stop reaching a page elsewhere again.
+		const again = prefs.apply({ [PREF.devicePrefs]: "on" });
+		expect(pageSnapshot(again, false).values[PREF.theme]).toBeUndefined();
 	});
 });
 
 // ------------------------------------------------------------------ reconcile and index.html
 
-const snap = (values: Partial<Record<PrefKey, string>>, rev = 5): PrefsSnapshot => ({
+const snap = (values: Partial<Record<PrefKey, string>>, rev = 5): StoreSnapshot => ({
 	id: "store-1",
 	rev,
-	values: Object.fromEntries(PREF_KEYS.map((k) => [k, values[k] ?? null])) as PrefsSnapshot["values"],
+	values: Object.fromEntries(PREF_KEYS.map((k) => [k, values[k] ?? null])) as StoreSnapshot["values"],
 });
 const local = (values: Partial<Record<PrefKey, string>>) =>
 	Object.fromEntries(PREF_KEYS.map((k) => [k, values[k] ?? null])) as Record<PrefKey, string | null>;
@@ -310,6 +339,24 @@ describe("an origin's copy and the server's store", () => {
 		expect(reconcile(snap(values), null, local(values))).toEqual({ adopt: {}, upload: {} });
 	});
 
+	test("a page that is not on this computer neither takes nor sends a device key, whatever its marker says", () => {
+		const store = snap({
+			[PREF.theme]: "dark",
+			[PREF.lang]: "en",
+			[PREF.sidebarWidth]: "400",
+			[PREF.autoTitle]: "off",
+		});
+		const mine = local({ [PREF.theme]: "light", [PREF.palette]: "hermes", [PREF.cwd]: "/work" });
+		const others = (changes: Record<string, string | null>) =>
+			Object.fromEntries(Object.entries(changes).filter(([k]) => !DEVICE_PREF_KEYS.includes(k as PrefKey)));
+		for (const marker of [null, "other:5", syncMarker({ id: "store-1", rev: 2 }), syncMarker(store)]) {
+			const away = reconcile(pageSnapshot(store, false), marker, mine);
+			// The other keys are brought together as on this computer.
+			const here = reconcile(store, marker, mine);
+			expect(away, String(marker)).toEqual({ adopt: others(here.adopt), upload: others(here.upload) });
+		}
+	});
+
 	test("a marker is read back as written; anything else is no marker", () => {
 		expect(parseSyncMarker(syncMarker({ id: "a-b:c", rev: 12 }))).toEqual({ id: "a-b:c", rev: 12 });
 		for (const bad of [null, "", "x", ":3", "x:", "x:y", "x:-1", "x:1.5"]) {
@@ -337,25 +384,30 @@ describe("index.html applies the store before first paint", () => {
 	];
 
 	for (const [name, marker] of MARKERS) {
-		test(`leaves localStorage as \`reconcile\` says to, for an origin with ${name}`, () => {
-			const values: Partial<Record<PrefKey, string>> = {};
-			const mine: Partial<Record<PrefKey, string>> = {};
-			PREF_KEYS.forEach((k, i) => {
-				const [server, own] = PAIRS[i % PAIRS.length];
-				if (server !== null) values[k] = server;
-				if (own !== null) mine[k] = own;
-			});
-			const snapshot = snap(values);
-			const stored: Record<string, string> = { ...mine };
-			if (marker !== null) stored[PREFS_SYNC_KEY] = marker;
+		for (const onThisComputer of [true, false]) {
+			const where = onThisComputer ? "on this computer" : "not on this computer (no device keys in the page)";
+			test(`leaves localStorage as \`reconcile\` says to, for an origin with ${name}, ${where}`, () => {
+				const values: Partial<Record<PrefKey, string>> = {};
+				const mine: Partial<Record<PrefKey, string>> = {};
+				PREF_KEYS.forEach((k, i) => {
+					const [server, own] = PAIRS[i % PAIRS.length];
+					if (server !== null) values[k] = server;
+					if (own !== null) mine[k] = own;
+				});
+				const snapshot = pageSnapshot(snap(values), onThisComputer);
+				const stored: Record<string, string> = { ...mine };
+				if (marker !== null) stored[PREFS_SYNC_KEY] = marker;
 
-			const expected = new Map(Object.entries(stored));
-			for (const [k, v] of Object.entries(reconcile(snapshot, marker, local(mine)).adopt)) {
-				if (v === null) expected.delete(k);
-				else expected.set(k, v);
-			}
-			expect(runPrepaint(snapshot, stored).storage).toEqual(expected);
-		});
+				const expected = new Map(Object.entries(stored));
+				for (const [k, v] of Object.entries(reconcile(snapshot, marker, local(mine)).adopt)) {
+					if (v === null) expected.delete(k);
+					else expected.set(k, v);
+				}
+				const after = runPrepaint(snapshot, stored).storage;
+				expect(after).toEqual(expected);
+				if (!onThisComputer) for (const k of DEVICE_PREF_KEYS) expect(after.get(k), k).toBe(stored[k]);
+			});
+		}
 	}
 
 	test("a fresh origin shows the server's theme and palette at once, with nothing but this script run", () => {

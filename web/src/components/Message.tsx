@@ -369,11 +369,13 @@ export function TurnFooter({
 		.map(textOf)
 		.filter((t) => t.trim())
 		.join("\n\n");
+	// A turn that ended in an error has Retry under the error: the regenerate button would be a second way to do the same.
+	const retried = actions.retry !== undefined && entries.some((e) => e.id === actions.retry?.entryId);
 	return (
 		<div className="flex min-h-7 flex-wrap items-center gap-x-0.5 gap-y-0.5" data-testid="turn-footer">
 			{siblings && first ? <SiblingNav entry={first} siblings={siblings} actions={actions} /> : null}
 			{text ? <CopyButton text={text} label={t("chat.footerCopyResponse")} /> : null}
-			{!readOnly && last && actions.regenerate ? (
+			{!readOnly && last && actions.regenerate && !retried ? (
 				<IconButton label={t("chat.footerRegenerate")} size="sm" onClick={() => actions.regenerate?.(last)}>
 					<RefreshCw size={14} />
 				</IconButton>

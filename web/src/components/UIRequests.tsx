@@ -346,11 +346,15 @@ function Body({ req, liveId }: { req: UIRequest; liveId: string }) {
 							) : null}
 						</button>
 					))}
-					<div className="flex justify-end">
-						<Button variant="ghost" size="sm" className={TOUCH} onClick={cancel}>
-							{t("common.cancel")}
-						</Button>
-					</div>
+					{/* An approval with a Deny choice has no Cancel: omp takes a dismissal of it as a no, the same as Deny, and two
+					    buttons that do one thing read as two different answers. */}
+					{isApproval(req) && req.options?.some((o) => /^deny/i.test(o)) ? null : (
+						<div className="flex justify-end">
+							<Button variant="ghost" size="sm" className={TOUCH} onClick={cancel}>
+								{t("common.cancel")}
+							</Button>
+						</div>
+					)}
 				</div>
 			);
 		case "input":

@@ -316,6 +316,7 @@ function launcher(
 		api: fake.url,
 		automatic: false,
 		autoChecks: () => true,
+		autoInstall: () => false,
 		conversations: () => ({ working: 0, asking: 0, paused: 0, waiting: 0 }),
 		broadcast: (s) => l.states.push(s),
 		// What `startHidden` does on Windows, with the stand-in for PowerShell: started apart from this process, its pid.
@@ -506,6 +507,7 @@ function optionsOf(l: Launcher): ConstructorParameters<typeof AppUpdater>[0] {
 		api: fake.url,
 		automatic: false,
 		autoChecks: () => true,
+		autoInstall: () => false,
 		conversations: () => ({ working: 0, asking: 0, paused: 0, waiting: 0 }),
 		broadcast: () => {},
 	};

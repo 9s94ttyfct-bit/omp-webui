@@ -553,7 +553,10 @@ export type ServerMessage =
 	 * applies instead of what it holds, so that its next change is made on top of this one and not of what it saw before.
 	 */
 	| { t: "mode_settings"; state: ModeState }
-	/** The UI preferences (shared/prefs.ts) changed, from any page: every page shows them. */
+	/**
+	 * The UI preferences (shared/prefs.ts) changed, from any page: every page shows them, as it is given them (`pageSnapshot`:
+	 * a page that is not on this computer is told no device keys).
+	 */
 	| { t: "prefs"; snapshot: PrefsSnapshot }
 	/**
 	 * "Guard dangerous commands" (shared/guard.ts) decided a call, in any conversation: said to the pages on this computer

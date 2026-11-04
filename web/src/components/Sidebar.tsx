@@ -7,6 +7,8 @@ import {
 	ArchiveRestore,
 	ArrowLeft,
 	ArrowUpDown,
+	ChevronDown,
+	ChevronUp,
 	FolderKanban,
 	FolderPlus,
 	ListChecks,
@@ -40,8 +42,10 @@ import {
 	SESSION_SORTS,
 	type SessionSort,
 	sessionGroups,
+	setNavFolded,
 	setPinnedFolded,
 	setSessionSort,
+	useNavFolded,
 	usePinnedFolded,
 	useSessionSort,
 } from "../lib/session-order.ts";
@@ -191,6 +195,7 @@ export function Sidebar() {
 	const pinSet = useMemo(() => new Set(pins), [pins]);
 	const sort = useSessionSort();
 	const pinnedFolded = usePinnedFolded();
+	const navFolded = useNavFolded();
 	/** The conversations working now (#699): first after the pinned ones, whatever the order. */
 	const workingFiles = useMemo(() => {
 		const out = new Set<string>();
@@ -239,9 +244,13 @@ export function Sidebar() {
 	const pinnedLabel = t("shell.sidebarPinned");
 	const byNameLabel = t("shell.sidebarByName");
 	const inMessagesLabel = t("shell.sidebarInMessages");
+	const looseLabel = t("shell.sidebarAlsoMatching");
+	/** The headings a search's ranked list still draws: the looser matches' and the content matches'. */
+	const headed = useMemo(() => new Set([looseLabel, inMessagesLabel]), [looseLabel, inMessagesLabel]);
+	const loose = results?.loose;
 	const groups = useMemo(() => {
 		const named = sessionGroups({
-			sessions: visible,
+			sessions: loose?.size ? visible.filter((s) => !loose.has(s.file)) : visible,
 			pins,
 			sort,
 			working: workingFiles,
@@ -253,10 +262,16 @@ export function Sidebar() {
 			pinnedFolded,
 			inProject,
 		});
-		// Content matches are not grouped with the names: every name match comes first, a pinned content match too.
-		return content?.length ? [...named, [inMessagesLabel, content] as [string, SessionSummary[]]] : named;
+		// The looser matches come after every match of the name as typed, a pinned one too, and the content matches last.
+		const looser = loose?.size ? visible.filter((s) => loose.has(s.file)) : [];
+		return [
+			...named,
+			...(looser.length ? [[looseLabel, looser] as [string, SessionSummary[]]] : []),
+			...(content?.length ? [[inMessagesLabel, content] as [string, SessionSummary[]]] : []),
+		];
 	}, [
 		visible,
+		loose,
 		pins,
 		sort,
 		workingFiles,
@@ -266,6 +281,7 @@ export function Sidebar() {
 		pinnedFolded,
 		content,
 		inMessagesLabel,
+		looseLabel,
 		inProject,
 	]);
 	/** How many pinned conversations the list holds: what the folded Pinned heading says it hides (#700). */
@@ -601,6 +617,7 @@ export function Sidebar() {
 					marks={marks}
 					hits={hits}
 					ranked={searching}
+					headed={headed}
 					focusFirst={focusFirstRow}
 					actions={listActions}
 					foldable={
@@ -752,14 +769,39 @@ export function Sidebar() {
 			) : (
 				<div className="border-t border-border">
 					<StarPrompt />
-					<div className="space-y-0.5 p-2">
-						<NavGroup variant="rows" surface="sidebar" group="hidden" remote={remotePage} />
-						<NavGroup variant="rows" surface="sidebar" group="bottom" remote={remotePage} />
-						{meta ? (
-							<div className="px-2.5 pt-1 text-xs text-faint" data-testid="app-versions">
-								omp {meta.ompVersion} · webui {meta.serverVersion}
+					<div className="space-y-0.5 p-2" data-testid="sidebar-footer" data-folded={navFolded ? "on" : "off"}>
+						{navFolded ? (
+							// Folded: the pages as one row of icons, so a short window keeps more conversations in sight.
+							<div className="flex items-center gap-1">
+								<div className="min-w-0 flex-1">
+									<NavGroup variant="strip" surface="sidebar" group="bottom" remote={remotePage} />
+								</div>
+								<IconButton
+									label={t("shell.navUnfold")}
+									data-testid="sidebar-footer-fold"
+									onClick={() => setNavFolded(false)}
+								>
+									<ChevronUp size={16} />
+								</IconButton>
 							</div>
-						) : null}
+						) : (
+							<>
+								<NavGroup variant="rows" surface="sidebar" group="hidden" remote={remotePage} />
+								<NavGroup variant="rows" surface="sidebar" group="bottom" remote={remotePage} />
+								<div className="flex items-center gap-1 pl-2.5">
+									<div className="min-w-0 flex-1 truncate text-xs text-faint" data-testid="app-versions">
+										{meta ? `omp ${meta.ompVersion} · webui ${meta.serverVersion}` : null}
+									</div>
+									<IconButton
+										label={t("shell.navFold")}
+										data-testid="sidebar-footer-fold"
+										onClick={() => setNavFolded(true)}
+									>
+										<ChevronDown size={16} />
+									</IconButton>
+								</div>
+							</>
+						)}
 						<HostChip variant="line" />
 						<UpdateIndicator />
 						<RemoteIndicator />

@@ -1,3 +1,4 @@
+import { working } from "@shared/attention.ts";
 import type { PanelTab } from "@shared/panes.ts";
 import type { FamilyStats, SessionEntry, SessionFileData } from "@shared/protocol.ts";
 import {
@@ -26,7 +27,9 @@ import type { Family } from "../lib/family.ts";
 import { fmtCost, fmtCostExact, fmtRelative, fmtTokens } from "../lib/format.ts";
 import { PANEL_SHEET_QUERY, useMediaQuery } from "../lib/media.ts";
 import { blocks, messageOf } from "../lib/messages.ts";
+import { useNow } from "../lib/now.ts";
 import { useLayout } from "../lib/panel-widths.ts";
+import { serverOffsetMs } from "../lib/server-clock.ts";
 import { useStable } from "../lib/stable.ts";
 import type { StartLive } from "../lib/start-live.ts";
 import { jobRows } from "../lib/subagents.ts";
@@ -408,21 +411,30 @@ function SessionInfo({
 	const t = useT();
 	const [stats, setStats] = useState<SessionStats | null>(null);
 	const liveId = live && !live.info.exited ? live.info.liveId : null;
+	// omp's counts are asked for again after each new entry and each tool call that ends (a long turn writes few entries).
 	const entriesKey = live?.entries.length ?? 0;
-	// biome-ignore lint/correctness/useExhaustiveDependencies: entriesKey re-fetches omp's stats after each new entry.
+	const toolsDone = live ? Object.values(live.tools ?? {}).filter((x) => x.done).length : 0;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: entriesKey and toolsDone re-fetch omp's stats.
 	useEffect(() => {
 		if (!liveId) return setStats(null);
 		socket
 			.rpc<SessionStats>(liveId, { type: "get_session_stats" })
 			.then(setStats)
 			.catch(() => setStats(null));
-	}, [liveId, entriesKey]);
+	}, [liveId, entriesKey, toolsDone]);
+	// While a turn runs, the time worked counts up each second as the status line's does (on the server's clock, which
+	// the transcript's times are on), not only when an entry is saved.
+	const busy = !!liveId && !!live && working(live) && !live.info.pausedAt;
+	const now = useNow(busy ? 1000 : null);
 	const summary = useApp((s) => s.sessions.find((x) => x.file === file));
 	const entries = live?.entries.length ? live.entries : (fileData?.entries ?? NO_ENTRIES);
 	const byModel = useMemo(() => usageByModel(entries, figures), [entries, figures]);
 	// How long the agent has worked in all (#692): its own turns (the whole file's clock, `figures`, when the page holds a
 	// part of it) and every subagent's, nested ones included, as their saved transcripts count it.
-	const ownMs = useMemo(() => activeMs(entries, figures), [entries, figures]);
+	const ownMs = useMemo(
+		() => activeMs(entries, figures, busy ? now + serverOffsetMs() : undefined),
+		[entries, figures, busy, now],
+	);
 	const workedMs = ownMs + totals.subagentActiveMs;
 	// First element is the stable English id exposed as `data-stat` (E2E selects on it); second is the label.
 	const rows: [string, string, string][] = [];

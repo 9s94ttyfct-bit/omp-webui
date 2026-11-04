@@ -7,7 +7,7 @@ import {
 	SELECTOR_LEVELS,
 	selectorProblem,
 } from "@shared/model-config.ts";
-import { BookmarkPlus, Cpu, Plus, Undo2, X } from "lucide-react";
+import { BookmarkPlus, Plus, Undo2, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import "../i18n/later.ts";
 import { type MessageKey, useT } from "../i18n/index.ts";
@@ -315,7 +315,7 @@ export function ModelRolesEditor({
 
 	return (
 		<section className="rounded-2xl border border-border bg-surface p-4" data-testid="model-roles">
-			<CardHeader icon={<Cpu size={16} />} title={t("presets.rolesTitle")} hint={t("presets.rolesHint")} />
+			<CardHeader title={t("presets.rolesTitle")} hint={t("presets.rolesHint")} />
 			<RolesFields
 				rows={draft.rows}
 				thinking={draft.thinking}

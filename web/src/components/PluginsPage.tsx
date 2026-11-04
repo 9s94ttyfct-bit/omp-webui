@@ -237,7 +237,7 @@ export function PluginsPage() {
 	const needsList = tab === "installed" || tab === "discover" || tab === "marketplaces";
 	return (
 		<div className="h-full min-w-0 flex-1 overflow-y-auto" data-testid="plugins-page">
-			<div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
+			<div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 pt-4 pb-6 sm:px-6 sm:py-8">
 				<div className="flex flex-wrap items-center gap-3">
 					<h1 className="flex min-w-0 flex-1 items-center gap-2 text-xl font-semibold">
 						<Puzzle className="shrink-0 text-accent" /> {t("plugins.title")}

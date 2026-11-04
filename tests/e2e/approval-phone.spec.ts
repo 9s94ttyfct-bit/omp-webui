@@ -240,7 +240,8 @@ async function expectToastsAboveCard(page: Page) {
 		.toBe("above");
 }
 
-const CHOICES = ["Approve", "Approve bash for this session", "Deny", "Cancel"];
+// An approval that offers Deny has no Cancel beside it: Deny is the way out.
+const CHOICES = ["Approve", "Approve bash for this session", "Deny"];
 const READ_CHOICES = [
 	/^Approve Directory/,
 	"Approve File",
@@ -248,7 +249,6 @@ const READ_CHOICES = [
 	"Always Approve File",
 	"Approve Once",
 	"Deny",
-	"Cancel",
 ];
 
 for (const name of PHONES) {
@@ -377,7 +377,7 @@ for (const name of LANDSCAPE) {
 				await expectToastsAboveCard(phone.page);
 				// The strip gives way to the request while it waits, and is back once it is answered.
 				await expect(phone.page.getByTestId("todo-strip")).toBeHidden();
-				// All four, none of them scrolled to: Approve, Approve for the session, Deny and Cancel.
+				// All three, none of them scrolled to: Approve, Approve for the session and Deny.
 				await expectTappable(phone.page, CHOICES, CHOICES.length);
 				expect(await unscrolled(phone.page), "nothing was scrolled").toBe(true);
 				expect(await whole(phone.page), "the request is whole").toBe(true);

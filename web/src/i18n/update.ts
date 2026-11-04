@@ -108,4 +108,8 @@ export const en = {
 	// The setting
 	auto: "Check for updates automatically",
 	autoHint: "Looks at start and every 6 hours. “Check now” always works, whatever this is set to.",
+	autoInstall: "Install updates automatically",
+	autoInstallHint:
+		"Downloads, checks and installs a new version by itself, then restarts the app, once no conversation is working, paused or waiting. A version whose automatic install did not work out is left for you to install.",
+	autoHeld: "Installs {version} by itself once the conversations finish ({n} still open).",
 };

@@ -1,7 +1,7 @@
 import type { BrowserAutoCheck } from "@shared/browser.ts";
 import { BROWSER_SIZE_BOUNDS, DESKTOP_SIZE, formatBrowserSize, parseBrowserSize } from "@shared/browser-protocol.ts";
 import { PREF } from "@shared/prefs.ts";
-import { Globe, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { en } from "../../i18n/browser.ts";
 import { registerStrings, useT } from "../../i18n/index.ts";
@@ -64,7 +64,7 @@ export function BrowserSettings() {
 			data-testid="browser-settings"
 			data-setting="browser"
 		>
-			<CardHeader icon={<Globe size={16} />} title={t("browser.title")} hint={t("browser.hint")} />
+			<CardHeader title={t("browser.title")} hint={t("browser.hint")} />
 			<label className="flex cursor-pointer items-start gap-3 text-sm">
 				<input
 					type="checkbox"

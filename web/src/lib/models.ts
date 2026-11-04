@@ -14,6 +14,28 @@ export function sharedLabels(models: readonly ModelInfo[]): Set<string> {
 	return shared;
 }
 
+/**
+ * The day a dated snapshot of a model was made (`claude-sonnet-4-5-20250929` → `2025-09-29`), or null for an id without
+ * one: what tells a snapshot from the model of the same name in a list.
+ */
+export function snapshotDate(id: string): string | null {
+	const m = /-(\d{4})(\d{2})(\d{2})$/.exec(id);
+	return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+}
+
+/**
+ * `model` with the name the catalog lists it under, when it has none of its own (a saved conversation's model is its
+ * provider and id only): the name it is shown by while omp runs, so it does not change when the conversation starts.
+ */
+export function namedFrom<T extends { provider: string; id: string; name?: string }>(
+	model: T,
+	catalog: readonly ModelInfo[] | null,
+): T {
+	if (model.name) return model;
+	const name = catalog?.find((m) => m.provider === model.provider && m.id === model.id)?.name;
+	return name ? { ...model, name } : model;
+}
+
 /** The thinking levels omp has for most models: what is offered when it is not running to say which this one has. */
 const USUAL_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"];
 

@@ -1,5 +1,5 @@
 import type { ProjectsInfo } from "@shared/projects.ts";
-import { Check, FolderCog, TriangleAlert } from "lucide-react";
+import { Check, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useT } from "../i18n/index.ts";
 import { shortPath } from "../lib/format.ts";
@@ -63,7 +63,7 @@ export function ProjectsSettings() {
 
 	return (
 		<section className="rounded-2xl border border-border bg-surface p-4" data-testid="projects-settings">
-			<CardHeader title={t("projects.title")} icon={<FolderCog size={16} />} hint={t("projects.hint")} />
+			<CardHeader title={t("projects.title")} hint={t("projects.hint")} />
 			<form
 				className="flex flex-wrap items-center gap-2"
 				onSubmit={(e) => {

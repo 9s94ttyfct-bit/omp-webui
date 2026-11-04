@@ -16,7 +16,8 @@
 			(() => {
 				const root = document.documentElement;
 				// The server's copy of the preferences (shared/prefs.ts) is in the page; apply it before anything reads
-				// localStorage, as `reconcile` there says (a test holds the two to the same answers).
+				// localStorage, as `reconcile` there says (a test holds the two to the same answers). Only the keys it carries:
+				// a page that is not on this computer is given none of the device's look and layout, and keeps its own.
 				try {
 					const el = document.getElementById("ompw-prefs");
 					if (el) {

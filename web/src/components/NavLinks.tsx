@@ -17,8 +17,11 @@ import { cx, IconButton } from "./ui.tsx";
  */
 
 export interface NavGroupProps {
-	/** Labelled rows (the sidebar), or icon buttons (the rail). */
-	variant: "rows" | "icons";
+	/**
+	 * Labelled rows (the sidebar), icon buttons in a column (the rail), or icon buttons in one row (the sidebar's footer
+	 * folded, to leave the conversations its room: the items are rearranged in the unfolded rows, not here).
+	 */
+	variant: "rows" | "icons" | "strip";
 	surface: NavSurface;
 	group: Group;
 	/** This page is not on this computer: the items that are a setting of this Mac are left out (the guard). */
@@ -102,6 +105,30 @@ function Icons({ surface, group, remote }: Omit<NavGroupProps, "variant">) {
 	);
 }
 
+/** A group of the folded sidebar footer: one icon button per item, in a row, its name a tooltip and its `aria-label`. */
+function Strip({ surface, group, remote }: Omit<NavGroupProps, "variant">) {
+	const t = useT();
+	const current = useApp((s) => (s.view.kind === "cli" || s.view.kind === "memory" ? "settings" : s.view.kind));
+	const setView = useApp((s) => s.setView);
+	const items = navItemsIn(useNavLayout(), surface, group, { remote });
+	return (
+		<div className="flex flex-wrap items-center gap-1 px-1" data-testid={`nav-strip-${surface}-${group}`}>
+			{items.map((item) => (
+				<IconButton
+					key={item.id}
+					label={t(item.labelKey)}
+					active={current === item.id}
+					aria-current={current === item.id ? "page" : undefined}
+					data-testid={`nav-${item.id}`}
+					onClick={() => setView({ kind: item.id } as never)}
+				>
+					<item.icon size={16} />
+				</IconButton>
+			))}
+		</div>
+	);
+}
+
 /** Where an item dragged out of a bar is dropped to take it off: shown only while something is dragged (`index.css`). */
 function HideZone({ variant, surface }: Pick<NavGroupProps, "variant" | "surface">) {
 	const t = useT();
@@ -121,5 +148,11 @@ function HideZone({ variant, surface }: Pick<NavGroupProps, "variant" | "surface
 /** One group of a bar, or (`hidden`) the zone that takes an item off it. */
 export function NavGroup(props: NavGroupProps) {
 	if (props.group === "hidden") return <HideZone variant={props.variant} surface={props.surface} />;
-	return props.variant === "rows" ? <Rows {...props} /> : <Icons {...props} />;
+	return props.variant === "rows" ? (
+		<Rows {...props} />
+	) : props.variant === "strip" ? (
+		<Strip {...props} />
+	) : (
+		<Icons {...props} />
+	);
 }

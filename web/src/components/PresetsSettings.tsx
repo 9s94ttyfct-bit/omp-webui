@@ -1,5 +1,5 @@
 import { activeFirst, type ModelConfig, type ModelPreset } from "@shared/model-config.ts";
-import { BookmarkPlus, Bot, Copy, Layers, Lock, Pencil, SlidersHorizontal, Trash2 } from "lucide-react";
+import { BookmarkPlus, Bot, Copy, Lock, Pencil, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
@@ -89,7 +89,6 @@ export function PresetsSettings({
 	return (
 		<section className="rounded-2xl border border-border bg-surface p-4" data-testid="model-presets">
 			<CardHeader
-				icon={<Layers size={16} />}
 				title={t("presets.listTitle")}
 				hint={t("presets.listHint")}
 				action={

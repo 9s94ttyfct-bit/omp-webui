@@ -1,4 +1,5 @@
 import type { Holds } from "@shared/omp-install.ts";
+import "../i18n/later.ts";
 import type { MessageKey, Vars } from "../i18n/index.ts";
 
 /** What an update waits for, in words, by what each conversation is doing: `2 working, 1 paused`; only the kinds there are. */

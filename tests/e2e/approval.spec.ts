@@ -319,7 +319,7 @@ test("Ask and remember's prompt offers its grants: a long folder path wraps insi
 	});
 	const prompt = page.getByTestId("ui-request");
 	await expect(prompt).toHaveAttribute("data-approval", "true");
-	await expect(prompt.getByRole("button")).toHaveCount(7); // six choices and Cancel
+	await expect(prompt.getByRole("button")).toHaveCount(6); // six choices; Deny stands for Cancel
 	await expect(prompt.getByRole("button", { name: "Deny" })).toHaveClass(/text-danger/);
 	await expect(prompt.getByRole("button", { name: "Always Approve File" })).not.toHaveClass(/text-danger/);
 	const box = await prompt.boundingBox();

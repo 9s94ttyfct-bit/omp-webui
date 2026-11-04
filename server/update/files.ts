@@ -14,6 +14,8 @@ import { ensurePrivateDir } from "../private.ts";
  *   an update, and the next server looks for it to say that it is up (`ack.json`).
  * - `ack.json`     written by the new server: it started, as the version the helper installed.
  * - `result.json`  how an update ended, for the page to show until it is dismissed.
+ * - `auto-skip.json` the version an automatic install gave up on (it failed, was cancelled or rolled back): not tried
+ *   again by itself.
  */
 
 export interface UpdatePaths {
@@ -22,6 +24,7 @@ export interface UpdatePaths {
 	handover: string;
 	ack: string;
 	result: string;
+	autoSkip: string;
 	helper: string;
 	/** The Windows launcher's helper (`helper.ps1`); `helper` is the macOS app's. */
 	helperWindows: string;
@@ -36,6 +39,7 @@ export function updatePaths(dataDir: string): UpdatePaths {
 		handover: join(dir, "handover.json"),
 		ack: join(dir, "ack.json"),
 		result: join(dir, "result.json"),
+		autoSkip: join(dir, "auto-skip.json"),
 		helper: join(dir, "helper.sh"),
 		helperWindows: join(dir, "helper.ps1"),
 		helperLog: join(dir, "helper.log"),

@@ -5,6 +5,10 @@
  * taken. So the server keeps these keys in its data dir (`ui-prefs.json`) and hands them to every page it serves;
  * `web/index.html` applies them to localStorage before first paint, and `web/src/lib/prefs.ts` sends changes back.
  *
+ * How the app looks and is laid out (`DEVICE_PREF_KEYS`) belongs, unless the person turns that off (`ompw.devicePrefs`), to
+ * the device it is shown on: the server shares those keys between the pages of this computer only, and a page from
+ * anywhere else keeps its own in its own localStorage.
+ *
  * Only what the person chose and expects to find again is here. Per-tab scratch stays out: the chunk-reload guard
  * (`ompw.chunkReloadAt`, sessionStorage), the sync marker below, and unsent composer drafts (memory only).
  */
@@ -24,6 +28,11 @@ export const PREF = {
 	panelWidth: "ompw.panelWidth",
 	/** The side panel's two panes: the tab each shows, which one is folded, where the divider is (`shared/panes.ts`). */
 	panelPanes: "ompw.panelPanes",
+	/**
+	 * Whether the look and layout (`DEVICE_PREF_KEYS`) are kept per device: `on` (the default) shares them only between the
+	 * pages of this computer, `off` gives every page the same, as the app did before v0.18.9. Itself the same on every page.
+	 */
+	devicePrefs: "ompw.devicePrefs",
 	/** Whether notifications are wanted; what the browser allows is per origin and is asked again where it is not granted. */
 	notify: "ompw.notify",
 	/** Whether the end of a GitHub Actions run of the folder's branch is notified while the CI tab's badge watches it: `on` or `off` (the default). */
@@ -37,6 +46,11 @@ export const PREF = {
 	dismissed: "ompw.omp.dismissed",
 	/** Whether the app looks for a newer release of itself on its own (`on`, the default, or `off`); Check now always looks. */
 	appUpdateCheck: "ompw.appUpdateCheck",
+	/**
+	 * Whether the app installs a newer release of itself on its own (`on`, or `off`, the default): once nothing is working,
+	 * asking, paused or waiting, it downloads, checks and installs it and restarts (`server/update/service.ts`, `autoTry`).
+	 */
+	appAutoUpdate: "ompw.appAutoUpdate",
 	/**
 	 * What quitting the macOS app does (`ask`, the default, `background` or `quit`; see `QUIT_ACTIONS`): the shell reads it
 	 * from the server when it is asked to quit, and writes it when the person ticks "Don't ask again".
@@ -93,6 +107,11 @@ export const PREF = {
 	sessionSort: "ompw.sessionSort",
 	/** Whether the sidebar's Pinned group is folded (#700): `on` or `off` (the default). */
 	pinnedFolded: "ompw.pinnedFolded",
+	/**
+	 * Whether the sidebar's footer is folded: `on` gives its pages as one row of icons and leaves out the versions line,
+	 * so a short window keeps more conversations in sight; `off` (the default) lists them as labelled rows.
+	 */
+	navFolded: "ompw.navFolded",
 	/** How far back Usage & cost looks (#714): `24h`, `7d`, `30d` (the default) or `all`; see `shared/usage-range.ts`. */
 	usageRange: "ompw.usageRange",
 	/** Whether the session panel's Advanced settings are unfolded (#716): `on` or `off` (the default). */
@@ -142,6 +161,29 @@ export type PrefKey = (typeof PREF)[keyof typeof PREF];
 export const PREF_KEYS: readonly PrefKey[] = Object.values(PREF);
 
 export const isPrefKey = (k: unknown): k is PrefKey => (PREF_KEYS as readonly unknown[]).includes(k);
+
+/**
+ * The keys that belong to the device the page is shown on: its look (theme, palette, language) and its layout (the widths
+ * of the sidebar and the side panel, the side panel's panes, the sidebar footer's fold). A phone, or a browser on another
+ * computer, is in another light, another language and on another screen than this computer, and a choice made there must
+ * not repaint the pages here (nor the other way round). The server still keeps them, for the pages of this computer
+ * alone: those are on one device whatever port they are on (see above). See `pageSnapshot`.
+ */
+export const DEVICE_PREF_KEYS: readonly PrefKey[] = [
+	PREF.theme,
+	PREF.palette,
+	PREF.lang,
+	PREF.sidebarWidth,
+	PREF.panelWidth,
+	PREF.panelPanes,
+	PREF.navFolded,
+];
+
+export const isDevicePref = (k: unknown): k is PrefKey => (DEVICE_PREF_KEYS as readonly unknown[]).includes(k);
+
+/** Whether the store keeps the look and layout per device (`ompw.devicePrefs`, on unless set to `off`). */
+export const perDevice = (snapshot: Pick<StoreSnapshot, "values">): boolean =>
+	snapshot.values[PREF.devicePrefs] !== "off";
 
 /** The longest value kept for a key (a folder path, or a JSON list of days, is far below it). */
 export const MAX_PREF_LENGTH = 16 * 1024;
@@ -198,6 +240,7 @@ const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 	[PREF.quitAction]: oneOf(QUIT_ACTIONS),
 	[PREF.menuIcon]: switchValue,
 	[PREF.appUpdateCheck]: switchValue,
+	[PREF.appAutoUpdate]: switchValue,
 	[PREF.keepAwake]: switchValue,
 	[PREF.toolTimer]: oneOf(["all", "shell", "off"]),
 	[PREF.compactWhere]: oneOf(["turn", "step"]),
@@ -214,6 +257,8 @@ const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 	[PREF.unattended]: switchValue,
 	[PREF.sessionSort]: oneOf(["activity", "created", "title"]),
 	[PREF.pinnedFolded]: switchValue,
+	[PREF.navFolded]: switchValue,
+	[PREF.devicePrefs]: switchValue,
 	[PREF.usageRange]: oneOf(USAGE_RANGES),
 	[PREF.controlsAdvanced]: switchValue,
 	[PREF.graphGrid]: switchValue,
@@ -236,13 +281,33 @@ const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 /** Whether `value` is something the app ever writes under `key` (length is checked apart: `MAX_PREF_LENGTH`). */
 export const isValidPref = (key: PrefKey, value: string): boolean => VALID[key]?.(value) ?? true;
 
-/** What the server holds: every key, null where none is set. */
+/**
+ * What a page is given of the server's store: each key the server keeps for that page, null where none is set. A key that is
+ * not there at all (a device key, for a page that is not on this computer: `pageSnapshot`) is not the server's to say for
+ * that page, and the page keeps whatever it has of it; it never means "none".
+ */
 export interface PrefsSnapshot {
 	/** Names this store: a data dir that was wiped or replaced gets another, and pages stop trusting their copy. */
 	id: string;
 	/** Counts the changes made to the store. */
 	rev: number;
+	values: Partial<Record<PrefKey, string | null>>;
+}
+
+/** What the server holds: every key, null where none is set. */
+export interface StoreSnapshot extends PrefsSnapshot {
 	values: Record<PrefKey, string | null>;
+}
+
+/**
+ * The store as a page is given it: whole to a page on this computer (`isThisComputer` on the server), without the device keys
+ * (`DEVICE_PREF_KEYS`) to any other, so that this computer's look and layout never reach a phone or another computer; whole
+ * to every page while the person has the look and layout follow them everywhere (`perDevice`).
+ */
+export function pageSnapshot(snapshot: StoreSnapshot, onThisComputer: boolean): PrefsSnapshot {
+	if (onThisComputer || !perDevice(snapshot)) return snapshot;
+	const values = Object.fromEntries(Object.entries(snapshot.values).filter(([k]) => !isDevicePref(k)));
+	return { id: snapshot.id, rev: snapshot.rev, values };
 }
 
 /** A change to the store: a string sets a key, null forgets it. */
@@ -281,6 +346,9 @@ export const syncMarker = (s: Pick<PrefsSnapshot, "id" | "rev">): string => `${s
  * - A copy that never met this store (a first visit after an upgrade, a new port, a replaced data dir): its own values stand
  *   and go to the server, and keys it has none of are taken from the server.
  *
+ * A key the snapshot does not carry (a device key, on a page that is not on this computer) is in neither: the origin's own
+ * value is all there is of it.
+ *
  * `adopt` is what to write into this origin, `upload` what to send to the server; a key is in at most one of them.
  */
 export function reconcile(
@@ -296,7 +364,7 @@ export function reconcile(
 	for (const key of PREF_KEYS) {
 		const mine = local[key];
 		const theirs = snapshot.values[key];
-		if (mine === theirs) continue;
+		if (theirs === undefined || mine === theirs) continue;
 		if (behind || (!known && mine === null)) adopt[key] = theirs;
 		else upload[key] = mine;
 	}
