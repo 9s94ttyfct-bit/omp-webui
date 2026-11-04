@@ -63,6 +63,7 @@
     "tests/contract/remote-auth.test.ts": 7500,
     "tests/contract/dialogs.test.ts": 7471,
     "tests/contract/subagent-revive.test.ts": 7444,
+    "tests/contract/attach-running-tool.test.ts": 7000,
     "tests/contract/plan-mode.test.ts": 6911,
     "tests/contract/lifecycle.test.ts": 6588,
     "tests/unit/guard-conversation.test.ts": 6531,

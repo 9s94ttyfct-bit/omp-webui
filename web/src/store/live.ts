@@ -884,7 +884,9 @@ export function applyFrame(s: LiveState, f: OmpFrame): LiveState {
 						args: f.args,
 						intent: str(f.intent),
 						done: false,
-						startedAt: Date.now(),
+						// A start the server replays to a page that attached while the tool ran says when it began, on the
+						// server's clock (`RunningTools`); a start heard as it happens began now.
+						startedAt: typeof f.startedAt === "number" ? f.startedAt - serverOffsetMs() : Date.now(),
 					},
 				},
 			};

@@ -6,6 +6,7 @@ import { i18nReady } from "./i18n/index.ts";
 import "./index.css";
 import { startDraftPersistence } from "./lib/drafts.ts";
 import { guardDrops } from "./lib/drop-guard.ts";
+import { restartEarlyAnimations } from "./lib/early-animations.ts";
 import { startPrefsSync } from "./lib/prefs.ts";
 import { startLivePrefs } from "./lib/prefs-live.ts";
 import { keepRangeFill } from "./lib/range-fill.ts";
@@ -26,6 +27,8 @@ guardDrops();
 keepRangeFill();
 // Unsent messages survive a reload (⌘R, the one after an upgrade, a web view the system killed).
 startDraftPersistence();
+// WebKit keeps the CSS animations that began while the page loaded at a few frames a second (see `restartEarlyAnimations`).
+window.addEventListener("load", () => setTimeout(restartEarlyAnimations, 1000), { once: true });
 
 // The preferences are kept on the server too, so that another port of it (the macOS app moves when its own is taken) has them.
 void startPrefsSync();

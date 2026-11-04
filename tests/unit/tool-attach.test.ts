@@ -110,6 +110,25 @@ test("a tool that started keeps what its stream says of it", () => {
 	expect(s.tools.call_edit).toMatchObject({ done: false, partial: { path: "a.ts" } });
 });
 
+test("a start the server replays to a page that attached late runs since when it began, on this page's clock", () => {
+	const began = Date.now() - 42_000;
+	const s = fold([
+		{
+			type: "tool_execution_start",
+			toolCallId: "call_q",
+			toolName: "bash",
+			args: { command: "sleep 600" },
+			startedAt: began,
+		},
+	]);
+	// Not a call the page missed the start of: its bar and its clock run, from the real start.
+	expect(s.tools.call_q).toMatchObject({ done: false, startedAt: began });
+	expect(s.tools.call_q.late).toBeUndefined();
+	// A start heard as it happens began now.
+	const now = fold([{ type: "tool_execution_start", toolCallId: "call_n", toolName: "bash", args: {} }]);
+	expect(Math.abs(now.tools.call_n.startedAt - Date.now())).toBeLessThan(1000);
+});
+
 const resultEntry = (id: string, toolCallId: string): SessionEntry => ({
 	type: "message",
 	id,

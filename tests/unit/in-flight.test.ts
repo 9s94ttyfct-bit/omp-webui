@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { InFlightMessage, mayRewriteEntries } from "../../server/omp/in-flight.ts";
+import { InFlightMessage, mayRewriteEntries, RunningTools } from "../../server/omp/in-flight.ts";
 import { isRecord } from "../../shared/guards.ts";
 import type { OmpFrame } from "../../shared/protocol.ts";
 
@@ -124,4 +124,41 @@ test("a frame that streams content, reports progress or asks the user cannot rew
 		"session_settled",
 	])
 		expect(mayRewriteEntries({ type }), type).toBe(true);
+});
+
+/** The tools omp runs, kept so that a tab that attaches while one runs shows it running (bar, clock) at once. */
+
+const tool = (type: string, toolCallId: string, extra: Record<string, unknown> = {}): OmpFrame => ({
+	type,
+	toolCallId,
+	...extra,
+});
+
+test("each running call is replayed as its start, stamped with when it began, then its latest output only", () => {
+	const r = new RunningTools();
+	r.note(tool("tool_execution_start", "a", { toolName: "bash", args: { command: "sleep 9" } }), 1000);
+	r.note(tool("tool_execution_start", "b", { toolName: "read" }), 2000);
+	r.note(tool("tool_execution_update", "a", { partialResult: "one" }), 3000);
+	r.note(tool("tool_execution_update", "a", { partialResult: "two" }), 4000);
+	expect(r.replay()).toEqual([
+		tool("tool_execution_start", "a", { toolName: "bash", args: { command: "sleep 9" }, startedAt: 1000 }),
+		tool("tool_execution_update", "a", { partialResult: "two" }),
+		tool("tool_execution_start", "b", { toolName: "read", startedAt: 2000 }),
+	]);
+});
+
+test("a call that ended is not replayed, nor is anything once the turn ends; output of a call never started is dropped", () => {
+	const r = new RunningTools();
+	r.note(tool("tool_execution_update", "x", { partialResult: "?" }));
+	expect(r.replay()).toEqual([]);
+	r.note(tool("tool_execution_start", "a"));
+	r.note(tool("tool_execution_start", "b"));
+	r.note(tool("tool_execution_end", "a", { result: {} }));
+	expect(r.replay().map((f) => f.toolCallId)).toEqual(["b"]);
+	// A stopped turn may not end its calls.
+	r.note({ type: "agent_end" });
+	expect(r.replay()).toEqual([]);
+	r.note(tool("tool_execution_start", "c"));
+	r.note({ type: "session_settled" });
+	expect(r.replay()).toEqual([]);
 });

@@ -90,6 +90,45 @@ export class InFlightMessage {
 }
 
 /**
+ * The tools omp runs now. A tab that attaches while one runs (a reload, the Mac app's window opened again, a second tab)
+ * missed its start, and of a tool that prints nothing (a quiet `bash`, a `sleep`) it hears nothing until the end: it
+ * showed the call as one about to start, with no bar and no clock. The server keeps each running call's start, stamped
+ * with when it began on the server's clock (`startedAt`), and its latest output, and replays them.
+ */
+export class RunningTools {
+	private readonly calls = new Map<string, { start: OmpFrame; update?: OmpFrame }>();
+
+	/** Take one frame omp sent (`now`: the server's clock). Nothing is changed in `frame`: the tabs hold the same object. */
+	note(frame: OmpFrame, now: number = Date.now()): void {
+		switch (frame.type) {
+			case "tool_execution_start": {
+				const id = str(frame.toolCallId);
+				if (id) this.calls.set(id, { start: { ...frame, startedAt: now } });
+				return;
+			}
+			case "tool_execution_update": {
+				const call = this.calls.get(str(frame.toolCallId) ?? "");
+				if (call) call.update = frame;
+				return;
+			}
+			case "tool_execution_end":
+				this.calls.delete(str(frame.toolCallId) ?? "");
+				return;
+			// A turn that is stopped may not end its calls; nothing runs after it.
+			case "agent_end":
+			case "session_settled":
+				this.calls.clear();
+				return;
+		}
+	}
+
+	/** Each running call's start, then its latest output, in the order the calls started. */
+	replay(): OmpFrame[] {
+		return [...this.calls.values()].flatMap((c) => (c.update ? [c.start, c.update] : [c.start]));
+	}
+}
+
+/**
  * Frames that cannot change an entry omp already wrote: streamed content, progress, dialogs and the like. Every other
  * frame moves `LiveInfo.revision`, because a rewrite (a failure a retry got past, what a shake shortened, an image
  * dropped) comes with whichever frame its operation sends, and not every operation says what it did.

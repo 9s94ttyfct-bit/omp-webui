@@ -89,7 +89,7 @@ import type { GuidanceHooks } from "./omp/guidance/hooks.ts";
 import type { KeptGuidance } from "./omp/guidance/session.ts";
 import { HeldState } from "./omp/held.ts";
 import type { HostToolResult, HostToolServer } from "./omp/host-tools.ts";
-import { InFlightMessage, mayRewriteEntries } from "./omp/in-flight.ts";
+import { InFlightMessage, mayRewriteEntries, RunningTools } from "./omp/in-flight.ts";
 import { InterviewStore } from "./omp/interviews.ts";
 import { hasCommand } from "./omp/loaded.ts";
 import { type Absent, absentModels, conversationPreset, presetAsDefined } from "./omp/model-config.ts";
@@ -360,6 +360,8 @@ export class Live {
 	private readonly pendingUI = new Map<string, OmpFrame>();
 	/** The message omp is writing now, replayed to a tab that attaches in the middle of it (see `InFlightMessage`). */
 	private readonly writing = new InFlightMessage();
+	/** The tools omp runs now, replayed to a tab that attaches while they run (see `RunningTools`). */
+	private readonly running = new RunningTools();
 	/** The last reply of this turn, as one line cut short (what a notification that opted in to a preview says: `previewText`); reset when a turn begins. */
 	private lastReply: string | null = null;
 	/** What omp said once that a tab that attaches later still shows: a compaction, extension status lines, `!commands` that run (see `HeldState`). */
@@ -2192,6 +2194,7 @@ export class Live {
 		if (frame.type === "extension_ui_request" && this.compactQueue.frame(frame)) return;
 		if (mayRewriteEntries(frame)) this.info.revision = (this.info.revision ?? 0) + 1;
 		this.writing.note(frame);
+		this.running.note(frame);
 		this.held.note(frame);
 		if (frame.type === "agent_start") {
 			this.untouched = false;
@@ -2369,15 +2372,16 @@ export class Live {
 	/**
 	 * Bring a tab that attached after things were sent up to date (a reload, a second tab, a reconnect): re-send the
 	 * dialogs omp is still waiting on (ask, confirm, select, input, editor, a host tool call), the message omp is
-	 * writing and what omp said once that still holds (a compaction, status lines and widgets of extensions, the
-	 * `!commands` that run: see `HeldState`), then say that this is all there is, so that the tab drops what it still
-	 * holds beyond it (a dialog settled while it was away). Call right after the attach reply: the tab must hear nothing
-	 * in between.
+	 * writing, the tools it runs (see `RunningTools`) and what omp said once that still holds (a compaction, status lines
+	 * and widgets of extensions, the `!commands` that run: see `HeldState`), then say that this is all there is, so that
+	 * the tab drops what it still holds beyond it (a dialog settled while it was away). Call right after the attach
+	 * reply: the tab must hear nothing in between.
 	 */
 	resync(sub: Subscriber): void {
 		const liveId = this.info.liveId;
 		for (const frame of this.pendingUI.values()) sub.send({ t: "frame", liveId, frame });
 		for (const frame of this.writing.replay()) sub.send({ t: "frame", liveId, frame });
+		for (const frame of this.running.replay()) sub.send({ t: "frame", liveId, frame });
 		for (const frame of this.held.replay()) sub.send({ t: "frame", liveId, frame });
 		sub.send({
 			t: "attached",
