@@ -86,13 +86,15 @@ case "$1 $2" in
   esac
   printf '{"total_count":1,"workflow_runs":[%s]}\\n' "$runs" ;;
 "run download")
-  # The artifact of the CI run asked for (-n), the file CI uploads in it: the Windows launcher's zip or a Linux package's
-  # tarball. STUB_NO_WINDOWS: the run has no Windows zip; STUB_NO_LINUX: it has no arm64 Linux tarball.
+  # The artifact of the CI run asked for (-n), the file CI uploads in it: a Windows launcher's zip or a Linux package's
+  # tarball. STUB_NO_WINDOWS: the run has no x64 Windows zip; STUB_NO_WINDOWS_ARM: no arm64 Windows zip; STUB_NO_LINUX:
+  # no arm64 Linux tarball.
   name="" dir=""
   while [ $# -gt 0 ]; do case "$1" in -n) name=$2 ;; -D) dir=$2 ;; esac; shift; done
   missing() { echo "no artifact matches any of the names or patterns provided" >&2; exit 1; }
   case "$name" in
   omp-webui-windows-x64) [ -z "$STUB_NO_WINDOWS" ] || missing; : > "$dir/$name.zip" ;;
+  omp-webui-windows-arm64) [ -z "$STUB_NO_WINDOWS_ARM" ] || missing; : > "$dir/$name.zip" ;;
   omp-webui-linux-arm64) [ -z "$STUB_NO_LINUX" ] || missing; : > "$dir/$name.tar.gz" ;;
   omp-webui-linux-*) : > "$dir/$name.tar.gz" ;;
   *) missing ;;
@@ -490,18 +492,23 @@ test("--dry-run with an existing tag and --skip-tests builds the app and the dmg
 	expect(worktrees()).toHaveLength(1);
 });
 
-test("a release is the signed dmg, the Windows launcher and the Linux packages of CI's passing run on a GitHub Release, and nothing is published to npm or GitHub Packages", async () => {
+test("a release is the signed dmg, the Windows launchers and the Linux packages of CI's passing run on a GitHub Release, and nothing is published to npm or GitHub Packages", async () => {
 	const r = await finish(release());
 	expect(r.out).toContain(`Released ${TAG}`);
 	expect(r.code).toBe(0);
 	const seen = calls();
 	const tag = TAG.replaceAll(".", "\\.");
-	for (const artifact of ["omp-webui-windows-x64", "omp-webui-linux-x64", "omp-webui-linux-arm64"]) {
+	for (const artifact of [
+		"omp-webui-windows-x64",
+		"omp-webui-windows-arm64",
+		"omp-webui-linux-x64",
+		"omp-webui-linux-arm64",
+	]) {
 		expect(seen).toContain(`gh run download 1 -n ${artifact} `);
 	}
 	expect(seen).toMatch(
 		new RegExp(
-			`gh release create ${tag} \\S+/dist/omp-webui-${tag}\\.dmg \\S+/omp-webui-${tag}-windows-x64\\.zip \\S+/omp-webui-${tag}-linux-x64\\.tar\\.gz \\S+/omp-webui-${tag}-linux-arm64\\.tar\\.gz `,
+			`gh release create ${tag} \\S+/dist/omp-webui-${tag}\\.dmg \\S+/omp-webui-${tag}-windows-x64\\.zip \\S+/omp-webui-${tag}-windows-arm64\\.zip \\S+/omp-webui-${tag}-linux-x64\\.tar\\.gz \\S+/omp-webui-${tag}-linux-arm64\\.tar\\.gz `,
 		),
 	);
 	for (const never of ["npm ", "gh auth token", "packages", "NODE_AUTH_TOKEN"]) expect(seen).not.toContain(never);
@@ -510,9 +517,9 @@ test("a release is the signed dmg, the Windows launcher and the Linux packages o
 	expect(seen.indexOf("gh api repos")).toBeLessThan(seen.indexOf("bun install"));
 });
 
-test("a CI run without the Windows launcher's zip, or without a Linux package, stops the release before anything is built or tagged", async () => {
+test("a CI run without a Windows launcher's zip, or without a Linux package, stops the release before anything is built or tagged", async () => {
 	untag();
-	for (const missing of ["STUB_NO_WINDOWS", "STUB_NO_LINUX"]) {
+	for (const missing of ["STUB_NO_WINDOWS", "STUB_NO_WINDOWS_ARM", "STUB_NO_LINUX"]) {
 		const r = await finish(release([], { [missing]: "1" }, true));
 		expect(r.code, missing).toBe(1);
 		expect(calls()).not.toContain("bun run");

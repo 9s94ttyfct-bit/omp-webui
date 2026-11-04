@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { RECOMMENDED_MARKETPLACES } from "../../shared/plugins-catalogs.ts";
@@ -15,6 +15,8 @@ interface State {
 	marketplaces: { name: string; source: string }[];
 	/** Registry skills installed: id, version, and whether for the user (`-g`). */
 	skills: { id: string; version: string; global: boolean }[];
+	/** The global `disabledExtensions`. */
+	disabled?: string[];
 }
 
 const REGISTRY_SKILLS = [
@@ -35,7 +37,7 @@ const fail = (text: string): never => {
 	process.exit(1);
 };
 
-if (argv[0] !== "plugin" && argv[0] !== "skill") {
+if (argv[0] !== "plugin" && argv[0] !== "skill" && argv[0] !== "config") {
 	// Not the Plugins page's: the long-run stand-in answers it (a version, or a conversation's `--mode rpc`). It reads its
 	// own arguments as it is loaded, so it is loaded only here (a static import would run it for every command).
 	await import("./long-fake-omp.ts");
@@ -56,9 +58,11 @@ if (argv[0] !== "plugin" && argv[0] !== "skill") {
 			const name = RECOMMENDED_MARKETPLACES.find((m) => m.repo === source)?.name ?? source.split("/").at(-1) ?? source;
 			if (state.marketplaces.some((m) => m.name === name)) fail(`Marketplace "${name}" already exists`);
 			state.marketplaces.push({ name, source });
+			writeCatalogs();
 			console.log(`✔ Added marketplace ${name}`);
 		} else if (verb === "marketplace" && words[0] === "remove") {
 			state.marketplaces = state.marketplaces.filter((m) => m.name !== words[1]);
+			writeCatalogs();
 		} else if (verb === "discover") {
 			console.log(`  example-plugin@1.0.0\n    An example plugin of ${words[0]}`);
 		} else if (verb === "list") {
@@ -66,9 +70,22 @@ if (argv[0] !== "plugin" && argv[0] !== "skill") {
 		} else if (verb === "doctor") {
 			console.log("[]");
 		}
+	} else if (argv[0] === "config") {
+		// `disabledExtensions` only, as omp layers it: the folder's own `.omp/config.yml` replaces the global value there.
+		const project = projectDisabled();
+		if (verb === "get") console.log(JSON.stringify({ key: words[0], value: project ?? state.disabled ?? [] }));
+		else if (verb === "list")
+			console.log(JSON.stringify(project ? { disabledExtensions: { value: project, type: "array" } } : {}));
+		else if (verb === "set") {
+			state.disabled = JSON.parse(words[1]);
+			console.log(
+				JSON.stringify({ key: words[0], value: state.disabled, ...(project ? { overriddenBy: "project" } : {}) }),
+			);
+		}
 	} else {
 		const home = homedir();
 		if (verb === "list") {
+			const off = new Set(projectDisabled() ?? state.disabled ?? []);
 			const skills = [
 				{
 					name: "house-style",
@@ -88,7 +105,8 @@ if (argv[0] !== "plugin" && argv[0] !== "skill") {
 					};
 				}),
 			];
-			console.log(JSON.stringify({ skills, warnings: [] }));
+			const on = skills.filter((s) => !off.has(`skill:${s.name}`));
+			console.log(JSON.stringify({ skills: on, warnings: [] }));
 		} else if (verb === "search") {
 			const q = words[0].toLowerCase();
 			const hits = REGISTRY_SKILLS.filter((s) => `${s.scope}/${s.name} ${s.description}`.toLowerCase().includes(q)).map(
@@ -126,4 +144,46 @@ if (argv[0] !== "plugin" && argv[0] !== "skill") {
 		}
 	}
 	if (JSON.stringify(state) !== unchanged) save();
+}
+
+/** The folder's own `disabledExtensions` (`./.omp/config.yml`), or null where it sets none. */
+function projectDisabled(): string[] | null {
+	const path = join(process.cwd(), ".omp", "config.yml");
+	if (!existsSync(path)) return null;
+	const doc = Bun.YAML.parse(readFileSync(path, "utf8")) as Record<string, unknown> | null;
+	return Array.isArray(doc?.disabledExtensions) ? (doc.disabledExtensions as string[]) : null;
+}
+
+/**
+ * What omp keeps of its marketplaces besides: `~/.omp/marketplaces.json`, each with its cached catalog
+ * (`marketplace.json`), where the example plugin has a category, an author, tags and keywords, and two skills.
+ */
+function writeCatalogs(): void {
+	const root = join(homedir(), ".omp");
+	const marketplaces = state.marketplaces.map((m) => {
+		const dir = join(root, "plugins", "cache", "marketplaces", m.name);
+		const catalogPath = join(dir, "marketplace.json");
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(
+			catalogPath,
+			JSON.stringify({
+				name: m.name,
+				plugins: [
+					{
+						name: "example-plugin",
+						source: "./",
+						category: "Development",
+						author: { name: "Example Author" },
+						homepage: "https://example.com/plugin",
+						tags: ["Testing"],
+						keywords: ["testing", "lint"],
+						skills: ["./skills/a", "./skills/b"],
+					},
+				],
+			}),
+		);
+		return { name: m.name, sourceType: "github", sourceUri: m.source, catalogPath };
+	});
+	mkdirSync(root, { recursive: true });
+	writeFileSync(join(root, "marketplaces.json"), JSON.stringify({ version: 1, marketplaces }));
 }

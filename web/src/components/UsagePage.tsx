@@ -1,5 +1,4 @@
 import { PREF } from "@shared/prefs.ts";
-import type { SessionSummary } from "@shared/protocol.ts";
 import { DEFAULT_USAGE_RANGE, isUsageRange, USAGE_RANGES, type UsageRange } from "@shared/usage-range.ts";
 import { BarChart3, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -20,10 +19,10 @@ import { type MessageKey, useT } from "../i18n/index.ts";
 import { api, type OmpStats, type StatsBucket } from "../lib/api.ts";
 import { costColumn, fmtCost, fmtCostExact, fmtDuration, fmtTime, fmtTokens } from "../lib/format.ts";
 import { setPref } from "../lib/prefs.ts";
-import { advisorUsageOf } from "../lib/totals.ts";
 import { projectLabels } from "../lib/usage-projects.ts";
 import { dailyByModel, OTHER_MODELS, paddedDays, seriesColor, utcDate } from "../lib/usage-series.ts";
 import { useApp } from "../store/app.ts";
+import { ErrorsTable, ModelComparison, RangeConversations, TimeOfDay, ToolsTable } from "./UsageAnalysis.tsx";
 import { Button, cx, Empty, Spinner, Tip } from "./ui.tsx";
 
 /**
@@ -166,25 +165,6 @@ function BucketTable({
 	);
 }
 
-/**
- * What a conversation's subagents and its advisors account for in its cost, in the list of the costliest ones: a second
- * line under its title, so that a conversation with a split keeps every column where the others have it.
- */
-function SessionSplit({ s }: { s: SessionSummary }) {
-	const t = useT();
-	const advisor = advisorUsageOf(s.advisorUsage);
-	const parts = [
-		s.subagentCount ? t("pages.usageSessionSubagents", { cost: fmtCost(s.subagentUsage.cost) }) : "",
-		advisor.requests ? t("pages.usageSessionAdvisor", { cost: fmtCost(advisor.cost) }) : "",
-	].filter(Boolean);
-	if (parts.length === 0) return null;
-	return (
-		<span className="block truncate text-xs text-faint" data-testid="usage-session-split">
-			{parts.join(" · ")}
-		</span>
-	);
-}
-
 const RANGE_LABELS: Record<UsageRange, MessageKey> = {
 	"24h": "pages.usageRange24h",
 	"7d": "pages.usageRange7d",
@@ -256,7 +236,7 @@ export function UsagePage() {
 		void load("kept", r);
 	};
 	const daily = useMemo(() => (stats ? dailyByModel(stats) : null), [stats]);
-	const topSessions = useMemo(() => [...sessions].sort((a, b) => b.usage.cost - a.usage.cost).slice(0, 12), [sessions]);
+	const analysis = stats?.analysis;
 	const o = stats?.overall;
 	// omp has no timing for conversations that record no per-request durations: it sends null (and a zero is as little). That
 	// is no measurement, and the Speed card says so instead of printing zeros.
@@ -274,8 +254,6 @@ export function UsagePage() {
 			),
 		[stats, sessions, meta?.home],
 	);
-	// The costs of the costliest conversations are one column: they are written with one number of decimals.
-	const sessionCost = useMemo(() => costColumn(topSessions.map((s) => s.usage.cost)), [topSessions]);
 	/** Nothing recorded and no conversation yet: one welcome instead of a page of zeros and empty tables. */
 	const fresh = o?.totalRequests === 0 && sessionsLoaded && sessions.length === 0;
 	return (
@@ -468,6 +446,7 @@ export function UsagePage() {
 							rows={stats.byModel}
 							keyOf={(b) => `${b.provider}/${b.model}`}
 						/>
+						<ModelComparison rows={stats.byModel} />
 						{stats.byFolder.length || stats.byAgentType?.length ? (
 							// Side by side only when both tables have rows.
 							<div className="@container">
@@ -491,54 +470,26 @@ export function UsagePage() {
 								</div>
 							</div>
 						) : null}
+						{analysis?.hours ? <TimeOfDay hours={analysis.hours} timeZone={analysis.timeZone} /> : null}
+						{analysis?.conversations ? (
+							<RangeConversations
+								rows={analysis.conversations}
+								sessions={sessions}
+								sessionsLoaded={sessionsLoaded}
+								projects={projects}
+								onOpen={(file) => setView({ kind: "chat", file, liveId: null })}
+							/>
+						) : null}
+						{analysis?.tools || analysis?.errors ? (
+							// Side by side only when the database answered both.
+							<div className="@container">
+								<div className={cx("grid gap-6", analysis.tools && analysis.errors && "@4xl:grid-cols-2")}>
+									{analysis.tools ? <ToolsTable rows={analysis.tools} /> : null}
+									{analysis.errors ? <ErrorsTable rows={analysis.errors} /> : null}
+								</div>
+							</div>
+						) : null}
 					</>
-				) : null}
-				{topSessions.length ? (
-					<section className="rounded-2xl border border-border bg-surface">
-						<h2 className="border-b border-border px-4 py-2.5 text-sm font-semibold">
-							{t("pages.usageTopSessions")}
-							{/* Conversations' own totals, which have no date: not the range the figures above are for (#714). */}
-							{range === "all" ? null : (
-								<span className="ml-2 font-normal text-muted">{t("pages.usageTopSessionsAllTime")}</span>
-							)}
-						</h2>
-						<ul className="divide-y divide-border">
-							{topSessions.map((s) => (
-								<li key={s.file}>
-									<button
-										type="button"
-										className="grid w-full grid-cols-[minmax(0,1fr)_4.5rem_5.5rem] items-center gap-x-3 px-4 py-2 text-left text-sm hover:bg-hover/50 sm:grid-cols-[minmax(0,1fr)_7rem_4.5rem_5.5rem]"
-										data-testid="usage-session"
-										data-file={s.file}
-										onClick={() => setView({ kind: "chat", file: s.file, liveId: null })}
-									>
-										<span className="min-w-0">
-											<span className="block truncate">{s.title || s.preview || t("pages.usageUntitled")}</span>
-											<SessionSplit s={s} />
-										</span>
-										<span
-											className="hidden truncate text-xs text-faint sm:block"
-											title={s.cwd}
-											data-testid="usage-session-project"
-										>
-											{s.project}
-										</span>
-										<span className="text-right text-xs tabular-nums text-muted" data-testid="usage-session-tokens">
-											{fmtTokens(s.usage.totalTokens)}
-										</span>
-										<span
-											className="text-right font-medium tabular-nums"
-											title={fmtCostExact(s.usage.cost)}
-											data-testid="usage-session-cost"
-											data-cost={s.usage.cost}
-										>
-											{sessionCost(s.usage.cost)}
-										</span>
-									</button>
-								</li>
-							))}
-						</ul>
-					</section>
 				) : null}
 			</div>
 		</div>

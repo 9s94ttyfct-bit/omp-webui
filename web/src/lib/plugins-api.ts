@@ -1,7 +1,6 @@
 import { isRecord } from "@shared/guards.ts";
 import type { McpAdded, McpAddRequest, McpSearch } from "@shared/mcp-registry.ts";
 import type {
-	InstalledSkill,
 	PluginCheck,
 	PluginJob,
 	PluginJobAction,
@@ -9,7 +8,10 @@ import type {
 	PluginScope,
 	PluginSetting,
 	PluginsData,
+	SkillFile,
 	SkillSearch,
+	SkillSwitchScope,
+	SkillsData,
 } from "@shared/plugins.ts";
 
 /**
@@ -58,9 +60,16 @@ export const pluginsApi = {
 	job: (id: string) => request<{ job: PluginJob }>(`/api/plugins/jobs/${encodeURIComponent(id)}`).then((r) => r.job),
 	/** The job running now, if any (a page opened while one runs follows it). */
 	running: () => request<{ running: PluginJob | null }>("/api/plugins/jobs").then((r) => r.running),
-	/** Every skill omp discovers in the folder (`omp skill list --json`). */
-	skills: (cwd: string | null) =>
-		request<{ installed: InstalledSkill[] }>(`/api/plugins/skills${query({ cwd })}`).then((r) => r.installed),
+	/** Every skill omp finds, on and off, for the folder (`omp skill list --json` and the `disabledExtensions` lists). */
+	skills: (cwd: string | null) => request<SkillsData>(`/api/plugins/skills${query({ cwd })}`),
+	/** Skills on or off in every folder without a list of its own (`global`), or in the project folder `cwd`. */
+	setSkillsEnabled: (names: string[], enabled: boolean, scope: SkillSwitchScope, cwd: string | null) =>
+		post<SkillsData>("/api/plugins/skills/enable", { names, enabled, scope, cwd }),
+	/** The project folder's own list taken out: the global one applies there again. */
+	globalSkillsHere: (cwd: string) => post<SkillsData>("/api/plugins/skills/use-global", { cwd }),
+	/** A listed skill's `SKILL.md`, read only. */
+	skillFile: (name: string, cwd: string | null) =>
+		request<SkillFile>(`/api/plugins/skills/file${query({ name, cwd })}`),
 	/** omp's skill registry (`omp skill search`). */
 	searchSkills: (q: string, cwd: string | null) =>
 		request<SkillSearch>(`/api/plugins/skills/search${query({ q, cwd })}`),

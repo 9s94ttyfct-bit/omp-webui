@@ -1,10 +1,10 @@
 // needs: isolatedHome
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { McpAdded, McpSearch } from "../../shared/mcp-registry.ts";
-import type { InstalledSkill, PluginJob, PluginsData, SkillSearch } from "../../shared/plugins.ts";
+import type { InstalledSkill, PluginJob, PluginsData, SkillSearch, SkillsData } from "../../shared/plugins.ts";
 import { addedMarketplace, RECOMMENDED_MARKETPLACES } from "../../shared/plugins-catalogs.ts";
 import { type StubRegistry, startStubRegistry, writeFakePluginsOmp } from "../support/plugins-stubs.ts";
 import { pollUntil } from "../support/poll.ts";
@@ -86,7 +86,7 @@ test("a recommended marketplace is added by its repository and then listed under
 		{ name: "claude-plugins-official", source: "anthropics/claude-plugins-official" },
 	]);
 	expect(addedMarketplace(official, data.marketplaces)?.name).toBe("claude-plugins-official");
-	// Its catalog is listed in Discover.
+	// Its catalog is listed in Discover, with what the marketplace's cached catalog adds: category, author, tags, skills.
 	expect(data.catalog).toEqual([
 		{
 			name: "example-plugin",
@@ -94,17 +94,23 @@ test("a recommended marketplace is added by its repository and then listed under
 			description: "An example plugin of claude-plugins-official",
 			marketplace: "claude-plugins-official",
 			installed: [],
+			category: "development",
+			author: "Example Author",
+			homepage: "https://example.com/plugin",
+			tags: ["testing", "lint"],
+			skills: 2,
 		},
 	]);
 });
 
 describe("skills", () => {
 	test("the skills omp has are listed with where they come from", async () => {
-		const res = await get<{ installed: InstalledSkill[] }>("/api/plugins/skills");
+		const res = await get<SkillsData>("/api/plugins/skills");
 		expect(res.status).toBe(200);
 		expect(res.body.installed.map((k) => [k.name, k.provider, k.level, k.registry])).toEqual([
 			["house-style", "custom", "user", null],
 		]);
+		expect([res.body.project, res.body.projectList]).toEqual([false, false]);
 	});
 
 	test("a search: its hits, none for a word the registry does not have, a flag refused before omp runs", async () => {
@@ -145,6 +151,78 @@ describe("skills", () => {
 		expect(gone.state).toBe("done");
 		const after = (await get<{ installed: InstalledSkill[] }>("/api/plugins/skills")).body.installed;
 		expect(after.map((k) => k.name)).toEqual(["house-style", "shell-helpers"]);
+	});
+
+	test("a skill off everywhere, then on in one project only: the project's list replaces the global one there", async () => {
+		const project = realpathSync(mkdtempSync(join(tmpdir(), "ompw-skills-project-")));
+		const config = join(project, ".omp", "config.yml");
+		const state = (d: SkillsData) => d.installed.map((k) => [k.name, k.offGlobally, k.offInProject, k.nameOnly]);
+		try {
+			const off = await post<SkillsData>("/api/plugins/skills/enable", {
+				names: ["house-style"],
+				enabled: false,
+				scope: "global",
+			});
+			expect(off.status).toBe(200);
+			// Still listed, though omp no longer offers it: it is off.
+			expect(state(off.body)).toEqual([
+				["shell-helpers", false, null, false],
+				["house-style", true, null, false],
+			]);
+
+			// The project starts from a copy of the global list, then turns it back on there; the rest of its file stays.
+			mkdirSync(join(project, ".omp"));
+			writeFileSync(config, "# mine\ntheme: dark\n");
+			const on = await post<SkillsData>("/api/plugins/skills/enable", {
+				names: ["house-style"],
+				enabled: true,
+				scope: "project",
+				cwd: project,
+			});
+			expect(on.status).toBe(200);
+			expect(on.body.projectList).toBe(true);
+			expect(state(on.body)).toContainEqual(["house-style", true, false, false]);
+			expect(readFileSync(config, "utf8")).toBe("# mine\ntheme: dark\ndisabledExtensions: []\n");
+			const elsewhere = (await get<SkillsData>("/api/plugins/skills")).body;
+			expect(state(elsewhere)).toContainEqual(["house-style", true, null, false]);
+
+			// Both off in the project at once; then the project goes back to the global list.
+			const both = await post<SkillsData>("/api/plugins/skills/enable", {
+				names: ["shell-helpers", "house-style"],
+				enabled: false,
+				scope: "project",
+				cwd: project,
+			});
+			expect(state(both.body).map(([name, , here]) => [name, here])).toEqual([
+				["house-style", true],
+				["shell-helpers", true],
+			]);
+			expect(readFileSync(config, "utf8")).toBe(
+				'# mine\ntheme: dark\ndisabledExtensions:\n  - "skill:shell-helpers"\n  - "skill:house-style"\n',
+			);
+			const back = await post<SkillsData>("/api/plugins/skills/use-global", { cwd: project });
+			expect(back.status).toBe(200);
+			expect(back.body.projectList).toBe(false);
+			expect(readFileSync(config, "utf8")).toBe("# mine\ntheme: dark\n");
+
+			// A file this cannot edit safely is left as it is, saying why.
+			writeFileSync(config, "- not a mapping\n");
+			const refused = await post<{ error: string }>("/api/plugins/skills/enable", {
+				names: ["house-style"],
+				enabled: false,
+				scope: "project",
+				cwd: project,
+			});
+			expect(refused.status).toBe(409);
+			expect(refused.body.error).toContain("was not changed");
+			expect(readFileSync(config, "utf8")).toBe("- not a mapping\n");
+			// The home folder has no project list.
+			const home = await post("/api/plugins/skills/enable", { names: ["x"], enabled: false, scope: "project" });
+			expect(home.status).toBe(409);
+		} finally {
+			await post("/api/plugins/skills/enable", { names: ["house-style"], enabled: true, scope: "global" });
+			rmSync(project, { recursive: true, force: true });
+		}
 	});
 });
 

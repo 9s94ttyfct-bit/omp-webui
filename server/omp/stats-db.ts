@@ -1,7 +1,17 @@
 import { Database } from "bun:sqlite";
 import { existsSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+import {
+	TOP_CONVERSATIONS,
+	TOP_ERRORS,
+	type UsageAnalysis,
+	type UsageConversation,
+	type UsageError,
+	type UsageHour,
+	type UsageTool,
+} from "../../shared/usage-analysis.ts";
 import { type UsageRange, usageBucket, usageWindow } from "../../shared/usage-range.ts";
+import { canonical } from "../sessions/roots.ts";
 
 /**
  * Usage & cost for any range, from omp's own statistics database (#714). `omp stats --json` answers only a rolling 24
@@ -114,6 +124,8 @@ export interface DbStats {
 		avgTtft: number | null;
 		avgTokensPerSecond: number | null;
 	}[];
+	/** What omp's answer has no part for (`shared/usage-analysis.ts`), over the same window. */
+	analysis: UsageAnalysis;
 }
 
 const HOUR = 3_600_000;
@@ -263,6 +275,16 @@ function rollUp(groups: readonly Group[], key: (g: Group) => string): Map<string
 
 const byCostDesc = <T extends { totalCost: number }>(a: T, b: T) => b.totalCost - a.totalCost;
 
+/** The names of `table`'s columns; empty when there is no such table. */
+function columnsOf(db: Database, table: string): Set<string> {
+	return new Set(
+		db
+			.query<{ name: string }, []>(`PRAGMA table_info(${table})`)
+			.all()
+			.map((c) => c.name),
+	);
+}
+
 /** Open the database read-only, or null when it is not there, cannot be read, or lacks a column the queries use. */
 function open(path: string): Database | null {
 	if (!existsSync(path)) return null;
@@ -273,18 +295,234 @@ function open(path: string): Database | null {
 		return null;
 	}
 	try {
-		const have = new Set(
-			db
-				.query<{ name: string }, []>("PRAGMA table_info(messages)")
-				.all()
-				.map((c) => c.name),
-		);
+		const have = columnsOf(db, "messages");
 		if (COLUMNS.every((c) => have.has(c))) return db;
 	} catch {
 		// Not a database, or one omp is in the middle of creating.
 	}
 	db.close();
 	return null;
+}
+
+/**
+ * The time zone `asked` names, as `Intl` spells it, or UTC when it names none: the hours of the day are the page's, and
+ * a name the server's `Intl` does not know (a typo, an older time zone database) is no reason to fail the figures.
+ */
+export function timeZoneOr(asked: string | null | undefined): string {
+	if (!asked) return "UTC";
+	try {
+		return new Intl.DateTimeFormat("en-US", { timeZone: asked }).resolvedOptions().timeZone;
+	} catch {
+		return "UTC";
+	}
+}
+
+/** A part of `analysisOf`, or null when its query fails: one part the database cannot answer leaves the others. */
+function part<T>(read: () => T): T | null {
+	try {
+		return read();
+	} catch {
+		return null;
+	}
+}
+
+type Window = { $from: number; $to: number };
+
+/**
+ * The requests of each transcript in the window, by model and agent type; the conversations are made of them by
+ * `conversationOf`.
+ */
+const BY_FILE = `SELECT session_file AS file, folder, model, agent_type AS agentType, COUNT(*) AS n,
+	SUM(total_tokens) AS tokens, SUM(cost_total) AS cost, MAX(timestamp) AS last
+FROM messages WHERE timestamp >= $from AND timestamp <= $to GROUP BY 1, 2, 3, 4`;
+
+/**
+ * The tools called in the window. omp records `is_error` and `result_chars` once the result is in, so a call still
+ * waiting for its result (or one omp read no result for) counts as a call and not in the error share or the size.
+ */
+const TOOLS = `SELECT tool_name AS tool, COUNT(*) AS calls, SUM(is_error = 1) AS errors, COUNT(is_error) AS settled,
+	SUM(result_chars) AS resultChars, COUNT(result_chars) AS resultN
+FROM tool_calls WHERE timestamp >= $from AND timestamp <= $to GROUP BY 1 ORDER BY calls DESC, tool`;
+
+const ERRORS = `SELECT provider, model, error_message AS message, COUNT(*) AS count, MAX(timestamp) AS lastTimestamp
+FROM messages WHERE stop_reason = 'error' AND timestamp >= $from AND timestamp <= $to
+GROUP BY 1, 2, 3 ORDER BY count DESC, lastTimestamp DESC LIMIT ${TOP_ERRORS}`;
+
+/**
+ * The requests by UTC quarter of an hour. Every time zone's offset is a whole number of quarters, so each quarter lies in
+ * one local hour, which a whole UTC hour does not in India or Nepal; and the local hour is taken at the quarter's own
+ * date, so a range across a change to summer time puts each request in the hour its clock said.
+ */
+const QUARTER = 900_000;
+const QUARTERS = `SELECT timestamp / ${QUARTER} AS quarter, COUNT(*) AS n, SUM(cost_total) AS cost
+FROM messages WHERE timestamp >= $from AND timestamp <= $to GROUP BY 1`;
+
+/**
+ * The conversation a transcript is of: a subagent's or an advisor's transcript is kept in the folder named after the one
+ * that started it (`<stem>/<agent>.jsonl` beside `<stem>.jsonl`, nested for a subagent's own subagents), so the
+ * conversation is the outermost transcript up that chain. `isTranscript` is asked of each folder once.
+ */
+function conversationOf(file: string, isTranscript: (path: string) => boolean): string {
+	let at = file;
+	for (;;) {
+		const dir = dirname(at);
+		if (dir === dirname(dir) || !isTranscript(`${dir}.jsonl`)) return at;
+		at = `${dir}.jsonl`;
+	}
+}
+
+/** Where a conversation's requests were made: one of its transcripts, with the folder omp filed it under. */
+interface Place {
+	folder: string;
+	last: number;
+}
+
+/**
+ * The costliest conversations of the window. A conversation moved to another project folder ("Change folder") leaves
+ * omp's rows of its old transcripts where they were, under the old path; its file name (`<time>_<id>.jsonl`) stays, so
+ * the transcripts of one name are one conversation, shown at the path it is at now.
+ */
+function conversations(db: Database, window: Window): UsageConversation[] {
+	const rows = db
+		.query<
+			{
+				file: string;
+				folder: string;
+				model: string;
+				agentType: string;
+				n: number;
+				tokens: number | null;
+				cost: number | null;
+				last: number;
+			},
+			Window
+		>(BY_FILE)
+		.all(window);
+	// A transcript is one on disk or one omp counted requests of, in or out of the window: a moved or deleted
+	// conversation's subagents still belong to it.
+	const counted = db.query<{ one: number }, [string]>("SELECT 1 AS one FROM messages WHERE session_file = ? LIMIT 1");
+	const known = new Map<string, boolean>();
+	const isTranscript = (p: string) => {
+		let at = known.get(p);
+		if (at === undefined) {
+			at = existsSync(p) || counted.get(p) !== null;
+			known.set(p, at);
+		}
+		return at;
+	};
+	const roots = new Map<string, string>();
+	const byName = new Map<
+		string,
+		Omit<UsageConversation, "models"> & { byModel: Map<string, number>; places: Map<string, Place> }
+	>();
+	for (const r of rows) {
+		let root = roots.get(r.file);
+		if (root === undefined) {
+			root = conversationOf(r.file, isTranscript);
+			roots.set(r.file, root);
+		}
+		// A subagent's transcript whose conversation omp holds nothing of is a conversation of its own, by its whole path:
+		// subagents' file names (`__advisor.jsonl`, `0-Scout.jsonl`) are the same in every conversation.
+		const name = root === r.file && r.agentType !== "main" ? root : basename(root);
+		let c = byName.get(name);
+		if (!c) {
+			c = {
+				file: root,
+				folder: r.folder,
+				requests: 0,
+				tokens: 0,
+				cost: 0,
+				subagentCost: 0,
+				advisorCost: 0,
+				lastTimestamp: 0,
+				byModel: new Map(),
+				places: new Map(),
+			};
+			byName.set(name, c);
+		}
+		const cost = r.cost ?? 0;
+		c.requests += r.n;
+		c.tokens += r.tokens ?? 0;
+		c.cost += cost;
+		if (r.agentType === "subagent") c.subagentCost += cost;
+		else if (r.agentType === "advisor") c.advisorCost += cost;
+		c.byModel.set(r.model, (c.byModel.get(r.model) ?? 0) + cost);
+		c.lastTimestamp = Math.max(c.lastTimestamp, r.last);
+		const place = c.places.get(root);
+		if (place) place.last = Math.max(place.last, r.last);
+		else c.places.set(root, { folder: r.folder, last: r.last });
+	}
+	return [...byName.values()]
+		.sort((a, b) => b.cost - a.cost || b.requests - a.requests || b.lastTimestamp - a.lastTimestamp)
+		.slice(0, TOP_CONVERSATIONS)
+		.map(({ byModel, places, ...c }) => {
+			// Where it is now: the transcript on disk (the latest used, should two be), else the one used last.
+			const [file, place] = [...places].sort(
+				([a, x], [b, y]) => Number(existsSync(b)) - Number(existsSync(a)) || y.last - x.last,
+			)[0] ?? [c.file, { folder: c.folder, last: 0 }];
+			return {
+				...c,
+				file: canonical(file),
+				folder: place.folder,
+				models: [...byModel].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([m]) => m),
+			};
+		});
+}
+
+function tools(db: Database, window: Window): UsageTool[] {
+	return db
+		.query<
+			{
+				tool: string;
+				calls: number;
+				errors: number | null;
+				settled: number;
+				resultChars: number | null;
+				resultN: number;
+			},
+			Window
+		>(TOOLS)
+		.all(window)
+		.map((r) => ({
+			tool: r.tool,
+			calls: r.calls,
+			errors: r.errors ?? 0,
+			errorRate: r.settled ? (r.errors ?? 0) / r.settled : null,
+			avgResultChars: r.resultN ? (r.resultChars ?? 0) / r.resultN : null,
+		}));
+}
+
+function hours(db: Database, window: Window, timeZone: string): UsageHour[] {
+	const out = Array.from({ length: 24 }, (_, hour) => ({ hour, requests: 0, cost: 0 }));
+	const clock = new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", hourCycle: "h23" });
+	const rows = db.query<{ quarter: number; n: number; cost: number | null }, Window>(QUARTERS).all(window);
+	for (const r of rows) {
+		const hour = Number(clock.formatToParts(r.quarter * QUARTER).find((p) => p.type === "hour")?.value) % 24;
+		const at = out[hour];
+		if (!at) continue;
+		at.requests += r.n;
+		at.cost += r.cost ?? 0;
+	}
+	return out;
+}
+
+/**
+ * The parts of the page that omp's answer has none for, over `window`. The columns and the table they read came after
+ * the ones `COLUMNS` names, so each part asks for its own and is null without them.
+ */
+function analysisOf(db: Database, window: { from: number; to: number }, timeZone: string): UsageAnalysis {
+	const at: Window = { $from: window.from, $to: window.to };
+	const messages = columnsOf(db, "messages");
+	const calls = columnsOf(db, "tool_calls");
+	return {
+		conversations: messages.has("session_file") ? part(() => conversations(db, at)) : null,
+		tools: ["tool_name", "timestamp", "is_error", "result_chars"].every((c) => calls.has(c))
+			? part(() => tools(db, at))
+			: null,
+		errors: messages.has("error_message") ? part(() => db.query<UsageError, Window>(ERRORS).all(at)) : null,
+		hours: part(() => hours(db, at, timeZone)),
+		timeZone,
+	};
 }
 
 /**
@@ -334,18 +572,22 @@ export function agentTypesOf(path: string, entries: readonly { id: string; at: n
 
 /**
  * omp's figures for the requests from `from` to `to` (both inclusive, milliseconds), with the charts in `bucket` steps
- * (UTC hours or UTC days, as omp's own series are). Null when the database cannot be used.
+ * (UTC hours or UTC days, as omp's own series are) and the hours of the day in `timeZone`. Null when the database cannot
+ * be used.
  */
 export function statsFromDb(
 	path: string,
 	window: { from: number; to: number },
 	bucket: "hour" | "day",
+	timeZone = "UTC",
 ): DbStats | null {
 	const db = open(path);
 	if (!db) return null;
 	let groups: Group[];
+	let analysis: UsageAnalysis;
 	try {
 		groups = db.query<Group, { $from: number; $to: number }>(GROUPS).all({ $from: window.from, $to: window.to });
+		analysis = analysisOf(db, window, timeZone);
 	} catch {
 		return null;
 	} finally {
@@ -427,6 +669,7 @@ export function statsFromDb(
 		costSeries,
 		modelSeries,
 		modelPerformanceSeries,
+		analysis,
 	};
 }
 
@@ -434,13 +677,14 @@ export function statsFromDb(
  * What `/api/stats` answers for `range`: the database's figures for its window, when the database is the one omp read
  * (it holds the last request of omp's own answer, `ompBody`); else omp's answer as it is, with `window` null so the
  * page says it shows omp's last 24 hours. A database with no request of omp's 24 hours to check against is taken as it
- * is: there is nothing it could disagree with.
+ * is: there is nothing it could disagree with. The hours of the day are in `timeZone` (see `timeZoneOr`).
  */
 export function statsForRange(
 	ompBody: string,
 	range: UsageRange,
 	dbPath: string,
 	now: number,
+	timeZone = "UTC",
 ): { body: string; window: { from: number; to: number } | null } {
 	let latest = 0;
 	try {
@@ -452,9 +696,9 @@ export function statsForRange(
 	// The read blocks the server for a few hundred milliseconds over a long history: a page that asks again (a reload,
 	// a second tab, the kept answer and then the refreshed one with nothing new) is answered from the last read while the
 	// database is unchanged.
-	const key = `${dbPath}\0${range}\0${latest}\0${signature(dbPath)}`;
+	const key = `${dbPath}\0${range}\0${timeZone}\0${latest}\0${signature(dbPath)}`;
 	if (lastRead && lastRead.key === key && now - lastRead.at < READ_KEPT_MS) return lastRead.answer;
-	const answer = readRange(ompBody, range, dbPath, now, latest);
+	const answer = readRange(ompBody, range, dbPath, now, latest, timeZone);
 	lastRead = { key, at: now, answer };
 	return answer;
 }
@@ -486,9 +730,10 @@ function readRange(
 	dbPath: string,
 	now: number,
 	latest: number,
+	timeZone: string,
 ): { body: string; window: { from: number; to: number } | null } {
 	if (latest > 0 && !holdsLatest(dbPath, latest)) return { body: ompBody, window: null };
 	const window = usageWindow(range, now);
-	const stats = statsFromDb(dbPath, window, usageBucket(range));
+	const stats = statsFromDb(dbPath, window, usageBucket(range), timeZone);
 	return stats ? { body: JSON.stringify(stats), window } : { body: ompBody, window: null };
 }

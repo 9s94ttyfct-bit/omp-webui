@@ -2,6 +2,7 @@ import { isRecord } from "../../shared/guards.ts";
 import { compareVersions, parseVersion } from "../../shared/omp-install.ts";
 import type { PlatformId } from "../../shared/platform.ts";
 import { type AppRelease, type CheckFailure, UPDATE_REPO, type UpdateNotes } from "../../shared/update.ts";
+import type { WindowsArch } from "./windows.ts";
 
 /**
  * Looking for a newer release of the app (#571): `GET <api>/repos/<repo>/releases/latest` without credentials (the
@@ -16,25 +17,34 @@ export const DEFAULT_API = "https://api.github.com";
 const TAG = /^v(\d+)\.(\d+)\.(\d+)$/;
 
 /**
- * The systems a release carries an installer for: the macOS app's disk image, the Windows launcher's zip (one top
- * folder, `omp-webui-windows-x64/`, with `omp-webui.exe` and `web/`, as CI's windows-launcher job makes it), and the
- * Linux package's tarball per processor (one top folder, `omp-webui-linux-<arch>/`, as CI's linux-package job makes
- * it). Only the first two install from here; a Linux server shows its tarball for the user to download and install.
+ * The systems a release carries an installer for: the macOS app's disk image, the Windows launcher's zip per processor (one
+ * top folder, `omp-webui-windows-<arch>/`, with `omp-webui.exe` and `web/`, as CI's windows-launcher job makes it), and the
+ * Linux package's tarball per processor (one top folder, `omp-webui-linux-<arch>/`, as CI's linux-package job makes it).
+ * Only the first two install from here; a Linux server shows its tarball for the user to download and install.
  */
-export type InstallerPlatform = "darwin" | "win32" | "linux-x64" | "linux-arm64";
+export type InstallerPlatform = "darwin" | "win32-x64" | "win32-arm64" | "linux-x64" | "linux-arm64";
 
 /** The installer a release carries for `platform`. */
 export function installerName(version: string, platform: InstallerPlatform): string {
-	if (platform === "win32") return `omp-webui-v${version}-windows-x64.zip`;
+	const windows = windowsArchOf(platform);
+	if (windows !== null) return `omp-webui-v${version}-windows-${windows}.zip`;
 	if (platform === "darwin") return `omp-webui-v${version}.dmg`;
 	return `omp-webui-v${version}-${platform}.tar.gz`;
+}
+
+/** The processor of a Windows installer (the zip's top folder is `zipTop` of it); null for any other system's. */
+export function windowsArchOf(platform: InstallerPlatform | null): WindowsArch | null {
+	if (platform === "win32-x64") return "x64";
+	if (platform === "win32-arm64") return "arm64";
+	return null;
 }
 
 /**
  * The installer a server shows, from what it was started as (`target`: the macOS app, the Windows launcher, or no app)
  * and the system and processor it runs on. A server that is no app shows the release as it would be installed on its
- * system. On Linux that is the package for its processor; a processor no package is built for has none (null), rather
- * than one that would not run.
+ * system. On Windows and Linux that is the zip or the package for its processor (an x64 launcher on an Arm machine, which
+ * Windows emulates, is x64 and keeps taking the x64 zip); a processor none is built for has none (null), rather than one
+ * that would not run.
  */
 export function installerPlatformOf(
 	target: "mac" | "windows" | null,
@@ -42,9 +52,9 @@ export function installerPlatformOf(
 	arch: string,
 ): InstallerPlatform | null {
 	if (target === "mac") return "darwin";
-	if (target === "windows") return "win32";
-	if (system === "win32") return "win32";
-	if (system === "linux") return arch === "x64" || arch === "arm64" ? `linux-${arch}` : null;
+	const built = arch === "x64" || arch === "arm64" ? arch : null;
+	if (target === "windows" || system === "win32") return built && `win32-${built}`;
+	if (system === "linux") return built && `linux-${built}`;
 	return "darwin";
 }
 
@@ -186,7 +196,7 @@ export function parseRelease(json: unknown, api: string, platform: InstallerPlat
 		if (downloadUrl === null) return null;
 		if (!installerUrlAllowed(downloadUrl, api)) return null;
 		const digest = /^sha256:([0-9a-fA-F]{64})$/.exec(text(item.digest) ?? "");
-		if (platform === "win32" && !digest) break;
+		if (windowsArchOf(platform) !== null && !digest) break;
 		asset = { name: wanted, size };
 		installer = { url: downloadUrl, sha256: digest ? (digest[1] as string).toLowerCase() : null };
 		break;

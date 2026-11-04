@@ -22,6 +22,12 @@ export interface ChatSessionOptions {
 	 * wants its own conversation in the list gives it a cost above the fixtures' (see `writeChatSession`).
 	 */
 	cost?: number;
+	/**
+	 * When its first entry was written (default 2026-01-09 00:00:00 UTC). omp takes two entries of one id and time for one
+	 * request copied into a fork and counts it once, and every conversation here has the same entry ids: a spec that needs
+	 * omp's statistics to count two of them gives each a time of its own.
+	 */
+	start?: number;
 }
 
 /** The usage of a conversation, at the cost the spec asked for. */
@@ -46,7 +52,7 @@ export function writeChatSession(agentDir: string, o: ChatSessionOptions): strin
 	const hex = o.n.toString(16).padStart(2, "0");
 	const id = `01a00000-0000-7000-8000-0000000077${hex}`;
 	const turnUsage = usageOf(o.cost ?? usage.cost.total);
-	const stamp = (i: number) => new Date(Date.UTC(2026, 0, 9, 0, 0, i)).toISOString();
+	const stamp = (i: number) => new Date((o.start ?? Date.UTC(2026, 0, 9)) + i * 1000).toISOString();
 	const lines: Record<string, unknown>[] = [
 		{ type: "session", version: 3, id, timestamp: stamp(0), cwd },
 		{ type: "title_change", id: "title000", parentId: null, timestamp: stamp(0), title: o.title },

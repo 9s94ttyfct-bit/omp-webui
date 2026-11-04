@@ -6,20 +6,21 @@ import { sessionWithSubagents } from "../support/subagent-fixtures.ts";
 import { expect, type Locator, type Page, test } from "./fixtures.ts";
 
 /**
- * The usage page's two lists that name a project. "Most expensive conversations" is a table of columns whose rows must
- * not move them (the project, the tokens and the cost were set after whatever a row had put before them, so a row with
- * "incl. $0.02 subagents" pushed its project 130px to the left, and the costs mixed `$0.06` with `$0.0040`). "By project"
- * calls a project what the sidebar and the list call it, not by the directory omp files it in (`-tmp-dev-acme-api`).
- * No model call.
+ * The usage page's two lists that name a project. "Most expensive conversations in this range" is a table of columns
+ * whose rows must not move them (the project, the tokens and the cost were set after whatever a row had put before them,
+ * so a row with "incl. $0.02 subagents" pushed its project 130px to the left, and the costs mixed `$0.06` with `$0.0040`).
+ * "By project" calls a project what the sidebar and the list call it, not by the directory omp files it in
+ * (`-tmp-dev-acme-api`). No model call: omp's statistics database counts the written transcripts, whose requests are
+ * months old, so the list is looked at over all time.
  */
 
 const agentDir = () => process.env.OMPW_E2E_AGENT_DIR as string;
 const turn = [{ prompt: "How many?", reply: "Nine." }];
 
 /**
- * What the spec's own conversations cost. The Usage page lists only the 12 costliest conversations, and a worker's
- * server keeps what the specs before it left, so a probe that costs less than the fixtures' can fall out of the list
- * and the spec fails for a reason that has nothing to do with what it checks (#505).
+ * What the spec's own conversations cost. The Usage page lists only the 20 costliest conversations of the range, and a
+ * worker's server keeps what the specs before it left, so a probe that costs less than the fixtures' can fall out of the
+ * list and the spec fails for a reason that has nothing to do with what it checks (#505).
  */
 const PROBE_COST = 50;
 
@@ -53,8 +54,9 @@ test("every row of the costliest conversations keeps its project, tokens and cos
 	page,
 }) => {
 	// A row with a subagent's share, and rows of projects with names of different lengths.
-	// The Usage page lists only the 12 costliest conversations, and a worker's server keeps what earlier specs left,
-	// so the probes are given a cost above any of the fixtures' (#505).
+	// The Usage page lists only the 20 costliest conversations of the range, and a worker's server keeps what earlier specs
+	// left, so the probes are given a cost above any of the fixtures' (#505), and times of their own so that omp counts
+	// each (see `ChatSessionOptions.start`).
 	const split = sessionWithSubagents(0xc0, "Usage rows: with a subagent", { Scout: [3] }, undefined, PROBE_COST);
 	const others = [
 		writeChatSession(agentDir(), {
@@ -63,6 +65,7 @@ test("every row of the costliest conversations keeps its project, tokens and cos
 			cwd: "/tmp/ompw-usage-docs",
 			turns: turn,
 			cost: PROBE_COST,
+			start: Date.UTC(2026, 0, 9, 1, 0x72),
 		}),
 		writeChatSession(agentDir(), {
 			n: 0x73,
@@ -70,10 +73,14 @@ test("every row of the costliest conversations keeps its project, tokens and cos
 			cwd: "/tmp/ompw-usage-a-much-longer-project-name",
 			turns: turn,
 			cost: PROBE_COST,
+			start: Date.UTC(2026, 0, 9, 1, 0x73),
 		}),
 	];
 	try {
 		await page.goto("/#/usage");
+		// omp counts the conversations written just now when it runs again: Refresh makes it.
+		await page.getByTestId("usage-range-all").click();
+		await page.getByRole("button", { name: "Refresh" }).click();
 		await expect(row(page, "Usage rows: with a subagent")).toBeVisible();
 		await expect(row(page, "Usage rows: docs")).toBeVisible();
 		await expect(row(page, "Usage rows: long")).toBeVisible();
@@ -145,6 +152,17 @@ test("By project calls a folder what the conversation list calls its project, wi
 	});
 	// What omp's stats call the folders: the directory its conversations are filed in.
 	const slugs = [FIXTURE_BUCKET, "-tmp-ompw-usage-docs", "--Volumes-gone-project--"];
+	const conversation = (file: string, folder: string) => ({
+		file,
+		folder,
+		requests: 1,
+		tokens: 122,
+		cost: PROBE_COST,
+		subagentCost: 0,
+		advisorCost: 0,
+		models: ["claude-haiku-5-5"],
+		lastTimestamp: Date.UTC(2026, 0, 9),
+	});
 	await page.route(/\/api\/stats(\?|$)/, (route) =>
 		route.fulfill({
 			json: {
@@ -152,6 +170,17 @@ test("By project calls a folder what the conversation list calls its project, wi
 				byModel: [],
 				byFolder: slugs.map((slug, i) => bucket(slug, 3 - i)),
 				costSeries: [],
+				analysis: {
+					// One the list holds, and one it does not, named by the project of its folder.
+					conversations: [
+						conversation(realpathSync(docs), "-tmp-ompw-usage-docs"),
+						conversation("/tmp/ompw-usage-gone.jsonl", FIXTURE_BUCKET),
+					],
+					tools: null,
+					errors: null,
+					hours: null,
+					timeZone: "UTC",
+				},
 			},
 		}),
 	);

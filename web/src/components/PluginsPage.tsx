@@ -51,7 +51,7 @@ import { en } from "../i18n/plugins.ts";
 import { type JobRequest, pluginsApi } from "../lib/plugins-api.ts";
 import { useApp } from "../store/app.ts";
 import { LoadError } from "./LoadError.tsx";
-import { Confirm, SCOPE_KEY, ScopePicker, Section, WebLinks } from "./plugins/parts.tsx";
+import { Confirm, FilterSelect, facets, SCOPE_KEY, ScopePicker, Section, WebLinks } from "./plugins/parts.tsx";
 import { Select } from "./Select.tsx";
 import { Switch } from "./Switch.tsx";
 import { Badge, Button, cx, Empty, Modal, Spinner, WithCode } from "./ui.tsx";
@@ -676,6 +676,17 @@ function InstalledSection({
 	const [settings, setSettings] = useState<InstalledPlugin | null>(null);
 	const list = isPluginsFailure(data.installed) ? null : data.installed;
 	const upgradable = list?.filter((p) => p.upgrade) ?? [];
+	const [source, setSource] = useState("");
+	const [state, setState] = useState("");
+	const { kept: shown, choices } = facets(
+		list ?? [],
+		{
+			source: { value: source, of: (p) => sourceLabel(p, t) },
+			state: { value: state, of: (p) => (p.enabled ? "on" : "off") },
+		},
+		() => true,
+	);
+	const onOff = (v: string) => t(v === "on" ? "plugins.filterOn" : "plugins.filterOff");
 	return (
 		<Section
 			id="installed"
@@ -702,9 +713,33 @@ function InstalledSection({
 					{t("plugins.installedEmptyHint")}
 				</Empty>
 			) : null}
+			{list && (choices.source.useful || choices.state.useful || source || state) ? (
+				<div className="mb-2 flex flex-wrap items-center gap-2" data-testid="installed-filters">
+					<FilterSelect
+						label={t("plugins.filterSource")}
+						all={t("plugins.filterAllSources")}
+						value={source}
+						choices={choices.source}
+						onChange={setSource}
+						testId="installed-filter-source"
+					/>
+					<FilterSelect
+						label={t("plugins.filterState")}
+						all={t("plugins.filterAnyState")}
+						value={state}
+						choices={choices.state}
+						labelOf={onOff}
+						onChange={setState}
+						testId="installed-filter-state"
+					/>
+					<span className="text-xs text-faint">
+						{t("plugins.filterShown", { shown: shown.length, total: list.length })}
+					</span>
+				</div>
+			) : null}
 			{list && list.length > 0 ? (
 				<ul className="flex flex-col gap-2">
-					{list.map((p) => (
+					{shown.map((p) => (
 						<li
 							key={`${p.id}\u0000${p.scope}`}
 							className="rounded-xl border border-border p-3"
@@ -1010,8 +1045,26 @@ function CatalogRow({
 							})}
 						</Badge>
 					) : null}
+					{plugin.category ? <Badge>{plugin.category}</Badge> : null}
+					{plugin.skills > 0 ? <Badge>{t("plugins.catalogSkills", { count: plugin.skills })}</Badge> : null}
 				</div>
 				{plugin.description ? <p className="mt-1 text-xs text-muted">{plugin.description}</p> : null}
+				{plugin.author || plugin.tags.length > 0 || plugin.homepage ? (
+					<p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-faint">
+						{plugin.author ? <span>{t("plugins.skillsBy", { name: plugin.author })}</span> : null}
+						{plugin.tags.length > 0 ? <span>{plugin.tags.map((x) => `#${x}`).join(" ")}</span> : null}
+						{plugin.homepage ? (
+							<a
+								href={plugin.homepage}
+								target="_blank"
+								rel="noreferrer"
+								className="underline decoration-dotted hover:text-muted"
+							>
+								{t("plugins.catalogHomepage")}
+							</a>
+						) : null}
+					</p>
+				) : null}
 			</div>
 			<div className="flex shrink-0 items-center gap-2">
 				<ScopePicker
@@ -1035,6 +1088,14 @@ function CatalogRow({
 	);
 }
 
+type CatalogSort = "name" | "marketplace" | "category";
+type CatalogStatus = "installed" | "available";
+const catalogStatus = (p: CatalogPlugin): CatalogStatus => (p.installed.length > 0 ? "installed" : "available");
+const CATALOG_STATUS_KEY: Record<CatalogStatus, MessageKey> = {
+	installed: "plugins.filterInstalled",
+	available: "plugins.filterNotInstalled",
+};
+
 function DiscoverSection({
 	data,
 	busy,
@@ -1048,14 +1109,30 @@ function DiscoverSection({
 }) {
 	const t = useT();
 	const [q, setQ] = useState("");
+	const [market, setMarket] = useState("");
+	const [category, setCategory] = useState("");
+	const [status, setStatus] = useState("");
+	const [sort, setSort] = useState<CatalogSort>("name");
 	const catalog = isPluginsFailure(data.catalog) ? null : data.catalog;
-	const shown = useMemo(() => {
+	const { shown, choices } = useMemo(() => {
 		const needle = q.trim().toLowerCase();
-		if (!catalog || !needle) return catalog ?? [];
-		return catalog.filter((p) =>
-			[p.name, p.description ?? "", p.marketplace].some((s) => s.toLowerCase().includes(needle)),
+		const { kept, choices } = facets(
+			catalog ?? [],
+			{
+				market: { value: market, of: (p) => p.marketplace },
+				category: { value: category, of: (p) => p.category },
+				status: { value: status, of: catalogStatus },
+			},
+			(p) =>
+				!needle ||
+				[p.name, p.description ?? "", p.marketplace, p.author ?? "", p.category ?? "", ...p.tags].some((s) =>
+					s.toLowerCase().includes(needle),
+				),
 		);
-	}, [catalog, q]);
+		const key = (p: CatalogPlugin) =>
+			sort === "marketplace" ? p.marketplace : sort === "category" ? (p.category ?? "\uffff") : "";
+		return { shown: kept.sort((a, b) => key(a).localeCompare(key(b)) || a.name.localeCompare(b.name)), choices };
+	}, [catalog, q, market, category, status, sort]);
 	const noMarkets = !isPluginsFailure(data.marketplaces) && data.marketplaces.length === 0;
 	return (
 		<Section
@@ -1072,15 +1149,58 @@ function DiscoverSection({
 			{noMarkets ? <p className="text-sm text-muted">{t("plugins.discoverNoMarkets")}</p> : null}
 			{catalog && catalog.length > 0 ? (
 				<>
-					<input
-						type="search"
-						value={q}
-						onChange={(e) => setQ(e.target.value)}
-						placeholder={t("plugins.discoverFilter")}
-						aria-label={t("plugins.discoverFilterAria")}
-						className="w-full rounded-lg border border-border bg-bg-soft px-2.5 py-1.5 text-sm outline-none focus:border-faint"
-						data-testid="catalog-filter"
-					/>
+					<div className="flex flex-wrap items-center gap-2">
+						<input
+							type="search"
+							value={q}
+							onChange={(e) => setQ(e.target.value)}
+							placeholder={t("plugins.discoverFilter")}
+							aria-label={t("plugins.discoverFilterAria")}
+							className="min-w-48 flex-1 rounded-lg border border-border bg-bg-soft px-2.5 py-1.5 text-sm outline-none focus:border-faint"
+							data-testid="catalog-filter"
+						/>
+						<FilterSelect
+							label={t("plugins.filterMarketplace")}
+							all={t("plugins.filterAllMarketplaces")}
+							value={market}
+							choices={choices.market}
+							onChange={setMarket}
+							testId="catalog-filter-marketplace"
+						/>
+						<FilterSelect
+							label={t("plugins.filterCategory")}
+							all={t("plugins.filterAllCategories")}
+							value={category}
+							choices={choices.category}
+							onChange={setCategory}
+							testId="catalog-filter-category"
+						/>
+						<FilterSelect
+							label={t("plugins.filterStatus")}
+							all={t("plugins.filterAnyStatus")}
+							value={status}
+							choices={choices.status}
+							labelOf={(v) => t(CATALOG_STATUS_KEY[v as CatalogStatus])}
+							onChange={setStatus}
+							testId="catalog-filter-status"
+						/>
+						<Select
+							tone="compact"
+							aria-label={t("plugins.sortBy")}
+							title={t("plugins.sortBy")}
+							value={sort}
+							onValueChange={(v) => setSort(v === "marketplace" || v === "category" ? v : "name")}
+							className="w-40 shrink-0"
+							data-testid="catalog-sort"
+						>
+							<option value="name">{t("plugins.sortName")}</option>
+							<option value="marketplace">{t("plugins.sortMarketplace")}</option>
+							<option value="category">{t("plugins.sortCategory")}</option>
+						</Select>
+					</div>
+					<p className="mt-1.5 text-xs text-faint" data-testid="catalog-count">
+						{t("plugins.filterShown", { shown: shown.length, total: catalog.length })}
+					</p>
 					{shown.length === 0 ? <p className="mt-3 text-sm text-muted">{t("plugins.discoverNone")}</p> : null}
 					<ul className="mt-1 divide-y divide-border">
 						{shown.map((p) => (

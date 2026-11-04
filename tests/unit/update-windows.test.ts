@@ -15,7 +15,8 @@ import {
 	startHidden,
 	tarCommand,
 	WINDOWS_EXE,
-	ZIP_TOP,
+	type WindowsArch,
+	zipTop,
 } from "../../server/update/windows.ts";
 import type { AppUpdateState } from "../../shared/update.ts";
 import { writeBunProgram } from "../support/bun-program.ts";
@@ -34,6 +35,8 @@ import { removeScratch } from "../support/scratch.ts";
  */
 
 const root = mkdtempSync(join(tmpdir(), "ompw-win-update-"));
+/** The x64 launcher's zip folder: the cases below are an x64 launcher's unless they say Arm. */
+const ZIP_TOP = zipTop("x64");
 /**
  * Whether this system's `tar` reads zips as Windows' `tar.exe` does: a bsdtar (Windows', macOS's, or `bsdtar` on Linux).
  * GNU tar does not read zips, so where it is the only one the cases that unpack one skip.
@@ -65,15 +68,18 @@ function standInProgram(version: string): Record<string, Uint8Array> {
 	return Object.fromEntries(readdirSync(dir).map((name) => [name, new Uint8Array(readFileSync(join(dir, name)))]));
 }
 
-/** The members of a release's zip as CI makes it: the top folder, the program saying `version`, and `web/index.html`. */
-function releaseMembers(version: string): Zippable {
+/**
+ * The members of a release's zip as CI makes it: the top folder (`top`, the x64 zip's by default), the program saying
+ * `version`, and `web/index.html`.
+ */
+function releaseMembers(version: string, top = ZIP_TOP): Zippable {
 	const members: Zippable = {
-		[`${ZIP_TOP}/`]: entry(new Uint8Array(), 0o40755),
-		[`${ZIP_TOP}/web/`]: entry(new Uint8Array(), 0o40755),
-		[`${ZIP_TOP}/web/index.html`]: entry(text("<html></html>"), 0o100644),
+		[`${top}/`]: entry(new Uint8Array(), 0o40755),
+		[`${top}/web/`]: entry(new Uint8Array(), 0o40755),
+		[`${top}/web/index.html`]: entry(text("<html></html>"), 0o100644),
 	};
 	for (const [name, bytes] of Object.entries(standInProgram(version))) {
-		members[`${ZIP_TOP}/${name}`] = entry(bytes, 0o100755);
+		members[`${top}/${name}`] = entry(bytes, 0o100755);
 	}
 	return members;
 }
@@ -84,10 +90,10 @@ function writeZip(members: Zippable): string {
 	return file;
 }
 
-/** A folder to install into: `<dir>/omp-webui-windows-x64` is the installed launcher, its staged copy is beside it. */
-function installDir(): { dir: string; staged: string } {
+/** A folder to install into: `<dir>/omp-webui-windows-<arch>` is the installed launcher, its staged copy is beside it. */
+function installDir(arch: WindowsArch = "x64"): { dir: string; staged: string } {
 	const dir = mkdtempSync(join(root, "install-"));
-	return { dir, staged: join(dir, `${ZIP_TOP}.updating`) };
+	return { dir, staged: join(dir, `${zipTop(arch)}.updating`) };
 }
 
 async function refusal(promise: Promise<unknown>): Promise<UpdateError> {
@@ -134,7 +140,7 @@ test("helper.ps1 is ASCII: Windows PowerShell reads a script without a byte-orde
 
 test("a member is allowed only under the one top folder, relative, without `..`, a drive or a stream", () => {
 	for (const ok of [`${ZIP_TOP}/`, `${ZIP_TOP}/omp-webui.exe`, `${ZIP_TOP}/web/index.html`, `${ZIP_TOP}\\web\\a.js`]) {
-		expect(memberAllowed(ok), ok).toBe(true);
+		expect(memberAllowed(ok, ZIP_TOP), ok).toBe(true);
 	}
 	for (const bad of [
 		"",
@@ -151,8 +157,16 @@ test("a member is allowed only under the one top folder, relative, without `..`,
 		`${ZIP_TOP}-2/x`,
 		"omp-webui.exe",
 	]) {
-		expect(memberAllowed(bad), bad).toBe(false);
+		expect(memberAllowed(bad, ZIP_TOP), bad).toBe(false);
 	}
+});
+
+test("each processor's zip has a top folder of its own, and a launcher takes only its own processor's", () => {
+	expect(zipTop("x64")).toBe("omp-webui-windows-x64");
+	expect(zipTop("arm64")).toBe("omp-webui-windows-arm64");
+	expect(memberAllowed("omp-webui-windows-arm64/omp-webui.exe", zipTop("arm64"))).toBe(true);
+	expect(memberAllowed("omp-webui-windows-x64/omp-webui.exe", zipTop("arm64"))).toBe(false);
+	expect(memberAllowed("omp-webui-windows-arm64/omp-webui.exe", zipTop("x64"))).toBe(false);
 });
 
 // ------------------------------------------------------------------ staging
@@ -162,7 +176,9 @@ test.skipIf(!readsZips)(
 	async () => {
 		const { dir, staged } = installDir();
 		const phases: string[] = [];
-		await stageWindows(writeZip(releaseMembers("9.0.0")), staged, "9.0.0", { onUnpack: () => phases.push("unpack") });
+		await stageWindows(writeZip(releaseMembers("9.0.0")), staged, "9.0.0", "x64", {
+			onUnpack: () => phases.push("unpack"),
+		});
 		expect(phases).toEqual(["unpack"]);
 		expect(existsSync(join(staged, WINDOWS_EXE))).toBe(true);
 		expect(readFileSync(join(staged, "web", "index.html"), "utf8")).toBe("<html></html>");
@@ -173,10 +189,33 @@ test.skipIf(!readsZips)(
 );
 
 test.skipIf(!readsZips)(
+	"an Arm launcher stages the arm64 zip, and refuses the x64 one before anything is unpacked",
+	async () => {
+		const arm = zipTop("arm64");
+		const { dir, staged } = installDir("arm64");
+		await stageWindows(writeZip(releaseMembers("9.0.0", arm)), staged, "9.0.0", "arm64");
+		expect(existsSync(join(staged, WINDOWS_EXE))).toBe(true);
+		expect(readdirSync(dir)).toEqual([`${arm}.updating`]);
+
+		const other = installDir("arm64");
+		const e = await refusal(
+			stageWindows(writeZip(releaseMembers("9.0.0")), other.staged, "9.0.0", "arm64", {
+				onUnpack: () => {
+					throw new Error("the x64 zip was unpacked");
+				},
+			}),
+		);
+		expect(e.code).toBe("noApp");
+		expect(e.params).toEqual({ name: arm });
+		expect(readdirSync(other.dir)).toEqual([]);
+	},
+);
+
+test.skipIf(!readsZips)(
 	"a program that says another version is refused with both versions, and the staged folder is removed",
 	async () => {
 		const { dir, staged } = installDir();
-		const e = await refusal(stageWindows(writeZip(releaseMembers("8.0.0")), staged, "9.0.0"));
+		const e = await refusal(stageWindows(writeZip(releaseMembers("8.0.0")), staged, "9.0.0", "x64"));
 		expect(e.code).toBe("version");
 		expect(e.params).toEqual({ tag: "v9.0.0", found: "8.0.0" });
 		expect(readdirSync(dir)).toEqual([]);
@@ -199,7 +238,7 @@ test.skipIf(!readsZips)(
 		for (const [name, members] of Object.entries(cases)) {
 			const { dir, staged } = installDir();
 			const e = await refusal(
-				stageWindows(writeZip(members), staged, "9.0.0", {
+				stageWindows(writeZip(members), staged, "9.0.0", "x64", {
 					onUnpack: () => {
 						throw new Error(`${name}: unpacked`);
 					},
@@ -220,14 +259,14 @@ test.skipIf(!readsZips)(
 		const noPage = Object.fromEntries(Object.entries(good).filter(([name]) => !name.endsWith("index.html")));
 		for (const [name, members] of Object.entries({ noExe, noPage })) {
 			const { dir, staged } = installDir();
-			const e = await refusal(stageWindows(writeZip(members), staged, "9.0.0"));
+			const e = await refusal(stageWindows(writeZip(members), staged, "9.0.0", "x64"));
 			expect(e.code, name).toBe("noApp");
 			expect(readdirSync(dir), name).toEqual([]);
 		}
 		const { dir, staged } = installDir();
 		const notZip = join(root, "not-a-zip.zip");
 		writeFileSync(notZip, "this is not a zip");
-		expect((await refusal(stageWindows(notZip, staged, "9.0.0"))).code).toBe("noApp");
+		expect((await refusal(stageWindows(notZip, staged, "9.0.0", "x64"))).code).toBe("noApp");
 		expect(readdirSync(dir)).toEqual([]);
 	},
 );
@@ -237,7 +276,7 @@ test.skipIf(!readsZips)(
 	async () => {
 		const { dir, staged } = installDir();
 		const e = await refusal(
-			stageWindows(writeZip(releaseMembers("9.0.0")), staged, "9.0.0", { freeBytes: () => 1024 }),
+			stageWindows(writeZip(releaseMembers("9.0.0")), staged, "9.0.0", "x64", { freeBytes: () => 1024 }),
 		);
 		expect(e.code).toBe("space");
 		expect(e.params.free).toBe(1024);
@@ -268,15 +307,16 @@ afterEach(() => {
 /**
  * A launcher's updater, with a stand-in for PowerShell that records how it was started and then does what `helper.ps1`
  * does first (`starts`: writes `helper-started-<id>` and ends), or never gets that far and stays (`never`: a policy that
- * stops the script).
+ * stops the script). It is an x64 launcher on Windows unless `extra.system` says otherwise, whatever this machine is.
  */
 function launcher(
 	extra: Partial<ConstructorParameters<typeof AppUpdater>[0]> = {},
 	helper: "starts" | "never" = "starts",
 ): Launcher {
+	const system = extra.system ?? { id: "win32" as const, arch: "x64" };
 	const dir = mkdtempSync(join(root, "launcher-"));
 	const data = join(dir, "data");
-	const folder = join(dir, ZIP_TOP);
+	const folder = join(dir, zipTop(system.arch === "arm64" ? "arm64" : "x64"));
 	mkdirSync(join(folder, "web"), { recursive: true });
 	writeFileSync(join(folder, WINDOWS_EXE), "the installed program");
 	writeFileSync(join(folder, "web", "index.html"), "old");
@@ -312,6 +352,7 @@ function launcher(
 		dataDir: data,
 		installed: pkg.version,
 		target,
+		system,
 		parentPid: null,
 		api: fake.url,
 		automatic: false,
@@ -335,7 +376,7 @@ function launcher(
 	return l;
 }
 
-const zipName = (version: string) => `omp-webui-v${version}-windows-x64.zip`;
+const zipName = (version: string, arch: WindowsArch = "x64") => `omp-webui-v${version}-windows-${arch}.zip`;
 
 test.skipIf(!readsZips)(
 	"the launcher installs the release's zip: staged beside its folder, checked, and handed to helper.ps1, then it exits",
@@ -439,6 +480,60 @@ test("a zip GitHub lists no SHA-256 for is no installer: the release is shown, a
 	expect(await l.updater.install("v9.0.0", false)).toMatchObject({ code: "nothingToInstall" });
 });
 
+const ARM = { system: { id: "win32" as const, arch: "arm64" } };
+
+test("an Arm launcher takes only the arm64 zip: a release with just the x64 one has no installer for it", async () => {
+	const l = launcher(ARM);
+	fake.publish({ tag: "v9.0.0", dmg: writeZip(releaseMembers("9.0.0")), assetName: zipName("9.0.0") });
+	await l.updater.check();
+	expect(l.updater.state()).toMatchObject({ newer: true, latest: { tag: "v9.0.0", asset: null } });
+	expect(await l.updater.install("v9.0.0", false)).toMatchObject({ code: "nothingToInstall" });
+	// Nor one whose arm64 zip GitHub lists no SHA-256 for.
+	const other = launcher(ARM);
+	fake.publish({
+		tag: "v9.0.1",
+		dmg: writeZip(releaseMembers("9.0.1", zipTop("arm64"))),
+		assetName: zipName("9.0.1", "arm64"),
+		digest: "none",
+	});
+	await other.updater.check();
+	expect(other.updater.state()).toMatchObject({ newer: true, latest: { tag: "v9.0.1", asset: null } });
+});
+
+test.skipIf(!readsZips)(
+	"an Arm launcher installs the release's arm64 zip, staged from its own top folder, and hands it to helper.ps1",
+	async () => {
+		const l = launcher(ARM);
+		const arm = zipTop("arm64");
+		expect(l.folder.endsWith(arm)).toBe(true);
+		fake.publish({
+			tag: "v9.0.0",
+			dmg: writeZip(releaseMembers("9.0.0", arm)),
+			assetName: zipName("9.0.0", "arm64"),
+		});
+		await l.updater.check();
+		expect(l.updater.state().latest?.asset?.name).toBe(zipName("9.0.0", "arm64"));
+		expect(await l.updater.install("v9.0.0", false)).toHaveProperty("state");
+		await pollUntil(() => l.quits > 0, "the launcher to exit after the handover", 30_000);
+		expect(readFileSync(join(`${l.folder}.updating`, "web", "index.html"), "utf8")).toBe("<html></html>");
+	},
+);
+
+test.skipIf(!readsZips)(
+	"an Arm launcher refuses an x64 zip published under the arm64 name, and its folder is untouched",
+	async () => {
+		const l = launcher(ARM);
+		fake.publish({ tag: "v9.0.0", dmg: writeZip(releaseMembers("9.0.0")), assetName: zipName("9.0.0", "arm64") });
+		await l.updater.check();
+		await l.updater.install("v9.0.0", false);
+		await pollUntil(() => l.updater.state().failed !== null, "the install to fail", 30_000);
+		expect(l.updater.state().failed).toMatchObject({ code: "noApp", tag: "v9.0.0", params: { name: zipTop("arm64") } });
+		expect(existsSync(`${l.folder}.updating`)).toBe(false);
+		expect(readFileSync(join(l.folder, "web", "index.html"), "utf8")).toBe("old");
+		expect(l.quits).toBe(0);
+	},
+);
+
 test.skipIf(!has.posixModes)("a launcher in a folder this user cannot write in cannot update itself", async () => {
 	const l = launcher();
 	const parent = join(l.folder, "..");
@@ -503,6 +598,7 @@ function optionsOf(l: Launcher): ConstructorParameters<typeof AppUpdater>[0] {
 		dataDir: l.data,
 		installed: pkg.version,
 		target: { kind: "windows", folder: l.folder },
+		system: { id: "win32", arch: "x64" },
 		parentPid: null,
 		api: fake.url,
 		automatic: false,

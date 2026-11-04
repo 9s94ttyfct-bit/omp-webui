@@ -56,7 +56,11 @@ test("the header total, its tooltip, the Info tab, the sidebar and the usage pag
 	await expect(info(page).locator('[data-stat="Total cost"]')).toHaveText("$3.887345");
 	await expect(info(page).locator('[data-stat="Advisor cost"]')).toHaveText("$2.875000");
 
+	// The usage page's list is omp's database's for the range: the written transcripts are months old, and omp counts
+	// them when it runs again (Refresh).
 	await page.goto("/#/usage");
+	await page.getByTestId("usage-range-all").click();
+	await page.getByRole("button", { name: "Refresh" }).click();
 	const top = page.locator(`[data-testid="usage-session"][data-file$="${basename(own.file)}"]`);
 	await expect(top).toBeVisible();
 	expect(Number(await top.getByTestId("usage-session-cost").getAttribute("data-cost"))).toBeCloseTo(3.887345, 6);

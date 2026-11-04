@@ -89,8 +89,8 @@ test("each system takes its own installer: the zip on Windows, the disk image on
 		browser_download_url: `${API}/download/omp-webui-v0.12.0.dmg`,
 	};
 	const both = release({}, [dmg, zip]);
-	const windows = parseRelease(both, API, "win32");
-	expect(installerName("0.12.0", "win32")).toBe("omp-webui-v0.12.0-windows-x64.zip");
+	const windows = parseRelease(both, API, "win32-x64");
+	expect(installerName("0.12.0", "win32-x64")).toBe("omp-webui-v0.12.0-windows-x64.zip");
 	expect(windows?.release.asset).toEqual({ name: "omp-webui-v0.12.0-windows-x64.zip", size: 2048 });
 	expect(windows?.installer).toEqual({ url: zip.browser_download_url, sha256: SHA });
 	const mac = parseRelease(both, API, "darwin");
@@ -99,16 +99,50 @@ test("each system takes its own installer: the zip on Windows, the disk image on
 
 	// A zip GitHub lists no SHA-256 for is not installed: nothing else says the bytes are the release's.
 	const { digest: _, ...bare } = zip;
-	const undigested = parseRelease(release({}, [dmg, bare]), API, "win32");
+	const undigested = parseRelease(release({}, [dmg, bare]), API, "win32-x64");
 	expect(undigested?.installer).toBeNull();
 	expect(undigested?.release.asset).toBeNull();
-	expect(parseRelease(release({}, [{ ...zip, digest: "md5:abc" }]), API, "win32")?.installer).toBeNull();
+	expect(parseRelease(release({}, [{ ...zip, digest: "md5:abc" }]), API, "win32-x64")?.installer).toBeNull();
 	// The disk image is still taken without one (its signature is checked against the running app's).
 	const { digest: __, ...bareDmg } = dmg;
 	expect(parseRelease(release({}, [bareDmg]), API, "darwin")?.installer).toEqual({
 		url: dmg.browser_download_url,
 		sha256: null,
 	});
+});
+
+test("a Windows server takes the zip of its processor: arm64 on Arm, x64 otherwise; a release without its zip has none for it", () => {
+	const zip = (arch: string, digest: string | null = `sha256:${SHA}`) => ({
+		name: `omp-webui-v0.12.0-windows-${arch}.zip`,
+		state: "uploaded",
+		size: arch === "arm64" ? 2049 : 2048,
+		...(digest ? { digest } : {}),
+		browser_download_url: `${API}/download/omp-webui-v0.12.0-windows-${arch}.zip`,
+	});
+	const both = release({}, [zip("x64"), zip("arm64")]);
+	expect(installerName("0.12.0", "win32-arm64")).toBe("omp-webui-v0.12.0-windows-arm64.zip");
+	const arm = parseRelease(both, API, "win32-arm64");
+	expect(arm?.release.asset).toEqual({ name: "omp-webui-v0.12.0-windows-arm64.zip", size: 2049 });
+	expect(arm?.installer).toEqual({ url: zip("arm64").browser_download_url, sha256: SHA });
+	const x64 = parseRelease(both, API, "win32-x64");
+	expect(x64?.release.asset).toEqual({ name: "omp-webui-v0.12.0-windows-x64.zip", size: 2048 });
+
+	// A release without the arm64 zip (as every one before it was built) is shown on Arm with no installer.
+	const onlyX64 = parseRelease(release({}, [zip("x64")]), API, "win32-arm64");
+	expect(onlyX64?.release.tag).toBe("v0.12.0");
+	expect(onlyX64?.release.asset).toBeNull();
+	expect(onlyX64?.installer).toBeNull();
+	// The arm64 zip, like the x64 one, is taken only with its SHA-256.
+	expect(parseRelease(release({}, [zip("arm64", null)]), API, "win32-arm64")?.installer).toBeNull();
+
+	// Which one: the processor the launcher (or a server that is no app) runs on. An x64 launcher on an Arm machine is
+	// emulated and says it is x64, so it keeps taking the x64 zip.
+	expect(installerPlatformOf("windows", "win32", "x64")).toBe("win32-x64");
+	expect(installerPlatformOf("windows", "win32", "arm64")).toBe("win32-arm64");
+	expect(installerPlatformOf(null, "win32", "x64")).toBe("win32-x64");
+	expect(installerPlatformOf(null, "win32", "arm64")).toBe("win32-arm64");
+	expect(installerPlatformOf("windows", "win32", "ia32")).toBeNull();
+	expect(installerPlatformOf(null, "win32", "ia32")).toBeNull();
 });
 
 test("a Linux server takes the package for its processor; one with no package built for it, and no system, takes none", () => {
@@ -138,8 +172,8 @@ test("a Linux server takes the package for its processor; one with no package bu
 
 	// Which one a server shows: what it was started as, else its system's, and on Linux its processor's.
 	expect(installerPlatformOf("mac", "darwin", "arm64")).toBe("darwin");
-	expect(installerPlatformOf("windows", "win32", "x64")).toBe("win32");
-	expect(installerPlatformOf(null, "win32", "x64")).toBe("win32");
+	expect(installerPlatformOf("windows", "win32", "x64")).toBe("win32-x64");
+	expect(installerPlatformOf(null, "win32", "x64")).toBe("win32-x64");
 	expect(installerPlatformOf(null, "darwin", "x64")).toBe("darwin");
 	expect(installerPlatformOf(null, "linux", "x64")).toBe("linux-x64");
 	expect(installerPlatformOf(null, "linux", "arm64")).toBe("linux-arm64");

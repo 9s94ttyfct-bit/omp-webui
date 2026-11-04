@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { FIXTURE_CWD, writeSimpleSession } from "./fixtures.ts";
@@ -33,12 +34,17 @@ function call(id: string, n: number) {
 	};
 }
 
-/** Write a subagent transcript whose requests are worth `calls` (thousandths of a dollar each). */
+/**
+ * Write a subagent transcript whose requests are worth `calls` (thousandths of a dollar each). The entries' ids carry a
+ * tag of the file: omp takes two entries of one id and time for one request copied into a fork and counts it once, so
+ * the same calls in two transcripts would be counted once in its statistics (Usage & cost's conversations).
+ */
 export function writeTranscript(file: string, calls: number[], header: Record<string, unknown> = {}): void {
 	mkdirSync(dirname(file), { recursive: true });
+	const tag = createHash("sha256").update(file).digest("hex").slice(0, 8);
 	const lines = [
 		{ type: "session", version: 3, id: `sub-${file.length}`, timestamp: SUBAGENT_START, cwd: FIXTURE_CWD, ...header },
-		...calls.map((n, i) => call(`c${i}-${n}`, n)),
+		...calls.map((n, i) => call(`c${i}-${n}-${tag}`, n)),
 	];
 	writeFileSync(file, `${lines.map((l) => JSON.stringify(l)).join("\n")}\n`);
 }

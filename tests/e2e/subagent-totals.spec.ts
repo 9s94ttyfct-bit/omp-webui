@@ -54,7 +54,11 @@ test("the sidebar tooltip and the usage page count a conversation's subagents, n
 	await expect(rowOf(page, own.file)).toHaveCount(1, { timeout: 15_000 });
 	await expect(rowOf(page, own.file)).toHaveAttribute("title", /\$8\.01 \(incl\. \$8\.00 by subagents\)/);
 
+	// The usage page's list is omp's database's for the range: the written transcripts are months old, and omp counts
+	// them when it runs again (Refresh).
 	await page.goto("/#/usage");
+	await page.getByTestId("usage-range-all").click();
+	await page.getByRole("button", { name: "Refresh" }).click();
 	const top = page.locator(`[data-testid="usage-session"][data-file$="${basename(own.file)}"]`);
 	await expect(top).toBeVisible();
 	expect(Number(await top.getByTestId("usage-session-cost").getAttribute("data-cost"))).toBeCloseTo(8.012345, 6);

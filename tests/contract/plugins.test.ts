@@ -70,7 +70,17 @@ function writeCatalog(version: string) {
 		JSON.stringify({
 			name: "testmarket",
 			owner: { name: "test" },
-			plugins: [{ name: "greeter", version, description: "Says hi", source: "./plugins/greeter" }],
+			plugins: [
+				{
+					name: "greeter",
+					version,
+					description: "Says hi",
+					source: "./plugins/greeter",
+					category: "Productivity",
+					author: { name: "Tester" },
+					keywords: ["Greeting"],
+				},
+			],
 		}),
 	);
 	writePlugin(join(market, "plugins", "greeter"), "greeter", version);
@@ -141,8 +151,20 @@ test("a local marketplace: added, its catalog listed, a plugin installed, switch
 		expect(added.reloads).toEqual([]);
 		const withMarket = await list();
 		expect(withMarket.marketplaces).toEqual([{ name: "testmarket", source: market }]);
+		// What omp's cached copy of the catalog adds (`~/.omp/marketplaces.json` names where it is).
 		expect(withMarket.catalog).toEqual([
-			{ name: "greeter", version: "1.0.0", description: "Says hi", marketplace: "testmarket", installed: [] },
+			{
+				name: "greeter",
+				version: "1.0.0",
+				description: "Says hi",
+				marketplace: "testmarket",
+				installed: [],
+				category: "productivity",
+				author: "Tester",
+				homepage: null,
+				tags: ["greeting"],
+				skills: 0,
+			},
 		]);
 
 		const install = await job({ action: "install", spec: "greeter@testmarket", scope: "user" });

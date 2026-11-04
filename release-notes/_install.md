@@ -16,7 +16,7 @@
 
 ## Run omp-webui on Windows
 
-1. Download `omp-webui-vX.Y.Z-windows-x64.zip` (Windows 10 or later, x64) and extract it anywhere. Keep the `web` folder beside `omp-webui.exe`.
+1. Download `omp-webui-vX.Y.Z-windows-x64.zip` (Windows 10 or later, x64) or `omp-webui-vX.Y.Z-windows-arm64.zip` (Windows on Arm) and extract it anywhere. Keep the `web` folder beside `omp-webui.exe`. On Arm there is no built-in browser for agents (Chrome for Testing has no Arm build for Windows).
 2. Double-click `omp-webui.exe`. It is not signed, so SmartScreen may warn the first time: choose **More info › Run anyway**.
 3. It opens omp-webui in your default browser. Its console window stays open while it runs; close it to stop omp-webui. If [`omp`](https://omp.sh) isn't installed yet, the page offers to install it.
 4. From 0.17.0 it updates itself (Settings › Updates). Coming from 0.16.0, update by hand once: download the new zip and replace the folder. Keep the folder somewhere you can write to (not under Program Files), or the update cannot replace it.
@@ -51,7 +51,7 @@
 
 ## 在 Windows 上运行 omp-webui
 
-1. 下载 `omp-webui-vX.Y.Z-windows-x64.zip`（Windows 10 或更高，x64），解压到任意位置。`web` 文件夹要留在 `omp-webui.exe` 旁边。
+1. 下载 `omp-webui-vX.Y.Z-windows-x64.zip`（Windows 10 或更高，x64）或 `omp-webui-vX.Y.Z-windows-arm64.zip`（Arm 上的 Windows），解压到任意位置。`web` 文件夹要留在 `omp-webui.exe` 旁边。Arm 上没有给智能体用的内置浏览器（Chrome for Testing 没有 Windows Arm 版本）。
 2. 双击 `omp-webui.exe`。它没有签名，第一次运行时 SmartScreen 可能会警告：点“更多信息 › 仍要运行”。
 3. 它会在默认浏览器里打开 omp-webui。运行期间它的控制台窗口一直开着；关掉这个窗口就停止 omp-webui。如果还没有安装 [`omp`](https://omp.sh)，页面会提供安装。
 4. 从 0.17.0 起它会自动更新（设置 › 更新）。从 0.16.0 升级需要手动一次：下载新的 zip，替换整个文件夹。文件夹要放在你有写入权限的地方（不要放在 Program Files 下），否则更新无法替换它。

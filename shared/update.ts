@@ -30,9 +30,9 @@ export interface AppRelease {
 	url: string;
 	notes: UpdateNotes;
 	/**
-	 * The installer for this system (`omp-webui-vX.Y.Z.dmg`, or on Windows `omp-webui-vX.Y.Z-windows-x64.zip` with the SHA-256
-	 * GitHub lists): null while the release has none yet. A tag's release is created by Actions first, and the dmg is
-	 * attached minutes later from the Mac that signs it.
+	 * The installer for this system (`omp-webui-vX.Y.Z.dmg`, or on Windows `omp-webui-vX.Y.Z-windows-x64.zip` or
+	 * `…-windows-arm64.zip`, by the launcher's processor, with the SHA-256 GitHub lists): null while the release has none
+	 * yet. A tag's release is created by Actions first, and the dmg is attached minutes later from the Mac that signs it.
 	 */
 	asset: { name: string; size: number } | null;
 }

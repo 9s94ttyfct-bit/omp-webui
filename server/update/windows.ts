@@ -17,7 +17,8 @@ import { detailOf, freeSpace, UpdateError } from "./steps.ts";
 /**
  * The Windows launcher's own update (`omp-webui.exe`, scripts/windows-launcher.ts): the release's zip is looked at, unpacked
  * next to the install folder and checked here; `helper.ps1` swaps the folders once this server has exited. The zip is CI's
- * (the windows-launcher job): one top folder, `omp-webui-windows-x64/`, holding `omp-webui.exe` and `web/`.
+ * (the windows-launcher job, one per processor): one top folder, `omp-webui-windows-<arch>/`, holding `omp-webui.exe` and
+ * `web/`.
  *
  * Nothing in the zip is taken at its word before it is on disk: the members are listed first, and a zip with a member that
  * could land outside the folder it is unpacked into (an absolute or drive-rooted name, a `..` segment, a link) or outside
@@ -25,8 +26,11 @@ import { detailOf, freeSpace, UpdateError } from "./steps.ts";
  * junctions, which `tar` could have made of something the listing did not show as one.
  */
 
-/** The zip's one top folder. */
-export const ZIP_TOP = "omp-webui-windows-x64";
+/** The processors a Windows launcher is built for: x64 and Arm (arm64). */
+export type WindowsArch = "x64" | "arm64";
+
+/** The one top folder of the zip for `arch`: an arm64 launcher takes only the arm64 zip, an x64 one only the x64 zip. */
+export const zipTop = (arch: WindowsArch): string => `omp-webui-windows-${arch}`;
 /** What the top folder must hold. */
 export const WINDOWS_EXE = "omp-webui.exe";
 const WEB_INDEX = join("web", "index.html");
@@ -149,35 +153,34 @@ const VERBOSE_LINE = /^(\S)\S*\s+\d+\s+\S+\s+\S+\s+(\d+)\s/;
  * The zip's members, by `tar -tf` (the names exactly) and `tar -tvf` (their types and sizes, in the same order). A listing
  * whose two halves do not line up (a name with a line break in it) or that cannot be read is no listing of ours.
  */
-async function listMembers(command: string, zip: string): Promise<Member[]> {
+async function listMembers(command: string, zip: string, top: string): Promise<Member[]> {
 	const names = await tar([command, "-tf", zip]);
 	const verbose = await tar([command, "-tvf", zip]);
 	if (names.code !== 0 || verbose.code !== 0)
 		throw new UpdateError("stage", { detail: detailOf(names.code ? names : verbose) });
 	const nameLines = linesOf(names.stdout);
 	const verboseLines = linesOf(verbose.stdout);
-	if (nameLines.length === 0 || nameLines.length !== verboseLines.length)
-		throw new UpdateError("noApp", { name: ZIP_TOP });
+	if (nameLines.length === 0 || nameLines.length !== verboseLines.length) throw new UpdateError("noApp", { name: top });
 	return nameLines.map((name, i) => {
 		const m = VERBOSE_LINE.exec(verboseLines[i] as string);
-		if (!m) throw new UpdateError("noApp", { name: ZIP_TOP });
+		if (!m) throw new UpdateError("noApp", { name: top });
 		const type = m[1];
 		return { name, kind: type === "-" ? "file" : type === "d" ? "dir" : "other", size: Number(m[2]) };
 	});
 }
 
 /**
- * Whether `name` (a member's name as the zip has it) unpacks inside the top folder: not absolute (`/x`, `\x`), not rooted at
- * a drive or naming a stream (any `:`, which no file of ours has), no `..` segment, and under `omp-webui-windows-x64/`.
+ * Whether `name` (a member's name as the zip has it) unpacks inside the top folder `top` (`zipTop`): not absolute (`/x`,
+ * `\x`), not rooted at a drive or naming a stream (any `:`, which no file of ours has), no `..` segment, and under `top/`.
  * Both separators count: Windows takes `\` as one.
  */
-export function memberAllowed(name: string): boolean {
+export function memberAllowed(name: string, top: string): boolean {
 	if (name === "" || name.includes(":") || name.includes("\0")) return false;
 	const path = name.replace(/\\/g, "/");
 	if (path.startsWith("/")) return false;
 	const segments = path.split("/").filter((s, i, all) => s !== "" || i < all.length - 1);
 	if (segments.some((s) => s === ".." || s === "")) return false;
-	return segments[0] === ZIP_TOP;
+	return segments[0] === top;
 }
 
 /**
@@ -228,22 +231,24 @@ export async function renameRetrying(from: string, to: string, tries = 20, gapMs
 
 /**
  * Unpack the release's `zip` (downloaded, its size and SHA-256 checked) into `staged`, next to the install folder, and check
- * it: the members are listed and vetted first (`memberAllowed`, files and folders only), the room for them is looked at,
- * then the zip is unpacked into a fresh folder beside `staged`, looked at again for links, and its top folder becomes
- * `staged`. It must hold `omp-webui.exe` and `web/index.html`, and `omp-webui.exe --version` must print `expectedVersion`.
- * Whatever is refused leaves nothing behind but what was there.
+ * it: the members are listed and vetted first (`memberAllowed` under `zipTop(arch)`, files and folders only), the room for
+ * them is looked at, then the zip is unpacked into a fresh folder beside `staged`, looked at again for links, and its top
+ * folder becomes `staged`. It must hold `omp-webui.exe` and `web/index.html`, and `omp-webui.exe --version` must print
+ * `expectedVersion`. Whatever is refused leaves nothing behind but what was there.
  */
 export async function stageWindows(
 	zip: string,
 	staged: string,
 	expectedVersion: string,
+	arch: WindowsArch,
 	opts: StageWindowsOptions = {},
 ): Promise<void> {
 	const command = opts.tar ?? tarCommand();
-	if (!isZip(zip)) throw new UpdateError("noApp", { name: ZIP_TOP });
-	const members = await listMembers(command, zip);
+	const topName = zipTop(arch);
+	if (!isZip(zip)) throw new UpdateError("noApp", { name: topName });
+	const members = await listMembers(command, zip, topName);
 	for (const m of members) {
-		if (m.kind === "other" || !memberAllowed(m.name)) throw new UpdateError("noApp", { name: ZIP_TOP });
+		if (m.kind === "other" || !memberAllowed(m.name, topName)) throw new UpdateError("noApp", { name: topName });
 	}
 
 	const dir = dirname(staged);
@@ -265,10 +270,10 @@ export async function stageWindows(
 	try {
 		const unpacked = await tar([command, "-xf", zip], unpack);
 		if (unpacked.code !== 0) throw new UpdateError("stage", { detail: detailOf(unpacked) });
-		const top = join(unpack, ZIP_TOP);
+		const top = join(unpack, topName);
 		const roots = readdirSync(unpack);
-		if (roots.length !== 1 || roots[0] !== ZIP_TOP || !lstatSync(top).isDirectory() || !plainTree(top)) {
-			throw new UpdateError("noApp", { name: ZIP_TOP });
+		if (roots.length !== 1 || roots[0] !== topName || !lstatSync(top).isDirectory() || !plainTree(top)) {
+			throw new UpdateError("noApp", { name: topName });
 		}
 		rmSync(staged, { recursive: true, force: true });
 		await renameRetrying(top, staged);

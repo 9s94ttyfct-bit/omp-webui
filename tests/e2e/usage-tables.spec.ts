@@ -44,9 +44,78 @@ const table = (page: Page, id: string) => page.locator("section", { has: page.ge
 test("tables with no rows are left out instead of showing only their headings", async ({ page }) => {
 	await showStats(page, { byModel: [], byFolder: [], byAgentType: [] });
 	await expect(tables(page)).toHaveCount(0);
-	// Conversations on disk still list their cost, and the page does not claim a fresh install.
-	await expect(page.getByRole("heading", { name: "Most expensive conversations" })).toBeVisible();
+	// omp's own answer has no reading of the range's conversations, and the page does not claim a fresh install.
+	await expect(page.getByRole("heading", { name: "Most expensive conversations" })).toHaveCount(0);
 	await expect(page.getByTestId("usage-fresh")).toHaveCount(0);
+});
+
+/** What the server's reading of omp's database adds (`shared/usage-analysis.ts`), with every part it can answer. */
+const analysis = {
+	conversations: [
+		{
+			file: "/tmp/ompw-usage-analysis/a.jsonl",
+			folder: "-tmp-ompw-usage-analysis",
+			requests: 3,
+			tokens: 1200,
+			cost: 1.5,
+			subagentCost: 0.5,
+			advisorCost: 0,
+			models: ["claude-haiku-5-5"],
+			lastTimestamp: Date.UTC(2026, 9, 25),
+		},
+	],
+	tools: [{ tool: "bash", calls: 4, errors: 1, errorRate: 0.25, avgResultChars: 1500 }],
+	errors: [
+		{
+			provider: "anthropic",
+			model: "claude-haiku-5-5",
+			message: "overloaded",
+			count: 2,
+			lastTimestamp: Date.UTC(2026, 9, 25),
+		},
+	],
+	hours: Array.from({ length: 24 }, (_, hour) => ({ hour, requests: hour === 9 ? 3 : 0, cost: hour === 9 ? 1.5 : 0 })),
+	timeZone: "UTC",
+};
+
+const second = bucket({ provider: "openai", model: "gpt-6-luna", totalCost: 0.5 });
+
+test("the range's conversations, tools, errors and hours show", async ({ page }) => {
+	await showStats(page, { byModel: [model, second], analysis });
+	await expect(page.getByTestId("table-model-compare")).toBeVisible();
+	await expect(page.getByTestId("usage-session")).toHaveCount(1);
+	await expect(page.getByTestId("usage-session-split")).toContainText("incl. $0.50 subagents");
+	await expect(page.getByTestId("tool-row")).toContainText(["bash"]);
+	await expect(page.getByTestId("error-row")).toContainText(["overloaded"]);
+	await expect(page.locator('[data-testid="hours-requests"] [data-hour="9"]')).toHaveAttribute("data-value", "3");
+});
+
+test("a part the database could not read is left out, and the others stay", async ({ page }) => {
+	await showStats(page, { byModel: [model, second], analysis: { ...analysis, tools: null, errors: null } });
+	await expect(page.getByTestId("usage-session")).toHaveCount(1);
+	await expect(page.getByTestId("usage-hours")).toBeVisible();
+	await expect(page.getByTestId("usage-tools")).toHaveCount(0);
+	await expect(page.getByTestId("usage-errors")).toHaveCount(0);
+});
+
+test("the model comparison sorts by any column, the models without the figure last", async ({ page }) => {
+	const cheap = bucket({ provider: "openai", model: "cheap", totalRequests: 10, totalCost: 0.1, avgTtft: null });
+	const dear = bucket({ provider: "anthropic", model: "dear", totalRequests: 4, totalCost: 4, avgTtft: 900 });
+	const quick = bucket({ provider: "anthropic", model: "quick", totalRequests: 2, totalCost: 1, avgTtft: 200 });
+	await showStats(page, { byModel: [cheap, dear, quick] });
+	const order = () => page.getByTestId("compare-row").locator("td:first-child").allTextContents();
+	// The most used first, until a column is chosen.
+	expect(await order()).toEqual(["cheap", "dear", "quick"]);
+	await page.getByTestId("compare-sort-perRequest").click();
+	expect(await order()).toEqual(["cheap", "quick", "dear"]);
+	await page.getByTestId("compare-sort-perRequest").click();
+	expect(await order()).toEqual(["dear", "quick", "cheap"]);
+	// No first token recorded: last, whichever way.
+	await page.getByTestId("compare-sort-ttft").click();
+	expect(await order()).toEqual(["quick", "dear", "cheap"]);
+	await page.getByTestId("compare-sort-ttft").click();
+	expect(await order()).toEqual(["dear", "quick", "cheap"]);
+	await expect(page.getByTestId("compare-sort-ttft").locator("..")).toHaveAttribute("aria-sort", "descending");
 });
 
 test("a table with rows shows while the empty ones stay out", async ({ page }) => {

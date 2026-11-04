@@ -20,6 +20,7 @@ import type {
 import type { ClaudeSlowMode, ConfigValue, SessionDefault, SessionSettings } from "@shared/session-defaults.ts";
 import type { FileTransfer } from "@shared/transfer.ts";
 import type { QuestionCounts } from "@shared/unattended.ts";
+import type { UsageAnalysis } from "@shared/usage-analysis.ts";
 import type { UsageRange } from "@shared/usage-range.ts";
 import type { ModelInfo } from "../store/live.ts";
 import { type Answer, answerOf } from "./answer.ts";
@@ -323,10 +324,12 @@ export const api = {
 		searchAnswer(await fetch(`/api/search?q=${enc(q)}&conversations=${limit}&all=1`, { signal })),
 	/**
 	 * omp's figures over `range` (#714). A plain ask is answered at once from what the server kept, `refreshing` while omp
-	 * brings them up to date (#690); `wait` waits for that run; `force` runs `omp stats` again, which is a POST.
+	 * brings them up to date (#690); `wait` waits for that run; `force` runs `omp stats` again, which is a POST. The page's
+	 * time zone goes with it: the hours of the day are counted in it.
 	 */
 	stats: async (how: "kept" | "wait" | "force", range: UsageRange): Promise<StatsAnswer> => {
-		const query = `range=${range}${how === "force" ? "&force=1" : how === "wait" ? "&wait=1" : ""}`;
+		const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		const query = `range=${range}&tz=${enc(tz)}${how === "force" ? "&force=1" : how === "wait" ? "&wait=1" : ""}`;
 		const res = await fetch(
 			`/api/stats?${query}`,
 			how === "force"
@@ -524,4 +527,6 @@ export interface OmpStats {
 	costSeries?: Array<Record<string, number | string>>;
 	modelSeries?: Array<Record<string, number | string>>;
 	modelPerformanceSeries?: Array<Record<string, number | string>>;
+	/** Only in the server's own reading of omp's database: omp's answer (the 24-hour fallback) has none. */
+	analysis?: UsageAnalysis;
 }

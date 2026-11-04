@@ -34,11 +34,14 @@ export function validSkillQuery(v: unknown): v is string {
  */
 const STORE_PATH = /[\\/](@[a-z0-9][a-z0-9_]{2,31})[\\/]([a-z0-9]+(?:-[a-z0-9]+)*)[\\/]([^\\/]+)[\\/]SKILL\.md$/;
 
+/** A skill as `omp skill list` gives it; whether a list turns it off is added by `skill-switches.ts`. */
+export type ListedSkill = Omit<InstalledSkill, "offGlobally" | "offInProject" | "nameOnly">;
+
 /** `omp skill list --json`: `{ skills: [{ name, description, filePath, baseDir, source: "<provider>:<level>", hide }] }`. */
-export function parseSkillList(doc: unknown): InstalledSkill[] {
+export function parseSkillList(doc: unknown): ListedSkill[] {
 	if (!isRecord(doc) || !Array.isArray(doc.skills))
 		throw new Error("omp skill list answered in a form this does not know");
-	return doc.skills.flatMap((s): InstalledSkill[] => {
+	return doc.skills.flatMap((s): ListedSkill[] => {
 		if (!isRecord(s) || typeof s.name !== "string") return [];
 		const source = str(s.source) ?? "";
 		const colon = source.lastIndexOf(":");

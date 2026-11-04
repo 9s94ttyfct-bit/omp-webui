@@ -1,16 +1,17 @@
 /**
- * Builds the Windows launcher (`bun run windows-launcher`, on Windows) → dist/omp-webui-windows-x64:
+ * Builds the Windows launcher (`bun run windows-launcher`, on Windows) → dist/omp-webui-windows-<arch>:
  *
  *   omp-webui.exe   the launcher (server/launcher.ts): the Bun server compiled with its runtime, with the app's icon
  *   web/            the built web UI
  *
  * A double-click on omp-webui.exe starts the server and opens its page in the default browser. omp is not bundled:
- * the first-run page installs it. CI builds it and zips the folder (the `windows-launcher` job); a release attaches
- * that zip.
+ * the first-run page installs it. CI builds it per processor and zips the folder (the `windows-launcher` job: x64 on
+ * `windows-latest`, arm64 on `windows-11-arm`); a release attaches both zips.
  *
  * It runs on Windows only: Bun writes the icon and the version details into the program only when it compiles on
- * Windows (a cross-compile refuses the `--windows-*` options).
+ * Windows (a cross-compile refuses the `--windows-*` options). So each processor's is built on a Windows of its own.
  *
+ * `--arch x64|arm64` is the processor it is built for (`--target=bun-windows-<arch>`; this machine's by default).
  * `--out <dir>` builds into another folder, and `--version <x.y.z>` builds a program that says it is that version
  * (`omp-webui.exe --version`, the server's own): the updater's tests install it as a later release.
  */
@@ -39,8 +40,13 @@ if (!/^\d+\.\d+\.\d+$/.test(version)) {
 	console.error(`--version wants x.y.z, not ${version}`);
 	process.exit(1);
 }
+const arch = arg("arch") ?? process.arch;
+if (arch !== "x64" && arch !== "arm64") {
+	console.error(`--arch wants x64 or arm64, not ${arch}`);
+	process.exit(1);
+}
 const outArg = arg("out");
-const out = outArg ? resolve(root, outArg) : join(root, "dist", "omp-webui-windows-x64");
+const out = outArg ? resolve(root, outArg) : join(root, "dist", `omp-webui-windows-${arch}`);
 // The folder is emptied before the build: only one that is new, empty or an earlier build's, never the checkout or a
 // folder that holds it.
 const rel = relative(out, root);
@@ -82,7 +88,7 @@ try {
 			"build",
 			"--compile",
 			"--minify",
-			"--target=bun-windows-x64",
+			`--target=bun-windows-${arch}`,
 			`--windows-icon=${icon}`,
 			"--windows-title=omp-webui",
 			"--windows-description=omp-webui",

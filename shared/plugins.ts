@@ -54,7 +54,10 @@ export interface InstalledPlugin {
 	upgrade: { from: string | null; to: string } | null;
 }
 
-/** One plugin of a configured marketplace's catalog (`omp plugin discover <marketplace>`). */
+/**
+ * One plugin of a configured marketplace's catalog (`omp plugin discover <marketplace>`), with what the marketplace's
+ * cached catalog (`marketplace.json`, which omp writes) says of it besides: empty where it says nothing.
+ */
 export interface CatalogPlugin {
 	name: string;
 	version: string | null;
@@ -62,6 +65,14 @@ export interface CatalogPlugin {
 	marketplace: string;
 	/** The scopes it is installed in (as `name@marketplace`). */
 	installed: PluginScope[];
+	/** The catalog's category (`development`, `security`…), lower case. */
+	category: string | null;
+	author: string | null;
+	homepage: string | null;
+	/** The catalog's `tags` and `keywords`, lower case, each once. */
+	tags: string[];
+	/** How many skills it brings, as its catalog entry lists them (0 when it lists none). */
+	skills: number;
 }
 
 /** A configured marketplace (`omp plugin marketplace list`). */
@@ -166,6 +177,15 @@ export interface InstalledSkill {
 	hidden: boolean;
 	/** A skill installed from omp's registry (`omp skill install`): its id and version, what Uninstall needs. */
 	registry: { id: string; version: string } | null;
+	/** `skill:<name>` is in the global `disabledExtensions` (what every folder without a list of its own uses). */
+	offGlobally: boolean;
+	/**
+	 * Whether the project folder's own list (`<folder>/.omp/config.yml`), which replaces the global one there, turns it
+	 * off; null when the folder has no list of its own (or is the home folder).
+	 */
+	offInProject: boolean | null;
+	/** Known only by name: a list turns it off and omp no longer finds it. */
+	nameOnly: boolean;
 }
 
 /** One skill of omp's registry, skills.omp.sh (`omp skill search --json`). */
@@ -185,3 +205,25 @@ export interface SkillSearch {
 	total: number;
 	hits: SkillHit[];
 }
+
+/** `GET /api/plugins/skills`: every skill omp finds, on and off, for the folder the page looks at. */
+export interface SkillsData {
+	installed: InstalledSkill[];
+	/** The folder is a project (not the home folder): it can have a list of its own. */
+	project: boolean;
+	/** The project folder has its own `disabledExtensions`, which replaces the global list there. */
+	projectList: boolean;
+}
+
+/** Where a skill is switched (`POST /api/plugins/skills/enable`): every folder's list, or one project folder's. */
+export type SkillSwitchScope = "global" | "project";
+
+/** `GET /api/plugins/skills/file`: a skill's `SKILL.md`, at most 256 KiB of it (`cut`: there is more). */
+export interface SkillFile {
+	path: string;
+	text: string;
+	cut: boolean;
+}
+
+/** Whether a skill is on in the folder the page looks at: the project's own list decides where there is one. */
+export const skillOn = (s: InstalledSkill): boolean => !(s.offInProject ?? s.offGlobally);

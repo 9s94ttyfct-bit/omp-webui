@@ -50,10 +50,11 @@ import {
 	isNewer,
 	type ParsedRelease,
 	parseRelease,
+	windowsArchOf,
 } from "./release.ts";
 import { attach, detach, download, freeSpace, stage, UpdateCancelled, UpdateError, writable } from "./steps.ts";
 import { designatedRequirementOf, leafOf, refusalOf } from "./verify.ts";
-import { canWriteIn, powershellCommand, stageWindows, startHidden, WINDOWS_EXE } from "./windows.ts";
+import { canWriteIn, powershellCommand, stageWindows, startHidden, WINDOWS_EXE, type WindowsArch } from "./windows.ts";
 
 /**
  * The app's own updates (#571), as the server runs them: it looks for a newer release (at start and every six hours,
@@ -107,7 +108,10 @@ export interface UpdaterOptions {
 	/** For tests. */
 	fetch?: typeof fetch;
 	now?: () => number;
-	/** For tests: the system and processor whose installer a server that is no app shows (this one's by default). */
+	/**
+	 * For tests: the system and processor this server runs on (this one's by default): whose installer a server that is no
+	 * app shows, and which processor's zip the Windows launcher takes.
+	 */
 	system?: { id: PlatformId; arch: string };
 	/** Quit the shell for the update (`SIGUSR1`; the macOS app). */
 	signalParent?: (pid: number) => void;
@@ -208,7 +212,7 @@ export class AppUpdater {
 	private folderWritable: boolean | null = null;
 	private timers: NodeJS.Timeout[] = [];
 	private lastProgressAt = 0;
-	/** Which of a release's installers is this one's (`installerPlatformOf`); null: none (a Linux processor with no package). */
+	/** Which of a release's installers is this one's (`installerPlatformOf`); null: none (a processor no zip or package is built for). */
 	private readonly platform: InstallerPlatform | null;
 
 	constructor(private readonly opts: UpdaterOptions) {
@@ -617,8 +621,9 @@ export class AppUpdater {
 			if (target.kind === "mac") {
 				await this.stageMac(job, release, target.bundle, file, staged, checkCancelled);
 			} else {
-				// The zip's members are looked at before anything is unpacked; what was unpacked is looked at again.
-				await stageWindows(file, staged, release.version, {
+				// The zip's members are looked at before anything is unpacked; what was unpacked is looked at again. Its top
+				// folder is the processor's: a Windows target has an installer only as the zip of its processor.
+				await stageWindows(file, staged, release.version, windowsArchOf(this.platform) as WindowsArch, {
 					freeBytes: this.opts.freeBytes ?? freeSpace,
 					onUnpack: () => {
 						checkCancelled();

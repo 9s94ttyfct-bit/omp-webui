@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import pkg from "../../package.json";
 import { runningServer } from "../../server/instance.ts";
-import { tarCommand, WINDOWS_EXE, ZIP_TOP } from "../../server/update/windows.ts";
+import { tarCommand, WINDOWS_EXE, type WindowsArch, zipTop } from "../../server/update/windows.ts";
 import type { AppUpdateState, UpdateSnapshot } from "../../shared/update.ts";
 import { writeBunProgram } from "../support/bun-program.ts";
 import { type FakeReleases, startFakeReleases } from "../support/fake-releases.ts";
@@ -28,6 +28,10 @@ import { removeScratch } from "../support/scratch.ts";
 const exe = process.env.OMPW_LAUNCHER_EXE ?? "";
 const nextZip = process.env.OMPW_NEXT_ZIP ?? "";
 const root = mkdtempSync(join(tmpdir(), "ompw-win-update-"));
+/** The built launcher's processor: this runner's (CI builds each natively), whose zip and top folder the updater takes. */
+const ARCH: WindowsArch = process.arch === "arm64" ? "arm64" : "x64";
+const ZIP_TOP = zipTop(ARCH);
+const zipName = (version: string) => `omp-webui-v${version}-windows-${ARCH}.zip`;
 const opened = join(root, "opened.txt");
 const NEXT = "99.0.0";
 let fake: FakeReleases;
@@ -198,7 +202,7 @@ describe.skipIf(!has.windowsLauncher)("the Windows launcher's update", () => {
 	test("installs the release: the new program is in the folder, says it is up, and the old folder is removed", async () => {
 		const install = await startInstall();
 		expect(versionOf(install.folder)).toBe(pkg.version);
-		fake.publish({ tag: `v${NEXT}`, dmg: nextZip, assetName: `omp-webui-v${NEXT}-windows-x64.zip` });
+		fake.publish({ tag: `v${NEXT}`, dmg: nextZip, assetName: zipName(NEXT) });
 		await installRelease(install, `v${NEXT}`);
 		const result = join(install.update, "result.json");
 		await untilHelper(
@@ -222,7 +226,7 @@ describe.skipIf(!has.windowsLauncher)("the Windows launcher's update", () => {
 	test("refuses a zip whose program is not the version the release says, and changes nothing", async () => {
 		const install = await startInstall();
 		// The 99.0.0 build offered as 98.0.0: the SHA-256 is right (it is the asset's), the version is not.
-		fake.publish({ tag: "v98.0.0", dmg: nextZip, assetName: "omp-webui-v98.0.0-windows-x64.zip" });
+		fake.publish({ tag: "v98.0.0", dmg: nextZip, assetName: zipName("98.0.0") });
 		await installRelease(install, "v98.0.0");
 		let failed: AppUpdateState["failed"] = null;
 		await pollUntil(
@@ -253,10 +257,10 @@ describe.skipIf(!has.windowsLauncher)("the Windows launcher's update", () => {
 		);
 		rmSync(join(top, WINDOWS_EXE));
 		execFileSync("bun", ["build", "--compile", source, "--outfile", join(top, WINDOWS_EXE)], { stdio: "ignore" });
-		const zip = join(work, `omp-webui-v${NEXT}-windows-x64.zip`);
+		const zip = join(work, zipName(NEXT));
 		execFileSync(tarCommand(), ["-a", "-cf", zip, ZIP_TOP], { cwd: work });
 
-		fake.publish({ tag: `v${NEXT}`, dmg: zip, assetName: `omp-webui-v${NEXT}-windows-x64.zip` });
+		fake.publish({ tag: `v${NEXT}`, dmg: zip, assetName: zipName(NEXT) });
 		await installRelease(install, `v${NEXT}`);
 		const result = join(install.update, "result.json");
 		await untilHelper(

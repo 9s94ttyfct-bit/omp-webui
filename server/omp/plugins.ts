@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { lstatSync, readFileSync, statSync } from "node:fs";
-import { isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { isRecord } from "../../shared/guards.ts";
 import type { McpAdded } from "../../shared/mcp-registry.ts";
 import {
@@ -32,14 +32,21 @@ import {
 } from "./mcp-registry.ts";
 import {
 	asksToConfirmScripts,
-	parseSkillList,
 	parseSkillSearch,
 	validSkillId,
 	validSkillQuery,
 	validSkillSpec,
 } from "./plugin-skills.ts";
 import { type Ran, RunTimeout, run, withTimeout } from "./run.ts";
-import { reloadPlugins, serialized, validPlugin } from "./toggles.ts";
+import {
+	followGlobalList,
+	ProjectConfigError,
+	readSkillFile,
+	readSkills,
+	type SkillSwitchDeps,
+	switchSkills,
+} from "./skill-switches.ts";
+import { reloadPlugins, serialized, validPlugin, validSkill } from "./toggles.ts";
 
 /**
  * The Plugins page (`#/plugins`): omp's plugins, listed and changed with omp's own CLI (`omp plugin …`), never by editing
@@ -137,12 +144,15 @@ export function parseMarketplaceList(text: string): PluginMarketplace[] {
 	return out;
 }
 
+/** What `omp plugin discover` says of a plugin; the rest of a `CatalogPlugin` is added by `readPlugins`. */
+export type DiscoveredPlugin = Pick<CatalogPlugin, "name" | "version" | "description" | "marketplace">;
+
 /**
  * `omp plugin discover <marketplace>`: `  <name>@<version>` (no `@` when the catalog gives no version), its description on
  * the line under it, indented further.
  */
-export function parseDiscover(text: string, marketplace: string): Omit<CatalogPlugin, "installed">[] {
-	const out: Omit<CatalogPlugin, "installed">[] = [];
+export function parseDiscover(text: string, marketplace: string): DiscoveredPlugin[] {
+	const out: DiscoveredPlugin[] = [];
 	for (const line of Bun.stripANSI(text).split("\n")) {
 		const description = /^ {4}(\S.*)$/.exec(line);
 		const last = out.at(-1);
@@ -159,6 +169,62 @@ export function parseDiscover(text: string, marketplace: string): Omit<CatalogPl
 				? { name: entry[1].slice(0, at), version: entry[1].slice(at + 1) || null, description: null, marketplace }
 				: { name: entry[1], version: null, description: null, marketplace },
 		);
+	}
+	return out;
+}
+
+/** What a marketplace's cached catalog says of a plugin besides what `omp plugin discover` prints. */
+export type CatalogDetails = Pick<CatalogPlugin, "category" | "author" | "homepage" | "tags" | "skills">;
+
+const NO_DETAILS: CatalogDetails = { category: null, author: null, homepage: null, tags: [], skills: 0 };
+
+const lowerWords = (v: unknown): string[] =>
+	Array.isArray(v)
+		? v.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim().toLowerCase())
+		: [];
+
+/**
+ * One marketplace's catalog (`marketplace.json`, as omp caches it): each plugin's category, author, homepage, tags and
+ * keywords, and how many skills it lists, by plugin name. Anything not in the shape is left out, never an error.
+ */
+export function parseCatalogDetails(doc: unknown): Map<string, CatalogDetails> {
+	const out = new Map<string, CatalogDetails>();
+	if (!isRecord(doc) || !Array.isArray(doc.plugins)) return out;
+	for (const p of doc.plugins) {
+		if (!isRecord(p) || typeof p.name !== "string") continue;
+		const author = isRecord(p.author) ? p.author.name : p.author;
+		const homepage = typeof p.homepage === "string" && /^https?:\/\//.test(p.homepage) ? p.homepage : null;
+		out.set(p.name, {
+			category: typeof p.category === "string" && p.category.trim() ? p.category.trim().toLowerCase() : null,
+			author: typeof author === "string" && author.trim() ? author.trim() : null,
+			homepage,
+			tags: [...new Set([...lowerWords(p.tags), ...lowerWords(p.keywords)])],
+			skills: Array.isArray(p.skills) ? p.skills.length : 0,
+		});
+	}
+	return out;
+}
+
+function readJsonFile(path: string): unknown {
+	try {
+		return JSON.parse(readFileSync(path, "utf8"));
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The details of every configured marketplace's catalog, by `name@marketplace`: omp lists its marketplaces in
+ * `marketplaces.json` beside its agent directory, each with the path of its cached catalog. What cannot be read gives
+ * no details.
+ */
+export function readCatalogDetails(agentDir: string): Map<string, CatalogDetails> {
+	const out = new Map<string, CatalogDetails>();
+	const registry = readJsonFile(join(dirname(agentDir), "marketplaces.json"));
+	const list = isRecord(registry) && Array.isArray(registry.marketplaces) ? registry.marketplaces : [];
+	for (const m of list) {
+		if (!isRecord(m) || typeof m.name !== "string" || typeof m.catalogPath !== "string") continue;
+		for (const [name, d] of parseCatalogDetails(readJsonFile(m.catalogPath))) out.set(`${name}@${m.name}`, d);
 	}
 	return out;
 }
@@ -347,6 +413,8 @@ export interface PluginsDeps {
 	home: string;
 	/** omp's agent directory: its `mcp.json` is the user's MCP config, where the MCP section adds a server. */
 	agentDir: string;
+	/** A folder with no `.omp` of its own (this app's data folder): omp's global settings are read and written there. */
+	neutral: string;
 	pool: LivePool;
 	/** Why nothing may be changed now (an import writes the files omp runs on), or null. */
 	held: () => Error | null;
@@ -414,7 +482,7 @@ function scopeOf(raw: unknown, cwd: string, home: string): PluginScope | null {
 // ------------------------------------------------------------------ reading
 
 /** Everything the page lists, each part on its own. */
-export async function readPlugins(bin: string, cwd: string, home: string): Promise<PluginsData> {
+export async function readPlugins(bin: string, cwd: string, home: string, agentDir: string): Promise<PluginsData> {
 	const marketplaces = cli(bin, ["plugin", "marketplace", "list"], cwd).then(parseMarketplaceList);
 	const upgrades = cli(bin, ["plugin", "upgrade", "--dry-run"], cwd).then(parseUpgradePreview);
 	const list = cliJson(bin, ["plugin", "list", "--json"], cwd);
@@ -461,13 +529,19 @@ export async function readPlugins(bin: string, cwd: string, home: string): Promi
 	}
 	const scopesOf = (id: string): PluginScope[] =>
 		Array.isArray(installed) ? installed.filter((p) => p.id === id).map((p) => p.scope) : [];
+	const details = found.ok ? readCatalogDetails(agentDir) : new Map<string, CatalogDetails>();
 	return {
 		cwd,
 		home: resolve(cwd) === resolve(home),
 		installed,
 		marketplaces: found.ok ? found.v.map((c) => c.m) : failed(found.e),
 		catalog: found.ok
-			? found.v.flatMap((c) => c.plugins.map((p) => ({ ...p, installed: scopesOf(`${p.name}@${p.marketplace}`) })))
+			? found.v.flatMap((c) =>
+					c.plugins.map((p) => {
+						const id = `${p.name}@${p.marketplace}`;
+						return { ...p, ...(details.get(id) ?? NO_DETAILS), installed: scopesOf(id) };
+					}),
+				)
 			: failed(found.e),
 		upgradeError: upgradeAnswer.ok ? null : failed(upgradeAnswer.e).error,
 	};
@@ -684,7 +758,7 @@ async function route(req: Request, url: URL, deps: PluginsDeps): Promise<Respons
 		const cwd = folderOf(q.get("cwd"), deps.home);
 		switch (p) {
 			case "/api/plugins":
-				return json(await readPlugins(deps.bin, cwd, deps.home));
+				return json(await readPlugins(deps.bin, cwd, deps.home, deps.agentDir));
 			case "/api/plugins/doctor":
 				return json({ checks: parseDoctor(await cliJson(deps.bin, ["plugin", "doctor", "--json"], cwd)) });
 			case "/api/plugins/config": {
@@ -697,7 +771,13 @@ async function route(req: Request, url: URL, deps: PluginsDeps): Promise<Respons
 			case "/api/plugins/jobs":
 				return json({ running });
 			case "/api/plugins/skills":
-				return json({ installed: parseSkillList(await cliJson(deps.bin, ["skill", "list", "--json"], cwd)) });
+				return json(await readSkills(skillDeps(deps), cwd));
+			case "/api/plugins/skills/file": {
+				const name = q.get("name");
+				if (!validSkill(name)) return fail("Name the skill", 400);
+				const file = await readSkillFile(skillDeps(deps), cwd, name);
+				return file ? json(file) : fail(`omp lists no SKILL.md for ${name}`, 404);
+			}
 			case "/api/plugins/skills/search": {
 				const query = q.get("q");
 				if (!validSkillQuery(query)) return fail("Search for a word or two (not a flag)", 400);
@@ -762,8 +842,35 @@ async function route(req: Request, url: URL, deps: PluginsDeps): Promise<Respons
 		}
 		case "/api/plugins/mcp":
 			return json(await addMcpServer(deps, body));
+		case "/api/plugins/skills/enable": {
+			const { names, enabled, scope } = body;
+			if (!Array.isArray(names) || names.length === 0 || names.length > 500 || !names.every(validSkill))
+				return fail("names must be a list of skill names", 400);
+			if (typeof enabled !== "boolean") return fail("enabled required", 400);
+			if (scope !== "global" && scope !== "project") return fail("scope must be global or project", 400);
+			mayChange(deps);
+			await projectConfig(() => switchSkills(skillDeps(deps), cwd, [...new Set(names)], enabled, scope));
+			return json(await readSkills(skillDeps(deps), cwd));
+		}
+		case "/api/plugins/skills/use-global": {
+			mayChange(deps);
+			await projectConfig(() => followGlobalList(skillDeps(deps), cwd));
+			return json(await readSkills(skillDeps(deps), cwd));
+		}
 	}
 	return fail("Not found", 404);
+}
+
+const skillDeps = (deps: PluginsDeps): SkillSwitchDeps => ({ bin: deps.bin, home: deps.home, neutral: deps.neutral });
+
+/** A project's config this does not change (or that omp reads elsewhere too): the page shows why. */
+async function projectConfig(work: () => Promise<void>): Promise<void> {
+	try {
+		await work();
+	} catch (e) {
+		if (e instanceof ProjectConfigError) throw new PluginsError(e.message, 409);
+		throw e;
+	}
 }
 
 /** The values a way of running an MCP server was given: text by its input's key, none of them a control character. */

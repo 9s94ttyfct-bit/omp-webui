@@ -235,6 +235,7 @@
     "tests/unit/retry-parked.test.ts": 627,
     "tests/unit/remote-auth.test.ts": 616,
     "tests/contract/close-paused.test.ts": 606,
+    "tests/unit/browser-autoupdate.test.ts": 600,
     "tests/contract/macs.test.ts": 583,
     "tests/unit/session-lease.test.ts": 578,
     "tests/unit/git-worktrees.test.ts": 561,
@@ -323,7 +324,9 @@
     "tests/unit/password-generate.test.ts": 65,
     "tests/unit/kbd.test.ts": 64,
     "tests/unit/guard-bench.test.ts": 62,
+    "tests/unit/plugin-facets.test.ts": 61,
     "tests/unit/entry-graph.test.ts": 60,
+    "tests/unit/stats-db-analysis.test.ts": 53,
     "tests/unit/settings-help.test.ts": 51,
     "tests/unit/subagent-index.test.ts": 51,
     "tests/unit/browser-registry.test.ts": 50,
@@ -359,9 +362,9 @@
     "tests/unit/transfer-api.test.ts": 25,
     "tests/unit/guard-toggle.test.ts": 23,
     "tests/unit/settings-search.test.ts": 23,
+    "tests/unit/chat-projects.test.ts": 21,
     "tests/unit/follow-end.test.ts": 21,
     "tests/unit/private.test.ts": 21,
-    "tests/unit/chat-projects.test.ts": 21,
     "tests/unit/cef-build.test.ts": 20,
     "tests/unit/ci-watch.test.ts": 20,
     "tests/unit/prefs.test.ts": 20,
@@ -591,6 +594,6 @@
     "tests/unit/user-message.test.ts": 4,
     "tests/unit/ansi.test.ts": 3,
     "tests/unit/child-env.test.ts": 3,
-    "tests/unit/browser-autoupdate.test.ts": 600
+    "tests/unit/skill-switches.test.ts": 2
   }
 }

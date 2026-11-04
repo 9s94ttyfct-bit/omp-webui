@@ -1300,7 +1300,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			const { keepStatsIn, keptStats, ompStats } = await import("./omp/stats.ts");
 			// What the guard's reviewer spent is its own agent type (#689), taken out of the one omp counts it under.
 			const { addGuardUsage } = await import("./guard-usage.ts");
-			const { statsDbPath, statsForRange } = await import("./omp/stats-db.ts");
+			const { statsDbPath, statsForRange, timeZoneOr } = await import("./omp/stats-db.ts");
 			keepStatsIn(join(cfg.dataDir, "omp-stats.json"));
 			const force = q.get("force") === "1";
 			const asked = q.get("range");
@@ -1308,8 +1308,10 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			// `omp stats --json` answers only its own 24 hours (#714); its run is still what brings omp's database up to date
 			// with the transcripts, and the range is read from that database. One window bounds every figure, the guard's too.
 			const dbPath = statsDbPath(cfg.agentDir, process.env, homedir());
+			// The hours of the day are the page's own (`tz`, an IANA name), not the server's: they may be on two machines.
+			const timeZone = timeZoneOr(q.get("tz"));
 			const answer = async (ompBody: string, headers: Record<string, string>) => {
-				const ranged = statsForRange(ompBody, range, dbPath, Date.now());
+				const ranged = statsForRange(ompBody, range, dbPath, Date.now(), timeZone);
 				// Only the guard's requests that database holds were counted in the figures (#706). Its answer is the figures only
 				// when it is the one omp read (`window`): otherwise it is not asked, and what omp counted is not known.
 				const guarded = await addGuardUsage(
@@ -2332,6 +2334,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			bin: cfg.ompBin,
 			home: homedir(),
 			agentDir: cfg.agentDir,
+			neutral: cfg.dataDir,
 			pool,
 			held: () => (importWriting ? heldByImport() : null),
 		});

@@ -283,40 +283,54 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
-  # The Windows launcher (scripts/windows-launcher.ts): built, its contract test run against the built program, its update
-  # installed from a fake release (the same launcher built as 99.0.0 and zipped as a release is), and the folder zipped for
-  # a release (scripts/release-local.ts attaches the zip of the commit it releases).
+  # The Windows launcher (scripts/windows-launcher.ts), per processor on a runner of its own (Bun writes the icon and the
+  # version details only when it compiles on Windows, so each is built natively): built, its contract test run against the
+  # built program, its update installed from a fake release (the same launcher built as 99.0.0 and zipped as a release is),
+  # and the folder zipped for a release (scripts/release-local.ts attaches the zips of the commit it releases).
   windows-launcher:
-    name: Windows launcher
+    name: Windows launcher (${{ matrix.arch }})
     needs: changes
     if: needs.changes.outputs.code == 'true' && github.event_name != 'schedule'
-    runs-on: windows-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, runner: windows-latest }
+          - { arch: arm64, runner: windows-11-arm }
     steps:
       - shell: pwsh
         run: Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:USERPROFILE
       - uses: actions/checkout@v4
       - run: printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$RUNNER_TEMP" "$RUNNER_TEMP" "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      # Bun has native Windows arm64 builds (and the bun-windows-arm64 target) from 1.3.10; pinned so that both launchers
+      # are compiled with the same Bun.
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      # The launcher is compiled for the processor the Bun that builds and tests it runs on: an x64 Bun emulated on Arm
+      # would build and test the wrong program.
+      - run: bun -e 'if (process.arch !== "${{ matrix.arch }}") throw new Error("this Bun is " + process.arch)'
       - run: bun install --frozen-lockfile
-      - run: bun run windows-launcher
+      - run: bun scripts/windows-launcher.ts --arch ${{ matrix.arch }}
       - run: bun test --timeout 120000 tests/contract/launcher.test.ts
         env:
-          OMPW_LAUNCHER_EXE: ${{ github.workspace }}\dist\omp-webui-windows-x64\omp-webui.exe
+          OMPW_LAUNCHER_EXE: ${{ github.workspace }}\dist\omp-webui-windows-${{ matrix.arch }}\omp-webui.exe
       # The next release for the updater's test: its folder is named as the release's is, so the zip has the same top folder.
-      - run: bun scripts/windows-launcher.ts --version 99.0.0 --out dist/next/omp-webui-windows-x64
+      - run: bun scripts/windows-launcher.ts --arch ${{ matrix.arch }} --version 99.0.0 --out dist/next/omp-webui-windows-${{ matrix.arch }}
       - shell: pwsh
-        run: Compress-Archive -Path dist/next/omp-webui-windows-x64 -DestinationPath dist/next/omp-webui-v99.0.0-windows-x64.zip
+        run: Compress-Archive -Path dist/next/omp-webui-windows-${{ matrix.arch }} -DestinationPath dist/next/omp-webui-v99.0.0-windows-${{ matrix.arch }}.zip
       - run: bun test --timeout 300000 tests/contract/windows-update.test.ts
         env:
-          OMPW_LAUNCHER_EXE: ${{ github.workspace }}\dist\omp-webui-windows-x64\omp-webui.exe
-          OMPW_NEXT_ZIP: ${{ github.workspace }}\dist\next\omp-webui-v99.0.0-windows-x64.zip
+          OMPW_LAUNCHER_EXE: ${{ github.workspace }}\dist\omp-webui-windows-${{ matrix.arch }}\omp-webui.exe
+          OMPW_NEXT_ZIP: ${{ github.workspace }}\dist\next\omp-webui-v99.0.0-windows-${{ matrix.arch }}.zip
       - shell: pwsh
-        run: Compress-Archive -Path dist/omp-webui-windows-x64 -DestinationPath dist/omp-webui-windows-x64.zip
+        run: Compress-Archive -Path dist/omp-webui-windows-${{ matrix.arch }} -DestinationPath dist/omp-webui-windows-${{ matrix.arch }}.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: omp-webui-windows-x64
-          path: dist/omp-webui-windows-x64.zip
+          name: omp-webui-windows-${{ matrix.arch }}
+          path: dist/omp-webui-windows-${{ matrix.arch }}.zip
           if-no-files-found: error
           retention-days: 90
 
