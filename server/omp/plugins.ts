@@ -901,14 +901,17 @@ function scheduleCheck(inMs: number): void {
 async function autoCheck(): Promise<void> {
 	const deps = autoDeps;
 	if (!deps?.updates.autoOn()) return;
+	let checked = true;
 	try {
 		await check(deps);
 	} catch (e) {
+		// What an older check found is not installed on the strength of a check that failed.
+		checked = false;
 		autoLast = { at: Date.now(), count: 0, error: failed(e).error };
 	}
 	if (!deps.updates.autoOn()) return;
 	scheduleCheck(checkEveryMs());
-	pendingInstall = (lastCheck?.updates.length ?? 0) > 0;
+	pendingInstall = checked && (lastCheck?.updates.length ?? 0) > 0;
 	tryAutoInstall();
 }
 
