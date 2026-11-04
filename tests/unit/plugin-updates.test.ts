@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { checkUpdates, newer, updateStep } from "../../server/omp/plugin-updates.ts";
 import type { PluginUpdate, UpdatesState } from "../../shared/plugins.ts";
 import { writeFakePluginsOmp } from "../support/plugins-stubs.ts";
@@ -88,8 +88,8 @@ describe("checkUpdates", () => {
 			"plugins (/work/broken): Folder no longer exists",
 			"skills (/work/broken): Folder no longer exists",
 		]);
-		// The home folder named as a project is the user's place, looked in once.
-		expect(asked.filter((a) => a.startsWith(`${HOME}: plugin upgrade`))).toHaveLength(1);
+		// The home folder named as a project is the user's place, looked in once (as a full path: a drive on Windows).
+		expect(asked.filter((a) => a.startsWith(`${resolve(HOME)}: plugin upgrade`))).toHaveLength(1);
 	});
 
 	test("an npm plugin is checked against the registry unless it came from git, a URL or a folder", async () => {

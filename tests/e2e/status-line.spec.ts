@@ -242,15 +242,18 @@ test.describe("phone", () => {
 		await expect(line(page, "status-model")).toContainText("Opus 5.5");
 		await expect(line(page, "status-context")).toHaveAttribute("data-percent", "39");
 		await expect(line(page, "status-agents")).toHaveAttribute("data-running", "2");
-		// What is folded is in the menu, or on the line, never both.
-		for (const folded of ["status-time", "status-goal", "status-cwd", "status-cost"]) {
-			await expect(page.getByTestId(folded), folded).toHaveCount(0);
-		}
+		// What is folded is in the menu, or on the line, never both. How much folds depends on the fonts' widths (Linux's are
+		// narrower than macOS's): at least the folder, the working time and the goal, in the line's order.
+		const status = page.getByTestId("chat-status");
+		await expect(status).toHaveAttribute("data-folds", /^cwd time goal/);
+		const folds = ((await status.getAttribute("data-folds")) ?? "").split(" ");
+		expect(folds).toEqual(FOLD_ORDER.slice(0, folds.length));
+		for (const folded of folds) await expect(page.getByTestId(`status-${folded}`), folded).toHaveCount(0);
 		// It fits the screen, in one line of figures.
-		const status = await boxOf(page.getByTestId("chat-status"));
-		expect(status.x + status.width).toBeLessThanOrEqual(390);
+		const box = await boxOf(status);
+		expect(box.x + box.width).toBeLessThanOrEqual(390);
 		// One row of text-xs (24 px with its minimum): a second row, with the context figure alone on it, would be 34.
-		expect(status.height).toBeLessThan(28);
+		expect(box.height).toBeLessThan(28);
 		expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "no sideways scroll").toBe(
 			true,
 		);
@@ -289,6 +292,8 @@ const LINE_ITEMS = [
 	"status-context",
 	"status-agents",
 ];
+/** What the line puts elsewhere, in the order it gives them up (`STATUS_STEPS`). */
+const FOLD_ORDER = ["cwd", "time", "goal", "cost"];
 const HEADER_ITEMS = ["rename", "session-cost", "export-html", "session-controls", "open-goal", "open-loaded"];
 
 /** What the line and the header show at the page's width now, whether they keep to their row, and what the menu lists. */
@@ -389,6 +394,9 @@ test.describe("the line and the header at several widths", () => {
 			expect(s.line.includes("status-cwd"), `${where}: the folder is on the line or folded`).toBe(
 				!s.folds.split(" ").includes("cwd"),
 			);
+			// What gives way goes in the line's order, the least needed first.
+			const folds = s.folds ? s.folds.split(" ") : [];
+			expect(folds, `${where}: folded in order`).toEqual(FOLD_ORDER.slice(0, folds.length));
 			// The menu is there while it lists something: what is not shown, and only that (above).
 			expect(s.hasMenu, `${where}: a menu only for what is not shown`).toBe(s.menu.length > 0);
 			const count = s.line.length + s.header.length;
@@ -413,7 +421,8 @@ test.describe("the line and the header at several widths", () => {
 				expect(s.line).toEqual(LINE_ITEMS);
 			}
 			if (width === 390) {
-				expect(s.line).toEqual(["status-model", "status-context", "status-agents"]);
+				expect(s.line).toEqual(expect.arrayContaining(["status-model", "status-context", "status-agents"]));
+				expect(s.line).not.toContain("status-cwd");
 				expect(s.menu).toEqual(
 					expect.arrayContaining(["rename", "session-cost", "export-html", "status-time", "status-goal"]),
 				);
@@ -434,19 +443,25 @@ test.describe("the line and the header at several widths", () => {
 		await page.setViewportSize({ width: 1280, height: 800 });
 		await openRunning(page, 0xa7);
 		for (const id of LINE_ITEMS) await expect(line(page, id), id).toBeVisible();
-		// The panel (400 px) leaves the column 592 px: the folder and the working time give way, the goal and the cost
-		// stay. The folder is the header's path then; the working time is in the menu.
+		// The panel (400 px) leaves the column 592 px: the folder gives way first (the header's path then), the working time
+		// too where the fonts are wider (macOS); the goal and the cost stay.
 		await line(page, "status-agents").click();
 		await expect(page.getByTestId("right-panel")).toBeVisible();
-		await expect(page.getByTestId("chat-status")).toHaveAttribute("data-folds", "cwd time");
+		const status = page.getByTestId("chat-status");
+		await expect(status).toHaveAttribute("data-folds", /^cwd/);
+		const folds = ((await status.getAttribute("data-folds")) ?? "").split(" ");
+		expect(folds).toEqual(FOLD_ORDER.slice(0, folds.length));
 		for (const id of ["status-model", "status-goal", "status-cost", "status-context", "status-agents"]) {
 			await expect(line(page, id), id).toBeVisible();
 		}
 		await expect(page.getByTestId("status-cwd")).toHaveCount(0);
 		await expect(page.getByTestId("chat-cwd")).toContainText("ompw-fixture-project");
 		await page.getByTestId("chat-more").click();
-		await expect(page.getByTestId("chat-more-panel").getByTestId("status-time")).toHaveText("13h 7m");
-		await expect(page.getByTestId("chat-more-panel").getByTestId("status-goal")).toHaveCount(0);
+		const menu = page.getByTestId("chat-more-panel");
+		// The working time is in the menu if it gave way, else on the line: in one place.
+		if (folds.includes("time")) await expect(menu.getByTestId("status-time")).toHaveText("13h 7m");
+		else await expect(line(page, "status-time")).toHaveText("13h 7m");
+		await expect(menu.getByTestId("status-goal")).toHaveCount(0);
 		await page.keyboard.press("Escape");
 		await page.getByTestId("right-panel-close").click();
 		for (const id of LINE_ITEMS) await expect(line(page, id), id).toBeVisible();
