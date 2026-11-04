@@ -90,7 +90,12 @@ export function ProjectsSection({
 					))}
 				</ul>
 			) : (
-				<p className="px-2.5 pb-1 text-xs text-muted" data-testid="projects-hint">
+				// What the section is for, while it is empty: only where the window is tall enough that the list keeps its room
+				// (on a short window or a phone the list starts high, and the + button, New project, is what is left).
+				<p
+					className="hidden px-2.5 pb-1 text-xs text-muted [@media(min-height:880px)]:block"
+					data-testid="projects-hint"
+				>
 					{t("shell.sidebarProjectsHint")}
 				</p>
 			)}
