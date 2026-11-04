@@ -187,7 +187,7 @@ describe("asking before unsaved text is lost", () => {
 		expect(location.hash).toBe("");
 		asked[0]?.go();
 		expect(useApp.getState().view).toEqual({ kind: "memory" });
-		expect(location.hash).toBe("#/memory");
+		expect(location.hash).toBe("#/settings/memory");
 	});
 
 	test("the large view neither closes nor shows another file until the person agrees", () => {

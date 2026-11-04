@@ -234,6 +234,9 @@ export const en = {
 		"Every omp command and flag, with its help, run in a real terminal on the computer omp-webui runs on (interactive ones too).",
 	settingsCliOpen: "Open Commands & terminal",
 	settingsCliBack: "Back to Settings",
+	settingsMemoryHint:
+		"What omp remembers across conversations: its memory banks, their entries, and the switch that turns memory on.",
+	settingsMemoryOpen: "Open Memory",
 	settingsRunning: "Running sessions",
 	settingsNewSession: "new session",
 	settingsNoProcesses: "No omp processes are open from this browser.",

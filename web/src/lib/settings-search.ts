@@ -472,6 +472,14 @@ export const SETTINGS: readonly SettingEntry[] = [
 		target: '[data-testid="star-prompt-setting"]',
 	},
 	{
+		id: "memory",
+		group: "shell.sidebarNavMemory",
+		label: "shell.sidebarNavMemory",
+		hint: "pages.settingsMemoryHint",
+		aliases: ["memory", "memories", "remember", "bank", "记忆", "记忆库"],
+		target: '[data-setting="memory"]',
+	},
+	{
 		id: "cli",
 		group: "shell.sidebarNavCli",
 		label: "shell.sidebarNavCli",

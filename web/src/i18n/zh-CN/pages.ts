@@ -246,6 +246,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	settingsCliHint: "omp 的每个命令和参数及其帮助，在 omp-webui 所在电脑上的真实终端中运行（包括交互式命令）。",
 	settingsCliOpen: "打开命令与终端",
 	settingsCliBack: "返回设置",
+	settingsMemoryHint: "omp 跨对话记住的内容：记忆库、其中的条目，以及打开记忆的开关。",
+	settingsMemoryOpen: "打开记忆",
 	settingsRunning: "运行中的对话",
 	settingsNewSession: "新对话",
 	settingsNoProcesses: "此浏览器没有打开任何 omp 进程。",

@@ -4,6 +4,7 @@ import type { QuickPrompt } from "@shared/quick-prompts.ts";
 import { Command } from "cmdk";
 import {
 	Archive,
+	Brain,
 	ListChecks,
 	MessageSquare,
 	MessageSquarePlus,
@@ -283,6 +284,14 @@ export function Palette() {
 									{/* Not on the bars (a page of Settings, where the Plugins page took its place), but a place to go. */}
 									<Command.Item className={item} data-testid="palette-go-cli" onSelect={() => go({ kind: "cli" })}>
 										<SquareTerminal size={15} /> {t("shell.sidebarNavCli")}
+									</Command.Item>
+									{/* Memory is a page of Settings too, not on the bars. */}
+									<Command.Item
+										className={item}
+										data-testid="palette-go-memory"
+										onSelect={() => go({ kind: "memory" })}
+									>
+										<Brain size={15} /> {t("shell.sidebarNavMemory")}
 									</Command.Item>
 									{/* Not on the bars (#693: a conversation's are a tab of its panel), but every conversation's page is a place to go. */}
 									<Command.Item

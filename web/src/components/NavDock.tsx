@@ -17,7 +17,7 @@ const { Chunk, preload, retry } = lazyChunk(() => import("./NavLinks.tsx").then(
 preload();
 
 /** The pages, as `lib/nav-layout.ts` names them: that module is part of the chunk, so what is needed of it is repeated here. */
-const PAGES = ["agents", "usage", "memory", "plugins", "settings", "guard"];
+const PAGES = ["agents", "usage", "plugins", "settings", "guard"];
 const GROUPS = ["top", "bottom", "hidden"];
 
 /**

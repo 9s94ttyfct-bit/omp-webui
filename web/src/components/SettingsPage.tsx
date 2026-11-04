@@ -1,6 +1,6 @@
 import { working as isWorking } from "@shared/attention.ts";
 import { PREF } from "@shared/prefs.ts";
-import { Monitor, Moon, Puzzle, Settings, SquareTerminal, Sun } from "lucide-react";
+import { Brain, Monitor, Moon, Puzzle, Settings, SquareTerminal, Sun } from "lucide-react";
 import { lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import "../i18n/later.ts";
@@ -390,6 +390,17 @@ export function SettingsPage() {
 						<Suspense fallback={null}>
 							<PushSettings />
 						</Suspense>
+						{/* omp's long-term memory is a page of Settings: this card opens it. */}
+						<section className="rounded-2xl border border-border bg-surface p-4" data-setting="memory">
+							<CardHeader
+								title={t("shell.sidebarNavMemory")}
+								icon={<Brain size={16} className="text-accent" />}
+								hint={t("pages.settingsMemoryHint")}
+							/>
+							<Button data-testid="settings-open-memory" onClick={() => setView({ kind: "memory" })}>
+								<Brain size={14} /> {t("pages.settingsMemoryOpen")}
+							</Button>
+						</section>
 					</>,
 				)}
 				{part(

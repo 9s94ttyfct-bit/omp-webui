@@ -28,8 +28,8 @@ export interface NavGroupProps {
 /** A group of the sidebar: one labelled row per item, as the pages' entries always were. */
 function Rows({ surface, group, remote }: Omit<NavGroupProps, "variant">) {
 	const t = useT();
-	// Commands & terminal is a page of Settings: the bar marks Settings while it is shown.
-	const current = useApp((s) => (s.view.kind === "cli" ? "settings" : s.view.kind));
+	// Commands & terminal and Memory are pages of Settings: the bar marks Settings while one is shown.
+	const current = useApp((s) => (s.view.kind === "cli" || s.view.kind === "memory" ? "settings" : s.view.kind));
 	const setView = useApp((s) => s.setView);
 	const items = navItemsIn(useNavLayout(), surface, group, { remote });
 	return (
@@ -67,7 +67,7 @@ function Rows({ surface, group, remote }: Omit<NavGroupProps, "variant">) {
 /** A group of the rail: one icon button per item, its name a tooltip and its `aria-label`. */
 function Icons({ surface, group, remote }: Omit<NavGroupProps, "variant">) {
 	const t = useT();
-	const current = useApp((s) => (s.view.kind === "cli" ? "settings" : s.view.kind));
+	const current = useApp((s) => (s.view.kind === "cli" || s.view.kind === "memory" ? "settings" : s.view.kind));
 	const setView = useApp((s) => s.setView);
 	const items = navItemsIn(useNavLayout(), surface, group, { remote });
 	return (

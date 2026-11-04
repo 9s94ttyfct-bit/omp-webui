@@ -26,7 +26,7 @@ Where the store is: `mnemopi.dbPath` if set (must be absolute; a relative path i
 
 ## Where it is
 
-- Sidebar/rail item **Memory** (`#/memory`), also in the command palette's Go to. Buttons **Refresh** and **Add memory**.
+- A page of Settings: **Settings › Conversations › Memory › Open Memory** (`#/settings/memory`; the old `#/memory` still opens it), also in the command palette's Go to. It is no longer an item of the sidebar or the rail. Buttons **Refresh** and **Add memory**.
 - On a page that is not on this computer the page shows "Memory is only shown on this computer".
 
 ## Settings

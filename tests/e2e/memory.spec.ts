@@ -166,11 +166,20 @@ test.describe
 			await expect(page.getByTestId("memory-more")).toHaveCount(0);
 		});
 
-		test("the sidebar's Memory opens the page, and its address is #/memory", async ({ page }) => {
-			await page.goto("/");
-			await page.getByRole("button", { name: shell.sidebarNavMemory, exact: true }).click();
+		test("Settings › Conversations opens Memory, at #/settings/memory, whose crumb goes back; the old #/memory address opens it too", async ({
+			page,
+		}) => {
+			await page.goto("/#/settings/chats");
+			// Not on the sidebar any more: a card of Settings opens it.
+			await expect(page.getByRole("button", { name: shell.sidebarNavMemory, exact: true })).toHaveCount(0);
+			await page.getByTestId("settings-open-memory").click();
 			await expect(page.getByTestId("memory-page")).toBeVisible();
-			expect(new URL(page.url()).hash).toBe("#/memory");
+			expect(new URL(page.url()).hash).toBe("#/settings/memory");
+			await page.getByTestId("memory-back-settings").click();
+			await expect(page.getByTestId("settings-open-memory")).toBeVisible();
+			await page.goto("/#/memory");
+			await expect(page.getByTestId("memory-page")).toBeVisible();
+			await expect.poll(() => new URL(page.url()).hash).toBe("#/settings/memory");
 		});
 
 		test("kinds, scope and project narrow the list, the last kind stays on, retired ones come with their switch", async ({

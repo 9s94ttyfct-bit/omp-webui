@@ -1,4 +1,4 @@
-import { BarChart3, Brain, type LucideIcon, Network, Puzzle, ScanEye, Settings } from "lucide-react";
+import { BarChart3, type LucideIcon, Network, Puzzle, ScanEye, Settings } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import type { MessageKey } from "../i18n/index.ts";
 
@@ -14,10 +14,11 @@ import type { MessageKey } from "../i18n/index.ts";
  *
  * The Questions page is not among them (#693): a conversation's questions are a tab of its right panel, which opens the
  * page of every conversation's; a stored layout that names it is read without it. Nor is Commands & terminal: it is a page
- * of Settings, and the Plugins page took its place; a stored layout that names `cli` has `plugins` there instead.
+ * of Settings, and the Plugins page took its place; a stored layout that names `cli` has `plugins` there instead. Nor is
+ * Memory: it is a page of Settings too, and a stored layout that names it is read without it.
  */
 
-export const NAV_ITEM_IDS = ["agents", "usage", "memory", "plugins", "settings", "guard"] as const;
+export const NAV_ITEM_IDS = ["agents", "usage", "plugins", "settings", "guard"] as const;
 /** An item is named as the page it opens (`View.kind`). */
 export type NavItemId = (typeof NAV_ITEM_IDS)[number];
 
@@ -34,7 +35,6 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
 	{ id: "agents", labelKey: "shell.sidebarNavAgents", icon: Network },
 	{ id: "usage", labelKey: "shell.sidebarNavUsage", icon: BarChart3 },
-	{ id: "memory", labelKey: "shell.sidebarNavMemory", icon: Brain },
 	{ id: "plugins", labelKey: "shell.sidebarNavPlugins", icon: Puzzle },
 	{ id: "settings", labelKey: "shell.sidebarNavSettings", icon: Settings },
 	// The guard's own sign is an eye (a reviewer looking at each call): the shields are the permission modes (C1).
@@ -65,7 +65,7 @@ export interface NavLayout {
 function defaults(): NavLayout {
 	const surface = (): NavSurfaceLayout => ({
 		top: [],
-		bottom: ["agents", "usage", "memory", "plugins", "settings", "guard"],
+		bottom: ["agents", "usage", "plugins", "settings", "guard"],
 		hidden: [],
 	});
 	return { sidebar: surface(), rail: surface() };
@@ -81,8 +81,9 @@ export const NAV_LAYOUT_KEY = "ompw.navLayout";
 /**
  * The shape of what is written: read again when the items or the grouping change (an older copy is migrated, not refused).
  * 2: `cli` (Commands & terminal, now in Settings) became `plugins`.
+ * 3: `memory` (Memory, now in Settings) is gone.
  */
-export const NAV_LAYOUT_VERSION = 2;
+export const NAV_LAYOUT_VERSION = 3;
 
 /** Items a stored layout may name by an older id, and the item that took their place. */
 const RENAMED: ReadonlyMap<unknown, NavItemId> = new Map([["cli", "plugins"]]);

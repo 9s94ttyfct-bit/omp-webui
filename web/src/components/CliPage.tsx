@@ -1,5 +1,5 @@
 import type { CliHelp, CliInventory } from "@shared/protocol.ts";
-import { ChevronDown, ChevronLeft, ChevronRight, Play, Settings, SquareTerminal } from "lucide-react";
+import { ChevronDown, ChevronRight, Play, SquareTerminal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import "../i18n/later.ts";
@@ -8,6 +8,7 @@ import { api } from "../lib/api.ts";
 import { socket } from "../lib/ws.ts";
 import { useApp } from "../store/app.ts";
 import { LoadError } from "./LoadError.tsx";
+import { SettingsCrumb } from "./SettingsCrumb.tsx";
 import { Terminal } from "./Terminal.tsx";
 import { Button, cx, Spinner } from "./ui.tsx";
 
@@ -117,25 +118,7 @@ export function CliPage({ command, run: initialRun }: { command?: string; run?: 
 	return (
 		// Commands & terminal is a page of Settings: a row over it says so and goes back to the page it is on (App & system).
 		<div className="flex h-full min-w-0 flex-1 flex-col" data-testid="cli-settings">
-			<nav
-				aria-label={t("pages.settingsTitle")}
-				className="flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-2 text-sm"
-			>
-				<button
-					type="button"
-					data-testid="cli-back-settings"
-					aria-label={t("pages.settingsCliBack")}
-					className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-muted hover:bg-hover hover:text-fg"
-					onClick={() => setView({ kind: "settings", page: "app" })}
-				>
-					<ChevronLeft size={14} aria-hidden />
-					<Settings size={14} aria-hidden /> {t("pages.settingsTitle")}
-				</button>
-				<ChevronRight size={14} aria-hidden className="text-faint" />
-				<span aria-current="page" className="font-medium">
-					{t("shell.sidebarNavCli")}
-				</span>
-			</nav>
+			<SettingsCrumb page="app" label="shell.sidebarNavCli" testId="cli-back-settings" />
 			{/* Stacked on a narrow screen (the list above the rest, the page scrolling as one); side by side from `md` up, each
 		part scrolling on its own. */}
 			<div className="flex min-h-0 min-w-0 flex-1 flex-col max-md:overflow-y-auto md:flex-row" data-testid="cli-page">

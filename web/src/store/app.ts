@@ -77,6 +77,7 @@ export type View =
 	/** New chat; `cwd`: in this folder (an entry point that knows its folder), else in a new project (the default). */
 	| { kind: "new"; cwd?: string }
 	| { kind: "usage" }
+	/** omp's memory, a page of Settings (`#/settings/memory`; the old `#/memory` address opens it too). */
 	| { kind: "memory" }
 	| { kind: "guard" }
 	/** The agent graph (#719); `file`: the conversation whose graph is drawn (none: the page picks one). */
@@ -328,7 +329,8 @@ export function hashOf(v: View): string {
 	if (v.kind === "chat" && v.liveId) return `#/live/${v.liveId}${full}`;
 	if (v.kind === "settings" && v.page) return `#/settings/${v.page}`;
 	if (v.kind === "agents") return v.file ? `#/agents/${encodeURIComponent(v.file)}` : "#/agents";
-	if (["usage", "memory", "guard", "questions", "settings", "plugins"].includes(v.kind)) return `#/${v.kind}`;
+	if (v.kind === "memory") return "#/settings/memory";
+	if (["usage", "guard", "questions", "settings", "plugins"].includes(v.kind)) return `#/${v.kind}`;
 	if (v.kind === "cli") return v.command ? `#/settings/cli/${encodeURIComponent(v.command)}` : "#/settings/cli";
 	if (v.kind === "new" && v.cwd) return `#/new?cwd=${encodeURIComponent(v.cwd)}`;
 	return "#/";
@@ -369,8 +371,9 @@ export function viewFromHash(): View {
 			const { target, ...full } = splitFull(h.slice(6));
 			return { kind: "chat", file: null, liveId: target, ...full };
 		}
-		if (["/usage", "/memory", "/guard", "/questions", "/settings", "/plugins"].includes(h))
-			return { kind: h.slice(1) } as View;
+		if (["/usage", "/guard", "/questions", "/settings", "/plugins"].includes(h)) return { kind: h.slice(1) } as View;
+		// Memory: under Settings, and at its old address as before.
+		if (h === "/settings/memory" || h === "/memory") return { kind: "memory" };
 		// Commands & terminal: under Settings, and at its old address (a bookmark, a link in a note) as before.
 		for (const base of ["/settings/cli", "/cli"]) {
 			if (h === base) return { kind: "cli" };
@@ -1672,8 +1675,8 @@ export async function startApp(): Promise<void> {
 	});
 	const opened = viewFromHash();
 	useApp.setState({ view: opened });
-	// An old address (`#/cli…`, Commands & terminal before it moved into Settings) is shown as the one it has now.
-	if (opened.kind === "cli" && location.hash !== hashOf(opened))
+	// An old address (`#/cli…` or `#/memory`, from before those pages moved into Settings) is shown as the one it has now.
+	if ((opened.kind === "cli" || opened.kind === "memory") && location.hash !== hashOf(opened))
 		history.replaceState(history.state, "", hashOf(opened));
 	findViewedProcess();
 	// The page's first entry has no id yet: give it one, so that Back to it finds what is kept for it.
@@ -1683,8 +1686,9 @@ export async function startApp(): Promise<void> {
 	window.addEventListener("popstate", (e) => {
 		const id = entryIdOf(e.state);
 		const next = viewFromHash();
-		// An old address typed or followed in this page (`#/cli…`) is shown as the one it has now.
-		if (next.kind === "cli" && location.hash !== hashOf(next)) history.replaceState(history.state, "", hashOf(next));
+		// An old address typed or followed in this page (`#/cli…`, `#/memory`) is shown as the one it has now.
+		if ((next.kind === "cli" || next.kind === "memory") && location.hash !== hashOf(next))
+			history.replaceState(history.state, "", hashOf(next));
 		const view = viewOfStep(useApp.getState().view, next);
 		whenFree(
 			view,

@@ -32,6 +32,7 @@ import { useApp } from "../store/app.ts";
 import { MemoryDetail } from "./MemoryDetail.tsx";
 import { AddMemory } from "./MemoryDialogs.tsx";
 import { Select } from "./Select.tsx";
+import { SettingsCrumb } from "./SettingsCrumb.tsx";
 import { Switch } from "./Switch.tsx";
 import { Badge, Button, cx, Empty, IconButton, Spinner, WithCode } from "./ui.tsx";
 
@@ -238,6 +239,7 @@ export function MemoryPage() {
 
 	const shell = (body: ReactNode) => (
 		<div ref={setFrame} className="flex h-full min-h-0 flex-1 flex-col overflow-hidden" data-testid="memory-page">
+			<SettingsCrumb page="chats" label="shell.sidebarNavMemory" testId="memory-back-settings" />
 			{body}
 		</div>
 	);
