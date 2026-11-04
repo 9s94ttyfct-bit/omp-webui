@@ -345,10 +345,12 @@ export function hashOf(v: View): string {
 	if (v.kind === "cli") return v.command ? `#/settings/cli/${encodeURIComponent(v.command)}` : "#/settings/cli";
 	if (v.kind === "project") return `#/project/${encodeURIComponent(v.id)}`;
 	if (v.kind === "new" && (v.cwd || v.project)) {
-		const q = new URLSearchParams();
-		if (v.cwd) q.set("cwd", v.cwd);
-		if (v.project) q.set("project", v.project);
-		return `#/new?${q}`;
+		// `encodeURIComponent`, as the address always was (a space is `%20`): `URLSearchParams` would write a space as `+`.
+		const q = [
+			v.cwd ? `cwd=${encodeURIComponent(v.cwd)}` : "",
+			v.project ? `project=${encodeURIComponent(v.project)}` : "",
+		];
+		return `#/new?${q.filter(Boolean).join("&")}`;
 	}
 	return "#/";
 }

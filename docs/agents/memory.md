@@ -1,7 +1,7 @@
 ---
 title: Memory page
 summary: A page on this computer that lists, searches and edits what omp remembers across conversations (omp's Mnemopi long-term memory), with automatic backups before changes.
-settings:
+settings: memory
 ---
 
 # Memory page

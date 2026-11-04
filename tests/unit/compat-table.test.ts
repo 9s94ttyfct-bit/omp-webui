@@ -210,6 +210,8 @@ describe("docs/TECHNICAL.md › How it stays compatible with omp updates names",
 		// The launcher's own (server/launcher.ts: Start at login, and stopping it).
 		"--background",
 		"--stop",
+		// docker's, in an MCP server added from the registry (server/omp/mcp-registry.ts: `docker run -i --rm`).
+		"--rm",
 	]);
 
 	test("every flag it passes, checks for, or refuses", () => {
