@@ -57,17 +57,22 @@ export const MIN_CHART_DAYS = 7;
 const DAY_MS = 86_400_000;
 
 /**
- * The rows the chart draws: `rows` (oldest first), with empty days in front while there are fewer than a week of them, so
- * that a lone day is one column among its week and not the whole plot. The table of days lists only the real ones.
+ * The rows the chart draws: `rows` (oldest first) with every day between the first and the last, an empty one where a day
+ * cost nothing (the bars are evenly spaced, so two weeks without use must look like two weeks, not like neighbours), and
+ * with empty days in front while there are fewer than a week of them, so that a lone day is one column among its week and
+ * not the whole plot. The table of days lists only the real ones.
  */
 export function paddedDays(rows: DailyRow[]): DailyRow[] {
 	const first = rows[0];
-	if (!first || rows.length >= MIN_CHART_DAYS) return rows;
-	const missing = MIN_CHART_DAYS - rows.length;
+	const last = rows.at(-1);
+	if (!first || !last) return rows;
 	const start = Date.parse(`${first.day}T00:00:00Z`);
-	const before = Array.from({ length: missing }, (_, i) => ({
-		day: utcDate(start - (missing - i) * DAY_MS),
-		total: 0,
-	}));
-	return [...before, ...rows];
+	const span = Math.round((Date.parse(`${last.day}T00:00:00Z`) - start) / DAY_MS) + 1;
+	if (span === rows.length && span >= MIN_CHART_DAYS) return rows;
+	const byDay = new Map(rows.map((r) => [r.day, r]));
+	const missing = Math.max(0, MIN_CHART_DAYS - span);
+	return Array.from({ length: missing + span }, (_, i) => {
+		const day = utcDate(start + (i - missing) * DAY_MS);
+		return byDay.get(day) ?? { day, total: 0 };
+	});
 }

@@ -71,6 +71,8 @@ export interface History {
 	/** A page is on its way above / below the stretch; `first`: the walk to the start of the conversation is going on. */
 	loading: { earlier: boolean; later: boolean; first: boolean };
 	error: string | null;
+	/** The error is the server not finding the conversation's file at all (deleted or moved): asking again cannot help. */
+	gone: boolean;
 	/** The page above the stretch; resolves with whether one was added. */
 	loadEarlier(): Promise<boolean>;
 	/** The page below it; resolves with whether one was added. */
@@ -96,6 +98,7 @@ export function useHistory(opts: HistoryOptions): History {
 	const [held, setHeld] = useState<Held | null>(null);
 	const [empty, setEmpty] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [gone, setGone] = useState(false);
 	const [adopted, setAdopted] = useState<string | null>(null);
 	const [loading, setLoading] = useState({ earlier: false, later: false, first: false });
 	const heldRef = useRef<Held | null>(null);
@@ -210,7 +213,10 @@ export function useHistory(opts: HistoryOptions): History {
 					commit(null);
 					setEmpty(true);
 					setError(null);
-				} else setError(messageOf(e));
+				} else {
+					setError(messageOf(e));
+					setGone(e instanceof ApiError && e.status === 404);
+				}
 			})
 			.finally(() => {
 				if (token === newest.current) pending.current = false;
@@ -304,7 +310,10 @@ export function useHistory(opts: HistoryOptions): History {
 					}
 					return false;
 				} catch (e) {
-					if (mine === epoch.current) setError(messageOf(e));
+					if (mine === epoch.current) {
+						setError(messageOf(e));
+						setGone(false);
+					}
 					return false;
 				} finally {
 					flight.current[which] = null;
@@ -364,7 +373,10 @@ export function useHistory(opts: HistoryOptions): History {
 				return next;
 			} catch (e) {
 				if (mine !== epoch.current) return null;
-				if (!(e instanceof ApiError && e.code === "unknown_entry")) setError(messageOf(e));
+				if (!(e instanceof ApiError && e.code === "unknown_entry")) {
+					setError(messageOf(e));
+					setGone(false);
+				}
 				return null;
 			}
 		},
@@ -402,6 +414,7 @@ export function useHistory(opts: HistoryOptions): History {
 		later: held?.later ?? false,
 		loading,
 		error,
+		gone: error !== null && gone,
 		loadEarlier,
 		loadLater,
 		loadFirst,

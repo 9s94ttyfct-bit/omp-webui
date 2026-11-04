@@ -7,6 +7,7 @@ import {
 	type MouseEvent,
 	type ReactNode,
 	type RefObject,
+	useEffect,
 	useMemo,
 	useRef,
 } from "react";
@@ -169,6 +170,17 @@ export function SessionList({
 			return at === undefined || shown.includes(at) ? shown : [...shown, at].sort((a, b) => a - b);
 		},
 	});
+
+	// The open conversation's row is brought into view when another conversation opens (by address, Back, the palette, a
+	// link) or when the list it is in first arrives: only as far as needed ("auto"), and once per conversation, so a list
+	// that grows or a scroll of the person's own afterwards is left alone.
+	const scrolledTo = useRef<string | null>(null);
+	const activeIndex = activeFile === null ? undefined : indexOfFile.get(activeFile);
+	useEffect(() => {
+		if (activeFile === null || activeIndex === undefined || scrolledTo.current === activeFile) return;
+		scrolledTo.current = activeFile;
+		virtualizer.scrollToIndex(activeIndex, { align: "auto" });
+	}, [activeFile, activeIndex, virtualizer]);
 
 	/** The nearest session row from `from` in `step` direction (headings are not rows), or null. */
 	const sessionFrom = (from: number, step: 1 | -1): number | null => {

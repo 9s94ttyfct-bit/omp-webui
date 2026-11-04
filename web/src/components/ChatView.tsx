@@ -126,7 +126,7 @@ import { TodoStrip } from "./TodoStrip.tsx";
 import { Transcript, type TranscriptHandle } from "./Transcript.tsx";
 import { UIRequests } from "./UIRequests.tsx";
 import { UsageSplit } from "./UsageSplit.tsx";
-import { Button, cx, IconButton, Modal, Spinner, Tip } from "./ui.tsx";
+import { Button, cx, IconButton, Modal, PathTail, Spinner, Tip } from "./ui.tsx";
 
 // No reviewer model could be reached ("Guard dangerous commands"): the strip that says so, with its strings, is a chunk of its own.
 const GuardNotice = lazy(() => import("./GuardNotice.tsx"));
@@ -470,7 +470,8 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 	// messages (or a Markdown file of its folder) opens it with.
 	const mdPath = useMdEditor((s) => (s.target?.chatKey === chatKey ? s.target.path : null));
 	const folderScope = useMemo(() => ({ live: liveId, file: currentFile }), [liveId, currentFile]);
-	const mdOpen = useMemo(() => ({ scope: folderScope, chatKey, base: "" }), [folderScope, chatKey]);
+	const cwd = live?.info.cwd ?? summary?.cwd;
+	const mdOpen = useMemo(() => ({ scope: folderScope, chatKey, base: "", cwd }), [folderScope, chatKey, cwd]);
 
 	// Load the lineage family when the file changes, or a conversation of the family does (a branch is written or removed,
 	// another omp process appends to one): not for a write anywhere else, nor to the live file, whose entries arrive here.
@@ -1245,7 +1246,6 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 		summary?.title ||
 		summary?.preview ||
 		(currentFile ? t("chat.untitledSession") : t("chat.newConversation"));
-	const cwd = live?.info.cwd ?? summary?.cwd;
 	// The tab's title names the folder's repository (see `tabTitle`), as git reports it to the status line.
 	const repoName = useGit((s) => (cwd ? s.byCwd[cwd]?.git?.repo : undefined)) ?? null;
 	useEffect(() => {
@@ -1279,6 +1279,11 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 		};
 	}, [ready, pin]);
 	const retryLoad = () => setAttempt((n) => n + 1);
+	const loadErrorBox = !loadError ? null : hist.gone ? (
+		<LoadError title={t("chat.goneTitle")} error={t("chat.goneHint")} />
+	) : (
+		<LoadError title={t("chat.loadErrorTitle")} error={loadError} onRetry={retryLoad} />
+	);
 	const exportHtml = () => {
 		if (currentFile) void downloadExport(currentFile).catch((e) => toast("error", e.message));
 	};
@@ -1308,7 +1313,7 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 						// Like the folder on the status line, it is the way to another folder (`ChangeFolderDialog`); not while a turn runs.
 						<button
 							type="button"
-							className="flex min-w-0 items-center gap-1.5 rounded-sm hover:text-fg disabled:hover:text-inherit"
+							className="flex min-w-0 items-center gap-1.5 rounded-sm hover:text-fg disabled:hover:text-inherit pointer-coarse:min-h-6"
 							title={t("shell.changeFolderStatus", { folder: cwd })}
 							disabled={streaming}
 							onClick={() => askChangeFolder({ file: currentFile, liveId, cwd })}
@@ -1319,9 +1324,13 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 							) : (
 								<FolderOpen size={11} className="shrink-0" aria-hidden />
 							)}
-							<span className="truncate" data-testid="chat-cwd" data-repo={repoInHeader ? "" : undefined}>
-								{repoInHeader ? repoName : shortPath(cwd, meta?.home)}
-							</span>
+							{repoInHeader ? (
+								<span className="truncate" data-testid="chat-cwd" data-repo="">
+									{repoName}
+								</span>
+							) : (
+								<PathTail path={shortPath(cwd, meta?.home)} data-testid="chat-cwd" />
+							)}
 						</button>
 					) : null}
 				</div>
@@ -1398,8 +1407,8 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 				<div ref={setColumn} className="flex h-full min-w-0 flex-1 flex-col">
 					<header className="flex h-13 shrink-0 items-center gap-2 border-b border-border px-4">{titleBlock}</header>
 					<div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
-						{loadError ? (
-							<LoadError title={t("chat.loadErrorTitle")} error={loadError} onRetry={retryLoad} />
+						{loadErrorBox ? (
+							loadErrorBox
 						) : (
 							<div className="flex justify-center py-10" data-testid="chat-loading">
 								<Spinner />
@@ -1508,9 +1517,7 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 									history={hist}
 									before={
 										<>
-											{loadError ? (
-												<LoadError title={t("chat.loadErrorTitle")} error={loadError} onRetry={retryLoad} />
-											) : null}
+											{loadErrorBox}
 											{viewLeaf && viewLeaf !== headLeaf ? (
 												<div className="rounded-lg border border-accent/30 bg-accent-soft px-3 py-2 text-xs text-fg">
 													{t("chat.viewingEarlier")}{" "}

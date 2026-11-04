@@ -62,17 +62,25 @@ describe("a task card", () => {
 		expect(html).not.toContain('data-testid="tool-raw-toggle"');
 	});
 
-	test("another tool's card still shows its arguments plainly", () => {
-		const html = draw(
-			createElement(ToolCard, {
-				id: "bash-1",
-				name: "bash",
-				args: { command: "make all" },
-				exec: { ...RUNNING, toolCallId: "bash-1", toolName: "bash", args: { command: "make all" } },
-			}),
-		);
-		expect(html).toContain("Arguments");
-		expect(html).not.toContain('data-testid="tool-raw-toggle"');
+	test("another tool's card shows its arguments plainly, unless they are the one line its header already shows", () => {
+		const card = (args: Record<string, unknown>) =>
+			draw(
+				createElement(ToolCard, {
+					id: "bash-1",
+					name: "bash",
+					args,
+					exec: { ...RUNNING, toolCallId: "bash-1", toolName: "bash", args },
+				}),
+			);
+		const more = card({ command: "make all", timeout: 60 });
+		expect(more).toContain("Arguments");
+		expect(more).not.toContain('data-testid="tool-raw-toggle"');
+		// The command alone is the header's text: the open card does not say it again as JSON.
+		const alone = card({ command: "make all" });
+		expect(alone).toContain("make all");
+		expect(alone).not.toContain("Arguments");
+		// A command of several lines is not whole in the header (it shows the first): its arguments show.
+		expect(card({ command: "make all\nmake test" })).toContain("Arguments");
 	});
 });
 
@@ -173,7 +181,6 @@ describe("a call in a paused conversation (#602)", () => {
 		const frozen = draw(createElement(ToolCard, { id: "p1", name: "bash", args, paused: true }));
 		expect(frozen).toContain('data-testid="tool-paused"');
 		expect(frozen).toContain("make -j8 all");
-		expect(frozen).toContain("Arguments");
 		expect(frozen).not.toContain('data-testid="tool-interrupted"');
 		// Not paused, it is a call about to start: folded, with a spinner.
 		const waiting = draw(createElement(ToolCard, { id: "p2", name: "bash", args }));

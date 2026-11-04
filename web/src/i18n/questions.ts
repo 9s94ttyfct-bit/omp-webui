@@ -76,7 +76,7 @@ export const en = {
 	// Settings
 	settingsTitle: "Unattended mode",
 	settingsIntro:
-		"With it on, the agent is told you are away: it goes on with what needs no decision and files what does as a question under Questions in the sidebar.",
+		"With it on, the agent is told you are away: it goes on with what needs no decision and files what does as a question, in the side panel's Questions tab.",
 	defaultLabel: "Turn it on for new conversations",
 	defaultHint:
 		"A conversation you start from New chat begins unattended. Each conversation has its own switch beside the message box.",

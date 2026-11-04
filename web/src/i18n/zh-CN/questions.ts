@@ -65,7 +65,8 @@ export const zh: Record<keyof typeof en, string> = {
 	chipOpen: "{n} 个待回答",
 	chipTitle: "打开这个对话的问题",
 	settingsTitle: "无人值守模式",
-	settingsIntro: "开启后，代理会被告知你不在：它继续做不需要决定的事，把需要你决定的事记成问题，放在侧栏的“问题”里。",
+	settingsIntro:
+		"开启后，代理会被告知你不在：它继续做不需要决定的事，把需要你决定的事记成问题，放在侧边面板的“问题”标签里。",
 	defaultLabel: "新对话默认开启",
 	defaultHint: "从“新对话”开始的对话一开始就处于无人值守。每个对话在输入框旁有自己的开关。",
 	instructionLabel: "告诉代理的话",

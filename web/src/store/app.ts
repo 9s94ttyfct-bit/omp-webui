@@ -341,6 +341,7 @@ export function hashOf(v: View): string {
 	if (v.kind === "settings" && v.page) return `#/settings/${v.page}`;
 	if (v.kind === "agents") return v.file ? `#/agents/${encodeURIComponent(v.file)}` : "#/agents";
 	if (v.kind === "memory") return "#/settings/memory";
+	if (v.kind === "questions" && v.file) return `#/questions/${encodeURIComponent(v.file)}`;
 	if (["usage", "guard", "questions", "settings", "plugins"].includes(v.kind)) return `#/${v.kind}`;
 	if (v.kind === "cli") return v.command ? `#/settings/cli/${encodeURIComponent(v.command)}` : "#/settings/cli";
 	if (v.kind === "project") return `#/project/${encodeURIComponent(v.id)}`;
@@ -402,6 +403,10 @@ export function viewFromHash(): View {
 			}
 		}
 		if (h === "/agents") return { kind: "agents" };
+		if (h.startsWith("/questions/")) {
+			const file = decodeURIComponent(h.slice("/questions/".length));
+			return file ? { kind: "questions", file } : { kind: "questions" };
+		}
 		if (h.startsWith("/agents/")) {
 			const file = decodeURIComponent(h.slice("/agents/".length));
 			return file ? { kind: "agents", file } : { kind: "agents" };
@@ -424,6 +429,16 @@ export function viewFromHash(): View {
 		// A truncated or hand-edited address (`#/s/%`) names nothing to open.
 	}
 	return { kind: "new" };
+}
+
+/**
+ * The address bar says what the page shows: an old address (`#/cli…` or `#/memory`, from before those pages moved into
+ * Settings) becomes the one it has now, and one that names nothing (`#/garbage`), which shows New chat, becomes New chat's.
+ */
+function showCanonically(v: View): void {
+	const named = location.hash !== "" && location.hash !== "#" && location.hash !== "#/";
+	if ((v.kind === "cli" || v.kind === "memory" || (v.kind === "new" && named)) && location.hash !== hashOf(v))
+		history.replaceState(history.state, "", hashOf(v));
 }
 
 // ------------------------------------------------------------------ live sessions
@@ -1700,9 +1715,7 @@ export async function startApp(): Promise<void> {
 	});
 	const opened = viewFromHash();
 	useApp.setState({ view: opened });
-	// An old address (`#/cli…` or `#/memory`, from before those pages moved into Settings) is shown as the one it has now.
-	if ((opened.kind === "cli" || opened.kind === "memory") && location.hash !== hashOf(opened))
-		history.replaceState(history.state, "", hashOf(opened));
+	showCanonically(opened);
 	findViewedProcess();
 	// The page's first entry has no id yet: give it one, so that Back to it finds what is kept for it.
 	const entry = entryIdOf(history.state) ?? newEntryId();
@@ -1711,9 +1724,7 @@ export async function startApp(): Promise<void> {
 	window.addEventListener("popstate", (e) => {
 		const id = entryIdOf(e.state);
 		const next = viewFromHash();
-		// An old address typed or followed in this page (`#/cli…`, `#/memory`) is shown as the one it has now.
-		if ((next.kind === "cli" || next.kind === "memory") && location.hash !== hashOf(next))
-			history.replaceState(history.state, "", hashOf(next));
+		showCanonically(next);
 		const view = viewOfStep(useApp.getState().view, next);
 		whenFree(
 			view,

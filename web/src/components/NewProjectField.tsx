@@ -77,7 +77,7 @@ export default function NewProjectField({
 						{shown}
 					</span>
 				) : root ? (
-					<span className="break-all text-muted" data-testid="new-project-root">
+					<span className="wrap-break-word text-muted" data-testid="new-project-root">
 						{t("projects.newIn", { folder: shortPath(root.folder, home) })}
 						{remote ? null : (
 							<>

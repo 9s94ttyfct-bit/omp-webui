@@ -5,7 +5,7 @@ import { useModelCatalog, useModelConfig } from "../lib/model-config.ts";
 import { useApp } from "../store/app.ts";
 import { setCompactAtDefault } from "../store/compact-at.ts";
 import { CompactAtRow, compactAtText } from "./CompactAtRow.tsx";
-import { CardHeader } from "./ui.tsx";
+import { CardHeader, WithCode } from "./ui.tsx";
 
 /**
  * Where omp compacts by itself, as omp's own configuration has it: `compaction.thresholdPercent` (a share of the model's
@@ -30,7 +30,7 @@ export function CompactAtSettings() {
 			data-testid="compact-at-settings"
 			data-index-title={t("pages.settingsCompactAtIndex")}
 		>
-			<CardHeader title={t("pages.settingsCompactAt")} hint={t("pages.settingsCompactAtHint")} />
+			<CardHeader title={t("pages.settingsCompactAt")} hint={<WithCode text={t("pages.settingsCompactAtHint")} />} />
 			<CompactAtRow
 				file={null}
 				window={model?.contextWindow}

@@ -164,3 +164,13 @@ test("a chart of a week or more, or of nothing, is left as it is", () => {
 	expect(paddedDays(week)).toBe(week);
 	expect(paddedDays([])).toEqual([]);
 });
+
+test("the days without cost between two that have some are drawn as empty days, so the bars keep the calendar's spacing", () => {
+	const { rows } = dailyByModel(stats([1], 9));
+	const sparse = [rows[0], rows[8]] as typeof rows;
+	const drawn = paddedDays(sparse);
+	expect(drawn.map((r) => r.day)).toEqual(rows.map((r) => r.day));
+	expect(drawn[0]).toBe(sparse[0]);
+	expect(drawn[8]).toBe(sparse[1]);
+	expect(drawn.slice(1, 8).every((r) => r.total === 0)).toBe(true);
+});

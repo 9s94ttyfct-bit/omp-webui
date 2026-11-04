@@ -307,7 +307,7 @@ describe("config.yml", () => {
 	});
 
 	test("skills: the selected ones only, or none at all", () => {
-		expect(config().skills).toEqual({ includeSkills: ["reverse-engineer-anything"] });
+		expect(config().skills).toEqual({ enabled: false });
 		expect(config({ skills: ["git-*", "docker"] }).skills).toEqual({ includeSkills: ["git-*", "docker"] });
 		expect(config({ skills: [] }).skills).toEqual({ enabled: false });
 	});
@@ -347,7 +347,7 @@ describe("the offline agent directory", () => {
 		"holds the key and the selection, privately, and nothing of the other providers or servers",
 		() => {
 			const { build } = setup();
-			const { dir, missing } = build();
+			const { dir, missing } = build({ mcp: ["rea"] });
 			expect(missing).toEqual([]);
 			expect(modeOf(dir)).toBe(0o700);
 			for (const f of ["models.yml", "mcp.json", "config.yml"]) expect(modeOf(join(dir, f))).toBe(0o600);
@@ -935,7 +935,7 @@ describe("oMLX", () => {
 			svc.update({ mode: "light", lightModels: "local" });
 			svc.update({ offline: { thinking: "low" } });
 			expect(heard.map((s) => [s.mode, s.offline.mcp, s.offline.tools, s.offline.thinking])).toEqual([
-				["light", ["rea"], expect.any(Array), "medium"],
+				["light", [], expect.any(Array), "medium"],
 				["light", ["alpha"], ["read"], "medium"],
 				["light", ["alpha"], ["read"], "low"],
 			]);
@@ -1388,6 +1388,7 @@ describe("what a context measurement depends on", () => {
 
 	test("a skill added or changed is measured again by both sides; Light only when it loads skills", async () => {
 		const { run, svc, cfg } = service();
+		svc.update({ offline: { skills: ["git-*"] } });
 		await run();
 		const skill = join(cfg.agentDir, "skills", "git-flow", "SKILL.md");
 		mkdirSync(join(cfg.agentDir, "skills", "git-flow"), { recursive: true });

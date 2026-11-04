@@ -23,6 +23,8 @@ export interface MdOpen {
 	 * Markdown editor's preview. A conversation's text has none, and shows such a link as text.
 	 */
 	sections?: boolean;
+	/** The conversation's folder, absolute, when it is known: a tool card names a file in it relative to it. */
+	cwd?: string;
 }
 
 export const MdOpenContext = createContext<MdOpen | null>(null);

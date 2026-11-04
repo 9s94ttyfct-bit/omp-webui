@@ -347,6 +347,8 @@ export const en = {
 	toastBranched: "Branched into a new conversation",
 	toastContinuedHere: "Continuing from here; the conversation as it was is kept as a branch",
 	loadErrorTitle: "Couldn't load this conversation",
+	goneTitle: "This conversation is no longer here",
+	goneHint: "Its file was deleted or moved. Open another conversation from the sidebar, or start a new one.",
 	usageInput: "input {n}",
 	usageOutput: "output {n}",
 	usageCacheRead: "cache read {n}",

@@ -11,13 +11,16 @@ const ROW_CAP = 300;
 
 const SIGN = { add: "+", del: "-", ctx: "" } as const;
 
-/** A path with its directory dimmed and truncated first, so the file name always stays readable. */
-export function PathLabel({ path, className }: { path: string; className?: string }) {
+/**
+ * A path with its directory dimmed and truncated first, so the file name always stays readable. `title` is the tooltip
+ * when the path shown is a shorter form of it (the whole path).
+ */
+export function PathLabel({ path, title, className }: { path: string; title?: string; className?: string }) {
 	const { dir, name } = splitPath(path);
 	return (
 		<span
 			data-testid="tool-path"
-			title={path}
+			title={title ?? path}
 			className={cx("flex min-w-0 items-baseline font-mono text-xs", className)}
 		>
 			{dir ? <span className="min-w-0 truncate text-faint">{dir}</span> : null}

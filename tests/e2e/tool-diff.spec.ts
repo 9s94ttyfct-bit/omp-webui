@@ -244,7 +244,9 @@ test("a write card shows its path and the written content as a numbered, untinte
 	await openSession(page);
 	const write = card(page, "notes.json");
 	const header = write.getByRole("button").first();
-	await expect(header.getByTestId("tool-path")).toHaveText("/Users/x/proj/notes.json");
+	// The path as the call wrote it, the whole of it in the tooltip.
+	await expect(header.getByTestId("tool-path")).toHaveText("proj/notes.json");
+	await expect(header.getByTestId("tool-path")).toHaveAttribute("title", "/Users/x/proj/notes.json");
 	await expect(header).toContainText("Writing notes");
 	await header.click();
 	const rows = write.getByTestId("diff-row");

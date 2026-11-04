@@ -371,6 +371,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	untitledSession: "未命名对话",
 	newConversation: "新对话",
 	loadErrorTitle: "无法加载此对话",
+	goneTitle: "这个对话已不在了",
+	goneHint: "它的文件已被删除或移走。从侧栏打开另一个对话，或开始新对话。",
 	usageInput: "输入 {n}",
 	usageOutput: "输出 {n}",
 	usageCacheRead: "缓存读取 {n}",

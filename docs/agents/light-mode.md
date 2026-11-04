@@ -43,8 +43,8 @@ Light processes run with an agent directory of the web UI's own (`offline-agent/
 | `mode.json:offline.model` | `<backend>/<id>` or `null` | `null` | The local server's model; `null`: the first it serves. |
 | `mode.json:offline.thinking` | `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `auto` | `medium` | Thinking level on the local server. |
 | `mode.json:offline.tools` | list of `read`, `bash`, `edit`, `write`, `grep`, `glob`, `todo`, `ask`, `eval`, `lsp`, `task`, `wait`, `debug` | `read, bash, edit, write, grep, glob, todo` | Built-in tools of a Light process (`--tools`). |
-| `mode.json:offline.mcp` | list of MCP server names from the user's `mcp.json` | `["rea"]` | MCP servers a Light process loads. One that is no longer in `mcp.json` is listed as missing (with "Remove from the list"); one switched off in omp is not loaded. |
-| `mode.json:offline.skills` | list of skill names or globs | `["reverse-engineer-anything"]` | Skills a Light process loads (`skills.includeSkills`); empty: none. |
+| `mode.json:offline.mcp` | list of MCP server names from the user's `mcp.json` | `[]` | MCP servers a Light process loads. One that is no longer in `mcp.json` is listed as missing (with "Remove from the list"); one switched off in omp is not loaded. |
+| `mode.json:offline.skills` | list of skill names or globs | `[]` | Skills a Light process loads (`skills.includeSkills`); empty: none. |
 | `mode.json:offline.agentsMd` | `true`, `false` | `false` | Also load the user's own `AGENTS.md` from omp's agent folder. |
 
 `mode.json` is in the data folder, mode 0600, `{ "version": 2, "mode", "lightModels", "offline": { … } }`. A file from an earlier version (modes `online` / `offline`) is read as Full with Your models / Light on a local server and rewritten; a file that cannot be read means the defaults.

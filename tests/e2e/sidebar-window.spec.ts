@@ -86,6 +86,20 @@ test("only the rows in view are in the page, and scrolling brings the others", a
 	await expect(rows(page).first()).toContainText(title(COUNT));
 });
 
+test("a conversation opened by its address is scrolled into view in the list, once", async ({ page }) => {
+	// The oldest, hundreds of rows below the top.
+	const id = `01a00000-0000-7000-8000-${(1).toString(16).padStart(12, "0")}`;
+	const file = join(dir, `2026-01-07T00-00-01-000Z_${id}.jsonl`);
+	await page.goto(`/#/s/${encodeURIComponent(file)}`);
+	const row = rows(page).filter({ hasText: title(1) });
+	await expect(row).toBeInViewport({ timeout: 30_000 });
+	// The person's own scroll afterwards is theirs: the list does not jump back to the open conversation.
+	await scrollTo(page, 0);
+	await expect(rows(page).first()).toContainText(title(COUNT));
+	await page.waitForTimeout(500);
+	expect(await list(page).evaluate((el) => el.scrollTop)).toBe(0);
+});
+
 test("the list's toolbar (Select, the order) stays put while the rows scroll under it", async ({ page }) => {
 	await openSidebar(page);
 	const toolbar = page.getByTestId("session-list-toolbar");

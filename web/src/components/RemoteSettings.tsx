@@ -590,7 +590,8 @@ export function RemoteSettings() {
 					</Button>
 				) : (
 					<Button
-						variant="primary"
+						// The main action once the tunnel can start; before that it is a plain button (the server says what is missing).
+						variant={ready ? "primary" : "outline"}
 						data-testid="remote-start"
 						disabled={dirty || busy !== null}
 						onClick={() => void remoteApi.start()}

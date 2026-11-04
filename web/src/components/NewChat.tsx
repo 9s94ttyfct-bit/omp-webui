@@ -657,8 +657,9 @@ export function NewChat({ cwd: openedIn, project }: { cwd?: string; project?: st
 					</p>
 				) : null}
 				{/* One line: where the conversation starts (its menu holds the other choices and the recent folders), the new
-				    project's name with the note under it, and the meter and Options at the right. They line up on the top line. */}
-				<div className="mb-3 flex items-start gap-2">
+				    project's name with the note under it, and the meter and Options at the right. They line up on the top line.
+				    On a phone the name and its note take a line of their own under the other two, the whole width. */}
+				<div className="mb-3 flex flex-wrap items-start gap-2">
 					<NewChatFolderMenu
 						existing={existing}
 						recent={recent}
@@ -672,7 +673,7 @@ export function NewChat({ cwd: openedIn, project }: { cwd?: string; project?: st
 						onChooseExisting={() => setBrowse(true)}
 						onPick={setExisting}
 					/>
-					<div className="flex min-w-0 flex-1">
+					<div className={cx("flex min-w-0 flex-1", existing === null && "max-sm:order-last max-sm:basis-full")}>
 						{existing === null ? (
 							<ErrorBoundary fallback={() => null} onError={retryProjectField}>
 								<Suspense fallback={null}>
@@ -694,7 +695,7 @@ export function NewChat({ cwd: openedIn, project }: { cwd?: string; project?: st
 							</ErrorBoundary>
 						) : null}
 					</div>
-					<div className="flex h-[1.875rem] shrink-0 items-center gap-2">
+					<div className="flex h-[1.875rem] shrink-0 items-center gap-2 max-sm:ml-auto">
 						{live?.state?.model?.provider ? (
 							// A chunk that is gone is a toast, not the Reload screen: the page stays, without the meter.
 							<ErrorBoundary

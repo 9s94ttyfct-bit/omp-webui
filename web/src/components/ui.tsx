@@ -2,7 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import clsx from "clsx";
 import { Loader2, X } from "lucide-react";
-import { type ButtonHTMLAttributes, type ReactNode, useRef } from "react";
+import { type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode, useRef } from "react";
 import { useT } from "../i18n/index.ts";
 
 export const cx = clsx;
@@ -73,6 +73,19 @@ export function IconButton({
 				{children}
 			</button>
 		</Tip>
+	);
+}
+
+/**
+ * One line of a path that is cut at its start when it does not fit (`…/work/acme-api`): the folder's own name is the end
+ * of it, and the part worth keeping. The line runs right to left so that the ellipsis goes on the left, and the path
+ * itself is isolated left to right so that its slashes stay where they are.
+ */
+export function PathTail({ path, className, ...rest }: HTMLAttributes<HTMLSpanElement> & { path: string }) {
+	return (
+		<span className={cx("truncate text-left [direction:rtl]", className)} {...rest}>
+			<bdi dir="ltr">{path}</bdi>
+		</span>
 	);
 }
 

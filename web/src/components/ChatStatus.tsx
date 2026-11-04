@@ -20,7 +20,7 @@ import type { LiveState } from "../store/live.ts";
 import { useTurnClocks } from "../store/turn-clock.ts";
 import { GitChips } from "./GitChips.tsx";
 import { levelText } from "./ModelPicker.tsx";
-import { cx, Tip } from "./ui.tsx";
+import { cx, PathTail, Tip } from "./ui.tsx";
 
 /**
  * The TUI's bottom line, under the composer: how long the agent has worked, the model and its thinking level, the goal's
@@ -223,7 +223,7 @@ export function ChatStatus({
 					data-testid="status-cwd"
 				>
 					<FolderOpen size={11} className={ICON} aria-hidden />
-					<span className="truncate">{shortPath(cwd, home)}</span>
+					<PathTail path={shortPath(cwd, home)} />
 				</button>
 			) : null}
 			{!compact ? <GitChips cwd={cwd} /> : null}

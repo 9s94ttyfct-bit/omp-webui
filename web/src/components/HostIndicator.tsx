@@ -44,6 +44,14 @@ export default function HostIndicator({ variant }: { variant: "line" | "rail" })
 	const showPower = powerKnown || (latest?.power ?? null) !== null;
 	const watts = fmtWatts(latest?.power);
 	const shown = showPower ? [...figures, watts] : figures;
+	// Each figure keeps the room of its two-digit form ("GPU 88%", "88.8 W"): a share going from 9% to 10% no longer moves
+	// a figure to the next line and the list under it by a line's height.
+	const roomy = [
+		t("host.chipCpu", { v: "88%" }),
+		...(showGpu ? [t("host.chipGpu", { v: "88%" })] : []),
+		t("host.chipMem", { v: "88%" }),
+		...(showPower ? [fmtWatts(88.8)] : []),
+	];
 	const told = showPower ? [...figures, t("host.chipPower", { v: watts })] : figures;
 	const said = level === null ? null : t(PRESSURE_KEY[level]);
 	const spoken = said
@@ -114,7 +122,13 @@ export default function HostIndicator({ variant }: { variant: "line" | "rail" })
 							// biome-ignore lint/suspicious/noArrayIndexKey: the figures are CPU, GPU, memory, power in a fixed order
 							<span key={i}>
 								{i > 0 ? " " : null}
-								<span className="whitespace-nowrap">{i < shown.length - 1 ? `${figure} ·` : figure}</span>
+								{/* The room is the two-digit form drawn invisibly in a pseudo-element, under the figure: not text of the page. */}
+								<span
+									className="inline-grid whitespace-nowrap after:invisible after:col-start-1 after:row-start-1 after:content-[attr(data-room)]"
+									data-room={i < shown.length - 1 ? `${roomy[i]} ·` : roomy[i]}
+								>
+									<span className="col-start-1 row-start-1">{i < shown.length - 1 ? `${figure} ·` : figure}</span>
+								</span>
 							</span>
 						))}
 					</span>

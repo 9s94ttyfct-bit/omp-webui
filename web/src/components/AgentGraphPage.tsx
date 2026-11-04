@@ -150,7 +150,11 @@ export default function AgentGraphPage() {
 	const sessions = useApp((s) => s.sessions);
 	const byFile = useMemo(() => new Map(sessions.map((s) => [s.file, s])), [sessions]);
 	const listed = useMemo(() => {
-		const files = Object.keys(dots);
+		// A process whose session file is not in the list has not had a message yet: New chat's warm-up process, which the
+		// person has not started, and which the sidebar does not show either. (A folder reached by a symlink lists the same
+		// file by another path, so the name is compared too.)
+		const known = new Set(sessions.map((s) => baseName(s.file)));
+		const files = Object.keys(dots).filter((f) => byFile.has(f) || known.has(baseName(f)));
 		// A conversation named in the address is listed whether or not it still runs: its graph is what was asked for.
 		if (file && !files.includes(file)) files.push(file);
 		return files.sort(
@@ -158,7 +162,7 @@ export default function AgentGraphPage() {
 				(DOT_ORDER[dots[a] as LiveDot] ?? 9) - (DOT_ORDER[dots[b] as LiveDot] ?? 9) ||
 				nameOf(a, byFile).localeCompare(nameOf(b, byFile)),
 		);
-	}, [dots, file, byFile]);
+	}, [dots, file, byFile, sessions]);
 	// No conversation chosen: the first one working is (the address says which from then on, so Back and a reload keep it).
 	// An address may name the file by another path to it (a symlinked folder): the list's own path is the one used.
 	useEffect(() => {

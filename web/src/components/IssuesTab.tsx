@@ -28,7 +28,7 @@ import { PANEL_SHEET_QUERY, useMediaQuery } from "../lib/media.ts";
 import { useApp } from "../store/app.ts";
 import { Markdown } from "./Markdown.tsx";
 import { ScrollPane } from "./ScrollPane.tsx";
-import { Button, cx, Empty, IconButton, Spinner } from "./ui.tsx";
+import { Button, cx, Empty, IconButton, Spinner, WithCode } from "./ui.tsx";
 
 // This chunk carries its own English strings: the first page does not (see `registerStrings`).
 registerStrings("issues", en);
@@ -82,7 +82,7 @@ function Problem({ answer }: { answer: { problem: IssuesProblem; message?: strin
 			data-testid="issues-problem"
 			data-problem={answer.problem}
 		>
-			{problemText(t, answer.problem, answer.message)}
+			<WithCode text={problemText(t, answer.problem, answer.message)} />
 		</p>
 	);
 }

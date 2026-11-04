@@ -146,14 +146,14 @@ test("by default the server is in Full, with Light on the person's own models, a
 	expect(state.mode).toBe("full");
 	expect(state.lightModels).toBe("yours");
 	expect(state.mcpServers).toEqual(["alpha", "beta"]);
-	// `rea` is selected for Light by default, and this mcp.json does not have it.
-	expect(state.missingMcp).toEqual(["rea"]);
+	// Nothing is selected for Light by default, so nothing is missing.
+	expect(state.missingMcp).toEqual([]);
 	// Before there was a choice of backend, oMLX was all there was: still the default, at the address in models.yml.
 	expect(state.offline.backend).toBe("omlx");
 	expect(state.backends.omlx).toEqual({ baseUrl: omlx.url, source: "models.yml" });
 	expect(state.offline.tools).toEqual([...CORE_TOOLS]);
-	expect(state.offline.mcp).toEqual(["rea"]);
-	expect(state.offline.skills).toEqual(["reverse-engineer-anything"]);
+	expect(state.offline.mcp).toEqual([]);
+	expect(state.offline.skills).toEqual([]);
 	expect(state.offline.agentsMd).toBe(false);
 	// The key is for the Light process on a local server only: no answer carries it.
 	expect(JSON.stringify(state)).not.toContain(omlx.apiKey);

@@ -79,9 +79,9 @@ export const CORE_TOOLS = ["read", "bash", "edit", "write", "grep", "glob", "tod
 export const OPTIONAL_TOOLS = ["ask", "eval", "lsp", "task", "wait", "debug"] as const;
 export const OFFLINE_TOOLS: readonly string[] = [...CORE_TOOLS, ...OPTIONAL_TOOLS];
 
-/** Light keeps the REA tools and skill unless told otherwise. */
-export const DEFAULT_MCP_SERVERS: readonly string[] = ["rea"];
-export const DEFAULT_SKILLS: readonly string[] = ["reverse-engineer-anything"];
+/** Light loads no MCP server and no skill until the person ticks some: what they have installed is theirs to choose. */
+export const DEFAULT_MCP_SERVERS: readonly string[] = [];
+export const DEFAULT_SKILLS: readonly string[] = [];
 
 /**
  * What Light loads (`mcp`, `tools`, `skills`, `agentsMd`) and the local server's setup (`backend`, `baseUrls`, `model`,

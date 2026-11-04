@@ -13,7 +13,7 @@ import {
 	SquareTerminal,
 	Wrench,
 } from "lucide-react";
-import { lazy, Suspense, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
 import "../i18n/later.ts";
 import { t, useT } from "../i18n/index.ts";
 import {
@@ -27,6 +27,7 @@ import {
 	toolChanges,
 } from "../lib/diff.ts";
 import { useLiveMotion } from "../lib/live-motion.ts";
+import { MdOpenContext } from "../lib/md-open.ts";
 import { type AgentMessage, imagesOf, textOf } from "../lib/messages.ts";
 import { useScrolls } from "../lib/scrolls.ts";
 import { serverOffsetMs } from "../lib/server-clock.ts";
@@ -65,7 +66,8 @@ const ICONS: Record<string, typeof Wrench> = {
 	todo: ListTodo,
 };
 
-const SUMMARY_KEYS = ["intent", "command", "path", "pattern", "query", "url", "i", "file", "name", "task"];
+// What was searched for says more than where (`grep createLimiter`, not `grep src`): `pattern` comes before `path`.
+const SUMMARY_KEYS = ["intent", "command", "pattern", "path", "query", "url", "i", "file", "name", "task"];
 
 export function argSummary(args: unknown): string {
 	if (!args || typeof args !== "object") return "";
@@ -119,6 +121,19 @@ function fileViewOf(name: string, args: unknown, details: unknown): FileView {
 		listing: listingRows(text),
 		content: text,
 	};
+}
+
+/**
+ * `path` as short as it is clear: as the call's own `path` argument wrote it when that names the same file relative to
+ * something, else relative to the conversation's folder when it is in it, else as it is.
+ */
+function headerPath(path: string | undefined, args: unknown, cwd: string | undefined): string | undefined {
+	if (!path) return path;
+	const own = args && typeof args === "object" ? (args as Record<string, unknown>).path : undefined;
+	const rel = typeof own === "string" ? own.trim().replace(/^\.\//, "") : "";
+	if (rel && !rel.startsWith("/") && rel.length < path.length && path.endsWith(`/${rel}`)) return rel;
+	const base = cwd?.replace(/\/+$/, "");
+	return base && path.startsWith(`${base}/`) ? path.slice(base.length + 1) : path;
 }
 
 export interface ToolCardProps {
@@ -208,10 +223,19 @@ export function ToolCard({
 	const structured = !!view && !isError && (hasDiff || view.listing.length > 0);
 	// A `task` call's assignments are rows of their own: its arguments say the same again as JSON, so they wait for the toggle too.
 	const assigned = useMemo(() => name === "task" && taskItemsOf(args, details).length > 0, [name, args, details]);
-	const firstPath = view?.changes.files[0]?.path;
+	// The tool reports the absolute path; the header shows the path as the call wrote it (`src/server.ts`) when it names the
+	// same file, so the file's name and the intent beside it keep their room, as a `read` card's do.
+	const firstPath = headerPath(view?.changes.files[0]?.path, args, useContext(MdOpenContext)?.cwd);
 	const counts = hasDiff ? view?.changes.counts : undefined;
+	// Arguments that are one line the header already shows whole (`bash` with only its command, `read` with only its path)
+	// would say it again as JSON above the output; such a card shows the output alone.
+	const argsInHeader = useMemo(() => {
+		if (!args || typeof args !== "object") return false;
+		const values = Object.values(args as Record<string, unknown>);
+		return values.length === 1 && typeof values[0] === "string" && values[0].trim() === summary;
+	}, [args, summary]);
 	// Only a card that shows the raw text builds it: a folded one (or one showing a diff) costs nothing per streamed update.
-	const showsArgs = open && (!(structured || assigned) || showRaw);
+	const showsArgs = open && (!(structured || assigned || argsInHeader) || showRaw);
 	const showsOutput = open && (!structured || showRaw);
 	const output = !showsOutput ? "" : result ? textOf(result) : resultText(live);
 	const argsSection = showsArgs ? (
@@ -261,7 +285,7 @@ export function ToolCard({
 				{view && firstPath ? (
 					<>
 						<span className="flex min-w-0 max-w-[75%] shrink items-baseline gap-1.5">
-							<PathLabel path={firstPath} className="shrink" />
+							<PathLabel path={firstPath} title={view.changes.files[0]?.path} className="shrink" />
 							{view.changes.files.length > 1 ? (
 								<span className="shrink-0 text-xs text-faint">
 									{t("chat.toolMoreFiles", { n: view.changes.files.length - 1 })}
@@ -341,7 +365,7 @@ export function ToolCard({
 					</Suspense>
 				</div>
 			) : null}
-			{open ? (
+			{open && (structured || assigned || name === "task" || argsSection || outputSection || images.length > 0) ? (
 				<div className="space-y-2 border-t border-border px-3 py-2">
 					{name === "task" ? (
 						<TaskAssignments

@@ -483,7 +483,10 @@ export function Sidebar() {
 			 * does the tooltip.
 			 */}
 			<span
-				className={cx(listButton, "relative focus-within:bg-hover focus-within:text-fg")}
+				className={cx(
+					listButton,
+					"relative focus-within:bg-hover focus-within:text-fg has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent",
+				)}
 				title={`${t("shell.sidebarSort")}: ${t(SORT_LABEL[sort])}`}
 			>
 				<ArrowUpDown size={13} aria-hidden />

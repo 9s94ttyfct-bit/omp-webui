@@ -48,6 +48,16 @@ test("a conversation that fails to load shows the reason and a Retry, with no sp
 	for (const id of CHAT_CHROME) await expect(page.getByTestId(id), id).toBeVisible();
 });
 
+test("a conversation whose file is gone says so, with no Retry that could not help", async ({ page }) => {
+	const file = `${process.env.OMPW_E2E_AGENT_DIR}/sessions/--gone--/2026-01-01T00-00-00-000Z_gone.jsonl`;
+	await page.goto(`/#/s/${encodeURIComponent(file)}`);
+	const failed = page.getByTestId("load-error");
+	await expect(failed).toContainText("This conversation is no longer here");
+	await expect(failed).toContainText("deleted or moved");
+	await expect(failed).not.toContainText("Unknown session file");
+	await expect(failed.getByTestId("load-retry")).toHaveCount(0);
+});
+
 test("while a conversation loads there is a spinner and none of its chrome", async ({ page }) => {
 	const release = Promise.withResolvers<void>();
 	await page.route("**/api/family**", async (route) => {

@@ -6,7 +6,8 @@ import { Button } from "./ui.tsx";
  * A load that failed: what could not be loaded, the reason the server gave, and a Retry. The caller shows its
  * spinner again while the retry runs, so this never sits next to one.
  */
-export function LoadError({ title, error, onRetry }: { title: string; error: string; onRetry: () => void }) {
+/** `onRetry` is left out when asking again cannot help (a conversation whose file is gone): there is then no Retry. */
+export function LoadError({ title, error, onRetry }: { title: string; error: string; onRetry?: () => void }) {
 	const t = useT();
 	return (
 		<div
@@ -19,9 +20,11 @@ export function LoadError({ title, error, onRetry }: { title: string; error: str
 				<div className="font-medium text-danger">{title}</div>
 				<div className="mt-0.5 break-words text-xs text-muted">{error}</div>
 			</div>
-			<Button size="sm" onClick={onRetry} data-testid="load-retry">
-				<RefreshCw size={13} /> {t("common.retry")}
-			</Button>
+			{onRetry ? (
+				<Button size="sm" onClick={onRetry} data-testid="load-retry">
+					<RefreshCw size={13} /> {t("common.retry")}
+				</Button>
+			) : null}
 		</div>
 	);
 }

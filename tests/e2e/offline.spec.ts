@@ -168,7 +168,7 @@ test("offline settings: model, thinking, MCP servers, tools, skills and AGENTS.m
 
 	await chooseOption(page.getByTestId("offline-model"), "omlx/stub-two");
 	await chooseOption(page.getByTestId("offline-thinking"), "low");
-	// The MCP servers are the ones in mcp.json; `rea` is on by default.
+	// The MCP servers are the ones in mcp.json; `rea` is on, as beforeAll selected it.
 	await expect(page.getByTestId("offline-mcp-rea")).toBeChecked();
 	await expect(page.getByTestId("offline-mcp-other")).not.toBeChecked();
 	await page.getByTestId("offline-mcp-other").check();

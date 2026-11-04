@@ -35,7 +35,7 @@ import { fmtRelative } from "../lib/format.ts";
 import { onPrefsChanged, setPref } from "../lib/prefs.ts";
 import { inShell } from "../lib/shell-notify.ts";
 import { ScrollPane } from "./ScrollPane.tsx";
-import { cx, Empty, IconButton, Spinner } from "./ui.tsx";
+import { cx, Empty, IconButton, Spinner, WithCode } from "./ui.tsx";
 
 // This chunk carries its own English strings: the first page does not (see `registerStrings`).
 registerStrings("ci", en);
@@ -88,7 +88,7 @@ function Problem({ answer }: { answer: { problem: CiProblem; message?: string } 
 			data-testid="ci-problem"
 			data-problem={answer.problem}
 		>
-			{problemText(t, answer.problem, answer.message)}
+			<WithCode text={problemText(t, answer.problem, answer.message)} />
 		</p>
 	);
 }
