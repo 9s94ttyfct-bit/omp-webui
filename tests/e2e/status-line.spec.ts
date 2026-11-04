@@ -456,13 +456,16 @@ test.describe("the line and the header at several widths", () => {
 		}
 		await expect(page.getByTestId("status-cwd")).toHaveCount(0);
 		await expect(page.getByTestId("chat-cwd")).toContainText("ompw-fixture-project");
-		await page.getByTestId("chat-more").click();
-		const menu = page.getByTestId("chat-more-panel");
-		// The working time is in the menu if it gave way, else on the line: in one place.
-		if (folds.includes("time")) await expect(menu.getByTestId("status-time")).toHaveText("13h 7m");
-		else await expect(line(page, "status-time")).toHaveText("13h 7m");
-		await expect(menu.getByTestId("status-goal")).toHaveCount(0);
-		await page.keyboard.press("Escape");
+		// The working time is in the menu if it gave way, else on the line (and the header may then have nothing to fold).
+		if (folds.includes("time")) {
+			await page.getByTestId("chat-more").click();
+			const menu = page.getByTestId("chat-more-panel");
+			await expect(menu.getByTestId("status-time")).toHaveText("13h 7m");
+			await expect(menu.getByTestId("status-goal")).toHaveCount(0);
+			await page.keyboard.press("Escape");
+		} else {
+			await expect(line(page, "status-time")).toHaveText("13h 7m");
+		}
 		await page.getByTestId("right-panel-close").click();
 		for (const id of LINE_ITEMS) await expect(line(page, id), id).toBeVisible();
 		await expect(page.getByTestId("chat-status")).not.toHaveAttribute("data-folds");
