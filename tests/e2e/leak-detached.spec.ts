@@ -1,5 +1,6 @@
-import type { CDPSession, Page, Request } from "@playwright/test";
+import type { CDPSession, Page } from "@playwright/test";
 import { en as shell } from "../../web/src/i18n/shell.ts";
+import { apiInFlight } from "../support/api-in-flight.ts";
 import { ownSession, startLive } from "../support/live.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { expect, test } from "./fixtures.ts";
@@ -24,17 +25,6 @@ interface Counts {
 	detached: number;
 	/** The event listeners the page has. */
 	listeners: number;
-}
-
-/** The page's requests to the server's API not answered yet, from the moment this is called on. */
-function apiInFlight(page: Page): () => number {
-	const open = new Set<Request>();
-	page.on("request", (r) => {
-		if (new URL(r.url()).pathname.startsWith("/api/")) open.add(r);
-	});
-	page.on("requestfinished", (r) => open.delete(r));
-	page.on("requestfailed", (r) => open.delete(r));
-	return () => open.size;
 }
 
 /** Collect what the browser has not collected yet, and count what is left. */

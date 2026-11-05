@@ -1,6 +1,7 @@
 import { appendFileSync } from "node:fs";
 import { basename } from "node:path";
 import type { Page } from "@playwright/test";
+import { apiInFlight } from "../support/api-in-flight.ts";
 import { writeSimpleSession } from "../support/fixtures.ts";
 import { ownSession, sessionRow, startLive } from "../support/live.ts";
 import { endAllLives } from "../support/lives.ts";
@@ -32,16 +33,18 @@ import { expect, test } from "./fixtures.ts";
  * The screen has stopped rendering: what it loads on its own is drawn. It is waited for on the screen's own count, so
  * that a load that takes longer than a moment (a process that starts slowly) does not land while the tokens are
  * counted (#484). The count has to hold still for a while, not for one poll: a load may come a moment after the one
- * before it.
+ * before it. And nothing the page asked of the server is still unanswered: on CI New chat's model config for the
+ * warm-up's folder (`/api/model-config?cwd=`) took 3.2 s, longer than the count held still, and its answer was the one
+ * render counted during the tokens (the render's reasons: the hook of `useStartConfig`, from nothing to the config).
  */
-async function quiet(page: Page): Promise<void> {
+async function quiet(page: Page, inFlight: () => number): Promise<void> {
 	let last = -1;
 	let still = 0;
 	await expect
 		.poll(
 			async () => {
 				const now = await rendersCounted(page);
-				still = now === last ? still + 1 : 0;
+				still = now === last && inFlight() === 0 ? still + 1 : 0;
 				last = now;
 				return still >= 3;
 			},
@@ -92,6 +95,7 @@ for (const screen of ["New chat", "Settings"] as const) {
 		await page.addInitScript(COUNT_RENDERS);
 		await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
 		const tap = await tapSocket(page);
+		const inFlight = apiInFlight(page);
 		await page.goto("/");
 		const liveId = await startLive(page, tap, title, `render-isolation-${screen === "Settings" ? "s" : "n"}`);
 		const frame = (f: Record<string, unknown>) => tap.push({ t: "frame", liveId, frame: f });
@@ -133,7 +137,7 @@ for (const screen of ["New chat", "Settings"] as const) {
 		// those is a render of the screen that has nothing to do with the conversation streaming elsewhere, and a
 		// screen that is still starting up would be measured as rendering for it (#484). What is waited for is the
 		// screen itself falling quiet, so it does not matter how long any of it takes.
-		await quiet(page);
+		await quiet(page, inFlight);
 
 		// The screen is measured over the tokens: what it renders for itself (a clock, a toast) is not the screen
 		// rendering for the conversation, and is not counted as such.
@@ -173,12 +177,13 @@ test("Settings does not render when the list of conversations changes for anothe
 	ownSession(0xe8, "Render isolation Settings list");
 	const other = writeSimpleSession(process.env.OMPW_E2E_AGENT_DIR as string, 0xe9, "Render isolation other");
 	await page.addInitScript(COUNT_RENDERS);
+	const inFlight = apiInFlight(page);
 	await page.goto("/#/settings/look");
 	await expect(sessionRow(page, "Render isolation other")).toHaveCount(1, { timeout: 15_000 });
 	await expect(page.getByTestId("settings-page")).toBeVisible();
 	await settingsLoaded(page);
 	await countRenders(page, "Settings");
-	await quiet(page);
+	await quiet(page, inFlight);
 
 	const before = await rendersCounted(page);
 	// The other conversation is written to, and the page has the changed list: the server's answer names its row.
