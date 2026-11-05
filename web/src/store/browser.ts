@@ -1,4 +1,4 @@
-import { BROWSER_NOT_HERE, type BrowserState } from "@shared/browser.ts";
+import type { BrowserState } from "@shared/browser.ts";
 import { create } from "zustand";
 
 /**
@@ -36,17 +36,6 @@ export function onBrowserState(state: BrowserState): void {
 	useBrowserState.setState((s) => (!take && s.state !== null && state.rev < s.state.rev ? {} : { state }));
 }
 
-/** What a refused request says; `notHere` when the page may not manage the browser. */
-export class BrowserRequestError extends Error {
-	constructor(
-		message: string,
-		readonly status: number,
-		readonly notHere: boolean,
-	) {
-		super(message);
-	}
-}
-
 async function request(path: string, post: boolean): Promise<BrowserState> {
 	const res = await fetch(
 		path,
@@ -55,8 +44,8 @@ async function request(path: string, post: boolean): Promise<BrowserState> {
 			: undefined,
 	);
 	const data = await res.json().catch(() => ({}));
-	if (!res.ok)
-		throw new BrowserRequestError(data.error ?? res.statusText, res.status, data.problem === BROWSER_NOT_HERE);
+	// What a refused request says is shown as it is.
+	if (!res.ok) throw new Error(data.error ?? res.statusText);
 	onBrowserState(data as BrowserState);
 	return data as BrowserState;
 }

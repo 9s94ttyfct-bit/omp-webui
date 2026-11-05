@@ -46,6 +46,7 @@ import {
 	type RpcState,
 	reconcileRetry,
 	type SlashCommand,
+	settleOverlay,
 	withApprovalsDenied,
 	withInfo,
 	withUiRequests,
@@ -654,7 +655,7 @@ async function pullEntries(liveId: string, full: boolean): Promise<void> {
 		const base = last ? (s.entries.length ? s.entries : held) : [];
 		// Made by appending, so what the page derived from `base` goes on from there (see lib/lineage.ts).
 		const entries = !last ? res.entries : appended(base, res.entries);
-		const overlay = s.overlay.filter((o) => !(o.ended && endedBefore.has(o.messageId)));
+		const overlay = settleOverlay(s, endedBefore);
 		// omp says nothing of plan mode itself: the hidden entry it writes when plan-yolo approves the plan ends it. Looked for
 		// in everything the page holds, not only what omp just sent: the entries it held may be the ones that have it.
 		const planMode =
