@@ -1,3 +1,4 @@
+import { FocusScope } from "@radix-ui/react-focus-scope";
 import { working } from "@shared/attention.ts";
 import type { PanelTab } from "@shared/panes.ts";
 import type { FamilyStats, SessionEntry, SessionFileData } from "@shared/protocol.ts";
@@ -347,7 +348,9 @@ export function RightPanel({ live, file, family, entries, onClose, onNavigate, s
 
 /**
  * The panel's box. Beside the conversation it is a column of the remembered width with a drag handle on its left
- * edge; as a sheet it keeps its fixed size. Dragging re-renders only this frame, not the tabs inside it.
+ * edge; as a sheet it keeps its fixed size, and is a modal dialog over the page: Tab and Shift+Tab go round its controls,
+ * and what it covers is out of reach (Escape and the backdrop close it). Focus is moved in and back by `RightPanel`.
+ * Dragging re-renders only this frame, not the tabs inside it.
  */
 function PanelFrame({
 	frame,
@@ -361,24 +364,35 @@ function PanelFrame({
 	const t = useT();
 	const { width } = useLayout();
 	return (
-		<aside
-			ref={frame}
-			tabIndex={-1}
-			className={cx(
-				"flex flex-col border-l border-border bg-bg-soft outline-none",
-				// `fixed` and `relative` are competing position utilities, and the stylesheet's order picks the winner: each
-				// layout names its own, so a sheet is really laid over the page instead of sitting beside the transcript.
-				sheet ? "fixed inset-y-0 right-0 z-30 w-[min(25rem,calc(100vw-3rem))] shadow-2xl" : "relative h-full shrink-0",
-			)}
-			style={sheet ? undefined : { width: width.panel }}
-			aria-label={t("panel.rightAria")}
-			data-testid="right-panel"
-			// A popover opened from inside (the Files tab's transfer panel) keeps within the panel, not the whole window.
-			data-popover-boundary
+		<FocusScope
+			asChild
+			trapped={sheet}
+			loop={sheet}
+			onMountAutoFocus={(e) => e.preventDefault()}
+			onUnmountAutoFocus={(e) => e.preventDefault()}
 		>
-			{sheet ? null : <ResizeHandle kind="panel" label={t("panel.resizePanel")} className="left-0" />}
-			{children}
-		</aside>
+			<aside
+				ref={frame}
+				tabIndex={-1}
+				className={cx(
+					"flex flex-col border-l border-border bg-bg-soft outline-none",
+					// `fixed` and `relative` are competing position utilities, and the stylesheet's order picks the winner: each
+					// layout names its own, so a sheet is really laid over the page instead of sitting beside the transcript.
+					sheet
+						? "fixed inset-y-0 right-0 z-30 w-[min(25rem,calc(100vw-3rem))] shadow-2xl"
+						: "relative h-full shrink-0",
+				)}
+				style={sheet ? undefined : { width: width.panel }}
+				{...(sheet ? { role: "dialog", "aria-modal": true } : {})}
+				aria-label={t("panel.rightAria")}
+				data-testid="right-panel"
+				// A popover opened from inside (the Files tab's transfer panel) keeps within the panel, not the whole window.
+				data-popover-boundary
+			>
+				{sheet ? null : <ResizeHandle kind="panel" label={t("panel.resizePanel")} className="left-0" />}
+				{children}
+			</aside>
+		</FocusScope>
 	);
 }
 

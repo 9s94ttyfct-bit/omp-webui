@@ -1392,6 +1392,7 @@
 		"panel-sheet.spec.ts › a sheet over the conversation (390 px) › the panel is laid over the page, the transcript keeps its width and the backdrop closes it": 2.4,
 		"panel-sheet.spec.ts › a sheet over the conversation (820 px) › the panel is laid over the page, the transcript keeps its width and the backdrop closes it": 3.3,
 		"panel-sheet.spec.ts › beside the conversation (1024 px) › the panel is a column with a drag handle that takes room from the conversation": 3.3,
+		"panel-sheet.spec.ts › the sheet holds the keyboard (820 px) › Tab and Shift+Tab go round the sheet's controls, never to the covered conversation": 2,
 		"parity.spec.ts › command-line-only flags run in the terminal": 3,
 		"parity.spec.ts › every omp subcommand has an entry on the Commands page": 1.5,
 		"parity.spec.ts › every session flag is an option on the new-chat page": 1.6,

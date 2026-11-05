@@ -51,6 +51,28 @@ for (const [width, height] of [
 	});
 }
 
+test.describe("the sheet holds the keyboard (820 px)", () => {
+	test.use({ viewport: { width: 820, height: 768 } });
+
+	test("Tab and Shift+Tab go round the sheet's controls, never to the covered conversation", async ({ page }) => {
+		await openChat(page);
+		await page.getByTestId("toggle-panel").click();
+		const panel = page.getByTestId("right-panel");
+		await expect(panel).toBeVisible();
+		await expect(panel).toHaveAttribute("role", "dialog");
+		await expect(panel).toHaveAttribute("aria-modal", "true");
+		for (const key of ["Tab", "Shift+Tab"]) {
+			for (let i = 0; i < 30; i++) {
+				await page.keyboard.press(key);
+				const inside = await panel.evaluate((el) => el.contains(document.activeElement));
+				expect(inside, `${key} × ${i + 1}`).toBe(true);
+			}
+		}
+		await page.keyboard.press("Escape");
+		await expect(panel).toHaveCount(0);
+	});
+});
+
 test.describe("beside the conversation (1024 px)", () => {
 	test.use({ viewport: { width: 1024, height: 768 } });
 
