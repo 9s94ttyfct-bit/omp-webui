@@ -45,13 +45,17 @@ function upload(name: string, answer: Reply): Promise<string> {
 }
 
 test("each upload's toast counts the files of that upload, not the ones sent before it", async () => {
+	const { toast } = useApp.getState();
 	useApp.setState({ toast: (_level, text) => said(text) });
 	clearUpload(scope);
-
-	expect(await upload("a.txt", ok("a.txt"))).toBe("1 files uploaded.");
-	expect(await upload("b.txt", ok("b.txt"))).toBe("1 files uploaded.");
-	expect(await upload("c.txt", refused())).toBe("0 of 1 files uploaded; 1 could not be sent.");
-	// The failure of the upload before is not this one's.
-	expect(await upload("d.txt", ok("d.txt"))).toBe("1 files uploaded.");
-	clearUpload(scope);
+	try {
+		expect(await upload("a.txt", ok("a.txt"))).toBe("1 files uploaded.");
+		expect(await upload("b.txt", ok("b.txt"))).toBe("1 files uploaded.");
+		expect(await upload("c.txt", refused())).toBe("0 of 1 files uploaded; 1 could not be sent.");
+		// The failure of the upload before is not this one's.
+		expect(await upload("d.txt", ok("d.txt"))).toBe("1 files uploaded.");
+	} finally {
+		clearUpload(scope);
+		useApp.setState({ toast });
+	}
 });
