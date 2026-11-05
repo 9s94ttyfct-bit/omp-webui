@@ -147,6 +147,7 @@
 		"approval.spec.ts › New chat keeps the mode picked here when the folder changes and omp starts again": 9.3,
 		"approval.spec.ts › New chat shows the permission mode as a compact switcher, and Auto-approve looks different": 5.4,
 		"approval.spec.ts › Settings names omp's own mode when it is one a newer omp added": 4,
+		"approval.spec.ts › Settings says when the permission mode could not be read, and Retry brings the choices back": 1.5,
 		"approval.spec.ts › a conversation whose process ended comes back in the mode that was picked for it": 9.5,
 		"approval.spec.ts › a conversation's switcher changes its own mode, and says so when omp is in the middle of a turn": 8.4,
 		"approval.spec.ts › a mode that only a newer omp has is shown as omp names it, in the switcher and in Settings, and picking one of ours replaces it": 5.7,

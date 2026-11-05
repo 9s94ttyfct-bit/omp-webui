@@ -347,6 +347,29 @@ test("Settings names omp's own mode when it is one a newer omp added", async ({ 
 	await expect(page.getByTestId("approval-default-omp")).toBeChecked();
 });
 
+test("Settings says when the permission mode could not be read, and Retry brings the choices back", async ({
+	page,
+}) => {
+	let fail = true;
+	await page.route("**/api/approval", async (route) => {
+		if (route.request().method() !== "GET" || !fail) return route.continue();
+		return route.fulfill({ status: 500, json: { error: "the server is restarting" } });
+	});
+	await page.goto("/#/settings/safety");
+	const section = page.getByTestId("approval-settings");
+	const error = section.getByTestId("load-error");
+	await expect(error).toContainText("Couldn't read the permission mode");
+	await expect(error).toContainText("the server is restarting");
+	await expect(page.getByTestId("approval-default-omp")).toBeDisabled();
+
+	fail = false;
+	await error.getByTestId("load-retry").click();
+	await expect(error).toHaveCount(0);
+	await expect(page.getByTestId("approval-default-omp")).toBeEnabled();
+	await expect(page.getByTestId("approval-default-omp")).toBeChecked();
+	await expect(section).toContainText("Same as omp's setting (Auto-approve)");
+});
+
 test("on a phone the switcher stays on the screen and keeps its name for assistive tools", async ({ page }) => {
 	await page.setViewportSize({ width: 390, height: 800 });
 	await newChat(page);

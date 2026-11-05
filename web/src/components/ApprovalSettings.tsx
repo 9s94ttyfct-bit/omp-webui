@@ -1,10 +1,11 @@
 import { APPROVAL_MODES, type ApprovalMode, approvalModeNeeds, isApprovalMode } from "@shared/approval.ts";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
 import { type ApprovalDefault, sessionActions } from "../lib/api.ts";
 import { useApp } from "../store/app.ts";
 import { APPROVAL_META } from "./ApprovalPicker.tsx";
+import { LoadError } from "./LoadError.tsx";
 import { CardHeader, cx, WithCode } from "./ui.tsx";
 
 /**
@@ -17,12 +18,16 @@ export function ApprovalSettings() {
 	const toast = useApp((s) => s.toast);
 	const ompVersion = useApp((s) => s.meta?.ompVersion);
 	const [state, setState] = useState<ApprovalDefault | null>(null);
-	useEffect(() => {
-		void sessionActions
+	// Until it is read the choices stay disabled: a failed read says why and offers to read it again.
+	const [loadError, setLoadError] = useState<string | null>(null);
+	const load = useCallback(() => {
+		setLoadError(null);
+		sessionActions
 			.approvalDefault()
 			.then(setState)
-			.catch(() => {});
+			.catch((e) => setLoadError(e.message));
 	}, []);
+	useEffect(load, [load]);
 	const choose = (mode: ApprovalMode | null) => {
 		const before = state;
 		setState((s) => s && { ...s, mode });
@@ -57,6 +62,11 @@ export function ApprovalSettings() {
 	return (
 		<section className="rounded-2xl border border-border bg-surface p-4" data-testid="approval-settings">
 			<CardHeader title={t("pages.settingsApproval")} />
+			{loadError ? (
+				<div className="mb-3">
+					<LoadError title={t("pages.settingsApprovalLoadError")} error={loadError} onRetry={load} />
+				</div>
+			) : null}
 			<fieldset className="space-y-1">
 				<legend className="mb-1.5 text-sm">{t("pages.settingsApprovalDefault")}</legend>
 				{options.map((o) => {
