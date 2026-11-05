@@ -19,10 +19,19 @@ interface Fiber {
 	flags: number;
 	/** A component's props (a text's own fiber has its string instead; only components' are read). */
 	memoizedProps: object;
+	/** A function component's hooks: a list, in the order the component calls them, each with its value. */
+	memoizedState: Hook | null;
+	/** The other fiber of the pair: the component as the commit before this one left it. */
+	alternate: Fiber | null;
 	stateNode: unknown;
 	child: Fiber | null;
 	sibling: Fiber | null;
 	return: Fiber | null;
+}
+
+interface Hook {
+	memoizedState: unknown;
+	next: Hook | null;
 }
 
 interface Probe {
@@ -32,6 +41,8 @@ interface Probe {
 	/** The counted fibers as the last commit left them: a commit that renders an instance leaves the other half of its pair. */
 	last: Set<Fiber>;
 	renders: number;
+	/** Why each counted render happened (see `renderReasons`). */
+	reasons: string[];
 }
 
 /** The instances of `type` counted in the tree under `top`: the first one, or every one that draws inside `within`. */
@@ -63,6 +74,40 @@ export const COUNT_RENDERS = () => {
 		return found;
 	};
 	Reflect.set(window, "__renderInstances", instances);
+	/** A value as a few characters: enough to tell which state it is. */
+	const brief = (v: unknown): string => {
+		if (typeof v === "function") return "fn";
+		try {
+			return (JSON.stringify(v) ?? String(v)).slice(0, 60);
+		} catch {
+			return Object.prototype.toString.call(v);
+		}
+	};
+	/**
+	 * What differs between a fiber and the one the commit before left: its props (its parent rendered it again), or which
+	 * of its hooks (by their place in the component's calls) hold another value, and what they held and hold now.
+	 */
+	const why = (fiber: Fiber): string => {
+		const before = fiber.alternate;
+		if (!before) return "mounted";
+		const parts: string[] = [];
+		if (fiber.memoizedProps !== before.memoizedProps) parts.push("props");
+		/** Hooks that hold a new object that reads the same: a memo or callback made again, or a store's value copied. */
+		const renewed: number[] = [];
+		let now = fiber.memoizedState;
+		let was = before.memoizedState;
+		for (let i = 0; now && was; i++, now = now.next, was = was.next) {
+			const [a, b] = [was.memoizedState, now.memoizedState];
+			// An effect's record is made anew on every render, whether or not it runs: it says nothing of why.
+			const effect = (v: unknown) => typeof v === "object" && v !== null && "create" in v && "deps" in v;
+			if (Object.is(a, b) || (effect(a) && effect(b))) continue;
+			const [held, holds] = [brief(a), brief(b)];
+			if (held === holds) renewed.push(i);
+			else parts.push(`hook ${i}: ${held} -> ${holds}`);
+		}
+		if (renewed.length) parts.push(`hooks ${renewed.join(",")} renewed`);
+		return `${Math.round(performance.now())} ms: ${parts.join("; ") || "nothing it holds"}`;
+	};
 	Reflect.set(window, "__REACT_DEVTOOLS_GLOBAL_HOOK__", {
 		supportsFiber: true,
 		isDisabled: false,
@@ -74,7 +119,11 @@ export const COUNT_RENDERS = () => {
 			for (const probe of Object.values(probes)) {
 				const now = instances(root.current, probe.type, probe.within);
 				// React's mark for a component that rendered again (1): the constant is written out, for the page has no other way to know it.
-				for (const fiber of now) if (!probe.last.has(fiber) && fiber.flags & 1) probe.renders++;
+				for (const fiber of now)
+					if (!probe.last.has(fiber) && fiber.flags & 1) {
+						probe.renders++;
+						probe.reasons.push(why(fiber));
+					}
 				probe.last = new Set(now);
 			}
 		},
@@ -124,6 +173,7 @@ export async function countRendersOf(page: Page, of: string | Of, name = DEFAULT
 				within: inside,
 				last: new Set(instances(root.current, fiber.type, inside)),
 				renders: 0,
+				reasons: [],
 			};
 		},
 		{ selector: element, takes: props, inside: within, probeName: name },
@@ -135,6 +185,17 @@ export const rendersCounted = (page: Page, name = DEFAULT): Promise<number> =>
 	page.evaluate((probeName) => {
 		const probes: Record<string, Probe> = Reflect.get(window, "__renders");
 		return probes[probeName]?.renders ?? 0;
+	}, name);
+
+/**
+ * Why each render counted under `name` happened, one line each: when (the page's clock), and what of the component differs
+ * from the commit before (its props, or its hooks by their place in its calls, with their old and new values). For a
+ * failing count's message: a render nobody can reproduce says what caused it.
+ */
+export const renderReasons = (page: Page, name = DEFAULT): Promise<string> =>
+	page.evaluate((probeName) => {
+		const probes: Record<string, Probe> = Reflect.get(window, "__renders");
+		return (probes[probeName]?.reasons ?? []).join("\n");
 	}, name);
 
 /** After the page's next frame: what a state change schedules has been drawn. */

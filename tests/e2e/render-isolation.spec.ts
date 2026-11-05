@@ -4,7 +4,14 @@ import type { Page } from "@playwright/test";
 import { writeSimpleSession } from "../support/fixtures.ts";
 import { ownSession, sessionRow, startLive } from "../support/live.ts";
 import { endAllLives } from "../support/lives.ts";
-import { COUNT_RENDERS, countRendersOf, type Of, painted, rendersCounted } from "../support/render-count.ts";
+import {
+	COUNT_RENDERS,
+	countRendersOf,
+	type Of,
+	painted,
+	renderReasons,
+	rendersCounted,
+} from "../support/render-count.ts";
 import { assistant } from "../support/session-entries.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { expect, test } from "./fixtures.ts";
@@ -137,7 +144,9 @@ for (const screen of ["New chat", "Settings"] as const) {
 		}
 		await painted(page);
 		await painted(page);
-		expect(await rendersCounted(page)).toBe(before);
+		// New chat rendered once here in 5 of some 100 CI runs and never on a Mac: nothing reached the page meanwhile
+		// (the traces' socket and network), so the message says what of the screen had changed.
+		expect(await rendersCounted(page), `${screen}'s renders:\n${await renderReasons(page)}`).toBe(before);
 
 		// Every token did reach the store: the conversation shows the whole reply when the page goes back to it.
 		await sessionRow(page, title).click();
