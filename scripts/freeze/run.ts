@@ -64,6 +64,9 @@ const dataDir = join(root, "data");
 const bucket = join(agentDir, "sessions", "-omp");
 mkdirSync(bucket, { recursive: true });
 mkdirSync(join(root, "bin"), { recursive: true });
+/** The folder the made-up conversations ran in: one that exists, or the server refuses to open them. */
+const workDir = join(root, "work");
+mkdirSync(workDir, { recursive: true });
 /** The probes and tabs started (the server is `server`): stopped at the end if they still run. */
 const children: ChildProcess[] = [];
 let server: ChildProcess | undefined;
@@ -143,7 +146,7 @@ try {
 				version: 3,
 				id,
 				timestamp: new Date().toISOString(),
-				cwd: "/tmp/ompw-freeze",
+				cwd: workDir,
 			});
 			lines.push(first);
 			size += first.length + 1;
