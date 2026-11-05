@@ -493,22 +493,36 @@ export class ScreenClient {
 		this.enqueue(msg);
 	}
 
+	/**
+	 * The browser cannot be used when the engine cannot be had, or the tab's watch cannot be carried out: the tab is told
+	 * so, and watches again when the engine is back. Another command that fails on a page (one that went away while the
+	 * tab's message came, or one not this conversation's) is no sign of that: it is dropped, and the page list the tab is
+	 * sent tells it which pages there are.
+	 */
 	private enqueue(msg: ScreenClientMessage): void {
-		this.queue = this.queue.then(() =>
-			this.handle(msg).then(
-				() => {
-					if (msg.t !== "watch" || this.closed) return;
-					this.lastWatch = msg;
-					if (!this.stale) return;
-					this.stale = false;
-					this.socket.sendText(JSON.stringify({ t: "available" } satisfies ScreenServerMessage));
-				},
-				(e: unknown) => {
-					if (msg.t === "watch") this.lastWatch = msg;
-					this.tellUnavailable(e instanceof Error ? e.message : String(e));
-				},
-			),
-		);
+		this.queue = this.queue.then(async () => {
+			if (msg.t === "unwatch") {
+				this.unwatch();
+				this.unfit();
+				this.owner = null;
+				return;
+			}
+			let engine: Engine | null = null;
+			try {
+				engine = await this.hub.host.ready();
+				if (!this.closed) await this.handle(engine, msg);
+			} catch (e) {
+				if (engine !== null && msg.t !== "watch") return;
+				if (msg.t === "watch") this.lastWatch = msg;
+				this.tellUnavailable(e instanceof Error ? e.message : String(e));
+				return;
+			}
+			if (msg.t !== "watch" || this.closed) return;
+			this.lastWatch = msg;
+			if (!this.stale) return;
+			this.stale = false;
+			this.socket.sendText(JSON.stringify({ t: "available" } satisfies ScreenServerMessage));
+		});
 	}
 
 	/** The engine is back: a tab that was told it could not be used watches what it last asked to again. */
@@ -561,15 +575,7 @@ export class ScreenClient {
 		return this.hub.view(engine, targetId);
 	}
 
-	private async handle(msg: ScreenClientMessage): Promise<void> {
-		if (msg.t === "unwatch") {
-			this.unwatch();
-			this.unfit();
-			this.owner = null;
-			return;
-		}
-		const engine = await this.hub.host.ready();
-		if (this.closed) return;
+	private async handle(engine: Engine, msg: Exclude<ScreenClientMessage, { t: "unwatch" }>): Promise<void> {
 		switch (msg.t) {
 			case "watch": {
 				if (typeof msg.owner !== "string") return;

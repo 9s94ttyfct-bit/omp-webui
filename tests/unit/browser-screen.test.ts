@@ -142,6 +142,28 @@ test("a tab acts only on the pages of the conversation it watches", async () => 
 	expect(registry.pagesOf("/s/b.jsonl")).toEqual([pageB]);
 });
 
+test("a command on a page that went away, or not this conversation's, is no sign the browser cannot be used", async () => {
+	const registry = new PageRegistry(join(work, "owners-gone.json"));
+	const browser = new FakeBrowser();
+	const host = new EngineHost(registry, async () => ({ transport: browser, generation: "g", fresh: true }));
+	const hub = new ScreenHub(host, registry);
+	const engine = await host.ready();
+	const page = await engine.createPage("/s/a.jsonl");
+	const gone = await engine.createPage("/s/a.jsonl");
+	const other = await engine.createPage("/s/b.jsonl");
+	const tab = new Socket();
+	const client = hub.connect(tab);
+	client.message(JSON.stringify({ t: "watch", owner: "/s/a.jsonl", targetId: page, panel: { w: 800, h: 600 } }));
+	await until(() => browser.log.some((l) => l.method === "Runtime.enable"));
+	// The agent closed a page; a key the person pressed in it reaches the server after.
+	await engine.close(gone);
+	client.message(JSON.stringify({ t: "input", targetId: gone, event: { kind: "text", text: "x" } }));
+	client.message(JSON.stringify({ t: "size", targetId: other, mode: "phone" }));
+	client.message(JSON.stringify({ t: "input", targetId: page, event: { kind: "text", text: "y" } }));
+	await until(() => browser.log.some((l) => l.method === "Input.insertText"));
+	expect(tab.texts.some((m) => m.t === "unavailable")).toBe(false);
+});
+
 test("a page drawn by the app's own view is scaled to fit it, until the tab that said so stops watching", async () => {
 	const registry = new PageRegistry(join(work, "owners-fit.json"));
 	const browser = new FakeBrowser();
