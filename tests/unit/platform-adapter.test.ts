@@ -47,6 +47,13 @@ test("a process tree is walked from one listing", async () => {
 	expect(await linux.proc.tree(10)).toEqual([10, 11, 12]);
 });
 
+test("a listing whose parent ids loop (Windows keeps a dead parent's id, and reuses ids) lists each process once", async () => {
+	const linux = platformFor("linux", {
+		run: async () => ({ code: 0, stdout: "  10 20\n  20 10\n  21 20\n  22 21\n  23 22\n", stderr: "" }),
+	});
+	expect(await linux.proc.tree(10)).toEqual([10, 20, 21, 22, 23]);
+});
+
 test("Windows refuses the signals it has not, ends trees with taskkill, and finds programs by PATHEXT", () => {
 	const ran: string[][] = [];
 	const killed: [number, string | number][] = [];

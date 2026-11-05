@@ -36,7 +36,10 @@ export function probe(deps: SystemDeps, pid: number): boolean {
 	}
 }
 
-/** For each of `roots`: the process itself and every process below it in `listing`. */
+/**
+ * For each of `roots`: the process itself and every process below it in `listing`, each once. Parent ids can loop: Windows
+ * keeps the id of a parent that has ended, and reuses ids, so a process can name one below it as its parent.
+ */
 export function treesOf(listing: readonly ProcessEntry[], roots: readonly number[]): Map<number, number[]> {
 	const children = new Map<number, number[]>();
 	for (const { pid, ppid } of listing) {
@@ -47,11 +50,15 @@ export function treesOf(listing: readonly ProcessEntry[], roots: readonly number
 	const trees = new Map<number, number[]>();
 	for (const root of roots) {
 		const out: number[] = [];
-		const walk = (p: number) => {
+		const seen = new Set<number>();
+		const stack = [root];
+		for (let p = stack.pop(); p !== undefined; p = stack.pop()) {
+			if (seen.has(p)) continue;
+			seen.add(p);
 			out.push(p);
-			for (const c of children.get(p) ?? []) walk(c);
-		};
-		walk(root);
+			// Pushed last to first: the first child is walked first, as a listing reads.
+			stack.push(...(children.get(p) ?? []).toReversed());
+		}
 		trees.set(root, out);
 	}
 	return trees;
