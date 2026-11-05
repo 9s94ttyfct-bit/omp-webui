@@ -615,12 +615,6 @@ export class MigrateService {
 			return fail((e as Error).message, statusOf(e), errorInfoOf(e) ?? undefined);
 		}
 	}
-
-	/** Remove what a finished or abandoned migration left in the data dir (an archive the page never downloaded). */
-	close(): void {
-		this.exp?.abort.abort();
-		this.imp?.abort.abort();
-	}
 }
 
 function hostName(): string {
