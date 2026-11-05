@@ -98,6 +98,54 @@ test("a private network address is caught outside the placeholder ones; public a
 	}
 });
 
+test("a private IPv6 address (unique local, link-local) is caught outside the placeholder ones", async () => {
+	for (const text of [
+		u("http://[fd7a:115c:a1e0::§4f01:2c3d]:7878/"),
+		u("fd7a:115c:a1e0:ab12:§4843:cd96:6258:b240"),
+		u("fe80::1c2b:§3a4d:5e6f:7081%en0"),
+	]) {
+		expect((await scan(text)).join(), text).toContain("private IPv6 address");
+	}
+	for (const text of [
+		"fe80::1",
+		"fe80::1%en0",
+		"http://[fe80::1%25en0]:7878/",
+		"curl http://fe80::1:7878/api/remote",
+		"[febf::1]",
+		"[fc00::1]",
+		"[fd12:3456:789a::1]",
+		"http://[fd00:ec2::254]/v1",
+		"::1",
+		"2001:db8::1",
+		"ffff:ffff::",
+	]) {
+		expect(await scan(text), text).toEqual([]);
+	}
+});
+
+test("a tailnet's or a Cloudflare Access team's host name is caught; the placeholder teams are not", async () => {
+	for (const text of [u("https://mac-mini.tail1a2b3§.ts.net/"), u("https://acme-corp§.cloudflareaccess.com/cdn-cgi")]) {
+		expect((await scan(text)).join(), text).toContain("host name");
+	}
+	for (const text of [
+		"https://myteam.cloudflareaccess.com/",
+		"iss: https://evil.cloudflareaccess.com",
+		"https://a.b.cloudflareaccess.com/",
+		"https://<team>.cloudflareaccess.com/…",
+		"cloudflareaccess.com",
+		"mymac.example.ts.net",
+		"scripts/ts.net.ts",
+	]) {
+		expect(await scan(text), text).toEqual([]);
+	}
+});
+
+test("of the GitHub noreply addresses only the maintainer's passes", async () => {
+	expect(await scan(`Co-authored-by: n <${NOREPLY}>`)).toEqual([]);
+	const other = u("Co-authored-by: X <12345+other-account@§users.noreply.github.com>");
+	expect((await scan(other)).join()).toContain("e-mail address");
+});
+
 test("a finding names the place and the rule, never the text it matched", async () => {
 	const found = await scanBytes(
 		Buffer.from(u("ok\nmail mpetrova@§gmail.com\n")),
@@ -218,6 +266,38 @@ test("the range mode reads the files each commit adds or changes, and the commit
 	expect(r.out).toMatch(/commit [0-9a-f]{12} \(names and message\):\d+: e-mail address/);
 	expect(check(dir, ["--range", "HEAD~1", "--not", first]).code).toBe(1);
 	expect(check(dir, ["--range", `${first}`]).code).toBe(0);
+});
+
+test("a file's name is read too, in every mode", () => {
+	const dir = repo();
+	writeFileSync(join(dir, ".personal-words"), "Zorblat\n");
+	const first = git(dir, "rev-parse", "HEAD");
+	writeFileSync(join(dir, "notes-zorblat.txt"), "nothing here\n");
+	git(dir, "add", "notes-zorblat.txt");
+	for (const args of [[], ["--staged"]]) {
+		const r = check(dir, args);
+		expect(r.code, args.join()).toBe(1);
+		expect(r.out).toContain("notes-zorblat.txt (file name): this machine's personal words");
+	}
+	git(dir, "commit", "-q", "-m", "notes");
+	const r = check(dir, ["--range", `${first}..HEAD`]);
+	expect(r.code).toBe(1);
+	expect(r.out).toContain("notes-zorblat.txt (file name): this machine's personal words");
+});
+
+test("the range mode fails when git cannot list what a commit changed, rather than passing on no files", () => {
+	const dir = repo();
+	const first = git(dir, "rev-parse", "HEAD");
+	writeFileSync(join(dir, "c.md"), "x\n");
+	git(dir, "add", "-A");
+	git(dir, "commit", "-q", "-m", "second");
+	// The commit's tree is gone (as in a partial clone without it): git rev-list still lists the commit.
+	const tree = git(dir, "rev-parse", "HEAD^{tree}");
+	rmSync(join(dir, ".git", "objects", tree.slice(0, 2), tree.slice(2)));
+	const r = check(dir, ["--range", `${first}..HEAD`]);
+	expect(r.code).toBe(1);
+	expect(r.out).toContain("git diff-tree");
+	expect(r.out).not.toContain("No personal data");
 });
 
 test("the tree of this repository passes", () => {
