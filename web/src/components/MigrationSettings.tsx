@@ -22,8 +22,8 @@ import {
 	type MigrateProgress,
 } from "@shared/migrate.ts";
 import { Check, CircleAlert, Copy, Download, Loader2, RefreshCw, Upload } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { addStrings, type MessageKey, useLang, useT, type Vars } from "../i18n/index.ts";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { lazyStrings, type MessageKey, useLang, useT, type Vars } from "../i18n/index.ts";
 import { en } from "../i18n/migrate.ts";
 import { codedText } from "../lib/error-text.ts";
 import { formatBytes, isNetworkError, migrateApi } from "../lib/migrate-api.ts";
@@ -33,39 +33,13 @@ import { Switch } from "./Switch.tsx";
 import { Button, CardHeader, cx, Spinner } from "./ui.tsx";
 
 // This chunk is loaded on its own (SettingsPage): the English strings go in with it, the Chinese ones when they are needed.
-addStrings("en", "migrate", en);
+/** True once the card's strings exist in the page's language (see `lazyStrings`): the card shows nothing until then. */
+const useStringsReady = lazyStrings("migrate", en, {
+	"zh-CN": () => import("../i18n/zh-CN/migrate.ts").then((m) => m.zh),
+});
 
 /** How often the card asks the server how an export or an import is going. */
 const POLL_MS = 500;
-
-/** Whether the Chinese strings of the card are in the dictionary (they are fetched once, the first time they are read). */
-let zhAdded = false;
-
-/**
- * True once the card's strings exist in the page's language. English is there as the chunk loads; Chinese is a chunk of
- * its own that only a person reading Chinese downloads. The card shows nothing until then rather than English for a moment.
- */
-function useStringsReady(): boolean {
-	const lang = useLang((s) => s.lang);
-	const [, redraw] = useReducer((n: number) => n + 1, 0);
-	useEffect(() => {
-		if (lang === "en" || zhAdded) return;
-		let live = true;
-		// The pack is picked at run time by the interface language, so it cannot be a static import.
-		void import("../i18n/zh-CN/migrate.ts")
-			.then((m) => addStrings(lang, "migrate", m.zh))
-			// A pack that does not arrive leaves English under the Chinese: better than a card that never shows.
-			.catch(() => {})
-			.finally(() => {
-				zhAdded = true;
-				if (live) redraw();
-			});
-		return () => {
-			live = false;
-		};
-	}, [lang]);
-	return lang === "en" || zhAdded;
-}
 
 const CATEGORY_NAMES: Record<MigrateCategoryId, MessageKey> = {
 	conversations: "migrate.catConversations",

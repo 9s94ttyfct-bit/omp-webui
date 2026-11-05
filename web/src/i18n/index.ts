@@ -1,4 +1,5 @@
 import { PREF } from "@shared/prefs.ts";
+import { useEffect, useReducer } from "react";
 import { create } from "zustand";
 import { setPref } from "../lib/prefs.ts";
 import type * as browser from "./browser.ts";
@@ -158,6 +159,52 @@ export function registerLater(strings: { [NS in keyof LaterModules]: LaterModule
 export function addStrings(lang: Lang, namespace: string, strings: Record<string, string>): void {
 	const dict = DICTS[lang] ?? {};
 	DICTS[lang] = Object.assign(dict, flatten({ [namespace]: strings }));
+}
+
+/**
+ * The hook of a namespace whose strings travel with a lazy chunk instead of the first page: its English strings are added
+ * when the chunk is evaluated, another language's the first time a page shown in it asks. `packs` gives, per language, a
+ * literal `import()` of that language's strings (picked at run time by the interface language, so not a static import):
+ * each is a chunk of its own that only a person reading that language downloads. The hook is true once the strings exist
+ * in the page's language, so that what draws them shows nothing until then rather than English for a moment. A pack that
+ * does not arrive leaves English under it: better than a control that never shows.
+ */
+export function lazyStrings(
+	namespace: string,
+	en: Record<string, string>,
+	packs: Partial<Record<Lang, () => Promise<Record<string, string>>>>,
+): () => boolean {
+	addStrings("en", namespace, en);
+	/** The languages whose strings of this namespace are in the dictionary (or were asked for and did not arrive). */
+	const added = new Set<Lang>(["en"]);
+	const loading = new Map<Lang, Promise<void>>();
+	const ready = (lang: Lang): boolean => added.has(lang) || packs[lang] === undefined;
+	const load = (lang: Lang): Promise<void> => {
+		let loaded = loading.get(lang);
+		if (!loaded) {
+			loaded = (packs[lang]?.() ?? Promise.resolve({}))
+				.then((strings) => addStrings(lang, namespace, strings))
+				.catch(() => {})
+				.finally(() => void added.add(lang));
+			loading.set(lang, loaded);
+		}
+		return loaded;
+	};
+	return function useStrings(): boolean {
+		const lang = useLang((s) => s.lang);
+		const [, redraw] = useReducer((n: number) => n + 1, 0);
+		useEffect(() => {
+			if (ready(lang)) return;
+			let live = true;
+			void load(lang).then(() => {
+				if (live) redraw();
+			});
+			return () => {
+				live = false;
+			};
+		}, [lang]);
+		return ready(lang);
+	};
 }
 
 /** The languages whose pack has been loaded (a lazy namespace may already have put strings in `DICTS[lang]`). */
