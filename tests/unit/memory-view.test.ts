@@ -21,6 +21,7 @@ import {
 	rebase,
 	saveable,
 	secretTyped,
+	showingAdded,
 } from "../../web/src/lib/memory-view.ts";
 
 /** The Memory page's own logic outside the page: what it asks the server for, what an edit would change, its words. */
@@ -89,6 +90,40 @@ describe("what the list is asked for", () => {
 		expect(
 			queryString({ q: "a b&c", scope: "project", bank: "x-1", kinds: ["conversation"], retired: "all", offset: 50 }),
 		).toBe("q=a+b%26c&scope=project&bank=x-1&kinds=conversation&retired=all&offset=50");
+	});
+});
+
+describe("a memory just added", () => {
+	const project = { ...INITIAL_FILTERS, scope: "project" as const, bank: "app-1" };
+	const added = item({ id: "m9", content: "Deploys go through staging.", kind: "note", scope: "global" });
+
+	test("is taken in by a scope that would hide it", () => {
+		const shown = showingAdded(project, "", added);
+		expect(queryOf(shown.filters, shown.search, 50, 0)).toMatchObject({ scope: "all", bank: "" });
+		const global = showingAdded({ ...INITIAL_FILTERS, scope: "global" }, "", item({ scope: "project", bank: "app-2" }));
+		expect(queryOf(global.filters, global.search, 50, 0)).toMatchObject({ scope: "all", bank: "" });
+	});
+
+	test("is taken in by another project's list, which widens to every project", () => {
+		const shown = showingAdded(project, "", item({ scope: "project", bank: "app-2" }));
+		expect(queryOf(shown.filters, shown.search, 50, 0)).toMatchObject({ scope: "project", bank: "" });
+	});
+
+	test("is taken in by kinds that left notes out", () => {
+		const shown = showingAdded({ ...INITIAL_FILTERS, kinds: ["conversation"] }, "", added);
+		expect(shown.filters.kinds).toEqual(["note", "conversation"]);
+	});
+
+	test("clears a search it does not contain, and keeps one it does", () => {
+		expect(showingAdded(INITIAL_FILTERS, "zebra", added).search).toBe("");
+		expect(showingAdded(INITIAL_FILTERS, "STAGING", added).search).toBe("STAGING");
+		expect(showingAdded(INITIAL_FILTERS, "m9", added).search).toBe("m9");
+	});
+
+	test("leaves filters that already show it as they are", () => {
+		const mine = { ...project, kinds: ["note" as const] };
+		const shown = showingAdded(mine, "app", item({ scope: "project", bank: "app-1", content: "The app uses Bun." }));
+		expect(shown).toEqual({ filters: mine, search: "app" });
 	});
 });
 

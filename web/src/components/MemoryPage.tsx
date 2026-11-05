@@ -26,6 +26,7 @@ import {
 	projectBanks,
 	projectNames,
 	queryOf,
+	showingAdded,
 } from "../lib/memory-view.ts";
 import { useStable } from "../lib/stable.ts";
 import { useApp } from "../store/app.ts";
@@ -671,11 +672,10 @@ export function MemoryPage() {
 				overview={overview}
 				onAdded={(item: Detail) => {
 					setAddOpen(false);
-					// What was added is shown: a filter that would hide it is widened to take it in.
-					setFilters((f) => ({
-						...f,
-						kinds: f.kinds.includes("note") ? f.kinds : MEMORY_KINDS.filter((k) => k === "note" || f.kinds.includes(k)),
-					}));
+					// What was added is shown: a filter or a search that would hide it is widened to take it in.
+					const shown = showingAdded(filters, search, item);
+					setFilters(shown.filters);
+					setSearch(shown.search);
 					setSelected({ bank: item.bank, id: item.id });
 					reload();
 				}}

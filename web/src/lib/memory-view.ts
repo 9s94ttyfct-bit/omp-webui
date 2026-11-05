@@ -1,6 +1,7 @@
 import {
 	looksLikeSecret,
 	MEMORY_CONTENT_MAX,
+	MEMORY_KINDS,
 	type MemoryBank,
 	type MemoryDetail,
 	type MemoryKind,
@@ -42,6 +43,35 @@ export function queryOf(filters: MemoryFilters, q: string, limit: number, offset
 		limit,
 		offset,
 	};
+}
+
+/**
+ * The filters and the search text that show a memory just added: each one that would hide it is widened to take it in.
+ * The kinds take in its kind; a scope of the other kind becomes all of them, and another project's list every project's;
+ * a search it does not contain is cleared (it is matched as the server matches it, `server/memory/store.ts`: in the text,
+ * the context and the folder regardless of case, or in the id).
+ */
+export function showingAdded(
+	filters: MemoryFilters,
+	search: string,
+	item: MemoryDetail,
+): { filters: MemoryFilters; search: string } {
+	const kinds = filters.kinds.includes(item.kind)
+		? filters.kinds
+		: MEMORY_KINDS.filter((k) => k === item.kind || filters.kinds.includes(k));
+	const otherProject =
+		filters.scope === "project" && item.scope === "project" && filters.bank !== "" && filters.bank !== item.bank;
+	const scope = filters.scope === "all" || filters.scope === item.scope ? filters.scope : "all";
+	const bank = scope === "all" || otherProject ? "" : filters.bank;
+	const q = search.trim();
+	const lower = q.toLowerCase();
+	const { context, cwd } = item.provenance;
+	const found =
+		q === "" ||
+		item.content.toLowerCase().includes(lower) ||
+		`${context ?? ""} ${cwd ?? ""}`.toLowerCase().includes(lower) ||
+		item.id.includes(q);
+	return { filters: { ...filters, kinds, scope, bank }, search: found ? search : "" };
 }
 
 export const KIND_LABEL: Record<MemoryKind, { many: MessageKey; one: MessageKey; hint: MessageKey }> = {
