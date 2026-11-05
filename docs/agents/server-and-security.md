@@ -56,6 +56,7 @@ None stored by the app for these cards. Environment variables the server reads:
 | `OMP_WEBUI_UPDATE_INTERVAL_MS` | 6 hours | How often omp releases are looked up. |
 | `OMP_WEBUI_AUTO_TITLE` | on | `off`: never ask omp to title a conversation. |
 | `OMP_WEBUI_FAMILY_DEADLINE_MS` | `60000` | Time limit to read one conversation for the page before answering 503. |
+| `OMP_WEBUI_SKILL_SETTLE_MS` | `4000` | Longest a skill switch waits for omp to list the skill as switched (for tests). |
 | `OMP_WEBUI_HOST_LIVE_MS` / `OMP_WEBUI_HOST_BACKGROUND_MS` | `2000` / `10000` | Host load sampling paces (minimum 250 / 1000). |
 | `OMP_WEBUI_HOST_GPU` | on | `0`: never read the GPU; `1`: try again after a start whose first GPU read did not finish. |
 | `OMP_WEBUI_REMOTE_CONFIG`, `OMP_WEBUI_GUARD_CONFIG` | in the data folder | Other paths for `remote.json`, `guard.json`. |

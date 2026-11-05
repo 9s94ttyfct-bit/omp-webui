@@ -35,6 +35,13 @@ const json = (data: unknown, status = 200) =>
 	new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
 const fail = (error: string, status: number) => json({ error }, status);
 
+/**
+ * The longest a skill switch waits for omp to list the skill where it was put: `skillSettled`'s own unless
+ * `OMP_WEBUI_SKILL_SETTLE_MS` is set. Tests set it long, so that a switch that waited is told from one that did not by
+ * more than the time omp's commands take on a busy machine.
+ */
+const SKILL_SETTLE_MS = Number(process.env.OMP_WEBUI_SKILL_SETTLE_MS) || undefined;
+
 /** The conversation's running omp; one that is gone or closing cannot take a command. */
 function runningLive(deps: ControlsDeps, id: unknown): Live | null {
 	const live = typeof id === "string" ? deps.pool.get(id) : undefined;
@@ -94,7 +101,8 @@ const ACTIONS: Record<string, Action> = {
 		if (!existsSync(c.cwd)) return fail(`Folder no longer exists: ${c.cwd}`, 409);
 		const overridden = await setSkillEnabled(c.target, body.name, body.enabled);
 		// Where another layer decides, or the process is frozen, it will not change: nothing to wait for.
-		if (overridden === null && c.live.info.pausedAt === null) await skillSettled(c.live, body.name, body.enabled);
+		if (overridden === null && c.live.info.pausedAt === null)
+			await skillSettled(c.live, body.name, body.enabled, SKILL_SETTLE_MS);
 		return json({ ok: true, overridden });
 	},
 

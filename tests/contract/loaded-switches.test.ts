@@ -18,6 +18,11 @@ import { connect, request } from "../support/ws.ts";
 
 let s: TestServer;
 let omlx: StubOmlx;
+/**
+ * The longest a skill switch waits for omp to list the skill (`OMP_WEBUI_SKILL_SETTLE_MS`; 4 s unless set): long, so that a
+ * switch that waited cannot pass for one that did not, whatever omp's commands take on a busy machine.
+ */
+const SKILL_SETTLE_MS = 30_000;
 
 const send = (path: string, body: unknown) =>
 	fetch(`${s.url}${path}`, {
@@ -75,7 +80,7 @@ const skillFile = (dir: string, name: string, description: string) => {
 
 beforeAll(async () => {
 	omlx = await startStubOmlx();
-	s = await startTestServer();
+	s = await startTestServer(0, { OMP_WEBUI_SKILL_SETTLE_MS: String(SKILL_SETTLE_MS) });
 	writeFileSync(
 		join(s.agentDir, "models.yml"),
 		`providers:\n  omlx:\n    baseUrl: ${omlx.url}\n    api: openai-completions\n    apiKey: ${omlx.apiKey}\n    discovery:\n      type: openai-models-list\n`,
@@ -197,22 +202,16 @@ test.skipIf(!has.notWindowsYet)(
 				const res = await send("/api/controls/skill", { live: chat.info.liveId, name, enabled: true });
 				return { body: await res.json(), ms: Date.now() - started };
 			};
-			// The control: omp never lists a skill that does not exist, so turning one on waits for it, the whole of what
-			// `skillSettled` gives (4 s). It is taken here, under the load of the moment, and what the switch below is compared
-			// with: a number of seconds that is enough on an idle machine is not on a busy one.
+			// The control: omp never lists a skill that does not exist, so turning one on waits for it, the whole of what the
+			// server is started with (`SKILL_SETTLE_MS`).
 			const waited = await timed("no-such-skill");
 			expect(waited.body).toEqual({ ok: true, overridden: null });
-			expect(waited.ms).toBeGreaterThanOrEqual(3500);
+			expect(waited.ms).toBeGreaterThanOrEqual(SKILL_SETTLE_MS);
+			// The switch runs a few of omp's `config` commands and does not wait: well under half of that, however busy the
+			// machine. One that waited would take all of it.
 			const switched = await timed("user-skill");
 			expect(switched.body).toEqual({ ok: true, overridden: "project" });
-			// What the switch does more than the control is two more of omp's `config` commands (the write, and a read of what
-			// this folder then reads), and no wait. What two such commands take is measured here too, under the same load: a
-			// switch that had waited `skillSettled`'s 4 s would take about that more than the control, one that did not about 4 s
-			// less than that. The bound is halfway: an omp that is slow to start (a CI runner's, over a second each) moves both.
-			const before = Date.now();
-			for (let i = 0; i < 2; i++) omp(["config", "get", "disabledExtensions", "--json"], project);
-			const twoCommands = Date.now() - before;
-			expect(switched.ms).toBeLessThan(waited.ms + twoCommands - 2000);
+			expect(switched.ms).toBeLessThan(SKILL_SETTLE_MS / 2);
 			// The global list never had it: nothing to change there.
 			expect(readFileSync(join(s.agentDir, "config.yml"), "utf8")).not.toContain("skill:user-skill");
 			expect(skillsOf(await loaded(`live=${chat.info.liveId}`)).find((k) => k.name === "user-skill")?.enabled).toBe(
