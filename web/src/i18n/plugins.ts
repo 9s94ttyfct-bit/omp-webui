@@ -121,7 +121,6 @@ export const en = {
 	statUpdatesNever: "Not checked yet",
 	statUpdatesNone: "Up to date",
 	statUpdatesSome: "{count} available",
-	statOpen: "Open {name}",
 
 	updatesTitle: "Updates",
 	updatesHint:

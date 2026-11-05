@@ -112,7 +112,6 @@ export const zh: Record<keyof typeof en, string> = {
 	statUpdatesNever: "尚未检查",
 	statUpdatesNone: "已是最新",
 	statUpdatesSome: "{count} 个可更新",
-	statOpen: "打开{name}",
 
 	updatesTitle: "更新",
 	updatesHint:

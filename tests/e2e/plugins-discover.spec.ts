@@ -175,6 +175,9 @@ test("the Overview lists the updates a check finds; some are installed, then the
 	const rows = page.getByTestId("update-row");
 	await expect(rows).toHaveCount(2);
 	await expect(page.getByTestId("plugins-stat-updates")).toContainText("2");
+	// A tile's name is what it shows, its count among it: a screen reader reads the figures the tiles are for.
+	await expect(page.getByTestId("plugins-stat-updates")).toHaveAccessibleName(/^Updates\s*2\s*2 available$/);
+	await expect(page.getByTestId("plugins-stat-installed")).toHaveAccessibleName(/^Plugins\s*1\s*\d+ on · \d+ off$/);
 	const skill = rows.filter({ hasText: "@acme/pdf-tools" });
 	await expect(skill.getByTestId("update-versions")).toHaveText("1.1.0 → 1.2.0");
 	await expect(rows.filter({ hasText: "hello@market" }).getByTestId("update-versions")).toHaveText("1.0.0 → 1.1.0");

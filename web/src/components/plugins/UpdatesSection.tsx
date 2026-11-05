@@ -134,7 +134,6 @@ export function OverviewStats({
 					<button
 						type="button"
 						onClick={() => onOpen(x.id)}
-						aria-label={t("plugins.statOpen", { name: t(x.label) })}
 						data-testid={`plugins-stat-${x.id}`}
 						className={cx(
 							"flex h-full w-full flex-col items-start gap-0.5 rounded-xl border p-3 text-left transition-colors hover:bg-bg-soft focus-visible:outline-2 focus-visible:outline-accent",
