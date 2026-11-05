@@ -167,6 +167,11 @@ test("a conversation that works waits for the turn to end, says so, and switches
 		began = Promise.withResolvers<void>();
 		await c.prompt(c.live.liveId, "LONG-TURN probe");
 		await began.promise;
+		// The model has been asked, and the server learns that the turn runs from omp's frames, which may come later: the switch
+		// is asked for once the server says the conversation works (else it is idle to the server, and switched at once).
+		await until("the server to see the turn", async () =>
+			(await c.lives()).some((l) => l.liveId === c.live.liveId && l.streaming),
+		);
 
 		const reply = await request<ModeSwitchReply>(c.ws, { t: "set_mode", liveId: c.live.liveId, mode: "light" });
 		expect(reply).toEqual({ state: "pending", mode: "light" });
