@@ -2187,6 +2187,7 @@
 		"usage-tables.spec.ts › the model comparison sorts by any column, the models without the figure last": 2.2,
 		"usage-tables.spec.ts › the pinned Cost column does not paint over the card's rounded corner": 2.3,
 		"usage-tables.spec.ts › the range's conversations, tools, errors and hours show": 2.1,
+		"usage-tables.spec.ts › the tools and errors tables that scroll can be reached and scrolled from the keyboard": 1.5,
 		"usage-tables.spec.ts › with both project and agent-type data they sit side by side": 1.4,
 		"usage-tables.spec.ts › without agent-type data the project table takes the full width": 1.6,
 		"usage-timezone.spec.ts › America/Chicago › the day of the first request is labelled with its own date, on the axis, in the table and in the card": 1.7,

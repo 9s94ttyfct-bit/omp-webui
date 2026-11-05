@@ -22,6 +22,7 @@ import { setPref } from "../lib/prefs.ts";
 import { projectLabels } from "../lib/usage-projects.ts";
 import { dailyByModel, OTHER_MODELS, paddedDays, seriesColor, utcDate } from "../lib/usage-series.ts";
 import { useApp } from "../store/app.ts";
+import { ScrollPane } from "./ScrollPane.tsx";
 import { ErrorsTable, ModelComparison, RangeConversations, TimeOfDay, ToolsTable } from "./UsageAnalysis.tsx";
 import { Button, cx, Empty, Spinner, Tip } from "./ui.tsx";
 
@@ -119,7 +120,7 @@ function BucketTable({
 		// without the clip it painted over the card's rounded bottom-right corner and its border.
 		<section className="@container min-w-0 overflow-hidden rounded-2xl border border-border bg-surface">
 			<h2 className="border-b border-border px-4 py-2.5 text-sm font-semibold">{title}</h2>
-			<div className="overflow-x-auto">
+			<ScrollPane className="overflow-x-auto">
 				<table className="w-full text-sm" data-testid={`table-${id}`}>
 					<thead className="whitespace-nowrap text-left text-xs text-faint">
 						<tr>
@@ -160,7 +161,7 @@ function BucketTable({
 						))}
 					</tbody>
 				</table>
-			</div>
+			</ScrollPane>
 		</section>
 	);
 }

@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { distance, pixelsAt } from "../support/pixels.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
@@ -322,4 +323,30 @@ test("a row omp sends no cache rate for (it sends none by agent type) shows the 
 	// 5,000 cache reads of 6,000 tokens read; a row that read nothing has no rate to show.
 	await expect(rows.filter({ hasText: "main" }).getByTestId("bucket-cache-rate")).toHaveText("83%");
 	await expect(rows.filter({ hasText: "guard" }).getByTestId("bucket-cache-rate")).toHaveText("–");
+});
+
+test("the tools and errors tables that scroll can be reached and scrolled from the keyboard", async ({ page }) => {
+	const tools = Array.from({ length: 30 }, (_, i) => ({
+		tool: `tool_${i}`,
+		calls: 30 - i,
+		errors: 0,
+		errorRate: 0,
+		avgResultChars: 100,
+	}));
+	const errors = Array.from({ length: 30 }, (_, i) => ({
+		provider: "anthropic",
+		model: "claude-haiku-5-5",
+		message: `error number ${i}`,
+		count: 30 - i,
+		lastTimestamp: Date.UTC(2026, 9, 25),
+	}));
+	await showStats(page, { byModel: [model, second], analysis: { ...analysis, tools, errors } });
+	await expect(page.getByTestId("tool-row")).toHaveCount(30);
+	await expect(page.getByTestId("error-row")).toHaveCount(30);
+	const { violations } = await new AxeBuilder({ page })
+		.include('[data-testid="usage-tools"]')
+		.include('[data-testid="usage-errors"]')
+		.withRules(["scrollable-region-focusable"])
+		.analyze();
+	expect(violations.flatMap((v) => v.nodes.map((n) => n.target.join(" ")))).toEqual([]);
 });

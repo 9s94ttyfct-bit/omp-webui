@@ -7,6 +7,7 @@ import { type MessageKey, useT } from "../i18n/index.ts";
 import type { StatsBucket } from "../lib/api.ts";
 import { costColumn, fmtClock, fmtCost, fmtCostExact, fmtDuration, fmtTokens } from "../lib/format.ts";
 import type { ProjectLabel } from "../lib/usage-projects.ts";
+import { ScrollPane } from "./ScrollPane.tsx";
 import { cx } from "./ui.tsx";
 
 /**
@@ -292,7 +293,8 @@ export function ToolsTable({ rows }: { rows: UsageTool[] }) {
 	return (
 		<Card id="usage-tools" title={t("pages.usageTools")}>
 			{rows.length ? (
-				<div className="max-h-96 overflow-auto">
+				// A box that scrolls is a stop of the Tab key, so the keyboard can scroll it (its rows hold nothing focusable).
+				<ScrollPane className="max-h-96 overflow-auto">
 					<table className="w-full whitespace-nowrap text-sm" data-testid="table-tools">
 						<thead className="sticky top-0 bg-surface text-left text-xs text-faint">
 							<tr>
@@ -321,7 +323,7 @@ export function ToolsTable({ rows }: { rows: UsageTool[] }) {
 							))}
 						</tbody>
 					</table>
-				</div>
+				</ScrollPane>
 			) : (
 				<p className="px-4 py-3 text-sm text-muted">{t("pages.usageNoTools")}</p>
 			)}
@@ -335,7 +337,7 @@ export function ErrorsTable({ rows }: { rows: UsageError[] }) {
 	return (
 		<Card id="usage-errors" title={t("pages.usageErrorsTitle")}>
 			{rows.length ? (
-				<div className="max-h-96 overflow-auto">
+				<ScrollPane className="max-h-96 overflow-auto">
 					<table className="w-full table-fixed text-sm" data-testid="table-errors">
 						<thead className="sticky top-0 whitespace-nowrap bg-surface text-left text-xs text-faint">
 							<tr>
@@ -365,7 +367,7 @@ export function ErrorsTable({ rows }: { rows: UsageError[] }) {
 							))}
 						</tbody>
 					</table>
-				</div>
+				</ScrollPane>
 			) : (
 				<p className="px-4 py-3 text-sm text-muted">{t("pages.usageNoErrors")}</p>
 			)}
