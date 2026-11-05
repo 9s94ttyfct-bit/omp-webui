@@ -23,10 +23,9 @@ export function useComposerMore(): MoreHandle | null {
 }
 
 /**
- * The message box's less used controls (thinking, guard, guidance, goal, quick prompts…) where the box is too narrow for
- * all of them. On a phone they were eight icons in a row beside two words, with two amber shields that could not be told
- * apart: there the box keeps the model, the permission mode, Attach and unattended mode, and the rest are behind "⋯", in
- * a panel where each says what it is.
+ * The message box's less used controls, the thinking level and the quick prompts (what ChatView puts in it), where the
+ * box is too narrow for them: there the box keeps the model, the permission mode, Attach and unattended mode, and these
+ * are behind "⋯", in a panel where each says what it is.
  *
  * The controls are rendered once, in the same place, whatever the width: wide, the panel is `display: contents` and they
  * sit in the row; narrow, it is a panel that "⋯" shows and hides. Moving them between two places would remount them
