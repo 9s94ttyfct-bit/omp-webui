@@ -30,7 +30,7 @@ The export runs in the background (phases: looking through the files, writing th
 **Import** (on the new Mac, after installing omp and omp-webui). The file is uploaded to the server in pieces of 32 MiB, then checked (manifest and every checksum). A file encrypted as a whole first asks for its password (**Open the file**). The preview shows where it was made (computer, user, home folder, omp and omp-webui versions, date), per category how many items are new here, the same, or different, and warnings: made with a newer omp or omp-webui, a different home folder (conversation folders under it are rewritten to this Mac's), not enough free disk space, files missing from the archive. Then:
 
 - **Merge**: what is on this Mac stays; what is missing is added. If both have the same conversation, this Mac's is kept, unless the file's is the same conversation continued.
-- **Replace**: where both have the same item, the file's wins.
+- **Replace**: where both have the same item, the file's wins. A secret value the file holds only blanked (it was made without logins, or they were not restored) is no value to replace: where this Mac has one at the same place, this Mac's stays, and the summary counts them.
 - In both, things that are only on this Mac are never deleted.
 - **Restore logins** with their password (not asked again for a file encrypted as a whole).
 

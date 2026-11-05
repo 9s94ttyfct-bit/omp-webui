@@ -208,6 +208,8 @@ export const en = {
 	noteCredentialsFailed: "The logins could not be put in place: {error}",
 	noteSecretsBlanked:
 		"Secret values in configuration files left blank because the logins were not restored: {count}. Enter them again.",
+	noteSecretsKept:
+		"Secret values this Mac already had, kept where the archive (made without logins) had them blank: {count}.",
 	noteRemoteOff:
 		"Remote access settings came with the file and are switched off. Turn them on in Settings › Remote access.",
 	noteRemoteKept: "This Mac has remote access settings of its own, which stay as they are.",

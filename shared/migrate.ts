@@ -302,6 +302,7 @@ export interface ImportSummary {
  * - `credentialsOmpOlder` {archive, installed}: the logins were not restored: this Mac's omp keeps them in an older layout
  * - `credentialsFailed` {error}: the logins could not be put in place
  * - `secretsBlanked` {count}: values in configuration files were left blank (credentials were not restored)
+ * - `secretsKept` {count}: values this Mac had were kept where the archive's (made without logins) were blank
  * - `remoteOff` {}: remote access settings came with the archive and are switched off: turn them on in Settings
  * - `remoteKept` {}: this Mac has remote access settings of its own, which stay
  * - `sessionDirMoved` {from, to}: a `--session-dir` folder of the file is kept in this app's own folder (`to`), whatever it was
@@ -316,6 +317,7 @@ export type ImportNoteCode =
 	| "credentialsOmpOlder"
 	| "credentialsFailed"
 	| "secretsBlanked"
+	| "secretsKept"
 	| "remoteOff"
 	| "remoteKept"
 	| "sessionDirMoved"

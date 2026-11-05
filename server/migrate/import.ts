@@ -62,7 +62,7 @@ import { compareFiles, mergeDoc, parseDoc, serializeDoc, unionList } from "./mer
 import { BACKUP_APP, RESTORE_NOTE } from "./restore.ts";
 import { bucketFor, PathMap, rewriteSession } from "./rewrite.ts";
 import { isSealed, SealedFile, unlockSealed } from "./sealed.ts";
-import type { ConfigFormat } from "./secrets.ts";
+import { type ConfigFormat, keepBlankedSecrets } from "./secrets.ts";
 import { foldersOf, mergeHistory, replaceDbFile, restoreAuth, rewriteColumnsAt, snapshotDb } from "./sqlite.ts";
 import { ZipError, ZipReader } from "./zip.ts";
 
@@ -586,6 +586,8 @@ class Apply implements RunningImport {
 	private done = 0;
 	private doneBytes = 0;
 	private restored = false;
+	/** Secret values of files here kept where an archive made without logins had them blank (Replace). */
+	private secretsKept = 0;
 	private readonly mode: ImportMode;
 
 	constructor(
@@ -787,8 +789,9 @@ class Apply implements RunningImport {
 		else if (manifest.credentials.included)
 			this.summary.credentials = { restored: false, providers: 0, files: 0, reason: "notAsked" };
 		else this.summary.credentials = { restored: false, providers: 0, files: 0, reason: "absent" };
-		const blanked = entries.reduce((n, e) => n + (e.redacted ?? 0), 0);
+		const blanked = entries.reduce((n, e) => n + (e.redacted ?? 0), 0) - this.secretsKept;
 		if (!this.restored && blanked > 0) this.note("secretsBlanked", { count: blanked });
+		if (this.secretsKept > 0) this.note("secretsKept", { count: this.secretsKept });
 
 		// 5. What the import leaves to the person.
 		this.folders(entries);
@@ -1075,8 +1078,10 @@ class Apply implements RunningImport {
 
 	/** A configuration file: its old paths rewritten, then added, merged or replaced. */
 	private async config(e: ManifestEntry): Promise<void> {
-		const bytes = this.originals.get(e.path) ?? Buffer.from(await this.zip.bytes(e.path));
-		await this.configText(e.path, bytes.toString("utf8"), e.mode, e.mtimeMs, e.category);
+		const original = this.originals.get(e.path);
+		const bytes = original ?? Buffer.from(await this.zip.bytes(e.path));
+		const blanked = original === undefined && (e.redacted ?? 0) > 0;
+		await this.configText(e.path, bytes.toString("utf8"), e.mode, e.mtimeMs, e.category, blanked);
 	}
 
 	private async fromBundle(f: CredentialFile): Promise<void> {
@@ -1094,6 +1099,8 @@ class Apply implements RunningImport {
 		mode: number,
 		mtimeMs: number,
 		category: MigrateCategoryId,
+		/** The archive's text has its secrets blanked (it was made without logins, or they were not restored). */
+		blanked = false,
 	): Promise<void> {
 		const dest = this.dest(path);
 		if (!dest) return void this.summary.files.skipped++;
@@ -1139,7 +1146,13 @@ class Apply implements RunningImport {
 			return write(`${JSON.stringify(merged)}\n`, "merged");
 		}
 
-		if (this.mode === "replace") return write(text, "replaced");
+		if (this.mode === "replace") {
+			if (!blanked) return write(text, "replaced");
+			// A blank the archive holds is no value to replace this Mac's with: the person's own key stays.
+			const kept = keepBlankedSecrets(old, text, format);
+			this.secretsKept += kept.count;
+			return kept.text === old ? void this.summary.files.kept++ : write(kept.text, "replaced");
+		}
 		// What is written for a person to read (instructions, key bindings) is not merged line by line.
 		if (format === "text") return void this.summary.files.kept++;
 		const mine = parseDoc(old, format);

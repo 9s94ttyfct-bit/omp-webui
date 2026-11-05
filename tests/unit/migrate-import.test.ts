@@ -167,6 +167,31 @@ describe("logins", () => {
 		stopMachine(old);
 		stopMachine(fresh);
 	});
+
+	test("replace with an archive made without them keeps the values this Mac has where the archive's are blank", async () => {
+		const old = seedMachine(join(root, "l5"), "jdoe");
+		const here = seedMachine(join(root, "l6"), "alice", { rich: false });
+		writeFileSync(join(old.agentDir, "AGENTS.md"), `# Rules\nGITHUB_TOKEN=${SECRETS.bearer}\n`);
+		const mineKey = "sk-here-9876543210zyxwvutsrqponm";
+		const mineToken = "ghp_here9876543210zyxwvutsrqponmlkjihg";
+		writeFileSync(
+			join(here.agentDir, "models.yml"),
+			`# mine\nproviders:\n  local:\n    baseUrl: http://127.0.0.1:9000/v1\n    apiKey: ${mineKey}\n`,
+		);
+		writeFileSync(join(here.agentDir, "AGENTS.md"), `# Mine\nGITHUB_TOKEN=${mineToken}\n`);
+		const { file } = await exportOf(old);
+		const summary = await importInto(here, file, { mode: "replace" });
+		const models = text(here.agentDir, "models.yml");
+		// The archive's file wins, but where it holds only a blank this Mac's value stays.
+		expect(Bun.YAML.parse(models)).toMatchObject({
+			providers: { local: { baseUrl: "http://127.0.0.1:8000/v1", apiKey: mineKey } },
+		});
+		expect(models).not.toContain(SECRETS.apiKey);
+		expect(text(here.agentDir, "AGENTS.md")).toBe(`# Rules\nGITHUB_TOKEN=${mineToken}\n`);
+		expect(summary.notes).toContainEqual({ code: "secretsKept", params: { count: 2 } });
+		stopMachine(old);
+		stopMachine(here);
+	});
 });
 
 describe("merge keeps what is here and adds what is missing; replace lets the archive win", () => {

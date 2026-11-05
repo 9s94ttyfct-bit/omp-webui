@@ -116,6 +116,7 @@ const NOTES: Record<ImportNoteCode, MessageKey> = {
 	credentialsOmpOlder: "migrate.noteCredentialsOmpOlder",
 	credentialsFailed: "migrate.noteCredentialsFailed",
 	secretsBlanked: "migrate.noteSecretsBlanked",
+	secretsKept: "migrate.noteSecretsKept",
 	remoteOff: "migrate.noteRemoteOff",
 	remoteKept: "migrate.noteRemoteKept",
 	sessionDirMoved: "migrate.noteSessionDirMoved",

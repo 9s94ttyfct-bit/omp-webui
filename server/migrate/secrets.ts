@@ -1,4 +1,5 @@
 import { isRecord } from "../../shared/guards.ts";
+import { serializeDoc, withScalars } from "./merge.ts";
 
 /**
  * Secrets that live inside configuration files. omp keeps logins in `agent.db`, but `models.yml` may hold a provider's
@@ -375,4 +376,87 @@ export function redactSecrets(text: string, format: RedactFormat): Redaction {
 /** How many secret values a file holds, without changing it. */
 export function countSecrets(text: string, format: RedactFormat): number {
 	return redactSecrets(text, format).count;
+}
+
+/** A secret of the file here that the archive's same file holds only blanked: the keys it is under, and its value here. */
+interface KeptSecret {
+	path: string[];
+	value: unknown;
+}
+
+/** The secrets of `mine` whose place in `theirs` holds exactly what that secret looks like blanked. */
+function blankedThere(mine: Record<string, unknown>, theirs: Record<string, unknown>): KeptSecret[] {
+	const blanked = structuredClone(mine);
+	blankTree(blanked);
+	const out: KeptSecret[] = [];
+	const walk = (m: unknown, b: unknown, t: unknown, path: string[]): void => {
+		if (isRecord(m) && isRecord(b) && isRecord(t)) {
+			for (const k of Object.keys(m)) if (k in t) walk(m[k], b[k], t[k], [...path, k]);
+		} else if (Array.isArray(m) && Array.isArray(b) && Array.isArray(t)) {
+			// A list only as a whole: the archive's is this one blanked (an argument list, a secret's flag before it).
+			if (JSON.stringify(m) !== JSON.stringify(b) && JSON.stringify(b) === JSON.stringify(t))
+				out.push({ path, value: m });
+		} else if ((typeof m === "string" || typeof m === "number") && m !== b && t === b) out.push({ path, value: m });
+	};
+	walk(mine, blanked, theirs, []);
+	return out;
+}
+
+/** A `NAME=value` line of a file written for a person to read (`blankProse`): its `NAME=`, and the value. */
+const PROSE_LINE = /^(\s*(?:export\s+)?[A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PAT)=)(\S*)\s*$/;
+
+/**
+ * `theirs`, the text of a file of an archive made without logins (its secrets blanked), with each secret it holds blanked
+ * where `mine`, the same file here, holds one, put back from `mine`: the archive had nothing to replace it with, and a
+ * Replace must not wipe the person's key. Only a blank that is that secret blanked counts (the same place in the document,
+ * the same `NAME=` of a text file, in order); a value the archive does hold wins as before. How many were put back.
+ */
+export function keepBlankedSecrets(
+	mine: string,
+	theirs: string,
+	format: RedactFormat,
+): { text: string; count: number } {
+	if (format === "text") {
+		const here = new Map<string, string[]>();
+		for (const line of mine.split("\n")) {
+			const m = PROSE_LINE.exec(line);
+			if (m?.[1] && m[2] && !isReference(m[2].replace(/^["']|["']$/g, ""), null))
+				here.set(m[1], [...(here.get(m[1]) ?? []), line]);
+		}
+		let count = 0;
+		const lines = theirs.split("\n").map((line) => {
+			const m = PROSE_LINE.exec(line);
+			const back = m?.[1] && m[2] === "" ? here.get(m[1])?.shift() : undefined;
+			if (back === undefined) return line;
+			count++;
+			return back;
+		});
+		return count > 0 ? { text: lines.join("\n"), count } : { text: theirs, count: 0 };
+	}
+	let mineDoc: unknown;
+	let theirsDoc: unknown;
+	try {
+		mineDoc = parse(mine, format);
+		theirsDoc = parse(theirs, format);
+	} catch {
+		return { text: theirs, count: 0 };
+	}
+	if (!isRecord(mineDoc) || !isRecord(theirsDoc)) return { text: theirs, count: 0 };
+	const kept = blankedThere(mineDoc, theirsDoc);
+	if (kept.length === 0) return { text: theirs, count: 0 };
+	const restored = structuredClone(theirsDoc);
+	for (const { path, value } of kept) {
+		let at: unknown = restored;
+		for (const k of path.slice(0, -1)) at = isRecord(at) ? at[k] : undefined;
+		const last = path.at(-1);
+		if (isRecord(at) && last !== undefined) at[last] = structuredClone(value);
+	}
+	// The archive's file as it was written, each value put back on its line; else the document written again.
+	const scalars = kept.flatMap(({ path, value }) =>
+		typeof value === "string" || typeof value === "number" ? [{ path, value }] : [],
+	);
+	const text =
+		(scalars.length === kept.length ? withScalars(theirs, format, scalars, restored) : null) ??
+		serializeDoc(restored, format, theirs);
+	return { text, count: kept.length };
 }

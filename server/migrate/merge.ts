@@ -30,6 +30,73 @@ export function serializeDoc(doc: Doc, format: ConfigFormat, like: string): stri
 	return Bun.YAML.stringify(doc, null, typeof indentOf(like) === "number" ? (indentOf(like) as number) : 2);
 }
 
+/** A key written on a line of its own: its indentation, a list item's `- `, and the key, bare or quoted. */
+const KEY_AT = /^(\s*)(-\s+)?(?:"([^"\\]*)"|'([^']*)'|([^\s#"'{}[\],:][^#:]*?))\s*:(?=\s|$)/;
+
+/** A key of a block YAML or pretty-printed JSON file: the line it is on, its indentation, and the keys above it. */
+interface KeyLine {
+	line: number;
+	indent: number;
+	path: string[];
+}
+
+/** Each key written on a line of its own, outside a list (a list item's keys have no path here). */
+function keyLines(lines: readonly string[]): KeyLine[] {
+	const out: KeyLine[] = [];
+	const stack: { indent: number; key: string | null }[] = [];
+	for (const [i, line] of lines.entries()) {
+		const trimmed = line.trimStart();
+		if (trimmed === "" || trimmed.startsWith("#")) continue;
+		const indent = line.length - trimmed.length;
+		while (stack.length > 0 && (stack.at(-1)?.indent ?? -1) >= indent) stack.pop();
+		const m = KEY_AT.exec(line);
+		if (!m) continue;
+		if (m[2]) {
+			stack.push({ indent, key: null });
+			continue;
+		}
+		const key = m[3] ?? m[4] ?? m[5]?.trim() ?? "";
+		const above = stack.map((s) => s.key).filter((k): k is string => k !== null);
+		if (above.length === stack.length) out.push({ line: i, indent, path: [...above, key] });
+		stack.push({ indent, key });
+	}
+	return out;
+}
+
+/** The one line the key at `path` is written on; null when it is on none, or on more than one. */
+function lineOfKey(lines: readonly string[], path: readonly string[]): KeyLine | null {
+	const found = keyLines(lines).filter((k) => k.path.length === path.length && k.path.every((p, i) => p === path[i]));
+	return found.length === 1 ? (found[0] ?? null) : null;
+}
+
+/**
+ * `text` (a block YAML or pretty-printed JSON file) with the empty string at each of `changes` (keys written on a line of
+ * their own, as `key: ""`) set to its value, every other line as it was. Null when one is not written that way, or when the
+ * result does not read as `expected`.
+ */
+export function withScalars(
+	text: string,
+	format: ConfigFormat,
+	changes: readonly { path: string[]; value: string | number }[],
+	expected: Doc,
+): string | null {
+	const lines = text.split("\n");
+	for (const { path, value } of changes) {
+		const at = lineOfKey(lines, path);
+		const line = at ? lines[at.line] : undefined;
+		const head = line === undefined ? null : KEY_AT.exec(line);
+		if (!at || line === undefined || !head) return null;
+		const rest = line.slice(head[0].length);
+		const blank = /^(\s*)(""|'')/.exec(rest);
+		if (!blank) return null;
+		const written = typeof value === "number" ? String(value) : JSON.stringify(value);
+		lines[at.line] = `${line.slice(0, head[0].length)}${blank[1]}${written}${rest.slice(blank[0].length)}`;
+	}
+	const out = lines.join("\n");
+	const doc = parseDoc(out, format);
+	return doc && Bun.deepEquals(doc, expected) ? out : null;
+}
+
 /** Which key identifies an object in a list, for the lists whose items are things (a marketplace by its name). */
 export type ListKeys = Record<string, string>;
 

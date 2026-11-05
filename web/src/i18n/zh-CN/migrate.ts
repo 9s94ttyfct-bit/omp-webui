@@ -192,6 +192,7 @@ export const zh: Record<keyof typeof en, string> = {
 		"登录信息没有恢复：这台 Mac 上的 omp {installed} 保存登录信息的格式比生成文件的 omp {archive} 旧。请更新 omp，然后重新登录。",
 	noteCredentialsFailed: "无法放置登录信息：{error}",
 	noteSecretsBlanked: "因为没有恢复登录信息，配置文件里被留空的密钥值：{count} 个。请重新填写。",
+	noteSecretsKept: "导出文件（未含登录信息）里留空、而这台 Mac 上已有的密钥值被保留：{count} 个。",
 	noteRemoteOff: "文件里带有远程访问设置，已被关闭。可在“设置 › 远程访问”中重新打开。",
 	noteRemoteKept: "这台 Mac 有自己的远程访问设置，保持不变。",
 	noteSessionDirMoved: "对话文件夹 {from} 现在保存在这个应用自己的文件夹里：{to}。",
