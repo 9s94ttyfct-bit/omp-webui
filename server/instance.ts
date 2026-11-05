@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { platform } from "./platform/index.ts";
@@ -30,14 +30,16 @@ function runsAs(p: ProcessRef): boolean {
 	return platform.proc.exists(p.pid) && platform.proc.commandLineSync(p.pid) === p.command;
 }
 
-function read(dataDir: string): ServerRecord | null {
+function readRef<T extends ProcessRef>(path: string): T | null {
 	try {
-		const r = JSON.parse(readFileSync(file(dataDir), "utf8")) as ServerRecord;
+		const r = JSON.parse(readFileSync(path, "utf8")) as T;
 		return Number.isInteger(r.pid) && typeof r.command === "string" ? r : null;
 	} catch {
 		return null;
 	}
 }
+
+const read = (dataDir: string) => readRef<ServerRecord>(file(dataDir));
 
 /**
  * Stop a leftover server this data dir recorded. Returns its pid when one was stopped; null when there was
@@ -88,6 +90,48 @@ export function runningServer(dataDir: string): { pid: number; port: number } | 
 	if (!rec || !runsAs(rec)) return null;
 	const port = rec.localPort ?? rec.port;
 	return Number.isInteger(port) && port > 0 ? { pid: rec.pid, port } : null;
+}
+
+/**
+ * Hold the start of this data dir's server, so that two launchers started together (a double-click done twice, Start at
+ * login's run while the person opens the program) do not both start one: `<dataDir>/start.lock`, holding the process that
+ * made it, is made only where there is none (a hard link of a file already written, so it is never seen half-written). A
+ * launcher that finds it held by a live process waits until that one lets it go (its server has recorded itself, or it
+ * failed), then decides with the record; one left by a process that is gone is removed. Waiting longer than `timeoutMs`
+ * is an error. Returns what lets it go, which does nothing once it is not this process's.
+ */
+export async function holdStart(dataDir: string, timeoutMs = 120_000): Promise<() => void> {
+	mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+	const lock = join(dataDir, "start.lock");
+	const mine = `${lock}.${process.pid}.tmp`;
+	writeFileSync(mine, JSON.stringify({ pid: process.pid, command: platform.proc.commandLineSync(process.pid) ?? "" }), {
+		mode: 0o600,
+	});
+	const until = Date.now() + timeoutMs;
+	try {
+		for (;;) {
+			try {
+				linkSync(mine, lock);
+				return () => {
+					if (readRef(lock)?.pid === process.pid) rmSync(lock, { force: true });
+				};
+			} catch (e) {
+				if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+			}
+			const holder = readRef(lock);
+			if (!holder || !runsAs(holder)) {
+				rmSync(lock, { force: true });
+				continue;
+			}
+			while (readRef(lock)?.pid === holder.pid && platform.proc.exists(holder.pid)) {
+				if (Date.now() > until)
+					throw new Error(`another omp-webui (pid ${holder.pid}) is still starting on this data folder`);
+				await Bun.sleep(100);
+			}
+		}
+	} finally {
+		rmSync(mine, { force: true });
+	}
 }
 
 /** Where an omp-webui keeps its data unless told otherwise: the web version's, and the macOS app's. */

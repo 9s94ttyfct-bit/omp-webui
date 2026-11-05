@@ -230,7 +230,7 @@ omp-webui 是 [omp](https://omp.sh) 编程代理的网页界面，也是一个 m
 
 1. 从[最新发布](../../../releases)下载 `omp-webui-vX.Y.Z-windows-x64.zip`，Arm 上的 Windows 下载 `omp-webui-vX.Y.Z-windows-arm64.zip`（0.19.0 起），解压到任意位置（用户文件夹、`C:\Tools` 等）。`web` 文件夹要留在 `omp-webui.exe` 旁边。每份都从自己处理器的 zip 更新（Arm 电脑上由 Windows 模拟运行的 x64 版本仍是 x64）。Arm 上没有内置浏览器引擎（Chrome for Testing 没有 Windows Arm 版本；在设置 › 浏览器里安装时会说它没有为这个系统构建，和其他没有引擎的系统一样），远程访问用的 cloudflared 是 amd64 版本，由 Windows 模拟运行。
 2. 双击 `omp-webui.exe`。程序没有签名，第一次运行时 SmartScreen 可能会警告：点“更多信息 › 仍要运行”。
-3. 它会启动服务器，并在默认浏览器里打开已登录的 `http://127.0.0.1:7878/?token=…`。它的控制台窗口就是服务器的窗口：omp-webui 运行期间一直开着，关掉它就停止 omp-webui。运行时再双击一次，只会再打开页面，不会再启动一个。7878 被占用时，它会用往上第一个空闲端口（最多往上 20 个）。
+3. 它会启动服务器，并在默认浏览器里打开已登录的 `http://127.0.0.1:7878/?token=…`。它的控制台窗口就是服务器的窗口：omp-webui 运行期间一直开着，关掉它就停止 omp-webui。运行时再双击一次，只会再打开页面，不会再启动一个；第一次还在启动时再双击也一样（它会等那个服务器启动，`<数据文件夹>/start.lock`）。7878 被占用时，它会用往上第一个空闲端口（最多往上 20 个）。
 4. 如果还没有安装 [omp](https://omp.sh)，页面会提供安装（omp 的 PowerShell 安装脚本，装了 bun 时也可以用 bun），装到 `%LOCALAPPDATA%\omp` 并加入用户的 `PATH`。
 
 数据保存在 `%USERPROFILE%\.omp-webui`，和网页版一样。没有自动更新：更新时下载新的 zip，替换整个文件夹（数据文件夹不在里面）。Windows 上缺少的功能（暂停、中继等）见英文技术文档的 [Platform adapter, capabilities and check-platform](TECHNICAL.md#platform-adapter-capabilities-and-check-platform)。

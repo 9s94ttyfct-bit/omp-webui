@@ -7,7 +7,8 @@
  * - The web UI is the `web` folder beside the program (unless `OMP_WEBUI_DIST` says).
  * - A taken port is no error: the next free one is taken (`OMP_WEBUI_PORT_WINDOW`).
  * - The page opens in the default browser once the server listens, with the access token in its address.
- * - When this data folder's server already runs (a second double-click), its page is opened and nothing else starts.
+ * - When this data folder's server already runs (a second double-click), its page is opened and nothing else starts. Two
+ *   started together decide one after the other (`holdStart`): the second waits for the first one's server, then opens its page.
  * - On Windows it updates itself from the releases (Settings › Updates): the folder it is in is the one the updater
  *   replaces (`OMP_WEBUI_APP_FOLDER`, server/update/windows.ts and helper.ps1). The Linux package does not: the server
  *   takes that folder only on Windows (server/main.ts), and a newer package is installed with its install.sh.
@@ -30,7 +31,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Auth } from "./auth.ts";
 import { loadConfig } from "./config.ts";
-import { runningServer } from "./instance.ts";
+import { holdStart, runningServer } from "./instance.ts";
 import { platform } from "./platform/index.ts";
 import { APP_VERSION } from "./version.ts";
 
@@ -72,10 +73,12 @@ async function holdWindow(): Promise<void> {
 	for await (const _ of console) break;
 }
 
+// Lets go of the start of this data folder's server (`holdStart`): once it has recorded itself, or this launcher ends or fails.
+let letGo = () => {};
 try {
 	const { dataDir } = loadConfig();
-	const running = runningServer(dataDir);
 	if (process.argv.slice(2).includes("--stop")) {
+		const running = runningServer(dataDir);
 		if (!running) {
 			console.log("omp-webui is not running.");
 			process.exit(0);
@@ -87,6 +90,9 @@ try {
 		console.log("omp-webui is stopped.");
 		process.exit(0);
 	}
+	letGo = await holdStart(dataDir);
+	process.on("exit", letGo);
+	const running = runningServer(dataDir);
 	if (running) {
 		if (background) {
 			console.log(`omp-webui is already running (port ${running.port}).`);
@@ -100,6 +106,7 @@ try {
 	await import("./main.ts");
 	const self = runningServer(dataDir);
 	if (!self) throw new Error("the server did not record the port it listens on");
+	letGo();
 	if (background) {
 		console.log(`\nomp-webui is running in the background (port ${self.port}). Open omp-webui again to see its page.`);
 	} else {
@@ -107,6 +114,7 @@ try {
 		console.log("\nomp-webui is running and its page is open in your browser. Close this window to stop it.");
 	}
 } catch (e) {
+	letGo();
 	console.error(`omp-webui could not start: ${(e as Error).message}`);
 	await holdWindow();
 	process.exit(1);

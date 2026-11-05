@@ -224,6 +224,7 @@
     "tests/contract/hardening.test.ts": 777,
     "tests/unit/macos-window-frame.test.ts": 769,
     "tests/unit/pty-held.test.ts": 766,
+    "tests/unit/instance-start-lock.test.ts": 752,
     "tests/unit/migrate-leak.test.ts": 705,
     "tests/unit/stop-subagent-follow.test.ts": 698,
     "tests/contract/relay-sweep.test.ts": 683,

@@ -147,6 +147,30 @@ test("--background starts the server and opens no page; --stop stops it", async 
 	expect(none.output()).toContain("not running");
 }, 120_000);
 
+test("two launchers started together start one server: the other opens its page and ends", async () => {
+	// A double-click done twice, or Start at login's run while the person opens the program (#175).
+	const folder = join(root, "together-data");
+	const before = pages().length;
+	const runs = await Promise.all([launch({ OMP_WEBUI_DATA_DIR: folder }), launch({ OMP_WEBUI_DATA_DIR: folder })]);
+	const said = () => runs.map((r) => r.output()).join("\n----\n");
+	const ended = () => runs.filter((r) => r.child.exitCode !== null);
+	// Done once both pages are open and one launcher has ended, or as soon as one fails.
+	await pollUntil(
+		() => (pages().length === before + 2 && ended().length > 0) || ended().some((r) => r.child.exitCode !== 0),
+		"both pages and one launcher's end, or a failure",
+		90_000,
+	);
+	expect(ended(), said()).toHaveLength(1);
+	expect(ended()[0].child.exitCode, said()).toBe(0);
+	expect(ended()[0].output()).toContain("already running");
+	// The same server's page, twice.
+	const [first, second] = pages().slice(before);
+	expect(second).toBe(first);
+	const stop = await launch({ OMP_WEBUI_DATA_DIR: folder }, ["--stop"]);
+	expect(await stop.exited).toBe(0);
+	expect(stop.output()).toContain("omp-webui is stopped.");
+}, 150_000);
+
 // The built program only: it is what the entry names (from source the program is Bun, and the switch is not offered).
 test.skipIf(!exe)(
 	"Start at login writes the system's entry for the program, and takes it away",
