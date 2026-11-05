@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import { flagValues } from "../omp/session-settings.ts";
 import { dropGroupAndOther } from "../private.ts";
 import { type Folder, holdsConversation } from "./folders.ts";
 
@@ -201,28 +202,22 @@ export class SessionRoots {
 
 	/**
 	 * The roots for the flags of a new conversation that runs in `cwd`: what `--session-dir <dir>` and `--profile <name>`
-	 * in `args` mean as folders of conversations. A flag that is not there gives no root.
+	 * in `args` (either as two arguments or with `=`) mean as folders of conversations. A flag that is not there gives no root.
 	 */
 	rootsFor(args: string[], cwd: string): Omit<SessionRoot, "usedAt">[] {
 		const out: Omit<SessionRoot, "usedAt">[] = [];
-		for (const arg of args) {
-			const [flag, value] = splitFlag(arg);
+		for (const value of flagValues(args, "--session-dir")) {
 			if (!value) continue;
-			if (flag === "--session-dir") {
-				// omp resolves a relative value against the folder it runs in (and does not expand `~`).
-				const dir = canonical(resolve(cwd, value));
-				// A value that is there and is not a folder (a pasted transcript path) fails in omp, and holds nothing.
-				if (isFile(dir)) continue;
-				out.push({ dir, kind: "session-dir", name: dir, agentDir: this.agentDir });
-			} else if (flag === "--profile" && value) {
-				const agent = profileAgentDir(value, this.home);
-				out.push({
-					dir: join(agent, "sessions"),
-					kind: "profile",
-					name: value,
-					agentDir: agent,
-				});
-			}
+			// omp resolves a relative value against the folder it runs in (and does not expand `~`).
+			const dir = canonical(resolve(cwd, value));
+			// A value that is there and is not a folder (a pasted transcript path) fails in omp, and holds nothing.
+			if (isFile(dir)) continue;
+			out.push({ dir, kind: "session-dir", name: dir, agentDir: this.agentDir });
+		}
+		for (const value of flagValues(args, "--profile")) {
+			if (!value) continue;
+			const agent = profileAgentDir(value, this.home);
+			out.push({ dir: join(agent, "sessions"), kind: "profile", name: value, agentDir: agent });
 		}
 		return out;
 	}
@@ -290,13 +285,6 @@ function folderOf(root: SessionRoot): Folder {
 function relativeTo(dir: string, file: string): string | null {
 	const rel = file.startsWith(`${dir}/`) ? file.slice(dir.length + 1) : null;
 	return rel && !rel.startsWith("..") ? rel : null;
-}
-
-/** A flag and its value, both as written (`--profile=x` and `--profile x` alike). */
-function splitFlag(arg: string): [string, string | null] {
-	const eq = arg.indexOf("=");
-	if (eq >= 0) return [arg.slice(0, eq), arg.slice(eq + 1)];
-	return [arg, null];
 }
 
 /** Whether a record read from the file is a root. */

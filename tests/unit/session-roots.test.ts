@@ -227,6 +227,19 @@ test("a flag that names nothing is not a folder", () => {
 	expect(roots.list()).toHaveLength(0);
 });
 
+test("a flag and its value as two arguments name a folder as the one written with = does", () => {
+	const w = world();
+	const elsewhere = join(w.dir, "elsewhere");
+	const roots = new SessionRoots(w.dataDir, w.home, w.agentDir);
+	expect(roots.rootsFor(["--session-dir", elsewhere, "--profile", "work"], w.dir)).toEqual([
+		...roots.rootsFor([`--session-dir=${elsewhere}`], w.dir),
+		...roots.rootsFor(["--profile=work"], w.dir),
+	]);
+	expect(roots.rootsFor(["--profile", "work"], w.dir)).toHaveLength(1);
+	// After `--` nothing is a flag of omp's.
+	expect(roots.rootsFor(["--", "--profile", "work"], w.dir)).toEqual([]);
+});
+
 test("a root that is not there yet does not make the list fail", async () => {
 	const w = world();
 	const roots = new SessionRoots(w.dataDir, w.home, w.agentDir);
