@@ -27,7 +27,7 @@ import { dirname } from "node:path";
  *   server does not take a command line that names it for one that runs it.
  */
 
-/** The environment variable that names the conversation's instruction file (`server/omp/unattended/session.ts`). */
+/** The environment variable that names the conversation's instruction file (`UnattendedService.fileFor` and `write`, `server/omp/unattended/service.ts`). */
 export const UNATTENDED_FILE_ENV = "OMPW_UNATTENDED_FILE";
 
 /** What follows the instruction file's name in the note the extension leaves when it has started in the process. */

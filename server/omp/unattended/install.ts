@@ -9,7 +9,7 @@ import { source } from "../source-macro.ts" with { type: "macro" };
  * (an update changes it; a process started before keeps the copy it loaded).
  *
  * The extension is one file that imports nothing of the app: it reads the instruction from the file the server names in the
- * process's environment (`OMPW_UNATTENDED_FILE`), which is written per conversation (`session.ts`).
+ * process's environment (`OMPW_UNATTENDED_FILE`), which is written per conversation (`UnattendedService.write`, `service.ts`).
  */
 const FILES: Readonly<Record<string, string>> = {
 	"server/omp/unattended/extension.ts": source("server/omp/unattended/extension.ts"),

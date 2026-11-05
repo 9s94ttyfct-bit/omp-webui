@@ -38,7 +38,7 @@ const envMs = (name: string, fallback: number): number => {
 
 /**
  * The quota floor of this server: the floors (`store.ts`), the extension omp is started with (`install.ts`, `extension.ts`),
- * and the look at the quota (`usage.ts`), as one thing the pool and the routes ask.
+ * and the look at the quota (`providerUsage` of `server/omp/usage.ts`, handed in), as one thing the pool and the routes ask.
  *
  * A conversation's hold file is written beside its settings overlay, in the temp folder the overlays are made in
  * (`server/omp/approval.ts`), because it is that process's alone and goes with it. A process that has no overlay (modes are not
