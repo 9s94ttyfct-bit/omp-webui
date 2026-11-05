@@ -35,7 +35,8 @@ const newId = () => `p-${Date.now().toString(36)}-${Math.random().toString(36).s
 /**
  * Settings › Quick prompts (#659): add, edit, reorder and remove the prompts of the message box's ⚡ menu, each with how it
  * is sent while the agent works and whether the session stops after. The built-ins (Soft stop, #658, and the presets) are
- * among them; Restore brings them back as shipped and keeps the person's own prompts. Edits are a draft until Save.
+ * among them; Restore brings them back as shipped and keeps the person's own prompts. Edits are a draft until Save, and
+ * so is Restore: it keeps what the person has written of their own and saves nothing by itself.
  */
 export function QuickPromptsSettings() {
 	const t = useT();
@@ -72,9 +73,7 @@ export function QuickPromptsSettings() {
 		}
 	};
 	const restore = () => {
-		const list = restoredQuickPrompts(saved);
-		saveQuickPrompts(list);
-		setDraft(list);
+		setDraft((list) => restoredQuickPrompts(list));
 		setTried(false);
 		toast("success", t("quickPrompts.cardRestoreDone"));
 	};

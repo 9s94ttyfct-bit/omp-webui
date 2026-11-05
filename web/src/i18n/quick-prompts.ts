@@ -27,7 +27,7 @@ export const en = {
 		"Messages you send often, one click from the message box (the ⚡ menu beside it) and from the command menu. Each says how it is sent while the agent works.",
 	cardAdd: "Add a quick prompt",
 	cardRestore: "Restore the defaults",
-	cardRestoreDone: "Quick prompts restored",
+	cardRestoreDone: "The built-ins are back as shipped: Save to keep them",
 	cardEmpty: "No quick prompts.",
 	fieldName: "Name",
 	fieldText: "Message",

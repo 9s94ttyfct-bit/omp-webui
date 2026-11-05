@@ -1550,6 +1550,7 @@
 		"queue-edit.spec.ts › when the message cannot be withdrawn the edited text is in the composer": 1.6,
 		"queue.spec.ts › Stop withdraws queued messages back into the composer": 0,
 		"quick-prompts.spec.ts › Cancel takes the soft stop back, and the turn's end ends nothing": 4.1,
+		"quick-prompts.spec.ts › Restore puts the built-ins back in the draft, keeps your unsaved prompt, and saves nothing until Save": 1.5,
 		"quick-prompts.spec.ts › Settings adds a follow-up prompt that waits for the turn, and Restore brings the built-ins back and keeps it": 5.4,
 		"quick-prompts.spec.ts › Soft stop steers the handoff instruction into the running turn, and the session ends when that turn ends": 4.4,
 		"quick-prompts.spec.ts › on a phone the quick prompts are in the ⋯ panel with their name, and the panel closes once one is chosen": 4.8,

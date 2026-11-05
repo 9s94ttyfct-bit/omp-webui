@@ -130,6 +130,33 @@ test("Settings adds a follow-up prompt that waits for the turn, and Restore brin
 	}
 });
 
+test("Restore puts the built-ins back in the draft, keeps your unsaved prompt, and saves nothing until Save", async ({
+	page,
+}) => {
+	await page.goto("/#/settings/chats");
+	const card = page.getByTestId("quick-prompts-settings");
+	await card.scrollIntoViewIfNeeded();
+	const kept = () => page.evaluate(() => localStorage.getItem("ompw.quickPrompts"));
+	const before = await kept();
+	await card.getByTestId("quick-prompt-add").click();
+	const own = card.getByTestId("quick-prompt-row").last();
+	await own.getByTestId("quick-prompt-name").fill("Unsaved own");
+	await own.getByTestId("quick-prompt-text").fill("Not saved yet");
+	const soft = card.locator('[data-testid="quick-prompt-row"][data-id="soft-stop"]');
+	await soft.getByTestId("quick-prompt-name").fill("Changed soft stop");
+
+	await card.getByTestId("quick-prompts-restore").click();
+	await expect(soft.getByTestId("quick-prompt-name")).toHaveValue("Soft stop");
+	await expect(card.getByTestId("quick-prompt-row").last().getByTestId("quick-prompt-name")).toHaveValue("Unsaved own");
+	expect(await kept()).toBe(before);
+	await expect(card.getByTestId("quick-prompts-save")).toBeEnabled();
+
+	// Without the person's own prompt the draft is what is saved again: nothing to save, and nothing was.
+	await card.getByTestId("quick-prompt-row").last().getByTestId("quick-prompt-remove").click();
+	await expect(card.getByTestId("quick-prompts-save")).toBeDisabled();
+	expect(await kept()).toBe(before);
+});
+
 test("on a phone the quick prompts are in the ⋯ panel with their name, and the panel closes once one is chosen", async ({
 	browser,
 }) => {

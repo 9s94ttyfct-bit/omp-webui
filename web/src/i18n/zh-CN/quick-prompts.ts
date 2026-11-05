@@ -23,7 +23,7 @@ export const zh: Record<keyof typeof en, string> = {
 	cardIntro: "常用的消息，在输入框旁边（⚡ 菜单）和命令菜单里一键发送。每条都可以设定代理工作时怎么发送。",
 	cardAdd: "添加快速指令",
 	cardRestore: "恢复默认",
-	cardRestoreDone: "已恢复默认的快速指令",
+	cardRestoreDone: "内置指令已恢复为默认：点“保存”即可保留",
 	cardEmpty: "没有快速指令。",
 	fieldName: "名称",
 	fieldText: "消息",
