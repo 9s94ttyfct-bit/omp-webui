@@ -321,6 +321,7 @@ export class ImportArchive {
 		const roots = relocate(manifest, env.loc);
 		const ids = await existingSessionIds(env.loc, roots);
 		const buckets = bucketsOf(manifest, map, env.loc);
+		const fix = fixSessionPathFor(bucketDirsOf(buckets, env.loc));
 		const counts = new Map<MigrateCategoryId, ImportCounts & { files: number }>();
 		for (const id of MIGRATE_CATEGORIES) counts.set(id, { files: 0, bytes: 0, added: 0, same: 0, differs: 0 });
 		const conversations = { total: 0, added: 0, same: 0, differs: 0 };
@@ -337,14 +338,19 @@ export class ImportArchive {
 					? (e.sessionId ?? sessionIdOf(e.path))
 					: null;
 			const known = id ? ids.get(id) : undefined;
+			// A transcript is written with its header's folders rewritten: that is what is compared with the file here.
+			const same =
+				!!here &&
+				!!dest &&
+				here.isFile() &&
+				(TRANSCRIPT_PATH.test(e.path)
+					? await holdsStream(
+							dest,
+							rewriteSession(this.zip.stream(e.path, { signal: env.signal }), map, undefined, fix),
+						)
+					: here.size === e.size && (await holds(dest, e.sha256)));
 			const status: "added" | "same" | "differs" =
-				!here && !known
-					? "added"
-					: here && dest && here.size === e.size && (await holds(dest, e.sha256))
-						? "same"
-						: known && !here
-							? "same"
-							: "differs";
+				!here && !known ? "added" : same ? "same" : known && !here ? "same" : "differs";
 			c[status]++;
 			if (status !== "same") needed += e.size;
 			if (id) {
@@ -559,13 +565,47 @@ function freeBytesAt(path: string): number {
 
 /** Whether the file at `path` holds the bytes whose SHA-256 is `sha256` (an archive entry's); false when it cannot be read. */
 async function holds(path: string, sha256: string): Promise<boolean> {
+	return (await digest(createReadStream(path))) === sha256;
+}
+
+/** Whether the file at `path` holds exactly what `source` gives; false when either cannot be read. */
+async function holdsStream(path: string, source: AsyncIterable<Uint8Array>): Promise<boolean> {
+	const here = await digest(createReadStream(path));
+	return here !== null && here === (await digest(source));
+}
+
+/** The SHA-256 of what `source` gives, in hex; null when it cannot be read. */
+async function digest(source: AsyncIterable<Uint8Array>): Promise<string | null> {
 	const hash = createHash("sha256");
 	try {
-		for await (const chunk of createReadStream(path)) hash.update(chunk);
+		for await (const chunk of source) hash.update(chunk);
 	} catch {
-		return false;
+		return null;
 	}
-	return hash.digest("hex") === sha256;
+	return hash.digest("hex");
+}
+
+/** Where each renamed conversation folder was and is on this Mac: the old and the new path. */
+function bucketDirsOf(buckets: Map<string, string>, loc: Locations): [string, string][] {
+	const root = configRootOf(loc.home);
+	const out: [string, string][] = [];
+	for (const [key, to] of buckets) {
+		const [, from] = /sessions\/([^/]+)$/.exec(key) ?? [];
+		if (!from || from === to) continue;
+		const dir = key.startsWith("profiles/")
+			? join(root, "profiles", key.split("/")[1], "agent", "sessions")
+			: join(loc.agentDir, "sessions");
+		out.push([join(dir, from), join(dir, to)]);
+	}
+	return out;
+}
+
+/** A path that names a file in a renamed conversation folder, made to name it in the new one. */
+function fixSessionPathFor(bucketDirs: [string, string][]): (path: string) => string {
+	return (path) => {
+		for (const [from, to] of bucketDirs) if (path.startsWith(`${from}/`)) return `${to}${path.slice(from.length)}`;
+		return path;
+	};
 }
 
 /** What `prepare` hands back: the import that is ready to write, and where its backup is (also when it failed). */
@@ -596,7 +636,7 @@ class Apply implements RunningImport {
 	/** Files of the encrypted part that name no place of ours. */
 	private readonly refused: string[] = [];
 	/** Where a conversation folder was renamed to: the old and the new path of each, for the paths that name one. */
-	private readonly bucketDirs: [string, string][] = [];
+	private readonly bucketDirs: [string, string][];
 	private readonly oldMachine: OldMachineValue[] = [];
 	private oldMachineCount = 0;
 	private readonly missing = new Map<string, number>();
@@ -620,15 +660,8 @@ class Apply implements RunningImport {
 		this.map = pathMapOf(manifest, env.loc);
 		this.rootsMap = rootsMapOf(manifest, env.loc, this.roots);
 		this.buckets = bucketsOf(manifest, this.map, env.loc);
-		const root = configRootOf(env.loc.home);
-		for (const [key, to] of this.buckets) {
-			const [, from] = /sessions\/([^/]+)$/.exec(key) ?? [];
-			if (!from || from === to) continue;
-			const dir = key.startsWith("profiles/")
-				? join(root, "profiles", key.split("/")[1], "agent", "sessions")
-				: join(env.loc.agentDir, "sessions");
-			this.bucketDirs.push([join(dir, from), join(dir, to)]);
-		}
+		this.bucketDirs = bucketDirsOf(this.buckets, env.loc);
+		this.fixSessionPath = fixSessionPathFor(this.bucketDirs);
 		this.summary = {
 			mode: request.mode,
 			backup: null,
@@ -925,10 +958,7 @@ class Apply implements RunningImport {
 	}
 
 	/** A conversation folder that was renamed: the paths that name a file in the old one name it in the new one. */
-	private fixSessionPath = (path: string): string => {
-		for (const [from, to] of this.bucketDirs) if (path.startsWith(`${from}/`)) return `${to}${path.slice(from.length)}`;
-		return path;
-	};
+	private readonly fixSessionPath: (path: string) => string;
 
 	/** The place a link of the archive leads to, when it is in the plugins' folder (`..` and links resolved by name); else null. */
 	private linkTarget(e: ManifestEntry): string | null {
