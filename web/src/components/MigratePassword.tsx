@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { type MessageKey, useT } from "../i18n/index.ts";
 import type * as GenerateApi from "../lib/password-generate.ts";
 import type * as StrengthApi from "../lib/password-strength.ts";
+import { useApp } from "../store/app.ts";
 import { Button, cx } from "./ui.tsx";
 
 /**
@@ -23,12 +24,19 @@ interface Tools {
 let loaded: Tools | null = null;
 let loading: Promise<Tools> | null = null;
 
-/** The estimator and the generator, loaded once for the page (neither is code the first paint needs). */
+/**
+ * The estimator and the generator, loaded once for the page (neither is code the first paint needs). A load that failed is
+ * forgotten, so that the next call fetches them again once the network is back.
+ */
 export function loadPasswordTools(): Promise<Tools> {
 	loading ??= Promise.all([import("../lib/password-strength.ts"), import("../lib/password-generate.ts")]).then(
 		([strength, generate]) => {
 			loaded = { strength, generate };
 			return loaded;
+		},
+		(error: unknown) => {
+			loading = null;
+			throw error;
 		},
 	);
 	return loading;
@@ -243,12 +251,16 @@ export function MadePassword({ password }: { password: string }) {
 /** The button that makes a random password (see `lib/password-generate.ts`) and hands it to `onMade`. */
 export function GenerateButton({ onMade }: { onMade: (password: string) => void }) {
 	const t = useT();
+	const toast = useApp((s) => s.toast);
 	return (
 		<Button
 			size="sm"
 			data-testid="migrate-generate"
 			onClick={() => {
-				void loadPasswordTools().then(({ generate }) => onMade(generate.generatePassword()));
+				loadPasswordTools().then(
+					({ generate }) => onMade(generate.generatePassword()),
+					() => toast("error", t("migrate.generateFailed")),
+				);
 			}}
 		>
 			<Sparkles size={12} /> {t("migrate.generate")}

@@ -82,6 +82,7 @@ export const zh: Record<keyof typeof en, string> = {
 	suggestIntro: "更容易记住，也足够强：用几个互不相关的词组成口令，例如",
 	suggestUse: "使用这个口令",
 	generate: "生成一个高强度密码",
+	generateFailed: "无法生成密码：它的代码没有加载成功。请检查网络连接后重试。",
 	madeNote:
 		"请现在就把这个密码保存好，比如存进你的密码管理器。没有它就打不开这个文件，而且它不会保存在任何地方：应用里没有，文件里也没有。",
 	copyPassword: "复制密码",

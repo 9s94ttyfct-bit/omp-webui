@@ -88,6 +88,7 @@ export const en = {
 	suggestIntro: "Easier to remember and strong: a passphrase of unrelated words, for example",
 	suggestUse: "Use this passphrase",
 	generate: "Generate a strong password",
+	generateFailed: "Could not make a password: its code did not load. Check the connection and try again.",
 	madeNote:
 		"Save this password now, for example in your password manager. The file cannot be opened without it, and it is not stored anywhere: not in the app and not in the file.",
 	copyPassword: "Copy the password",

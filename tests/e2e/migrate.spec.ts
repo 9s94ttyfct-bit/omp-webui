@@ -605,6 +605,34 @@ test("a strong password can be made: random, shown in clear with the plain warni
 	expect(calls(fake, "POST", MIGRATE_API.export)).toHaveLength(0);
 });
 
+test("a password generator that could not be fetched says so, and the next press fetches it again", async ({
+	page,
+}) => {
+	// The page has just reloaded for a missing chunk (`reloadOnce`): it does not reload again, so the failure is the button's.
+	await page.addInitScript(() => sessionStorage.setItem("ompw.chunkReloadAt", String(Date.now())));
+	const errors: string[] = [];
+	page.on("pageerror", (e) => errors.push(e.message));
+	let blocked = true;
+	await page.route(/\/assets\/password-(generate|strength)-[^/]+\.js$/, (route) =>
+		blocked ? route.abort("internetdisconnected") : route.continue(),
+	);
+	await fakeMigrate(page);
+	await openSettings(page);
+	await page.getByTestId("migrate-whole").click();
+	const password = page.getByTestId("migrate-password");
+	await expect(password).toHaveAttribute("type", "password");
+
+	await page.getByTestId("migrate-generate").click();
+	await expect(page.getByTestId("toast-text")).toContainText("Could not make a password");
+	expect(await password.inputValue()).toBe("");
+	expect(errors).toEqual([]);
+
+	blocked = false;
+	await page.getByTestId("migrate-generate").click();
+	await expect(password).toHaveAttribute("type", "text");
+	expect(await password.inputValue()).toHaveLength(24);
+});
+
 test("a file that is encrypted as a whole asks for its password before anything of it is shown, and a wrong one keeps it locked", async ({
 	page,
 }) => {

@@ -1192,6 +1192,7 @@
 		"migrate.spec.ts › a file that would not fit says how much it needs and how much is free (en)": 2.3,
 		"migrate.spec.ts › a file that would not fit says how much it needs and how much is free (zh-CN)": 2.3,
 		"migrate.spec.ts › a locked file can be dropped for another one": 2.1,
+		"migrate.spec.ts › a password generator that could not be fetched says so, and the next press fetches it again": 1.4,
 		"migrate.spec.ts › a strong password can be made: random, shown in clear with the plain warning, copied, and typing over it hides it again": 2.8,
 		"migrate.spec.ts › a whole file shows no note about what it holds": 2,
 		"migrate.spec.ts › an archive that has been checked is shown before anything is written; a wrong password keeps the preview": 2.9,
