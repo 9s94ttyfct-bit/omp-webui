@@ -727,7 +727,9 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 		if (!liveId || !compactEnded || seen?.liveId !== liveId || seen.at === at) return;
 		void refreshEntries(liveId);
 		void refreshState(liveId);
-		void import("../lib/queued-compact.ts").then((m) => m.noteQueuedCompactEnd(compactEnded, toast));
+		void import("../lib/queued-compact.ts").then((m) =>
+			m.noteQueuedCompactEnd(compactEnded, toast, (text, images) => setDraft(toDraft(text, images))),
+		);
 	}, [liveId, compactEnded?.at, toast]);
 	// A tool approval waits: a message typed now denies it, and the composer says so before the user sends one.
 	const approvalPending = Boolean(live?.uiRequests.some(isApproval));

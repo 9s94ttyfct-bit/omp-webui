@@ -1,16 +1,18 @@
 import type { CompactEnded } from "@shared/compact-queue.ts";
 import "../i18n/later.ts";
 import { t } from "../i18n/index.ts";
-import { insertIntoComposer } from "./composer-bridge.ts";
+import type { PromptImage } from "./messages.ts";
 
 /**
  * A compact that waited for the end of a turn, or for a step of it, is over (#651); said by the page that shows the conversation (see
  * `LiveInfo.compactEnded`). One omp could not do says why (a conversation too small to compact is the usual one); messages
- * the server could not send after it are put back in the message box, as Stop puts back the queue.
+ * the server could not send after it are put back in the message box with their pictures (`putBack`), as Stop puts back the
+ * queue.
  */
 export function noteQueuedCompactEnd(
 	ended: CompactEnded,
 	toast: (level: "error" | "warning", text: string) => void,
+	putBack: (text: string, images: PromptImage[]) => void,
 ): void {
 	if (!ended.ok)
 		toast(
@@ -18,6 +20,13 @@ export function noteQueuedCompactEnd(
 			t(ended.stopped ? "chat.queuedCompactStopped" : "chat.queuedCompactFailed", { error: ended.error ?? "" }),
 		);
 	const returned = ended.returned ?? [];
-	if (returned.length > 0 && insertIntoComposer(returned.join("\n\n"), false))
-		toast("warning", t("chat.queuedCompactReturned"));
+	if (returned.length === 0) return;
+	const images = returned.flatMap((h) =>
+		(h.images ?? []).filter(
+			(i): i is Record<string, unknown> & PromptImage =>
+				i.type === "image" && typeof i.data === "string" && typeof i.mimeType === "string",
+		),
+	);
+	putBack(returned.map((h) => h.message).join("\n\n"), images);
+	toast("warning", t("chat.queuedCompactReturned"));
 }

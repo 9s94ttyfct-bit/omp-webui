@@ -62,7 +62,7 @@ export interface CompactOutcome {
 	cancelled?: boolean;
 	/** A compact between steps that failed ended the turn at the boundary, and omp does not go on with a turn whose summary failed. */
 	stopped?: boolean;
-	returned?: string[];
+	returned?: HeldPrompt[];
 }
 
 interface Queue {
@@ -582,7 +582,7 @@ export class CompactQueue {
 	 * the end. One omp refuses stops it: that message and the ones behind it are returned, for the person to have back.
 	 * Always as a follow-up: that is a plain prompt when no turn runs, and queues behind the one the first of them starts.
 	 */
-	private async release(s: Queue): Promise<string[]> {
+	private async release(s: Queue): Promise<HeldPrompt[]> {
 		while (this.state === s && s.held.length > 0) {
 			const next = s.held.shift() as HeldPrompt;
 			this.host.changed();
@@ -599,7 +599,7 @@ export class CompactQueue {
 				failed = true;
 			}
 			if (failed) {
-				const returned = [next.message, ...s.held.splice(0).map((h) => h.message)];
+				const returned = [next, ...s.held.splice(0)];
 				this.host.changed();
 				return returned;
 			}

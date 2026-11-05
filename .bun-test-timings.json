@@ -399,6 +399,7 @@
     "tests/unit/list-pref.test.ts": 13,
     "tests/unit/macs.test.ts": 13,
     "tests/unit/memory-view.test.ts": 13,
+    "tests/unit/queued-compact-page.test.ts": 13,
     "tests/unit/remote-config.test.ts": 13,
     "tests/unit/agent-graph.test.ts": 12,
     "tests/unit/bench-gate.test.ts": 12,

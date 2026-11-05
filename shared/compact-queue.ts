@@ -70,7 +70,8 @@ export interface CompactEnded {
 	cancelled?: boolean;
 	/** A compact between two steps failed, and omp does not go on with a turn whose summary failed: the turn ended at the boundary. */
 	stopped?: boolean;
-	returned?: string[];
+	/** The held messages, with their pictures. */
+	returned?: HeldPrompt[];
 }
 
 /** A message held back: what its `prompt` command carried, which is all that is needed to send it again. */

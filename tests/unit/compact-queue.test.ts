@@ -360,8 +360,8 @@ test("a compact omp could not do still releases what waited, and says why", asyn
 	expect(w.sent.at(-1)).toEqual({ type: "prompt", message: "waiting", streamingBehavior: "followUp" });
 });
 
-test("a message omp refuses is given back with the ones behind it, not lost", async () => {
-	const w = world({ followUps: [{ message: "a" }, { message: "b" }, { message: "c" }] });
+test("a message omp refuses is given back with the ones behind it and their pictures, not lost", async () => {
+	const w = world({ followUps: [{ message: "a" }, { message: "b", images: [PICTURE] }, { message: "c" }] });
 	await w.queue.queue(undefined);
 	w.answers.set("prompt", (command) =>
 		command.message === "b"
@@ -371,7 +371,7 @@ test("a message omp refuses is given back with the ones behind it, not lost", as
 	w.state.working = false;
 	w.queue.frame({ type: "agent_end", isTerminal: true });
 	await until(() => w.ended.length === 1);
-	expect(w.ended).toEqual([{ ok: true, returned: ["b", "c"] }]);
+	expect(w.ended).toEqual([{ ok: true, returned: [{ message: "b", images: [PICTURE] }, { message: "c" }] }]);
 	expect(w.queue.info).toBeUndefined();
 });
 
