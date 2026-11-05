@@ -1261,6 +1261,7 @@
 		"nav-layout.spec.ts › at 1400 px › a stored layout with a page this version does not know, or one it lacks, is read without losing the rest": 1.2,
 		"nav-layout.spec.ts › at 1400 px › an item can be dropped in the empty top group, and on the zone that hides it; each bar keeps its own": 3.4,
 		"nav-layout.spec.ts › at 1400 px › dragging a page reorders it within its group, and the order is kept on this device across a reload": 2.7,
+		"nav-layout.spec.ts › at 1400 px › pressing the pages leaves no listener behind on the window": 1.1,
 		"nav-layout.spec.ts › at 1400 px › the controls are named in Chinese": 2.5,
 		"nav-layout.spec.ts › at 1400 px › the pages' place is held while their chunk loads: nothing moves when they arrive": 2.1,
 		"nav-layout.spec.ts › at 1400 px › the palette's Go to lists every page, Questions and Guard included, whatever the bars show": 2.9,

@@ -91,6 +91,26 @@ test.describe("at 1400 px", () => {
 		await expect(rail(page).getByTestId("rail-guard")).toHaveAttribute("aria-current", "page");
 	});
 
+	test("pressing the pages leaves no listener behind on the window", async ({ page }) => {
+		await page.goto("/");
+		await expect(page.getByTestId("nav-settings")).toBeVisible();
+		const cdp = await page.context().newCDPSession(page);
+		const cancels = async () => {
+			const { result } = await cdp.send("Runtime.evaluate", { expression: "window" });
+			const { listeners } = await cdp.send("DOMDebugger.getEventListeners", { objectId: result.objectId as string });
+			return listeners.filter((l) => l.type === "pointercancel").length;
+		};
+		// Each page once first: what the pages themselves listen to is there before counting.
+		await page.getByTestId("nav-usage").click();
+		await page.getByTestId("nav-plugins").click();
+		const before = await cancels();
+		for (let i = 0; i < 5; i++) {
+			await page.getByTestId("nav-usage").click();
+			await page.getByTestId("nav-plugins").click();
+		}
+		expect(await cancels()).toBe(before);
+	});
+
 	test("the pages' place is held while their chunk loads: nothing moves when they arrive", async ({ page }) => {
 		// The chunk with the bars' pages is held back until the place it takes has been measured.
 		const release = Promise.withResolvers<void>();

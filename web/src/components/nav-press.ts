@@ -30,14 +30,21 @@ export function startNavPress(e: ReactPointerEvent<HTMLElement>): void {
 		y: e.clientY,
 		pointerId: e.pointerId,
 	};
-	// The controller is fetched by the first press; a press that ended before it arrived is a click, not a drag.
+	// The controller is fetched by the first press; a press that ended before it arrived is a click, not a drag. Whichever
+	// ends it, both listeners go, so a press leaves nothing on the window.
 	let released = false;
+	const listening = new AbortController();
 	const release = () => {
 		released = true;
+		listening.abort();
 	};
-	window.addEventListener("pointerup", release, { once: true });
-	window.addEventListener("pointercancel", release, { once: true });
-	void import("./nav-drag-controller.ts").then((m) => {
-		if (!released) m.beginDrag(press);
-	});
+	window.addEventListener("pointerup", release, { signal: listening.signal });
+	window.addEventListener("pointercancel", release, { signal: listening.signal });
+	import("./nav-drag-controller.ts").then(
+		(m) => {
+			if (!released) m.beginDrag(press);
+		},
+		// A controller that did not arrive leaves the press a click: there is no drag to follow without it.
+		() => {},
+	);
 }
