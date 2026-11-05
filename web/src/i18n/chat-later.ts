@@ -77,7 +77,6 @@ export const en = {
 	resumeFolderDesc: "omp runs its tools (commands, edits, file reads) in the folder you choose.",
 
 	// Side questions (/btw)
-	btwTitle: "Side questions",
 	btwResumed: "Resumed the conversation to answer your question.",
 	btwIntro: "Ask about this conversation without adding to it — answers use the session's context but no tools.",
 	btwFailed: "Side question failed: {error}",
@@ -377,7 +376,6 @@ export const en = {
 	agentRetryNestedHint:
 		"omp has no command that retries one subagent now, and this one was started by another subagent, which the page cannot ask to bring it back. It retries when omp's own timer ends, and a message sent to it is read then. Stop ends it.",
 	agentSteerNote: "Waiting to retry: a message is read when the retry runs.",
-	agentRetryLabel: "Waiting to retry",
 	viewingEarlier: "Viewing an earlier branch. Sending a message continues from here in a new conversation.",
 	backToLatest: "Back to latest",
 	showEarlier: "Show earlier messages ({n})",

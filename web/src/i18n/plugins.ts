@@ -50,7 +50,6 @@ export const en = {
 	settingsReset: "Reset to default",
 	settingsEnv: "also read from {env}",
 	save: "Save",
-	confirm: "Confirm",
 
 	discoverTitle: "Discover",
 	discoverHint: "The plugins of every marketplace you added.",
@@ -100,12 +99,10 @@ export const en = {
 	jobFailed: "Failed",
 	jobDismiss: "Dismiss",
 	jobOutput: "What omp printed",
-	busy: "Another change is running: wait for it to finish.",
 	reloaded: "Reloaded its plugins: {names}",
 	restart: "Needs a restart to see it (Restart in its panel): {names}",
 	paused: "Paused, sees it after a resume and a restart: {names}",
 	conversation: "a new conversation",
-	changed: "Done.",
 
 	tabOverview: "Overview",
 	tabInstalled: "Plugins",

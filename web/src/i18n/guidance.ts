@@ -9,7 +9,6 @@ export const en = {
 	title: "Guidance",
 	intro:
 		"Standing rules for a whole conversation: how to hand work to subagents and which models they use, and anything else you want it to keep to (its language, how it commits, …). The main agent follows them over recalled memories and earlier instructions. Off unless you pick one, or make a template the default in Settings.",
-	pick: "Guidance",
 	pickNone: "None",
 	pickPreviewHint: "Point at a template to read what it tells the main agent.",
 	pickCustom: "Custom…",
@@ -27,7 +26,6 @@ export const en = {
 		"Not carried: this server took the conversation over from one that had not started it with the guidance extension. It is carried again when the conversation is opened.",
 	skippedUnavailable:
 		"Not carried: the guidance extension did not start in this conversation's omp (its files could not be written to the data folder, or omp did not run it).",
-	none: "No guidance",
 	templateLabel: "Template",
 	textLabel: "Guidance text",
 	custom: "Written here",
@@ -35,8 +33,6 @@ export const en = {
 	saving: "Saving…",
 	saved: "Saved",
 	saveFailed: "Could not save: {error}",
-	remove: "Turn off",
-	removing: "Turning off…",
 	loadFailed: "Could not read the guidance: {error}",
 	tooLong: "At most {max} characters.",
 	chars: "{n} / {max}",
@@ -47,7 +43,6 @@ export const en = {
 	nameLabel: "Name",
 	bodyLabel: "Text",
 	builtin: "Shipped",
-	edit: "Edit",
 	delete: "Delete",
 	deleteConfirm: "Delete the template “{name}”?",
 	deleteHint: "Conversations that use it keep the text it stood for.",

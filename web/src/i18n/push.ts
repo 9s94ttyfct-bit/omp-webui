@@ -9,7 +9,6 @@ export const en = {
 	indexTitle: "Notifications",
 	hint: "A phone or computer is told when a conversation finishes or needs you, even with this page closed. The message is encrypted for the one device and names the conversation by its saved title (or just says it is a conversation) and says why: nothing of what was said unless you choose.",
 	// This device
-	thisDevice: "This device",
 	enable: "Notify this device",
 	disable: "Stop notifying this device",
 	enabling: "Turning on…",
@@ -47,5 +46,4 @@ export const en = {
 	loadFailed: "Could not read the devices: {error}",
 	changeFailed: "Could not change it: {error}",
 	remoteNote: "Through the tunnel, a device is notified only while remote access is on.",
-	masterNote: "Notifications must also be on in the card above (it is turned on for you).",
 } as const;

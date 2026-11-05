@@ -20,7 +20,6 @@ export const en = {
 	stateUnknown: "State not known",
 
 	openTitle: "Open {name} ({host})",
-	openFailed: "Could not open {name}: {error}",
 	openRefused: "The app did not open that Mac",
 
 	add: "Add Mac…",

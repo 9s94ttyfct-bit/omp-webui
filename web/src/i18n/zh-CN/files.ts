@@ -78,8 +78,6 @@ export const zh: Record<keyof typeof en, string> = {
 	changesSourceLabel: "哪些变更",
 	changesSourceTree: "工作区",
 	changesSourceTurns: "按轮次",
-	changesBranch: "当前分支 {branch}",
-	changesCount: "已改动文件：{n}",
 	changesEmptyTitle: "没有变更",
 	changesEmptyBody: "文件夹与最近一次提交一致。",
 	changesNoRepoTitle: "不是 git 仓库",
@@ -96,7 +94,6 @@ export const zh: Record<keyof typeof en, string> = {
 	changesListLabel: "已改动的文件",
 	changesStaged: "已暂存",
 	changesFrom: "来自 {from}",
-	changesLines: "新增 {added} 行，删除 {removed} 行",
 
 	stateModified: "已修改",
 	stateAdded: "新增",
@@ -112,7 +109,6 @@ export const zh: Record<keyof typeof en, string> = {
 	turnStart: "对话开头",
 	turnNumber: "第 {n} 轮",
 	turnGone: "已与提交一致",
-	turnMoved: "移动自 {from}",
 
 	changesBack: "返回变更列表",
 	openLarge: "在主区域放大打开",

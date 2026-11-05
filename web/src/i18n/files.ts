@@ -77,8 +77,6 @@ export const en = {
 	changesSourceLabel: "Which changes",
 	changesSourceTree: "Working tree",
 	changesSourceTurns: "By turn",
-	changesBranch: "On {branch}",
-	changesCount: "Changed files: {n}",
 	changesEmptyTitle: "No changes",
 	changesEmptyBody: "The folder matches the last commit.",
 	changesNoRepoTitle: "Not a git repository",
@@ -97,7 +95,6 @@ export const en = {
 	changesListLabel: "Changed files",
 	changesStaged: "staged",
 	changesFrom: "from {from}",
-	changesLines: "{added} added, {removed} removed",
 
 	stateModified: "modified",
 	stateAdded: "new",
@@ -113,7 +110,6 @@ export const en = {
 	turnStart: "Start of the conversation",
 	turnNumber: "Turn {n}",
 	turnGone: "no longer differs",
-	turnMoved: "moved from {from}",
 
 	changesBack: "Back to the changes",
 	openLarge: "Open large in the main area",

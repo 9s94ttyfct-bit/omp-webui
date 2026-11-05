@@ -29,7 +29,6 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 
 	mcpNote:
 		"omp 已配置的服务器（/mcp list）。开关会在服务器所在的配置里启用或停用它（这个文件夹的 .omp/mcp.json 或你的 mcp.json）。omp 只在启动时连接服务器，所以改动要等这个对话的 omp 重启后才生效。列表不会告诉你服务器是否已连接：没有工具的服务器可能仍在启动、已经失败，或本来就不提供工具。",
-	mcpEnabled: "已启用",
 	mcpDisabled: "已停用",
 	mcpToolOne: "1 个工具",
 	mcpTools: "{n} 个工具",

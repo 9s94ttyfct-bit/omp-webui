@@ -7,7 +7,6 @@
 export const en = {
 	title: "Projects folder",
 	hint: "Where “New project folder” makes a project when you start a chat. Choose one of your own, or keep the default.",
-	folderLabel: "Projects folder",
 	pathAria: "Path of the projects folder",
 	isDefault: "Default",
 	defaultNote: "Default: ~/omp (made when the first project folder is).",

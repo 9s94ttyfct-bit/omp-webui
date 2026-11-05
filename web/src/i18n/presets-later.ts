@@ -6,7 +6,6 @@
  */
 export const en = {
 	// Name dialogs
-	saveFailed: "Could not save the preset: {error}",
 	renameTitle: "Rename preset",
 	renamed: "Renamed to “{name}”.",
 	duplicateTitle: "Duplicate preset",
@@ -33,7 +32,6 @@ export const en = {
 	deleted: "Deleted preset “{name}”.",
 	actionFailed: "Could not change the preset: {error}",
 	projectNote: "From the project config of {folder}; read-only here.",
-	roleCount: "{n} roles",
 	layerTitle: "Project overrides · {folder}",
 	layerHint:
 		"omp merges this project's config over the global one, so conversations in it use these instead of the roles above. Editing the roles above changes the global config only.",

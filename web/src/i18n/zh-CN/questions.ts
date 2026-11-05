@@ -7,7 +7,6 @@ export const zh: Record<keyof typeof en, string> = {
 	tabDone: "已处理",
 	filterLabel: "显示来自",
 	filterAll: "所有对话",
-	filterThis: "这个对话",
 	empty: "没有待回答的问题",
 	emptyHint: "对话处于无人值守时，需要你决定的事会记在这里，而不是停下来等你。",
 	emptyDone: "还没有回答或忽略过的问题",
@@ -47,7 +46,6 @@ export const zh: Record<keyof typeof en, string> = {
 	stateDismissed: "已忽略",
 	yourAnswer: "你的回答",
 	chosen: "选择",
-	note: "补充",
 	openCount: "{n} 个待回答",
 	// 没能保存的问题（#650），显示在它来自的对话下面
 	droppedFull: "有个问题没能保存：这个对话已有 60 个待回答。",

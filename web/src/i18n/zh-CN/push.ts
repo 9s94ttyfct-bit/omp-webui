@@ -5,7 +5,6 @@ export const zh: Record<keyof typeof en, string> = {
 	indexTitle: "通知",
 	hint: "对话结束或需要你时，即使这个页面已关闭，手机或电脑也会收到通知。消息只为这一台设备加密，只用对话已保存的标题（没有标题就只写“对话”）称呼它，并说明原因；除非你选择，否则不含对话内容。",
 	// This device
-	thisDevice: "这台设备",
 	enable: "通知这台设备",
 	disable: "不再通知这台设备",
 	enabling: "正在开启…",
@@ -40,5 +39,4 @@ export const zh: Record<keyof typeof en, string> = {
 	loadFailed: "无法读取设备：{error}",
 	changeFailed: "无法更改：{error}",
 	remoteNote: "通过隧道访问时，设备只在远程访问开启期间收到通知。",
-	masterNote: "上面的“通知”也必须开启（会替你开启）。",
 };

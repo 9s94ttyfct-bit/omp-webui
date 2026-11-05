@@ -4,7 +4,6 @@ export const zh: Record<keyof typeof en, string> = {
 	title: "指引",
 	intro:
 		"整个对话一直遵守的规则：怎么把工作交给子代理、给它们用哪些模型，以及你想让它坚持的其他事（用什么语言、怎么提交……）。主代理会优先遵守它，而不是召回的记忆和之前的指示。不在这里选择、也没有在设置里设为默认的模板时，就完全不生效。",
-	pick: "指引",
 	pickNone: "无",
 	pickPreviewHint: "把指针移到模板上，可以看到它告诉主代理的内容。",
 	pickCustom: "自定义…",
@@ -18,7 +17,6 @@ export const zh: Record<keyof typeof en, string> = {
 	skippedInherited:
 		"未生效：这个对话是服务器从上一个进程接管的，那个进程启动时还没有指引扩展。重新打开这个对话后会生效。",
 	skippedUnavailable: "未生效：指引扩展没有在这个对话的 omp 里启动（它的文件没能写入数据文件夹，或 omp 没有运行它）。",
-	none: "没有指引",
 	templateLabel: "模板",
 	textLabel: "指引内容",
 	custom: "这里直接写的",
@@ -26,8 +24,6 @@ export const zh: Record<keyof typeof en, string> = {
 	saving: "正在保存…",
 	saved: "已保存",
 	saveFailed: "无法保存：{error}",
-	remove: "关闭",
-	removing: "正在关闭…",
 	loadFailed: "无法读取指引：{error}",
 	tooLong: "最多 {max} 个字符。",
 	chars: "{n} / {max}",
@@ -37,7 +33,6 @@ export const zh: Record<keyof typeof en, string> = {
 	nameLabel: "名称",
 	bodyLabel: "内容",
 	builtin: "内置",
-	edit: "编辑",
 	delete: "删除",
 	deleteConfirm: "删除模板“{name}”？",
 	deleteHint: "用过它的对话会保留它当时代表的内容。",

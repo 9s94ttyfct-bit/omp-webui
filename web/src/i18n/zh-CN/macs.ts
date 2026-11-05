@@ -16,7 +16,6 @@ export const zh: Record<keyof typeof en, string> = {
 	stateUnknown: "状态未知",
 
 	openTitle: "打开 {name}（{host}）",
-	openFailed: "无法打开 {name}：{error}",
 	openRefused: "应用没有打开那台 Mac",
 
 	add: "添加 Mac…",

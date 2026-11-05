@@ -7,7 +7,6 @@ export const zh: Record<keyof typeof en, string> = {
 	delete: "删除",
 	rename: "重命名",
 	copy: "复制",
-	copied: "已复制",
 	retry: "重试",
 	loading: "加载中…",
 	language: "语言",

@@ -38,7 +38,6 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	saveDescription: "把每个角色的模型和思考强度以一个名称保存。预设存放在 omp 的配置中，终端界面里也能用。",
 	replace: "覆盖",
 	saved: "已保存预设“{name}”。",
-	saveFailed: "无法保存预设：{error}",
 	renameTitle: "重命名预设",
 	renamed: "已重命名为“{name}”。",
 	duplicateTitle: "复制预设",
@@ -65,7 +64,6 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	deleted: "已删除预设“{name}”。",
 	actionFailed: "无法修改预设：{error}",
 	projectNote: "来自 {folder} 的项目配置，此处只读。",
-	roleCount: "{n} 个角色",
 	layerTitle: "项目覆盖 · {folder}",
 	layerHint:
 		"omp 会把这个项目的配置叠加在全局配置之上，所以该项目里的对话使用下面的设置，而不是上面的角色。上面的修改只改动全局配置。",

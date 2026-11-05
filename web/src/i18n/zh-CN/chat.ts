@@ -64,7 +64,6 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	resumeFolderTitle: "选择继续对话的文件夹",
 	resumeFolderDesc: "omp 会在你选择的文件夹里运行工具（命令、编辑、读取文件）。",
 
-	btwTitle: "旁问",
 	btwResumed: "已继续这个对话，以便回答你的问题。",
 	btwIntro: "在不影响当前对话的情况下提问——回答会使用对话上下文，但不会调用工具。",
 	btwFailed: "旁问失败：{error}",
@@ -428,7 +427,6 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	agentRetryNestedHint:
 		"omp 没有“立即重试某个子代理”的命令，而这个子代理是由另一个子代理启动的，页面没法请那个子代理把它接回来：要等 omp 自己的计时结束才会重试，发给它的消息也要到那时才会被读到。要放弃它，请点“停止”。",
 	agentSteerNote: "正在等待重试：消息要等重试开始后才会被读到。",
-	agentRetryLabel: "等待重试",
 	viewingEarlier: "正在查看较早的分支。发送消息将从此处在新对话中继续。",
 	backToLatest: "回到最新",
 	showEarlier: "显示更早的消息（{n}）",

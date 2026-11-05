@@ -181,7 +181,6 @@ export const en = {
 	backupNote:
 		"Before anything that exists is changed, it is copied to a backup folder in the app's data folder. The summary names it.",
 	importButton: "Import",
-	applying: "Importing…",
 
 	// The summary
 	summaryTitle: "The import is finished",

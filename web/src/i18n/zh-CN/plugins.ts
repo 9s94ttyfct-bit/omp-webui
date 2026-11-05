@@ -44,7 +44,6 @@ export const zh: Record<keyof typeof en, string> = {
 	settingsReset: "恢复默认",
 	settingsEnv: "也从 {env} 读取",
 	save: "保存",
-	confirm: "确认",
 
 	discoverTitle: "发现",
 	discoverHint: "你添加的每个插件市场中的插件。",
@@ -91,12 +90,10 @@ export const zh: Record<keyof typeof en, string> = {
 	jobFailed: "失败",
 	jobDismiss: "关闭",
 	jobOutput: "omp 的输出",
-	busy: "另一项更改正在进行，请等待其完成。",
 	reloaded: "已重新加载插件：{names}",
 	restart: "需要重启才能看到（在其面板中点“重启”）：{names}",
 	paused: "已暂停，恢复并重启后才能看到：{names}",
 	conversation: "新对话",
-	changed: "完成。",
 
 	tabOverview: "概览",
 	tabInstalled: "插件",

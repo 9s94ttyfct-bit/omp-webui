@@ -18,7 +18,6 @@ export const en = {
 	stateConnected: "Connected",
 	stateError: "Not running",
 	stateLabel: "Tunnel: {state}",
-	urlLabel: "Public address",
 	urlEmpty: "No hostname yet",
 	copyUrl: "Copy the address",
 	urlCopied: "Copied",
@@ -43,7 +42,6 @@ export const en = {
 	audHint: "The AUD of the Access application, from the dashboard",
 	emails: "Allowed e-mail addresses",
 	emailsHint: "One per line. Only these addresses get in.",
-	emailsEmpty: "No address yet",
 	autostart: "Start the tunnel with the app",
 
 	// Confirm risky commands from remote pages
@@ -100,7 +98,6 @@ export const en = {
 
 	// What went wrong
 	actionFailed: "Could not do that: {error}",
-	saveFailed: "Could not save the settings: {error}",
 	saveDone: "Settings saved",
 
 	// Export and import of the settings a second computer shares (team, AUD, allowed addresses)

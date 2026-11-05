@@ -11,7 +11,6 @@ export const en = {
 	searchLabel: "Search issues",
 	searchPlaceholder: "Search, e.g. label:bug crash",
 	refresh: "Refresh",
-	loading: "Asking GitHub…",
 	empty: "No issues match",
 	emptyHint: "Try another filter or search.",
 	noFolder: "This conversation has no folder to look in.",

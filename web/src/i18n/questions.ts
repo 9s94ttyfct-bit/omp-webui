@@ -14,7 +14,6 @@ export const en = {
 	tabDone: "Done",
 	filterLabel: "Show questions from",
 	filterAll: "All conversations",
-	filterThis: "This conversation",
 	empty: "No questions waiting",
 	emptyHint: "When a conversation is unattended, what needs you is filed here instead of stopping it.",
 	emptyDone: "Nothing answered or dismissed yet",
@@ -54,7 +53,6 @@ export const en = {
 	stateDismissed: "Dismissed",
 	yourAnswer: "Your answer",
 	chosen: "Chosen",
-	note: "Note",
 	openCount: "{n} open",
 	// Questions that could not be kept (#650), under the conversation they came from
 	droppedFull: "A question was not kept: this conversation has 60 open already.",

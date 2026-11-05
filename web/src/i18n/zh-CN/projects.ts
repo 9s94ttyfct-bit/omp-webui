@@ -3,7 +3,6 @@ import type { en } from "../projects.ts";
 export const zh: Record<keyof typeof en, string> = {
 	title: "项目文件夹",
 	hint: "开始新对话时，“新建项目文件夹”会把项目建在这里。可以选择自己的文件夹，也可以保留默认。",
-	folderLabel: "项目文件夹",
 	pathAria: "项目文件夹的路径",
 	isDefault: "默认",
 	defaultNote: "默认：~/omp（创建第一个项目文件夹时会一并创建）。",

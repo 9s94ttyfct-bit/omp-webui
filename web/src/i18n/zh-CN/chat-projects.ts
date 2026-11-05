@@ -41,8 +41,6 @@ export const zh: Record<keyof typeof en, string> = {
 	problemTaken: "已经有一个项目叫“{name}”了。",
 	saveFailed: "无法保存项目：{error}",
 	deleteFailed: "无法删除项目：{error}",
-	moveFailed: "无法移动对话：{error}",
-	damaged: "项目文件里有无法读取的条目，所以没有显示。其余的都在这里，下次修改写入时会保留这个文件。",
 
 	// 项目页面（`#/project/<id>`）
 	pageConversations: "对话",

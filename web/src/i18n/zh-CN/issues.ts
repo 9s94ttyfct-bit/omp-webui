@@ -9,7 +9,6 @@ export const zh: Record<keyof typeof en, string> = {
 	searchLabel: "搜索 issues",
 	searchPlaceholder: "搜索，例如 label:bug crash",
 	refresh: "刷新",
-	loading: "正在询问 GitHub…",
 	empty: "没有符合的 issue",
 	emptyHint: "换个筛选或搜索试试。",
 	noFolder: "这个对话没有可查看的文件夹。",

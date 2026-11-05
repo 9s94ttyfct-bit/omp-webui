@@ -351,6 +351,7 @@
     "tests/unit/host-sampler.test.ts": 36,
     "tests/unit/transcript-cost.test.ts": 36,
     "tests/unit/usage-numbers.test.ts": 36,
+    "tests/unit/i18n-unused.test.ts": 33,
     "tests/unit/graph-view.test.ts": 32,
     "tests/unit/store-subagents.test.ts": 32,
     "tests/unit/nav-layout.test.ts": 30,

@@ -46,9 +46,6 @@ export const en = {
 	problemTaken: "A project is already called “{name}”.",
 	saveFailed: "Could not save the project: {error}",
 	deleteFailed: "Could not delete the project: {error}",
-	moveFailed: "Could not move the conversation: {error}",
-	damaged:
-		"The file of projects holds entries that could not be read, so they are not shown. The rest is here, and the file is kept when the next change writes it.",
 
 	// A project's page (`#/project/<id>`)
 	pageConversations: "Conversations",

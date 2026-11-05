@@ -78,7 +78,6 @@ export const zh: Record<keyof typeof en, string> = {
 	fieldWhere: "归属",
 	fieldWhereGlobal: "全局：每个项目都会回忆起",
 	fieldWhereProject: "项目：{label}",
-	fieldKind: "类型",
 	fieldOrigin: "保存方式",
 	fieldReason: "原因",
 	fieldConversation: "对话",

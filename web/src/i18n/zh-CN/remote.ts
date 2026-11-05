@@ -14,7 +14,6 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	stateConnected: "已连接",
 	stateError: "未运行",
 	stateLabel: "隧道：{state}",
-	urlLabel: "公网地址",
 	urlEmpty: "还没有主机名",
 	copyUrl: "复制地址",
 	urlCopied: "已复制",
@@ -39,7 +38,6 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	audHint: "Access 应用的 AUD，从控制台复制",
 	emails: "允许的邮箱地址",
 	emailsHint: "一行一个。只有这些地址能进来。",
-	emailsEmpty: "还没有地址",
 	autostart: "随应用启动隧道",
 
 	confirmRisky: "远程页面的高风险命令先确认",
@@ -98,7 +96,6 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 
 	// What went wrong
 	actionFailed: "操作失败：{error}",
-	saveFailed: "无法保存设置：{error}",
 	saveDone: "设置已保存",
 
 	transferTitle: "把这些设置分享给另一台电脑",

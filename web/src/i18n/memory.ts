@@ -85,7 +85,6 @@ export const en = {
 	fieldWhere: "Whose",
 	fieldWhereGlobal: "Global: every project recalls it",
 	fieldWhereProject: "Project: {label}",
-	fieldKind: "Kind",
 	fieldOrigin: "Saved",
 	fieldReason: "Why",
 	fieldConversation: "Conversation",

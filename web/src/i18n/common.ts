@@ -6,7 +6,6 @@ export const en = {
 	delete: "Delete",
 	rename: "Rename",
 	copy: "Copy",
-	copied: "Copied",
 	retry: "Retry",
 	loading: "Loading…",
 	language: "Language",

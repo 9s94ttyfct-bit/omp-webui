@@ -166,7 +166,6 @@ export const zh: Record<keyof typeof en, string> = {
 	modeReplaceHint: "两边都有同一项时，以文件里的为准。只在这台 Mac 上有的内容永远不会被删除。",
 	backupNote: "改动任何已有内容之前，会先把它复制到应用数据文件夹里的备份文件夹。完成后的摘要会写明位置。",
 	importButton: "导入",
-	applying: "正在导入…",
 
 	// The summary
 	summaryTitle: "导入完成",

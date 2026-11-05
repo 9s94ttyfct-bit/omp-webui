@@ -38,7 +38,6 @@ export const en = {
 	// MCP servers
 	mcpNote:
 		"The servers omp has configured (/mcp list). A switch turns a server on or off in the config it is defined in (this folder’s .omp/mcp.json or your mcp.json). omp connects its servers only when it starts, so a change applies once this conversation’s omp restarts. The list does not say whether a server connected: one with no tools may still be starting, have failed, or offer none.",
-	mcpEnabled: "enabled",
 	mcpDisabled: "disabled",
 	mcpToolOne: "1 tool",
 	mcpTools: "{n} tools",
