@@ -177,6 +177,13 @@ final class ShellEventStream: NSObject, URLSessionDataDelegate {
 		origin = nil
 	}
 
+	/// Stop for good: the stream is let go of (another Mac's notifications turned off, signed out of, forgotten). Its session is
+	/// invalidated, which is what lets go of the stream: a URLSession holds its delegate until then. It is not used again.
+	func close() {
+		stop()
+		session.invalidateAndCancel()
+	}
+
 	/// Read again now, without waiting out a pause: what the reader is signed in with has changed (the person signed in again).
 	func reconnect() {
 		guard origin != nil else { return }

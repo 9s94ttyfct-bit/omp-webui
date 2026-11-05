@@ -135,7 +135,7 @@ final class RemoteNotifier {
 		choices.keep(only: Set(list.map(\.id)))
 		let wanted = list.filter { choices.isOn($0.id) }
 		for id in Array(streams.keys) where !wanted.contains(where: { $0.id == id }) {
-			streams[id]?.stop()
+			streams[id]?.close()
 			streams[id] = nil
 		}
 		for mac in wanted where streams[mac.id] == nil { streams[mac.id] = stream(for: mac) }
@@ -146,7 +146,7 @@ final class RemoteNotifier {
 	func reconnect(_ id: UUID) { streams[id]?.reconnect() }
 
 	func stopAll() {
-		for stream in streams.values { stream.stop() }
+		for stream in streams.values { stream.close() }
 		streams = [:]
 	}
 

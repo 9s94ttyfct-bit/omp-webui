@@ -8,7 +8,7 @@ import Foundation
 //   stream   the messages one `ShellEventStream` hands over, in order, as it follows server `a` (which ends the response, so it
 //            reads again), then `b` (a server at another address), is refused by `refused` (and tries again), and is stopped
 //
-//   harness <a> <b> <refused>      the servers' origins
+//   harness <a> <b> <refused> <closing>      the servers' origins (`closing`: a stream that is closed for good reads it)
 
 /// `main.swift` of the app names the app (quit.swift's words say it).
 let appName = "omp-webui"
@@ -107,6 +107,7 @@ func stream() -> [String: Any] {
 	let a = URL(string: CommandLine.arguments[1])!
 	let b = URL(string: CommandLine.arguments[2])!
 	let refused = URL(string: CommandLine.arguments[3])!
+	let closing = URL(string: CommandLine.arguments[4])!
 	var heard: [[String: Any]] = []
 	var marks: [String: Int] = [:]
 	// The Mac prefers Chinese: what the server is told to use when the person saved no language.
@@ -126,7 +127,22 @@ func stream() -> [String: Any] {
 	let stoppedAt = Date().timeIntervalSince1970 * 1000
 	let stopped = heard.count
 	spin(0.5)
-	return ["heard": heard, "marks": marks, "silentAfterStop": heard.count == stopped, "stoppedAt": stoppedAt]
+	// A stream that is closed and let go of (another Mac's, turned off) is freed: nothing of the system holds it any more.
+	weak var closed: ShellEventStream?
+	var heardByClosed = 0
+	// In a pool of its own: what the calls here leave to be released is released at its end, not when the harness exits.
+	autoreleasepool {
+		let other = ShellEventStream(token: "tok", language: { .en }, retryDelay: { _ in 0.05 }) { _ in heardByClosed += 1 }
+		closed = other
+		other.connect(to: closing)
+		spin(10) { heardByClosed >= 1 }
+		other.close()
+	}
+	spin(0.5) { closed == nil }
+	return [
+		"heard": heard, "marks": marks, "silentAfterStop": heard.count == stopped, "stoppedAt": stoppedAt,
+		"closed": ["heard": heardByClosed, "freed": closed == nil],
+	]
 }
 
 let report: [String: Any] = ["pure": pure(), "stream": stream()]

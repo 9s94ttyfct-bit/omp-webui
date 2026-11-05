@@ -78,6 +78,7 @@ const a = serve((n) =>
 );
 const b = serve(() => ({ lines: ['{"t":"state","working":5,"asking":4,"epoch":"E2"}'], keepOpen: true }));
 const refused = serve(() => new Response("Forbidden", { status: 403 }));
+const closing = serve(() => ({ lines: ['{"t":"state","working":2,"asking":0,"epoch":"E3"}'], keepOpen: true }));
 
 interface Report {
 	pure: {
@@ -102,6 +103,8 @@ interface Report {
 		silentAfterStop: boolean;
 		/** When `stop()` was called, in ms since the epoch. */
 		stoppedAt: number;
+		/** A second stream, closed for good once it heard `closing`, then let go of. */
+		closed: { heard: number; freed: boolean };
 	};
 }
 
@@ -124,7 +127,10 @@ beforeAll(async () => {
 		{ stdout: "pipe", stderr: "pipe" },
 	);
 	if (built.exitCode !== 0) throw new Error(`swiftc failed:\n${built.stderr.toString()}`);
-	const run = Bun.spawn([harness, a.origin, b.origin, refused.origin], { stdout: "pipe", stderr: "pipe" });
+	const run = Bun.spawn([harness, a.origin, b.origin, refused.origin, closing.origin], {
+		stdout: "pipe",
+		stderr: "pipe",
+	});
 	const [out, err, code] = await Promise.all([
 		new Response(run.stdout).text(),
 		new Response(run.stderr).text(),
@@ -306,5 +312,15 @@ test.skipIf(!mac)(
 		expect(b.seen.cancelled).toBe(1);
 		expect(silentAfterStop).toBe(true);
 		expect(refused.seen.requests.filter((r) => r.at > stoppedAt + 100)).toEqual([]);
+	},
+);
+
+test.skipIf(!mac)(
+	"a stream that is closed for good (another Mac's, turned off or forgotten) lets go of its connection and is freed",
+	() => {
+		expect(report.stream.closed.heard).toBe(1);
+		expect(closing.seen.cancelled).toBe(1);
+		// Nothing keeps it (#171): its URLSession held it as its delegate until the session was invalidated.
+		expect(report.stream.closed.freed).toBe(true);
 	},
 );
