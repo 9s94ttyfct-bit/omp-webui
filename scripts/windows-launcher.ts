@@ -22,6 +22,7 @@ import pkg from "../package.json";
 import { readMaster, renderIcon } from "./icons.ts";
 import { encodeIco } from "./lib/ico.ts";
 import { encodePng } from "./lib/png.ts";
+import { serverCompileArgv } from "./lib/server-compile.ts";
 
 // platform-allow: a build script for the machine it runs on, which must be Windows (see above)
 if (process.platform !== "win32") {
@@ -83,25 +84,18 @@ try {
 
 	// Run from the staging dir: `bun build --compile` leaves a `.*.bun-build` temp file in its cwd.
 	await run(
-		[
-			"bun",
-			"build",
-			"--compile",
-			"--minify",
-			`--target=bun-windows-${arch}`,
-			`--windows-icon=${icon}`,
-			"--windows-title=omp-webui",
-			"--windows-description=omp-webui",
-			`--windows-version=${version}.0`,
-			...(version === pkg.version ? [] : [`--define=OMPW_BUILD_VERSION=${JSON.stringify(version)}`]),
-			join(root, "server", "launcher.ts"),
-			// The workers the server starts by relative URLs (see scripts/app.ts): entry points of their own.
-			join(root, "server", "family-worker.ts"),
-			join(root, "server", "search-index-worker.ts"),
-			join(root, "server", "host-gpu-worker.ts"),
-			"--outfile",
-			join(out, "omp-webui.exe"),
-		],
+		serverCompileArgv(root, {
+			entry: "launcher.ts",
+			target: `bun-windows-${arch}`,
+			outfile: join(out, "omp-webui.exe"),
+			flags: [
+				`--windows-icon=${icon}`,
+				"--windows-title=omp-webui",
+				"--windows-description=omp-webui",
+				`--windows-version=${version}.0`,
+				...(version === pkg.version ? [] : [`--define=OMPW_BUILD_VERSION=${JSON.stringify(version)}`]),
+			],
+		}),
 		stage,
 	);
 	console.log(`\nBuilt ${out}`);

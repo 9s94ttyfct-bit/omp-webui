@@ -32,6 +32,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import pkg from "../package.json";
 import { readMaster, renderIcon } from "./icons.ts";
 import { encodePng } from "./lib/png.ts";
+import { serverCompileArgv } from "./lib/server-compile.ts";
 
 const ARCHES: Record<string, true> = { x64: true, arm64: true };
 
@@ -87,21 +88,12 @@ try {
 
 	// Run from the staging dir: `bun build --compile` leaves a `.*.bun-build` temp file in its cwd.
 	await run(
-		[
-			"bun",
-			"build",
-			"--compile",
-			"--minify",
-			`--target=bun-linux-${arch}`,
-			...(version === pkg.version ? [] : [`--define=OMPW_BUILD_VERSION=${JSON.stringify(version)}`]),
-			join(root, "server", "launcher.ts"),
-			// The workers the server starts by relative URLs (see scripts/app.ts): entry points of their own.
-			join(root, "server", "family-worker.ts"),
-			join(root, "server", "search-index-worker.ts"),
-			join(root, "server", "host-gpu-worker.ts"),
-			"--outfile",
-			join(out, "omp-webui"),
-		],
+		serverCompileArgv(root, {
+			entry: "launcher.ts",
+			target: `bun-linux-${arch}`,
+			outfile: join(out, "omp-webui"),
+			flags: version === pkg.version ? [] : [`--define=OMPW_BUILD_VERSION=${JSON.stringify(version)}`],
+		}),
 		stage,
 	);
 	console.log(`\nBuilt ${out}`);

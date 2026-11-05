@@ -387,6 +387,7 @@
     "tests/unit/omp-install.test.ts": 16,
     "tests/unit/panel-panes.test.ts": 16,
     "tests/unit/restart.test.ts": 16,
+    "tests/unit/server-compile.test.ts": 16,
     "tests/unit/socket-liveness.test.ts": 16,
     "tests/unit/push-devices.test.ts": 15,
     "tests/unit/relay-backlog.test.ts": 15,

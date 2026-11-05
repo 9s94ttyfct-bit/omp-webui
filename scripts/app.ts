@@ -17,6 +17,7 @@ import { join } from "node:path";
 import pkg from "../package.json";
 import { readMaster, renderIcon } from "./icons.ts";
 import { encodePng } from "./lib/png.ts";
+import { serverCompileArgv } from "./lib/server-compile.ts";
 import { killTree, onShutdown } from "./lib/shutdown.ts";
 import { signBundle } from "./signing-identity.ts";
 
@@ -131,23 +132,11 @@ try {
 
 	// Run from the staging dir: `bun build --compile` leaves a `.*.bun-build` temp file in its cwd.
 	await run(
-		[
-			"bun",
-			"build",
-			"--compile",
-			"--minify",
-			"--target=bun-darwin-arm64",
-			join(root, "server", "main.ts"),
-			// The family worker, which main.ts starts by a relative URL: it has to be an entry point of its own.
-			join(root, "server", "family-worker.ts"),
-			// The search index worker, started by a relative URL from the store in the same way.
-			join(root, "server", "search-index-worker.ts"),
-			// The thread that looks at the GPU, started by a relative URL from the host load's reader (a driver that hangs
-			// holds that thread, not the server).
-			join(root, "server", "host-gpu-worker.ts"),
-			"--outfile",
-			join(resources, "omp-webui-server"),
-		],
+		serverCompileArgv(root, {
+			entry: "main.ts",
+			target: "bun-darwin-arm64",
+			outfile: join(resources, "omp-webui-server"),
+		}),
 		stage,
 	);
 
