@@ -11,6 +11,7 @@ import {
 } from "../../shared/session-defaults.ts";
 import { CONCURRENCY_KEY } from "../../shared/subagent-concurrency.ts";
 import type { Config } from "../config.ts";
+import { flagValues } from "../flag-values.ts";
 import type { Live } from "../live.ts";
 import { type ConfigScope, queued, readKeys } from "./model-config.ts";
 import { QUICK_MS } from "./run.ts";
@@ -102,19 +103,6 @@ export function withoutConfigFiles(args: readonly string[]): string[] {
 		else if (!args[i].startsWith("--config=")) kept.push(args[i]);
 	}
 	return kept;
-}
-
-/** The values of the flag `name` (`--name value` or `--name=value`) in `args`, in order. */
-export function flagValues(args: readonly string[], name: string): string[] {
-	const values: string[] = [];
-	for (let i = 0; i < args.length; i++) {
-		const arg = args[i];
-		if (arg === "--") break;
-		if (arg === name) {
-			if (i + 1 < args.length) values.push(args[++i]);
-		} else if (arg.startsWith(`${name}=`)) values.push(arg.slice(name.length + 1));
-	}
-	return values;
 }
 
 /**

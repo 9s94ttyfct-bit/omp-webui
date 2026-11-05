@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { flagValues } from "../omp/session-settings.ts";
+import { flagValues } from "../flag-values.ts";
 import { dropGroupAndOther } from "../private.ts";
 import { type Folder, holdsConversation } from "./folders.ts";
 

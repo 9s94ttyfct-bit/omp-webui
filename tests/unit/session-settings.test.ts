@@ -4,10 +4,11 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import type { Config } from "../../server/config.ts";
+import { flagValues } from "../../server/flag-values.ts";
 import type { Live } from "../../server/live.ts";
 import { ProcessOverlay } from "../../server/omp/approval.ts";
 import { type ParkedRecord, ParkedStore } from "../../server/omp/parked.ts";
-import { configuredSettings, flagValues, scopeOf } from "../../server/omp/session-settings.ts";
+import { configuredSettings, scopeOf } from "../../server/omp/session-settings.ts";
 import {
 	type ConfigValue,
 	choiceOf,
