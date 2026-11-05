@@ -348,15 +348,27 @@ if (process.platform !== "darwin") {
 }
 
 const root = realpathSync(mkdtempSync("/tmp/ompw-upc-"));
-const strays = new Set<number>();
-const launched: Launched[] = [];
+/**
+ * The processes of this world (servers, their stand-in apps, omps, relays, tools), each with the command it ran when it
+ * was recorded: at the end a pid is killed only while it still runs that, since a process that ended long before may have
+ * left its pid to an unrelated one.
+ */
+const strays = new Map<number, string>();
+function stray(...pids: number[]): void {
+	const all = procs();
+	for (const pid of pids) {
+		const p = all.find((q) => q.pid === pid);
+		if (pid > 0 && p) strays.set(pid, p.command);
+	}
+}
 let backend: StubScripted | null = null;
 let keychain: string | null = null;
 const cleanup = onShutdown(async () => {
-	for (const s of launched) for (const pid of [s.pid, s.appPid]) kill(pid, "SIGKILL");
-	for (const pid of strays) kill(pid, "SIGKILL");
-	// Everything of this world has its folder in its command line (the folder is unique to this run).
-	for (const p of procs()) if (p.command.includes(root) && p.pid !== process.pid) kill(p.pid, "SIGKILL");
+	// What was recorded and still runs the same command, and everything else of this world, which has its folder in its
+	// command line (the folder is unique to this run).
+	for (const p of procs()) {
+		if (p.pid !== process.pid && (strays.get(p.pid) === p.command || p.command.includes(root))) kill(p.pid, "SIGKILL");
+	}
 	await backend?.stop().catch(() => {});
 	if (keychain) Bun.spawnSync(["security", "delete-keychain", keychain], { stderr: "ignore" });
 	if (keep) log(`the work folder is ${root}`);
@@ -519,7 +531,7 @@ async function main(): Promise<void> {
 	writeFileSync(contextFile, JSON.stringify(ctx));
 
 	const oldServer = launchServer(ctx, "old");
-	launched.push(oldServer);
+	stray(oldServer.pid, oldServer.appPid);
 	const oldPort = await readyPort(ctx, "old");
 	log(`OLD server pid ${oldServer.pid} (parent "app" ${oldServer.appPid}) on port ${oldPort}`);
 	const lives = async (port: number, token: string) =>
@@ -564,7 +576,7 @@ async function main(): Promise<void> {
 	const openConv = async (): Promise<{ liveId: string; omp: number }> => {
 		const info = await request<LiveRow>(ws1, { t: "open", target: { kind: "new", cwd: work } });
 		await request(ws1, { t: "approval_mode", liveId: info.liveId, mode: "yolo" });
-		strays.add(info.pid as number);
+		stray(info.pid as number);
 		return { liveId: info.liveId, omp: info.pid as number };
 	};
 	const relayOf = (liveId: string) =>
@@ -580,7 +592,7 @@ async function main(): Promise<void> {
 		await Bun.sleep(1200);
 		const tools = toolsOf(tag, c.omp);
 		const relay = relayOf(c.liveId);
-		for (const p of [c.omp, relay, ...tools]) strays.add(p);
+		stray(c.omp, relay, ...tools);
 		convs.set(tag, {
 			tag,
 			liveId: c.liveId,
@@ -821,7 +833,7 @@ async function main(): Promise<void> {
 		"the helper swapped by rename, the NEW server acknowledged, the backup (the old app) was removed",
 	);
 	const newServer = JSON.parse(readFileSync(join(root, "new-server.json"), "utf8")) as Launched;
-	launched.push(newServer);
+	stray(newServer.pid, newServer.appPid);
 	const installedSha = await sha(serverOf(app));
 	check(
 		"swap.installed-is-new",
@@ -1070,7 +1082,7 @@ async function main(): Promise<void> {
 		t: "open",
 		target: { kind: "resume", sessionFile: lost.sessionFile, cwd: work },
 	});
-	strays.add(reopened.pid as number);
+	stray(reopened.pid as number);
 	check(
 		"new.c3.opens-as-ordinary",
 		reopened.pid !== lost.omp &&
@@ -1099,7 +1111,9 @@ async function main(): Promise<void> {
 	await until("the new server to exit", () => !alive(newServer.pid), 15_000).catch(() => {});
 	kill(newServer.appPid, "SIGTERM");
 	await Bun.sleep(1500);
-	const left = procs().filter((p) => strays.has(p.pid) || (p.command.includes(root) && p.pid !== process.pid));
+	const left = procs().filter(
+		(p) => p.pid !== process.pid && (strays.get(p.pid) === p.command || p.command.includes(root)),
+	);
 	check(
 		"end.no-orphans",
 		left.length === 0,
@@ -1181,7 +1195,7 @@ async function main(): Promise<void> {
 			t: "open",
 			target: { kind: "resume", sessionFile: conv("c1").sessionFile, cwd: work },
 		});
-		strays.add(opened.pid as number);
+		stray(opened.pid as number);
 		check(
 			`demo.${which}.session-opens-as-ordinary`,
 			opened.pausedAt === null && opened.pid !== conv("c1").omp,
@@ -1201,7 +1215,7 @@ async function main(): Promise<void> {
 			kill(newServer.pid, "SIGTERM");
 			await until("the first new server to exit", () => !alive(newServer.pid), 15_000);
 			const again = launchServer(o.ctx, "new2");
-			launched.push(again);
+			stray(again.pid, again.appPid);
 			const t2 = Date.now();
 			await readyPort(o.ctx, "new2");
 			const second = Date.now() - t2;

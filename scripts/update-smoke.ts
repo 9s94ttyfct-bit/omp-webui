@@ -50,11 +50,15 @@ const work = mkdtempSync(join(tmpdir(), "ompw-update-smoke-"));
 const shots = join(work, "shots");
 mkdirSync(shots);
 
-const apps: number[] = [];
+/**
+ * The apps started, with the command each ran then: at the end one is ended only while its pid still runs that (the old
+ * app quits at the install and a scenario ends the new one; their pids may be any other process's by then).
+ */
+const apps: { pid: number; command: string }[] = [];
 let stopFake: (() => Promise<void>) | null = null;
 const keychains: string[] = [];
 const cleanup = onShutdown(async () => {
-	for (const pid of apps) killAppTree(pid);
+	for (const app of apps) if (commandOf(app.pid) === app.command) killAppTree(app.pid);
 	await stopFake?.();
 	for (const kc of keychains) Bun.spawnSync(["security", "delete-keychain", kc], { stderr: "ignore" });
 	if (!keep) rmSync(work, { recursive: true, force: true });
@@ -89,6 +93,11 @@ const alive = (pid: number) => {
 		return false;
 	}
 };
+/** The command `pid` runs, or "" when there is no such process: what `apps` records and is compared with. */
+const commandOf = (pid: number) =>
+	Bun.spawnSync(["ps", "-o", "command=", "-p", String(pid)], { stderr: "ignore" })
+		.stdout.toString()
+		.trim();
 /** The app and what runs from its bundle (its server and any relay), ended. */
 function killAppTree(pid: number): void {
 	const table = Bun.spawnSync(["ps", "-A", "-o", "pid=,ppid=,command="]).stdout.toString();
@@ -273,7 +282,7 @@ async function started(w: World, not: number[] = []): Promise<number> {
 		},
 		90_000,
 	);
-	apps.push(pid);
+	apps.push({ pid, command: commandOf(pid) });
 	return pid;
 }
 
