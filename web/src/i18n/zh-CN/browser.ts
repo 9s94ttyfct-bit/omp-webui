@@ -104,4 +104,5 @@ export const zh: Record<keyof typeof en, string> = {
 	width: "宽度",
 	height: "高度",
 	sizeReset: "默认（1280×800）",
+	sizeRefused: "每边须在 {min} 到 {max} 像素之间：新页面仍为 {w} × {h}。",
 };

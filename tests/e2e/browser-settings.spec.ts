@@ -248,11 +248,22 @@ test("the size of new pages is kept as the synced preference, within bounds", as
 				.then((p) => p.values["ompw.browserSize"]),
 		);
 	await expect.poll(stored).toBe("1440x900");
-	// Out of bounds: not kept.
-	await page.getByTestId("browser-size-width").fill("90");
-	await page.getByTestId("browser-size-width").press("Enter");
-	await page.waitForTimeout(300);
+	// Out of bounds: not kept, and said so beside the field, which is marked invalid.
+	const width = page.getByTestId("browser-size-width");
+	await width.fill("90");
+	await width.press("Enter");
+	await expect(page.getByTestId("browser-size-error")).toHaveText(
+		"Each side is between 320 and 3840 pixels: new pages keep 1440 × 900.",
+	);
+	await expect(width).toHaveAttribute("aria-invalid", "true");
+	await expect(width).toHaveAccessibleDescription(/between 320 and 3840/);
 	expect(await stored()).toBe("1440x900");
+	// A size within bounds takes it away.
+	await width.fill("1600");
+	await width.press("Enter");
+	await expect.poll(stored).toBe("1600x900");
+	await expect(page.getByTestId("browser-size-error")).toHaveCount(0);
+	await expect(width).not.toHaveAttribute("aria-invalid");
 	await page.getByRole("button", { name: "Default (1280×800)" }).click();
 	await expect.poll(stored).toBeNull();
 });

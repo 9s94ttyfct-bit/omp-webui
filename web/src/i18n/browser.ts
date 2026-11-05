@@ -116,4 +116,5 @@ export const en = {
 	width: "Width",
 	height: "Height",
 	sizeReset: "Default (1280×800)",
+	sizeRefused: "Each side is between {min} and {max} pixels: new pages keep {w} × {h}.",
 };

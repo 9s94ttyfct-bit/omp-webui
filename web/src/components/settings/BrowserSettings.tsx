@@ -2,7 +2,7 @@ import type { BrowserAutoCheck } from "@shared/browser.ts";
 import { BROWSER_SIZE_BOUNDS, DESKTOP_SIZE, formatBrowserSize, parseBrowserSize } from "@shared/browser-protocol.ts";
 import { PREF } from "@shared/prefs.ts";
 import { TriangleAlert } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { en } from "../../i18n/browser.ts";
 import { registerStrings, useT } from "../../i18n/index.ts";
 import { formatProgress, progressPercent } from "../../lib/app-update.ts";
@@ -339,11 +339,16 @@ function AutoCheckLine({ check, cef }: { check: BrowserAutoCheck; cef: boolean }
 	);
 }
 
-/** The desktop size new pages are laid out at (`ompw.browserSize`): kept when both sides are within bounds. */
+/**
+ * The desktop size new pages are laid out at (`ompw.browserSize`): kept when both sides are within bounds. A size out of
+ * them is not kept, and the line under the fields says so (with the size that is kept) until a size is kept.
+ */
 function SizeSetting() {
 	const t = useT();
+	const errorId = useId();
 	const [kept, setKept] = useState(storedBrowserSize);
 	const [draft, setDraft] = useState({ w: String(kept.w), h: String(kept.h) });
+	const [refused, setRefused] = useState(false);
 	useEffect(
 		() =>
 			onPrefsChanged((keys) => {
@@ -351,33 +356,41 @@ function SizeSetting() {
 				const now = storedBrowserSize();
 				setKept(now);
 				setDraft({ w: String(now.w), h: String(now.h) });
+				setRefused(false);
 			}),
 		[],
 	);
 	const save = (next: { w: string; h: string }) => {
 		const size = parseBrowserSize(`${next.w}x${next.h}`);
+		setRefused(!size);
 		if (!size || (size.w === kept.w && size.h === kept.h)) return;
 		setKept(size);
 		const isDefault = size.w === DESKTOP_SIZE.w && size.h === DESKTOP_SIZE.h;
 		setPref(PREF.browserSize, isDefault ? null : formatBrowserSize(size));
 	};
-	const field = (side: "w" | "h", label: string) => (
-		<label className="flex items-center gap-1.5 text-xs text-muted">
-			{label}
-			<input
-				type="number"
-				inputMode="numeric"
-				min={BROWSER_SIZE_BOUNDS.min}
-				max={BROWSER_SIZE_BOUNDS.max}
-				value={draft[side]}
-				className="h-8 w-20 rounded-lg border border-border bg-bg px-2 text-sm text-fg tabular-nums"
-				data-testid={`browser-size-${side === "w" ? "width" : "height"}`}
-				onChange={(e) => setDraft({ ...draft, [side]: e.target.value })}
-				onBlur={() => save(draft)}
-				onKeyDown={(e) => e.key === "Enter" && save(draft)}
-			/>
-		</label>
-	);
+	const field = (side: "w" | "h", label: string) => {
+		// This side alone, against the shared rule (the other side given one it takes).
+		const invalid = refused && !parseBrowserSize(`${draft[side]}x${BROWSER_SIZE_BOUNDS.min}`);
+		return (
+			<label className="flex items-center gap-1.5 text-xs text-muted">
+				{label}
+				<input
+					type="number"
+					inputMode="numeric"
+					min={BROWSER_SIZE_BOUNDS.min}
+					max={BROWSER_SIZE_BOUNDS.max}
+					value={draft[side]}
+					aria-invalid={invalid || undefined}
+					aria-describedby={invalid ? errorId : undefined}
+					className="h-8 w-20 rounded-lg border border-border bg-bg px-2 text-sm text-fg tabular-nums"
+					data-testid={`browser-size-${side === "w" ? "width" : "height"}`}
+					onChange={(e) => setDraft({ ...draft, [side]: e.target.value })}
+					onBlur={() => save(draft)}
+					onKeyDown={(e) => e.key === "Enter" && save(draft)}
+				/>
+			</label>
+		);
+	};
 	return (
 		<div className="space-y-1.5 border-t border-border pt-3" data-testid="browser-size-setting">
 			<div className="text-sm font-medium">{t("browser.sizeTitle")}</div>
@@ -393,6 +406,7 @@ function SizeSetting() {
 						onClick={() => {
 							setKept(DESKTOP_SIZE);
 							setDraft({ w: String(DESKTOP_SIZE.w), h: String(DESKTOP_SIZE.h) });
+							setRefused(false);
 							setPref(PREF.browserSize, null);
 						}}
 					>
@@ -400,6 +414,16 @@ function SizeSetting() {
 					</Button>
 				) : null}
 			</div>
+			{refused ? (
+				<p id={errorId} role="alert" className="text-xs text-danger" data-testid="browser-size-error">
+					{t("browser.sizeRefused", {
+						min: BROWSER_SIZE_BOUNDS.min,
+						max: BROWSER_SIZE_BOUNDS.max,
+						w: kept.w,
+						h: kept.h,
+					})}
+				</p>
+			) : null}
 		</div>
 	);
 }
