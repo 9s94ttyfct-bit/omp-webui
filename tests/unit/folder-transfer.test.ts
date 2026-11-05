@@ -485,6 +485,17 @@ describe("a folder as a ZIP", () => {
 		expect(w.log().at(-1)).toMatchObject({ kind: "zip", status: "ok", files: 3, path: "app" });
 	});
 
+	test("a private key in a file larger than what is read whole is left out of the ZIP too (#56)", async () => {
+		const w = world({ limits: { chunkBytes: 64 * 1024 } as TransferOptions["limits"] });
+		write(join(w.proj, "big", "a.txt"), "aaa");
+		write(join(w.proj, "big", "bundle.txt"), `-----BEGIN PRIVATE KEY-----\nx\n${"y".repeat(2 * 1024 * 1024)}`);
+		write(join(w.proj, "big", "large.txt"), "z".repeat(2 * 1024 * 1024));
+		const { plan: p } = await plan(w, "big");
+		const z = await unzip(await w.call(`archive/${p?.ticket}`), w.top);
+		expect(z.names).toEqual(["big/a.txt", "big/large.txt"]);
+		expect(w.log().at(-1)).toMatchObject({ kind: "zip", status: "ok", files: 2 });
+	});
+
 	test("hidden things come when asked for, below the folder; a folder that is itself `dist` is asked for by its path", async () => {
 		const w = tree();
 		write(join(w.proj, "dist", "bundle.js"), "js");

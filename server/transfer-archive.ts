@@ -425,6 +425,11 @@ function archiveStream(
 						await writer.add(name, body, options);
 						bytes += body.length;
 					} else {
+						// Nor one at the start of a larger file (a key file padded out, a key before a long certificate chain): its first
+						// MiB is looked at, as a single download looks at it.
+						const head = Buffer.alloc(WHOLE_BYTES);
+						const { bytesRead } = await handle.read(head, 0, WHOLE_BYTES, 0);
+						if (holdsPrivateKey(head.toString("utf8", 0, bytesRead))) continue;
 						const chunk = deps.limits.chunkBytes;
 						const limit = deps.limits.archiveBytes - bytes;
 						async function* chunks(): AsyncGenerator<Uint8Array> {
