@@ -5,7 +5,8 @@
  * build with its first-load size check, the parity report, unit + contract (`test:release`) and the offline end-to-end
  * suite. This script releases only a commit CI passed on: it asks GitHub for the CI workflow's runs of that exact commit
  * and stops, before anything is built, unless one of them (a push or a by-hand run, not a pull request's, which tests a
- * merge commit) succeeded; a commit CI has not run on, is still running on, or failed on is refused with the run's link.
+ * merge commit) succeeded and built the packages (a documentation-only push's run skips them); a commit CI has not run
+ * on, is still running on, or failed on is refused with the run's link.
  * Then it does what only this Mac can: the unit and contract tests that only macOS runs (`test:mac`, scripts/mac-tests.ts:
  * the app's Swift shell, signing, the disk image and the updater's install steps, which CI's Linux skips), the tests that
  * call a real model (`test:live`: they need this machine's Anthropic login, which CI never has, and refuse to run without
@@ -56,6 +57,13 @@ import { gateWorkers, TEST_WORKERS_ENV } from "./lib/test-workers.ts";
 
 /** The workflow whose success on the released commit is required (.github/workflows/ci.yml). */
 const CI_WORKFLOW = "ci.yml";
+/** The artifacts of that run the release attaches (ci.yml's `windows-launcher` and `linux-package` jobs), and their files. */
+const PACKAGES = [
+	{ name: "omp-webui-windows-x64", system: "windows-x64", ext: "zip" },
+	{ name: "omp-webui-windows-arm64", system: "windows-arm64", ext: "zip" },
+	{ name: "omp-webui-linux-x64", system: "linux-x64", ext: "tar.gz" },
+	{ name: "omp-webui-linux-arm64", system: "linux-arm64", ext: "tar.gz" },
+] as const;
 const args = process.argv.slice(2);
 const FLAGS: Record<string, true> = { "--skip-tests": true, "--dry-run": true };
 const words = args.filter((a) => !a.startsWith("--"));
@@ -161,11 +169,13 @@ interface CiRun {
 
 /**
  * Stop unless CI succeeded on exactly `commit`: a run of the CI workflow for it, started by the push or by hand, that
- * completed with success. A pull request's run does not count: it tested the merge of the pull request into its base,
- * not this commit. One success is enough (a run that failed and then passed on a re-run, or a by-hand run after it).
- * Returns that run: the Windows launchers' zips and the Linux packages' tarballs are its artifacts.
+ * completed with success and built the packages. A pull request's run does not count: it tested the merge of the pull
+ * request into its base, not this commit. Nor does a run of a documentation-only push: its package jobs were skipped,
+ * so it has none of the packages the release attaches. One such success is enough (a run that failed and then passed
+ * on a re-run, or a by-hand run after it). Returns that run: the Windows launchers' zips and the Linux packages'
+ * tarballs are its artifacts. `ref` is the branch or tag a by-hand run on `commit` would be started on.
  */
-async function requireCi(commit: string): Promise<CiRun> {
+async function requireCi(commit: string, ref: string): Promise<CiRun> {
 	const r = await exec(
 		["gh", "api", `repos/${REPO}/actions/workflows/${CI_WORKFLOW}/runs?head_sha=${commit}&per_page=100`],
 		{ quiet: true },
@@ -174,10 +184,18 @@ async function requireCi(commit: string): Promise<CiRun> {
 	const runs = (JSON.parse(r.out).workflow_runs as CiRun[])
 		.filter((ci) => ci.head_sha === commit && (ci.event === "push" || ci.event === "workflow_dispatch"))
 		.sort((a, b) => b.created_at.localeCompare(a.created_at));
-	const passed = runs.find((ci) => ci.status === "completed" && ci.conclusion === "success");
-	if (passed) {
-		console.log(`CI passed on ${commit}: ${passed.html_url}`);
-		return passed;
+	const passed = runs.filter((ci) => ci.status === "completed" && ci.conclusion === "success");
+	for (const ci of passed) {
+		if (await hasPackages(ci)) {
+			console.log(`CI passed on ${commit}: ${ci.html_url}`);
+			return ci;
+		}
+	}
+	const [newest] = passed;
+	if (newest) {
+		throw new Error(
+			`CI passed on ${commit} but built no packages (${newest.html_url}: its Windows launcher and Linux package jobs did not run, as on a documentation-only push): run it by hand (gh workflow run CI -R ${REPO} --ref ${ref}), wait for it to pass, then run this again; nothing was built or tagged`,
+		);
 	}
 	const latest = runs[0];
 	if (!latest) {
@@ -193,6 +211,15 @@ async function requireCi(commit: string): Promise<CiRun> {
 	throw new Error(
 		`CI did not pass on ${commit} (${latest.conclusion}, ${latest.html_url}): fix it, push, and release the commit CI passes on; nothing was built or tagged`,
 	);
+}
+
+/** Whether `ci` has every package the release attaches, still to be downloaded (an artifact expires). */
+async function hasPackages(ci: CiRun): Promise<boolean> {
+	const r = await exec(["gh", "api", `repos/${REPO}/actions/runs/${ci.id}/artifacts?per_page=100`], { quiet: true });
+	if (r.code !== 0)
+		throw new Error(`could not read the artifacts of ${ci.html_url}: ${r.err}; nothing was built or tagged`);
+	const artifacts = JSON.parse(r.out).artifacts as { name: string; expired: boolean }[];
+	return PACKAGES.every(({ name }) => artifacts.some((a) => a.name === name && !a.expired));
 }
 
 /**
@@ -264,7 +291,7 @@ async function makeTag(commit: string): Promise<void> {
 async function release(): Promise<void> {
 	const { commit, fresh } = await releasedCommit();
 	await reportVisibility();
-	const ci = await requireCi(commit);
+	const ci = await requireCi(commit, fresh ? "main" : tag);
 
 	// The steps that follow need this machine to have things CI does not check; find out now, not at the dmg.
 	const needs: Needs = { gui: true, publish: !dryRun, signing: true };
@@ -282,17 +309,11 @@ async function release(): Promise<void> {
 	const downloaded = join(work, "artifacts");
 	mkdirSync(downloaded);
 	const packages: string[] = [];
-	for (const [system, ext] of [
-		["windows", "zip"],
-		["linux", "tar.gz"],
-	]) {
-		for (const arch of ["x64", "arm64"]) {
-			const name = `omp-webui-${system}-${arch}`;
-			await run(["gh", "run", "download", String(ci.id), "-n", name, "-D", downloaded, "-R", REPO]);
-			const file = join(work, `omp-webui-${tag}-${system}-${arch}.${ext}`);
-			renameSync(join(downloaded, `${name}.${ext}`), file);
-			packages.push(file);
-		}
+	for (const { name, system, ext } of PACKAGES) {
+		await run(["gh", "run", "download", String(ci.id), "-n", name, "-D", downloaded, "-R", REPO]);
+		const file = join(work, `omp-webui-${tag}-${system}.${ext}`);
+		renameSync(join(downloaded, `${name}.${ext}`), file);
+		packages.push(file);
 	}
 
 	const version = JSON.parse(await Bun.file(join(tree, "package.json")).text()).version as string;

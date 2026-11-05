@@ -82,9 +82,25 @@ case "$1 $2" in
   failure) runs=$(run "$sha" push completed '"failure"' 2026-01-01T00:00:00Z 2) ;;
   in_progress) runs=$(run "$sha" push in_progress null 2026-01-01T00:00:00Z 3) ;;
   rerun) runs="$(run "$sha" push completed '"failure"' 2026-01-01T00:00:00Z 4),$(run "$sha" workflow_dispatch completed '"success"' 2026-01-02T00:00:00Z 5)" ;;
+  docs) runs=$(run "$sha" push completed '"success"' 2026-01-01T00:00:00Z 8) ;;
+  docs_after_code) runs="$(run "$sha" workflow_dispatch completed '"success"' 2026-01-01T00:00:00Z 9),$(run "$sha" push completed '"success"' 2026-01-02T00:00:00Z 8)" ;;
   elsewhere) runs="$(run 0000000000000000000000000000000000000001 push completed '"success"' 2026-01-01T00:00:00Z 6),$(run "$sha" pull_request completed '"success"' 2026-01-01T00:00:00Z 7)" ;;
   esac
   printf '{"total_count":1,"workflow_runs":[%s]}\\n' "$runs" ;;
+"api repos/9s94ttyfct-bit/omp-webui/actions/runs/"*)
+  # The artifacts of a run: none for run 8 (a documentation-only push, whose package jobs were skipped); the four
+  # packages otherwise, less those a test says the run has not (STUB_NO_WINDOWS and the like, as for run download).
+  id=\${2#*/actions/runs/}; id=\${id%%/*}
+  names=""
+  if [ "$id" != 8 ]; then
+    [ -n "$STUB_NO_WINDOWS" ] || names="$names omp-webui-windows-x64"
+    [ -n "$STUB_NO_WINDOWS_ARM" ] || names="$names omp-webui-windows-arm64"
+    names="$names omp-webui-linux-x64"
+    [ -n "$STUB_NO_LINUX" ] || names="$names omp-webui-linux-arm64"
+  fi
+  list="" n=0
+  for name in $names; do list="$list\${list:+,}{\\"name\\":\\"$name\\",\\"expired\\":false}"; n=$((n+1)); done
+  printf '{"total_count":%s,"artifacts":[%s]}\\n' "$n" "$list" ;;
 "run download")
   # The artifact of the CI run asked for (-n), the file CI uploads in it: a Windows launcher's zip or a Linux package's
   # tarball. STUB_NO_WINDOWS: the run has no x64 Windows zip; STUB_NO_WINDOWS_ARM: no arm64 Windows zip; STUB_NO_LINUX:
@@ -283,6 +299,30 @@ test("a run that failed and then passed by hand counts as passed", async () => {
 	expect(r.code).toBe(0);
 	expect(r.out).toContain("CI passed on");
 	expect(r.out).toContain("https://github.com/runs/5");
+});
+
+test("a passing run that built no packages (a documentation-only push) is refused with the remedy, before anything is built", async () => {
+	untag();
+	const main = git("rev-parse", "HEAD");
+	const r = await finish(release([], { STUB_CI: "docs" }, true));
+	expect(r.code).toBe(1);
+	expect(r.out).toContain(`CI passed on ${main} but built no packages`);
+	expect(r.out).toContain("https://github.com/runs/8");
+	expect(r.out).toContain("gh workflow run CI");
+	expect(r.out).toContain("nothing was built or tagged");
+	expect(r.out).not.toContain("gh exited");
+	expect(calls()).not.toContain("bun ");
+	expect(calls()).not.toContain("run download");
+	expect(localTag()).toBe("");
+	expect(originTag()).toBe("");
+});
+
+test("of the runs that passed, the one that built the packages is the release's, however recent the other", async () => {
+	const r = await finish(release(["--dry-run"], { STUB_CI: "docs_after_code" }));
+	expect(r.code).toBe(0);
+	expect(r.out).toContain("https://github.com/runs/9");
+	expect(calls()).toContain("gh run download 9 -n omp-webui-windows-x64 ");
+	expect(calls()).not.toContain("gh run download 8 ");
 });
 
 test("an existing tag is re-published only once CI passed on its commit, --skip-tests included", async () => {
