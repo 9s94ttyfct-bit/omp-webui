@@ -264,6 +264,12 @@ describe("mass deletion is its own kind, which no setting lets through unasked",
 		["find -f ~/Documents -delete", MASS],
 		["find -L . -name '*.pyc' -delete", []],
 		["find -E src -regex x -exec rm {} +", []],
+		// With no folder named, find searches the one it runs in (#180).
+		["cd ~ && find . -delete", MASS],
+		["cd ~ && find -delete", MASS],
+		["cd ~ && find -L -name x -delete", MASS],
+		["cd ~ && find -exec rm {} +", MASS],
+		["find -name '*.pyc' -delete", []],
 		// rsync: --delete takes what the destination holds, --remove-source-files what it copied.
 		["rsync -a --delete /tmp/empty/ ~/Documents/", [...MASS, "write_outside"]],
 		["rsync -a --delete-after src/ /Volumes/backup/", [...MASS, "write_outside"]],

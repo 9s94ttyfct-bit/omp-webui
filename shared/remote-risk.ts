@@ -2426,6 +2426,8 @@ class Scan {
 		const rest = args.slice(start);
 		const end = rest.findIndex((a) => a.text.startsWith("-") || a.text === "(" || a.text === "!");
 		roots.push(...(end < 0 ? rest : rest.slice(0, end)));
+		// With no folder named, find searches the one it runs in (GNU's; `cd ~ && find -delete`).
+		if (roots.length === 0) roots.push({ text: ".", dynamic: false, subs: [] });
 		const expression = end < 0 ? [] : rest.slice(end);
 		// What the search finds under its roots is deleted, not the roots themselves: only a root that is too broad matters.
 		const sweep = (recursive: boolean): void => {
