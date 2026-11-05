@@ -918,6 +918,7 @@
 		"label-in-name.spec.ts › the goal bar's toggle and a job's row are named by what they show": 9.8,
 		"leak-detached.spec.ts › a conversation the user has left is let go of, even when the page remembered what had focus": 5,
 		"leak-detached.spec.ts › the page keeps no detached DOM nodes or listeners as conversations and views are opened and closed": 16.9,
+		"live-deep-link.spec.ts › a failed re-attach leaves alone a page the person has moved on to, and the process is asked for once": 1.1,
 		"live-dot-fresh.spec.ts › a local page loaded anew lists the conversation a client with no page runs as Running, with no click": 4.1,
 		"live-dot-fresh.spec.ts › a local page loaded anew on another conversation lists the conversation the remote page runs as Running, with no click": 5.5,
 		"live-dot-fresh.spec.ts › a local page loaded anew on the conversation the remote page runs shows its Running dot, and its stream, with no click": 5,

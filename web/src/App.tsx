@@ -191,14 +191,17 @@ export function App() {
 		return () => window.removeEventListener("keydown", onKey);
 	}, [set, setView]);
 
-	// Deep link to a live process (#/live/<id>) after a reload: re-attach when possible.
+	// Deep link to a live process (#/live/<id>) after a reload: re-attach when possible. Once per process the view names,
+	// not once per change of the view (a full screen, the file arriving); and a failure sends the person to New chat only
+	// while the page still shows that process.
+	const viewedLive = view.kind === "chat" ? view.liveId : null;
 	useEffect(() => {
-		if (view.kind === "chat" && view.liveId && !useApp.getState().lives[view.liveId]) {
-			void attachLive(view.liveId).then((ok) => {
-				if (!ok) setView({ kind: "new" });
-			});
-		}
-	}, [view, setView]);
+		if (!viewedLive || useApp.getState().lives[viewedLive]) return;
+		void attachLive(viewedLive).then((ok) => {
+			const shown = useApp.getState().view;
+			if (!ok && shown.kind === "chat" && shown.liveId === viewedLive) setView({ kind: "new" });
+		});
+	}, [viewedLive, setView]);
 
 	// On narrow screens the sidebar is an overlay drawer: start collapsed, and close it
 	// whenever the page changes (a conversation, New chat, Settings… was chosen).
