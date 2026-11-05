@@ -296,6 +296,37 @@ test.describe("diagrams and math", () => {
 		expect(fetched.some((p) => /\/katex[^/]*\.js$/.test(p))).toBe(true);
 		expect(violations).toEqual([]);
 	});
+
+	test("an animation Mermaid let through that would give a link a destination is taken out before the diagram is shown", async ({
+		page,
+	}) => {
+		// Mermaid's own sanitiser takes these out; the page's scrub is the layer after it, so what Mermaid hands back is
+		// given them here, with a mark that the scrub leaves in place (it shows the diagram went through this).
+		await page.addInitScript(() => {
+			const parse = DOMParser.prototype.parseFromString;
+			DOMParser.prototype.parseFromString = function (this: DOMParser, text: string, type: DOMParserSupportedType) {
+				const injected = /^<div><svg[^>]*\bid="md-mermaid-/.test(text)
+					? text.replace(
+							/^(<div><svg[^>]*>)/,
+							'$1<g data-probe="1"></g><a href="#n"><set attributeName="href" to="https://example.com/x"/>' +
+								'<animate attributeName="xlink:href" values="https://example.com/y"/></a>',
+						)
+					: text;
+				return parse.call(this, injected, type);
+			};
+		});
+		write("animated.md", ["# Animated", "", "```mermaid", "graph TD", "  A[Start] --> B[End]", "```", ""].join("\n"));
+		await openFiles(page);
+		await row(page, "animated.md").click();
+		await page.getByTestId("file-md-editor").click();
+		const drawn = preview(page).getByTestId("md-mermaid");
+		await expect(drawn.locator("svg")).toBeVisible({ timeout: 30_000 });
+		await expect(drawn.locator('[data-probe="1"]')).toHaveCount(1);
+		const animations = await drawn.evaluate((el) =>
+			[...el.querySelectorAll("*")].filter((n) => /^(set|animate)/i.test(n.localName)).map((n) => n.outerHTML),
+		);
+		expect(animations).toEqual([]);
+	});
 });
 
 test.describe("where it opens from", () => {

@@ -26,8 +26,13 @@ function setup(theme: "dark" | "default"): void {
 	initialized = theme;
 }
 
-/** Elements a diagram never needs, whatever a sanitiser upstream let through. */
-const DROP = "script, iframe, object, embed, link, meta, base, form, input, button, textarea, select, audio, video";
+/**
+ * Elements a diagram never needs, whatever a sanitiser upstream let through. SVG's animation elements among them: a
+ * `<set>` or `<animate>` can give an attribute (an anchor's `href`) a value the attribute checks below never see.
+ */
+const DROP =
+	"script, iframe, object, embed, link, meta, base, form, input, button, textarea, select, audio, video, " +
+	"set, animate, animateMotion, animateTransform, animateColor";
 /** A CSS `url()` that names something other than an element of the diagram (`url(#arrowhead)`), or an `@import`. */
 const FETCHES = /url\s*\(\s*['"]?\s*(?!#)|@import|expression\s*\(/i;
 

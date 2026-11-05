@@ -1152,6 +1152,7 @@
 		"mcp-switch.spec.ts › while the conversation is busy the change waits for the next start; once it is idle the restart is offered": 20.6,
 		"md-editor.spec.ts › a file that changed on the computer › is taken as it is when nothing is unsaved, and is a conflict otherwise: Show diff, Overwrite, Reload": 10,
 		"md-editor.spec.ts › diagrams and math › Mermaid draws a diagram and KaTeX typesets math, each fetched when first needed, under the page's CSP": 4.4,
+		"md-editor.spec.ts › diagrams and math › an animation Mermaid let through that would give a link a destination is taken out before the diagram is shown": 3,
 		"md-editor.spec.ts › editing › opens from the Files tab; the preview follows the typing; ⌘S writes the file; Escape closes it and gives the focus back": 4.5,
 		"md-editor.spec.ts › editing › the views: source and preview, the preview alone (render only), the source alone; the choice is kept": 4.4,
 		"md-editor.spec.ts › on a phone › source and preview are two tabs; the preview is first; the arrow keys move between them": 3.4,
