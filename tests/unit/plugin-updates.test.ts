@@ -14,6 +14,7 @@ import { join, resolve } from "node:path";
 import { checkUpdates, newer, registryLatest, updateStep } from "../../server/omp/plugin-updates.ts";
 import type { PluginUpdate, UpdatesState } from "../../shared/plugins.ts";
 import { writeFakePluginsOmp } from "../support/plugins-stubs.ts";
+import { removeScratch } from "../support/scratch.ts";
 
 /**
  * What the Plugins page's Updates section and the automatic update find newer and run (`server/omp/plugin-updates.ts`),
@@ -317,7 +318,8 @@ describe("the automatic update", () => {
 		process.env.HOME = realHome;
 		if (realProfile === undefined) delete process.env.USERPROFILE;
 		else process.env.USERPROFILE = realProfile;
-		rmSync(root, { recursive: true, force: true });
+		// Windows has refused to remove it for a moment (EBUSY): a file in it can still be held, the fake omp's launcher among them.
+		removeScratch(root);
 	});
 
 	const updates = async (): Promise<UpdatesState> =>
