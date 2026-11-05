@@ -568,14 +568,17 @@ export function SessionControls({
 			toast("error", t("panel.controlsAdvisorFailed", { error: (e as Error).message }));
 		}
 	};
-	const send = async (command: Record<string, unknown>, label: string) => {
-		if (!id) return;
+	/** Whether omp took the command; a refusal is said in a toast. */
+	const send = async (command: Record<string, unknown>, label: string): Promise<boolean> => {
+		if (!id) return false;
 		try {
 			// Each is the answer to a click: a paused conversation takes it too, and stays paused.
 			await socket.act(id, command);
 			await refreshState(id, true);
+			return true;
 		} catch (e) {
 			toast("error", t("panel.controlsToastFailed", { label, error: (e as Error).message }));
+			return false;
 		}
 	};
 	/**
@@ -587,11 +590,12 @@ export function SessionControls({
 		setCompacting(true);
 		try {
 			if (await continueConversation(id)) toast("info", t("panel.controlsResumedToCompact"));
-			await send(
+			const done = await send(
 				{ type: "compact", ...(instructions.trim() ? { customInstructions: instructions.trim() } : {}) },
 				t("panel.controlsToastCompaction"),
 			);
-			setInstructions("");
+			// What was typed for a compact omp refused stays, to try again with.
+			if (done) setInstructions("");
 		} catch (e) {
 			toast("error", t("chat.errPause", { error: (e as Error).message }));
 		} finally {

@@ -181,3 +181,40 @@ test("the place the compact runs is chosen in This session, starts from Settings
 		await pages.close();
 	}
 });
+
+test("a compact omp refuses keeps the instructions typed for it", async ({ browser }) => {
+	const title = "Compact refused";
+	const file = world.seed(0x94, title);
+	const pages = await world.open(browser);
+	try {
+		const page = pages.local;
+		// omp's answer to `compact` is a refusal; everything else goes through.
+		await page.routeWebSocket(/\/ws$/, (ws) => {
+			const server = ws.connectToServer();
+			ws.onMessage((raw) => {
+				const msg = JSON.parse(String(raw));
+				if (msg.t === "rpc" && msg.command?.type === "compact") {
+					ws.send(JSON.stringify({ t: "reply", req: msg.req, ok: false, error: "Nothing to compact" }));
+					return;
+				}
+				server.send(raw);
+			});
+			server.onMessage((raw) => ws.send(raw));
+		});
+		await page.reload();
+		await show(page, title);
+		await page.getByTestId("composer").fill("Begin");
+		await page.getByTestId("composer").press("Enter");
+		await world.finish(await world.turnOf(file));
+
+		await openControls(page);
+		await expect(compactButton(page)).toHaveAttribute("data-state", "idle");
+		const instructions = page.getByLabel("Compaction instructions");
+		await instructions.fill("keep the names");
+		await compactButton(page).click();
+		await expect(page.getByTestId("toast-text")).toContainText("Nothing to compact");
+		await expect(instructions).toHaveValue("keep the names");
+	} finally {
+		await pages.close();
+	}
+});

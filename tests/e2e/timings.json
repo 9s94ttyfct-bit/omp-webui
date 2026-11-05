@@ -497,6 +497,7 @@
 		"compact-at.spec.ts › a conversation's point is a share, kept when the page is loaded again, and Default restores omp's configuration": 15.5,
 		"compact-at.spec.ts › the row is in Simplified Chinese, says what it does there, and its choice is kept": 10.5,
 		"compact-queue.spec.ts › Cancel takes the queued compact back from the line and from the button, and the turn ends without a compact": 4.5,
+		"compact-queue.spec.ts › a compact omp refuses keeps the instructions typed for it": 3.7,
 		"compact-queue.spec.ts › the button queues the compact while a turn runs, the line and the other page show it, and the follow-up goes after the compact": 6.1,
 		"compact-queue.spec.ts › the place the compact runs is chosen in This session, starts from Settings, and a conversation that cannot be held between steps says so": 6.4,
 		"composer-drafts.spec.ts › an unsent message and its image stay with their conversation across a switch": 4.1,
