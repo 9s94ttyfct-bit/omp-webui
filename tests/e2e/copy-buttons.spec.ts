@@ -51,3 +51,20 @@ test("a copy the clipboard takes shows the check", async ({ page, context }) => 
 	expect(await page.evaluate(() => navigator.clipboard.readText())).toContain("config files");
 	await expect(page.getByTestId("toast-text")).toHaveCount(0);
 });
+
+test("the terminal's Copy output says it could not copy, instead of failing unseen", async ({ page }) => {
+	await page.addInitScript(() => {
+		navigator.clipboard.writeText = () =>
+			Promise.reject(new DOMException("Document is not focused", "NotAllowedError"));
+	});
+	const errors: string[] = [];
+	page.on("pageerror", (e) => errors.push(e.message));
+	await page.goto("/#/cli");
+	await page.getByTestId("cli-line").fill("--version");
+	await page.getByTestId("cli-run").click();
+	await expect(page.getByTestId("terminal-status")).toHaveText(/exited 0/, { timeout: 30_000 });
+	await page.getByTestId("terminal-copy").click();
+	await expect(page.getByTestId("toast-text")).toContainText("Could not copy");
+	await expect(page.getByTestId("terminal-copy").locator("svg.lucide-check")).toHaveCount(0);
+	expect(errors).toEqual([]);
+});

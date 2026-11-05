@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 import "../i18n/later.ts";
 import { type MessageKey, useLang, useT } from "../i18n/index.ts";
 import { api, type Diagnostics } from "../lib/api.ts";
+import { writeClipboard } from "../lib/clipboard.ts";
 import {
 	buildIssue,
 	diagnosticsText,
@@ -86,10 +87,7 @@ export function Feedback() {
 	};
 	// The whole report, never the cut body of the link: what a cut link leaves out is pasted from here.
 	const copy = () => {
-		navigator.clipboard.writeText(fullText(issue)).then(
-			() => setCopied(true),
-			() => setCopied(false),
-		);
+		void writeClipboard(fullText(issue)).then(setCopied);
 	};
 	const KINDS = [
 		["bug", "feedback.kindBug", Bug],

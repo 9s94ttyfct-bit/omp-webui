@@ -110,6 +110,21 @@ test("Clear, and ⌘K, empty the screen and its scrollback; what the shell print
 	await expect(screen(page)).toContainText("LAST-ONE=66");
 });
 
+test("Copy output says it could not copy when the browser refuses, instead of failing unseen", async ({ page }) => {
+	await page.addInitScript(() => {
+		navigator.clipboard.writeText = () =>
+			Promise.reject(new DOMException("Document is not focused", "NotAllowedError"));
+	});
+	const errors: string[] = [];
+	page.on("pageerror", (e) => errors.push(e.message));
+	await openTerminal(page);
+	await expect(page.getByTestId("shell-status")).toHaveText("running", { timeout: 15_000 });
+	await page.getByTestId("shell-copy").click();
+	await expect(page.getByTestId("toast-text")).toContainText("Could not copy");
+	await expect(page.getByTestId("shell-copy").locator("svg.lucide-check")).toHaveCount(0);
+	expect(errors).toEqual([]);
+});
+
 test("a page that may not open shells says so and asks for none", async ({ page }) => {
 	const opened: string[] = [];
 	page.on("websocket", (ws) =>

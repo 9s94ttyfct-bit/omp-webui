@@ -2,6 +2,7 @@ import { type MemoryDetail as Detail, MEMORY_CONTENT_MAX, type MemoryBank } from
 import { Archive, ArchiveRestore, ArrowLeft, CircleAlert, Copy, Pencil, Trash2 } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useT } from "../i18n/index.ts";
+import { copyText } from "../lib/clipboard.ts";
 import { fmtRelative, fmtTime, shortPath } from "../lib/format.ts";
 import { isGone, isStale, memoryApi, memoryErrorText } from "../lib/memory-api.ts";
 import {
@@ -235,10 +236,9 @@ export function MemoryDetail({
 	/** The memory moved on since the edit began (omp or another page changed it): saving is not offered until a choice is made. */
 	const conflict = edit !== undefined && movedOn(edit, shown);
 	const copyId = () => {
-		navigator.clipboard.writeText(shown.id).then(
-			() => toast("success", t("memory.copied")),
-			() => {},
-		);
+		void copyText(shown.id).then((copied) => {
+			if (copied) toast("success", t("memory.copied"));
+		});
 	};
 
 	return (

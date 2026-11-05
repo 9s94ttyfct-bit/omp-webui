@@ -541,6 +541,23 @@ test.describe("the preview", () => {
 		await expect(preview.getByTestId("file-copy-path")).toHaveAccessibleName("Path copied");
 		expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(join(proj, "src/app.ts"));
 	});
+
+	test("a copy of the path the browser refuses is said, and the button does not claim it was copied", async ({
+		page,
+	}) => {
+		await page.addInitScript(() => {
+			navigator.clipboard.writeText = () =>
+				Promise.reject(new DOMException("Document is not focused", "NotAllowedError"));
+		});
+		const errors: string[] = [];
+		page.on("pageerror", (e) => errors.push(e.message));
+		await openFiles(page);
+		const preview = await openFile(page, "src", "src/app.ts");
+		await preview.getByTestId("file-copy-path").click();
+		await expect(page.getByTestId("toast-text")).toContainText("Could not copy");
+		await expect(preview.getByTestId("file-copy-path")).toHaveAccessibleName("Copy path");
+		expect(errors).toEqual([]);
+	});
 });
 
 test.describe("the message box", () => {

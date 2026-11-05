@@ -3,6 +3,7 @@ import { Check, ChevronRight, Copy, Download, TriangleAlert } from "lucide-react
 import { useState } from "react";
 import "../i18n/later.ts";
 import { type MessageKey, useT } from "../i18n/index.ts";
+import { copyText } from "../lib/clipboard.ts";
 import { jobErrorText } from "../lib/error-text.ts";
 import { useApp } from "../store/app.ts";
 import { ompApi, useOmp } from "../store/omp.ts";
@@ -46,7 +47,8 @@ export function FirstRun() {
 		ompApi.cancel().catch((e: Error) => toast("error", t(failed, { error: e.message })));
 	};
 	const copy = (o: InstallOption) => {
-		void navigator.clipboard?.writeText(o.command).then(() => {
+		void copyText(o.command).then((copied) => {
+			if (!copied) return;
 			setCopied(o.id);
 			setTimeout(() => setCopied((c) => (c === o.id ? null : c)), 1500);
 		});

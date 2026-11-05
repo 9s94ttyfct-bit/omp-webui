@@ -98,6 +98,26 @@ test("without omp, the screen offers each way to install it with the command it 
 	}
 });
 
+test("a command's Copy the browser refuses says it could not copy, and shows no check", async ({ page }) => {
+	await page.addInitScript(() => {
+		navigator.clipboard.writeText = () =>
+			Promise.reject(new DOMException("Document is not focused", "NotAllowedError"));
+	});
+	const errors: string[] = [];
+	page.on("pageerror", (e) => errors.push(e.message));
+	const run = await serve();
+	try {
+		await page.goto(run.url);
+		const copy = page.getByTestId("install-option-homebrew").getByRole("button", { name: /^Copy:/ });
+		await copy.click();
+		await expect(page.getByTestId("toast-text")).toContainText("Could not copy");
+		await expect(copy.locator("svg.lucide-check")).toHaveCount(0);
+		expect(errors).toEqual([]);
+	} finally {
+		await run.stop();
+	}
+});
+
 test("a choice whose program is missing says so and cannot be installed", async ({ page }) => {
 	const run = await serve({ installers: false });
 	try {

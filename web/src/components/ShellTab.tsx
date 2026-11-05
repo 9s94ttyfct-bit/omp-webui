@@ -4,6 +4,7 @@ import { Check, Copy, Eraser, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import "../i18n/later.ts";
 import { t as translate, useT } from "../i18n/index.ts";
+import { useCopy } from "../lib/clipboard.ts";
 import { isApple } from "../lib/platform.ts";
 import {
 	clearShell,
@@ -60,7 +61,7 @@ export function ShellTab({
 	const host = useRef<HTMLDivElement>(null);
 	const termRef = useRef<XTerm | null>(null);
 	const [state, setState] = useState<ShellState>({ ptyId: null, status: "starting" });
-	const [copied, setCopied] = useState(false);
+	const { done: copied, copy } = useCopy();
 	useEffect(() => {
 		const el = host.current;
 		if (!el || !allowed) return;
@@ -149,10 +150,7 @@ export function ShellTab({
 					onClick={() => {
 						const term = termRef.current;
 						if (!term) return;
-						void navigator.clipboard.writeText(bufferText(term)).then(() => {
-							setCopied(true);
-							setTimeout(() => setCopied(false), 1200);
-						});
+						copy(bufferText(term));
 					}}
 				>
 					{copied ? <Check size={12} /> : <Copy size={12} />} {t("pages.termCopyOutput")}

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useT } from "../../i18n/index.ts";
+import { useCopy } from "../../lib/clipboard.ts";
 import { insertIntoComposer } from "../../lib/composer-bridge.ts";
 import { fmtBytes } from "../../lib/files-rows.ts";
 import { type FolderScope, folder } from "../../lib/folder-api.ts";
@@ -205,20 +206,13 @@ export function FilePreview({
 /** Copy `text`, and show that it was copied for a moment. */
 function CopyPath({ text }: { text: string }) {
 	const t = useT();
-	const [done, setDone] = useState(false);
-	const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-	useEffect(() => () => clearTimeout(timer.current), []);
+	const { done, copy } = useCopy();
 	return (
 		<IconButton
 			label={done ? t("files.pathCopied") : t("files.copyPath")}
 			size="sm"
 			data-testid="file-copy-path"
-			onClick={() => {
-				void navigator.clipboard.writeText(text);
-				setDone(true);
-				clearTimeout(timer.current);
-				timer.current = setTimeout(() => setDone(false), 1200);
-			}}
+			onClick={() => copy(text)}
 		>
 			{done ? <Check size={14} /> : <Copy size={14} />}
 		</IconButton>

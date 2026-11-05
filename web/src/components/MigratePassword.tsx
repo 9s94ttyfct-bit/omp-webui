@@ -2,6 +2,7 @@ import { MIGRATE_MIN_PASSWORD } from "@shared/migrate.ts";
 import { Check, CircleAlert, Copy, Sparkles } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { type MessageKey, useT } from "../i18n/index.ts";
+import { writeClipboard } from "../lib/clipboard.ts";
 import type * as GenerateApi from "../lib/password-generate.ts";
 import type * as StrengthApi from "../lib/password-strength.ts";
 import { useApp } from "../store/app.ts";
@@ -233,10 +234,7 @@ export function MadePassword({ password }: { password: string }) {
 					size="sm"
 					data-testid="migrate-password-copy"
 					onClick={() => {
-						navigator.clipboard.writeText(password).then(
-							() => setCopy("done"),
-							() => setCopy("failed"),
-						);
+						void writeClipboard(password).then((copied) => setCopy(copied ? "done" : "failed"));
 					}}
 				>
 					{copy === "done" ? <Check size={12} /> : <Copy size={12} />}{" "}

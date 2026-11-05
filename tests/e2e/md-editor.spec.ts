@@ -1,4 +1,4 @@
-import { readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { writeChatSession } from "../support/chat-session.ts";
@@ -196,6 +196,27 @@ test.describe("a file that changed on the computer", () => {
 		await expect(source(page)).not.toContainText("dropped");
 		await expect(page.getByTestId("md-save")).toBeDisabled();
 		expect(onDisk("shared.md")).toBe("# Shared\n\ntheirs, again\n");
+	});
+
+	test("is gone: Copy text says when the browser refuses the copy, for it is the way to keep the text", async ({
+		page,
+	}) => {
+		await page.addInitScript(() => {
+			navigator.clipboard.writeText = () =>
+				Promise.reject(new DOMException("Document is not focused", "NotAllowedError"));
+		});
+		const errors: string[] = [];
+		page.on("pageerror", (e) => errors.push(e.message));
+		write("doomed.md", "# Doomed\n");
+		await openFiles(page);
+		await openInEditor(page, "doomed.md");
+		await typeAtEnd(page, "\nunsaved\n");
+		unlinkSync(join(proj, "doomed.md"));
+		await expect(page.getByTestId("md-gone")).toBeVisible({ timeout: 10_000 });
+		await page.getByTestId("md-copy-text").click();
+		await expect(page.getByTestId("toast-text")).toContainText("Could not copy");
+		await expect(page.getByTestId("md-copy-text")).toHaveText("Copy text");
+		expect(errors).toEqual([]);
 	});
 });
 

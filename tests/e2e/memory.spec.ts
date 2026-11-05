@@ -267,6 +267,21 @@ test.describe
 			await expect(page.locator('[data-field="made-from"]')).toContainText("g-tabs");
 		});
 
+		test("a copy of a memory's id the browser refuses is said, not reported as copied", async ({ page }) => {
+			await page.addInitScript(() => {
+				navigator.clipboard.writeText = () =>
+					Promise.reject(new DOMException("Document is not focused", "NotAllowedError"));
+			});
+			const errors: string[] = [];
+			page.on("pageerror", (e) => errors.push(e.message));
+			await open(page);
+			await openMemory(page, "zebra", "g-zebra");
+			await detail(page).getByRole("button", { name: en.copyId }).click();
+			await expect(toast(page, "Could not copy")).toHaveCount(1);
+			await expect(toast(page, en.copied)).toHaveCount(0);
+			expect(errors).toEqual([]);
+		});
+
 		test("editing saves what was typed after a copy of the store, warns about a secret, and keeps an unsaved edit", async ({
 			page,
 		}) => {
@@ -651,6 +666,24 @@ test.describe
 			await expect(hint).toHaveText(zh.noneHint);
 			await expect(why).toHaveText(zh.addNoStore);
 			await expect(page.getByTestId("memory-not-used")).toHaveCount(0);
+		});
+
+		test("with no store yet, a copy of the command the browser refuses is said, and the button shows no check", async ({
+			page,
+		}) => {
+			await page.addInitScript(() => {
+				navigator.clipboard.writeText = () =>
+					Promise.reject(new DOMException("Document is not focused", "NotAllowedError"));
+			});
+			const errors: string[] = [];
+			page.on("pageerror", (e) => errors.push(e.message));
+			await page.route("**/api/memory", (route) => route.fulfill({ json: noStore("off") }));
+			await page.goto("/#/memory");
+			const copy = page.getByTestId("memory-enable").getByRole("button", { name: /^Copy/ });
+			await copy.click();
+			await expect(toast(page, "Could not copy")).toHaveCount(1);
+			await expect(copy.locator("svg.lucide-check")).toHaveCount(0);
+			expect(errors).toEqual([]);
 		});
 
 		test("it is in Chinese, with 对话 and not 会话", async ({ page }) => {

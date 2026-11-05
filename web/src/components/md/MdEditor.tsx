@@ -7,6 +7,7 @@ import { type ReactNode, startTransition, useEffect, useMemo, useRef, useState }
 import { en } from "../../i18n/files.ts";
 import { registerStrings, useT } from "../../i18n/index.ts";
 import { ApiError } from "../../lib/api.ts";
+import { useCopy } from "../../lib/clipboard.ts";
 import { eolOf, saveFailureText, saveFile } from "../../lib/file-save.ts";
 import { fmtBytes } from "../../lib/files-rows.ts";
 import { type FolderScope, folder } from "../../lib/folder-api.ts";
@@ -242,18 +243,9 @@ function ViewChoice({
 /** Copy the text being edited (a file that is gone cannot be saved: this is the way to keep it). */
 function CopyText({ text }: { text: () => string }) {
 	const t = useT();
-	const [done, setDone] = useState(false);
+	const { done, copy } = useCopy();
 	return (
-		<Button
-			size="sm"
-			data-testid="md-copy-text"
-			onClick={() => {
-				void navigator.clipboard.writeText(text()).then(() => {
-					setDone(true);
-					setTimeout(() => setDone(false), 1500);
-				});
-			}}
-		>
+		<Button size="sm" data-testid="md-copy-text" onClick={() => copy(text())}>
 			{done ? <Check size={13} /> : <Copy size={13} />} {done ? t("files.mdCopied") : t("files.mdCopyText")}
 		</Button>
 	);

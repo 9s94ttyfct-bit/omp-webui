@@ -12,6 +12,7 @@ import {
 import { Brain, Check, Copy, Lock, Plus, RefreshCw, Search } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n/index.ts";
+import { useCopy } from "../lib/clipboard.ts";
 import { fmtRelative } from "../lib/format.ts";
 import { useNarrowerThan } from "../lib/media.ts";
 import { memoryApi, memoryErrorText } from "../lib/memory-api.ts";
@@ -43,23 +44,14 @@ const ENABLE_COMMAND = "omp config set memory.backend mnemopi";
 /** The command that turns memory on, in a box with a Copy button, and the setting it writes in words. */
 function EnableMemory() {
 	const t = useT();
-	const [copied, setCopied] = useState(false);
-	const copy = () => {
-		navigator.clipboard?.writeText(ENABLE_COMMAND).then(
-			() => {
-				setCopied(true);
-				setTimeout(() => setCopied(false), 1500);
-			},
-			() => {},
-		);
-	};
+	const { done: copied, copy } = useCopy();
 	return (
 		<div data-testid="memory-enable">
 			<div className="mx-auto mt-3 flex items-center gap-2 rounded-lg border border-border bg-surface py-1.5 pr-1.5 pl-3 text-left">
 				<code className="min-w-0 flex-1 break-all font-mono text-xs" data-testid="memory-enable-command">
 					{ENABLE_COMMAND}
 				</code>
-				<IconButton label={`${t("common.copy")}: ${ENABLE_COMMAND}`} size="sm" onClick={copy}>
+				<IconButton label={`${t("common.copy")}: ${ENABLE_COMMAND}`} size="sm" onClick={() => copy(ENABLE_COMMAND)}>
 					{copied ? <Check size={13} /> : <Copy size={13} />}
 				</IconButton>
 			</div>

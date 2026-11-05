@@ -565,6 +565,24 @@ test("the password's strength is shown as it is typed: a word and a meter, what 
 	).toHaveCount(0);
 });
 
+test("on a page with no clipboard, a made password's Copy says to copy it by hand instead of throwing", async ({
+	page,
+}) => {
+	await page.addInitScript(() => {
+		Object.defineProperty(Navigator.prototype, "clipboard", { get: () => undefined });
+	});
+	const errors: string[] = [];
+	page.on("pageerror", (e) => errors.push(e.message));
+	await fakeMigrate(page);
+	await openSettings(page);
+	await page.getByTestId("migrate-whole").click();
+	await page.getByTestId("migrate-generate").click();
+	await page.getByTestId("migrate-password-copy").click();
+	await expect(page.getByTestId("migrate-password-made")).toContainText(en.copyFailed);
+	await expect(page.getByTestId("migrate-password-copy")).not.toContainText(en.copied);
+	expect(errors).toEqual([]);
+});
+
 test("a strong password can be made: random, shown in clear with the plain warning, copied, and typing over it hides it again", async ({
 	page,
 	context,

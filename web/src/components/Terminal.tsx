@@ -3,6 +3,7 @@ import { Check, Copy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import "../i18n/later.ts";
 import { type MessageKey, t as translate, useT } from "../i18n/index.ts";
+import { useCopy } from "../lib/clipboard.ts";
 import { errorText } from "../lib/error-text.ts";
 import { socket } from "../lib/ws.ts";
 import { bufferText, makeXterm } from "../lib/xterm-view.ts";
@@ -34,7 +35,7 @@ export function Terminal({
 	const host = useRef<HTMLDivElement>(null);
 	const termRef = useRef<XTerm | null>(null);
 	const [status, setStatus] = useState<{ key: keyof typeof STATUS_KEYS; code?: string }>({ key: "starting" });
-	const [copied, setCopied] = useState(false);
+	const { done: copied, copy } = useCopy();
 	useEffect(() => {
 		const el = host.current;
 		if (!el) return;
@@ -115,10 +116,7 @@ export function Terminal({
 					onClick={() => {
 						const term = termRef.current;
 						if (!term) return;
-						void navigator.clipboard.writeText(bufferText(term)).then(() => {
-							setCopied(true);
-							setTimeout(() => setCopied(false), 1200);
-						});
+						copy(bufferText(term));
 					}}
 				>
 					{copied ? <Check size={12} /> : <Copy size={12} />} {t("pages.termCopyOutput")}

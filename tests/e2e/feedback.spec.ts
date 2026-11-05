@@ -204,6 +204,22 @@ test("a long Chinese report is cut for the link, but Copy and Open put all of it
 	await expect(dialog.getByTestId("feedback-summary")).toHaveValue("很长的中文报告");
 });
 
+test("on a page with no clipboard, Copy says it could not copy instead of throwing", async ({ page }) => {
+	await page.addInitScript(() => {
+		Object.defineProperty(Navigator.prototype, "clipboard", { get: () => undefined });
+	});
+	const errors: string[] = [];
+	page.on("pageerror", (e) => errors.push(e.message));
+	await stubGitHub(page);
+	const dialog = await openFromSidebar(page);
+	await dialog.getByTestId("feedback-summary").fill("No clipboard");
+	await dialog.getByTestId("feedback-happened").fill("it broke");
+	await dialog.getByTestId("feedback-preview-button").click();
+	await dialog.getByTestId("feedback-copy").click();
+	await expect(dialog.getByRole("status").filter({ hasText: "Could not copy" })).toBeVisible();
+	expect(errors).toEqual([]);
+});
+
 test("the summary takes as many characters as fit the title after its prefix, and kinds switch without cutting it", async ({
 	page,
 }) => {
