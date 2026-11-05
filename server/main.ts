@@ -1155,7 +1155,7 @@ const remotePing = remotePingMs();
  * session would otherwise keep a shell on this machine for as long as the page stays connected (#548). The page connects
  * again, and Access either issues a new token or asks the person to log in.
  */
-function watchAccess(ws: Bun.ServerWebSocket<WsData>): void {
+function watchAccess<T extends WsData | ScreenWsData>(ws: Bun.ServerWebSocket<T>): void {
 	const remote = ws.data.remote;
 	if (!remote) return;
 	const check = () => {
@@ -2974,14 +2974,13 @@ const listen = (hostname: string, port: number) =>
 					return;
 				}
 				if (socket.data.kind === "screen") {
-					const data = socket.data;
+					const screen = socket as Bun.ServerWebSocket<ScreenWsData>;
+					const data = screen.data;
 					const out = new WsOutbox(socket);
 					data.out = out;
-					if (data.remote) {
-						data.ping = setInterval(() => socket.ping(), remotePing);
-						const left = Math.max(0, data.remote.validUntil - Date.now());
-						data.expiry = setTimeout(() => socket.close(ACCESS_EXPIRED, "Access session expired"), left);
-					}
+					// As a page's socket: the keepalive first, so that the close handler finds the interval to clear.
+					if (data.remote) data.ping = setInterval(() => socket.ping(), remotePing);
+					watchAccess(screen);
 					void browser
 						.screen({
 							sendText: (text) => out.send(text),

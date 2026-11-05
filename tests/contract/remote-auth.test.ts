@@ -107,9 +107,9 @@ async function remote(path: string, r: Remote = {}, body?: string): Promise<Resp
 	});
 }
 
-/** A WebSocket as a browser behind the tunnel opens it; null when the server refuses it. */
-async function remoteSocket(r: Remote = {}): Promise<WebSocket | null> {
-	const ws = new WebSocket(`${s.url.replace("http", "ws")}/ws`, {
+/** A WebSocket as a browser behind the tunnel opens it (`/ws`, or the Browser tab's `/ws/browser`); null when refused. */
+async function remoteSocket(r: Remote = {}, path = "/ws"): Promise<WebSocket | null> {
+	const ws = new WebSocket(`${s.url.replace("http", "ws")}${path}`, {
 		headers: await remoteHeaders(r),
 	} as unknown as string[]);
 	const opened = Promise.withResolvers<WebSocket | null>();
@@ -339,6 +339,21 @@ describe("the WebSocket", () => {
 
 	test("a local page is not affected: it still opens with its own origin and cookie", async () => {
 		const ws = await connect(s);
+		expect(ws.readyState).toBe(WebSocket.OPEN);
+		ws.close();
+	});
+
+	test("a remote Browser tab's socket whose Access token runs for a month stays open (#46)", async () => {
+		// A delay past 2^31-1 ms fires at once: the socket must not be closed as expired right after it opens. The server's
+		// answer to the tab's first watch (no browser is installed here: `unavailable`) comes after such a timer would have.
+		const jwt = await goodJwt({ exp: now() + 30 * 24 * 3600 });
+		const ws = (await remoteSocket({ jwt }, "/ws/browser")) as WebSocket;
+		expect(ws).not.toBeNull();
+		const outcome = Promise.withResolvers<string>();
+		ws.onclose = (ev) => outcome.resolve(`closed ${ev.code}`);
+		ws.onmessage = (ev) => outcome.resolve(`answered ${JSON.parse(String(ev.data)).t}`);
+		ws.send(JSON.stringify({ t: "watch", owner: "nobody", targetId: null, panel: { w: 800, h: 600 } }));
+		expect(await outcome.promise).toStartWith("answered");
 		expect(ws.readyState).toBe(WebSocket.OPEN);
 		ws.close();
 	});
