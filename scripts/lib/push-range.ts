@@ -6,8 +6,9 @@
  *   the refs git writes to the hook's stdin.
  * - rev-list arguments given (`origin/main..HEAD`): those.
  * - in GitHub Actions (`GITHUB_EVENT_PATH`): a push's commits (`before..after`; a new branch, or a `before` that is not
- *   in the clone after a force push, reads all of `after`'s history), or a pull request's (`base..head`). The checkout
- *   needs the history (`fetch-depth: 0`).
+ *   in the clone after a force push, reads all of `after`'s history), a pull request's (`base..head`), and for any other
+ *   event (a run by hand, the daily run) all of `GITHUB_SHA`'s history, so that a run started by hand on a commit checks
+ *   what a push's run would have. The checkout needs the history (`fetch-depth: 0`).
  * - otherwise: the commits of HEAD that no `origin` branch has yet (every commit, in a clone without `origin`).
  */
 import { spawnSync } from "node:child_process";
@@ -20,8 +21,16 @@ export function git(cwd: string, args: string[]): { code: number; out: string; e
 	return { code: r.status ?? 1, out: (r.stdout ?? "").trim(), err: (r.stderr ?? "").trim() };
 }
 
-/** The `git rev-list` arguments for a GitHub Actions event, or null when the event has no commits to read. */
-export function eventRange(cwd: string, eventName: string, event: Record<string, unknown>): string[] | null {
+/**
+ * The `git rev-list` arguments for a GitHub Actions event on commit `sha` (GITHUB_SHA), or null when the event has no
+ * commits to read (a deleted branch).
+ */
+export function eventRange(
+	cwd: string,
+	eventName: string,
+	event: Record<string, unknown>,
+	sha: string,
+): string[] | null {
 	if (eventName === "pull_request" || eventName === "pull_request_target") {
 		const pr = event.pull_request as { base: { sha: string }; head: { sha: string } };
 		return [`${pr.base.sha}..${pr.head.sha}`];
@@ -33,7 +42,8 @@ export function eventRange(cwd: string, eventName: string, event: Record<string,
 		if (!before || ZERO.test(before) || git(cwd, ["cat-file", "-e", `${before}^{commit}`]).code !== 0) return [after];
 		return [`${before}..${after}`];
 	}
-	return null;
+	if (!sha) throw new Error(`GITHUB_SHA is not set for this ${eventName}: there is no commit to read`);
+	return [sha];
 }
 
 /** The rev-list arguments for what a push adds to `remote`, from the lines git gives a pre-push hook. */
@@ -55,7 +65,7 @@ export function publishRange(cwd: string, args: string[]): { range: string[]; wh
 	if (args.length > 0) return { range: args, what: args.join(" ") };
 	if (process.env.GITHUB_ACTIONS && process.env.GITHUB_EVENT_PATH) {
 		const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
-		const range = eventRange(cwd, process.env.GITHUB_EVENT_NAME ?? "", event) ?? [];
+		const range = eventRange(cwd, process.env.GITHUB_EVENT_NAME ?? "", event, process.env.GITHUB_SHA ?? "") ?? [];
 		return { range, what: `this ${process.env.GITHUB_EVENT_NAME} (${range.join(" ") || "no commits"})` };
 	}
 	if (git(cwd, ["rev-parse", "--verify", "--quiet", "HEAD"]).code !== 0)

@@ -51,11 +51,11 @@ function check(args: string[] = [], env: Record<string, string> = {}, stdin?: st
 	return { code: r.exitCode, out: r.stdout.toString() + r.stderr.toString() };
 }
 
-/** Runs the script as GitHub Actions would for this event. */
-function checkEvent(name: string, event: unknown) {
+/** Runs the script as GitHub Actions would for this event, on `sha` (GITHUB_SHA, HEAD unless given). */
+function checkEvent(name: string, event: unknown, sha = git(["rev-parse", "HEAD"])) {
 	const file = join(base, "event.json");
 	writeFileSync(file, JSON.stringify(event));
-	return check([], { GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME: name, GITHUB_EVENT_PATH: file });
+	return check([], { GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME: name, GITHUB_EVENT_PATH: file, GITHUB_SHA: sha });
 }
 
 beforeEach(() => {
@@ -122,6 +122,17 @@ test("in GitHub Actions, a pull request reads base..head", () => {
 	const r = checkEvent("pull_request", { pull_request: { base: { sha: baseSha }, head: { sha: bad } } });
 	expect(r.code).toBe(1);
 	expect(r.out).toContain(bad.slice(0, 12));
+});
+
+test("in GitHub Actions, a run by hand or on a schedule reads all of the commit's history", () => {
+	commit(OTHER);
+	const head = commit();
+	for (const name of ["workflow_dispatch", "schedule"]) {
+		const r = checkEvent(name, { ref: "refs/heads/main" }, head);
+		expect(r.code, name).toBe(1);
+		expect(r.out).toContain(`author ${OTHER}`);
+		expect(r.out).toContain(`this ${name} (${head})`);
+	}
 });
 
 test("as a pre-push hook, each pushed ref's new commits are read, and a deleted ref is nothing", () => {
