@@ -125,7 +125,9 @@ test("Esc and Cancel close the editor and send nothing; so does saving the text 
 	await expect(chip(page, "keep me")).toHaveCount(1);
 });
 
-test("a message omp already took is not queued again; a notice says so", async ({ page }) => {
+test("a message omp already took is not queued again; a notice says so, and the edited text is in the composer", async ({
+	page,
+}) => {
 	const { tap } = await queued(page, "Queue edit gone", 0x73, { followUp: ["too late"] });
 	tap.answer("remove_queued_message", () => ({ ok: true, data: { removed: false } }));
 	tap.answer("prompt", () => ({ ok: true, data: { agentInvoked: true } }));
@@ -138,6 +140,21 @@ test("a message omp already took is not queued again; a notice says so", async (
 	await expect(page.getByTestId("queue-edit")).toHaveCount(0);
 	expect(sentOf(tap, "remove_queued_message")).toHaveLength(1);
 	expect(sentOf(tap, "prompt")).toHaveLength(0);
+	await expect(page.getByTestId("composer")).toHaveValue("too late, edited");
+});
+
+test("when the message cannot be withdrawn the edited text is in the composer", async ({ page }) => {
+	const { tap } = await queued(page, "Queue edit unreachable", 0x79, { followUp: ["cannot reach"] });
+	tap.answer("remove_queued_message", () => ({ ok: false, error: "the connection dropped" }));
+
+	await chip(page, "cannot reach").getByTestId("queue-edit-open").click();
+	await page.getByTestId("queue-edit-text").fill("cannot reach, edited");
+	await page.getByTestId("queue-edit-save").click();
+
+	await expect(page.getByTestId("toast").filter({ hasText: "the connection dropped" })).toBeVisible();
+	await expect(page.getByTestId("queue-edit")).toHaveCount(0);
+	expect(sentOf(tap, "prompt")).toHaveLength(0);
+	await expect(page.getByTestId("composer")).toHaveValue("cannot reach, edited");
 });
 
 test("when the edit cannot be queued its text is back in the composer", async ({ page }) => {

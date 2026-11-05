@@ -1039,8 +1039,9 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 
 	/**
 	 * Edit a queued message. omp has no edit command: the message is withdrawn (with its images) and the new text queued
-	 * again as the same kind, so it goes to the end of that queue. Already delivered, it is left alone. If queueing the
-	 * new text fails, the text comes back in the composer rather than being lost.
+	 * again as the same kind, so it goes to the end of that queue. Already delivered, it is left alone. Whenever the edit
+	 * does not end up in the queue (omp had taken the message, or withdrawing or queueing it failed), the edited text comes
+	 * back in the composer rather than being lost.
 	 */
 	const editQueued = useCallback(
 		async (text: string, queue: "steering" | "followUp", next: string) => {
@@ -1049,11 +1050,13 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 			try {
 				taken = await socket.act(liveId, { type: "remove_queued_message", message: text, queue });
 			} catch (e) {
-				toast("error", (e as Error).message);
+				toast("error", translate("chat.errQueueEdit", { error: (e as Error).message }));
+				setDraft(toDraft(next, []));
 				return;
 			}
 			if (!taken?.removed) {
 				toast("info", translate("chat.queueEditGone"));
+				setDraft(toDraft(next, []));
 				return;
 			}
 			const images = taken.images ?? [];
