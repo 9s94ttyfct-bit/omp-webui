@@ -413,16 +413,20 @@ test("a state file that was overwritten is written again whatever its size and t
 	state.set(true);
 	const file = join(dir, "L1.yml.risk");
 	const word = readFileSync(file, "utf8");
+	// A time of whole seconds, which every file system keeps exactly and a number of milliseconds holds exactly: the time put
+	// back below is then the very same. (A time of the file's own, in ms, does not survive the trip through seconds that
+	// `utimesSync` takes: on NTFS it came back up to 0.7 µs off.)
+	const time = Math.floor(statSync(file).mtimeMs / 1000);
+	utimesSync(file, time, time);
 	const before = statSync(file);
 	// The gate is switched off with a file of the same size, and the time it had put back: only its content differs.
 	const forged = '{"armed":false,"protect":["/"]}';
 	expect(word).toBe('{"armed":true,"protect":["/a"]}');
 	expect(forged.length).toBe(word.length);
 	writeFileSync(file, forged);
-	utimesSync(file, before.atimeMs / 1000, before.mtimeMs / 1000);
+	utimesSync(file, time, time);
 	expect(statSync(file).size).toBe(before.size);
-	// NTFS keeps times to 100 ns, so the time put back is the same to the microsecond, not to the last digit.
-	expect(statSync(file).mtimeMs).toBeCloseTo(before.mtimeMs, 3);
+	expect(statSync(file).mtimeMs).toBe(before.mtimeMs);
 	state.set(true);
 	expect(readFileSync(file, "utf8")).toBe(word);
 	// A file nobody touched is left alone.
