@@ -683,7 +683,7 @@ async function scenarioLong(ctx: Ctx): Promise<Samples> {
 		await scrollMetrics(tab, "long.scrollAll", out);
 		out["long.heap_mb"] = await heapUsedMb(cdp);
 		// What the server holds after serving the long conversation (what the family worker leaves behind shows here).
-		if (ctx.pid) out["server.long.footprint_mb"] = readFootprintKb(ctx.pid) / 1024;
+		out["server.long.footprint_mb"] = readFootprintKb(ctx.pid) / 1024;
 	} finally {
 		await tab.close();
 	}
@@ -941,7 +941,8 @@ async function runBench(): Promise<void> {
 		const ctx: Ctx = {
 			server,
 			world,
-			pid: 0,
+			// The server as started; scenarioServer updates it after its restart.
+			pid: listeningPid(Number(new URL(server.url).port)),
 			syncMarker: `${prefs.id}:${Number.MAX_SAFE_INTEGER}`,
 			notes: [],
 			browserCalMs: [],
