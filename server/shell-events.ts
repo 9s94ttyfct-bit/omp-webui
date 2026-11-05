@@ -78,7 +78,7 @@ export function shellCounts(infos: Iterable<LiveInfo>): ShellCounts {
 export type ShellMessage =
 	| ({ t: "state"; epoch: string } & ShellState)
 	| ({ t: "attention"; seq: number } & AttentionNotice)
-	/** The built-in browser's CEF was installed, updated or its data cleared: this computer's app restarts to take it. */
+	/** The built-in browser's CEF data is to be cleared (Settings › Browser › Clear): this computer's app restarts to do it. */
 	| { t: "browserRestart" };
 
 /** How many notices are kept for a reader that comes back. */

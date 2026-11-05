@@ -19,11 +19,12 @@ registerStrings("browser", en);
 
 /**
  * Settings › Browser (docs/agents/browser.md): whether the built-in browser is used at all (`ompw.browser`: off, no Browser
- * tab and no browser tool for the agents), whether it updates itself (`ompw.browserAutoUpdate`, on by default, with what
- * the last automatic check came to), which engine this server drives (CEF inside the Mac app, Chrome for Testing when
- * the server runs alone), the version installed and the newest one, Install / Update with progress and Cancel, and Clear
- * browser data and Uninstall, which ask first. The server decides who may manage it (`canManage`: this computer, or a page
- * signed in through Access); a page that may not sees the versions and no buttons. Under it, the size new pages are laid out at.
+ * tab and no browser tool for the agents), which engine this server drives and its version, and Clear browser data, which
+ * asks first. Chrome for Testing (the server runs it alone) also has whether it updates itself (`ompw.browserAutoUpdate`, on
+ * by default, with what the last automatic check came to), the newest version, Install / Update with progress and Cancel,
+ * and Uninstall; CEF comes with the Mac app and updates with it. The server decides who may manage it (`canManage`: this
+ * computer, or a page signed in through Access); a page that may not sees the versions and no buttons. Under it, the size
+ * new pages are laid out at.
  */
 export function BrowserSettings() {
 	const t = useT();
@@ -89,23 +90,25 @@ export function BrowserSettings() {
 					{t("browser.offNote")}
 				</p>
 			)}
-			<label className="flex cursor-pointer items-start gap-3 text-sm">
-				<input
-					type="checkbox"
-					className="mt-1 accent-[var(--accent)]"
-					data-testid="browser-auto-update"
-					checked={auto}
-					disabled={!state?.canManage}
-					onChange={(e) => {
-						setPref(PREF.browserAutoUpdate, e.target.checked ? null : "off");
-						setAuto(e.target.checked);
-					}}
-				/>
-				<span>
-					{t("browser.autoUpdateTitle")}
-					<span className="block text-xs text-muted">{t("browser.autoUpdateHint")}</span>
-				</span>
-			</label>
+			{state?.engine === "cft" ? (
+				<label className="flex cursor-pointer items-start gap-3 text-sm">
+					<input
+						type="checkbox"
+						className="mt-1 accent-[var(--accent)]"
+						data-testid="browser-auto-update"
+						checked={auto}
+						disabled={!state.canManage}
+						onChange={(e) => {
+							setPref(PREF.browserAutoUpdate, e.target.checked ? null : "off");
+							setAuto(e.target.checked);
+						}}
+					/>
+					<span>
+						{t("browser.autoUpdateTitle")}
+						<span className="block text-xs text-muted">{t("browser.autoUpdateHint")}</span>
+					</span>
+				</label>
+			) : null}
 			{state ? (
 				<>
 					<dl className="divide-y divide-border rounded-xl border border-border text-sm">
@@ -116,19 +119,25 @@ export function BrowserSettings() {
 							</dd>
 						</div>
 						<div className="flex justify-between gap-3 px-3 py-1.5">
-							<dt className="text-muted">{t("browser.installed")}</dt>
+							<dt className="text-muted">{t(cef ? "browser.version" : "browser.installed")}</dt>
 							<dd className="font-mono text-xs tabular-nums" data-testid="browser-installed">
 								{state.installed ? state.installed.version : t("browser.notInstalled")}
 							</dd>
 						</div>
-						<div className="flex justify-between gap-3 px-3 py-1.5">
-							<dt className="text-muted">{t("browser.newest")}</dt>
-							<dd className="font-mono text-xs tabular-nums" data-testid="browser-latest">
-								{state.latest ?? t("browser.newestUnknown")}
-							</dd>
-						</div>
+						{cef ? null : (
+							<div className="flex justify-between gap-3 px-3 py-1.5">
+								<dt className="text-muted">{t("browser.newest")}</dt>
+								<dd className="font-mono text-xs tabular-nums" data-testid="browser-latest">
+									{state.latest ?? t("browser.newestUnknown")}
+								</dd>
+							</div>
+						)}
 					</dl>
-					{newer ? (
+					{cef ? (
+						<p className="text-xs text-muted" data-testid="browser-cef-bundled">
+							{t("browser.cefBundled")}
+						</p>
+					) : newer ? (
 						<p className="text-xs" data-testid="browser-newer">
 							{t("browser.newer", { version: newer })}
 						</p>
@@ -137,7 +146,7 @@ export function BrowserSettings() {
 							{t("browser.upToDate")}
 						</p>
 					) : null}
-					{auto && state.autoCheck ? <AutoCheckLine check={state.autoCheck} cef={cef} /> : null}
+					{!cef && auto && state.autoCheck ? <AutoCheckLine check={state.autoCheck} /> : null}
 					{job ? (
 						<div
 							className="space-y-2 rounded-xl border border-border bg-bg-soft px-3 py-2.5"
@@ -205,37 +214,38 @@ export function BrowserSettings() {
 					) : null}
 					{state.canManage ? (
 						<>
-							<div className="flex flex-wrap gap-2">
-								{!state.installed ? (
+							{cef ? null : (
+								<div className="flex flex-wrap gap-2">
+									{!state.installed ? (
+										<Button
+											variant="primary"
+											disabled={job !== null || busy !== null}
+											data-testid="browser-install"
+											onClick={() => run("install", () => browserApi.install())}
+										>
+											{t("browser.install")}
+										</Button>
+									) : newer ? (
+										<Button
+											variant="primary"
+											disabled={job !== null || busy !== null}
+											data-testid="browser-update"
+											onClick={() => run("install", () => browserApi.install())}
+										>
+											{t("browser.update")}
+										</Button>
+									) : null}
 									<Button
-										variant="primary"
 										disabled={job !== null || busy !== null}
-										data-testid="browser-install"
-										onClick={() => run("install", () => browserApi.install())}
+										data-testid="browser-check"
+										onClick={() => run("check", () => browserApi.check())}
 									>
-										{t("browser.install")}
+										{busy === "check" ? <Spinner size={13} /> : null}
+										{t("browser.check")}
 									</Button>
-								) : newer ? (
-									<Button
-										variant="primary"
-										disabled={job !== null || busy !== null}
-										data-testid="browser-update"
-										onClick={() => run("install", () => browserApi.install())}
-									>
-										{t("browser.update")}
-									</Button>
-								) : null}
-								<Button
-									disabled={job !== null || busy !== null}
-									data-testid="browser-check"
-									onClick={() => run("check", () => browserApi.check())}
-								>
-									{busy === "check" ? <Spinner size={13} /> : null}
-									{t("browser.check")}
-								</Button>
-							</div>
-							{cef && newer ? <p className="text-xs text-muted">{t("browser.updateCefNote")}</p> : null}
-							<div className="space-y-1 border-t border-border pt-3">
+								</div>
+							)}
+							<div className={cx("space-y-1", !cef && "border-t border-border pt-3")}>
 								<div className="flex flex-wrap gap-2">
 									<Button
 										variant="outline"
@@ -245,7 +255,7 @@ export function BrowserSettings() {
 									>
 										{t("browser.clear")}
 									</Button>
-									{state.installed ? (
+									{state.installed && !cef ? (
 										<Button
 											variant="outline"
 											disabled={job !== null || busy !== null}
@@ -257,7 +267,7 @@ export function BrowserSettings() {
 									) : null}
 								</div>
 								<p className="text-xs text-muted">{t("browser.clearHint")}</p>
-								{state.installed ? <p className="text-xs text-muted">{t("browser.uninstallHint")}</p> : null}
+								{state.installed && !cef ? <p className="text-xs text-muted">{t("browser.uninstallHint")}</p> : null}
 							</div>
 						</>
 					) : (
@@ -280,7 +290,7 @@ export function BrowserSettings() {
 				<div data-testid={asking === "uninstall" ? "browser-uninstall-confirm" : "browser-clear-confirm"}>
 					<p className="text-sm">
 						{asking === "uninstall"
-							? t(cef ? "browser.uninstallBodyCef" : "browser.uninstallBodyCft")
+							? t("browser.uninstallBody")
 							: t(cef ? "browser.clearBodyCef" : "browser.clearBodyCft")}
 					</p>
 					<div className="mt-4 flex justify-end gap-2">
@@ -316,7 +326,7 @@ export function BrowserSettings() {
 }
 
 /** What the last automatic update check came to, and when (never an error toast: a failure waits for the next check). */
-function AutoCheckLine({ check, cef }: { check: BrowserAutoCheck; cef: boolean }) {
+function AutoCheckLine({ check }: { check: BrowserAutoCheck }) {
 	const t = useT();
 	const vars = { time: fmtTime(check.at), version: check.version ?? "", error: check.error ?? "" };
 	const text =
@@ -325,7 +335,7 @@ function AutoCheckLine({ check, cef }: { check: BrowserAutoCheck; cef: boolean }
 			: check.result === "waiting"
 				? t("browser.autoWaiting", vars)
 				: check.result === "updated"
-					? t(cef ? "browser.autoUpdatedCef" : "browser.autoUpdated", vars)
+					? t("browser.autoUpdated", vars)
 					: t("browser.autoUpToDate", vars);
 	return (
 		<p

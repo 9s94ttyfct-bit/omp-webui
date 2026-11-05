@@ -72,11 +72,12 @@ export class LazyBrowser {
 	constructor(private readonly opts: LazyBrowserOptions) {}
 
 	/**
-	 * Automatic updates (`autoupdate.ts`), the first look a minute from now. `wanted` says whether the person wants them now
-	 * (Settings › Browser: the switch on, and the browser not turned off). Nothing of the browser is loaded for a look while
-	 * nothing is installed.
+	 * Automatic updates of Chrome for Testing (`autoupdate.ts`), the first look a minute from now. `wanted` says whether the
+	 * person wants them now (Settings › Browser: the switch on, and the browser not turned off). Nothing of the browser is
+	 * loaded for a look while nothing is installed. None with CEF: the Mac app ships it, and it updates with the app.
 	 */
 	startAutoUpdate(wanted: () => boolean): void {
+		if (engineHere() === "cef") return;
 		this.#auto ??= new BrowserAutoUpdater({
 			wanted,
 			installer: async () => {
@@ -231,15 +232,12 @@ export class LazyBrowser {
 
 	/**
 	 * The conversation's CDP endpoint on `origin` (`browser.cdpUrl` of its omp), or null while the browser cannot be used:
-	 * not installed, or, with CEF, installed but not running in the app (before its restart, or it failed to load). Its omp
-	 * then uses its own hidden Chromium.
+	 * CfT is not installed, or the app's CEF is not connected (it failed to load, or has not said hello yet). Its omp then
+	 * uses its own hidden Chromium.
 	 */
 	async cdpUrlFor(owner: string, origin: string): Promise<string | null> {
 		const { installer, registry } = await this.service();
-		const usable =
-			installer.engine === "cef"
-				? installer.state(false).installed !== null && this.#link?.ready === true
-				: installer.executable() !== null;
+		const usable = installer.engine === "cef" ? this.#link?.ready === true : installer.executable() !== null;
 		return usable ? cdpUrlOf(origin, registry.tokenFor(owner)) : null;
 	}
 

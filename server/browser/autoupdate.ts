@@ -1,16 +1,16 @@
 import type { BrowserAutoCheck } from "../../shared/browser.ts";
 
 /**
- * Automatic updates of the built-in browser (Settings › Browser › "Update the built-in browser automatically",
- * `ompw.browserAutoUpdate`, on by default). While it is on, the browser is on and a version is installed, the server looks
- * for a newer one a minute after it starts and every 24 hours from then, where Update looks (`BrowserInstaller.autoUpdate`),
- * and downloads and checks a newer one in the background as Update does.
+ * Automatic updates of the built-in browser's Chrome for Testing (Settings › Browser › "Update the built-in browser
+ * automatically", `ompw.browserAutoUpdate`, on by default). While it is on, the browser is on and a version is installed, the
+ * server looks for a newer one a minute after it starts and every 24 hours from then, where Update looks
+ * (`BrowserInstaller.autoUpdate`), and downloads and checks a newer one in the background as Update does. The Mac app's CEF
+ * is not updated here: it comes with the app, and its version updates with the app.
  *
  * Chrome for Testing is switched to the new version only when no conversation uses the browser (`switchNow`): the engine
  * does not run, or no conversation's CDP connection is open, no Browser tab shows one of its pages, and nothing used it for
  * the last five minutes. Until then the look comes back every minute. The switch stops the engine, starts it again if it
- * ran, and removes the old version's folder. CEF is loaded in the app, so its new version is simply the one the app loads
- * from its next start, which removes the old one before it loads anything; the app is not asked to restart.
+ * ran, and removes the old version's folder.
  *
  * A failed look or download is logged once, shown in Settings (`BrowserState.autoCheck`), never as an error toast, and
  * tried again at the next look. The decisions are the pure functions below, so that they are tested apart from timers.
@@ -28,22 +28,16 @@ export const QUIET_MS = 5 * 60_000;
 const WAKE_MS = 5_000;
 
 /**
- * Orders two versions of one engine: CfT's are dotted numbers (`131.0.6778.85`); CEF's are its own dotted number, then
- * `+g<commit>` and `+chromium-<version>` (`131.2.7+g0d3d3a3+chromium-131.0.6778.205`), ordered by its own number and
- * then by Chromium's. Negative when `a` is older, 0 when the same, positive when newer.
+ * Orders two Chrome for Testing versions, dotted numbers (`131.0.6778.85`). Negative when `a` is older, 0 when the same,
+ * positive when newer.
  */
 export function compareVersions(a: string, b: string): number {
-	const own = compare(numbers(a.split("+")[0]), numbers(b.split("+")[0]));
-	return own !== 0 ? own : compare(numbers(chromiumOf(a)), numbers(chromiumOf(b)));
+	return compare(numbers(a), numbers(b));
 }
 
 /** Whether `candidate` is newer than `installed`. */
 export function isNewer(candidate: string, installed: string): boolean {
 	return compareVersions(candidate, installed) > 0;
-}
-
-function chromiumOf(version: string): string {
-	return /\+chromium-([\d.]+)/.exec(version)?.[1] ?? "";
 }
 
 function numbers(dotted: string): number[] {

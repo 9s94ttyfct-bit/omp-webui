@@ -65,14 +65,15 @@ export const en = {
 	engineCft: "Chrome for Testing (this server runs it)",
 	engineCef: "CEF (inside the Mac app)",
 	installed: "Installed",
+	version: "Version",
 	notInstalled: "Not installed",
+	cefBundled: "Comes with the app, and is updated with it.",
 	newest: "Newest",
 	newestUnknown: "Not looked up yet",
 	newer: "Version {version} is available.",
 	upToDate: "This is the newest version.",
 	check: "Check for a newer version",
 	update: "Update",
-	updateCefNote: "Updating restarts the app, and the Browser tabs start empty.",
 	cancel: "Cancel",
 	progressLabel: "Download progress",
 	jobInstall: "Installing…",
@@ -97,21 +98,18 @@ export const en = {
 	offNote: "The built-in browser is off. Agents have no browser tool.",
 	autoUpdateTitle: "Update the built-in browser automatically",
 	autoUpdateHint:
-		"Looks for a newer version when the server starts and once a day, and downloads it in the background. Chrome for Testing switches to it when no conversation is using the browser; the Mac app uses it from its next start.",
+		"Looks for a newer version when the server starts and once a day, downloads it in the background, and switches to it when no conversation is using the browser.",
 	autoUpToDate: "Up to date, checked {time}.",
 	autoWaiting:
 		"Version {version} is downloaded (checked {time}); it is used once no conversation is using the browser.",
 	autoUpdated: "Updated to {version}, checked {time}.",
-	autoUpdatedCef: "Updated to {version} (checked {time}); the app uses it from its next start.",
 	autoFailed: "Last check failed ({time}): {error}. It is tried again at the next check.",
 	uninstall: "Uninstall",
 	uninstallHint:
 		"Removes the browser and everything it kept: logins, cookies, storage and the cache. You can install it again.",
 	uninstallTitle: "Uninstall the browser?",
-	uninstallBodyCft:
+	uninstallBody:
 		"The browser, its logins, cookies, storage and cache are deleted, and its pages close. Conversations' agents use omp's own browser until you install it again or turn the browser off.",
-	uninstallBodyCef:
-		"The browser, its logins, cookies, storage and cache are deleted. The app restarts to do it, and the Browser tabs start empty. Conversations' agents use omp's own browser until you install it again or turn the browser off.",
 	uninstallConfirm: "Uninstall",
 	sizeTitle: "Size of new pages",
 	sizeHint: "The desktop layout a page gets: the agent's screenshots and every screen show the same layout.",

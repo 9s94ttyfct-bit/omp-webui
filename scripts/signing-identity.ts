@@ -41,7 +41,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 /** The certificate's name, as `security find-identity` lists it. */
 export const IDENTITY_NAME = "omp-webui local signing";
@@ -341,51 +341,64 @@ export interface SignOptions {
 	identifier?: string;
 }
 
+/** The CFBundleIdentifier an XML Info.plist names. */
+function identifierIn(plist: string): string {
+	const id = /<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/.exec(readFileSync(plist, "utf8"))?.[1];
+	if (!id) throw new Error(`${plist} names no CFBundleIdentifier`);
+	return id;
+}
+
 /**
- * The helper apps in the bundle's Contents/Frameworks (CEF's, see scripts/app.ts) with their own bundle identifiers: `--deep`
- * would sign them under the app's identifier, which their Info.plist does not say.
+ * The code nested in the bundle's Contents/Frameworks (CEF's, see scripts/app.ts), in the order it is signed, inside out,
+ * each with the identifier it is signed under: every framework's dynamic libraries (CEF's `Libraries/`, its sandbox among
+ * them; a library's file name), the framework (its Info.plist's), then the helper apps (each Info.plist's: `--deep` would
+ * sign them under the app's identifier, which their Info.plist does not say).
  */
-function helperBundles(path: string): { path: string; identifier: string }[] {
+export function nestedCode(path: string): { path: string; identifier: string }[] {
 	const frameworks = join(path, "Contents", "Frameworks");
 	if (!existsSync(frameworks)) return [];
-	return readdirSync(frameworks)
+	const names = readdirSync(frameworks).sort();
+	const libraries = names
+		.filter((name) => name.endsWith(".framework"))
+		.flatMap((name) => {
+			const framework = join(frameworks, name);
+			const dylibs = [...new Bun.Glob("**/*.dylib").scanSync({ cwd: framework, followSymlinks: false })].sort();
+			return [
+				...dylibs.map((dylib) => ({ path: join(framework, dylib), identifier: basename(dylib, ".dylib") })),
+				{ path: framework, identifier: identifierIn(join(framework, "Resources", "Info.plist")) },
+			];
+		});
+	const helpers = names
 		.filter((name) => name.endsWith(".app"))
 		.map((name) => {
 			const helper = join(frameworks, name);
-			const plist = readFileSync(join(helper, "Contents", "Info.plist"), "utf8");
-			const id = /<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/.exec(plist)?.[1];
-			if (!id) throw new Error(`${helper} names no CFBundleIdentifier`);
-			return { path: helper, identifier: id };
+			return { path: helper, identifier: identifierIn(join(helper, "Contents", "Info.plist")) };
 		});
+	return [...libraries, ...helpers];
 }
 
 /**
  * Sign the bundle at `path`: with the identity and the requirement above, or ad hoc (with a warning) when there is no
- * identity. Returns the identity's SHA-1, or null when it was signed ad hoc. Everything nested is signed with it (`--deep`);
- * then the helper apps again, each under its own identifier, and the bundle once more over them.
+ * identity. Returns the identity's SHA-1, or null when it was signed ad hoc. Inside out, each with the same identity and
+ * its own identifier: the code nested in it (`nestedCode`), then the bundle over it.
  */
 export function signBundle(path: string, options: SignOptions = {}): { identity: string | null } {
 	const keychain = options.keychain ?? SIGNING_KEYCHAIN;
 	const identifier = options.identifier ?? BUNDLE_ID;
-	const helpers = helperBundles(path);
+	const nested = nestedCode(path);
 	const sha1 = findIdentity(keychain);
 	if (sha1 === null) {
 		(options.warn ?? console.warn)(
 			`WARNING: no code-signing identity named "${IDENTITY_NAME}": ${path} is signed ad-hoc, so its designated requirement is this build's hash and macOS forgets its permissions (notifications, screen recording, accessibility) at the next update. Run \`bun scripts/signing-identity.ts\` once and build again.`,
 		);
-		must(["codesign", "--force", "--deep", "--sign", "-", path]);
-		if (helpers.length > 0) {
-			for (const helper of helpers)
-				must(["codesign", "--force", "--sign", "-", "--identifier", helper.identifier, helper.path]);
-			must(["codesign", "--force", "--sign", "-", path]);
-		}
+		for (const code of nested) must(["codesign", "--force", "--sign", "-", "--identifier", code.identifier, code.path]);
+		must(["codesign", "--force", "--sign", "-", path]);
 		return { identity: null };
 	}
-	const signWith = (target: string, id: string, deep: boolean) =>
+	const signWith = (target: string, id: string) =>
 		must([
 			"codesign",
 			"--force",
-			...(deep ? ["--deep"] : []),
 			"--sign",
 			sha1,
 			"--identifier",
@@ -399,11 +412,8 @@ export function signBundle(path: string, options: SignOptions = {}): { identity:
 	secureKeychain(keychain);
 	unlock(keychain);
 	try {
-		signWith(path, identifier, true);
-		if (helpers.length > 0) {
-			for (const helper of helpers) signWith(helper.path, helper.identifier, false);
-			signWith(path, identifier, false);
-		}
+		for (const code of nested) signWith(code.path, code.identifier);
+		signWith(path, identifier);
 	} finally {
 		// Locked again right away, also when the signing failed: an open keychain is a key anyone can use.
 		lock(keychain);

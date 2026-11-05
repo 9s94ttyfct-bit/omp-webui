@@ -24,21 +24,13 @@ import type { BrowserAutoCheck } from "../../shared/browser.ts";
 
 const HOUR = 60 * 60_000;
 
-test("versions are ordered by their numbers, CEF's by its own and then by Chromium's", () => {
+test("Chrome for Testing's versions are ordered by their numbers", () => {
 	expect(isNewer("131.0.6778.85", "131.0.6778.9")).toBe(true);
 	expect(isNewer("131.0.6778.9", "131.0.6778.85")).toBe(false);
 	expect(isNewer("131.0.6778.85", "131.0.6778.85")).toBe(false);
 	expect(isNewer("132.0.0.0", "131.9.9999.99")).toBe(true);
-	// CEF: its own number first, whatever the commit says.
-	expect(isNewer("131.2.7+g0000000+chromium-131.0.6778.205", "131.2.10+gfffffff+chromium-131.0.6778.205")).toBe(false);
-	expect(isNewer("131.3.1+gaaaaaaa+chromium-131.0.6778.205", "131.2.10+gfffffff+chromium-131.0.6778.205")).toBe(true);
-	// The same CEF number on a newer Chromium is newer.
-	expect(
-		compareVersions("131.2.7+gaaaaaaa+chromium-131.0.6778.264", "131.2.7+gbbbbbbb+chromium-131.0.6778.205"),
-	).toBeGreaterThan(0);
-	expect(compareVersions("131.2.7+gaaaaaaa+chromium-131.0.6778.205", "131.2.7+gbbbbbbb+chromium-131.0.6778.205")).toBe(
-		0,
-	);
+	expect(compareVersions("131.0.6778.85", "131.0.6778.85")).toBe(0);
+	expect(compareVersions("131.0.6778", "131.0.6778.1")).toBeLessThan(0);
 });
 
 test("a check is due at the first look and then only once 24 hours have passed", () => {

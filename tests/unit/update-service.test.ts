@@ -747,7 +747,10 @@ test.skipIf(!mac)(
 	async () => {
 		const w = world({
 			onSignal: (x) => {
-				writeFileSync(join(`${x.bundle}.updating`, "Contents", "Resources.txt"), "changed after the server checked it");
+				writeFileSync(
+					join(`${x.bundle}.updating`, "Contents", "Resources", "salt.txt"),
+					"changed after the server checked it",
+				);
 				process.kill(x.app.pid, "SIGKILL");
 			},
 		});

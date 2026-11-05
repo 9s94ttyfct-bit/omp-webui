@@ -4,18 +4,22 @@
  *
  *   Contents/MacOS/omp-webui          Swift/AppKit shell with a WebKit window (macos/*.swift), with the built-in
  *                                     browser's CEF host linked in (macos/cef/, CEF's C++ wrapper from third_party/cef)
- *   Contents/Frameworks/omp-webui Helper*.app  CEF's helper processes (renderer, GPU, plugin, the rest)
+ *   Contents/Frameworks/Chromium Embedded Framework.framework  CEF itself, the build third_party/cef/cef-build.json pins
+ *                                     (scripts/lib/cef-dist.ts downloads it once into .tmp/), where Chrome's sandbox lets
+ *                                     the helpers read it
+ *   Contents/Frameworks/omp-webui Helper*.app  CEF's helper processes (renderer, GPU, plugin, the rest), sandboxed
  *   Contents/Resources/omp-webui-server  the Bun server compiled with its runtime (no bun/node needed)
  *   Contents/Resources/web/           the built web UI
  *
- * omp is not bundled: the shell finds the installed one at launch. Nor is CEF itself: the server installs the framework
- * into the data folder when the person asks for the browser (docs/agents/browser.md), and the app loads it from there.
+ * omp is not bundled: the shell finds the installed one at launch. Everything is signed inside out with one identity
+ * (`signBundle`): the framework's libraries and the framework, the helpers, then the app.
  */
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { availableParallelism, tmpdir } from "node:os";
 import { join } from "node:path";
 import pkg from "../package.json";
 import { readMaster, renderIcon } from "./icons.ts";
+import { cefFramework, FRAMEWORK } from "./lib/cef-dist.ts";
 import { encodePng } from "./lib/png.ts";
 import { serverCompileArgv } from "./lib/server-compile.ts";
 import { killTree, onShutdown } from "./lib/shutdown.ts";
@@ -227,6 +231,12 @@ try {
 `,
 		);
 	}
+	// CEF's framework of the pinned build, in CEF's standard place: the helpers' sandbox lets them read only the app's bundle.
+	const cefDist = await cefFramework(root, cefVersion, cefApi);
+	cpSync(join(cefDist, FRAMEWORK), join(contents, "Frameworks", FRAMEWORK), {
+		recursive: true,
+		verbatimSymlinks: true,
+	});
 
 	// Icon: macos/icon.png (1024 px, the shape on Apple's 824 px grid, transparent around it) → iconset → .icns, each
 	// size rendered the way scripts/icons.ts renders the web's. `readMaster` refuses an opaque corner: it would show as

@@ -15,7 +15,7 @@ enum ShellMessage: Equatable {
 	case state(ShellState, epoch: String)
 	/// A conversation needs somebody (a notification to show); `seq` numbers the notices of an epoch from 1.
 	case attention(Banner, seq: Int)
-	/// The built-in browser's engine changed (a CEF install, update or Clear, server/browser/install.ts): the app is to start again.
+	/// The built-in browser's profile is to be cleared (Settings › Browser › Clear, server/browser/install.ts): the app is to start again.
 	case browserRestart
 }
 

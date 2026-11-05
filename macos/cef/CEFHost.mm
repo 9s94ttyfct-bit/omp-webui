@@ -15,18 +15,18 @@
 #include "include/cef_focus_handler.h"
 #include "include/cef_life_span_handler.h"
 #include "include/cef_parser.h"
+#include "include/cef_version.h"
 #include "include/wrapper/cef_library_loader.h"
 
-// What the feasibility spike (Task 1) proved, in the app's shape: the framework is loaded from the data folder
-// (`cef_load_library`), CEF runs on the app's own run loop (external message pump), the helpers are the app's
-// "omp-webui Helper" bundles and are told where the framework is, pages are windowed CefBrowsers whose views can move
-// between windows and keep running in a hidden one, and CDP goes through each page's DevTools channel. A CDP message is
-// never sent from inside a DevTools callback (Chromium's observer lists refuse re-entry): every send is posted.
+// What the feasibility spike (Task 1) proved, in the app's shape: the framework the app ships in Contents/Frameworks is
+// loaded at run time (`cef_load_library`, as CEF's sandbox needs), CEF runs on the app's own run loop (external message
+// pump), the helpers are the app's "omp-webui Helper" bundles and run in Chrome's sandbox (helper.mm), pages are windowed
+// CefBrowsers whose views can move between windows and keep running in a hidden one, and CDP goes through each page's
+// DevTools channel. A CDP message is never sent from inside a DevTools callback (Chromium's observer lists refuse
+// re-entry): every send is posted.
 
 namespace {
 
-/// The folder that holds "Chromium Embedded Framework.framework".
-std::string gFramework;
 bool gRunning = false;
 /// Where every page's view is made and parked: a borderless window that is never ordered in.
 NSWindow* gHidden = nil;
@@ -261,11 +261,6 @@ class App : public CefApp, public CefBrowserProcessHandler {
     line->AppendSwitchWithValue("enable-features", "WebMCP");
   }
 
-  // The helpers are the app's own bundles, not CEF's; each is told where the framework is.
-  void OnBeforeChildProcessLaunch(CefRefPtr<CefCommandLine> line) override {
-    line->AppendSwitchWithValue("ompw-framework", gFramework);
-  }
-
   // CEF runs on the app's run loop: it says when it next wants a turn.
   void OnScheduleMessagePumpWork(int64_t delay_ms) override {
     int64_t delay = delay_ms < 0 ? 0 : delay_ms;
@@ -285,25 +280,24 @@ NSError* failure(NSString* text) {
 
 @implementation CEFHost
 
-+ (BOOL)startWithFramework:(NSString*)frameworkDir profile:(NSString*)profileDir error:(NSError**)error {
++ (NSString*)version {
+  return @CEF_VERSION;
+}
+
++ (BOOL)startWithProfile:(NSString*)profileDir error:(NSError**)error {
   if (gRunning) return YES;
-  gFramework = frameworkDir.UTF8String;
-  std::string lib = gFramework + "/Chromium Embedded Framework.framework/Chromium Embedded Framework";
-  if (!cef_load_library(lib.c_str())) {
-    if (error) *error = failure([NSString stringWithFormat:@"Could not load %s", lib.c_str()]);
+  NSString* frameworks = NSBundle.mainBundle.privateFrameworksPath;
+  NSString* lib = [frameworks stringByAppendingPathComponent:@"Chromium Embedded Framework.framework/Chromium Embedded Framework"];
+  if (!cef_load_library(lib.fileSystemRepresentation)) {
+    if (error) *error = failure([NSString stringWithFormat:@"Could not load %@", lib]);
     return NO;
   }
-  NSString* bundle = NSBundle.mainBundle.bundlePath;
-  NSString* helper =
-      [bundle stringByAppendingPathComponent:@"Contents/Frameworks/omp-webui Helper.app/Contents/MacOS/omp-webui Helper"];
+  NSString* helper = [frameworks stringByAppendingPathComponent:@"omp-webui Helper.app/Contents/MacOS/omp-webui Helper"];
   CefSettings settings;
-  settings.no_sandbox = 1;
   settings.external_message_pump = 1;
   settings.persist_session_cookies = 1;
   settings.remote_debugging_port = 0;
   settings.log_severity = LOGSEVERITY_WARNING;
-  CefString(&settings.main_bundle_path) = bundle.UTF8String;
-  CefString(&settings.framework_dir_path) = gFramework + "/Chromium Embedded Framework.framework";
   CefString(&settings.browser_subprocess_path) = helper.UTF8String;
   CefString(&settings.root_cache_path) = profileDir.UTF8String;
   CefString(&settings.cache_path) = profileDir.UTF8String;

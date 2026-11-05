@@ -1,7 +1,7 @@
-// The built-in browser's engine inside the Mac app: CEF, loaded from the version the server installed into the app's data
-// folder (`<data>/browser/cef/<version>/`, docs/agents/browser.md). Every page is a windowed CefBrowser whose view lives
-// in a hidden window until the Browser tab places it (macos/browser.swift). The server drives the pages over CDP, which
-// passes through here (`sendCdp`, `setCdpObserver`): no debugging port is ever opened.
+// The built-in browser's engine inside the Mac app: CEF, the framework the app ships in Contents/Frameworks
+// (scripts/app.ts), its helper processes in Chrome's macOS sandbox (helper.mm; docs/agents/browser.md). Every page is a
+// windowed CefBrowser whose view lives in a hidden window until the Browser tab places it (macos/browser.swift). The server
+// drives the pages over CDP, which passes through here (`sendCdp`, `setCdpObserver`): no debugging port is ever opened.
 //
 // Also Swift's bridging header (`swiftc -import-objc-header`): nothing here may need C++.
 #import <Cocoa/Cocoa.h>
@@ -12,9 +12,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface CEFHost : NSObject
 
-/// Load the framework in `frameworkDir` (the folder that holds "Chromium Embedded Framework.framework") and start CEF
-/// with its profile in `profileDir`. NO, with `error` set, when it cannot be loaded or started; once only per process.
-+ (BOOL)startWithFramework:(NSString*)frameworkDir profile:(NSString*)profileDir error:(NSError**)error;
+/// The CEF version the app ships (the one it is built against, third_party/cef).
++ (NSString*)version;
+/// Load the framework from the app's Contents/Frameworks and start CEF with its profile in `profileDir`. NO, with `error`
+/// set, when it cannot be loaded or started; once only per process.
++ (BOOL)startWithProfile:(NSString*)profileDir error:(NSError**)error;
 /// Whether CEF runs in this process.
 + (BOOL)running;
 /// Close every page and stop CEF (at quit). Waits up to a few seconds for the pages to close.

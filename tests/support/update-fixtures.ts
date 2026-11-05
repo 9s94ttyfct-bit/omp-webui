@@ -67,8 +67,9 @@ interface BundleOptions {
 function makeBundle(binary: string, dest: string, options: BundleOptions = {}): string {
 	const app = join(dest, "omp-webui.app");
 	mkdirSync(join(app, "Contents", "MacOS"), { recursive: true });
+	mkdirSync(join(app, "Contents", "Resources"), { recursive: true });
 	cpSync(binary, join(app, "Contents", "MacOS", "omp-webui"));
-	writeFileSync(join(app, "Contents", "Resources.txt"), options.salt ?? "");
+	writeFileSync(join(app, "Contents", "Resources", "salt.txt"), options.salt ?? "");
 	writeFileSync(
 		join(app, "Contents", "Info.plist"),
 		`<?xml version="1.0" encoding="UTF-8"?>
@@ -184,7 +185,8 @@ async function makeFixtures(
 		const identity = variant === "otherSigner" ? keychainB : keychainA;
 		if (variant === "adHoc") signBundle(app, { keychain: join(dir, "none.keychain-db"), warn: () => {} });
 		else signBundle(app, { keychain: identity, identifier: bundle.id });
-		if (variant === "tampered") writeFileSync(join(app, "Contents", "Resources.txt"), "changed after it was signed");
+		if (variant === "tampered")
+			writeFileSync(join(app, "Contents", "Resources", "salt.txt"), "changed after it was signed");
 		if (variant === "quarantined") {
 			Bun.spawnSync(["xattr", "-w", "com.apple.quarantine", "0081;5f5e1000;Safari;", app]);
 			Bun.spawnSync([

@@ -202,7 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 		if restartingForBrowser { relaunchWhenGone() }
 	}
 
-	/// The built-in browser's engine changed (a CEF install, update or Clear): it is loaded once per run of the app, so the app
+	/// The built-in browser's profile is to be cleared (Settings › Browser › Clear): CEF is loaded once per run of the app, so the app
 	/// starts again. That is a quit like ⌘Q's without the choice of the background: it asks first while a conversation is still
 	/// working (paused ones and ones waiting out a usage limit stay, as on any quit), and nothing happens when the person says
 	/// Cancel (Settings › Browser still says the app has to restart).
@@ -563,7 +563,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 		// looks for omp, which the web UI offers to install when there is none.
 		env["OMP_WEBUI_LOGIN_SHELL"] = env["SHELL"] ?? "/bin/zsh"
 		env["OMP_WEBUI_DATA_DIR"] = dataDir.path
-		// The built-in browser of the app is CEF (macos/browser.swift), which the server installs here and drives through the app.
+		// The built-in browser of the app is CEF (macos/browser.swift), which the app ships and the server drives through the app.
 		env["OMP_WEBUI_BROWSER_ENGINE"] = "cef"
 		env["OMP_WEBUI_DIST"] = resources.appendingPathComponent("web").path
 		env["OMP_WEBUI_PORT"] = env["OMP_WEBUI_PORT"] ?? "7878"
@@ -875,7 +875,7 @@ if let running = runningInstance() {
 	exit(0)
 }
 
-// The built-in browser's engine, when one is installed: started before the run loop, as CEF wants (macos/browser.swift).
+// The built-in browser's engine: started before the run loop, as CEF wants (macos/browser.swift).
 BrowserEngine.start(dataDir: appDataDirectory())
 
 let delegate = AppDelegate()

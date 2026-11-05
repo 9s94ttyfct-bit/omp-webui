@@ -59,7 +59,7 @@ export function installerPlatformOf(
 	return "darwin";
 }
 
-/** The largest installer taken at its word (the app's own is about 100 MB): a release that lists more is refused. */
+/** The largest installer taken at its word (the app's own is about 190 MB with CEF): a release that lists more is refused. */
 export const MAX_INSTALLER_BYTES = 500 * 1024 * 1024;
 
 /**

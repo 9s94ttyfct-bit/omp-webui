@@ -9,6 +9,7 @@ import {
 	findIdentity,
 	isKeychainLocked,
 	keychainPassword,
+	nestedCode,
 	parseIdentities,
 	passwordFileFor,
 	requirementFor,
@@ -35,8 +36,9 @@ let hello: string;
 function bundle(name: string, salt: string): string {
 	const app = join(dir, name, "omp-webui.app");
 	mkdirSync(join(app, "Contents", "MacOS"), { recursive: true });
+	mkdirSync(join(app, "Contents", "Resources"), { recursive: true });
 	cpSync(hello, join(app, "Contents", "MacOS", "omp-webui"));
-	writeFileSync(join(app, "Contents", "Resources.txt"), salt);
+	writeFileSync(join(app, "Contents", "Resources", "salt.txt"), salt);
 	writeFileSync(
 		join(app, "Contents", "Info.plist"),
 		`<?xml version="1.0" encoding="UTF-8"?>
@@ -159,6 +161,59 @@ test.skipIf(!mac)("each helper app is signed under its own identifier, and the b
 	const adHoc = bundleWithHelpers("helpers-ad-hoc");
 	expect(signBundle(adHoc.app, { keychain: noKeychain, warn: () => {} }).identity).toBeNull();
 	for (const helper of adHoc.helpers) expect(signedIdentifier(helper.path)).toBe(helper.id);
+	expect(Bun.spawnSync(["codesign", "--verify", "--deep", "--strict", adHoc.app]).exitCode).toBe(0);
+});
+
+/**
+ * `bundleWithHelpers`, with a framework in Contents/Frameworks as CEF's is (scripts/app.ts): its binary, and a dynamic library
+ * in its `Libraries/` (CEF's sandbox is one), each a compiled library.
+ */
+function bundleWithFramework(name: string): { app: string; framework: string; library: string } {
+	const { app } = bundleWithHelpers(name);
+	const framework = join(app, "Contents", "Frameworks", "Test Framework.framework");
+	mkdirSync(join(framework, "Libraries"), { recursive: true });
+	mkdirSync(join(framework, "Resources"), { recursive: true });
+	writeFileSync(join(dir, "lib.c"), `int ${name.replace(/\W/g, "_")}(void){return 1;}\n`);
+	const library = join(framework, "Libraries", "libtest_sandbox.dylib");
+	for (const out of [join(framework, "Test Framework"), library]) {
+		const cc = Bun.spawnSync(["cc", "-dynamiclib", "-o", out, join(dir, "lib.c")], { stderr: "pipe" });
+		if (cc.exitCode !== 0) throw new Error(`cc: ${cc.stderr.toString()}`);
+	}
+	writeFileSync(
+		join(framework, "Resources", "Info.plist"),
+		`<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>org.example.framework</string>
+<key>CFBundleExecutable</key><string>Test Framework</string>
+<key>CFBundlePackageType</key><string>FMWK</string>
+</dict></plist>
+`,
+	);
+	return { app, framework, library };
+}
+
+test.skipIf(!mac)("a framework in the bundle is signed inside out with the identity, its libraries first", () => {
+	const sha = ensureIdentity(keychain);
+	const { app, framework, library } = bundleWithFramework("framework");
+	expect(nestedCode(app).map((code) => code.path)).toEqual([
+		library,
+		framework,
+		join(app, "Contents", "Frameworks", "omp-webui Helper (GPU).app"),
+		join(app, "Contents", "Frameworks", "omp-webui Helper.app"),
+	]);
+	expect(signBundle(app, { keychain }).identity).toBe(sha);
+	expect(signedIdentifier(framework)).toBe("org.example.framework");
+	expect(designatedRequirementOf(framework)).toBe(requirementFor(sha, "org.example.framework"));
+	expect(designatedRequirementOf(library)).toBe(requirementFor(sha, "libtest_sandbox"));
+	expect(designatedRequirementOf(app)).toBe(requirementFor(sha));
+	const verified = Bun.spawnSync(["codesign", "--verify", "--deep", "--strict", app], { stderr: "pipe" });
+	expect(verified.stderr.toString()).toBe("");
+	expect(verified.exitCode).toBe(0);
+
+	// Ad hoc too: every piece is signed, and the whole verifies.
+	const adHoc = bundleWithFramework("framework-ad-hoc");
+	expect(signBundle(adHoc.app, { keychain: noKeychain, warn: () => {} }).identity).toBeNull();
+	expect(signedIdentifier(adHoc.framework)).toBe("org.example.framework");
 	expect(Bun.spawnSync(["codesign", "--verify", "--deep", "--strict", adHoc.app]).exitCode).toBe(0);
 });
 
