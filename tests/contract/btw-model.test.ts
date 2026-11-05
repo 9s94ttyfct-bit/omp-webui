@@ -78,14 +78,18 @@ beforeAll(async () => {
 	argvLog = join(scratch, "argv.log");
 	const wrapper = join(scratch, "omp");
 	// Every omp is noted. A process that answers a side question (`--mode rpc`) is not replaced by omp (`exec`): once omp has
-	// ended, the modes of everything in the folder of its copy are written down, before the server removes it. `stat`
-	// spells "octal permission bits and name" differently on BSD (macOS) and GNU (Linux).
+	// ended, the modes of everything in the folder of its copy are written down, before the server removes it. The wrapper
+	// ends no sooner than omp, as omp itself would: a cancel signals the process group, and a shell that ended at once let the
+	// server remove the folder while omp, still ending, wrote its session there again (the folder was then left behind). `:`
+	// is a handler, not an ignore, so omp is not started with the signal ignored. `stat` spells "octal permission bits and
+	// name" differently on BSD (macOS) and GNU (Linux).
 	const modeAndName = platform.id === "darwin" ? "stat -f '%Lp %N'" : "stat -c '%a %n'";
 	writeFileSync(
 		wrapper,
 		String.raw`#!/bin/sh
 { for a in "$@"; do printf '%s\n' "$a"; done; echo '--'; } >> "${argvLog}"
 case " $* " in *" --mode rpc "*) ;; *) exec "${real}" "$@" ;; esac
+trap : TERM
 "${real}" "$@"
 code=$?
 prev=
