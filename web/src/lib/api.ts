@@ -25,6 +25,7 @@ import type { UsageRange } from "@shared/usage-range.ts";
 import type { ModelInfo } from "../store/live.ts";
 import { type Answer, answerOf } from "./answer.ts";
 import { isBlobHash } from "./blob.ts";
+import { saveBlob } from "./save.ts";
 
 export class ApiError extends Error {
 	constructor(
@@ -370,11 +371,7 @@ export async function downloadExport(file: string): Promise<void> {
 	if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
 	const blob = await res.blob();
 	const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "session.html";
-	const a = document.createElement("a");
-	a.href = URL.createObjectURL(blob);
-	a.download = name;
-	a.click();
-	URL.revokeObjectURL(a.href);
+	saveBlob(blob, name);
 }
 
 /** An image the session keeps outside its transcript (`blob:sha256:<hash>`), as base64 for sending it again. */

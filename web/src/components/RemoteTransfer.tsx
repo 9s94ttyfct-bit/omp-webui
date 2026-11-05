@@ -10,6 +10,7 @@ import { CircleAlert, Download, Share2, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import "../i18n/later.ts";
 import { type MessageKey, useT } from "../i18n/index.ts";
+import { saveBlob } from "../lib/save.ts";
 import { Button } from "./ui.tsx";
 
 const PROBLEMS: Record<Exclude<RemoteAccessFileProblem, "invalid">, MessageKey> = {
@@ -45,12 +46,7 @@ export function RemoteTransfer({
 	const empty = saved.team === "" && saved.aud === "" && saved.emails.length === 0;
 
 	const exportFile = () => {
-		const blob = new Blob([remoteAccessFileText(saved)], { type: "application/json" });
-		const a = document.createElement("a");
-		a.href = URL.createObjectURL(blob);
-		a.download = REMOTE_ACCESS_FILE_NAME;
-		a.click();
-		URL.revokeObjectURL(a.href);
+		saveBlob(new Blob([remoteAccessFileText(saved)], { type: "application/json" }), REMOTE_ACCESS_FILE_NAME);
 		setNote(null);
 		onExported(REMOTE_ACCESS_FILE_NAME);
 	};

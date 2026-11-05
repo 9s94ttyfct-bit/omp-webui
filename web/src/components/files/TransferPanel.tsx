@@ -4,7 +4,8 @@ import { type ChangeEvent, type FormEvent, useCallback, useEffect, useRef, useSt
 import { useLang, useT } from "../../i18n/index.ts";
 import { fmtBytes } from "../../lib/files-rows.ts";
 import type { FolderScope } from "../../lib/folder-api.ts";
-import { downloadFile, isAbort, planArchive, startSave, TransferError } from "../../lib/transfer-api.ts";
+import { startSave } from "../../lib/save.ts";
+import { downloadFile, isAbort, planArchive, TransferError } from "../../lib/transfer-api.ts";
 import { baseName, joinPath, progressOf, typedPath } from "../../lib/transfer-plan.ts";
 import { cancelUpload, clearUpload, isBusy, pickUpload, resolveHeld, useUpload } from "../../lib/transfer-store.ts";
 import { describeFailure, leftOutCount, leftOutText } from "../../lib/transfer-words.ts";

@@ -10,6 +10,7 @@ import {
 	type UploadSaved,
 } from "@shared/transfer.ts";
 import type { FolderScope } from "./folder-api.ts";
+import { startSave } from "./save.ts";
 import {
 	backoffMs,
 	baseName,
@@ -229,21 +230,6 @@ export async function statDownload(scope: FolderScope, path: string, signal?: Ab
 		throw networkFailure();
 	}
 	if (!res.ok) throw failureOf({ status: res.status, text: "", code: res.headers.get(ERROR_HEADER), retryAfterMs: 0 });
-}
-
-/**
- * Hand an address to the browser to save: a link with `download`, clicked. The macOS app's window turns this into its
- * own save panel (a `fetch` and a `Blob` would hold the whole file in memory and give it no panel at all).
- */
-export function startSave(url: string, name: string): void {
-	const link = document.createElement("a");
-	link.href = url;
-	link.download = name;
-	link.rel = "noopener";
-	link.style.display = "none";
-	document.body.append(link);
-	link.click();
-	link.remove();
 }
 
 /** Download one file: check that it may be, then start it. */
