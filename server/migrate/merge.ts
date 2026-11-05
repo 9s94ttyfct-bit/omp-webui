@@ -97,6 +97,54 @@ export function withScalars(
 	return doc && Bun.deepEquals(doc, expected) ? out : null;
 }
 
+/** Each key `after` has and `before` lacks, with its value; a key both have is looked into where both hold objects. */
+function addedKeys(before: Doc, after: Doc, path: readonly string[] = []): { path: string[]; value: unknown }[] {
+	return Object.entries(after).flatMap(([k, value]) => {
+		if (!(k in before)) return [{ path: [...path, k], value }];
+		const was = before[k];
+		return isRecord(was) && isRecord(value) ? addedKeys(was, value, [...path, k]) : [];
+	});
+}
+
+/**
+ * `text` (a block YAML file that reads as `before`) with each key `after` adds to it written in after the last line of the
+ * object it belongs to, every line that was there kept as it was: comments, blank lines and quoting stay. Null when such an
+ * object is not written as a block of lines of its own, or when the result does not read as `after`.
+ */
+export function withAddedKeys(text: string, before: Doc, after: Doc): string | null {
+	const step = indentOf(text);
+	if (typeof step !== "number") return null;
+	const lines = text.split("\n");
+	for (const { path, value } of addedKeys(before, after)) {
+		const block = Bun.YAML.stringify({ [path.at(-1) as string]: value }, null, step).split("\n");
+		let at = lines.at(-1) === "" ? lines.length - 1 : lines.length;
+		let indent = "";
+		if (path.length > 1) {
+			const parent = lineOfKey(lines, path.slice(0, -1));
+			const line = parent ? lines[parent.line] : undefined;
+			const head = line === undefined ? null : KEY_AT.exec(line);
+			// The object is written on the lines below its key, not on the key's line (`key: {a: 1}`).
+			if (!parent || line === undefined || !head || !/^\s*(#.*)?$/.test(line.slice(head[0].length))) return null;
+			let last = -1;
+			for (let i = parent.line + 1; i < lines.length; i++) {
+				const below = lines[i] ?? "";
+				const trimmed = below.trimStart();
+				if (trimmed === "" || trimmed.startsWith("#")) continue;
+				const depth = below.length - trimmed.length;
+				if (depth <= parent.indent) break;
+				if (last < 0) indent = below.slice(0, depth);
+				last = i;
+			}
+			if (last < 0) return null;
+			at = last + 1;
+		}
+		lines.splice(at, 0, ...block.map((l) => `${indent}${l}`));
+	}
+	const out = lines.join("\n");
+	const doc = parseDoc(out, "yaml");
+	return doc && Bun.deepEquals(doc, after) ? out : null;
+}
+
 /** Which key identifies an object in a list, for the lists whose items are things (a marketplace by its name). */
 export type ListKeys = Record<string, string>;
 

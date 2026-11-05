@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { decrypt, encrypt, WrongPasswordError } from "../../server/migrate/crypto.ts";
 import { parseManifest } from "../../server/migrate/manifest.ts";
-import { compareFiles, mergeDoc, parseDoc, unionList } from "../../server/migrate/merge.ts";
+import { compareFiles, mergeDoc, parseDoc, unionList, withAddedKeys } from "../../server/migrate/merge.ts";
 import { absoluteBucket, bucketFor, homeBucket, PathMap, rewriteSession } from "../../server/migrate/rewrite.ts";
 import { countSecrets, redactSecrets } from "../../server/migrate/secrets.ts";
 import { authSnapshot, foldersOf, mergeHistory, restoreAuth, snapshotDb } from "../../server/migrate/sqlite.ts";
@@ -458,6 +458,20 @@ describe("merging settings", () => {
 	test("lists of names are joined with the first one's order, once each", () => {
 		expect(unionList(["a", "b"], ["b", "c", 3])).toEqual(["a", "b", "c"]);
 		expect(unionList("nope", ["x"])).toEqual(["x"]);
+	});
+
+	test("keys a YAML file lacks are written in below the object they belong to, every line it had kept", () => {
+		const old = "# my models\nmodelRoles:\n  default: a/b # main\n\n  # more later\ntheme: dark\nempty: {}\n";
+		const before = parseDoc(old, "yaml") as Record<string, unknown>;
+		const after = structuredClone(before);
+		mergeDoc(after, { modelRoles: { smol: "c/d" }, extra: { list: [1, "x: y"] } }, "merge");
+		expect(withAddedKeys(old, before, after)).toBe(
+			'# my models\nmodelRoles:\n  default: a/b # main\n  smol: c/d\n\n  # more later\ntheme: dark\nempty: {}\nextra:\n  list:\n    - 1\n    - "x: y"\n',
+		);
+		// An object written on its key's line has no line of its own to add one below.
+		const flow = structuredClone(before);
+		mergeDoc(flow, { empty: { a: 1 } }, "merge");
+		expect(withAddedKeys(old, before, flow)).toBeNull();
 	});
 
 	test("a file is the start of another when the other goes on from it", async () => {

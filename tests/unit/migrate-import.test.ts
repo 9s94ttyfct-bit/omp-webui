@@ -218,7 +218,10 @@ describe("merge keeps what is here and adds what is missing; replace lets the ar
 		const forkCut = `${forkOld.split("\n").slice(0, 3).join("\n")}\n`;
 		writeFileSync(sessionPath(here, FORK_ID), forkCut);
 		// Settings that differ, and things only this Mac has.
-		writeFileSync(join(here.agentDir, "config.yml"), "theme:\n  dark: my-own\nlocalOnly: true\n");
+		writeFileSync(
+			join(here.agentDir, "config.yml"),
+			"# this Mac's settings\ntheme:\n  dark: my-own # mine\n\nlocalOnly: true\n",
+		);
 		mkdirSync(join(here.agentDir, "skills", "mine"), { recursive: true });
 		writeFileSync(join(here.agentDir, "skills", "mine", "SKILL.md"), "mine\n");
 		writeFileSync(join(here.dataDir, "favorite-models.json"), JSON.stringify(["local/model"]));
@@ -245,12 +248,10 @@ describe("merge keeps what is here and adds what is missing; replace lets the ar
 		expect(readFileSync(forkPath, "utf8")).toBe(forkFull);
 		expect(summary.conversations).toMatchObject({ kept: 1, updated: 1, replaced: 0 });
 		expect(summary.conversations.added).toBe(2);
-		// Settings: a value this Mac has is its own, a key it lacks is added, and what only it has stays.
-		const config = text(here.agentDir, "config.yml");
-		expect(config).toContain("dark: my-own");
-		expect(config).toContain("localOnly: true");
-		expect(config).toContain("modelRoles");
-		expect(config).toContain("default: anthropic/model-a");
+		// Settings: a value this Mac has is its own, a key it lacks is added, and what only it has stays, as it was written.
+		expect(text(here.agentDir, "config.yml")).toBe(
+			"# this Mac's settings\ntheme:\n  dark: my-own # mine\n\nlocalOnly: true\nmodelRoles:\n  default: anthropic/model-a\n",
+		);
 		expect(existsSync(join(here.agentDir, "skills", "mine", "SKILL.md"))).toBe(true);
 		expect(existsSync(join(here.agentDir, "skills", "demo", "SKILL.md"))).toBe(true);
 		// Lists are joined, this Mac's first.

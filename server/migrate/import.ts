@@ -58,7 +58,7 @@ import {
 	type ManifestEntry,
 	parseManifest,
 } from "./manifest.ts";
-import { compareFiles, mergeDoc, parseDoc, serializeDoc, unionList } from "./merge.ts";
+import { compareFiles, mergeDoc, parseDoc, serializeDoc, unionList, withAddedKeys } from "./merge.ts";
 import { BACKUP_APP, RESTORE_NOTE } from "./restore.ts";
 import { bucketFor, PathMap, rewriteSession } from "./rewrite.ts";
 import { isSealed, SealedFile, unlockSealed } from "./sealed.ts";
@@ -1158,8 +1158,13 @@ class Apply implements RunningImport {
 		const mine = parseDoc(old, format);
 		const theirs = parseDoc(text, format);
 		if (!mine || !theirs) return void this.summary.files.kept++;
+		const before = structuredClone(mine);
 		if (!mergeDoc(mine, theirs, "merge", LIST_KEYS[name] ?? {})) return void this.summary.files.kept++;
-		return write(serializeDoc(mine, format, old), "merged");
+		// This Mac's file as it was written, the keys it lacked added below; else the document written again.
+		return write(
+			(format === "yaml" ? withAddedKeys(old, before, mine) : null) ?? serializeDoc(mine, format, old),
+			"merged",
+		);
 	}
 
 	/** Preferences go through the store that owns them (its revision goes up, and the pages hear of it). */
