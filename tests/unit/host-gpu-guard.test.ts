@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import * as fs from "node:fs";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { MIN_BACKGROUND_MS, MIN_LIVE_MS, paceFrom } from "../../server/host.ts";
@@ -277,6 +278,20 @@ describe("the crash marker", () => {
 			expect(during).toBe("probing");
 			expect(marker(d)).toBe("ok");
 		} finally {
+			g.close();
+		}
+	});
+
+	test("is written ok once, not again at every read that comes back (#59)", async () => {
+		const d = dir();
+		const g = guardedGpu({ markerDir: d, spawn: thread(WORKERS.answers) });
+		const writes = spyOn(fs, "writeFileSync");
+		try {
+			for (let i = 0; i < 5; i++) await g.read();
+			const ofMarker = writes.mock.calls.filter((c) => c[0] === join(d, GPU_MARKER)).map((c) => String(c[1]).trim());
+			expect(ofMarker).toEqual(["probing", "ok"]);
+		} finally {
+			writes.mockRestore();
 			g.close();
 		}
 	});

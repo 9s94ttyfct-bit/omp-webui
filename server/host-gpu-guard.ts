@@ -113,7 +113,9 @@ export function guardedGpu(options: GpuOptions = {}): GuardedGpu {
 			),
 		);
 	};
+	/** The first read came back: the marker says so, once (the reads after it say nothing more of a crash at start). */
 	const settle = (): void => {
+		if (verified) return;
 		verified = true;
 		try {
 			mark("ok");
