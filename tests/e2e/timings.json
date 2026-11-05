@@ -1541,7 +1541,6 @@
 		"pwa-top-edge.spec.ts › light: a home-screen app has a fixed, solid strip across the top that paints nothing": 5.5,
 		"pwa-top-edge.spec.ts › with the sidebar open the strip is still above the drawer and its scrim": 4.5,
 		"queue-edit.spec.ts › Esc and Cancel close the editor and send nothing; so does saving the text unchanged": 8.2,
-		"queue-edit.spec.ts › a message omp already took is not queued again; a notice says so": 7.9,
 		"queue-edit.spec.ts › a message omp already took is not queued again; a notice says so, and the edited text is in the composer": 7.9,
 		"queue-edit.spec.ts › a steering message is queued again as a steer, and the last one in its queue carries no ordering note": 8.1,
 		"queue-edit.spec.ts › an edit in progress is put back into the composer when omp takes the message meanwhile": 8,
