@@ -1162,6 +1162,7 @@
 		"memory.spec.ts › the Memory page › a consolidated memory can only be retired and brought back": 1.8,
 		"memory.spec.ts › the Memory page › a memory opens in full with where it came from, and links to its conversation when that is one of yours": 2.8,
 		"memory.spec.ts › the Memory page › adding a global memory works once omp's scoping is global": 2.1,
+		"memory.spec.ts › the Memory page › adding: the tick for a secret is asked for again when the text or the reason changes": 1.7,
 		"memory.spec.ts › the Memory page › adding: under omp's per-project scoping there is no global memory to add, a project's is added and shown": 1.9,
 		"memory.spec.ts › the Memory page › an edit over a memory that changed meanwhile is kept, shown beside what is stored now, and saves on the second try": 1.8,
 		"memory.spec.ts › the Memory page › an edit that was left (another memory looked at, or the page refreshed) and comes back over a memory that changed meanwhile is a conflict, never an overwrite": 2.2,

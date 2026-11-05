@@ -214,7 +214,11 @@ function AddForm({
 				<span className="text-sm font-medium">{t("memory.addText")}</span>
 				<textarea
 					value={content}
-					onChange={(e) => setContent(e.target.value)}
+					onChange={(e) => {
+						// The tick was for a text that has just changed: it is asked for again.
+						setAckSecret(false);
+						setContent(e.target.value);
+					}}
 					rows={6}
 					placeholder={t("memory.addTextPlaceholder")}
 					className="block w-full resize-y rounded-xl border border-border bg-bg-soft p-3 text-sm outline-none focus:border-faint"
@@ -263,7 +267,10 @@ function AddForm({
 						type="text"
 						value={context}
 						maxLength={400}
-						onChange={(e) => setContext(e.target.value)}
+						onChange={(e) => {
+							setAckSecret(false);
+							setContext(e.target.value);
+						}}
 						placeholder={t("memory.addContextPlaceholder")}
 						className="block h-9 w-full rounded-xl border border-border bg-bg-soft px-3 text-sm outline-none focus:border-faint"
 						data-testid="memory-add-context"

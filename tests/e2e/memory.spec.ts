@@ -457,6 +457,26 @@ test.describe
 			});
 		});
 
+		test("adding: the tick for a secret is asked for again when the text or the reason changes", async ({ page }) => {
+			await open(page);
+			await page.getByTestId("memory-add").click();
+			await expect(page.getByTestId("memory-add-dialog")).toBeVisible();
+			await choose(page.getByTestId("memory-add-bank"), { label: "site" });
+			const ack = page.getByTestId("memory-add-secret-ack");
+			const submit = page.getByTestId("memory-add-submit");
+			await page.getByTestId("memory-add-text").fill(`The key is ${SECRET}`);
+			await ack.check();
+			await expect(submit).toBeEnabled();
+			await page.getByTestId("memory-add-text").fill(`The key is ${SECRET.replace("abc", "xyz")}`);
+			await expect(ack).not.toBeChecked();
+			await expect(submit).toBeDisabled();
+			await ack.check();
+			await expect(submit).toBeEnabled();
+			await page.getByTestId("memory-add-context").fill(`And another ${SECRET.replace("abc", "qrs")}`);
+			await expect(ack).not.toBeChecked();
+			await expect(submit).toBeDisabled();
+		});
+
 		test("adding a global memory works once omp's scoping is global", async ({ page }) => {
 			const config = join(agentDir(), "config.yml");
 			const before = readFileSync(config, "utf8");
