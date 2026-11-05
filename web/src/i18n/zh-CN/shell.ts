@@ -190,6 +190,8 @@ export const zh: Record<keyof typeof en, string> = {
 		"请打开服务器打印的链接：那一行以“`Open:`”开头，后面是 `http://…/?token=…`。或者在此粘贴令牌。令牌以 `token` 为名保存在 Web UI 数据目录中（默认为 `~/.omp-webui`）。",
 	unlockTokenLabel: "访问令牌",
 	unlockInvalid: "令牌无效。",
+	unlockRefused: "服务器拒绝了请求：{error}",
+	unlockUnreachable: "无法连接 omp 网页界面服务器。请确认它正在运行，然后重试。",
 	unlockSubmit: "解锁",
 
 	sidebarLoadError: "无法加载对话列表",

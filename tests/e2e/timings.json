@@ -197,6 +197,7 @@
 		"attach-resync.spec.ts › a dialog that is not pending any more when the page attaches again is not shown as waiting for the user": 6.8,
 		"attach-resync.spec.ts › a half-written reply that is not in flight any more when the page attaches again is not left under the transcript": 7.9,
 		"attach-resync.spec.ts › coming back to a conversation that nothing happened in reads only what came after its last entry, not the whole transcript (#360)": 6.4,
+		"auth.spec.ts › a refusal that is not about the token, and a server that cannot be reached, are said as they are": 0.5,
 		"auth.spec.ts › a wrong startup link is rejected": 0,
 		"auth.spec.ts › a wrong token's error is announced and readable in every look": 3.7,
 		"auth.spec.ts › the startup link sets the cookie and strips the token from the URL": 0.9,

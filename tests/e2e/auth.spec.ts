@@ -70,3 +70,42 @@ test("a wrong startup link is rejected", async ({ request }) => {
 	const res = await request.get("/?token=nope", { maxRedirects: 0 });
 	expect(res.status()).toBe(401);
 });
+
+test("a refusal that is not about the token, and a server that cannot be reached, are said as they are", async ({
+	page,
+}) => {
+	const errors: string[] = [];
+	page.on("pageerror", (e) => errors.push(e.message));
+	let answer: "forbidden" | "down" | "slow" = "forbidden";
+	let release = () => {};
+	await page.route("**/api/auth", async (route) => {
+		if (answer === "forbidden") return route.fulfill({ status: 403, contentType: "text/plain", body: "Forbidden" });
+		if (answer === "down") return route.abort("connectionrefused");
+		await new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		return route.fulfill({ status: 401, json: { error: "Invalid token" } });
+	});
+	await page.goto("/");
+	await expect(page.getByTestId("unlock")).toBeVisible();
+	await page.getByLabel("Access token").fill("some-token");
+	const submit = page.getByRole("button", { name: "Unlock" });
+	const error = page.getByTestId("unlock-error");
+
+	await submit.click();
+	await expect(error).toContainText("Forbidden");
+	await expect(error).not.toContainText("That token is not valid.");
+
+	answer = "down";
+	await submit.click();
+	await expect(error).toContainText("Can't reach the omp web UI server");
+	expect(errors).toEqual([]);
+
+	// While the server is asked, the button waits: Enter again sends nothing more.
+	answer = "slow";
+	await submit.click();
+	await expect(submit).toBeDisabled();
+	release();
+	await expect(error).toHaveText("That token is not valid.");
+	await expect(submit).toBeEnabled();
+});

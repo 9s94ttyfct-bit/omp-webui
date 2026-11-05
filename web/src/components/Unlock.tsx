@@ -3,11 +3,31 @@ import { useState } from "react";
 import { useT } from "../i18n/index.ts";
 import { Button, WithCode } from "./ui.tsx";
 
+/** What the server's refusal says: the `error` of a JSON answer, else its text (a plain `Forbidden`), else the status. */
+async function refusalOf(res: Response): Promise<string> {
+	const text = await res.text().catch(() => "");
+	try {
+		const body: unknown = JSON.parse(text);
+		if (body && typeof body === "object" && "error" in body && typeof body.error === "string" && body.error)
+			return body.error;
+	} catch {}
+	return text.trim() || res.statusText || String(res.status);
+}
+
+/**
+ * Why the last try did not unlock: only a 401 is about the token; another refusal (a page through the tunnel, a foreign
+ * origin, a server error) says what the server said, and a request that never got an answer says the server is out of
+ * reach.
+ */
+type Problem = { kind: "invalid" } | { kind: "refused"; error: string } | { kind: "unreachable" };
+
 /** Shown when the server requires its access token (see the link it printed at startup). */
 export function Unlock() {
 	const t = useT();
 	const [token, setToken] = useState("");
-	const [invalid, setInvalid] = useState(false);
+	const [problem, setProblem] = useState<Problem | null>(null);
+	// While the server is asked the button waits, so Enter pressed again sends nothing more.
+	const [busy, setBusy] = useState(false);
 	return (
 		<main className="flex h-full items-center justify-center p-6">
 			<form
@@ -15,13 +35,23 @@ export function Unlock() {
 				data-testid="unlock"
 				onSubmit={async (e) => {
 					e.preventDefault();
-					const res = await fetch("/api/auth", {
-						method: "POST",
-						headers: { "content-type": "application/json" },
-						body: JSON.stringify({ token: token.trim() }),
-					});
-					if (res.ok) location.reload();
-					else setInvalid(true);
+					if (busy) return;
+					setBusy(true);
+					try {
+						const res = await fetch("/api/auth", {
+							method: "POST",
+							headers: { "content-type": "application/json" },
+							body: JSON.stringify({ token: token.trim() }),
+						});
+						if (res.ok) {
+							location.reload();
+							return;
+						}
+						setProblem(res.status === 401 ? { kind: "invalid" } : { kind: "refused", error: await refusalOf(res) });
+					} catch {
+						setProblem({ kind: "unreachable" });
+					}
+					setBusy(false);
 				}}
 			>
 				<h1 className="mb-3 flex items-center gap-2 text-base font-semibold">
@@ -37,23 +67,28 @@ export function Unlock() {
 					id="unlock-token"
 					type="password"
 					autoComplete="off"
-					aria-invalid={invalid || undefined}
-					aria-describedby={invalid ? "unlock-error" : undefined}
+					aria-invalid={problem?.kind === "invalid" || undefined}
+					aria-describedby={problem ? "unlock-error" : undefined}
 					className="mb-2 w-full rounded-lg border border-border bg-bg-soft px-3 py-2 font-mono text-sm outline-none focus:border-faint"
 					value={token}
 					onChange={(e) => setToken(e.target.value)}
 				/>
-				{invalid ? (
+				{problem ? (
 					<div
 						id="unlock-error"
 						role="alert"
 						data-testid="unlock-error"
 						className="mb-3 flex items-start gap-2 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm font-medium text-danger"
 					>
-						<CircleAlert size={16} className="mt-0.5 shrink-0" aria-hidden /> {t("shell.unlockInvalid")}
+						<CircleAlert size={16} className="mt-0.5 shrink-0" aria-hidden />{" "}
+						{problem.kind === "invalid"
+							? t("shell.unlockInvalid")
+							: problem.kind === "refused"
+								? t("shell.unlockRefused", { error: problem.error })
+								: t("shell.unlockUnreachable")}
 					</div>
 				) : null}
-				<Button variant="primary" type="submit" disabled={!token.trim()} className="w-full">
+				<Button variant="primary" type="submit" disabled={busy || !token.trim()} className="w-full">
 					{t("shell.unlockSubmit")}
 				</Button>
 			</form>

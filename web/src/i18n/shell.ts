@@ -206,6 +206,8 @@ export const en = {
 		"Open the link printed by the server (`Open: http://…/?token=…`), or paste its token here. It is stored as `token` in the web UI data directory (default `~/.omp-webui`).",
 	unlockTokenLabel: "Access token",
 	unlockInvalid: "That token is not valid.",
+	unlockRefused: "The server refused the request: {error}",
+	unlockUnreachable: "Can't reach the omp web UI server. Check that it is running, then try again.",
 	unlockSubmit: "Unlock",
 
 	// Sidebar before its first load
