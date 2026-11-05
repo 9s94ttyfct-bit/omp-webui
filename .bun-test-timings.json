@@ -479,6 +479,7 @@
     "tests/unit/host-store.test.ts": 7,
     "tests/unit/i18n-register.test.ts": 7,
     "tests/unit/loopback-listener.test.ts": 7,
+    "tests/unit/model-recent.test.ts": 7,
     "tests/unit/paused-state.test.ts": 7,
     "tests/unit/quota-floor-decide.test.ts": 7,
     "tests/unit/relay-lines.test.ts": 7,

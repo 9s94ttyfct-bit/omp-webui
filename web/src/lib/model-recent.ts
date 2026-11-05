@@ -21,20 +21,38 @@ function parse(value: string | null): string[] {
 	}
 }
 
-/** The models picked recently, newest first. */
-export function recentModels(storage: Pick<Storage, "getItem"> = localStorage): string[] {
-	return parse(storage.getItem(KEY));
+/** This browser's storage, or none (outside a page, or refused in some private modes). */
+function browserStorage(): Storage | undefined {
+	try {
+		return localStorage;
+	} catch {}
+}
+
+/** The models picked recently, newest first (none when storage is refused). */
+export function recentModels(storage: Pick<Storage, "getItem"> | undefined = browserStorage()): string[] {
+	try {
+		return parse(storage?.getItem(KEY) ?? null);
+	} catch {
+		return [];
+	}
 }
 
 /** Remember a pick: its model goes to the front, once. */
-export function noteRecentModel(key: string, storage: Pick<Storage, "getItem" | "setItem"> = localStorage): string[] {
+export function noteRecentModel(
+	key: string,
+	storage: Pick<Storage, "getItem" | "setItem"> | undefined = browserStorage(),
+): string[] {
 	const next = [key, ...recentModels(storage).filter((k) => k !== key)].slice(0, RECENT_LIMIT);
-	storage.setItem(KEY, JSON.stringify(next));
+	try {
+		storage?.setItem(KEY, JSON.stringify(next));
+	} catch {
+		// Full or refused storage: the pick goes on, and this page still lists it until reload.
+	}
 	for (const listener of listeners) listener(next);
 	return next;
 }
 
-/** Be told when a model was picked (another window, or this one). Returns the way to stop being told. */
+/** Be told when a model was picked in this page. Returns the way to stop being told. */
 export function onRecentModels(listener: (keys: readonly string[]) => void): () => void {
 	listeners.add(listener);
 	return () => {
