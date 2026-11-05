@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { choose, readOptions, type SelectOption } from "../support/select.ts";
 import { expect, test } from "./fixtures.ts";
 
 /**
@@ -59,6 +60,24 @@ test("the Overview says the plugin list could not be read, and Retry reads it ag
 	await error.getByTestId("load-retry").click();
 	await expect(error).toHaveCount(0);
 	await expect(panel.getByTestId("plugins-stat-installed")).not.toContainText("–");
+});
+
+test("a scope of Project goes back to User when the page's folder becomes Home, where no project is", async ({
+	page,
+}) => {
+	await page.goto("/#/plugins");
+	const folder = page.getByTestId("plugins-folder");
+	const project = (await readOptions(folder)).find((o) => o.value !== "");
+	expect(project, "a recent project folder to choose").toBeDefined();
+	await choose(folder, (project as SelectOption).value);
+	await page.getByTestId("plugins-tab-skills").click();
+	const scope = page.getByTestId("skills-scope");
+	await choose(scope, "project");
+	await expect(scope).toHaveAttribute("data-value", "project");
+	await choose(folder, "");
+	// Project is no longer offered: the scope shows, and installs to, the user's.
+	await expect(scope).toHaveAttribute("data-value", "user");
+	await expect(scope).toContainText("user");
 });
 
 test("Commands & terminal is a page of Settings: opened from Settings, from #/cli and from Settings' search; the sidebar has Plugins", async ({

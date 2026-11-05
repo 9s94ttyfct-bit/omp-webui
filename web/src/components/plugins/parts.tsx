@@ -1,7 +1,7 @@
 import type { PluginScope } from "@shared/plugins.ts";
 import type { WebCatalog } from "@shared/plugins-catalogs.ts";
 import { ExternalLink } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { type MessageKey, useT } from "../../i18n/index.ts";
 import { Select } from "../Select.tsx";
 import { Button, CardHeader, Modal } from "../ui.tsx";
@@ -205,12 +205,18 @@ export function ScopePicker({
 	testId: string;
 }) {
 	const t = useT();
+	// Project is offered only with a project folder: once the folder is Home again, the scope is the user's, here and for
+	// what the owner installs with it.
+	const shown = projectAllowed ? value : "user";
+	useEffect(() => {
+		if (!projectAllowed && value === "project") onChange("user");
+	}, [projectAllowed, value, onChange]);
 	return (
 		<Select
 			tone="compact"
 			aria-label={label}
 			data-testid={testId}
-			value={value}
+			value={shown}
 			onValueChange={(v) => onChange(v === "project" ? "project" : "user")}
 			className="w-28 shrink-0"
 		>
