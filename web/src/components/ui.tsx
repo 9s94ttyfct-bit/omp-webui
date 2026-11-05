@@ -246,7 +246,11 @@ if (typeof document !== "undefined") {
 		"focusin",
 		(e) => {
 			const el = e.target;
-			if (el instanceof HTMLElement && !el.closest('[role="dialog"], [role="alertdialog"]'))
+			// The side panel as a sheet is a dialog the page's own dialogs are opened from: what is in it counts.
+			if (
+				el instanceof HTMLElement &&
+				!el.closest('[role="dialog"]:not([data-testid="right-panel"]), [role="alertdialog"]')
+			)
 				focusedOutside = new WeakRef(el);
 		},
 		true,

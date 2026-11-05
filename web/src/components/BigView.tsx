@@ -1,3 +1,4 @@
+import { FocusScope } from "@radix-ui/react-focus-scope";
 import type { ChangeState } from "@shared/changes.ts";
 import type { FolderFile } from "@shared/folder.ts";
 import { Code, Columns2, Eye, FileDiff as FileDiffIcon, FileX, NotebookPen, Pencil, Rows3, X } from "lucide-react";
@@ -35,9 +36,9 @@ type TextFile = Extract<FolderFile, { kind: "text" }>;
  * panel names. The one thing that writes is the editor of a text file (`FileEditor.tsx`, from the Edit button); a file with
  * text that is not saved there is not left without asking (`lib/leave-guard.ts`: closing, another file, another view). It is
  * not a modal dialog: the panel it was opened from stays usable beside it, where the panel is a column, so focus is not
- * trapped; it moves in when the view opens and back to the control that opened it when the view closes. What is under the
- * column it covers is hidden from the eye — and, with it, from the keyboard and from assistive technology — for as long as
- * it is up.
+ * trapped there; over the panel's sheet it covers the whole window, and focus stays in it. Focus moves in when the view
+ * opens and back to the control that opened it when the view closes. What is under the column it covers is hidden from the
+ * eye — and, with it, from the keyboard and from assistive technology — for as long as it is up.
  */
 export default function BigView({
 	scope,
@@ -87,8 +88,14 @@ export default function BigView({
 				e.preventDefault();
 				return;
 			}
-			// A menu, a list or a dialog of the page's own is what the key is for; so is a toast someone is reading.
-			if (document.querySelector('[role="menu"], [role="listbox"], [role="alertdialog"], [role="dialog"]')) return;
+			// A menu, a list or a dialog of the page's own is what the key is for; so is a toast someone is reading. The side
+			// panel as a sheet is a dialog too, but it is under this view: the key is this view's.
+			if (
+				document.querySelector(
+					'[role="menu"], [role="listbox"], [role="alertdialog"], [role="dialog"]:not([data-testid="right-panel"])',
+				)
+			)
+				return;
 			if (e.target instanceof Element && e.target.closest("[data-toast-region]")) return;
 			e.preventDefault();
 			onClose();
@@ -98,60 +105,70 @@ export default function BigView({
 	}, [onClose]);
 
 	return (
-		<section
-			ref={take}
-			aria-label={t(target.kind === "diff" ? "files.diffLabel" : "files.largeAria", { name })}
-			tabIndex={-1}
-			className={cx(
-				"absolute inset-0 flex flex-col bg-bg outline-none fade-in",
-				// Over the side panel's sheet, which is `fixed … z-30` below the width at which a panel becomes one.
-				sheet ? "fixed inset-0 z-40" : "z-10",
-			)}
-			data-testid="big-view"
-			data-kind={target.kind}
-			data-path={path}
+		// Over the sheet, this view is all the window shows: focus stays in it, and the sheet's own trap is paused (a focus
+		// scope that mounts pauses the one before it) until it closes.
+		<FocusScope
+			asChild
+			trapped={sheet}
+			loop={sheet}
+			onMountAutoFocus={(e) => e.preventDefault()}
+			onUnmountAutoFocus={(e) => e.preventDefault()}
 		>
-			<div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1.5">
-				<div className="min-w-0 flex-1">
-					<div className="truncate text-sm font-semibold" title={path} data-testid="big-name">
-						{name}
-					</div>
-					{dir ? (
-						<div className="truncate font-mono text-xs text-faint" title={path} data-testid="big-dir">
-							{dir}
-						</div>
-					) : null}
-				</div>
-				{target.kind === "diff" && wide ? (
-					<fieldset
-						className="flex shrink-0 items-center rounded-lg border border-border p-0.5"
-						aria-label={t("files.diffModeLabel")}
-					>
-						<Mode
-							on={!split}
-							label={t("files.diffUnified")}
-							onPick={() => setMode("unified")}
-							testid="big-diff-unified"
-						>
-							<Rows3 size={13} />
-						</Mode>
-						<Mode on={split} label={t("files.diffSplit")} onPick={() => setMode("split")} testid="big-diff-split">
-							<Columns2 size={13} />
-						</Mode>
-					</fieldset>
-				) : null}
-				<IconButton label={t("common.close")} size="sm" data-testid="big-close" onClick={onClose}>
-					<X size={15} />
-				</IconButton>
-			</div>
-			<div className="min-h-0 flex-1 overflow-hidden">
-				{target.kind === "diff" ? (
-					<DiffLarge scope={scope} path={path} split={split} wide={wide} />
-				) : (
-					<FileLarge key={path} scope={scope} path={path} />
+			<section
+				ref={take}
+				aria-label={t(target.kind === "diff" ? "files.diffLabel" : "files.largeAria", { name })}
+				tabIndex={-1}
+				className={cx(
+					"absolute inset-0 flex flex-col bg-bg outline-none fade-in",
+					// Over the side panel's sheet, which is `fixed … z-30` below the width at which a panel becomes one.
+					sheet ? "fixed inset-0 z-40" : "z-10",
 				)}
-			</div>
-		</section>
+				data-testid="big-view"
+				data-kind={target.kind}
+				data-path={path}
+			>
+				<div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1.5">
+					<div className="min-w-0 flex-1">
+						<div className="truncate text-sm font-semibold" title={path} data-testid="big-name">
+							{name}
+						</div>
+						{dir ? (
+							<div className="truncate font-mono text-xs text-faint" title={path} data-testid="big-dir">
+								{dir}
+							</div>
+						) : null}
+					</div>
+					{target.kind === "diff" && wide ? (
+						<fieldset
+							className="flex shrink-0 items-center rounded-lg border border-border p-0.5"
+							aria-label={t("files.diffModeLabel")}
+						>
+							<Mode
+								on={!split}
+								label={t("files.diffUnified")}
+								onPick={() => setMode("unified")}
+								testid="big-diff-unified"
+							>
+								<Rows3 size={13} />
+							</Mode>
+							<Mode on={split} label={t("files.diffSplit")} onPick={() => setMode("split")} testid="big-diff-split">
+								<Columns2 size={13} />
+							</Mode>
+						</fieldset>
+					) : null}
+					<IconButton label={t("common.close")} size="sm" data-testid="big-close" onClick={onClose}>
+						<X size={15} />
+					</IconButton>
+				</div>
+				<div className="min-h-0 flex-1 overflow-hidden">
+					{target.kind === "diff" ? (
+						<DiffLarge scope={scope} path={path} split={split} wide={wide} />
+					) : (
+						<FileLarge key={path} scope={scope} path={path} />
+					)}
+				</div>
+			</section>
+		</FocusScope>
 	);
 }
 
