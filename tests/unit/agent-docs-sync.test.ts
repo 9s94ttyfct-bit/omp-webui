@@ -10,6 +10,7 @@ import { DEFAULT_OFFLINE } from "../../shared/offline.ts";
 import { PREF_KEYS } from "../../shared/prefs.ts";
 import { DEFAULT_REMOTE_CONFIG } from "../../shared/remote.ts";
 import { SESSION_DEFAULTS } from "../../shared/session-defaults.ts";
+import { PREF_CLASS } from "../../shared/settings-help.ts";
 import { CONCURRENCY_KEY } from "../../shared/subagent-concurrency.ts";
 import { SETTINGS } from "../../web/src/lib/settings-search.ts";
 
@@ -197,6 +198,17 @@ describe("settings: the code and docs/agents name the same keys", () => {
 		);
 		const stale = [...named].filter((v) => !new RegExp(`\\b${v}\\b`).test(serverText)).sort();
 		expect(stale).toEqual([]);
+	});
+
+	test("the settings-help topic's list of keys that are not changeable is the code's (#92)", () => {
+		const body = topics.find((t) => t.name === "settings-help")?.body ?? "";
+		const line = body.split("\n").find((l) => l.startsWith("**Not changeable here**")) ?? "";
+		const listed = [...line.matchAll(/`(ompw\.[A-Za-z0-9._-]*[A-Za-z0-9])`/g)].map((m) => m[1]).sort();
+		const unavailable = Object.entries(PREF_CLASS)
+			.filter(([, c]) => c === "unavailable")
+			.map(([k]) => k)
+			.sort();
+		expect(listed).toEqual(unavailable);
 	});
 });
 
