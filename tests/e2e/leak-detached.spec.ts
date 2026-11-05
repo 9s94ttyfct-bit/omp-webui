@@ -1,4 +1,5 @@
-import type { CDPSession, Page } from "@playwright/test";
+import type { CDPSession, Page, Request } from "@playwright/test";
+import { en as shell } from "../../web/src/i18n/shell.ts";
 import { ownSession, startLive } from "../support/live.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { expect, test } from "./fixtures.ts";
@@ -25,13 +26,40 @@ interface Counts {
 	listeners: number;
 }
 
+/** The page's requests to the server's API not answered yet, from the moment this is called on. */
+function apiInFlight(page: Page): () => number {
+	const open = new Set<Request>();
+	page.on("request", (r) => {
+		if (new URL(r.url()).pathname.startsWith("/api/")) open.add(r);
+	});
+	page.on("requestfinished", (r) => open.delete(r));
+	page.on("requestfailed", (r) => open.delete(r));
+	return () => open.size;
+}
+
 /** Collect what the browser has not collected yet, and count what is left. */
-async function counts(page: Page, cdp: CDPSession): Promise<Counts> {
+async function counts(page: Page, cdp: CDPSession, inFlight: () => number): Promise<Counts> {
 	// The same view every time: what the user happened to be looking at would move the figures.
 	await page.evaluate(() => {
 		location.hash = "#/settings";
 	});
 	await page.getByTestId("settings-page").waitFor();
+	// Settings as it is once loaded: its cards fetch what they show (the models' roles and the project's, the model list,
+	// the accounts, the modes…) and draw it when the answer comes, some with a spinner meanwhile, some with nothing. A
+	// measurement taken before an answer came (`/api/models` and `/api/model-config` take seconds on a runner) counts
+	// the nodes and listeners drawn then as grown by the next one. Loaded: nothing asked of the server for a moment (an
+	// answer can start another request), and no spinner left.
+	await expect
+		.poll(
+			async () => {
+				if (inFlight() > 0) return false;
+				await page.waitForTimeout(300);
+				return inFlight() === 0;
+			},
+			{ timeout: 60_000 },
+		)
+		.toBe(true);
+	await expect(page.getByTestId("settings-page").getByLabel(shell.uiLoading, { exact: true })).toHaveCount(0);
 	await page.waitForTimeout(200);
 	// Garbage the browser has not collected yet is not a leak: collect until the count stops moving.
 	let detached = -1;
@@ -64,6 +92,7 @@ test("the page keeps no detached DOM nodes or listeners as conversations and vie
 }) => {
 	const cdp = await page.context().newCDPSession(page);
 	const tap = await tapSocket(page);
+	const inFlight = apiInFlight(page);
 	const title = "Leak probe conversation";
 	ownSession(0xee, title);
 
@@ -116,11 +145,11 @@ test("the page keeps no detached DOM nodes or listeners as conversations and vie
 	// happens after that: the same actions must not leave more behind.
 	await round();
 	await round();
-	const warm = await counts(page, cdp);
+	const warm = await counts(page, cdp, inFlight);
 
 	await round();
 	await round();
-	const after = await counts(page, cdp);
+	const after = await counts(page, cdp, inFlight);
 
 	expect(
 		after.detached,
