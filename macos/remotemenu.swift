@@ -741,7 +741,7 @@ private final class ManageMacsDialog: NSObject, NSTextFieldDelegate {
 /// Whether a message of a page's handler is one the Macs bridge answers: from the UI's own page, in its main frame (`origin`:
 /// nil before the server is up), and one of the two requests (`macsBridgeAction`).
 func macsBridgeRequest(isMainFrame: Bool, scheme: String, host: String, port: Int, origin: URL?, body: Any) -> MacsBridgeAction? {
-	guard isWindowRequestAllowed(isMainFrame: isMainFrame, scheme: scheme, host: host, port: port, origin: origin) else { return nil }
+	guard isOwnPage(isMainFrame: isMainFrame, scheme: scheme, host: host, port: port, origin: origin) else { return nil }
 	return macsBridgeAction(body: body)
 }
 

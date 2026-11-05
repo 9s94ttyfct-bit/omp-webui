@@ -54,7 +54,8 @@ final class LoginBridge: NSObject, WKScriptMessageHandlerWithReply {
 		replyHandler: @escaping (Any?, String?) -> Void
 	) {
 		let sender = message.frameInfo.securityOrigin
-		guard message.frameInfo.isMainFrame, isOwnPage(scheme: sender.protocol, host: sender.host, port: sender.port, origin: origin())
+		guard isOwnPage(
+			isMainFrame: message.frameInfo.isMainFrame, scheme: sender.protocol, host: sender.host, port: sender.port, origin: origin())
 		else { return replyHandler(nil, "Not available to this page.") }
 		guard let request = parseLoginRequest(message.body) else { return replyHandler(nil, "Unknown request.") }
 		let service = SMAppService.mainApp

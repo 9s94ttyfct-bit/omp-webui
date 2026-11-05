@@ -65,12 +65,12 @@ func pure(_ origin: URL) -> [String: Bool] {
 		"similarName": asks("http://127.0.0.1:7878/?popouts"),
 		"noUrl": isPopOutRequest(nil, origin: origin),
 		"noOrigin": asks("http://127.0.0.1:7878/?popout", nil),
-		"frameOfThePage": isWindowRequestAllowed(isMainFrame: true, scheme: "http", host: "127.0.0.1", port: 7878, origin: origin),
-		"subframe": isWindowRequestAllowed(isMainFrame: false, scheme: "http", host: "127.0.0.1", port: 7878, origin: origin),
-		"messageOtherPort": isWindowRequestAllowed(isMainFrame: true, scheme: "http", host: "127.0.0.1", port: 7879, origin: origin),
-		"messageOtherHost": isWindowRequestAllowed(isMainFrame: true, scheme: "http", host: "localhost", port: 7878, origin: origin),
-		"messageOtherScheme": isWindowRequestAllowed(isMainFrame: true, scheme: "https", host: "127.0.0.1", port: 7878, origin: origin),
-		"messageNoOrigin": isWindowRequestAllowed(isMainFrame: true, scheme: "http", host: "127.0.0.1", port: 7878, origin: nil),
+		"frameOfThePage": isOwnPage(isMainFrame: true, scheme: "http", host: "127.0.0.1", port: 7878, origin: origin),
+		"subframe": isOwnPage(isMainFrame: false, scheme: "http", host: "127.0.0.1", port: 7878, origin: origin),
+		"messageOtherPort": isOwnPage(isMainFrame: true, scheme: "http", host: "127.0.0.1", port: 7879, origin: origin),
+		"messageOtherHost": isOwnPage(isMainFrame: true, scheme: "http", host: "localhost", port: 7878, origin: origin),
+		"messageOtherScheme": isOwnPage(isMainFrame: true, scheme: "https", host: "127.0.0.1", port: 7878, origin: origin),
+		"messageNoOrigin": isOwnPage(isMainFrame: true, scheme: "http", host: "127.0.0.1", port: 7878, origin: nil),
 	]
 }
 

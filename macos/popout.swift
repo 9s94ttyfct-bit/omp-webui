@@ -134,7 +134,7 @@ final class PopOutWindows: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
 		// of its own handler): a frame of another page, or another origin, is refused.
 		let sender = message.frameInfo.securityOrigin
 		guard message.name == PopOutWindows.handlerName,
-			isWindowRequestAllowed(
+			isOwnPage(
 				isMainFrame: message.frameInfo.isMainFrame, scheme: sender.protocol, host: sender.host, port: sender.port,
 				origin: origin()),
 			let body = message.body as? [String: Any], body["type"] as? String == "toggleFullScreen",
@@ -177,12 +177,6 @@ final class PopOutWindows: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
 
 	/// The web content process died (memory pressure, crash): reload instead of a blank window.
 	func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { webView.reload() }
-}
-
-/// Whether a message from a page's handler comes from the UI's own page, in its main frame (`origin`: nil before the server is up).
-func isWindowRequestAllowed(isMainFrame: Bool, scheme: String, host: String, port: Int, origin: URL?) -> Bool {
-	guard isMainFrame, let origin, let ownHost = origin.host, let ownPort = origin.port else { return false }
-	return scheme == origin.scheme && host == ownHost && port == ownPort
 }
 
 /// The web view a menu command (Reload) acts on: the one in the window in front, a pop-out's or the

@@ -104,12 +104,12 @@ func dragText(_ board: NSPasteboard, _ text: String) {
 		// The page a message comes from.
 		let origin = URL(string: "http://127.0.0.1:7878/")
 		report["ownPage"] = [
-			isOwnPage(scheme: "http", host: "127.0.0.1", port: 7878, origin: origin),
-			isOwnPage(scheme: "http", host: "127.0.0.1", port: 7879, origin: origin),
-			isOwnPage(scheme: "http", host: "localhost", port: 7878, origin: origin),
-			isOwnPage(scheme: "https", host: "127.0.0.1", port: 7878, origin: origin),
-			isOwnPage(scheme: "http", host: "127.0.0.1", port: 7878, origin: nil),
-			isOwnPage(scheme: "http", host: "evil.example", port: 7878, origin: origin),
+			isOwnPage(isMainFrame: true, scheme: "http", host: "127.0.0.1", port: 7878, origin: origin),
+			isOwnPage(isMainFrame: true, scheme: "http", host: "127.0.0.1", port: 7879, origin: origin),
+			isOwnPage(isMainFrame: true, scheme: "http", host: "localhost", port: 7878, origin: origin),
+			isOwnPage(isMainFrame: true, scheme: "https", host: "127.0.0.1", port: 7878, origin: origin),
+			isOwnPage(isMainFrame: true, scheme: "http", host: "127.0.0.1", port: 7878, origin: nil),
+			isOwnPage(isMainFrame: true, scheme: "http", host: "evil.example", port: 7878, origin: origin),
 		]
 
 		// What a drop keeps for the page.

@@ -574,9 +574,10 @@ enum ProbeResult: Equatable {
 	case unreachable(ProbeFailure)
 }
 
-/// The team of an Access sign-in address: `https://<team>.cloudflareaccess.com/…`.
-func accessTeam(ofHost host: String) -> String? {
-	let suffix = ".cloudflareaccess.com"
+/// The team of a host of the Access domain: `<team>.cloudflareaccess.com`, the sign-in address of a probe's redirect and of a
+/// window's navigation (`domain`: the window's site says which). Nil for any other host.
+func accessTeam(ofHost host: String, domain: String = "cloudflareaccess.com") -> String? {
+	let suffix = "." + domain
 	let host = host.lowercased()
 	guard host.hasSuffix(suffix) else { return nil }
 	let team = String(host.dropLast(suffix.count))

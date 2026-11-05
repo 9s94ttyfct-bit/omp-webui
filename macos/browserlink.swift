@@ -173,8 +173,10 @@ final class BrowserBridge: NSObject, WKScriptMessageHandler {
 
 	func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
 		let sender = message.frameInfo.securityOrigin
-		guard message.frameInfo.isMainFrame,
-			isOwnPage(scheme: sender.protocol, host: sender.host, port: sender.port, origin: origin()),
+		guard
+			isOwnPage(
+				isMainFrame: message.frameInfo.isMainFrame, scheme: sender.protocol, host: sender.host, port: sender.port,
+				origin: origin()),
 			let body = message.body as? [String: Any], let type = body["type"] as? String
 		else { return }
 		switch type {

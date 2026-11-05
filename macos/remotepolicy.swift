@@ -99,14 +99,6 @@ func remoteNavigationVerdict(
 	}
 }
 
-/// The team of a host of the Access domain (`myteam.cloudflareaccess.com`), when it is one.
-private func accessTeam(of host: String, site: RemoteSite) -> String? {
-	let suffix = "." + site.accessDomain
-	guard host.hasSuffix(suffix) else { return nil }
-	let team = String(host.dropLast(suffix.count))
-	return isTeamName(team) ? team : nil
-}
-
 /// Where the window is once a main-frame page has been committed at `url`: only a page that is really shown moves it, never a
 /// navigation that was merely allowed (a page could start one to the team's sign-in and another behind it before it commits).
 /// The Mac's own page is `connected`, but not Access's endpoints on its address (`/cdn-cgi/…`: a Mac that is no Cloudflare's can
@@ -119,7 +111,7 @@ func remotePhase(afterCommit url: URL?, site: RemoteSite, previous: RemotePhase,
 	guard let url, url.scheme?.lowercased() == "https" else { return previous }
 	let host = hostOf(url)
 	if host == site.host { return url.path.hasPrefix("/cdn-cgi/") ? previous : .connected }
-	if let team = accessTeam(of: host, site: site) {
+	if let team = accessTeam(ofHost: host, domain: site.accessDomain) {
 		if team == site.team || (site.team == nil && previous != .connected) { return .signingIn }
 		return nil
 	}
@@ -130,7 +122,7 @@ func remotePhase(afterCommit url: URL?, site: RemoteSite, previous: RemotePhase,
 /// the Mac's own page: trust on first use, and only for a page that is shown.
 func teamToPin(afterCommit url: URL?, site: RemoteSite, previous: RemotePhase) -> String? {
 	guard site.team == nil, previous == .loading, let url, url.scheme?.lowercased() == "https" else { return nil }
-	return accessTeam(of: hostOf(url), site: site)
+	return accessTeam(ofHost: hostOf(url), domain: site.accessDomain)
 }
 
 /// Whether `url` is the Mac's own address: https, the default port, the Mac's host.

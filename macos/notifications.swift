@@ -137,10 +137,11 @@ func notificationRequest(for note: CiNote) -> UNNotificationRequest {
 	return UNNotificationRequest(identifier: note.tag, content: content, trigger: nil)
 }
 
-/// Only the UI this app serves may use the bridge: the page in the main frame, at the server's own origin. The web view
-/// never shows another site (see `navigationVerdict`), but a frame inside the page would carry the handler too.
-func isOwnPage(scheme: String, host: String, port: Int, origin: URL?) -> Bool {
-	guard let origin, let ownHost = origin.host, let ownPort = origin.port else { return false }
+/// Only the UI this app serves may use a bridge of its page's (notifications, drops, login item, Browser tab, pop-outs, the
+/// Macs switcher): a message from the page in the main frame, at the server's own origin (`origin`: nil before the server is
+/// up). The web view never shows another site (see `navigationVerdict`), but a frame inside the page would carry the handler too.
+func isOwnPage(isMainFrame: Bool, scheme: String, host: String, port: Int, origin: URL?) -> Bool {
+	guard isMainFrame, let origin, let ownHost = origin.host, let ownPort = origin.port else { return false }
 	return scheme == origin.scheme && host == ownHost && port == ownPort
 }
 
@@ -250,7 +251,8 @@ final class NotificationBridge: NSObject, WKScriptMessageHandlerWithReply, UNUse
 		replyHandler: @escaping (Any?, String?) -> Void
 	) {
 		let sender = message.frameInfo.securityOrigin
-		guard message.frameInfo.isMainFrame, isOwnPage(scheme: sender.protocol, host: sender.host, port: sender.port, origin: origin())
+		guard isOwnPage(
+			isMainFrame: message.frameInfo.isMainFrame, scheme: sender.protocol, host: sender.host, port: sender.port, origin: origin())
 		else { return replyHandler(nil, "Not available to this page.") }
 		guard let request = parseNotifyRequest(message.body) else { return replyHandler(nil, "Unknown request.") }
 		let answer = { (permission: String) in replyHandler(["permission": permission], nil) }

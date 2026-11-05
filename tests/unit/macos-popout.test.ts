@@ -32,6 +32,8 @@ beforeAll(async () => {
 			"-swift-version",
 			"5",
 			join(here, "../../macos/navigation.swift"),
+			// The page's bridges' sender check (`isOwnPage`).
+			join(here, "../../macos/notifications.swift"),
 			join(here, "../../macos/popout.swift"),
 			join(here, "../../macos/webview.swift"),
 			join(here, "../../macos/windowframe.swift"),
@@ -192,7 +194,7 @@ test.skipIf(!guiTests)(
 			messageNoOrigin: false,
 		});
 		// In a real web view the page's own request reaches its window once. A frame and another origin are refused by
-		// `isWindowRequestAllowed` (the pure checks above); the handler is not exercised from a frame or another origin here.
+		// `isOwnPage` (the pure checks above); the handler is not exercised from a frame or another origin here.
 		expect(r.toggle).toEqual({ fromPage: 1 });
 	},
 );
