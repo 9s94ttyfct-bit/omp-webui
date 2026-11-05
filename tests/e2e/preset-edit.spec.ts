@@ -153,7 +153,8 @@ test("Settings › Presets: one Edit dialog changes a preset's roles, thinking l
 	const role = (name: string) => dialog.locator(`[data-testid="role-row"][data-role="${name}"]`);
 	await role("smol").getByTestId("role-model").click();
 	await page.getByPlaceholder("Search models…").fill("Sonnet 5.5");
-	await page.getByRole("option", { name: /Claude Sonnet 5\.5/ }).click();
+	// Several providers may offer a Sonnet 5.5 (Bedrock's, by region): the one meant is Anthropic's.
+	await page.locator(`[role="option"][data-value="${SONNET}"]`).click();
 	await role("commit").getByTestId("role-remove").click();
 	await expect(role("commit")).toHaveCount(0);
 	// The default thinking level, which the preset may also leave unset.

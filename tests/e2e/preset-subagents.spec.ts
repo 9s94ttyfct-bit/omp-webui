@@ -136,7 +136,8 @@ test("Settings › Presets: a preset's subagent models are edited in a dialog an
 	await expect(agent("reviewer").getByTestId("agent-thinking")).toHaveAttribute("data-value", "low");
 	await agent("reviewer").getByTestId("agent-model").click();
 	await page.getByPlaceholder("Search models…").fill("Sonnet 5.5");
-	await page.getByRole("option", { name: /Claude Sonnet 5\.5/ }).click();
+	// Several providers may offer a Sonnet 5.5 (Bedrock's, by region): the one meant is Anthropic's.
+	await page.locator(`[role="option"][data-value="${SONNET}"]`).click();
 	await choose(agent("reviewer").getByTestId("agent-thinking"), "high");
 	await dialog.getByTestId("new-agent").fill("scout");
 	await dialog.getByTestId("add-agent").click();
