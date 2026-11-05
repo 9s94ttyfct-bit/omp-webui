@@ -655,10 +655,13 @@ async function main(): Promise<void> {
 	}
 	const rec1 = record(c1.liveId);
 	const rec2 = record(c2.liveId);
+	// The version the old server wrote is whatever its ref writes (1 before Full and Light, 2 since): the check is that each
+	// record has one, and below that this checkout reads each back as written.
+	const written = new Map([...convs.values()].map((c) => [c.liveId, record(c.liveId).version]));
 	check(
-		"old.records.version-1",
-		[...convs.values()].every((c) => record(c.liveId).version === 1),
-		`ParkedRecord.version = ${rec1.version}; keys: ${Object.keys(rec1).join(",")}`,
+		"old.records.versioned",
+		[...written.values()].every((v) => Number.isInteger(v)),
+		`ParkedRecord.version = ${[...new Set(written.values())].join(",")}; keys: ${Object.keys(rec1).join(",")}`,
 	);
 	check(
 		"old.c1.record-streaming-settings",
@@ -681,7 +684,7 @@ async function main(): Promise<void> {
 	check(
 		"contract.new-parser-reads-old-records",
 		parsed.length === TAGS.length &&
-			parsed.every((r) => r.version === 1) &&
+			parsed.every((r) => r.version === written.get(r.liveId)) &&
 			Boolean(parsedC2?.goal) &&
 			parsedC2?.subagents?.length === 1,
 		`this checkout's ParkedStore.list() on the records the old server wrote: ${parsed.length} records, goal kept: ${Boolean(parsedC2?.goal)}, subagents kept: ${parsedC2?.subagents?.length}`,
