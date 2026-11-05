@@ -103,7 +103,9 @@ test("the WebSocket takes messages up to 32 MiB; a prompt with large images is n
 	expect(await Promise.race([answered, closed.promise.then((code) => `socket closed (${code})`)])).toBe(
 		"Live session not found",
 	);
-	await expect(request(ws, { t: "list_lives" })).resolves.toEqual([]);
+	// Awaited plainly, not through `expect(…).resolves`, which runs the event loop the way `.rejects` does
+	// (tests/support/rejection.ts): on Windows Bun loses a socket's data event then (oven-sh/bun#44429, #44025).
+	expect(await request(ws, { t: "list_lives" })).toEqual([]);
 
 	// Over the limit the server drops the socket: 1009 (message too big), or 1006 when the client sees the
 	// connection go while it is still sending.
