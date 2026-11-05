@@ -1,3 +1,4 @@
+import { fenceFor } from "@shared/attachment.ts";
 import type { SessionEntry } from "@shared/protocol.ts";
 import { BLOB_REF, isBlobHash } from "./blob.ts";
 import { Fold } from "./lineage.ts";
@@ -148,6 +149,25 @@ export function textOf(m: AgentMessage): string {
 		.filter((b) => b.type === "text" || (b.type === "thinking" && b.narration))
 		.map((b) => (b.type === "text" ? b.text : b.thinking) ?? "")
 		.join("\n");
+}
+
+/** A `fileMention`'s files as Markdown: each one's path, and its text verbatim in a code block nothing in it can close. */
+export function mentionedFilesText(files: NonNullable<AgentMessage["files"]>): string {
+	return files
+		.map((f) => {
+			const text = f.content ?? "";
+			const fence = fenceFor(text);
+			return `${codeSpan(f.path)}\n\n${fence}\n${text}\n${fence}`;
+		})
+		.join("\n\n");
+}
+
+/** `text` as inline code: a run of backticks longer than any in it, spaced off one it starts or ends with. */
+function codeSpan(text: string): string {
+	const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
+	const ticks = "`".repeat(longest + 1);
+	const pad = text.startsWith("`") || text.endsWith("`") ? " " : "";
+	return `${ticks}${pad}${text}${pad}${ticks}`;
 }
 
 /** An attachment as omp's `prompt` command takes it. */

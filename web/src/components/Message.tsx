@@ -24,7 +24,15 @@ import { useBashDuration } from "../lib/bash-times.ts";
 import { fmtBytes } from "../lib/files-rows.ts";
 import { fmtDuration, fmtTokens } from "../lib/format.ts";
 import { useLiveMotion } from "../lib/live-motion.ts";
-import { type AgentMessage, blocks, imageSrc, resultsAdded, type ToolResults, textOf } from "../lib/messages.ts";
+import {
+	type AgentMessage,
+	blocks,
+	imageSrc,
+	mentionedFilesText,
+	resultsAdded,
+	type ToolResults,
+	textOf,
+} from "../lib/messages.ts";
 import { classifyCustom, contentText, noticeOf, ruleReminders } from "../lib/notices.ts";
 import { serverOffsetMs } from "../lib/server-clock.ts";
 import { useToolTimerMode } from "../lib/tool-timer.ts";
@@ -617,7 +625,7 @@ export const MessageRow = memo(function MessageRow(props: RowProps) {
 				title={t("chat.noteRead", {
 					files: files.map((f) => `@${f.path}`).join(", ") || t("chat.noteMentionedFiles"),
 				})}
-				text={files.map((f) => `\`${f.path}\`\n\n\`\`\`\n${f.content ?? ""}\n\`\`\``).join("\n\n")}
+				text={mentionedFilesText(files)}
 			/>
 		);
 	}

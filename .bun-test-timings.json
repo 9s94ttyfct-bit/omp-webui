@@ -325,6 +325,7 @@
     "tests/unit/store-memory.test.ts": 66,
     "tests/unit/password-generate.test.ts": 65,
     "tests/unit/kbd.test.ts": 64,
+    "tests/unit/mentioned-files.test.ts": 63,
     "tests/unit/guard-bench.test.ts": 62,
     "tests/unit/plugin-facets.test.ts": 61,
     "tests/unit/entry-graph.test.ts": 60,
