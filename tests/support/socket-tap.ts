@@ -45,9 +45,10 @@ export interface SocketTap {
 	push(msg: Msg): void;
 	/**
 	 * Answer commands of one type locally; return `undefined` to let the real server take that one. An answer for
-	 * `get_subagents` replaces the default one (see `tapSocket`).
+	 * `get_subagents` replaces the default one (see `tapSocket`). A promise is answered when it settles: the command
+	 * stays in flight until the spec lets it go.
 	 */
-	answer(type: string, handler: (command: Command) => Reply | undefined): void;
+	answer(type: string, handler: (command: Command) => Reply | Promise<Reply> | undefined): void;
 	/**
 	 * Change what the real server tells the page: `fn` gets every server → page message and, for a reply, the page's
 	 * request it answers, and what it returns is delivered (the same message: unchanged). For what only the server
@@ -69,7 +70,7 @@ export interface SocketTap {
  */
 export async function tapSocket(page: Page): Promise<SocketTap> {
 	const sent: Msg[] = [];
-	const handlers = new Map<string, (command: Command) => Reply | undefined>();
+	const handlers = new Map<string, (command: Command) => Reply | Promise<Reply> | undefined>();
 	/** Forwarded commands awaiting the server's reply: req → command type. */
 	const awaiting = new Map<string, string>();
 	const replied = new Map<string, unknown[]>();
@@ -110,7 +111,9 @@ export async function tapSocket(page: Page): Promise<SocketTap> {
 			if (msg.t === "rpc" && msg.command) {
 				const reply = handlers.get(msg.command.type ?? "")?.(msg.command);
 				if (reply) {
-					ws.send(JSON.stringify({ t: "reply", req: msg.req, ...reply }));
+					const send = (r: Reply) => ws.send(JSON.stringify({ t: "reply", req: msg.req, ...r }));
+					if (reply instanceof Promise) void reply.then(send);
+					else send(reply);
 					return;
 				}
 				awaiting.set(String(msg.req), msg.command.type ?? "");

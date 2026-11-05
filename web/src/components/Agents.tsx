@@ -569,11 +569,16 @@ export function AgentDetail({
 						data-panel-bar
 						onSubmit={(e) => {
 							e.preventDefault();
-							if (!msg.trim()) return;
-							socket
-								.act(liveId, { type: "steer_subagent", subagentId: row.id, message: msg.trim() })
-								.then(() => setMsg(""))
-								.catch((err) => toast("error", err.message));
+							const message = msg.trim();
+							if (!message) return;
+							// Cleared now rather than when the send resolves (as the composer does): the field stays editable
+							// meanwhile, and what is typed then must not be wiped by the send finishing, nor a second Enter send it again.
+							setMsg("");
+							socket.act(liveId, { type: "steer_subagent", subagentId: row.id, message }).catch((err) => {
+								// Not sent: it goes back, in front of anything typed since.
+								setMsg((cur) => (cur.trim() ? `${message} ${cur}` : message));
+								toast("error", err.message);
+							});
 						}}
 					>
 						<input

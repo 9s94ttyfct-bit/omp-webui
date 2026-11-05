@@ -1994,6 +1994,7 @@
 		"subagents-live.spec.ts › running subagents come first in the Agents tab, the newest start first, with a live clock": 9.2,
 		"subagents-live.spec.ts › the Agents list keeps its order while progress keeps arriving (#640)": 9,
 		"subagents-live.spec.ts › the Stop controls are in Chinese too, and are 24px or more on a phone (#455)": 8.8,
+		"subagents-live.spec.ts › the live view of one subagent › a steer being sent neither goes twice nor wipes what is typed meanwhile, and a failed one comes back": 2.4,
 		"subagents-live.spec.ts › the live view of one subagent › a subagent that is over shows no running tools, however it ended": 8.2,
 		"subagents-live.spec.ts › the live view of one subagent › a subagent whose process exits shows no running tools": 8,
 		"subagents-live.spec.ts › the live view of one subagent › can be steered and stopped": 8.4,

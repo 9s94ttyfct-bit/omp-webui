@@ -512,6 +512,40 @@ test.describe("the live view of one subagent", () => {
 		await expect(detail.getByText("aborted")).toBeVisible();
 	});
 
+	test("a steer being sent neither goes twice nor wipes what is typed meanwhile, and a failed one comes back", async ({
+		page,
+	}) => {
+		const { detail, tap } = await open(page, 0xbf);
+		// Each steer stays in flight until the test answers it.
+		type Reply = { ok: true } | { ok: false; error: string };
+		const answers: ((reply: Reply) => void)[] = [];
+		tap.answer("steer_subagent", () => {
+			const { promise, resolve } = Promise.withResolvers<Reply>();
+			answers.push(resolve);
+			return promise;
+		});
+		const input = detail.getByLabel("Message subagent");
+
+		await input.fill("Use the direct path");
+		await input.press("Enter");
+		await input.press("Enter");
+		await expect(input).toHaveValue("");
+		await input.fill("Skip the tests");
+		await input.press("Enter");
+		await expect(input).toHaveValue("");
+		await expect
+			.poll(() => tap.commands("steer_subagent").map((c) => c.message))
+			.toEqual(["Use the direct path", "Skip the tests"]);
+
+		// Typed while both are on their way: the first going through leaves it, the second failing puts its text in front.
+		await input.fill("and the docs");
+		answers[0]?.({ ok: true });
+		answers[1]?.({ ok: false, error: "omp could not steer it" });
+		await expect(page.getByTestId("toast").filter({ hasText: "omp could not steer it" })).toBeVisible();
+		await expect(input).toHaveValue("Skip the tests and the docs");
+		expect(tap.commands("steer_subagent")).toHaveLength(2);
+	});
+
 	test("a subagent that is over shows no running tools, however it ended", async ({ page }) => {
 		const { detail, frame } = await open(page, 0xba);
 		const running = detail.getByTestId("subagent-running-tool");
