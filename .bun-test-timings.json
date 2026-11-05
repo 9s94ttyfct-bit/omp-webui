@@ -420,6 +420,7 @@
     "tests/unit/model-config-client.test.ts": 11,
     "tests/unit/push-crypto.test.ts": 11,
     "tests/unit/remote-ai-page.test.ts": 11,
+    "tests/unit/short-path.test.ts": 11,
     "tests/unit/store-held.test.ts": 11,
     "tests/unit/subagent-wait.test.ts": 11,
     "tests/unit/usage-limit.test.ts": 11,

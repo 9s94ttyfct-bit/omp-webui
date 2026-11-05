@@ -1,7 +1,8 @@
 import * as Popover from "@radix-ui/react-popover";
 import { Funnel } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useT } from "../i18n/index.ts";
+import { folderLabels, shortPath } from "../lib/format.ts";
 import { Button, cx } from "./ui.tsx";
 
 const ROW =
@@ -34,9 +35,16 @@ export function FolderFilter({
 	const t = useT();
 	const [open, setOpen] = useState(false);
 	const filtered = value !== "all";
-	const nameOf = (cwd: string) => (home && cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd) || "/";
-	/** The last part of the path: a row says the folder's name, its tooltip the whole path. */
-	const shortOf = (cwd: string) => nameOf(cwd).split("/").filter(Boolean).at(-1) ?? nameOf(cwd);
+	const nameOf = (cwd: string) => shortPath(cwd, home) || "/";
+	/** A row says the folder's name (with as much of its parent as tells it from another of that name), its tooltip the whole path. */
+	const labels = useMemo(
+		() =>
+			folderLabels(
+				folders.map(([cwd]) => cwd),
+				home,
+			),
+		[folders, home],
+	);
 	const chosen = filtered ? nameOf(value) : t("shell.sidebarAllFolders", { n: total });
 	const choose = (cwd: string) => {
 		onChange(cwd);
@@ -96,7 +104,7 @@ export function FolderFilter({
 											data-cwd={cwd}
 											onClick={() => choose(cwd)}
 										>
-											<span className="min-w-0 flex-1 truncate">{shortOf(cwd)}</span>
+											<span className="min-w-0 flex-1 truncate">{labels.get(cwd)}</span>
 											<span className="shrink-0 text-xs tabular-nums text-faint">{count}</span>
 										</button>
 									</li>

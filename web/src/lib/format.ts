@@ -126,6 +126,33 @@ export function dateGroup(ts: number): string {
 	return dateFormat(useLang.getState().lang, "month").format(d);
 }
 
+/**
+ * `p` with the home folder written `~`: the home folder itself and the paths inside it (after a `/` or a `\`), never another
+ * folder whose name starts with the home folder's (`/Users/jdoex` for the home `/Users/jdoe`).
+ */
 export function shortPath(p: string, home?: string): string {
-	return home && p.startsWith(home) ? `~${p.slice(home.length)}` : p;
+	const base = home?.replace(/[\\/]+$/, "");
+	if (!base || !p.startsWith(base)) return p;
+	const rest = p.slice(base.length);
+	return rest === "" || rest[0] === "/" || rest[0] === "\\" ? `~${rest}` : p;
+}
+
+/**
+ * A short name for each of `folders` that tells it from the others: its last part, or as many of its last parts (of the
+ * path as `shortPath` writes it) as set it apart from another folder of the same name (`a/app`, `b/app`).
+ */
+export function folderLabels(folders: readonly string[], home?: string): Map<string, string> {
+	const paths = folders.map((folder) => {
+		const shown = shortPath(folder, home);
+		const sep = shown.includes("\\") && !shown.includes("/") ? "\\" : "/";
+		return { folder, shown, sep, parts: shown.split(/[\\/]/).filter(Boolean) };
+	});
+	const tail = (p: (typeof paths)[number], n: number) => p.parts.slice(-n).join(p.sep);
+	const labels = new Map<string, string>();
+	for (const p of paths) {
+		let n = 1;
+		while (n < p.parts.length && paths.some((o) => o !== p && tail(o, n) === tail(p, n))) n++;
+		labels.set(p.folder, tail(p, n) || p.shown || "/");
+	}
+	return labels;
 }
