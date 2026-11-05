@@ -237,28 +237,40 @@ function apply(lang: Lang): void {
 	useLang.setState({ lang });
 }
 
-/** Show `lang` without choosing it: another page chose it and the preference is already stored (`lib/prefs-live.ts`). */
+/** The language asked for last: a pack that arrives after another language was asked for is not shown. */
+let wanted: Lang = "en";
+
+/**
+ * Show `lang` without choosing it: another page chose it and the preference is already stored (`lib/prefs-live.ts`).
+ * Rejects when its pack does not arrive; the page stays in the language it shows.
+ */
 export async function showLang(lang: Lang): Promise<void> {
+	wanted = lang;
 	await loadPack(lang);
-	apply(lang);
+	if (wanted === lang) apply(lang);
 }
 
 export const useLang = create<{ lang: Lang; setLang: (l: Lang) => Promise<void> }>(() => ({
 	lang: "en",
+	/** Choose `lang`: kept once its pack is there, so that a pack that does not arrive leaves the choice as it was. */
 	setLang: async (lang) => {
+		wanted = lang;
+		await loadPack(lang);
+		if (wanted !== lang) return;
 		setPref(PREF.lang, lang);
-		await showLang(lang);
+		apply(lang);
 	},
 }));
 
 /** Resolves once the preferred language is loaded; render after it to avoid a flash of English. */
 export const i18nReady: Promise<void> = (async () => {
 	const lang = preferredLang();
+	wanted = lang;
 	try {
 		await loadPack(lang);
-		apply(lang);
+		if (wanted === lang) apply(lang);
 	} catch {
-		apply("en");
+		if (wanted === lang) apply("en");
 	}
 })();
 

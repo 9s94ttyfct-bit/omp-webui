@@ -407,6 +407,7 @@
     "tests/unit/btw-fork.test.ts": 12,
     "tests/unit/error-text.test.ts": 12,
     "tests/unit/gh-issues.test.ts": 12,
+    "tests/unit/i18n-switch.test.ts": 12,
     "tests/unit/transfer-items.test.ts": 12,
     "tests/unit/feedback.test.ts": 11,
     "tests/unit/file-edit.test.ts": 11,

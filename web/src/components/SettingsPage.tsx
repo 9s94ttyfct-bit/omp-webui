@@ -322,7 +322,9 @@ export function SettingsPage() {
 								data-testid="language"
 								aria-label={t("common.language")}
 								value={lang}
-								onValueChange={(v) => void setLang(v as Lang)}
+								onValueChange={(v) =>
+									setLang(v as Lang).catch((e) => useApp.getState().toast("error", (e as Error).message))
+								}
 							>
 								{LANGS.map((l) => (
 									<option key={l.value} value={l.value}>

@@ -24,7 +24,8 @@ function show(keys: PrefKey[]): void {
 	}
 	if (keys.includes(PREF.lang)) {
 		const lang = localStorage.getItem(PREF.lang);
-		if (lang === "en" || lang === "zh-CN") void showLang(lang as Lang);
+		if (lang === "en" || lang === "zh-CN")
+			showLang(lang as Lang).catch((e) => useApp.getState().toast("error", (e as Error).message));
 	}
 	if (keys.includes(PREF.sidebarWidth) || keys.includes(PREF.panelWidth)) reloadStoredWidths();
 	if (keys.includes(PREF.keepThinking)) {
