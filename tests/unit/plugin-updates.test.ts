@@ -95,6 +95,40 @@ describe("checkUpdates", () => {
 		expect(asked.filter((a) => a.startsWith(`${resolve(HOME)}: plugin upgrade`))).toHaveLength(1);
 	});
 
+	test("a few omp processes run at once, however many folders and registry skills there are", async () => {
+		const folders = ["/work/a", "/work/b", "/work/c"];
+		const skills = Array.from({ length: 10 }, (_, i) => ({
+			id: `@acme/s${i}`,
+			version: "1.0.0",
+			level: "user" as const,
+			root: HOME,
+		}));
+		let running = 0;
+		let most = 0;
+		let calls = 0;
+		const found = await checkUpdates({
+			home: HOME,
+			folders,
+			npmLatest: async () => "0.0.0",
+			run: async (args) => {
+				calls++;
+				most = Math.max(most, ++running);
+				// Settled later, after the other calls that start meanwhile.
+				for (let i = 0; i < 5; i++) await Promise.resolve();
+				running--;
+				if (args[1] === "upgrade") return "";
+				if (args[0] === "plugin" && args[1] === "list") return JSON.stringify({ npm: [], marketplace: [] });
+				if (args[1] === "list") return skillList(skills);
+				if (args[1] === "info") return JSON.stringify({ distTags: { latest: "1.1.0" } });
+				throw new Error(`unexpected ${args.join(" ")}`);
+			},
+		});
+		// Every folder's dry run and skill list, each user skill once from the home folder, and the npm list.
+		expect(calls).toBe(2 * (folders.length + 1) + skills.length + 1);
+		expect(found.updates).toHaveLength(skills.length);
+		expect(most).toBeLessThanOrEqual(3);
+	});
+
 	test("an npm plugin is checked against the registry unless it came from git, a URL or a folder", async () => {
 		const home = mkdtempSync(join(tmpdir(), "ompw-updates-"));
 		try {

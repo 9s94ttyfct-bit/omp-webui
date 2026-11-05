@@ -115,8 +115,32 @@ export interface CheckDeps {
 	folders: string[];
 }
 
+/** How many omp processes a check runs at once: each is a whole omp start (about 0.15 s and 140 MB, `config-read.ts`). */
+const CHECK_PROCESSES = 3;
+
+/** `run`, with no more than `most` of its calls under way at once; the others wait their turn. */
+function bounded(run: RunOmp, most: number): RunOmp {
+	let active = 0;
+	const waiting: (() => void)[] = [];
+	return async (args, cwd) => {
+		while (active >= most) {
+			const { promise, resolve } = Promise.withResolvers<void>();
+			waiting.push(resolve);
+			await promise;
+		}
+		active++;
+		try {
+			return await run(args, cwd);
+		} finally {
+			active--;
+			waiting.shift()?.();
+		}
+	};
+}
+
 /** One check, after the marketplaces were refreshed (the caller does that, in turn with every other change). */
-export async function checkUpdates(d: CheckDeps): Promise<CheckResult> {
+export async function checkUpdates(deps: CheckDeps): Promise<CheckResult> {
+	const d = { ...deps, run: bounded(deps.run, CHECK_PROCESSES) };
 	const updates: PluginUpdate[] = [];
 	const unchecked: UncheckedUpdate[] = [];
 	const errors: string[] = [];
