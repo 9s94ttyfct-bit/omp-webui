@@ -38,8 +38,8 @@ import { TunnelError } from "./remote-tunnel.ts";
  *   - the switch: it is the person's alone (the card, over a route that is local-only). Turned off, every conversation
  *     is refused at once and told the tools are gone; a call is checked against the switch's file, which is the truth.
  *   - the conversation's life: it ends with the process (`ended`); a server that restarts holds no conversation.
- *   - who is looking: a conversation that a page which came in through the tunnel is attached to is refused, since that
- *     page could answer omp's approval prompt itself.
+ *   - who is looking: a conversation that a page which is not on this computer (the tunnel's or the network's) has been on
+ *     is refused, since that page could answer omp's approval prompt itself.
  *
  * The agent cannot reach the switch, `enabled` or `autostart` through them, and no Cloudflare API
  * token is asked for or kept: the dashboard steps stay the person's.
@@ -51,7 +51,7 @@ export interface RemoteAiHooks {
 	open(server: HostToolServer, cwd: string): Promise<LiveAttached>;
 	/** Take the tools away from omp in conversation `liveId` (it goes on as an ordinary conversation). */
 	withdraw(liveId: string): Promise<void>;
-	/** Whether a page that came in through the tunnel is attached to conversation `liveId`. */
+	/** Whether a page that is not on this computer (the tunnel's or the network's) has been on conversation `liveId`. */
 	heldRemotely(liveId: string): boolean;
 }
 
@@ -90,7 +90,7 @@ export const REMOTE_AI_DEFINITIONS: readonly HostToolDefinition[] = [
 	tool(
 		REMOTE_AI_TOOL.install,
 		"Install cloudflared",
-		"Install cloudflared with Homebrew, as the card's Install button does. It can take a few minutes. The person is asked to approve it.",
+		"Install cloudflared as the card's Install button does: with Homebrew on macOS; on Linux and Windows Cloudflare's own build is downloaded and checked. It can take a few minutes. The person is asked to approve it.",
 	),
 	tool(
 		REMOTE_AI_TOOL.login,
@@ -277,7 +277,7 @@ export class RemoteAi implements HostToolServer {
 		if (!this.holders.has(liveId))
 			return 'This conversation was not started with "Set up with AI" in Settings › Remote access, so it has no access to remote access. Tell the person to use that button.';
 		if (this.hooks?.heldRemotely(liveId))
-			return "A page that came in through the tunnel has been on this conversation, and could have answered omp's approval prompt itself, so these tools are refused. Remote access can be set up from this computer only: do nothing, and tell the person to continue at the Mac (it is lifted by sending a message from this computer).";
+			return "A page that is not on this computer (through the tunnel or over the network) has been on this conversation, and could have answered omp's approval prompt itself, so these tools are refused. Remote access can be set up from this computer only: do nothing, and tell the person to continue at the Mac (it is lifted by sending a message from this computer).";
 		return null;
 	}
 

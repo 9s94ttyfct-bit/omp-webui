@@ -24,8 +24,8 @@ visiting before anything is served. This app checks the Access token again and l
 
 ## The steps
 
-1. **Install cloudflared** (remote_access_install). It uses Homebrew. Without Homebrew, the person installs
-   cloudflared themselves (developers.cloudflare.com › Cloudflare One › Connections › Cloudflare Tunnel › Downloads).
+1. **Install cloudflared** (remote_access_install). On macOS it uses Homebrew; on Linux and Windows it downloads
+   Cloudflare's own build itself. On a Mac without Homebrew, the person installs cloudflared themselves (developers.cloudflare.com › Cloudflare One › Connections › Cloudflare Tunnel › Downloads).
 2. **Log in to Cloudflare** (remote_access_login). The sign-in link is a one-time link: it is shown to the person in
    Settings › Remote access (and as a notice in this app), never in your tool results. Tell them to open it, sign in and
    pick the domain (zone) the hostname belongs to. The login is done when remote_access_status says cloudflareLogin
