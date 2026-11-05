@@ -693,10 +693,96 @@ function readBackticks(src: string, start: number): { text: string; end: number 
 	return { text: src.slice(start, i), end: Math.min(i + 1, src.length) };
 }
 
+const ANSI_C_SIMPLE: Readonly<Record<string, string>> = {
+	a: "\x07",
+	b: "\b",
+	e: "\x1b",
+	E: "\x1b",
+	f: "\f",
+	n: "\n",
+	r: "\r",
+	t: "\t",
+	v: "\v",
+	"\\": "\\",
+	"'": "'",
+	'"': '"',
+	"?": "?",
+};
+
 /**
- * Take a script apart into pipelines of simple commands. It knows quoting, escapes, comments, `$(…)`, backticks,
- * process substitution, redirections and here-documents, and where one command ends and the next begins (`;`, `&&`,
- * `||`, `&`, a new line, a pipe, parentheses, braces). It runs, expands and understands nothing else; it never throws.
+ * The text of a `$'…'` as bash decodes it: `start` is just after its opening quote, `end` just after the closing one.
+ * `\xHH`, `\NNN`, `\uHHHH`, `\UHHHHHHHH`, `\cX` and the letters are what they stand for (`$'\x2f'` is `/`); an unknown
+ * escape keeps its backslash, and a NUL ends the text, as in bash.
+ */
+function readAnsiC(src: string, start: number): { text: string; end: number } {
+	let text = "";
+	let ended = false;
+	let i = start;
+	const add = (s: string): void => {
+		if (ended) return;
+		const nul = s.indexOf("\0");
+		if (nul >= 0) ended = true;
+		text += nul >= 0 ? s.slice(0, nul) : s;
+	};
+	while (i < src.length && src[i] !== "'") {
+		if (src[i] !== "\\" || i + 1 >= src.length) {
+			add(src[i++]);
+			continue;
+		}
+		const e = src[i + 1];
+		i += 2;
+		const digits = (pattern: RegExp, max: number, radix: number): number | null => {
+			const run = pattern.exec(src.slice(i, i + max))?.[0];
+			if (!run) return null;
+			i += run.length;
+			return Number.parseInt(run, radix);
+		};
+		if (Object.hasOwn(ANSI_C_SIMPLE, e)) add(ANSI_C_SIMPLE[e]);
+		else if (e >= "0" && e <= "7") {
+			i--;
+			add(String.fromCharCode((digits(/^[0-7]+/, 3, 8) ?? 0) & 0xff));
+		} else if (e === "x" || e === "u" || e === "U") {
+			const code = digits(/^[0-9A-Fa-f]+/, e === "x" ? 2 : e === "u" ? 4 : 8, 16);
+			if (code === null) add(`\\${e}`);
+			else add(code <= 0x10ffff ? String.fromCodePoint(code) : "\ufffd");
+		} else if (e === "c" && i < src.length && src[i] !== "'") add(String.fromCharCode(src.charCodeAt(i++) & 0x1f));
+		else add(`\\${e}`);
+	}
+	return { text, end: Math.min(i + 1, src.length) };
+}
+
+/**
+ * Whether the unquoted `{` at `start` opens a brace expansion (`{a,b}`, `{1..3}`): a `,` or `..` at its own level before
+ * the matching `}`, all in one word. Bash makes several words of it, which are not read here.
+ */
+function opensBraceList(src: string, start: number): boolean {
+	let depth = 0;
+	let list = false;
+	let i = start;
+	while (i < src.length) {
+		const c = src[i];
+		if (/[\s;&|<>()]/.test(c)) return false;
+		if (c === "\\") i += 2;
+		else if (c === "'") {
+			const end = src.indexOf("'", i + 1);
+			if (end < 0) return false;
+			i = end + 1;
+		} else if (c === '"') i = skipDouble(src, i + 1);
+		else {
+			if (c === "{") depth++;
+			else if (c === "}" && --depth === 0) return list;
+			else if (depth === 1 && (c === "," || (c === "." && src[i + 1] === "."))) list = true;
+			i++;
+		}
+	}
+	return false;
+}
+
+/**
+ * Take a script apart into pipelines of simple commands. It knows quoting (`$'…'` decoded as bash does), escapes,
+ * comments, `$(…)`, backticks, process substitution, redirections and here-documents, and where one command ends and the
+ * next begins (`;`, `&&`, `||`, `&`, a new line, a pipe, parentheses, braces). What it does not expand (a brace list,
+ * `~name`, a variable it does not know) leaves the word unknown. It runs and understands nothing else; it never throws.
  */
 function parseScript(src: string, vars: Readonly<Record<string, string>>): Simple[][] {
 	const home = vars.HOME;
@@ -834,14 +920,9 @@ function parseScript(src: string, vars: Readonly<Record<string, string>>): Simpl
 			}
 			i++;
 		} else if (c === "$" && next === "'") {
-			// $'…': C-style escapes; the text is kept as written, which is enough to read a path or a word.
-			ensure();
-			i += 2;
-			while (i < src.length && src[i] !== "'") {
-				if (src[i] === "\\" && i + 1 < src.length) i++;
-				ensure().text += src[i++];
-			}
-			i++;
+			const inner = readAnsiC(src, i + 2);
+			ensure().text += inner.text;
+			i = inner.end;
 		} else if (c === "$") {
 			i = variable(i);
 		} else if (c === "`") {
@@ -855,6 +936,10 @@ function parseScript(src: string, vars: Readonly<Record<string, string>>): Simpl
 		} else if (c === "~" && atStart && (next === undefined || /[\s/;&|)<>]/.test(next))) {
 			ensure().text += home;
 			i++;
+		} else if (c === "~" && atStart && /^[\w.+-]+(?:$|[\s/;&|)<>])/.test(src.slice(i + 1, i + 260))) {
+			// `~name` is that user's home folder (`~+`, `~-`: the current and the last folder), which is not known here.
+			dynamic();
+			i += 1 + (/^[\w.+-]+/.exec(src.slice(i + 1, i + 260))?.[0].length ?? 0);
 		} else if (c === ";" || c === "(" || c === ")" || (c === "&" && next !== ">" && src[i - 1] !== ">")) {
 			endPipeline();
 			i += c === "&" && next === "&" ? 2 : 1;
@@ -895,6 +980,8 @@ function parseScript(src: string, vars: Readonly<Record<string, string>>): Simpl
 		} else {
 			const w = ensure();
 			if (c === DYN) w.dynamic = true;
+			// A brace list is several words when it runs (`{rm,-rf,~}`, `x{1..3}`): from here on, the word is not known.
+			else if (c === "{" && opensBraceList(src, i)) dynamic();
 			w.text += c;
 			i++;
 		}

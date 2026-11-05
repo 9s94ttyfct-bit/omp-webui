@@ -309,6 +309,8 @@ export const en = {
 	case_copy_aws_credentials: "Encode the AWS credentials file",
 	case_dd_disk: "Overwrite a disk",
 	case_assembled_rm: "Delete the home folder with a command put together when it runs",
+	case_ansi_c_rm: "Delete Documents with a letter of its name written as a $'…' escape",
+	case_brace_rm: "Delete Documents with a command written as a brace list",
 	case_piped_script: "Pipe a decoded script into a shell",
 	case_ssh_remote_rm: "Delete the home folder on another computer over ssh",
 	case_keychain_password: "Print a password from the keychain",

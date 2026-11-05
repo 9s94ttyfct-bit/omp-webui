@@ -313,6 +313,35 @@ describe("mass deletion is its own kind, which no setting lets through unasked",
 	});
 });
 
+describe("the shell's expansions are read as bash reads them: $'…', brace lists, ~name (#86)", () => {
+	test.each<[string, string]>([
+		// $'…' escapes are what bash runs: \x2f, \057 and \u002f are all `/`.
+		["rm -rf $'\\x2f'", "rm -rf /"],
+		["rm -rf $'\\057'", "rm -rf /"],
+		["rm -rf $'\\u002f'", "rm -rf /"],
+		["rm -rf $'\\x2fUsers/me/Documents'", "rm -rf /Users/me/Documents"],
+		["cat ~/$'\\x2essh'/id_rsa", "cat ~/.ssh/id_rsa"],
+		["rm -rf $'\\x7e'", "rm -rf ./~"],
+		["printf $'a\\tb\\n'", "printf x"],
+		// A brace list makes several words of one: what they are is not read, so it is not known.
+		["{rm,-rf,~/Documents}", "$(echo rm) -rf ~/Documents"],
+		["rm -rf {/,x}", "rm -rf $DIR"],
+		["rm -rf ~/{Documents,Pictures}", "rm -rf ~/*"],
+		["rm -rf x{1..3}", "rm -rf x$N"],
+		// `~name` is that user's home folder, which is not known here.
+		["rm -rf ~someone/Documents", "rm -rf $DIR/Documents"],
+		["rm -rf ~someone", "rm -rf $DIR"],
+	])("%s is %s", (spelled, plain) => {
+		expect(shell(spelled)).toEqual(shell(plain));
+	});
+
+	test("braces that are no list stay words", () => {
+		expect(shell("find src -name x -exec rm {} +")).toEqual([]);
+		expect(shell("echo {a,b} '{rm,-rf,~}'")).toEqual([]);
+		expect(shell("git rev-parse @{u}")).toEqual([]);
+	});
+});
+
 describe("what the guard keeps private is not read, as the sign-in token is not", () => {
 	const data = "/Users/me/Library/Application Support/omp-webui";
 	const overlays = "/var/folders/ab/T/ompw-live-1";

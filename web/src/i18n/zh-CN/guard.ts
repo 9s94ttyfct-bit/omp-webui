@@ -294,6 +294,8 @@ export const zh: Record<keyof typeof en, string> = {
 	case_cat_ssh_key: "打印 ssh 私钥",
 	case_copy_aws_credentials: "编码 AWS 凭据文件",
 	case_assembled_rm: "用运行时才拼出来的命令删除家目录",
+	case_ansi_c_rm: "删除“文稿”，名字里的一个字母写成 $'…' 转义",
+	case_brace_rm: "删除“文稿”，命令写成花括号列表",
 	case_piped_script: "把解码出来的脚本用管道交给 shell",
 	case_ssh_remote_rm: "通过 ssh 删除另一台电脑上的家目录",
 	case_keychain_password: "打印钥匙串里的一个密码",
