@@ -205,23 +205,51 @@ function UsageBreakdown({ usage, className, exactCost }: { usage: Usage; classNa
 	);
 }
 
-/** Tokens and cost so far. With `tip`, hovering it shows the breakdown. */
+/**
+ * Tokens and cost so far. With `tip` (on the header, where the breakdown is not listed beside it) it is a button: hovering
+ * it shows the breakdown, and pressing or tapping it opens the same breakdown, so a keyboard and a touch screen reach it.
+ */
 function SessionCost({ usage, tip }: { usage: Usage; tip: boolean }) {
 	const t = useT();
-	const chip = (
-		<span
-			className="shrink-0 cursor-default whitespace-nowrap rounded-md bg-bg-soft px-2 py-1 text-xs tabular-nums text-muted"
-			data-testid="session-cost"
-			data-cost={usage.cost}
-			data-partial={usage.partial ? "" : undefined}
-		>
-			{t("chat.sessionCost", {
-				tokens: `${usage.partial ? "≥" : ""}${fmtTokens(usage.input + usage.output + usage.cacheRead + usage.cacheWrite + usage.pending)}`,
-				cost: `${usage.partial ? "≥" : ""}${fmtCost(usage.cost)}`,
-			})}
-		</span>
+	const [open, setOpen] = useState(false);
+	const className = "shrink-0 whitespace-nowrap rounded-md bg-bg-soft px-2 py-1 text-xs tabular-nums text-muted";
+	const data = {
+		"data-testid": "session-cost",
+		"data-cost": usage.cost,
+		"data-partial": usage.partial ? "" : undefined,
+	};
+	const text = t("chat.sessionCost", {
+		tokens: `${usage.partial ? "≥" : ""}${fmtTokens(usage.input + usage.output + usage.cacheRead + usage.cacheWrite + usage.pending)}`,
+		cost: `${usage.partial ? "≥" : ""}${fmtCost(usage.cost)}`,
+	});
+	if (!tip)
+		return (
+			<span className={cx(className, "cursor-default")} {...data}>
+				{text}
+			</span>
+		);
+	return (
+		<Popover.Root open={open} onOpenChange={setOpen}>
+			{/* The tooltip stays shut while the same breakdown is open below the chip. */}
+			<Tip label={<UsageBreakdown usage={usage} exactCost />} closed={open}>
+				<Popover.Trigger asChild>
+					<button type="button" className={cx(className, "hover:text-fg")} {...data}>
+						{text}
+					</button>
+				</Popover.Trigger>
+			</Tip>
+			<Popover.Portal>
+				<Popover.Content
+					sideOffset={6}
+					collisionPadding={8}
+					className="z-50 max-w-[min(32rem,calc(100vw-2rem))] rounded-md border border-border bg-surface px-2 py-1 text-xs text-fg shadow-lg outline-none"
+					data-testid="session-cost-breakdown"
+				>
+					<UsageBreakdown usage={usage} exactCost />
+				</Popover.Content>
+			</Popover.Portal>
+		</Popover.Root>
 	);
-	return tip ? <Tip label={<UsageBreakdown usage={usage} exactCost />}>{chip}</Tip> : chip;
 }
 
 /**

@@ -92,7 +92,8 @@ export function PathTail({ path, className, ...rest }: HTMLAttributes<HTMLSpanEl
 /**
  * `wide` is for a tip that is a block of figures, not a hint. `keepSide` keeps it on `side`, from the start of what it
  * points at, where it would otherwise flip to the other side when it does not fit (and cover what the reader is looking
- * at there): it takes the room that side has and scrolls the rest.
+ * at there): it takes the room that side has and scrolls the rest. `closed` keeps it shut (while what it says is shown
+ * otherwise, in a popover of the same trigger).
  */
 export function Tip({
 	label,
@@ -101,6 +102,7 @@ export function Tip({
 	contentClassName,
 	wide,
 	keepSide,
+	closed,
 }: {
 	label: ReactNode;
 	children: ReactNode;
@@ -108,9 +110,10 @@ export function Tip({
 	contentClassName?: string;
 	wide?: boolean;
 	keepSide?: boolean;
+	closed?: boolean;
 }) {
 	return (
-		<Tooltip.Root delayDuration={350}>
+		<Tooltip.Root delayDuration={350} open={closed ? false : undefined}>
 			<Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
 			<Tooltip.Portal>
 				<Tooltip.Content

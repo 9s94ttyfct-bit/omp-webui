@@ -81,6 +81,27 @@ test("a conversation without an advisor shows no advisor share", async ({ page }
 	await expect(page.getByTestId("status-cost")).toHaveAttribute("data-advisor", "0");
 });
 
+test("the header's total opens its breakdown from the keyboard and with a tap, not only under a mouse", async ({
+	page,
+}) => {
+	const own = sessionWithSubagents(0xba, "Cost by keyboard", { Scout: [1000] });
+	await page.goto("/");
+	await expect(rowOf(page, own.file)).toHaveCount(1, { timeout: 15_000 });
+	await rowOf(page, own.file).click();
+	await expect.poll(() => costOf(page)).toBeCloseTo(1.012345, 6);
+	const breakdown = page.getByTestId("session-cost-breakdown");
+	await headerCost(page).focus();
+	await expect(headerCost(page)).toBeFocused();
+	await page.keyboard.press("Enter");
+	await expect(breakdown.getByTestId("usage-split")).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(breakdown).toHaveCount(0);
+	await expect(headerCost(page)).toBeFocused();
+	// A tap is a click with no hover before it.
+	await headerCost(page).dispatchEvent("click");
+	await expect(breakdown.getByTestId("usage-split")).toBeVisible();
+});
+
 test("while omp runs, an advisor that goes on writing moves every total once, with no frame to say so", async ({
 	page,
 }) => {
