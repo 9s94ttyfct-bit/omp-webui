@@ -9,6 +9,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { parseProjectFolder } from "../shared/chat-projects.ts";
 import { isRecord } from "../shared/guards.ts";
 import {
 	autoProjectName,
@@ -68,12 +69,11 @@ export class ProjectsFolder {
 		this.file = join(dataDir, "projects-folder.json");
 	}
 
-	/** The folder that was chosen, or null: nothing chosen, or a file that cannot be trusted. */
+	/** The folder that was chosen (an absolute path: `/…`, or a drive's on Windows), or null: nothing chosen, or a file that cannot be trusted. */
 	private chosen(): string | null {
 		try {
 			const body: unknown = JSON.parse(readFileSync(this.file, "utf8"));
-			const folder = isRecord(body) ? body.folder : null;
-			return typeof folder === "string" && folder.startsWith("/") ? folder : null;
+			return parseProjectFolder(isRecord(body) ? body.folder : null);
 		} catch {
 			return null;
 		}

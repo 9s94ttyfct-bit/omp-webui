@@ -175,6 +175,14 @@ test("a corrupt or foreign settings file is the default, never an error", () => 
 	}
 });
 
+test("a chosen folder as a Windows server writes it (a drive letter) is kept, not taken for a foreign file (#55)", () => {
+	const w = world();
+	for (const folder of ["C:\\Users\\someone\\Code", "D:/work"]) {
+		writeFileSync(join(w.data, "projects-folder.json"), JSON.stringify({ folder }));
+		expect(w.projects.info(), folder).toMatchObject({ folder, isDefault: false });
+	}
+});
+
 test("a project folder is made directly in the projects folder, and only there", () => {
 	const w = world();
 	mkdirSync(join(w.home, "omp"));
