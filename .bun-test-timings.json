@@ -420,6 +420,7 @@
     "tests/unit/guidance-start.test.ts": 11,
     "tests/unit/instance-ports.test.ts": 11,
     "tests/unit/loaded.test.ts": 11,
+    "tests/unit/migrate-windows.test.ts": 11,
     "tests/unit/model-catalog.test.ts": 11,
     "tests/unit/model-config-client.test.ts": 11,
     "tests/unit/push-crypto.test.ts": 11,

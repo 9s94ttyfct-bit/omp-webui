@@ -1,6 +1,6 @@
 import type { Dirent, Stats } from "node:fs";
 import { lstat, readdir, readFile, readlink, stat as statFile } from "node:fs/promises";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import nodePath, { basename, dirname, join, resolve, sep } from "node:path";
 import { isRecord } from "../../shared/guards.ts";
 import type { MigrateCategoryId, MigrateLeftOut, MigrateLeftOutReason } from "../../shared/migrate.ts";
 import { countSecrets, type RedactFormat } from "./secrets.ts";
@@ -116,6 +116,11 @@ const join2 = (...parts: string[]): string => parts.filter(Boolean).join("/");
 /** `~` for the home folder in a path shown to the person. */
 export function tilde(path: string, home: string): string {
 	return path === home ? "~" : path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+}
+
+/** Whether `path` is in the folder `dir` (not the folder itself), with the system's separator (`\` on Windows). */
+export function under(dir: string, path: string, p: typeof nodePath = nodePath): boolean {
+	return path.startsWith(dir + p.sep);
 }
 
 const CONFIG_FORMATS: Record<string, RedactFormat> = {

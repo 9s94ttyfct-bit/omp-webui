@@ -50,6 +50,7 @@ import {
 	placementOf,
 	TRANSCRIPT_PATH,
 	tilde,
+	under,
 } from "./layout.ts";
 import {
 	CREDENTIALS_NAME,
@@ -60,7 +61,7 @@ import {
 	parseManifest,
 } from "./manifest.ts";
 import { compareFiles, mergeDoc, parseDoc, serializeDoc, unionList, withAddedKeys } from "./merge.ts";
-import { BACKUP_APP, RESTORE_NOTE } from "./restore.ts";
+import { BACKUP_APP, backupCopy, RESTORE_NOTE } from "./restore.ts";
 import { bucketFor, PathMap, rewriteSession } from "./rewrite.ts";
 import { isSealed, SealedFile, unlockSealed } from "./sealed.ts";
 import { type ConfigFormat, keepBlankedSecrets } from "./secrets.ts";
@@ -603,7 +604,7 @@ function bucketDirsOf(buckets: Map<string, string>, loc: Locations): [string, st
 /** A path that names a file in a renamed conversation folder, made to name it in the new one. */
 function fixSessionPathFor(bucketDirs: [string, string][]): (path: string) => string {
 	return (path) => {
-		for (const [from, to] of bucketDirs) if (path.startsWith(`${from}/`)) return `${to}${path.slice(from.length)}`;
+		for (const [from, to] of bucketDirs) if (under(from, path)) return `${to}${path.slice(from.length)}`;
 		return path;
 	};
 }
@@ -918,7 +919,7 @@ class Apply implements RunningImport {
 		const plugins = [join(root, "plugins"), join(configRootOf(this.env.loc.homeReal ?? this.env.loc.home), "plugins")];
 		for (let at = dirname(dest); at.length > 1 && at !== dirname(at); at = dirname(at)) {
 			if (this.planted.has(at)) throw new Error(`${at} is a link that was just made: nothing is written through it`);
-			if (!plugins.some((p) => at.startsWith(`${p}/`))) continue;
+			if (!plugins.some((p) => under(p, at))) continue;
 			const st = await lstat(at).catch(() => null);
 			if (st?.isSymbolicLink()) throw new Error(`${at} is a link: nothing is written through it`);
 		}
@@ -940,7 +941,7 @@ class Apply implements RunningImport {
 			return;
 		}
 		appendFileSync(join(dir, "changed.txt"), `${dest}\n`);
-		const target = join(dir, "files", dest);
+		const target = backupCopy(dir, dest);
 		mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
 		// A pipe, a device or a socket has no contents to keep, and copying is synchronous: opening a pipe nobody writes to
 		// would stop the whole server. It is listed as changed with no copy, which a restore passes over.
@@ -967,7 +968,7 @@ class Apply implements RunningImport {
 			join(configRootOf(this.env.loc.home), "plugins"),
 			join(configRootOf(this.env.loc.homeReal ?? this.env.loc.home), "plugins"),
 		];
-		return isAbsolute(e.target ?? "") && roots.some((r) => target.startsWith(`${r}/`)) ? target : null;
+		return isAbsolute(e.target ?? "") && roots.some((r) => under(r, target)) ? target : null;
 	}
 
 	/** Write `data` to `dest` beside it and move it into place. */
@@ -1480,7 +1481,7 @@ class Apply implements RunningImport {
 	private folders(entries: ManifestEntry[]): void {
 		const seen = new Set<string>();
 		for (const e of entries) {
-			if (!e.cwd?.startsWith("/") || (!SESSION_FILE.test(e.path) && !SESSION_DIR_FILE.test(e.path))) continue;
+			if (!e.cwd || !isAbsolute(e.cwd) || (!SESSION_FILE.test(e.path) && !SESSION_DIR_FILE.test(e.path))) continue;
 			const mapped = this.map.map(e.cwd);
 			if (seen.has(mapped)) continue;
 			seen.add(mapped);

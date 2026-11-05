@@ -10,27 +10,48 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { readlink } from "node:fs/promises";
-import { join } from "node:path";
+import path, { join } from "node:path";
 import { CodedError } from "../../shared/error-info.ts";
 import { isRecord } from "../../shared/guards.ts";
 
 /**
- * Putting a Mac back as it was before an import: what the import changed was copied to `<backup>/files/<its path>` first,
- * and what it made is listed in `created.txt`, both written down before each file was touched (see `Apply.touch`). The
- * folder says how to do it by hand too, so that nothing depends on this app being able to run.
+ * Putting a computer back as it was before an import: what the import changed was copied to `<backup>/files/<its path>`
+ * first (`backupCopy`), and what it made is listed in `created.txt`, both written down before each file was touched (see
+ * `Apply.touch`). The folder says how to do it by hand too, so that nothing depends on this app being able to run.
  */
 
 /** The marker `backup.json` carries: a folder that does not is not one of ours, and nothing in it is put anywhere. */
 export const BACKUP_APP = "omp-webui-migration-backup";
 
 export const RESTORE_NOTE =
-	"Put the files under `files/` back at their own paths (a file under `files/` is the whole file; for a .db file delete " +
-	"its -wal and -shm first, they describe the database that is being replaced), and delete the files listed in " +
-	"created.txt. Settings › Move to another computer › Restore does exactly that.";
+	"Put the files under `files/` back at their own paths (a file under `files/` is the whole file; on Windows the first " +
+	"folder is the drive, `files/C/…` being `C:\\…`, or `UNC/<host>/<share>` for a share; for a .db file delete its -wal " +
+	"and -shm first, they describe the database that is being replaced), and delete the files listed in created.txt. " +
+	"Settings › Move to another computer › Restore does exactly that.";
 
-const lines = (file: string): string[] => {
+/**
+ * Where a backup keeps the copy of `dest`: under `files/`, at its path from the root it is on. A drive (`C:\`) is a
+ * folder of its own (`files/C/…`) and a share (`\\host\share\`) is `files/UNC/host/share/…`: Windows makes no path
+ * with a second `C:` in it. On macOS and Linux it is `files/` and the path, as it always was.
+ */
+export function backupCopy(dir: string, dest: string, p: typeof path = path): string {
+	const { root } = p.parse(dest);
+	const top = root
+		.split(/[\\/]/)
+		.filter(Boolean)
+		.map((part) => part.replace(/:$/, ""));
+	if (/^[\\/]{2}/.test(root)) top.unshift("UNC");
+	return p.join(dir, "files", ...top, dest.slice(root.length));
+}
+
+/** The paths a backup's list (`changed.txt`, `created.txt`) names, one a line: a line that is not a full path is passed over. */
+export function listedPaths(text: string, p: typeof path = path): string[] {
+	return text.split("\n").filter((line) => line !== "" && p.isAbsolute(line));
+}
+
+const listed = (file: string): string[] => {
 	try {
-		return readFileSync(file, "utf8").split("\n").filter(Boolean);
+		return listedPaths(readFileSync(file, "utf8"));
 	} catch {
 		return [];
 	}
@@ -52,9 +73,8 @@ export async function restoreBackup(dir: string): Promise<Restored> {
 	if (!isRecord(note) || note.app !== BACKUP_APP)
 		throw new CodedError("There is no backup to put back", "migrateNoBackup");
 	let restored = 0;
-	for (const dest of lines(join(dir, "changed.txt"))) {
-		if (!dest.startsWith("/")) continue;
-		const from = join(dir, "files", dest);
+	for (const dest of listed(join(dir, "changed.txt"))) {
+		const from = backupCopy(dir, dest);
 		let saved: ReturnType<typeof lstatSync>;
 		try {
 			saved = lstatSync(from);
@@ -78,8 +98,8 @@ export async function restoreBackup(dir: string): Promise<Restored> {
 		restored++;
 	}
 	let removed = 0;
-	for (const made of lines(join(dir, "created.txt"))) {
-		if (!made.startsWith("/") || !existsSync(made)) continue;
+	for (const made of listed(join(dir, "created.txt"))) {
+		if (!existsSync(made)) continue;
 		try {
 			if (lstatSync(made).isDirectory()) continue;
 			rmSync(made, { force: true });
