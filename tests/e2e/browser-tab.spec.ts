@@ -36,6 +36,7 @@ const TITLE_SIZE = "Browser tab size";
 const TITLE_CONSOLE = "Browser tab console";
 const TITLE_PHONE = "Browser tab phone";
 const TITLE_BRIDGE = "Browser tab native view";
+const TITLE_DOUBLE = "Browser tab double click";
 
 const html = (title: string, body: string, head = "") =>
 	`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>${head}</head><body style="margin:0">${body}</body></html>`;
@@ -57,6 +58,13 @@ function pageFor(path: string): string | null {
 				'<button id="b" style="position:absolute;left:900px;top:480px;width:200px;height:160px" onclick="document.body.style.background=\'#00ff00\';document.title=\'Tapped\'">Tap</button>',
 				"<style>html,body{height:100%;background:#ffffff}</style>",
 			);
+		case "/double":
+			// A double-click anywhere turns the page green; a single click does nothing.
+			return html(
+				"Double page",
+				"",
+				"<style>html,body{height:100%;background:#ffffff}</style><script>addEventListener('dblclick',()=>{document.body.style.background='#00ff00'})</script>",
+			);
 		default:
 			return null;
 	}
@@ -77,9 +85,11 @@ test.beforeAll(async () => {
 	s = await startTestServer(0, { OMP_BIN: omp, OMPW_BROWSER_EXECUTABLE: chromium.executablePath() }, { login: false });
 	bare = await startTestServer(0, { OMP_BIN: omp }, { login: false });
 	for (const server of [s, bare])
-		[TITLE_A, TITLE_B, TITLE_NEW, TITLE_SIZE, TITLE_CONSOLE, TITLE_PHONE, TITLE_BRIDGE].forEach((title, i) => {
-			writeChatSession(server.agentDir, { n: 0xb1 + i, title, turns: [{ prompt: "hello", reply: "hi" }] });
-		});
+		[TITLE_A, TITLE_B, TITLE_NEW, TITLE_SIZE, TITLE_CONSOLE, TITLE_PHONE, TITLE_BRIDGE, TITLE_DOUBLE].forEach(
+			(title, i) => {
+				writeChatSession(server.agentDir, { n: 0xb1 + i, title, turns: [{ prompt: "hello", reply: "hi" }] });
+			},
+		);
 });
 test.afterAll(async () => {
 	await s?.stop();
@@ -268,6 +278,22 @@ test("on a phone (iPhone 13) a tap lands on the button of a page laid out at 128
 	} finally {
 		await context.close();
 	}
+});
+
+test("a double-click on the screencast reaches the page as one, and two slow clicks do not", async ({ page }) => {
+	await withPage(page, TITLE_DOUBLE);
+	await go(page, "/double");
+	await showing(page, "/double");
+	const canvas = page.getByTestId("browser-screen");
+	await expect.poll(async () => near(await centre(page), [255, 255, 255])).toBe(true);
+	// Two clicks further apart than a double-click's time: the page sees two single clicks.
+	await canvas.click();
+	await page.waitForTimeout(700);
+	await canvas.click();
+	await page.waitForTimeout(700);
+	expect(near(await centre(page), [255, 255, 255])).toBe(true);
+	await canvas.dblclick();
+	await expect.poll(async () => near(await centre(page), GREEN)).toBe(true);
 });
 
 test("in Chinese the tab, its size switch and its empty state are named in Chinese", async ({ page }) => {

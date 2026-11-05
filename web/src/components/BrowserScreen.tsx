@@ -23,6 +23,14 @@ const BUTTONS = ["left", "middle", "right"] as const;
 /** A finger that travels this far (CSS px) scrolls the page instead of tapping it. */
 const TAP_SLOP = 8;
 
+/**
+ * A press of the same mouse button this soon (ms) and this near (CSS px) after the last one is its double-click (then a
+ * triple-click): pointer events carry no click count (`detail` is 0), and the page makes a `dblclick` or selects a word
+ * only when the press it is sent says 2.
+ */
+const MULTI_CLICK_MS = 500;
+const MULTI_CLICK_SLOP = 4;
+
 /** What a key types into the page, for the keys that type something without being text (`\r` for Enter, as CDP has it). */
 const KEY_TEXT: Record<string, string> = { Enter: "\r" };
 
@@ -119,8 +127,10 @@ export function BrowserScreen({ page }: { page: PageInfo }) {
 
 		/** A finger on the page: a tap when it lifts where it went down, a scroll when it travels. */
 		let touch: { id: number; x: number; y: number; lastX: number; lastY: number; moved: boolean } | null = null;
-		/** A mouse button held on the page. */
-		let held: { id: number; button: "left" | "middle" | "right" } | null = null;
+		/** A mouse button held on the page, and the click count its press was sent with. */
+		let held: { id: number; button: "left" | "middle" | "right"; count: number } | null = null;
+		/** The last press of a mouse button, which the next one may continue as a double or triple click. */
+		let lastPress: { button: string; time: number; x: number; y: number; count: number } | null = null;
 		let moveQueued: PointerEvent | null = null;
 		let frameRequest = 0;
 
@@ -136,9 +146,18 @@ export function BrowserScreen({ page }: { page: PageInfo }) {
 				return;
 			}
 			const button = BUTTONS[e.button] ?? "left";
-			held = { id: e.pointerId, button };
+			const last = lastPress;
+			const count =
+				last &&
+				last.button === button &&
+				e.timeStamp - last.time < MULTI_CLICK_MS &&
+				Math.hypot(e.clientX - last.x, e.clientY - last.y) <= MULTI_CLICK_SLOP
+					? last.count + 1
+					: 1;
+			lastPress = { button, time: e.timeStamp, x: e.clientX, y: e.clientY, count };
+			held = { id: e.pointerId, button, count };
 			el.setPointerCapture(e.pointerId);
-			mouse("mousePressed", p, button, Math.max(1, e.detail || 1), modifiersOf(e));
+			mouse("mousePressed", p, button, count, modifiersOf(e));
 		};
 		const move = (e: PointerEvent) => {
 			if (touch && e.pointerId === touch.id) {
@@ -184,7 +203,7 @@ export function BrowserScreen({ page }: { page: PageInfo }) {
 			}
 			if (!held || e.pointerId !== held.id) return;
 			const p = pointOf(e, true);
-			if (p) mouse("mouseReleased", p, held.button, Math.max(1, e.detail || 1), modifiersOf(e));
+			if (p) mouse("mouseReleased", p, held.button, held.count, modifiersOf(e));
 			held = null;
 		};
 		const cancel = (e: PointerEvent) => {
