@@ -1,5 +1,13 @@
 import type { ConflictCheckResult } from "@shared/guidance-conflict.ts";
-import type { GuidanceProblem, GuidanceTemplate, GuidanceTemplates, LiveGuidance } from "@shared/model-guidance.ts";
+import {
+	GUIDANCE_NAME_MAX,
+	type GuidanceNameProblem,
+	type GuidanceProblem,
+	type GuidanceTemplate,
+	type GuidanceTemplates,
+	type LiveGuidance,
+} from "@shared/model-guidance.ts";
+import type { Translate } from "../i18n/index.ts";
 import { useApp } from "../store/app.ts";
 
 /**
@@ -15,6 +23,23 @@ export class GuidanceApiError extends Error {
 	) {
 		super(message);
 	}
+}
+
+/** Why a template's name is refused, in the page's language. */
+export function nameProblemText(problem: GuidanceNameProblem, t: Translate): string {
+	if (problem === "nameEmpty") return t("guidance.nameEmpty");
+	if (problem === "nameTooLong") return t("guidance.nameTooLong", { max: GUIDANCE_NAME_MAX });
+	return t("guidance.nameRepeated");
+}
+
+/** A change the server refused, in the page's language where it says why (a template deleted or renamed meanwhile). */
+export function refusalText(e: unknown, t: Translate): string {
+	if (e instanceof GuidanceApiError) {
+		if (e.problem === "gone") return t("guidance.templateGone");
+		if (e.problem === "nameEmpty" || e.problem === "nameTooLong" || e.problem === "nameRepeated")
+			return nameProblemText(e.problem, t);
+	}
+	return e instanceof Error ? e.message : String(e);
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

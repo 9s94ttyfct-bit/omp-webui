@@ -1,13 +1,5 @@
-import {
-	BUILTIN_GUIDANCE,
-	GUIDANCE_NAME_MAX,
-	type GuidanceNameProblem,
-	type GuidanceTemplate,
-	guidanceSummary,
-	guidanceText,
-} from "@shared/model-guidance.ts";
+import { BUILTIN_GUIDANCE, type GuidanceTemplate, guidanceSummary, guidanceText } from "@shared/model-guidance.ts";
 import type { MessageKey, Translate } from "../i18n/index.ts";
-import { GuidanceApiError } from "./guidance-api.ts";
 
 /**
  * How the shipped guidance templates are shown in the page's language. A template is data the person owns (they rename
@@ -38,21 +30,4 @@ export function templateSummary(tpl: Pick<GuidanceTemplate, "id" | "text">, t: T
 	return shipped && keys && guidanceText(tpl.text) === guidanceText(shipped.text)
 		? t(keys.summary)
 		: guidanceSummary(tpl.text);
-}
-
-/** Why a template's name is refused, in the page's language. */
-export function nameProblemText(problem: GuidanceNameProblem, t: Translate): string {
-	if (problem === "nameEmpty") return t("guidance.nameEmpty");
-	if (problem === "nameTooLong") return t("guidance.nameTooLong", { max: GUIDANCE_NAME_MAX });
-	return t("guidance.nameRepeated");
-}
-
-/** A change the server refused, in the page's language where it says why (a template deleted or renamed meanwhile). */
-export function refusalText(e: unknown, t: Translate): string {
-	if (e instanceof GuidanceApiError) {
-		if (e.problem === "gone") return t("guidance.templateGone");
-		if (e.problem === "nameEmpty" || e.problem === "nameTooLong" || e.problem === "nameRepeated")
-			return nameProblemText(e.problem, t);
-	}
-	return e instanceof Error ? e.message : String(e);
 }
