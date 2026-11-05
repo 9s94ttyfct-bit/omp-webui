@@ -19,10 +19,12 @@ export const MIGRATE_MIN_PASSWORD = 8;
 /** What of an archive is encrypted: all of it, only the logins, nothing. */
 export type MigrateEncryption = "whole" | "logins" | "none";
 
-/** The name of the archive written on `host` on `date`. */
+/** The name of the archive written on `host` on `date`, the day in local time (the person picks the file by it). */
 export function migrateArchiveName(host: string, date: Date): string {
 	const safe = host.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "") || "mac";
-	return `omp-webui-migration-${safe}-${date.toISOString().slice(0, 10)}${MIGRATE_EXTENSION}`;
+	const two = (n: number) => String(n).padStart(2, "0");
+	const day = `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}`;
+	return `omp-webui-migration-${safe}-${day}${MIGRATE_EXTENSION}`;
 }
 
 /**

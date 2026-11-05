@@ -557,12 +557,28 @@ describe("the archive's table of contents", () => {
 	});
 
 	test("the archive is named for the machine and the day, and a host name cannot make it a path", () => {
-		expect(migrateArchiveName("Jane's MacBook Pro", new Date("2026-10-21T12:00:00Z"))).toBe(
+		expect(migrateArchiveName("Jane's MacBook Pro", new Date(2026, 9, 21, 12))).toBe(
 			"omp-webui-migration-Jane-s-MacBook-Pro-2026-10-21.ompw",
 		);
-		expect(migrateArchiveName("../../etc", new Date("2026-10-21T12:00:00Z"))).toBe(
-			"omp-webui-migration-etc-2026-10-21.ompw",
-		);
-		expect(migrateArchiveName("", new Date("2026-10-21T12:00:00Z"))).toBe("omp-webui-migration-mac-2026-10-21.ompw");
+		expect(migrateArchiveName("../../etc", new Date(2026, 9, 21, 12))).toBe("omp-webui-migration-etc-2026-10-21.ompw");
+		expect(migrateArchiveName("", new Date(2026, 9, 21, 12))).toBe("omp-webui-migration-mac-2026-10-21.ompw");
+	});
+
+	test("the day in the name is the person's own, not UTC's (#91)", () => {
+		const before = process.env.TZ;
+		try {
+			// Early on 5 November east of UTC, late on 4 November west of it: UTC's date is the other day in both.
+			for (const [zone, at, day] of [
+				["Asia/Shanghai", [2026, 10, 5, 7, 30], "2026-11-05"],
+				["America/Los_Angeles", [2026, 10, 4, 20, 0], "2026-11-04"],
+			] as const) {
+				process.env.TZ = zone;
+				const [y, m, d, h, min] = at;
+				expect(migrateArchiveName("mac", new Date(y, m, d, h, min)), zone).toBe(`omp-webui-migration-mac-${day}.ompw`);
+			}
+		} finally {
+			if (before === undefined) delete process.env.TZ;
+			else process.env.TZ = before;
+		}
 	});
 });
