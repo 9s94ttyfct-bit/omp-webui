@@ -186,7 +186,12 @@ jobs:
       # The built-in browser's engine tests run a real Chrome for Testing (tests/contract/browser-*.test.ts): the one
       # Playwright installs. Windows skips them (they need a POSIX shell).
       - if: runner.os == 'Linux'
-        run: bunx playwright install --with-deps chromium
+        run: bunx playwright install chromium
+      - if: runner.os == 'Linux'
+        uses: ./.github/actions/playwright-deps
+        timeout-minutes: 15
+        with:
+          browsers: chromium
       # What the runner has: the timings and the shard counts are only as good as it is like the last one.
       - if: runner.os == 'Linux'
         run: nproc && free -m
@@ -226,16 +231,19 @@ jobs:
           bun install -g @oh-my-pi/pi-coding-agent@latest
           echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
       # Chromium for most specs; WebKit for the iPhone, iPad and macOS-app ones, which launch it themselves. The browsers
-      # are kept between runs (their versions are bun.lock's Playwright's); the system libraries they need are not.
+      # are kept between runs (their versions are bun.lock's Playwright's).
       - id: browsers
         uses: actions/cache@v4
         with:
           path: ${{ runner.tool_cache }}/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - if: steps.browsers.outputs.cache-hit != 'true'
-        run: bunx playwright install --with-deps chromium webkit
-      - if: steps.browsers.outputs.cache-hit == 'true'
-        run: bunx playwright install-deps chromium webkit
+        run: bunx playwright install chromium webkit
+      # The system libraries, from packages kept between runs: the mirror is slow at times (the action says how much).
+      - uses: ./.github/actions/playwright-deps
+        timeout-minutes: 15
+        with:
+          browsers: chromium webkit
       - run: bun scripts/e2e-shard.ts --shard ${{ matrix.shard }}/16 --out "$RUNNER_TEMP/e2e-tests.txt"
       - run: bun run test:e2e --test-list "$RUNNER_TEMP/e2e-tests.txt"
         env:

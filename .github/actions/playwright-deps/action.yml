@@ -1,0 +1,46 @@
+name: Playwright's system libraries
+description: >-
+  Installs the Ubuntu packages Playwright's browsers need (`playwright install-deps`), from packages kept between runs.
+  The runner's image lacks some of them (Chromium's fonts, 21 MB; WebKit's media libraries, 114 MB with them), and the
+  Ubuntu mirror the runner is given (azure.archive.ubuntu.com) sent them in 10 s to one runner and at 40-200 kB/s to
+  another of the same run, which held an e2e job's install 35-41 min until the job was cancelled. So the packages are
+  cached per runner image (an older image's are restored first) and apt fetches only what is newer than them. Give the
+  step that uses this a timeout-minutes: a cold cache on a slow mirror then fails there, by name.
+inputs:
+  browsers:
+    description: The browsers whose libraries to install, as `playwright install-deps` takes them.
+    required: true
+runs:
+  using: composite
+  steps:
+    - id: image
+      shell: bash
+      run: |
+        echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
+        echo "version=$ImageVersion" >> "$GITHUB_OUTPUT"
+        echo "browsers=$(tr ' ' '-' <<< "$BROWSERS")" >> "$GITHUB_OUTPUT"
+      env:
+        BROWSERS: ${{ inputs.browsers }}
+    - id: debs
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/.cache/playwright-debs
+        key: playwright-debs-${{ steps.image.outputs.browsers }}-${{ steps.image.outputs.os }}-${{ steps.image.outputs.version }}-${{ hashFiles('bun.lock') }}
+        restore-keys: playwright-debs-${{ steps.image.outputs.browsers }}-${{ steps.image.outputs.os }}-
+    - shell: bash
+      run: |
+        debs=~/.cache/playwright-debs
+        mkdir -p "$debs"
+        if compgen -G "$debs/*.deb" > /dev/null; then sudo cp "$debs"/*.deb /var/cache/apt/archives/; fi
+        bunx playwright install-deps $BROWSERS
+        sudo apt-get autoclean
+        rm -f "$debs"/*.deb
+        find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -exec cp -t "$debs" {} +
+        echo "$(find "$debs" -name '*.deb' | wc -l) packages kept for the next run"
+      env:
+        BROWSERS: ${{ inputs.browsers }}
+    - if: steps.debs.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ~/.cache/playwright-debs
+        key: ${{ steps.debs.outputs.cache-primary-key }}
