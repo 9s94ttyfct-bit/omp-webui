@@ -13,7 +13,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { join, sep, win32 } from "node:path";
 import { hiddenByDefault } from "../../server/files.ts";
 import {
 	FolderError,
@@ -1081,6 +1081,20 @@ describe("a page that is not this computer's (guarded)", () => {
 			".htpasswd",
 		])
 			expect(isSecretLooking(path), path).toBe(true);
+	});
+
+	test("a path as Windows writes it (`node:path` relative there) is looked at part by part too (#54)", () => {
+		for (const [root, file] of [
+			["C:\\proj", "C:\\proj\\config\\credentials.json"],
+			["C:\\proj", "C:\\proj\\deploy\\secrets.yml"],
+			["C:\\proj", "C:\\proj\\app\\credentials"],
+			["C:\\proj", "C:\\proj\\keys\\id_rsa"],
+			["C:\\proj", "C:\\proj\\sub\\.git\\config"],
+		]) {
+			const rel = win32.relative(root, file);
+			expect(isSecretLooking(rel), rel).toBe(true);
+		}
+		expect(isSecretLooking(win32.relative("C:\\proj", "C:\\proj\\src\\credentials.ts"))).toBe(false);
 	});
 
 	test("what only looks like one is not: source files and templates are named like secrets, and are not", () => {

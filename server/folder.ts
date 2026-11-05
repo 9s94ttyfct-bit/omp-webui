@@ -151,9 +151,11 @@ const ENV_TEMPLATE = /\.(?:example|sample|template|dist|defaults)$/;
  * computer's is shown none of these (see `ListOptions.guarded`). A key in a PEM file is told by its text instead, when the
  * file is read (`holdsPrivateKey`), since `server.key` may be a key and `keyboard.key` a presentation. A name is what is
  * looked at here: a secret in a file called `notes.txt` is not found, and nothing replaces keeping secrets out of the folder.
+ * The path's parts are split at `/` and at `\`: a page writes `/`, `node:path` on Windows writes `\` (a name with a `\` in
+ * it elsewhere is looked at as parts too, which refuses no less).
  */
 export function isSecretLooking(rel: string): boolean {
-	const parts = rel.toLowerCase().split("/").filter(Boolean);
+	const parts = rel.toLowerCase().split(/[/\\]/).filter(Boolean);
 	for (const [i, part] of parts.entries()) {
 		if (SECRET_DIRS.includes(part)) return true;
 		if (part === ".git" && parts[i + 1] === "config") return true;
