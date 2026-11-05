@@ -61,6 +61,17 @@ test("OMP_WEBUI_AUTH=off is the only way to run without a token", () => {
 	expect(auth.allowed(request())).toBe(true);
 });
 
+test("the token link carries any token the server takes: & # + % and spaces arrive as they are (#60)", () => {
+	for (const token of ["abc&def", "a#b", "a+b", "100%", "a b", "ä=ö?"]) {
+		const link = new Auth(dataDir(""), { OMP_WEBUI_TOKEN: token }).link("http://127.0.0.1:7878");
+		// What the server reads of the link the browser opens.
+		const url = new URL(link);
+		expect(url.origin + url.pathname, token).toBe("http://127.0.0.1:7878/");
+		expect(url.searchParams.get("token"), token).toBe(token);
+	}
+	expect(new Auth(dataDir(""), { OMP_WEBUI_AUTH: "off" }).link("http://127.0.0.1:7878")).toBe("http://127.0.0.1:7878/");
+});
+
 describe("the cookie", () => {
 	const cookie = (value: string) => new Request("http://127.0.0.1/api/meta", { headers: { cookie: value } });
 	const auth = new Auth(dataDir("secret-token"), {});

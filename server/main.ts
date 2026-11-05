@@ -3302,12 +3302,10 @@ if (cfg.autoPort) {
 } else if (!auth.token) {
 	console.log("Authentication disabled (OMP_WEBUI_AUTH=off)");
 } else if (hereBase) {
-	console.log(`Open: ${hereBase}/?token=${auth.token}  (this computer)`);
-	console.log(
-		`Open: ${base}/?token=${auth.token}  (the network: a remote page, without what is for this computer alone)`,
-	);
+	console.log(`Open: ${auth.link(hereBase)}  (this computer)`);
+	console.log(`Open: ${auth.link(base)}  (the network: a remote page, without what is for this computer alone)`);
 } else {
-	console.log(`Open: ${base}/?token=${auth.token}`);
+	console.log(`Open: ${auth.link(base)}`);
 }
 
 // After startup: an error while starting (a port that cannot be had, a corrupt database) still ends the process, with

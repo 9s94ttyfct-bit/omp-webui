@@ -53,8 +53,7 @@ process.env.OMP_WEBUI_PORT_WINDOW ??= "1";
 
 /** The page of the server on `port`, signed in. */
 function pageOf(dataDir: string, port: number): string {
-	const token = new Auth(dataDir).token;
-	return `http://127.0.0.1:${port}/${token ? `?token=${token}` : ""}`;
+	return new Auth(dataDir).link(`http://127.0.0.1:${port}`);
 }
 
 async function openPage(url: string): Promise<void> {

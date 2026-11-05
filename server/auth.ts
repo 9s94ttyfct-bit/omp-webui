@@ -80,4 +80,12 @@ export class Auth {
 		// 400 days, the browser maximum; the token itself never expires.
 		return `${COOKIE}=${encodeURIComponent(this.token ?? "")}; ${secure ? "Secure; " : ""}HttpOnly; SameSite=Strict; Path=/; Max-Age=34560000`;
 	}
+
+	/**
+	 * The page at `base` (an origin), signed in: the token link the server prints and the launcher opens. The token is
+	 * URL-encoded: one of `OMP_WEBUI_TOKEN`'s own may hold what a query cuts or changes (`&`, `#`, `+`, `%`, a space).
+	 */
+	link(base: string): string {
+		return this.token === null ? `${base}/` : `${base}/?token=${encodeURIComponent(this.token)}`;
+	}
 }
