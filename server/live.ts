@@ -444,6 +444,12 @@ export class Live {
 	readonly env: Record<string, string>;
 	/** Where the output of the builtin command the server runs itself (`command`) is collected, away from the viewers. */
 	private capture: string[] | null = null;
+	/**
+	 * Prompts sent through `rpc` (a page's, typed in the composer) that omp has not answered yet. omp prints a builtin command
+	 * it runs at once before it answers it, so a `command_output` that comes meanwhile is that command's, for the pages, even
+	 * while `capture` waits for the printout of the server's own command (`/rename` prints when a model has a title).
+	 */
+	private pagePrompts = 0;
 	/** The server's own commands, one after the other: their output is told apart by when it arrives. */
 	private commandQueue: Promise<unknown> = Promise.resolve();
 	/** User actions running on this paused conversation: omp runs while there are any (see `thawed`). */
@@ -2183,7 +2189,7 @@ export class Live {
 		this.lastActivity = Date.now();
 		// What the Mac's sleep cut, if the server saw one: omp's frames that follow it say what became of the turn.
 		if (this.info.slept) this.noteAfterSleep(frame);
-		if (frame.type === "command_output" && typeof frame.text === "string" && this.capture) {
+		if (frame.type === "command_output" && typeof frame.text === "string" && this.capture && this.pagePrompts === 0) {
 			this.capture.push(frame.text);
 			return;
 		}
@@ -3477,6 +3483,7 @@ export class Live {
 		const send = async (): Promise<RpcResponse> => {
 			this.lastActivity = Date.now();
 			this.inFlight++;
+			if (type === "prompt") this.pagePrompts++;
 			// A `!command` is the conversation's, whichever page sent it: every page that listens is told it runs, and when it ends
 			// (omp answers it when the command exits, or `abort_bash` ends it), so that Stop is on each of them.
 			const bash = type === "bash" && typeof command.command === "string" ? this.held.startBash(command.command) : null;
@@ -3509,6 +3516,7 @@ export class Live {
 				return r;
 			} finally {
 				this.inFlight--;
+				if (type === "prompt") this.pagePrompts--;
 				this.checkModeSwitch();
 				this.lastActivity = Date.now();
 				const ended = bash ? this.held.endBash(String(bash.id)) : null;

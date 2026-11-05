@@ -65,6 +65,12 @@ export interface FakeOmpOptions {
 	 * written to the session file as omp writes a user message (what a later look at the file finds).
 	 */
 	prompts?: { log?: string; write?: boolean };
+	/**
+	 * Builtin slash commands: a `prompt` of one is answered `agentInvoked: false` and prints `text` (a `command_output`
+	 * frame) before its answer, as omp prints a command it runs at once (`/session`), or `afterMs` after it, as omp prints
+	 * one it runs in the background (`/rename` waiting for a model's title).
+	 */
+	builtins?: Record<string, { text: string; afterMs?: number }>;
 }
 
 /** Write the fake into `dir` and return its path (usable as `OMP_BIN`). */
@@ -186,8 +192,12 @@ for await (const chunk of Bun.stdin.stream()) {
     }
     // set_model switches the model get_state reports from then on, and is answered with the model, as omp does.
     if (cmd.type === "set_model") reported.model = { id: cmd.modelId, name: cmd.modelId, provider: cmd.provider, api: "anthropic-messages", reasoning: true, contextWindow: 200000 };
+    // A builtin slash command prints before its answer, or after it when it runs in the background (see \`builtins\`).
+    const builtin = cmd.type === "prompt" ? (options.builtins ?? {})[cmd.message] : undefined;
+    if (builtin && builtin.afterMs === undefined) out({ type: "command_output", text: builtin.text });
+    if (builtin && builtin.afterMs !== undefined) setTimeout(() => out({ type: "command_output", text: builtin.text }), builtin.afterMs);
     // omp answers set_cache_warming with the mode the process runs in, and get_entries with the conversation's entries (none yet).
-    const data = cmd.type === "get_state" ? { ...(options.state ?? {}), ...reported, sessionFile, sessionId: "fake", isStreaming: Boolean(options.streaming) } : cmd.type === "get_subagents" ? { subagents } : cmd.type === "get_entries" ? { entries: [], leafId: null } : cmd.type === "set_cache_warming" ? { mode: cmd.mode } : cmd.type === "set_model" ? reported.model : {};
+    const data = builtin ? { agentInvoked: false } : cmd.type === "get_state" ? { ...(options.state ?? {}), ...reported, sessionFile, sessionId: "fake", isStreaming: Boolean(options.streaming) } : cmd.type === "get_subagents" ? { subagents } : cmd.type === "get_entries" ? { entries: [], leafId: null } : cmd.type === "set_cache_warming" ? { mode: cmd.mode } : cmd.type === "set_model" ? reported.model : {};
     const reply = { id: cmd.id, type: "response", command: cmd.type, success: true, data };
     if (options.spawnOn === cmd.type) Bun.spawn(sleeper(600), { stdio: ["ignore", "ignore", "ignore"] });
     const late = (options.delay ?? {})[cmd.type];
