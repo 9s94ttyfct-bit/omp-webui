@@ -1031,8 +1031,10 @@ test.describe("what it costs the rest of the page", () => {
 		expect(after.composer, "the message box").toBe(start.composer);
 		expect(after.chat, "the conversation").toBe(start.chat);
 
-		// A turn writes the store at every frame: the tab, open on its tree, is not drawn for any of them.
-		await page.getByTestId("composer").fill(turn());
+		// A turn writes the store at every frame: the tab, open on its tree, is not drawn for any of them. The turn lasts
+		// longer than all the waits below can (the poll's 30 s and the 1.5 s): one of 14 steps ended after 3.5 s, before
+		// the check that it still streamed, on a runner where the poll took 1.5 s.
+		await page.getByTestId("composer").fill(turn(130));
 		await page.getByTestId("composer").press("Enter");
 		await expect(page.getByTestId("stop")).toBeVisible({ timeout: 60_000 });
 		await painted(page);
