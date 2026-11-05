@@ -1,7 +1,7 @@
 import type { BenchPreview } from "@shared/guard-bench.ts";
 import type { SettableKind } from "@shared/guard-policy.ts";
 import { CircleAlert } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useT } from "../i18n/index.ts";
 import { guardApi } from "../lib/guard-api.ts";
 import { CAT_NAME } from "../lib/guard-format.ts";
@@ -13,12 +13,19 @@ type Tried = { state: "trying" } | { state: "tried"; preview: BenchPreview } | {
  * The question before an Allow is applied: the classifier-only benchmark is run on the shipped harmful commands with this
  * kind set to Allow, and the answer is how many of them would then run with no reviewer and no question. Nothing is run
  * (the classifier only reads). Allow cannot be confirmed before that is known: when the benchmark cannot be tried, nothing
- * is changed.
+ * is changed. As an alert dialog it takes the keyboard when it appears, on its safe answer (No), so that a screen reader
+ * reads the question; once answered, the keyboard goes back to what opened it (the Allow radio, Apply).
  */
 export function AllowConfirm({ kind, onYes, onNo }: { kind: SettableKind; onYes: () => void; onNo: () => void }) {
 	const t = useT();
 	const [tried, setTried] = useState<Tried>({ state: "trying" });
 	const titleId = useId();
+	const bodyId = useId();
+	const opener = useRef(document.activeElement);
+	const answer = (act: () => void) => () => {
+		act();
+		if (opener.current instanceof HTMLElement) opener.current.focus();
+	};
 
 	useEffect(() => {
 		let alive = true;
@@ -36,6 +43,7 @@ export function AllowConfirm({ kind, onYes, onNo }: { kind: SettableKind; onYes:
 		<div
 			role="alertdialog"
 			aria-labelledby={titleId}
+			aria-describedby={bodyId}
 			className="mt-2 basis-full rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm"
 			data-testid="guard-allow-confirm"
 			data-kind={kind}
@@ -45,33 +53,36 @@ export function AllowConfirm({ kind, onYes, onNo }: { kind: SettableKind; onYes:
 				<CircleAlert size={14} className="mt-0.5 shrink-0 text-warning" aria-hidden />
 				{t("guard.allowConfirmTitle", { category: t(CAT_NAME[kind]) })}
 			</div>
-			{tried.state === "trying" ? (
-				<p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
-					<Spinner size={12} /> {t("guard.allowConfirmChecking")}
-				</p>
-			) : tried.state === "failed" ? (
-				<p className="mt-1 text-xs text-danger" role="alert" data-testid="guard-allow-confirm-error">
-					{t("guard.allowConfirmFailed", { error: tried.error })}
-				</p>
-			) : (
-				<>
-					<p className="mt-1 text-xs font-medium" data-testid="guard-allow-confirm-count">
-						{t("guard.allowConfirmBody", { count: tried.preview.after, now: tried.preview.now })}
+			{/* Read with the question, and read again when the count arrives after the keyboard has come here. */}
+			<div id={bodyId} aria-live="polite">
+				{tried.state === "trying" ? (
+					<p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+						<Spinner size={12} /> {t("guard.allowConfirmChecking")}
 					</p>
-					<p className="mt-1 text-xs text-muted">{t("guard.allowConfirmNote")}</p>
-				</>
-			)}
+				) : tried.state === "failed" ? (
+					<p className="mt-1 text-xs text-danger" data-testid="guard-allow-confirm-error">
+						{t("guard.allowConfirmFailed", { error: tried.error })}
+					</p>
+				) : (
+					<>
+						<p className="mt-1 text-xs font-medium" data-testid="guard-allow-confirm-count">
+							{t("guard.allowConfirmBody", { count: tried.preview.after, now: tried.preview.now })}
+						</p>
+						<p className="mt-1 text-xs text-muted">{t("guard.allowConfirmNote")}</p>
+					</>
+				)}
+			</div>
 			<div className="mt-2 flex flex-wrap gap-2">
 				<Button
 					size="sm"
 					variant="danger"
 					data-testid="guard-allow-confirm-yes"
 					disabled={tried.state !== "tried"}
-					onClick={onYes}
+					onClick={answer(onYes)}
 				>
 					{t("guard.allowConfirmYes")}
 				</Button>
-				<Button size="sm" data-testid="guard-allow-confirm-no" onClick={onNo}>
+				<Button size="sm" data-testid="guard-allow-confirm-no" autoFocus onClick={answer(onNo)}>
 					{t("guard.allowConfirmNo")}
 				</Button>
 			</div>

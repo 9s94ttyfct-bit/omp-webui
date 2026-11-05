@@ -15,7 +15,7 @@ import {
 	thresholdOf,
 } from "@shared/guard-policy.ts";
 import { Check, CircleAlert, Lock } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useT } from "../i18n/index.ts";
 import { guardApi } from "../lib/guard-api.ts";
 import { CAT_NAME, THRESHOLD_TEXT } from "../lib/guard-format.ts";
@@ -44,6 +44,8 @@ export default function GuardPolicy() {
 	/** The rules as they are being typed; null while the text is what is kept. */
 	const [draft, setDraft] = useState<string | null>(null);
 	const [confirming, setConfirming] = useState(false);
+	/** Restore, which opened the confirmation: the keyboard goes back to it once the question is answered. */
+	const restoreButton = useRef<HTMLButtonElement | null>(null);
 	const [showNew, setShowNew] = useState(false);
 	const rulesId = useId();
 	const problemId = useId();
@@ -298,9 +300,11 @@ export default function GuardPolicy() {
 					</Button>
 					<Button
 						data-testid="guard-policy-restore"
-						onClick={() => {
-							if (custom) setConfirming(true);
-							else setDraft(null);
+						onClick={(e) => {
+							if (custom) {
+								restoreButton.current = e.currentTarget;
+								setConfirming(true);
+							} else setDraft(null);
 						}}
 					>
 						{t("guard.polRestore")}
@@ -314,10 +318,27 @@ export default function GuardPolicy() {
 						data-testid="guard-policy-confirm"
 					>
 						<span className="flex-1">{t("guard.polRestoreConfirm")}</span>
-						<Button variant="danger" size="sm" data-testid="guard-policy-restore-yes" onClick={() => void restore()}>
+						<Button
+							variant="danger"
+							size="sm"
+							data-testid="guard-policy-restore-yes"
+							onClick={() => {
+								restoreButton.current?.focus();
+								void restore();
+							}}
+						>
 							{t("guard.polRestoreYes")}
 						</Button>
-						<Button size="sm" data-testid="guard-policy-restore-no" onClick={() => setConfirming(false)}>
+						{/* An alert dialog takes the keyboard when it appears, on its safe answer, so its question is read. */}
+						<Button
+							size="sm"
+							data-testid="guard-policy-restore-no"
+							autoFocus
+							onClick={() => {
+								setConfirming(false);
+								restoreButton.current?.focus();
+							}}
+						>
 							{t("guard.polRestoreNo")}
 						</Button>
 					</div>

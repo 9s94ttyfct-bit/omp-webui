@@ -382,6 +382,39 @@ test.describe("the policy", () => {
 		await expect.poll(() => kept().thresholds).toBeUndefined();
 	});
 
+	test("a confirmation takes the keyboard when it appears, on its safe answer, and gives it back when answered", async ({
+		page,
+	}) => {
+		await openGuard(page, { tab: "policy" });
+		const allow = page.getByTestId("guard-threshold-delete_outside-allow");
+		await allow.focus();
+		await page.keyboard.press("Space");
+		await expect(page.getByTestId("guard-allow-confirm")).toBeVisible();
+		await expect(page.getByTestId("guard-allow-confirm-no")).toBeFocused();
+		await page.keyboard.press("Enter");
+		await expect(page.getByTestId("guard-allow-confirm")).toHaveCount(0);
+		await expect(allow).toBeFocused();
+		await expect(page.getByTestId("guard-threshold-delete_outside")).toHaveAttribute("data-value", "ask");
+
+		// Restore asks only about rules of the person's own, kept.
+		await page.getByTestId("guard-policy-text").fill("Everything: allow.");
+		await page.getByTestId("guard-policy-save").click();
+		await expect(page.getByTestId("guard-policy-state")).toHaveAttribute("data-status", "custom");
+		const restore = page.getByTestId("guard-policy-restore");
+		await restore.focus();
+		await page.keyboard.press("Enter");
+		await expect(page.getByTestId("guard-policy-confirm")).toBeVisible();
+		await expect(page.getByTestId("guard-policy-restore-no")).toBeFocused();
+		await page.keyboard.press("Enter");
+		await expect(page.getByTestId("guard-policy-confirm")).toHaveCount(0);
+		await expect(restore).toBeFocused();
+		await expect(page.getByTestId("guard-policy-text")).toHaveValue("Everything: allow.");
+		await page.keyboard.press("Enter");
+		await page.getByTestId("guard-policy-restore-yes").click();
+		await expect(page.getByTestId("guard-policy-state")).toHaveAttribute("data-status", "default");
+		await expect.poll(() => kept().policy).toBeUndefined();
+	});
+
 	test("the reviewer's rules start as the readable default, are edited and kept, and Restore default brings it back", async ({
 		page,
 	}) => {
