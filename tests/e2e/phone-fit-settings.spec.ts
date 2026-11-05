@@ -183,8 +183,14 @@ function suite(): void {
 		await expect(index.getByTestId("settings-index-chip").first()).toBeVisible({ timeout: 60_000 });
 		const right = index.getByTestId("scroll-row-right").first();
 		await expect(right).toBeVisible();
-		// A row of pages whose right arrow lies on the first label that runs past the edge.
-		const row = right.locator("xpath=ancestor::div[1]/preceding-sibling::ul[1]");
+		// A row of pages whose right arrow lies on the first label that runs past the edge. The row is held as an element,
+		// as in S1: the click can scroll it to its end, its right arrow goes, and a locator from `right` would then find the
+		// other row, which has not moved.
+		const row = await right.evaluateHandle((el) => {
+			const ul = el.closest("div.relative")?.querySelector(":scope > ul");
+			if (!ul) throw new Error("no row beside the arrow");
+			return ul;
+		});
 		await page.mouse.move(0, 0);
 		// The pixels under an arrow, left and right of its chevron, are those of the page's own background.
 		const under = async (arrow: Locator) => {
