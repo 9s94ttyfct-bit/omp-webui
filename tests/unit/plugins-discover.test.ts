@@ -7,6 +7,7 @@ import {
 	configNameOf,
 	configuredAs,
 	hitOf,
+	type MappedOption,
 	mapServer,
 	problemText,
 	registryBase,
@@ -21,6 +22,7 @@ import {
 	validSkillSpec,
 } from "../../server/omp/plugin-skills.ts";
 import { PluginsError, planJob, stepsOf } from "../../server/omp/plugins.ts";
+import type { McpProblem } from "../../shared/mcp-registry.ts";
 import { addedMarketplace, RECOMMENDED_MARKETPLACES, WEB_CATALOGS } from "../../shared/plugins-catalogs.ts";
 import { en } from "../../web/src/i18n/plugins.ts";
 import { zh } from "../../web/src/i18n/zh-CN/plugins.ts";
@@ -222,7 +224,9 @@ describe("MCP Registry → omp's mcp.json", () => {
 	test("an npm package runs with npx at its version; its variables are asked for, a secret one as secret", () => {
 		const [pkg] = mapServer(weather);
 		expect(pkg.option).toMatchObject({ id: "package:0", kind: "npm", transport: "stdio", problem: null });
-		expect(pkg.option.summary).toBe("npx -y @example/weather-mcp@1.4.0");
+		expect(pkg.option.summary).toBe(
+			"WEATHER_API_KEY={WEATHER_API_KEY} WEATHER_UNITS={WEATHER_UNITS} npx -y @example/weather-mcp@1.4.0",
+		);
 		expect(pkg.option.inputs).toEqual([
 			{
 				key: "env:WEATHER_API_KEY",
@@ -288,7 +292,7 @@ describe("MCP Registry → omp's mcp.json", () => {
 
 	test("a PyPI package runs with uvx; a named flag is passed as it is, a positional argument is asked for", () => {
 		const [pkg] = mapServer(sqlite, { "arg:argument:1": "/data/app.db" });
-		expect(pkg.option.summary).toBe("uvx sqlite-mcp@0.2.0");
+		expect(pkg.option.summary).toBe("uvx sqlite-mcp@0.2.0 --read-only {database_path}");
 		expect(pkg.option.inputs.map((i) => [i.key, i.label, i.required])).toEqual([
 			["arg:argument:1", "database_path", true],
 		]);
@@ -320,6 +324,75 @@ describe("MCP Registry → omp's mcp.json", () => {
 			command: "docker",
 			args: ["run", "-i", "--rm", "--network", "host", "-e", "TOKEN", "ghcr.io/example/box:2.0.0"],
 			env: { TOKEN: "t" },
+		});
+	});
+
+	test("the command line shown is the one written: runtime arguments, fixed values and environment included", () => {
+		const [pkg] = mapServer({
+			name: "io.example/y",
+			packages: [
+				{
+					registryType: "oci",
+					identifier: "example/img",
+					version: "1",
+					runtimeArguments: [
+						{ type: "named", name: "--privileged" },
+						{ type: "named", name: "-v", value: "/:/host" },
+					],
+					environmentVariables: [
+						{ name: "NODE_OPTIONS", value: "--require /x.js" },
+						{ name: "TOKEN", isRequired: true },
+					],
+				},
+			],
+		});
+		expect(pkg.option.summary).toBe(
+			"NODE_OPTIONS=--require /x.js TOKEN={TOKEN} docker run -i --rm --privileged -v /:/host -e NODE_OPTIONS -e TOKEN example/img:1",
+		);
+		expect(pkg.option.problem).toBeNull();
+	});
+
+	test("a runtime argument that fetches the package from elsewhere, or another package, is refused", () => {
+		const npm = (runtimeArguments: unknown[]) =>
+			mapServer({
+				name: "io.example/x",
+				packages: [{ registryType: "npm", identifier: "some-pkg", version: "1.0.0", runtimeArguments }],
+			})[0];
+		const pypi = (runtimeArguments: unknown[]) =>
+			mapServer({
+				name: "io.example/x",
+				packages: [{ registryType: "pypi", identifier: "some-pkg", version: "1.0.0", runtimeArguments }],
+			})[0];
+		const cases: [MappedOption, McpProblem][] = [
+			[
+				npm([{ type: "named", name: "--registry", value: "https://evil.example.com" }]),
+				{ code: "private-registry", detail: "https://evil.example.com" },
+			],
+			[
+				npm([{ type: "positional", value: "--registry=https://evil.example.com" }]),
+				{ code: "private-registry", detail: "https://evil.example.com" },
+			],
+			[
+				npm([{ type: "positional", value: "--@acme:registry=https://evil.example.com" }]),
+				{ code: "private-registry", detail: "https://evil.example.com" },
+			],
+			[npm([{ type: "named", name: "-p", value: "other-pkg" }]), { code: "invalid", detail: "-p" }],
+			[npm([{ type: "positional", value: "-yc" }]), { code: "invalid", detail: "-yc" }],
+			[
+				pypi([{ type: "named", name: "--index-url", value: "https://evil.example.com/simple" }]),
+				{ code: "private-registry", detail: "https://evil.example.com/simple" },
+			],
+			[pypi([{ type: "named", name: "--from", value: "other-pkg" }]), { code: "invalid", detail: "--from" }],
+		];
+		for (const [m, problem] of cases) {
+			expect(m.option.problem).toEqual(problem);
+			expect(m.entry).toBeNull();
+		}
+		// Runtime arguments that choose nothing of the kind are passed on.
+		expect(npm([{ type: "named", name: "--quiet" }]).entry).toEqual({
+			type: "stdio",
+			command: "npx",
+			args: ["-y", "--quiet", "some-pkg@1.0.0"],
 		});
 	});
 

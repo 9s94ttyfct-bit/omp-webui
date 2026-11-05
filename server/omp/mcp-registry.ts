@@ -18,13 +18,15 @@ import type { McpInput, McpInstallOption, McpProblem, McpSearch, McpServerHit } 
  * A registry entry is mapped to omp's config like this:
  * - an npm package: `npx -y <package>@<version>`; a PyPI package: `uvx <package>@<version>`; an OCI image: `docker run -i
  *   --rm [-e NAME…] <image>`. Runtime arguments go before the package, package arguments after it; environment variables
- *   go into `env`.
+ *   go into `env`. The person is shown this whole command line (with the environment in front) before it is written.
  * - a remote: `type` `http` (streamable HTTP) or `sse`, its `url`, and its `headers`.
  * - `{name}` in a value (an argument, a variable, a header, a URL) is a value the person fills in; so is a variable, a
  *   header or an argument the registry gives no value for. Secret ones are shown as password fields.
  * - Everything else is refused, with why: a package kind omp-webui cannot run (nuget, cargo, mcpb…), a package from a
- *   registry other than npm's or PyPI's public one, a package that serves HTTP itself, a remote transport omp does not
- *   speak, and a name or value that could be read as something else.
+ *   registry other than npm's or PyPI's public one (also through a runtime argument such as `--registry` or
+ *   `--index-url`), a runtime argument that makes `npx` or `uvx` fetch or run something else (`--package`, `--from`…), a
+ *   package that serves HTTP itself, a remote transport omp does not speak, and a name or value that could be read as
+ *   something else.
  */
 
 const DEFAULT_REGISTRY = "https://registry.modelcontextprotocol.io";
@@ -171,9 +173,13 @@ class Plan {
 		return value === null ? null : [name, value];
 	}
 
-	/** Runtime or package arguments, in order: a fixed one as it is, the others asked for; an empty optional one is left out. */
-	args(specs: Record<string, unknown>[], prefix: string): string[] {
+	/**
+	 * Runtime or package arguments, in order: a fixed one as it is, the others asked for; an empty optional one is left out.
+	 * `shown` is the same as the person is shown it: a fixed value as written, one to fill in as `{its label}`.
+	 */
+	args(specs: Record<string, unknown>[], prefix: string): { args: string[]; shown: string[] } {
 		const out: string[] = [];
+		const shown: string[] = [];
 		for (const [i, raw] of specs.entries()) {
 			const spec = raw as Spec;
 			const name = str(spec.name);
@@ -194,18 +200,57 @@ class Plan {
 				!spec.format
 			) {
 				out.push(name);
+				shown.push(name);
 				continue;
 			}
 			const value =
 				fixed !== null
 					? this.fill(fixed, spec, label)
 					: this.ask(`arg:${prefix}:${i}`, "arg", label, spec, spec.isRequired === true, spec.isSecret === true);
+			shown.push(...(named && name ? [name] : []), fixed ?? `{${label}}`);
 			if (value === null) continue;
 			if (named && name) out.push(name, value);
 			else out.push(value);
 		}
-		return out;
+		return { args: out, shown };
 	}
+}
+
+/**
+ * Runtime arguments that would make the runner fetch the package from somewhere else (`registry`), or fetch or run something
+ * other than the package (`other`): long flags (also as `--flag=value`), and the letters of short ones (also bunched, `-yp`).
+ */
+const RUNNER_FLAGS: Record<string, { registry: RegExp; other: RegExp; short: { registry: string; other: string } }> = {
+	npm: {
+		registry: /^--(?:(?:@[^=]*:)?registry|userconfig|globalconfig)$/,
+		other: /^--(?:package|call)$/,
+		short: { registry: "", other: "pc" },
+	},
+	pypi: {
+		registry: /^--(?:index-url|extra-index-url|index|default-index|find-links|config-file)$/,
+		other: /^--(?:from|with|with-editable|with-requirements)$/,
+		short: { registry: "if", other: "w" },
+	},
+};
+
+/** Why the runtime arguments of an npm or PyPI package cannot be passed to `npx` or `uvx`; null: they can. */
+function runnerProblem(kind: string, runtime: readonly string[]): McpProblem | null {
+	const flags = RUNNER_FLAGS[kind];
+	if (!flags) return null;
+	for (const [i, token] of runtime.entries()) {
+		const eq = token.indexOf("=");
+		const flag = eq >= 0 ? token.slice(0, eq) : token;
+		const value = eq >= 0 ? token.slice(eq + 1) : (runtime[i + 1] ?? flag);
+		if (flag.startsWith("--")) {
+			if (flags.registry.test(flag)) return { code: "private-registry", detail: value };
+			if (flags.other.test(flag)) return { code: "invalid", detail: flag };
+		} else if (/^-[A-Za-z]+$/.test(flag)) {
+			const letters = [...flag.slice(1)];
+			if (letters.some((l) => flags.short.registry.includes(l))) return { code: "private-registry", detail: value };
+			if (letters.some((l) => flags.short.other.includes(l))) return { code: "invalid", detail: flag };
+		}
+	}
+	return null;
 }
 
 /** What omp's config holds for one server. */
@@ -237,35 +282,40 @@ function mapPackage(pkg: Record<string, unknown>, index: number, values: Record<
 
 	const runtime = plan.args(list(pkg.runtimeArguments), "runtime");
 	const after = plan.args(list(pkg.packageArguments), "argument");
+	const problem = runnerProblem(kind, runtime.args);
+	if (problem) plan.refuse(problem);
 	const env: Record<string, string> = {};
+	const envShown: string[] = [];
 	for (const spec of list(pkg.environmentVariables)) {
 		const pair = plan.named("env", spec);
 		if (pair) env[pair[0]] = pair[1];
+		const name = str(spec.name);
+		if (name && ENV_NAME.test(name)) envShown.push(`${name}=${str(spec.value) ?? `{${name}}`}`);
 	}
 
+	const pinned = version ? `${identifier}@${version}` : identifier;
 	let command = "";
 	let args: string[] = [];
+	// The command line as the person is shown it before it is written: every argument, the environment in front.
+	let shown: string[] = [kind, identifier];
 	if (kind === "npm") {
 		command = "npx";
-		args = ["-y", ...runtime, version ? `${identifier}@${version}` : identifier, ...after];
+		args = ["-y", ...runtime.args, pinned, ...after.args];
+		shown = ["npx", "-y", ...runtime.shown, pinned, ...after.shown];
 	} else if (kind === "pypi") {
 		command = "uvx";
-		args = [...runtime, version ? `${identifier}@${version}` : identifier, ...after];
+		args = [...runtime.args, pinned, ...after.args];
+		shown = ["uvx", ...runtime.shown, pinned, ...after.shown];
 	} else if (kind === "oci") {
 		// The image's own tag, else the version as one.
 		const tagged = /[:@][^/]*$/.test(identifier) || !version ? identifier : `${identifier}:${version}`;
 		command = "docker";
 		const passed = Object.keys(env).flatMap((name) => ["-e", name]);
-		args = ["run", "-i", "--rm", ...runtime, ...passed, tagged, ...after];
+		args = ["run", "-i", "--rm", ...runtime.args, ...passed, tagged, ...after.args];
+		const named = envShown.flatMap((e) => ["-e", e.slice(0, e.indexOf("="))]);
+		shown = ["docker", "run", "-i", "--rm", ...runtime.shown, ...named, tagged, ...after.shown];
 	}
-	const summary =
-		kind === "npm"
-			? `npx -y ${version ? `${identifier}@${version}` : identifier}`
-			: kind === "pypi"
-				? `uvx ${version ? `${identifier}@${version}` : identifier}`
-				: kind === "oci"
-					? `docker run -i --rm ${identifier}`
-					: `${kind} ${identifier}`;
+	const summary = [...envShown, ...shown].join(" ");
 	const option: McpInstallOption = {
 		id: `package:${index}`,
 		kind,
