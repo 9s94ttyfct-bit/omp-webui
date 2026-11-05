@@ -2119,6 +2119,7 @@
 		"unattended.spec.ts › a question can be dismissed, and the filter keeps to one conversation (zh-CN)": 2,
 		"unattended.spec.ts › a question that could not be kept is a warning row in the conversation, and the Questions page says so under it": 6,
 		"unattended.spec.ts › on a phone: the page opens from the palette, a question opens and is answered, and the switch is in reach": 6.4,
+		"unattended.spec.ts › the Questions page reads the list again on Try again after a failed read": 1.3,
 		"unattended.spec.ts › the conversation's tab counts what waits, the page shows each question with its context, and an answer settles it (en)": 8.4,
 		"unattended.spec.ts › the conversation's tab counts what waits, the page shows each question with its context, and an answer settles it (zh-CN)": 4.6,
 		"unattended.spec.ts › the switch beside the message box turns one conversation unattended, and the chip opens its questions (en)": 9.3,

@@ -363,6 +363,27 @@ test("a question that could not be kept is a warning row in the conversation, an
 	await expect(line).toContainText("A question was not kept: this conversation has 60 open already.");
 });
 
+test("the Questions page reads the list again on Try again after a failed read", async ({ page }) => {
+	const mine = conversation(0x78, "Unattended retry");
+	seed(mine.key, mine.title, [{ question: "Read again?" }]);
+	let fail = true;
+	let reads = 0;
+	await page.route("**/api/questions", async (route) => {
+		reads++;
+		if (!fail) return route.continue();
+		return route.fulfill({ status: 500, json: { error: "the server is restarting" } });
+	});
+	await page.goto("/#/questions");
+	const error = page.getByTestId("questions-error");
+	await expect(error).toContainText("the server is restarting", { timeout: 30_000 });
+	const before = reads;
+	fail = false;
+	await error.getByRole("button", { name: en.retry }).click();
+	await expect(page.getByTestId("question-row")).toHaveCount(1);
+	await expect(error).toHaveCount(0);
+	expect(reads).toBe(before + 1);
+});
+
 test("on a phone: the page opens from the palette, a question opens and is answered, and the switch is in reach", async ({
 	browser,
 	e2eServer,

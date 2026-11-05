@@ -13,13 +13,14 @@ import { Badge, Button, cx, Empty, Spinner } from "./ui.tsx";
 const TOUCH = "pointer-coarse:min-h-11";
 const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
-/** Every question, read again whenever the server's counts move (`questions`); the newest read wins. */
-function useQuestionList(): { data: QuestionList | null; error: string | null; clearError: () => void } {
+/** Every question, read again whenever the server's counts move (`questions`) or `retry` is pressed; the newest read wins. */
+function useQuestionList(): { data: QuestionList | null; error: string | null; retry: () => void } {
 	const rev = useApp((s) => s.meta?.questions?.rev ?? 0);
 	const [data, setData] = useState<QuestionList | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [tries, setTries] = useState(0);
 	const load = useRef(0);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: `rev` is the trigger: the counts moved, so the list did
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `rev` and `tries` are the triggers: the counts moved, or Try again
 	useEffect(() => {
 		const mine = ++load.current;
 		questionsApi.list().then(
@@ -32,8 +33,15 @@ function useQuestionList(): { data: QuestionList | null; error: string | null; c
 				if (mine === load.current) setError(messageOf(e));
 			},
 		);
-	}, [rev]);
-	return { data, error, clearError: () => setError(null) };
+	}, [rev, tries]);
+	return {
+		data,
+		error,
+		retry: () => {
+			setError(null);
+			setTries((n) => n + 1);
+		},
+	};
 }
 
 /**
@@ -48,7 +56,7 @@ export default function QuestionsPage() {
 	const view = useApp((s) => s.view);
 	const setView = useApp((s) => s.setView);
 	const sessions = useApp((s) => s.sessions);
-	const { data, error, clearError } = useQuestionList();
+	const { data, error, retry } = useQuestionList();
 	const [tab, setTab] = useState<"open" | "done">("open");
 	const [scope, setScope] = useState<string>(view.kind === "questions" ? (view.file ?? "") : "");
 	const [openId, setOpenId] = useState<string | null>(null);
@@ -128,7 +136,7 @@ export default function QuestionsPage() {
 					{error ? (
 						<p className="text-sm text-danger" role="alert" data-testid="questions-error">
 							{t("questions.loadFailed", { error })}{" "}
-							<Button size="sm" onClick={clearError}>
+							<Button size="sm" onClick={retry}>
 								{t("questions.retry")}
 							</Button>
 						</p>
@@ -198,7 +206,7 @@ export function QuestionsTab({ file }: { file: string | null }) {
 	const t = useT();
 	const ready = useQuestionsStrings();
 	const setView = useApp((s) => s.setView);
-	const { data, error, clearError } = useQuestionList();
+	const { data, error, retry } = useQuestionList();
 	const [tab, setTab] = useState<"open" | "done">("open");
 	const [openId, setOpenId] = useState<string | null>(null);
 	const top = useRef<HTMLDivElement>(null);
@@ -239,7 +247,7 @@ export function QuestionsTab({ file }: { file: string | null }) {
 			{error ? (
 				<p className="text-sm text-danger" role="alert" data-testid="questions-error">
 					{t("questions.loadFailed", { error })}{" "}
-					<Button size="sm" onClick={clearError}>
+					<Button size="sm" onClick={retry}>
 						{t("questions.retry")}
 					</Button>
 				</p>
