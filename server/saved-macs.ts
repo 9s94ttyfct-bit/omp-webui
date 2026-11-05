@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { foldName } from "../shared/fold-name.ts";
 import { isRecord } from "../shared/guards.ts";
 import {
 	checkNewMac,
 	describeMacProblem,
-	foldMacName,
 	isMacId,
 	isTeamName,
 	MAC_LIMIT,
@@ -97,13 +97,13 @@ function recordOf(entry: unknown, kept: MacRecord[]): { mac: MacRecord; dropped:
 	const added = dateOf(entry.added);
 	// The host is kept as the address would be read: lower case, no scheme.
 	if (!name.ok || !host.ok || host.host !== rawHost || added === null) return null;
-	const folded = foldMacName(name.name);
+	const folded = foldName(name.name);
 	const clash = kept.some(
 		(m) =>
 			m.id.toLowerCase() === id.toLowerCase() ||
 			m.storeId.toLowerCase() === storeId.toLowerCase() ||
 			m.host === host.host ||
-			foldMacName(m.name) === folded,
+			foldName(m.name) === folded,
 	);
 	if (clash) return null;
 	let dropped = false;
@@ -208,8 +208,8 @@ export class SavedMacs {
 	private nameFor(macs: MacRecord[], own: string | null, input: string): string {
 		const name = parseMacName(input);
 		if (!name.ok) throw refusal({ kind: "name", code: name.problem });
-		const folded = foldMacName(name.name);
-		const other = macs.find((m) => m.id !== own && foldMacName(m.name) === folded);
+		const folded = foldName(name.name);
+		const other = macs.find((m) => m.id !== own && foldName(m.name) === folded);
 		if (other) throw refusal({ kind: "name", code: "taken", taken: other.name });
 		return name.name;
 	}

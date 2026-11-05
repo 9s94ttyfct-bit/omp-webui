@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { foldName } from "../../shared/fold-name.ts";
 import {
 	type AddressProblem,
 	checkNewMac,
 	describeMacProblem,
-	foldMacName,
 	isMacId,
 	isTeamName,
 	MAC_LIMIT,
@@ -94,9 +94,9 @@ describe("a name", () => {
 
 	test("two names that fold to one are one name, on every case the app's Swift fold is held to as well", () => {
 		for (const [a, b] of NAME_SAME)
-			expect(foldMacName(a), `${JSON.stringify(a)} and ${JSON.stringify(b)}`).toBe(foldMacName(b));
+			expect(foldName(a), `${JSON.stringify(a)} and ${JSON.stringify(b)}`).toBe(foldName(b));
 		for (const [a, b] of NAME_DIFFERENT)
-			expect(foldMacName(a), `${JSON.stringify(a)} and ${JSON.stringify(b)}`).not.toBe(foldMacName(b));
+			expect(foldName(a), `${JSON.stringify(a)} and ${JSON.stringify(b)}`).not.toBe(foldName(b));
 	});
 
 	test("the list refuses the second of two names that fold to one, whichever way it is spelled", () => {

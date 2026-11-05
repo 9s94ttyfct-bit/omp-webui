@@ -1,3 +1,4 @@
+import { foldName } from "./fold-name.ts";
 import { asciiLower } from "./remote.ts";
 
 /**
@@ -159,30 +160,6 @@ export function parseMacName(input: string): { ok: true; name: string } | { ok: 
 }
 
 /**
- * What two names are compared by: case, accents, width and compatibility forms do not make a name another one, since the name is
- * what tells two Macs apart. One definition for the server and the macOS app (`foldedName` in macos/remotemacs.swift), held to
- * the same cases (`NAME_SAME` and `NAME_DIFFERENT` in tests/support/mac-vectors.ts):
- *
- * 1. NFKD (a width or a ligature becomes the letters it stands for; an accent becomes a mark after its letter),
- * 2. the marks (general category M) are dropped,
- * 3. lower case, then upper case, then lower case again: the full mappings of Unicode both ways, which make `ß`, `ẞ` and `ss`,
- *    and `σ` and `Σ`, the same letters (`toLowerCase` alone keeps `ß`),
- * 4. a final sigma `ς` is written `σ`: `toLowerCase` reads a sigma by its place in a word (`ΟΔΥΣΣΕΥΣ` ends in `ς`) and Swift's
- *    `lowercased()` does not, so neither is left to decide,
- * 5. NFC, so that what is left is written one way.
- */
-export function foldMacName(name: string): string {
-	return name
-		.normalize("NFKD")
-		.replace(/\p{M}/gu, "")
-		.toLowerCase()
-		.toUpperCase()
-		.toLowerCase()
-		.replace(/\u03c2/g, "\u03c3")
-		.normalize("NFC");
-}
-
-/**
  * Whether a Mac with this name and address can join `macs`, and what it would be called and reached by. The order of the checks
  * is the order a person fixes them in: room, name, address, an address saved already. The server asks this before it writes and
  * the page before it asks the server, so the answer is the same on both sides.
@@ -194,8 +171,8 @@ export function checkNewMac(
 	if (macs.length >= MAC_LIMIT) return { ok: false, problem: { kind: "full" } };
 	const name = parseMacName(input.name);
 	if (!name.ok) return { ok: false, problem: { kind: "name", code: name.problem } };
-	const folded = foldMacName(name.name);
-	const namesake = macs.find((m) => foldMacName(m.name) === folded);
+	const folded = foldName(name.name);
+	const namesake = macs.find((m) => foldName(m.name) === folded);
 	if (namesake) return { ok: false, problem: { kind: "name", code: "taken", taken: namesake.name } };
 	const host = parseMacAddress(input.address);
 	if (!host.ok) return { ok: false, problem: { kind: "address", code: host.problem } };

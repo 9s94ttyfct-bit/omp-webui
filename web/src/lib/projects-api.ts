@@ -1,6 +1,6 @@
 import {
+	FOLDER_NAME_MAX,
 	isProjectProblem,
-	PROJECT_NAME_MAX,
 	type ProjectCreated,
 	type ProjectProblem,
 	type ProjectsInfo,
@@ -60,7 +60,7 @@ const PROBLEM_KEYS: Record<ProjectProblem, MessageKey> = {
 
 /** What is wrong with a name, or why the server refused it, as a sentence of the page's language. */
 export function problemText(t: Say, problem: ProjectProblem, name: string, error = ""): string {
-	return t(PROBLEM_KEYS[problem], { max: PROJECT_NAME_MAX, name, error });
+	return t(PROBLEM_KEYS[problem], { max: FOLDER_NAME_MAX, name, error });
 }
 
 /** Why a call failed, as a sentence of the page's language: a refused project is worded by `problemText`, anything else by `errorText`. */

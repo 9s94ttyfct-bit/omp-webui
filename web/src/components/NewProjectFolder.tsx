@@ -1,4 +1,4 @@
-import { type ProjectsInfo, projectNameProblem } from "@shared/projects.ts";
+import { folderNameProblem, type ProjectsInfo } from "@shared/projects.ts";
 import { FolderPlus } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { useT } from "../i18n/index.ts";
@@ -11,7 +11,7 @@ import { Button, Spinner } from "./ui.tsx";
 
 /**
  * "New project folder" in the folder picker of a new chat: a name, made into a folder in the projects folder (Settings ›
- * Projects folder), which the new chat then starts in. The name is checked as it is typed (`projectNameProblem`, which the
+ * Projects folder), which the new chat then starts in. The name is checked as it is typed (`folderNameProblem`, which the
  * server checks again), and a folder that exists is never touched: that is told, and the name is left to be changed. A chunk
  * of its own with its own strings, loaded when the picker is first opened (see `DirBrowser`).
  */
@@ -64,9 +64,9 @@ export default function NewProjectFolder({
 		);
 	}
 
-	const problem = name === "" ? null : projectNameProblem(name);
+	const problem = name === "" ? null : folderNameProblem(name);
 	const create = async () => {
-		const bad = projectNameProblem(name);
+		const bad = folderNameProblem(name);
 		if (bad) {
 			setRefused(problemText(t, bad, name));
 			return;

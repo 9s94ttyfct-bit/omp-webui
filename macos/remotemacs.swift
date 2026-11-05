@@ -106,7 +106,7 @@ enum NameProblem: Error, Equatable {
 let remoteNameLimit = 60
 
 /// What two names are compared by: case, accents, width and compatibility forms do not make a name another one, since the name is
-/// what tells two windows apart. The same definition as the server's `foldMacName` (shared/macs.ts), held to the same cases
+/// what tells two windows apart. The same definition as the server's `foldName` (shared/fold-name.ts), held to the same cases
 /// (`NAME_SAME` and `NAME_DIFFERENT` in tests/support/mac-vectors.ts): NFKD, the marks dropped, lower case, upper case and lower
 /// case again (the full mappings of Unicode, so `ß`, `ẞ` and `ss`, and `σ` and `Σ`, are the same letters), a final sigma `ς` written
 /// `σ` (the server's `toLowerCase` reads a sigma by its place in a word and Swift's `lowercased()` does not, so neither decides),

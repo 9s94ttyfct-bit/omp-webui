@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { capabilities } from "../../server/platform/capabilities.ts";
-import { foldMacName } from "../../shared/macs.ts";
+import { foldName } from "../../shared/fold-name.ts";
 import {
 	ADDRESS_OK,
 	ADDRESS_REFUSED,
@@ -256,8 +256,8 @@ test.skipIf(!mac)(
 			expect(f.get(a), `${JSON.stringify(a)} and ${JSON.stringify(b)} are one name`).toBe(f.get(b));
 		for (const [a, b] of NAME_DIFFERENT)
 			expect(f.get(a), `${JSON.stringify(a)} and ${JSON.stringify(b)} are two`).not.toBe(f.get(b));
-		// What the fold is, not only which names it equates: the same string the server's (`foldMacName`) makes of each.
-		for (const [name, folded] of f) expect(folded, JSON.stringify(name)).toBe(foldMacName(name));
+		// What the fold is, not only which names it equates: the same string the server's (`foldName`) makes of each.
+		for (const [name, folded] of f) expect(folded, JSON.stringify(name)).toBe(foldName(name));
 	},
 );
 

@@ -1,3 +1,4 @@
+import { foldName } from "./fold-name.ts";
 import { isRecord } from "./guards.ts";
 
 /**
@@ -73,22 +74,6 @@ const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what is refused.
 const FORBIDDEN = /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/;
 
-/**
- * What two project names are compared by: case, accents, width and compatibility forms do not make a name another one. The
- * same fold the list of Macs uses (`foldMacName`): NFKD, marks dropped, lower case then upper case then lower case (so `ß`
- * and `ss`, `σ` and `Σ` are the same letters), a final sigma written `σ`, NFC.
- */
-export function foldProjectName(name: string): string {
-	return name
-		.normalize("NFKD")
-		.replace(/\p{M}/gu, "")
-		.toLowerCase()
-		.toUpperCase()
-		.toLowerCase()
-		.replace(/\u03c2/g, "\u03c3")
-		.normalize("NFC");
-}
-
 /** The name as it would be kept (trimmed), or why it is not one. Whether another project has it is `projectNameProblem`'s. */
 export function parseProjectName(
 	input: string,
@@ -112,8 +97,8 @@ export function projectNameProblem(
 ): ProjectNameProblem | null {
 	const parsed = parseProjectName(name);
 	if (!parsed.ok) return parsed.problem;
-	const folded = foldProjectName(parsed.name);
-	return projects.some((p) => p.id !== except && foldProjectName(p.name) === folded) ? "taken" : null;
+	const folded = foldName(parsed.name);
+	return projects.some((p) => p.id !== except && foldName(p.name) === folded) ? "taken" : null;
 }
 
 /**
@@ -169,7 +154,7 @@ export function parseChatProjects(value: unknown): { projects: ChatProject[]; ex
 		if (!id || ids.has(id)) continue;
 		const parsed = typeof entry.name === "string" ? parseProjectName(entry.name) : null;
 		if (!parsed?.ok) continue;
-		const folded = foldProjectName(parsed.name);
+		const folded = foldName(parsed.name);
 		if (names.has(folded)) continue;
 		ids.add(id);
 		names.add(folded);
@@ -334,7 +319,7 @@ export function projectsFromGroups(
 		if (out.length >= PROJECT_LIMIT) break;
 		const parsed = typeof g.name === "string" ? parseProjectName(g.name) : null;
 		if (!parsed?.ok) continue;
-		const folded = foldProjectName(parsed.name);
+		const folded = foldName(parsed.name);
 		if (names.has(folded)) continue;
 		names.add(folded);
 		const id = typeof g.id === "string" && g.id !== "" && !ids.has(g.id) ? g.id : newProjectId([...ids]);

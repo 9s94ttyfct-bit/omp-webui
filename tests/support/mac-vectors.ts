@@ -101,8 +101,8 @@ export const NAME_REFUSED: Record<string, string> = {
 };
 
 /**
- * Names that are one name (the list refuses the second of two): the fold of both is the same, on the server (`foldMacName`,
- * shared/macs.ts) and in the app (`foldedName`, macos/remotemacs.swift). Case, accents, width, ligatures, and the letters whose
+ * Names that are one name (the list refuses the second of two): the fold of both is the same, on the server (`foldName`,
+ * shared/fold-name.ts) and in the app (`foldedName`, macos/remotemacs.swift). Case, accents, width, ligatures, and the letters whose
  * case mapping is not one to one: `ß` and `ẞ` are `ss`, `ς` is `σ`, `Ǆ` is `dž` (and both are `dz` without the caron).
  */
 export const NAME_SAME: readonly (readonly [string, string])[] = [

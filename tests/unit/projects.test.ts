@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, symlinkSyn
 import { join } from "node:path";
 import { DirError } from "../../server/dirs.ts";
 import { ProjectError, ProjectsFolder } from "../../server/projects.ts";
-import { autoProjectName, PROJECT_NAME_MAX, projectNameProblem } from "../../shared/projects.ts";
+import { autoProjectName, FOLDER_NAME_MAX, folderNameProblem } from "../../shared/projects.ts";
 import { tempDir } from "../support/temp-dirs.ts";
 
 /**
@@ -45,27 +45,27 @@ const problemOf = (fn: () => unknown) => {
 };
 
 test("a name is one plain folder name: what else is refused, and why", () => {
-	expect(projectNameProblem("my-project")).toBeNull();
-	expect(projectNameProblem("My Project 2")).toBeNull();
-	expect(projectNameProblem("项目_一")).toBeNull();
-	expect(projectNameProblem("a.b")).toBeNull();
-	expect(projectNameProblem("")).toBe("empty");
+	expect(folderNameProblem("my-project")).toBeNull();
+	expect(folderNameProblem("My Project 2")).toBeNull();
+	expect(folderNameProblem("项目_一")).toBeNull();
+	expect(folderNameProblem("a.b")).toBeNull();
+	expect(folderNameProblem("")).toBe("empty");
 	for (const bad of ["a/b", "/abs", "..\\x", "a\\b", "x/", "../x", "~/x/../.."]) {
-		expect(projectNameProblem(bad)).toBe("separator");
+		expect(folderNameProblem(bad)).toBe("separator");
 	}
-	for (const bad of [".", "..", ".hidden", "...", ".git"]) expect(projectNameProblem(bad)).toBe("dot");
-	for (const bad of [" lead", "trail ", "\tx", "dots.", "dots.."]) expect(projectNameProblem(bad)).toBe("space");
+	for (const bad of [".", "..", ".hidden", "...", ".git"]) expect(folderNameProblem(bad)).toBe("dot");
+	for (const bad of [" lead", "trail ", "\tx", "dots.", "dots.."]) expect(folderNameProblem(bad)).toBe("space");
 	for (const bad of ["a\nb", "a\0b", "a\u007fb", "a:b", "a*b", 'a"b', "a<b", "a>b", "a|b", "a?b"]) {
-		expect(projectNameProblem(bad)).toBe("invalid");
+		expect(folderNameProblem(bad)).toBe("invalid");
 	}
 });
 
 test("a name has at most 100 characters and 255 bytes", () => {
-	expect(projectNameProblem("a".repeat(PROJECT_NAME_MAX))).toBeNull();
-	expect(projectNameProblem("a".repeat(PROJECT_NAME_MAX + 1))).toBe("tooLong");
+	expect(folderNameProblem("a".repeat(FOLDER_NAME_MAX))).toBeNull();
+	expect(folderNameProblem("a".repeat(FOLDER_NAME_MAX + 1))).toBe("tooLong");
 	// 100 characters that are 300 bytes: the file system's limit is in bytes.
-	expect(projectNameProblem("项".repeat(PROJECT_NAME_MAX))).toBe("tooLong");
-	expect(projectNameProblem("项".repeat(80))).toBeNull();
+	expect(folderNameProblem("项".repeat(FOLDER_NAME_MAX))).toBe("tooLong");
+	expect(folderNameProblem("项".repeat(80))).toBeNull();
 });
 
 test("nothing chosen is ~/omp, shown while it is not there, and made by the first project folder", () => {

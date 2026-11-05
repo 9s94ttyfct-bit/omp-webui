@@ -13,10 +13,10 @@ import { parseProjectFolder } from "../shared/chat-projects.ts";
 import { isRecord } from "../shared/guards.ts";
 import {
 	autoProjectName,
+	folderNameProblem,
 	type ProjectCreated,
 	type ProjectProblem,
 	type ProjectsInfo,
-	projectNameProblem,
 } from "../shared/projects.ts";
 import { absolute, DirError } from "./dirs.ts";
 
@@ -142,7 +142,7 @@ export class ProjectsFolder {
 	 * time (`autoProjectName`), with `-2`, `-3`, … while that name is taken: the first one free is made.
 	 */
 	create(name: unknown, now: Date = new Date()): ProjectCreated {
-		const problem = typeof name === "string" ? projectNameProblem(name) : name === null ? null : "invalid";
+		const problem = typeof name === "string" ? folderNameProblem(name) : name === null ? null : "invalid";
 		if ((typeof name !== "string" && name !== null) || problem !== null) {
 			throw new ProjectError(`${JSON.stringify(name)} cannot be a project folder's name`, problem ?? "invalid", 400);
 		}

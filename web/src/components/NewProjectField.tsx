@@ -1,4 +1,4 @@
-import { autoProjectName, type ProjectsInfo, projectNameProblem } from "@shared/projects.ts";
+import { autoProjectName, folderNameProblem, type ProjectsInfo } from "@shared/projects.ts";
 import { useId } from "react";
 import { useT } from "../i18n/index.ts";
 import { shortPath } from "../lib/format.ts";
@@ -40,7 +40,7 @@ export default function NewProjectField({
 	const ime = useImeGuard();
 	const id = useId();
 	if (!ready) return null;
-	const typed = name === "" ? null : projectNameProblem(name);
+	const typed = name === "" ? null : folderNameProblem(name);
 	const shown = typed ? problemText(t, typed, name) : failure ? projectsErrorText(t, failure, name) : null;
 	return (
 		<div className="flex min-w-0 flex-1 flex-col gap-1" data-testid="new-project">

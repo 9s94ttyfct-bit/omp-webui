@@ -1,7 +1,8 @@
 /**
  * The projects folder (Settings › Projects folder) and the quick "New project folder" of the new-chat folder picker:
  * where new projects are made, what a project folder may be called, and why a name is refused. The page checks a name as
- * it is typed with `projectNameProblem`; the server checks it again with the same function before it makes anything.
+ * it is typed with `folderNameProblem`; the server checks it again with the same function before it makes anything. (A
+ * project of the sidebar, whose name is a label and not a folder, is `shared/chat-projects.ts`'s.)
  */
 
 /** `GET /api/projects` and what a change of the setting answers: the folder new projects are made in. */
@@ -23,14 +24,14 @@ export interface ProjectCreated {
 }
 
 /** The most characters a project folder's name has (and 255 bytes, which is what file systems allow). */
-export const PROJECT_NAME_MAX = 100;
-const PROJECT_NAME_MAX_BYTES = 255;
+export const FOLDER_NAME_MAX = 100;
+const FOLDER_NAME_MAX_BYTES = 255;
 
 /** What is wrong with a name: nothing but a name of one folder, directly in the projects folder, is accepted. */
-export type ProjectNameProblem =
+export type FolderNameProblem =
 	/** Nothing typed. */
 	| "empty"
-	/** More than `PROJECT_NAME_MAX` characters, or more bytes than a file system takes. */
+	/** More than `FOLDER_NAME_MAX` characters, or more bytes than a file system takes. */
 	| "tooLong"
 	/** A `/` or `\`: the name would be a path, and could leave the projects folder. */
 	| "separator"
@@ -42,9 +43,9 @@ export type ProjectNameProblem =
 	| "invalid";
 
 /** Why `name` cannot be a project folder's name (null: it can). The name is taken exactly as given, not trimmed. */
-export function projectNameProblem(name: string): ProjectNameProblem | null {
+export function folderNameProblem(name: string): FolderNameProblem | null {
 	if (name === "") return "empty";
-	if (name.length > PROJECT_NAME_MAX || new TextEncoder().encode(name).length > PROJECT_NAME_MAX_BYTES) {
+	if (name.length > FOLDER_NAME_MAX || new TextEncoder().encode(name).length > FOLDER_NAME_MAX_BYTES) {
 		return "tooLong";
 	}
 	if (name.includes("/") || name.includes("\\")) return "separator";
@@ -65,7 +66,7 @@ export function autoProjectName(at: Date): string {
 }
 
 /** What the server refuses besides a bad name: the name is taken, or the projects folder cannot be made in. */
-export type ProjectProblem = ProjectNameProblem | "exists" | "folderGone" | "notFolder" | "noAccess" | "failed";
+export type ProjectProblem = FolderNameProblem | "exists" | "folderGone" | "notFolder" | "noAccess" | "failed";
 
 const PROJECT_PROBLEMS: readonly string[] = [
 	"empty",
