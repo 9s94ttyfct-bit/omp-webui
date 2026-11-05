@@ -2,15 +2,16 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ALLOWED } from "../../scripts/check-authors.ts";
+import { ALLOWED, ALLOWED_NAMES } from "../../scripts/check-authors.ts";
 
 /**
- * scripts/check-authors.ts in a throwaway repository: only the maintainer's noreply address may author or commit what is
- * about to be published, in each of the ways the script finds those commits.
+ * scripts/check-authors.ts in a throwaway repository: only the maintainer's handle and noreply address may author or
+ * commit what is about to be published, or tag it, in each of the ways the script finds those commits.
  */
 
 const SCRIPT = join(import.meta.dir, "..", "..", "scripts", "check-authors.ts");
 const GOOD = ALLOWED[0];
+const NAME = ALLOWED_NAMES[0];
 const OTHER = "someone@example.com";
 
 let base: string;
@@ -27,14 +28,14 @@ function git(args: string[], env: Record<string, string> = {}): string {
 	return r.stdout.toString().trim();
 }
 
-/** A commit with this author and committer address; returns its sha. */
-function commit(author = GOOD, committer = author): string {
+/** A commit with this author and committer address (and name, the maintainer's handle unless given); returns its sha. */
+function commit(author = GOOD, committer = author, names: { author?: string; committer?: string } = {}): string {
 	writeFileSync(join(repo, `f${n}`), String(n++));
 	git(["add", "-A"]);
 	git(["commit", "-q", "-m", `c${n}`], {
-		GIT_AUTHOR_NAME: "a",
+		GIT_AUTHOR_NAME: names.author ?? NAME,
 		GIT_AUTHOR_EMAIL: author,
-		GIT_COMMITTER_NAME: "c",
+		GIT_COMMITTER_NAME: names.committer ?? NAME,
 		GIT_COMMITTER_EMAIL: committer,
 	});
 	return git(["rev-parse", "HEAD"]);
@@ -81,14 +82,25 @@ test("a commit authored with another address fails, naming it and the address", 
 	const r = check();
 	expect(r.code).toBe(1);
 	expect(r.out).toContain(bad.slice(0, 12));
-	expect(r.out).toContain(`author ${OTHER}`);
+	expect(r.out).toContain(`author ${NAME} <${OTHER}>`);
 });
 
 test("a commit committed with another address fails too, even with the noreply author", () => {
 	const bad = commit(GOOD, OTHER);
 	const r = check();
 	expect(r.code).toBe(1);
-	expect(r.out).toContain(`${bad.slice(0, 12)} author ${GOOD}, committer ${OTHER}`);
+	expect(r.out).toContain(`${bad.slice(0, 12)} author ${NAME} <${GOOD}>, committer ${NAME} <${OTHER}>`);
+});
+
+test("a commit whose author or committer name is not the maintainer's handle fails, with the allowed address", () => {
+	const byName = commit(GOOD, GOOD, { author: "Real Person" });
+	const r = check();
+	expect(r.code).toBe(1);
+	expect(r.out).toContain(`${byName.slice(0, 12)} author Real Person <${GOOD}>`);
+	const committed = commit(GOOD, GOOD, { committer: "Real Person" });
+	const later = check([`${byName}..${committed}`]);
+	expect(later.code).toBe(1);
+	expect(later.out).toContain(`${committed.slice(0, 12)} author ${NAME} <${GOOD}>, committer Real Person <${GOOD}>`);
 });
 
 test("locally, only what origin does not have yet is read", () => {
@@ -130,7 +142,7 @@ test("in GitHub Actions, a run by hand or on a schedule reads all of the commit'
 	for (const name of ["workflow_dispatch", "schedule"]) {
 		const r = checkEvent(name, { ref: "refs/heads/main" }, head);
 		expect(r.code, name).toBe(1);
-		expect(r.out).toContain(`author ${OTHER}`);
+		expect(r.out).toContain(`author ${NAME} <${OTHER}>`);
 		expect(r.out).toContain(`this ${name} (${head})`);
 	}
 });
@@ -148,4 +160,23 @@ test("as a pre-push hook, each pushed ref's new commits are read, and a deleted 
 	const r = check(["--pre-push", "origin"], {}, `refs/heads/main ${bad} refs/heads/main ${zero}\n`);
 	expect(r.code).toBe(1);
 	expect(r.out).toContain(bad.slice(0, 12));
+});
+
+test("as a pre-push hook, an annotated tag's tagger must be the maintainer's handle and address, though origin has its commit", () => {
+	Bun.spawnSync(["git", "init", "--bare", "-q", join(base, "origin.git")]);
+	git(["remote", "add", "origin", join(base, "origin.git")]);
+	commit();
+	git(["push", "-q", "origin", "main"]);
+	const zero = "0".repeat(40);
+	const tag = (name: string, who: string, email: string) => {
+		git(["-c", `user.name=${who}`, "-c", `user.email=${email}`, "tag", "-a", name, "-m", "t"]);
+		const sha = git(["rev-parse", `refs/tags/${name}`]);
+		return check(["--pre-push", "origin"], {}, `refs/tags/${name} ${sha} refs/tags/${name} ${zero}\n`);
+	};
+	expect(tag("v1.0.0", NAME, GOOD).code).toBe(0);
+	const r = tag("v9.9.9", "Real Person", "real.person@example.org");
+	expect(r.code).toBe(1);
+	expect(r.out).toContain("v9.9.9");
+	expect(r.out).toContain("tagger Real Person <real.person@example.org>");
+	expect(tag("v9.9.8", "Real Person", GOOD).code).toBe(1);
 });

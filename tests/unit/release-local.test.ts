@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { availableParallelism, tmpdir } from "node:os";
 import { join } from "node:path";
+import { ALLOWED, ALLOWED_NAMES } from "../../scripts/check-authors.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
 
 /**
@@ -361,6 +362,8 @@ test("with no tag, CI's success on origin/main is required, then the macOS and t
 	expect(localTag()).toBe(main);
 	expect(originTag()).toBe(main);
 	expect(git("cat-file", "-t", TAG)).toBe("tag");
+	// Made with the maintainer's identity, not this checkout's (t <t@example.test>): only it may be published.
+	expect(git("cat-file", "-p", TAG)).toContain(`tagger ${ALLOWED_NAMES[0]} <${ALLOWED[0]}>`);
 	expect(worktrees()).toHaveLength(1);
 });
 

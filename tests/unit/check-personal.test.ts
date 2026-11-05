@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ALLOWED_NAMES } from "../../scripts/check-authors.ts";
 import { scanBytes, wordPattern } from "../../scripts/check-personal.ts";
 import { ZipWriter } from "../../server/migrate/zip.ts";
 
@@ -14,6 +15,7 @@ import { ZipWriter } from "../../server/migrate/zip.ts";
 const ROOT = join(import.meta.dir, "..", "..");
 const SCRIPT = join(ROOT, "scripts", "check-personal.ts");
 const NOREPLY = "273716724+9s94ttyfct-bit@users.noreply.github.com";
+const HANDLE = ALLOWED_NAMES[0];
 
 const scan = (text: string) => scanBytes(Buffer.from(text), "f", null);
 /**
@@ -199,9 +201,9 @@ function git(cwd: string, ...args: string[]): string {
 		cwd,
 		env: {
 			...process.env,
-			GIT_AUTHOR_NAME: "n",
+			GIT_AUTHOR_NAME: HANDLE,
 			GIT_AUTHOR_EMAIL: NOREPLY,
-			GIT_COMMITTER_NAME: "n",
+			GIT_COMMITTER_NAME: HANDLE,
 			GIT_COMMITTER_EMAIL: NOREPLY,
 		},
 		stdout: "pipe",
@@ -316,7 +318,12 @@ test("the hooks `bun run hooks` installs refuse a commit and a push with persona
 	const run = (cmd: string[], extra: Record<string, string> = {}) =>
 		Bun.spawnSync(cmd, { cwd: dir, env: { ...env, ...extra }, stdout: "pipe", stderr: "pipe" });
 	expect(run([process.execPath, join(ROOT, "scripts", "install-hooks.ts")]).exitCode).toBe(0);
-	const id = { GIT_AUTHOR_NAME: "n", GIT_AUTHOR_EMAIL: NOREPLY, GIT_COMMITTER_NAME: "n", GIT_COMMITTER_EMAIL: NOREPLY };
+	const id = {
+		GIT_AUTHOR_NAME: HANDLE,
+		GIT_AUTHOR_EMAIL: NOREPLY,
+		GIT_COMMITTER_NAME: HANDLE,
+		GIT_COMMITTER_EMAIL: NOREPLY,
+	};
 	expect(run(["git", "push", "-q", "origin", "main"], id).exitCode).toBe(0);
 
 	writeFileSync(join(dir, "d.md"), u("/home/§kwanjiru/x\n"));
@@ -331,5 +338,5 @@ test("the hooks `bun run hooks` installs refuse a commit and a push with persona
 	expect(run(["git", "commit", "-q", "-m", "d"], other).exitCode).toBe(0);
 	const push = run(["git", "push", "-q", "origin", "main"], id);
 	expect(push.exitCode).not.toBe(0);
-	expect(push.stderr.toString()).toContain("author mpetrova@example.com");
+	expect(push.stderr.toString()).toContain(`author ${HANDLE} <mpetrova@example.com>`);
 });

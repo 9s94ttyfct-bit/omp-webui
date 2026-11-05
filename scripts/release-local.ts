@@ -51,6 +51,7 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:
 import { availableParallelism, tmpdir } from "node:os";
 import { join } from "node:path";
 import { REPO } from "../shared/repo.ts";
+import { ALLOWED, ALLOWED_NAMES } from "./check-authors.ts";
 import { type Needs, type Probe, preflight } from "./lib/release-preflight.ts";
 import { isShuttingDown, killTree, onShutdown } from "./lib/shutdown.ts";
 import { gateWorkers, TEST_WORKERS_ENV } from "./lib/test-workers.ts";
@@ -277,9 +278,24 @@ async function mainCommit(): Promise<string> {
 	return main;
 }
 
-/** Make the annotated tag on the commit everything passed on, and push it: the release is created against it. */
+/**
+ * Make the annotated tag on the commit everything passed on, and push it: the release is created against it. The tag
+ * carries the maintainer's identity (check-authors.ts), whatever git would take from this checkout's config.
+ */
 async function makeTag(commit: string): Promise<void> {
-	await run(["git", "tag", "-a", tag, "-m", `omp-webui ${tag}`, commit]);
+	await run([
+		"git",
+		"-c",
+		`user.name=${ALLOWED_NAMES[0]}`,
+		"-c",
+		`user.email=${ALLOWED[0]}`,
+		"tag",
+		"-a",
+		tag,
+		"-m",
+		`omp-webui ${tag}`,
+		commit,
+	]);
 	const pushed = await exec(["git", "push", "origin", `refs/tags/${tag}`]);
 	if (pushed.code !== 0) {
 		throw new Error(
