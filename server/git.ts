@@ -6,10 +6,12 @@ import { childEnv } from "./env.ts";
 import {
 	type ChangesLoad,
 	changesEnv,
+	countChanges,
 	EMPTY_TREE,
 	listChanges,
 	locateRepository,
 	readFileDiff,
+	safeGit,
 } from "./git-changes.ts";
 import { type GitMarks, parseMarks } from "./git-marks.ts";
 import { vetRepository } from "./git-vet.ts";
@@ -46,30 +48,21 @@ const MAX_MARKS_TEXT = 4 * 1024 * 1024;
 
 /**
  * `git status --porcelain=v2 --branch` read as a status: the branch (`# branch.head`, or the short commit of a
- * detached HEAD), and one count per kind of change. A file changed in both the index and the working tree counts in
- * both, as a prompt's `+1 ~1` does. Null for text that has no branch header: it is not git's answer.
+ * detached HEAD), and one count per kind of change (`countChanges`). Null for text that has no branch header: it is not
+ * git's answer.
  */
 export function parseStatus(text: string): Omit<GitStatus, "repo"> | null {
 	let head: string | null = null;
 	let oid = "";
-	let staged = 0;
-	let unstaged = 0;
-	let untracked = 0;
 	for (const line of text.split("\n")) {
 		if (line.startsWith("# branch.head ")) head = line.slice("# branch.head ".length).trim();
 		else if (line.startsWith("# branch.oid ")) oid = line.slice("# branch.oid ".length).trim();
-		else if (line.startsWith("1 ") || line.startsWith("2 ")) {
-			// `1 <XY> …` and `2 <XY> …` (a rename or copy): X is the index's side, Y the working tree's; `.` is no change.
-			if (line[2] !== ".") staged++;
-			if (line[3] !== ".") unstaged++;
-		} else if (line.startsWith("u ")) unstaged++;
-		else if (line.startsWith("? ")) untracked++;
 	}
 	if (head === null) return null;
 	const detached = head === "(detached)";
 	const branch = detached ? oid.slice(0, 7) : head;
 	if (!branch) return null;
-	return { branch, detached, staged, unstaged, untracked };
+	return { branch, detached, ...countChanges(text) };
 }
 
 /** The last part of a remote's address, `.git` left off: `omp-webui` of `git@github.com:me/omp-webui.git` or of a path. */
@@ -370,20 +363,7 @@ export class GitProbe {
 		const [prefix, status] = await Promise.all([
 			this.#run(["git", "rev-parse", "--show-prefix"], dir, this.#timeouts.status, this.#env),
 			this.#run(
-				[
-					"git",
-					"-c",
-					"core.fsmonitor=false",
-					"-c",
-					"core.hooksPath=/dev/null",
-					`--attr-source=${EMPTY_TREE}`,
-					"--no-optional-locks",
-					"status",
-					"--porcelain=v2",
-					"-z",
-					"--ignored=traditional",
-					"--ignore-submodules=all",
-				],
+				safeGit("status", "--porcelain=v2", "-z", "--ignored=traditional", "--ignore-submodules=all"),
 				dir,
 				this.#timeouts.status,
 				this.#env,
@@ -402,25 +382,11 @@ export class GitProbe {
 			if (vetting.refused) this.#warnOnce(dir, vetting.refused);
 			return { value: null, slow: vetting.slow };
 		}
-		// Whatever the repository's own settings say, the look runs no program: no fsmonitor, no hooks, no `.gitattributes`
-		// of the folder (`--attr-source` needs git 2.40; an older git gives no status, and so no chips), and no submodule
-		// entered: `git status` runs a `git status` of its own in each, with the configuration and `info/attributes` of the
-		// submodule's git directory, which are not what was vetted (a changed file there runs its clean filter).
-		// `--no-optional-locks`: this is a look, and it must not take the index lock from the agent's own git commands.
+		// A look that runs nothing the repository names (`safeGit`), and enters no submodule: `git status` runs a `git status`
+		// of its own in each, with the configuration and `info/attributes` of the submodule's git directory, which are not what
+		// was vetted (a changed file there runs its clean filter).
 		const ran = await this.#run(
-			[
-				"git",
-				"-c",
-				"core.fsmonitor=false",
-				"-c",
-				"core.hooksPath=/dev/null",
-				`--attr-source=${EMPTY_TREE}`,
-				"--no-optional-locks",
-				"status",
-				"--porcelain=v2",
-				"--branch",
-				"--ignore-submodules=all",
-			],
+			safeGit("status", "--porcelain=v2", "--branch", "--ignore-submodules=all"),
 			dir,
 			this.#timeouts.status,
 			this.#env,

@@ -4,7 +4,8 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { GitProbe } from "../../server/git.ts";
-import { countChanges, parseWorktrees } from "../../server/git-worktrees.ts";
+import { countChanges } from "../../server/git-changes.ts";
+import { parseWorktrees } from "../../server/git-worktrees.ts";
 
 /**
  * The Worktrees tab (#698): the worktrees of a conversation's repository, what is not committed in each and how many of its

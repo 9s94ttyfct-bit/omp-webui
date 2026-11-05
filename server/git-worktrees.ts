@@ -2,7 +2,7 @@ import { realpathSync } from "node:fs";
 import { sep } from "node:path";
 import type { Worktree, WorktreeList } from "../shared/git.ts";
 import type { Run } from "./git.ts";
-import { EMPTY_TREE } from "./git-changes.ts";
+import { countChanges, safeGit } from "./git-changes.ts";
 import { vetRepository } from "./git-vet.ts";
 
 /**
@@ -52,34 +52,8 @@ export function parseWorktrees(text: string): Listed[] {
 	return out;
 }
 
-/** The status line's look at a folder: nothing the repository names is run (see `GitProbe.#status`). */
-const STATUS = [
-	"git",
-	"-c",
-	"core.fsmonitor=false",
-	"-c",
-	"core.hooksPath=/dev/null",
-	`--attr-source=${EMPTY_TREE}`,
-	"--no-optional-locks",
-	"status",
-	"--porcelain=v2",
-	"--ignore-submodules=all",
-];
-
-/** Change counts of `git status --porcelain=v2` (as `parseStatus` counts them). */
-export function countChanges(text: string): { staged: number; unstaged: number; untracked: number } {
-	let staged = 0;
-	let unstaged = 0;
-	let untracked = 0;
-	for (const line of text.split("\n")) {
-		if (line.startsWith("1 ") || line.startsWith("2 ")) {
-			if (line[2] !== ".") staged++;
-			if (line[3] !== ".") unstaged++;
-		} else if (line.startsWith("u ")) unstaged++;
-		else if (line.startsWith("? ")) untracked++;
-	}
-	return { staged, unstaged, untracked };
-}
+/** The status line's look at a folder, without its branch: nothing the repository names is run (see `safeGit`). */
+const STATUS = safeGit("status", "--porcelain=v2", "--ignore-submodules=all");
 
 const real = (p: string): string => {
 	try {

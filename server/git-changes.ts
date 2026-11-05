@@ -82,25 +82,38 @@ export function changesEnv(base: Record<string, string | undefined>): Record<str
 }
 
 /**
- * `git` with the arguments every look of this file starts with, for the repository `repo`. `core.bigFileThreshold` is the
- * largest file git diffs as text (a larger one is binary for it: a 2 GB log is not read for the sake of a diff).
+ * `git` with the global options of every look at a repository (the status line's, the Files tab's marks, the Worktrees
+ * tab's, the Changes tab's), then `rest`. Whatever the repository's own settings say, the look runs no program: no
+ * fsmonitor, no hooks, no `.gitattributes` of the folder (`--attr-source` needs git 2.40; an older git gives no answer),
+ * and it takes no index lock (`--no-optional-locks`): this is a look, and it must not take the lock from the agent's own
+ * git commands. What else the repository could run is what `vetRepository` refuses.
  */
-export function gitArgs(repo: Pick<Repo, "toplevel" | "gitDir">, ...rest: string[]): string[] {
+export function safeGit(...rest: string[]): string[] {
 	return [
 		"git",
 		"-c",
 		"core.fsmonitor=false",
 		"-c",
 		"core.hooksPath=/dev/null",
+		`--attr-source=${EMPTY_TREE}`,
+		"--no-optional-locks",
+		...rest,
+	];
+}
+
+/**
+ * `safeGit` for the repository `repo`, as every look of this file is. `core.bigFileThreshold` is the largest file git
+ * diffs as text (a larger one is binary for it: a 2 GB log is not read for the sake of a diff).
+ */
+export function gitArgs(repo: Pick<Repo, "toplevel" | "gitDir">, ...rest: string[]): string[] {
+	return safeGit(
 		"-c",
 		`core.bigFileThreshold=${CHANGES_LIMITS.fileBytes}`,
 		`--git-dir=${repo.gitDir}`,
 		`--work-tree=${repo.toplevel}`,
-		`--attr-source=${EMPTY_TREE}`,
-		"--no-optional-locks",
 		"--no-pager",
 		...rest,
-	];
+	);
 }
 
 const real = (path: string): string => {
@@ -164,7 +177,7 @@ export interface StatusScan {
 }
 
 /** The text of `record` after its `n`th space (a path may hold spaces: it is the rest of the record). */
-function afterFields(record: string, n: number): string | null {
+export function afterFields(record: string, n: number): string | null {
 	let at = -1;
 	for (let i = 0; i < n; i++) {
 		at = record.indexOf(" ", at + 1);
@@ -173,8 +186,30 @@ function afterFields(record: string, n: number): string | null {
 	return record.slice(at + 1);
 }
 
-/** The fields before the path of a record of each kind (`1`: changed, `2`: renamed or copied, `u`: unmerged). */
-const FIELDS_BEFORE_PATH: Record<string, number> = { "1": 8, "2": 9, u: 10 };
+/**
+ * The fields before the path of a `git status --porcelain=v2` record of each kind (`1`: changed, `2`: renamed or copied,
+ * `u`: unmerged).
+ */
+export const FIELDS_BEFORE_PATH: Record<string, number> = { "1": 8, "2": 9, u: 10 };
+
+/**
+ * The change counts of `git status --porcelain=v2` (newline separated): a file changed in both the index and the working
+ * tree counts in both, as a prompt's `+1 ~1` does.
+ */
+export function countChanges(text: string): { staged: number; unstaged: number; untracked: number } {
+	let staged = 0;
+	let unstaged = 0;
+	let untracked = 0;
+	for (const line of text.split("\n")) {
+		if (line.startsWith("1 ") || line.startsWith("2 ")) {
+			// `1 <XY> …` and `2 <XY> …` (a rename or copy): X is the index's side, Y the working tree's; `.` is no change.
+			if (line[2] !== ".") staged++;
+			if (line[3] !== ".") unstaged++;
+		} else if (line.startsWith("u ")) unstaged++;
+		else if (line.startsWith("? ")) untracked++;
+	}
+	return { staged, unstaged, untracked };
+}
 
 export function scanStatus(text: string): StatusScan {
 	const scan: StatusScan = { oid: null, head: null, staged: new Set(), conflicts: new Set(), untracked: [] };

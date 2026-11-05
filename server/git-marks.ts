@@ -1,4 +1,5 @@
 import type { GitMark } from "../shared/folder.ts";
+import { afterFields, FIELDS_BEFORE_PATH } from "./git-changes.ts";
 
 /**
  * What the Files tab knows of a repository's working tree: which files differ from the last commit, which folders are
@@ -13,19 +14,6 @@ export interface GitMarks {
 	changedDirs: Set<string>;
 	/** Ignored files, and ignored folders with a trailing `/` (git reports an ignored folder as one entry). */
 	ignored: Set<string>;
-}
-
-/** What each ` ` separated field before the path of a status record is, by the record's type. */
-const FIELDS_BEFORE_PATH: Record<string, number> = { "1": 8, "2": 9, u: 10 };
-
-/** The text after the `n`th space of `record` (paths may hold spaces, so a path is the rest of the record). */
-function afterFields(record: string, n: number): string | null {
-	let at = -1;
-	for (let i = 0; i < n; i++) {
-		at = record.indexOf(" ", at + 1);
-		if (at < 0) return null;
-	}
-	return record.slice(at + 1);
 }
 
 /** `X` is the index's side of a record's `XY`, `Y` the working tree's; `.` is no change. */
