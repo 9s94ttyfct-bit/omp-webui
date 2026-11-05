@@ -208,12 +208,18 @@ async function ungated(): Promise<UngatedConversation> {
 	};
 }
 
-/** A turn is under way: the model has been asked and has not answered. */
+/**
+ * A turn is under way: the model has been asked and has not answered, and the server knows it (omp's `agent_start` reached
+ * the tab). omp writes that frame before it asks the model, but the server reads it from omp's output when it gets to it:
+ * on a loaded Windows runner the model was asked first, and a restart sent then found the process idle (200, not 409).
+ */
 async function turnAtTheModel(c: UngatedConversation): Promise<() => void> {
 	const release = holdTurn();
 	const before = plan.arrived;
+	const started = c.next((f) => f.type === "agent_start");
 	await c.prompt();
 	await pollUntil(() => plan.arrived > before, "the turn to reach the model");
+	await started;
 	return release;
 }
 
