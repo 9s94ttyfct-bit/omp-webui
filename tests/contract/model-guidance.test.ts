@@ -7,6 +7,7 @@ import { watchFrames } from "../support/frames.ts";
 import { lanAddress, rawSocket } from "../support/lan-peer.ts";
 import { expectMode } from "../support/modes.ts";
 import { pollUntil } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type ScriptedTurn, type StubScripted, startScriptedStub } from "../support/stub-scripted.ts";
 import { connect, request } from "../support/ws.ts";
@@ -457,9 +458,11 @@ const openAndClose = async (ws: WebSocket, target: Record<string, unknown>): Pro
 		try {
 			const before = await count();
 			// Text a page on the network wrote is refused, and no process is started for it.
-			await expect(
-				request(page, { t: "open", target: { kind: "new", cwd: server.work, guidance: { text: TYPED } } }),
-			).rejects.toThrow(/computer omp-webui runs on/);
+			expect(
+				await rejectionOf(
+					request(page, { t: "open", target: { kind: "new", cwd: server.work, guidance: { text: TYPED } } }),
+				),
+			).toThrow(/computer omp-webui runs on/);
 			expect(await count()).toBe(before);
 
 			// A template it picked is the text the store has for it, whatever else the page says along with the id.

@@ -7,6 +7,7 @@ import { type Live, LivePool, surplus } from "../../server/live.ts";
 import { capabilities } from "../../server/platform/capabilities.ts";
 import type { OmpFrame } from "../../shared/protocol.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
+import { rejectionOf } from "../support/rejection.ts";
 
 /** The idle reaper and "open in terminal" never close an omp that is busy (real omp, no model calls). */
 
@@ -36,7 +37,7 @@ test("a running !command is not idle, however long it runs", async () => {
 	const running = live.rpc({ type: "bash", command: "sleep 2" });
 	live.lastActivity = longAgo();
 	expect(reapable(live)).toBe(false);
-	await expect(pool.release({ by: "file", file: live.info.sessionFile as string })).rejects.toThrow(
+	expect(await rejectionOf(pool.release({ by: "file", file: live.info.sessionFile as string }))).toThrow(
 		"This conversation is working",
 	);
 	expect(live.holding).toBe("working");
@@ -54,7 +55,7 @@ test("a dialog omp is waiting on keeps the process until it is answered", async 
 	live.lastActivity = longAgo();
 	expect(reapable(live)).toBe(false);
 	expect(live.holding).toBe("asking");
-	await expect(pool.release({ by: "file", file: live.info.sessionFile as string })).rejects.toThrow(
+	expect(await rejectionOf(pool.release({ by: "file", file: live.info.sessionFile as string }))).toThrow(
 		"waiting for your answer",
 	);
 
@@ -70,10 +71,10 @@ test.skipIf(!capabilities.pauseResume)(
 		live.lastActivity = longAgo();
 		expect(reapable(live)).toBe(false);
 		// What it says is that it is paused, not that it is working or waiting for an answer.
-		await expect(pool.release({ by: "file", file: live.info.sessionFile as string })).rejects.toThrow(
+		expect(await rejectionOf(pool.release({ by: "file", file: live.info.sessionFile as string }))).toThrow(
 			"This conversation is paused",
 		);
-		await expect(pool.release({ by: "file", file: live.info.sessionFile as string })).rejects.toThrow(
+		expect(await rejectionOf(pool.release({ by: "file", file: live.info.sessionFile as string }))).toThrow(
 			"resume it or end it",
 		);
 		expect(live.holding).toBe("paused");

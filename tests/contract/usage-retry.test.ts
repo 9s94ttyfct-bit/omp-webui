@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { isUsageLimitError } from "../../shared/retry.ts";
 import { pollUntil } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { messageEnds, usageResetWaitFixture } from "../support/usage-reset-wait.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -118,7 +119,7 @@ test("Retry now, from omp's own commands: abort_retry ends the backoff, /retry r
 		expect((await chat.listing())?.retry).toBeUndefined();
 
 		// With nothing failed and no backoff there is nothing to retry: omp says so and the call fails with its words.
-		await expect(request(chat.ws, { t: "retry_now", liveId: chat.liveId })).rejects.toThrow(/Nothing to retry/);
+		expect(await rejectionOf(request(chat.ws, { t: "retry_now", liveId: chat.liveId }))).toThrow(/Nothing to retry/);
 	} finally {
 		chat.close();
 		await api("/api/usage-reset-wait", { enabled: false });

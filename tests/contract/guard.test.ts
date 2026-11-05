@@ -11,6 +11,7 @@ import { parseRiskTitle, RISK_ALLOW, RISK_DENY } from "../../shared/risk-confirm
 import { type AccessKey, type Jwks, makeKey, startJwks } from "../support/access-jwt.ts";
 import { type Frame, messageWhere, watchFrames } from "../support/frames.ts";
 import { pollUntil } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { remoteClient, remoteSettings } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import {
@@ -729,7 +730,7 @@ describe("a conversation that cannot be covered", () => {
 		writeFileSync(own, "export default function () {}\n");
 		const c = await conversation(["--trusted-extension", own]);
 		expect(c.live.args).not.toContain("--extension");
-		await expect(prompt(c)).rejects.toThrow(/Guard dangerous commands is on/);
+		expect(await rejectionOf(prompt(c))).toThrow(/Guard dangerous commands is on/);
 		await setGuard({ mode: "off" });
 		plan.main = write("ungated.txt");
 		const ended = fresh(c, (f) => f.type === "agent_end");
@@ -900,9 +901,9 @@ describe("a conversation's own guard", () => {
 		const socket = await phone.socket();
 		expect(socket).not.toBeNull();
 		if (socket) {
-			await expect(
-				request(socket, { t: "open", target: { kind: "new", cwd: s.work, guard: { mode: "off" } } }),
-			).rejects.toThrow(/computer omp-webui runs on/);
+			expect(
+				await rejectionOf(request(socket, { t: "open", target: { kind: "new", cwd: s.work, guard: { mode: "off" } } })),
+			).toThrow(/computer omp-webui runs on/);
 			const listing = await request<{ liveId: string; guard?: { own?: unknown } }[]>(socket, { t: "list_lives" });
 			expect(listing.find((l) => l.liveId === c.live.liveId)?.guard?.own).toEqual({ mode: "ask" });
 			socket.close();

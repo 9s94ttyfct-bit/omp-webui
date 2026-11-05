@@ -8,6 +8,7 @@ import { retryPhase } from "../../web/src/lib/retry-wait.ts";
 import { applySubagentFrame, mergeSnapshot } from "../../web/src/store/subagents-live.ts";
 import { type Frame, watchFrames } from "../support/frames.ts";
 import { pollUntil } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import {
 	type ScriptedRequest,
@@ -220,7 +221,7 @@ test("omp's registry says a subagent is waiting (retryState) and the page can te
 		lift();
 		const asked = backend.requests.length;
 		await chat.rpc({ type: "abort_retry" });
-		await expect(request(chat.ws, { t: "retry_now", liveId: chat.liveId })).rejects.toThrow(/Nothing to retry/);
+		expect(await rejectionOf(request(chat.ws, { t: "retry_now", liveId: chat.liveId }))).toThrow(/Nothing to retry/);
 		// A message to the subagent is taken (omp says nothing against it) and kept for after the wait.
 		await chat.rpc({ type: "steer_subagent", subagentId: "Sub", message: `${STEER}: continue now.` });
 		await omissionWindow();

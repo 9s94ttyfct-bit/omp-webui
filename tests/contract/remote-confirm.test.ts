@@ -6,6 +6,7 @@ import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { parseRiskTitle, RISK_ALLOW, RISK_DENY, type RiskTitle } from "../../shared/risk-confirm.ts";
 import { type AccessKey, type Jwks, makeKey, startJwks } from "../support/access-jwt.ts";
 import { type Frame, watchFrames } from "../support/frames.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { type RemoteClient, remoteClient, remoteSettings } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type ScriptedTurn, type StubScripted, startScriptedStub } from "../support/stub-scripted.ts";
@@ -369,9 +370,11 @@ describe("a conversation that cannot be covered", () => {
 		writeFileSync(own, "export default function () {}\n");
 		const c = await conversation(["--trusted-extension", own]);
 		expect(c.live.args).not.toContain("--extension");
-		await expect(
-			request(c.remote, { t: "rpc", liveId: c.live.liveId, command: { type: "prompt", message: "go" } }),
-		).rejects.toThrow(/Confirm risky commands from remote pages is on/);
+		expect(
+			await rejectionOf(
+				request(c.remote, { t: "rpc", liveId: c.live.liveId, command: { type: "prompt", message: "go" } }),
+			),
+		).toThrow(/Confirm risky commands from remote pages is on/);
 		// A page on this computer is not refused, and with the setting off nobody is.
 		const target = join(outside, "ungated.txt");
 		await turn(c, c.local, outsideWrite("ungated.txt"));
@@ -452,7 +455,7 @@ describe("a turn that a goal starts is its sender's, as a message's is", () => {
 			{ type: "steer_subagent", subagentId: "x", message: "do it" },
 			{ type: "abort_and_prompt", message: "go" },
 		]) {
-			await expect(request(c.remote, { t: "rpc", liveId: c.live.liveId, command }), command.type).rejects.toThrow(
+			expect(await rejectionOf(request(c.remote, { t: "rpc", liveId: c.live.liveId, command })), command.type).toThrow(
 				/Confirm risky commands from remote pages is on/,
 			);
 		}
@@ -493,9 +496,11 @@ describe("a gate that did not start", () => {
 		const c = await conversation();
 		// The model-guidance extension is started with every process, so it is the gate's own path that must be absent.
 		expect(c.live.args).not.toContain(extension);
-		await expect(
-			request(c.remote, { t: "rpc", liveId: c.live.liveId, command: { type: "prompt", message: "go" } }),
-		).rejects.toThrow(/Confirm risky commands from remote pages is on/);
+		expect(
+			await rejectionOf(
+				request(c.remote, { t: "rpc", liveId: c.live.liveId, command: { type: "prompt", message: "go" } }),
+			),
+		).toThrow(/Confirm risky commands from remote pages is on/);
 		await c.close();
 		rmSync(extension, { recursive: true, force: true });
 		const next = await conversation();

@@ -7,6 +7,7 @@ import { chromium } from "playwright-core";
 import puppeteer, { type Browser } from "puppeteer-core";
 import { cdpUrlOf } from "../../server/browser/lazy.ts";
 import { PageRegistry } from "../../server/browser/registry.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 
 /**
@@ -127,7 +128,7 @@ test("a conversation's downloads: its puppeteer's session of the browser sets th
 		const { targetInfos } = await other.send("Target.getTargets");
 		expect(targetInfos.map((t) => t.url)).not.toContain(`http://127.0.0.1:${site.port}/`);
 		const theirs = (await session.send("Target.getTargetInfo")).targetInfo.targetId;
-		await expect(other.send("Target.attachToTarget", { targetId: theirs, flatten: true })).rejects.toThrow(
+		expect(await rejectionOf(other.send("Target.attachToTarget", { targetId: theirs, flatten: true }))).toThrow(
 			/Not this conversation's page/,
 		);
 		await other.detach();

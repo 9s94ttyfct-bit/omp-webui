@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:
 import { join } from "node:path";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { pollUntil } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { type UsageConversation, usageResetWaitFixture } from "../support/usage-reset-wait.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -146,9 +147,11 @@ test("what a process was told is its own, over the files: every page is told, an
 		expect(await retries(chat)).toBe(false);
 
 		// A mode omp refuses is not recorded as the process's own.
-		await expect(
-			request(chat.ws, { t: "rpc", liveId: chat.liveId, command: { type: "set_cache_warming", mode: "always" } }),
-		).rejects.toThrow();
+		expect(
+			await rejectionOf(
+				request(chat.ws, { t: "rpc", liveId: chat.liveId, command: { type: "set_cache_warming", mode: "always" } }),
+			),
+		).toThrow();
 		expect((await chat.listing())?.sessionSettings).toEqual(told);
 	} finally {
 		chat.close();

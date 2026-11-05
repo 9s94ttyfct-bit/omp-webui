@@ -7,6 +7,7 @@ import type { LiveInfo } from "../../shared/protocol.ts";
 import { continuePrompt } from "../../web/src/lib/subagent-continue.ts";
 import { type Frame, watchFrames } from "../support/frames.ts";
 import { pollUntil } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import {
 	type ScriptedRequest,
@@ -218,7 +219,7 @@ test("a stopped subagent is parked, not gone: omp lists nothing and takes no mes
 
 		// To a host it is gone: not in the registry, and its messages are refused (steer_subagent needs a running one).
 		expect(await chat.rpc({ type: "get_subagents" })).toEqual({ subagents: [] });
-		await expect(chat.rpc({ type: "steer_subagent", subagentId: "Sub", message: "Carry on." })).rejects.toThrow(
+		expect(await rejectionOf(chat.rpc({ type: "steer_subagent", subagentId: "Sub", message: "Carry on." }))).toThrow(
 			/Subagent not running: Sub/,
 		);
 

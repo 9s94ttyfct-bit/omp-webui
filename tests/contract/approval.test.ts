@@ -3,6 +3,7 @@ import { existsSync, readdirSync } from "node:fs";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { messageWhere, watchFrames } from "../support/frames.ts";
 import { canCallModel } from "../support/omp-env.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -83,10 +84,10 @@ test("changing the mode answers once it is in force, tells every tab, and leaves
 	expect(((await announced).info as LiveInfo).approvalMode).toBe("always-ask");
 	expect(await healthy(ws, live.liveId)).toBe(true);
 
-	await expect(request(ws, { t: "approval_mode", liveId: live.liveId, mode: "reckless" })).rejects.toThrow(
+	expect(await rejectionOf(request(ws, { t: "approval_mode", liveId: live.liveId, mode: "reckless" }))).toThrow(
 		/Bad approval mode/,
 	);
-	await expect(request(ws, { t: "approval_mode", liveId: "L0-nope", mode: "yolo" })).rejects.toThrow(/not found/);
+	expect(await rejectionOf(request(ws, { t: "approval_mode", liveId: "L0-nope", mode: "yolo" }))).toThrow(/not found/);
 	expect(await healthy(ws, live.liveId)).toBe(true);
 	await request(ws, { t: "close", liveId: live.liveId });
 	ws.close();

@@ -24,6 +24,7 @@ import { lanAddress, type NetSocket, rawRequest, rawSocket } from "../support/la
 import { call, exportTo, state, uploadAndVerify } from "../support/migrate-http.ts";
 import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -433,7 +434,7 @@ networkOnly("a page on the network that holds the token", () => {
 		try {
 			const count = (await lives()).length;
 			const target = { kind: "new", cwd: s.work, guard: { mode: "off" } };
-			await expect(request(socket as unknown as WebSocket, { t: "open", target })).rejects.toThrow(
+			expect(await rejectionOf(request(socket as unknown as WebSocket, { t: "open", target }))).toThrow(
 				/computer omp-webui runs on/,
 			);
 			expect((await lives()).length).toBe(count);
@@ -479,7 +480,9 @@ describe("a page on this computer", () => {
 		expect(plain.guard).toEqual({ config: GLOBAL });
 		await pollUntil(() => wordOf(plain.liveId)?.mode === "reviewer", "the spare's gate to be told the settings");
 		for (const bad of [{ mode: "disabled" }, { reviewer: 1 }, "off"]) {
-			await expect(request(second, { t: "open", target: { kind: "new", cwd: s.work, guard: bad } })).rejects.toThrow();
+			expect(
+				await rejectionOf(request(second, { t: "open", target: { kind: "new", cwd: s.work, guard: bad } })),
+			).toThrow();
 		}
 		await request(second, { t: "close", liveId: plain.liveId }).catch(() => {});
 		first.close();

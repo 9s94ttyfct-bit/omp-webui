@@ -4,6 +4,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LiveInfo } from "../../shared/protocol.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -58,9 +59,11 @@ test("an omp older than 18.12.3 is never handed Ask and remember; the other mode
 
 	const ws = await connect(s);
 	// A new conversation asked to start in it.
-	await expect(
-		request(ws, { t: "open", target: { kind: "new", cwd: s.work, approvalMode: "always-ask-cached" } }),
-	).rejects.toThrow(NEEDS);
+	expect(
+		await rejectionOf(
+			request(ws, { t: "open", target: { kind: "new", cwd: s.work, approvalMode: "always-ask-cached" } }),
+		),
+	).toThrow(NEEDS);
 
 	// A running conversation's switcher.
 	const live = await request<LiveInfo>(ws, {
@@ -68,9 +71,9 @@ test("an omp older than 18.12.3 is never handed Ask and remember; the other mode
 		target: { kind: "new", cwd: s.work, approvalMode: "always-ask" },
 	});
 	expect(live.approvalMode).toBe("always-ask");
-	await expect(request(ws, { t: "approval_mode", liveId: live.liveId, mode: "always-ask-cached" })).rejects.toThrow(
-		NEEDS,
-	);
+	expect(
+		await rejectionOf(request(ws, { t: "approval_mode", liveId: live.liveId, mode: "always-ask-cached" })),
+	).toThrow(NEEDS);
 	const write = await request<LiveInfo>(ws, { t: "approval_mode", liveId: live.liveId, mode: "write" });
 	expect(write.approvalMode).toBe("write");
 

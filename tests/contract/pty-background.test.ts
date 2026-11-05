@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { pollUntil } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -69,7 +70,7 @@ test("a window closed after the notice leaves its terminal, which the next page 
 	expect(taken.exited).toBeUndefined();
 	// It is the page's now: nobody else is offered it, and it is not held any more.
 	expect((await request<Held>(next, { t: "pty_held" })).terminals).toEqual([]);
-	await expect(request(next, { t: "pty_attach", ptyId })).rejects.toThrow("gone");
+	expect(await rejectionOf(request(next, { t: "pty_attach", ptyId }))).toThrow("gone");
 	next.send(JSON.stringify({ t: "pty_kill", ptyId }));
 	next.close();
 });
@@ -80,7 +81,7 @@ test("the notice is one close's: the next page that closes kills its terminals, 
 	const next = await connect(s);
 	// The process is ended with the socket; a later page is offered nothing, now or once it is gone.
 	await pollUntil(async () => (await request<Held>(next, { t: "pty_held" })).terminals.length === 0, "nothing is held");
-	await expect(request(next, { t: "pty_attach", ptyId })).rejects.toThrow("gone");
+	expect(await rejectionOf(request(next, { t: "pty_attach", ptyId }))).toThrow("gone");
 	next.close();
 });
 
@@ -91,6 +92,6 @@ test("a notice the app withdrew (DELETE: its window was opened again) leaves not
 	ws.close();
 	const next = await connect(s);
 	await pollUntil(async () => (await request<Held>(next, { t: "pty_held" })).terminals.length === 0, "nothing is held");
-	await expect(request(next, { t: "pty_attach", ptyId })).rejects.toThrow("gone");
+	expect(await rejectionOf(request(next, { t: "pty_attach", ptyId }))).toThrow("gone");
 	next.close();
 });

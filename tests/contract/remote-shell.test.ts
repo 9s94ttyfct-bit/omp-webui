@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { REMOTE_SHELL_OFF } from "../../shared/remote.ts";
 import { type AccessKey, type Jwks, makeKey, startJwks } from "../support/access-jwt.ts";
 import { pollUntil } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { type RemoteClient, remoteClient, remoteSettings } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
@@ -94,7 +95,7 @@ test("a remote page has a shell by default; off refuses new ones and ends its op
 		if (!again) throw new Error("the tunnel refused the page");
 		remote.close();
 		remote = again;
-		await expect(openShell(remote)).rejects.toThrow(REMOTE_SHELL_OFF);
+		expect(await rejectionOf(openShell(remote))).toThrow(REMOTE_SHELL_OFF);
 		expect((await (await phone.fetch("/api/meta")).json()).shell).toBe(false);
 
 		// This computer's shell goes on, and this computer may still open one.
@@ -105,9 +106,9 @@ test("a remote page has a shell by default; off refuses new ones and ends its op
 
 		// A remote page may still run `omp` in a terminal: the switch is about shells. omp's own shell console is one (#682).
 		await request(remote, { t: "pty_open", args: ["--version"], cwd: root, cols: 80, rows: 24 });
-		await expect(request(remote, { t: "pty_open", args: ["shell"], cwd: root, cols: 80, rows: 24 })).rejects.toThrow(
-			REMOTE_SHELL_OFF,
-		);
+		expect(
+			await rejectionOf(request(remote, { t: "pty_open", args: ["shell"], cwd: root, cols: 80, rows: 24 })),
+		).toThrow(REMOTE_SHELL_OFF);
 		// Nor does it reach this computer's shell by its id (#682): what it types there is not run, and its kill ends nothing.
 		remote.send(JSON.stringify({ t: "pty_input", ptyId: localId, data: "echo HIJACK-$((1+1))\r" }));
 		remote.send(JSON.stringify({ t: "pty_kill", ptyId: localId }));

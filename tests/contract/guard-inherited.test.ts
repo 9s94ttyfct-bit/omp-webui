@@ -7,6 +7,7 @@ import type { ParkedRecord } from "../../server/omp/parked.ts";
 import type { LiveAttached, LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { watchFrames } from "../support/frames.ts";
 import { pollUntil } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type ScriptedRequest, type StubScripted, startScriptedStub } from "../support/stub-scripted.ts";
 import { connect, request } from "../support/ws.ts";
@@ -102,7 +103,7 @@ test("a paused conversation that started without the gate is adopted as `inherit
 	expect(first.live.args).not.toContain("--extension");
 	// This server started it without the gate (the user's own flags): its choice, and refused as it has been.
 	await pollUntil(async () => (await listed(liveId))?.ungated === "chosen", "the process to be said ungated by choice");
-	await expect(prompt(first.ws, liveId)).rejects.toThrow(/Guard dangerous commands is on/);
+	expect(await rejectionOf(prompt(first.ws, liveId))).toThrow(/Guard dangerous commands is on/);
 	await request(first.ws, { t: "pause", liveId });
 	first.ws.close();
 

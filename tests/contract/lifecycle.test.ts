@@ -3,6 +3,7 @@ import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { pollUntil } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -59,9 +60,11 @@ test("resuming a session file omp never wrote starts a fresh session in the give
 	expect(resumed.cwd).toBe(s.work);
 	expect(resumed.sessionFile).not.toBe(unwritten);
 
-	await expect(
-		request(ws, { t: "open", target: { kind: "resume", sessionFile: join(s.work, "missing.jsonl") } }),
-	).rejects.toThrow(/not found/);
+	expect(
+		await rejectionOf(
+			request(ws, { t: "open", target: { kind: "resume", sessionFile: join(s.work, "missing.jsonl") } }),
+		),
+	).toThrow(/not found/);
 	await request(ws, { t: "close", liveId: resumed.liveId });
 	ws.close();
 }, 60_000);

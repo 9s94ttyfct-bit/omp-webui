@@ -3,6 +3,7 @@ import { goalObjective, hostResult, proposeGoalTool } from "../../shared/guided-
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { type Frame, messageWhere, watchFrames } from "../support/frames.ts";
 import { canCallModel } from "../support/omp-env.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -70,12 +71,14 @@ test("a host tool that is not `essential` is not in the model's tool list: why t
 test("a host tool cannot take the name of a built-in tool", async () => {
 	const ws = await connect(s);
 	const live = await openLive(ws);
-	await expect(
-		rpc(ws, live.liveId, {
-			type: "set_host_tools",
-			tools: [{ ...proposeGoalTool(), name: "bash" }],
-		}),
-	).rejects.toThrow(/conflicts with an existing tool/);
+	expect(
+		await rejectionOf(
+			rpc(ws, live.liveId, {
+				type: "set_host_tools",
+				tools: [{ ...proposeGoalTool(), name: "bash" }],
+			}),
+		),
+	).toThrow(/conflicts with an existing tool/);
 	await request(ws, { t: "close", liveId: live.liveId });
 	ws.close();
 }, 60_000);
@@ -93,7 +96,7 @@ test("a confirmed proposal becomes a goal: the objective with its criteria, a bu
 	expect(created.goal).toMatchObject({ objective, status: "active", tokenBudget: 150_000 });
 	expect(created.goal.objective).toBe("Ship the release\n\nAcceptance criteria:\n- Tests pass\n- Notes are written");
 
-	await expect(rpc(ws, live.liveId, { type: "goal", op: "create", objective: "Another" })).rejects.toThrow(
+	expect(await rejectionOf(rpc(ws, live.liveId, { type: "goal", op: "create", objective: "Another" }))).toThrow(
 		/already active/,
 	);
 	await rpc(ws, live.liveId, { type: "goal", op: "drop" });

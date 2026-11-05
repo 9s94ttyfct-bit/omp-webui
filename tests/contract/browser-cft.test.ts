@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { chromium } from "playwright-core";
 import { startCft } from "../../server/browser/cft.ts";
 import { CdpClient } from "../../server/browser/transport.ts";
+import { rejectionOf } from "../support/rejection.ts";
 
 /**
  * The CfT engine over `--remote-debugging-pipe`: a real Chrome for Testing (`OMPW_BROWSER_EXECUTABLE`, else the one
@@ -45,7 +46,7 @@ test("CfT over a pipe answers Browser.getVersion, opens a page, and closes when 
 	// Asked and closed in the same tick: its answer cannot have come, so it is refused, not left hanging.
 	const pending = client.call("Browser.getVersion");
 	transport.close();
-	await expect(pending).rejects.toThrow(/closed/);
+	expect(await rejectionOf(pending)).toThrow(/closed/);
 	const deadline = Date.now() + 5000;
 	while (alive(pid) && Date.now() < deadline) await Bun.sleep(50);
 	expect(alive(pid)).toBe(false);
@@ -55,7 +56,7 @@ test("CfT started with an already-aborted signal does not keep running", async (
 	const executable = process.env.OMPW_BROWSER_EXECUTABLE || chromium.executablePath();
 	const transport = await startCft({ executable, profileDir: join(root, "aborted"), signal: AbortSignal.abort() });
 	const client = new CdpClient(transport);
-	await expect(client.call("Browser.getVersion")).rejects.toThrow(/stopped/);
+	expect(await rejectionOf(client.call("Browser.getVersion"))).toThrow(/stopped/);
 	const deadline = Date.now() + 5000;
 	while (alive(transport.pid) && Date.now() < deadline) await Bun.sleep(50);
 	expect(alive(transport.pid)).toBe(false);

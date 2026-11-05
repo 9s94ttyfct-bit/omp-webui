@@ -12,6 +12,7 @@ import { type AppServer, startAppServer } from "../support/app-server.ts";
 import { writeFakeOmp } from "../support/fake-omp.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { removeScratch } from "../support/scratch.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -163,7 +164,7 @@ test("a paused conversation survives the server, is adopted by the next one, and
 	await pollUntil(() => b.frames.some((f) => f.frame.targetId === "dlg-1"), "the dialog to be settled");
 
 	// While paused it refuses background requests; unpausing runs the very same processes, and omp answers.
-	await expect(request(b.ws, { t: "rpc", liveId: live.liveId, command: { type: "get_state" } })).rejects.toThrow(
+	expect(await rejectionOf(request(b.ws, { t: "rpc", liveId: live.liveId, command: { type: "get_state" } }))).toThrow(
 		/paused/,
 	);
 	const resumed = await request<LiveInfo>(b.ws, { t: "resume", liveId: live.liveId });

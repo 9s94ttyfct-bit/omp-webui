@@ -6,6 +6,7 @@ import type { LiveInfo, LiveListing, OpenTarget } from "../../shared/protocol.ts
 import { type Frame, watchFrames } from "../support/frames.ts";
 import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type StubChat, type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
 import { connect, request } from "../support/ws.ts";
@@ -313,9 +314,9 @@ test("a preset typed into the composer is the conversation's switch too", async 
 test("a preset omp could not apply is refused and the conversation stays as it was", async () => {
 	const a = await conversation();
 	try {
-		await expect(a.switchTo("nope")).rejects.toThrow(/no preset/i);
-		await expect(a.switchTo("broken")).rejects.toThrow(/not available/i);
-		await expect(a.switchTo("1bad name")).rejects.toThrow();
+		expect(await rejectionOf(a.switchTo("nope"))).toThrow(/no preset/i);
+		expect(await rejectionOf(a.switchTo("broken"))).toThrow(/not available/i);
+		expect(await rejectionOf(a.switchTo("1bad name"))).toThrow();
 		expect((await a.listing())?.models).toBeUndefined();
 		expect(await a.dispatch()).toEqual({ main: GLOBAL, subagent: GLOBAL });
 	} finally {

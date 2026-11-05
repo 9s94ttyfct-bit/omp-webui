@@ -9,6 +9,7 @@ import { startAppServer } from "../support/app-server.ts";
 import { type FakeOmpOptions, writeFakeOmp } from "../support/fake-omp.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { removeScratch } from "../support/scratch.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -110,7 +111,7 @@ test("a terminal that could open a conversation which is working is refused, and
 		async () => (await c.lives()).find((l) => l.liveId === c.live.liveId)?.busy === true,
 		"omp to be busy",
 	);
-	await expect(c.terminal(["--continue"])).rejects.toThrow("This conversation is working");
+	expect(await rejectionOf(c.terminal(["--continue"]))).toThrow("This conversation is working");
 	expect(processExists(c.pid)).toBe(true);
 }, 60_000);
 

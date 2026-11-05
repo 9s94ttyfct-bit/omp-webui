@@ -6,6 +6,7 @@ import { writeSimpleSession } from "../support/fixtures.ts";
 import { messageWhere } from "../support/frames.ts";
 import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -44,7 +45,7 @@ test("a new conversation that is moved before its first reply shows the folder o
 	const there = project("moved-new");
 	const live = await request<LiveInfo>(ws, { t: "open", target: { kind: "new", cwd: s.work } });
 	expect(live.cwd).toBe(s.work);
-	await expect(request(ws, { t: "model_preset", liveId: live.liveId, name: "only-moved-new" })).rejects.toThrow(
+	expect(await rejectionOf(request(ws, { t: "model_preset", liveId: live.liveId, name: "only-moved-new" }))).toThrow(
 		/no preset/,
 	);
 
@@ -141,7 +142,7 @@ test("Change folder rescues a conversation whose folder is gone: it moves to the
 	const there = project("rescued");
 	const ws = await connect(s);
 	// Opened as it is, it has no folder to run in: the page asks for one.
-	await expect(request(ws, { t: "open", target: { kind: "resume", sessionFile: file } })).rejects.toThrow(
+	expect(await rejectionOf(request(ws, { t: "open", target: { kind: "resume", sessionFile: file } }))).toThrow(
 		/no longer exists/,
 	);
 

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { isProviderId, providerUsage } from "../../server/omp/usage.ts";
 import { remainingFraction } from "../../shared/quota.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 
 /** `omp usage --json`, the quota pill's source: shape the web UI relies on (no model calls). */
@@ -31,7 +32,7 @@ test("/api/usage refuses provider values that are not plain ids, before omp sees
 	for (const bad of ["--extension=/tmp/x.ts", "-e", "a b", "../x", "x".repeat(65)]) {
 		expect(isProviderId(bad)).toBe(false);
 		expect((await usage(bad)).status).toBe(400);
-		await expect(providerUsage("omp", bad)).rejects.toThrow("invalid provider id");
+		expect(await rejectionOf(providerUsage("omp", bad))).toThrow("invalid provider id");
 	}
 });
 

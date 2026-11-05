@@ -2,13 +2,13 @@ import "../unit/browser-globals.ts";
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-
 import type { SessionEntry } from "../../shared/protocol.ts";
 import { socket } from "../../web/src/lib/ws.ts";
 import { openLive, useApp } from "../../web/src/store/app.ts";
 import type { RpcState } from "../../web/src/store/live.ts";
 import { type PageStore, pageStore, viewLive } from "../support/page-store.ts";
 import { pollUntil } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type ScriptedTurn, type StubScripted, startScriptedStub } from "../support/stub-scripted.ts";
 import { connect, request } from "../support/ws.ts";
@@ -123,7 +123,7 @@ test("a --plan-yolo conversation is in plan mode until omp's handoff entry, whic
 		type: "get_available_commands",
 	});
 	expect(commands.flatMap((c) => [c.name, ...(c.aliases ?? [])])).not.toContain("plan");
-	await expect(rpc({ type: "set_plan_mode", enabled: false })).rejects.toThrow(/Unknown command/);
+	expect(await rejectionOf(rpc({ type: "set_plan_mode", enabled: false }))).toThrow(/Unknown command/);
 
 	await socket.rpc(liveId, { type: "prompt", message: "Plan a greeting" });
 	await pollUntil(() => planMode() === false, "the page to see the plan approved", 30_000);

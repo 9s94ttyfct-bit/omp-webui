@@ -13,6 +13,7 @@ import { platform } from "../../server/platform/index.ts";
 import type { OmpFrame } from "../../shared/protocol.ts";
 import { writeFakeOmp } from "../support/fake-omp.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { removeRelayDir } from "../support/relay-dirs.ts";
 import { removeScratch } from "../support/scratch.ts";
 
@@ -228,7 +229,7 @@ test("why omp ended before any server was connected is still reported", async ()
 		},
 	});
 	clients.push(c);
-	await expect(c.ready).rejects.toThrow(/omp exited \(code 1\).*Could not restore model --boom/);
+	expect(await rejectionOf(c.ready)).toThrow(/omp exited \(code 1\).*Could not restore model --boom/);
 	expect(reported).toContain("Could not restore model --boom");
 });
 
@@ -243,7 +244,7 @@ test("an omp that cannot be started reports why", async () => {
 		onExit: () => {},
 	});
 	clients.push(c);
-	await expect(c.ready).rejects.toThrow(/omp exited \(code 127\).*could not start/);
+	expect(await rejectionOf(c.ready)).toThrow(/omp exited \(code 127\).*could not start/);
 });
 
 test("an omp that ends while its conversation is held takes what it started with it", async () => {

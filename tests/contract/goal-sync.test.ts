@@ -13,6 +13,7 @@ import { attachLive, openLive, refreshState, setPaused, useApp } from "../../web
 import type { LiveState } from "../../web/src/store/live.ts";
 import { type PageStore, pageStore, viewLive } from "../support/page-store.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type ScriptedTurn, type StubScripted, startScriptedStub } from "../support/stub-scripted.ts";
 import { connect, request } from "../support/ws.ts";
@@ -177,7 +178,7 @@ test("a goal whose budget is spent: omp keeps it (and refuses another), and the 
 	const omp = await c.goal();
 	expect(omp).toMatchObject({ status: "budget-limited", tokenBudget: 5 });
 	expect(omp?.tokensUsed).toBeGreaterThan(5);
-	await expect(c.rpc({ type: "goal", op: "create", objective: "Another" })).rejects.toThrow(/already active/);
+	expect(await rejectionOf(c.rpc({ type: "goal", op: "create", objective: "Another" }))).toThrow(/already active/);
 	// `resume` accepts only a paused goal: here it answers success and changes nothing, with no frame to say so.
 	expect((await c.rpc<{ goal: Goal }>({ type: "goal", op: "resume" })).goal.status).toBe("budget-limited");
 
@@ -230,15 +231,17 @@ test("the Goal control's adjustments reach omp: pause, resume and drop change wh
 	expect(c.shown()).toEqual(await c.goal());
 
 	// There is no op for the objective or the budget: the panel does not offer them, and omp would refuse them.
-	await expect(c.rpc({ type: "goal", op: "update", objective: "Something else" })).rejects.toThrow(/Unknown goal op/);
-	await expect(c.rpc({ type: "goal", op: "set_budget", token_budget: 5 })).rejects.toThrow(/Unknown goal op/);
+	expect(await rejectionOf(c.rpc({ type: "goal", op: "update", objective: "Something else" }))).toThrow(
+		/Unknown goal op/,
+	);
+	expect(await rejectionOf(c.rpc({ type: "goal", op: "set_budget", token_budget: 5 }))).toThrow(/Unknown goal op/);
 	expect(await c.goal()).toMatchObject({ objective: "Tidy the release notes", tokenBudget: 1_000_000 });
 
 	// Drop ends it for omp and for the page; resume then has nothing to act on and says so.
 	await goalOp(liveId, "drop");
 	expect(await c.goal()).toBeNull();
 	expect(c.shown()).toBeNull();
-	await expect(goalOp(liveId, "resume")).rejects.toThrow(/No paused goal to resume/);
+	expect(await rejectionOf(goalOp(liveId, "resume"))).toThrow(/No paused goal to resume/);
 }, 90_000);
 
 test("a goal run of several turns is one finished run, told once, when omp completes it", async () => {
@@ -341,7 +344,7 @@ test.skipIf(!capabilities.pauseResume)(
 
 		await setPaused(liveId, true);
 		// A frozen omp refuses every read the page makes by itself.
-		await expect(c.rpc({ type: "goal", op: "get" })).rejects.toThrow(/paused/);
+		expect(await rejectionOf(c.rpc({ type: "goal", op: "get" }))).toThrow(/paused/);
 
 		// A reload: the page attaches to the frozen process and shows the goal the server heard of, which is omp's.
 		useApp.setState({ lives: {} });

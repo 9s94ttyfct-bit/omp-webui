@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expectMode } from "../support/modes.ts";
 import { has } from "../support/needs.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -54,7 +55,7 @@ test("a WebSocket frame that is valid JSON but no message is ignored: the server
 			ws.send(frame);
 		}
 		// A request with a malformed field is answered with an error, not dropped.
-		await expect(request(ws, { t: "attach", liveId: null })).rejects.toThrow("Live session not found");
+		expect(await rejectionOf(request(ws, { t: "attach", liveId: null }))).toThrow("Live session not found");
 		// The same connection still works, and so does the HTTP side.
 		expect(await request<unknown[]>(ws, { t: "list_lives" })).toEqual([]);
 		expect((await meta()).status).toBe(200);

@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { watchFrames } from "../support/frames.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { messageEnds, usageResetWaitFixture } from "../support/usage-reset-wait.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -40,9 +41,11 @@ test("a user's action on a paused conversation whose retry wait is over does not
 		const framesBefore = chat.frames.seen.length;
 
 		// An action on the paused conversation (a picker, a thinking level, a rename) would run omp, and with it the retried turn.
-		await expect(
-			request(chat.ws, { t: "rpc", liveId: chat.liveId, command: { type: "get_state" }, user: true }),
-		).rejects.toThrow(/paused/);
+		expect(
+			await rejectionOf(
+				request(chat.ws, { t: "rpc", liveId: chat.liveId, command: { type: "get_state" }, user: true }),
+			),
+		).toThrow(/paused/);
 		await omissionWindow();
 		expect(stopped(pid)).toBe(true);
 		expect(fixture.backend.chats.length).toBe(chatsBefore);
