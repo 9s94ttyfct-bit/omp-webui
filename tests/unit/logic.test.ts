@@ -94,6 +94,17 @@ describe("session parsing", () => {
 		expect(s?.usage.cost).toBeCloseTo(0.75, 9);
 		expect(s?.models).toEqual(["p/m"]);
 	});
+
+	test("the project is the folder's last name, on Windows too", () => {
+		const header = (cwd: string) =>
+			parseSessionText(
+				JSON.stringify({ type: "session", version: 3, id: "s", timestamp: "2026-01-01T00:00:00Z", cwd }),
+			);
+		const project = (cwd: string) => summarize("/f.jsonl", header(cwd), { mtimeMs: 1, size: 2 }, 0)?.project;
+		expect(project("C:\\Users\\someone\\proj")).toBe("proj");
+		expect(project("C:\\Users\\someone\\proj\\")).toBe("proj");
+		expect(project("/Users/someone/proj")).toBe("proj");
+	});
 });
 
 describe("CLI help parsing", () => {

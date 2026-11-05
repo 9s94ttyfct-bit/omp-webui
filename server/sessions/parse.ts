@@ -375,7 +375,7 @@ export function buildSummary(
 		title: headerTitle ?? acc.entryTitle,
 		preview: acc.preview,
 		cwd,
-		project: cwd.split("/").filter(Boolean).pop() ?? cwd,
+		project: cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd,
 		createdAt: typeof h.timestamp === "string" ? h.timestamp : new Date(stat.mtimeMs).toISOString(),
 		modifiedAt: stat.mtimeMs,
 		size: stat.size,
