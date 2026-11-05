@@ -73,7 +73,7 @@ Composer attachments use `/api/upload` (see the composer topic); it is refused t
 - Concurrent transfers are limited; too many at once answer 429 with `Retry-After`.
 - Listing: 5,000 entries per folder; filter: 200 matches; text preview 1 MB; editing 1 MB; images and documents 25 MB.
 - A failure answers JSON `{ error, code }` and the `x-omp-webui-error` header with the code (e.g. `off`, `uploadOff`, `secret`, `protected`, `homeFolder`, `outside`, `exists`, `tooLarge`, `busy`, `diskFull`).
-- The transfer log is `~/.omp-webui/transfers.jsonl`, moved aside to `transfers.jsonl.1` when it grows large.
+- The transfer log is `<data dir>/transfers.jsonl` (`~/.omp-webui/transfers.jsonl` for the web version, `~/Library/Application Support/omp-webui/transfers.jsonl` for the macOS app, or under `OMP_WEBUI_DATA_DIR`), moved aside to `transfers.jsonl.1` when it grows large.
 
 ## Security notes
 
