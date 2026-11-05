@@ -1,8 +1,10 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { isRecord } from "../../shared/guards.ts";
 import type { PluginScope, PluginUpdate, UncheckedUpdate } from "../../shared/plugins.ts";
 import { parseSkillList } from "./plugin-skills.ts";
+import { npmPackageLatest } from "./update.ts";
 
 /**
  * What the Plugins page's Updates section and the automatic update find newer, with omp's own CLI where it can tell:
@@ -11,8 +13,9 @@ import { parseSkillList } from "./plugin-skills.ts";
  *   catalogs omp caches; what follows reads the new ones.
  * - **Marketplace plugins**: `omp plugin upgrade --dry-run`, in the home folder for the user's and in each project folder
  *   for that project's.
- * - **npm plugins** (the user's only; omp installs none per project): the npm registry's `latest` for a package installed by
- *   name or version range. One installed from git, a URL or a folder has no version to compare: it is listed as not
+ * - **npm plugins** (the user's only; omp installs none per project): `latest` for a package installed by name or version
+ *   range, from the registry npm and omp would install it from (`registryFor`), with its credentials. One installed from
+ *   git, a URL or a folder has no version to compare, and one the registry cannot tell of fails: both are listed as not
  *   checked, and its own Upgrade reinstalls it.
  * - **Registry skills** (`omp skill install`): skills.omp.sh's `latest` (`omp skill info --json`) against the version in
  *   omp's store, for the user's (`-g`) and each project's. omp has no dry run for them.
@@ -23,8 +26,8 @@ import { parseSkillList } from "./plugin-skills.ts";
 /** Runs omp's CLI (`args`, in `cwd`) and gives what it printed; throws with omp's words when it failed. */
 export type RunOmp = (args: string[], cwd: string) => Promise<string>;
 
-/** The npm registry's `latest` version of a package, or null when it has none. */
-export type NpmLatest = (name: string) => Promise<string | null>;
+/** The npm registry's `latest` version of a package; throws when it cannot be told. */
+export type NpmLatest = (name: string) => Promise<string>;
 
 export const updateKey = (u: Pick<PluginUpdate, "kind" | "scope" | "folder" | "id">): string =>
 	`${u.kind}\u0000${u.scope}\u0000${u.folder ?? ""}\u0000${u.id}`;
@@ -211,7 +214,7 @@ export async function checkUpdates(d: CheckDeps): Promise<CheckResult> {
 				}
 				try {
 					const latest = await d.npmLatest(name);
-					if (latest && newer(latest, version))
+					if (newer(latest, version))
 						add({ kind: "plugin", id: name, source: "npm", scope: "user", folder: null, from: version, to: latest });
 				} catch (e) {
 					unchecked.push({ kind: "plugin", id: name, scope: "user", folder: null, reason: "error", detail: lineOf(e) });
@@ -244,18 +247,13 @@ function isLinked(path: string): boolean {
 	}
 }
 
-/** The npm registry's `latest` (`OMPW_NPM_REGISTRY` in tests), within 15 s. */
-export function registryLatest(base = process.env.OMPW_NPM_REGISTRY ?? "https://registry.npmjs.org"): NpmLatest {
-	return async (name) => {
-		const res = await fetch(`${base.replace(/\/$/, "")}/${name.replace("/", "%2F")}/latest`, {
-			signal: AbortSignal.timeout(15_000),
-			headers: { accept: "application/json" },
-		});
-		if (res.status === 404) return null;
-		if (!res.ok) throw new Error(`the npm registry answered ${res.status}`);
-		const doc: unknown = await res.json();
-		return isRecord(doc) && typeof doc.version === "string" ? doc.version : null;
-	};
+/**
+ * An npm package's `latest`, within 15 s, from the registry npm and omp would install it from (a scope's own registry in
+ * `.npmrc` or `bunfig.toml`, `npm_config_registry`…), with its credentials. One the registry does not have throws, so it
+ * is listed as not checked, never as up to date.
+ */
+export function registryLatest(env: Record<string, string | undefined> = process.env, home = homedir()): NpmLatest {
+	return (name) => npmPackageLatest(name, env, home, 15_000);
 }
 
 /** The command that brings one update in: run in its folder (the home folder for the user's). */

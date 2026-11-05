@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { checkUpdates, newer, updateStep } from "../../server/omp/plugin-updates.ts";
+import { checkUpdates, newer, registryLatest, updateStep } from "../../server/omp/plugin-updates.ts";
 import type { PluginUpdate, UpdatesState } from "../../shared/plugins.ts";
 import { writeFakePluginsOmp } from "../support/plugins-stubs.ts";
 
@@ -32,7 +32,10 @@ describe("checkUpdates", () => {
 		const found = await checkUpdates({
 			home: HOME,
 			folders: [PROJECT, "/work/broken", HOME],
-			npmLatest: async () => null,
+			// No npm plugin is installed here, so none is looked up.
+			npmLatest: async (name) => {
+				throw new Error(`${name} was looked up`);
+			},
 			run: async (args, cwd) => {
 				asked.push(`${cwd}: ${args.join(" ")}`);
 				if (cwd === "/work/broken") throw new Error("Folder no longer exists\nmore");
@@ -127,6 +130,48 @@ describe("checkUpdates", () => {
 		}
 	});
 
+	test("an npm plugin is looked up where npm and omp would install it from, with its credentials; one it lacks is not checked", async () => {
+		const asked: { path: string; authorization: string | null }[] = [];
+		const server = Bun.serve({
+			port: 0,
+			hostname: "127.0.0.1",
+			fetch(req) {
+				const path = new URL(req.url).pathname;
+				asked.push({ path, authorization: req.headers.get("authorization") });
+				return path === "/@acme%2ftool/latest"
+					? Response.json({ version: "2.0.0" })
+					: new Response("", { status: 404 });
+			},
+		});
+		const home = mkdtempSync(join(tmpdir(), "ompw-npmrc-"));
+		try {
+			const npmrc = join(home, "test.npmrc");
+			writeFileSync(npmrc, `@acme:registry=${server.url}\n//127.0.0.1:${server.port}/:_authToken=tok\n`);
+			const latest = registryLatest({ npm_config_userconfig: npmrc }, home);
+			expect(await latest("@acme/tool")).toBe("2.0.0");
+			expect(asked).toEqual([{ path: "/@acme%2ftool/latest", authorization: "Bearer tok" }]);
+			// Not on its registry: an error, so the check lists it as not checked rather than as up to date.
+			const found = await checkUpdates({
+				home,
+				folders: [],
+				npmLatest: latest,
+				run: async (args) => {
+					if (args[0] === "plugin" && args[1] === "list")
+						return JSON.stringify({ npm: [{ name: "@acme/gone", version: "1.0.0" }], marketplace: [] });
+					if (args[1] === "list") return JSON.stringify({ skills: [] });
+					return "";
+				},
+			});
+			expect(found.updates).toEqual([]);
+			expect(found.unchecked.map((u) => [u.id, u.reason, u.detail?.includes("HTTP 404")])).toEqual([
+				["@acme/gone", "error", true],
+			]);
+		} finally {
+			server.stop(true);
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
 	test("a version is newer only by semver; one that is not a version never is", () => {
 		expect(newer("1.10.0", "1.9.0")).toBe(true);
 		expect(newer("1.0.0", "1.0.0")).toBe(false);
@@ -216,7 +261,8 @@ describe("the automatic update", () => {
 				autoOn: () => on,
 				conversations: () => held,
 				folders: async () => [project],
-				npmLatest: async () => null,
+				// Nothing newer on npm.
+				npmLatest: async () => "0.0.0",
 			},
 		};
 	});

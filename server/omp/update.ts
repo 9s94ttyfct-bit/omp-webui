@@ -290,6 +290,14 @@ async function npmLatest(pkg: string, env: Env, home: string, lookup: Lookup, ch
 	return data.version;
 }
 
+/**
+ * The `latest` version of any npm package (an npm plugin's), looked up as omp's own is: at the registry and with the
+ * credentials `registryFor` names for it. Throws with a sentence when the registry does not have it or refuses.
+ */
+export function npmPackageLatest(pkg: string, env: Env, home: string, timeoutMs: number): Promise<string> {
+	return npmLatest(pkg, env, home, { fetch, timeoutMs, headers: { accept: "application/json" } }, "stable");
+}
+
 // ------------------------------------------------------------------ the build service
 
 /** The build service's name for this platform (`macos-arm64`, `linux-x86_64`, `linux-musl-arm64`). */
