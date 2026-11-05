@@ -3,7 +3,6 @@ import {
 	GUIDANCE_MAX,
 	GUIDANCE_NAME_MAX,
 	GUIDANCE_TEMPLATES_MAX,
-	type GuidanceNameProblem,
 	type GuidanceTemplate,
 	guidanceNameProblem,
 	guidanceText,
@@ -13,9 +12,9 @@ import {
 import { PREF } from "@shared/prefs.ts";
 import { Check, Pencil, Sparkles, X } from "lucide-react";
 import { type ComponentProps, lazy, Suspense, useEffect, useId, useRef, useState } from "react";
-import { type Translate, useT } from "../i18n/index.ts";
+import { useT } from "../i18n/index.ts";
 import { GuidanceApiError, guidanceApi } from "../lib/guidance-api.ts";
-import { templateName } from "../lib/guidance-names.ts";
+import { nameProblemText, refusalText, templateName } from "../lib/guidance-names.ts";
 import { useGuidanceStrings } from "../lib/guidance-strings.ts";
 import { onPrefsChanged } from "../lib/prefs.ts";
 import { useApp } from "../store/app.ts";
@@ -26,23 +25,6 @@ import { Button, cx, IconButton, Modal, Spinner } from "./ui.tsx";
 const GuidanceConflicts = lazy(() => import("./GuidanceConflicts.tsx").then((m) => ({ default: m.GuidanceConflicts })));
 
 const checkWanted = (): boolean => localStorage.getItem(PREF.guidanceCheck) !== "off";
-
-/** Why a template's name is refused, in the page's language. */
-function nameProblemText(problem: GuidanceNameProblem, t: Translate): string {
-	if (problem === "nameEmpty") return t("guidance.nameEmpty");
-	if (problem === "nameTooLong") return t("guidance.nameTooLong", { max: GUIDANCE_NAME_MAX });
-	return t("guidance.nameRepeated");
-}
-
-/** A change the server refused, in the page's language where it says why (a template deleted or renamed meanwhile). */
-function refusalText(e: unknown, t: Translate): string {
-	if (e instanceof GuidanceApiError) {
-		if (e.problem === "gone") return t("guidance.templateGone");
-		if (e.problem === "nameEmpty" || e.problem === "nameTooLong" || e.problem === "nameRepeated")
-			return nameProblemText(e.problem, t);
-	}
-	return (e as Error).message;
-}
 
 /**
  * A button that says why it cannot be used now (`reason`) instead of being greyed out without a word: it stays focusable

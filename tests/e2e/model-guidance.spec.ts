@@ -530,6 +530,58 @@ test("Settings › Model guidance edits a template, keeps it in the data folder,
 	await expect(card.getByTestId("guidance-templates")).toContainText("One of each kind at a time");
 });
 
+test("Settings › Model guidance keeps the editor open with what was written when a save is refused, and a template whose delete failed stays the default", async ({
+	page,
+}) => {
+	await settings(page);
+	const card = page.getByTestId("guidance-settings");
+	await card.scrollIntoViewIfNeeded();
+
+	// Another template's name is said before anything is sent.
+	await card.getByTestId("guidance-new").click();
+	const editor = page.getByRole("dialog");
+	await editor.getByTestId("guidance-name").fill(BUILTIN_GUIDANCE[0]?.name as string);
+	await editor.getByTestId("guidance-body").fill("A long text the person wrote.");
+	await expect(editor.getByTestId("guidance-problem")).toHaveText(en.nameRepeated);
+	await expect(editor.getByTestId("guidance-save-template")).toBeDisabled();
+
+	// A save the store refuses (the name taken on another page meanwhile): the editor stays, with the name and the text.
+	/** How the store answers a change: refusing the name, failing, or (null) as it does. */
+	let refuse: "name" | "fail" | null = "name";
+	await page.route("**/api/model-guidance", (route) =>
+		refuse && route.request().method() === "POST"
+			? route.fulfill(
+					refuse === "name"
+						? { status: 400, json: { error: "taken", problem: "nameRepeated" } }
+						: { status: 500, json: { error: "disk full" } },
+				)
+			: route.fallback(),
+	);
+	await editor.getByTestId("guidance-name").fill("Mine");
+	await editor.getByTestId("guidance-save-template").click();
+	await expect(editor.getByTestId("guidance-save-error")).toHaveText(en.saveFailed.replace("{error}", en.nameRepeated));
+	await expect(editor.getByTestId("guidance-name")).toHaveValue("Mine");
+	await expect(editor.getByTestId("guidance-body")).toHaveValue("A long text the person wrote.");
+	await expect(card.getByTestId("guidance-settings-error")).toHaveCount(0);
+	await editor.getByRole("button", { name: en.cancel }).click();
+
+	// The default template's delete fails: it is still the default, and the card says the delete failed.
+	const shipped = BUILTIN_GUIDANCE[0];
+	if (!shipped) throw new Error("no shipped template");
+	await template(card, shipped.name).click();
+	await page.getByTestId("guidance-make-default").check();
+	refuse = null;
+	await page.getByTestId("guidance-save-template").click();
+	await expect(card.getByTestId("guidance-default-line")).toHaveText(en.newChatsGet.replace("{name}", shipped.name));
+	refuse = "fail";
+	await template(card, shipped.name).click();
+	await page.getByTestId("guidance-delete").click();
+	await page.getByTestId("guidance-delete-confirm").click();
+	await expect(card.getByTestId("guidance-settings-error")).toHaveText(en.deleteFailed.replace("{error}", "disk full"));
+	await expect(card.getByTestId("guidance-default-line")).toHaveText(en.newChatsGet.replace("{name}", shipped.name));
+	expect(stored().templates.some((t) => t.id === shipped.id)).toBe(true);
+});
+
 test("a page in Chinese reads the guidance card in Chinese", async ({ page }) => {
 	// The language is a preference the page applies before it paints.
 	await page.addInitScript(() => localStorage.setItem("ompw.lang", "zh-CN"));

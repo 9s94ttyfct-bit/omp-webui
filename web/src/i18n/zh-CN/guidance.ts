@@ -24,6 +24,7 @@ export const zh: Record<keyof typeof en, string> = {
 	saving: "正在保存…",
 	saved: "已保存",
 	saveFailed: "无法保存：{error}",
+	deleteFailed: "无法删除：{error}",
 	loadFailed: "无法读取指引：{error}",
 	tooLong: "最多 {max} 个字符。",
 	chars: "{n} / {max}",

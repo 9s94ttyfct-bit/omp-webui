@@ -33,6 +33,7 @@ export const en = {
 	saving: "Saving…",
 	saved: "Saved",
 	saveFailed: "Could not save: {error}",
+	deleteFailed: "Could not delete: {error}",
 	loadFailed: "Could not read the guidance: {error}",
 	tooLong: "At most {max} characters.",
 	chars: "{n} / {max}",

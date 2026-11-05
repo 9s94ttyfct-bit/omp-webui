@@ -4,14 +4,15 @@ import {
 	GUIDANCE_NAME_MAX,
 	type GuidanceTemplate,
 	type GuidanceTemplates,
+	guidanceNameProblem,
 	newGuidanceId,
 } from "@shared/model-guidance.ts";
 import { PREF } from "@shared/prefs.ts";
 import { Copy, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useT } from "../i18n/index.ts";
+import { type MessageKey, useT } from "../i18n/index.ts";
 import { guidanceApi } from "../lib/guidance-api.ts";
-import { templateName, templateSummary } from "../lib/guidance-names.ts";
+import { refusalText, templateName, templateSummary } from "../lib/guidance-names.ts";
 import { useGuidanceStrings } from "../lib/guidance-strings.ts";
 import { onPrefsChanged, setPref } from "../lib/prefs.ts";
 import { useApp } from "../store/app.ts";
@@ -43,8 +44,11 @@ export function GuidanceSettings() {
 	const ready = useGuidanceStrings();
 	const local = useApp((s) => s.meta?.local !== false);
 	const [set, setSet] = useState<GuidanceTemplates | null>(null);
-	const [error, setError] = useState<string | null>(null);
+	/** What went wrong that the card says: reading the templates, a restore or a delete (a save is said in its editor). */
+	const [error, setError] = useState<{ key: MessageKey; error: string } | null>(null);
 	const [draft, setDraft] = useState<Draft | null>(null);
+	/** Why the store refused the editor's last save, said in the editor, which stays open with what was written. */
+	const [saveError, setSaveError] = useState<string | null>(null);
 	const [deleting, setDeleting] = useState<GuidanceTemplate | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
@@ -65,7 +69,7 @@ export function GuidanceSettings() {
 				if (live) setSet(answer);
 			},
 			(e: unknown) => {
-				if (live) setError(messageOf(e));
+				if (live) setError({ key: "guidance.loadFailed", error: messageOf(e) });
 			},
 		);
 		return () => {
@@ -73,7 +77,11 @@ export function GuidanceSettings() {
 		};
 	}, []);
 	if (!ready) return null;
-	const apply = (write: Promise<GuidanceTemplates>, done?: string, after?: () => void) => {
+	/** A change sent to the store: `after` runs once it is made, `failed` is told why it was not. */
+	const apply = (
+		write: Promise<GuidanceTemplates>,
+		{ done, after, failed }: { done?: string; after?: () => void; failed: (why: string) => void },
+	) => {
 		setBusy(true);
 		setError(null);
 		write.then(
@@ -85,9 +93,13 @@ export function GuidanceSettings() {
 			},
 			(e: unknown) => {
 				setBusy(false);
-				setError(messageOf(e));
+				failed(refusalText(e, t));
 			},
 		);
+	};
+	const edit = (next: Draft | null) => {
+		setSaveError(null);
+		setDraft(next);
 	};
 	const makeDefault = (id: string | null) => {
 		setPref(PREF.guidanceDefault, id);
@@ -108,16 +120,16 @@ export function GuidanceSettings() {
 								data-testid="guidance-restore"
 								title={t("guidance.restoreHint")}
 								disabled={busy}
-								onClick={() => apply(guidanceApi.restore(), t("guidance.restoreDone"))}
+								onClick={() =>
+									apply(guidanceApi.restore(), {
+										done: t("guidance.restoreDone"),
+										failed: (why) => setError({ key: "guidance.saveFailed", error: why }),
+									})
+								}
 							>
 								<RotateCcw size={13} /> {t("guidance.restore")}
 							</Button>
-							<Button
-								size="sm"
-								data-testid="guidance-new"
-								disabled={busy}
-								onClick={() => setDraft({ name: "", text: "" })}
-							>
+							<Button size="sm" data-testid="guidance-new" disabled={busy} onClick={() => edit({ name: "", text: "" })}>
 								<Plus size={13} /> {t("guidance.newTemplate")}
 							</Button>
 						</div>
@@ -154,7 +166,7 @@ export function GuidanceSettings() {
 			</label>
 			{error ? (
 				<p className="mb-2 text-xs text-danger" data-testid="guidance-settings-error">
-					{t("guidance.loadFailed", { error })}
+					{t(error.key, { error: error.error })}
 				</p>
 			) : null}
 			{notice ? (
@@ -205,7 +217,7 @@ export function GuidanceSettings() {
 									<button
 										type="button"
 										className="block w-full rounded-lg px-2 py-2 text-left hover:bg-hover focus-visible:bg-hover"
-										onClick={() => setDraft({ id: template.id, name: template.name, text: template.text })}
+										onClick={() => edit({ id: template.id, name: template.name, text: template.text })}
 									>
 										{body}
 									</button>
@@ -225,26 +237,34 @@ export function GuidanceSettings() {
 					isDefault={draft.id !== undefined && draft.id === defaultId}
 					checkOn={checkOn}
 					shipped={BUILTIN_GUIDANCE.find((b) => b.id === draft.id) ?? null}
+					templates={templates}
 					busy={busy}
-					onClose={() => setDraft(null)}
+					refused={saveError}
+					onClose={() => edit(null)}
 					onSave={(next, asDefault) => {
 						const id = next.id ?? newGuidanceId();
-						// The default is what was saved: a template the store refused is no default.
-						apply(guidanceApi.save({ id, name: next.name, text: next.text }), t("guidance.saved"), () => {
-							if (asDefault) makeDefault(id);
-							else if (id === defaultId) makeDefault(null);
+						setSaveError(null);
+						// The editor closes once the store has the template; the default is what was saved: a template the
+						// store refused is no default.
+						apply(guidanceApi.save({ id, name: next.name, text: next.text }), {
+							done: t("guidance.saved"),
+							after: () => {
+								if (asDefault) makeDefault(id);
+								else if (id === defaultId) makeDefault(null);
+								setDraft(null);
+							},
+							failed: (why) => setSaveError(t("guidance.saveFailed", { error: why })),
 						});
-						setDraft(null);
 					}}
 					onDuplicate={(from) =>
-						setDraft({
+						edit({
 							name: t("guidance.copyName", { name: templateName({ id: draft.id ?? "", name: from.name }, t) }),
 							text: from.text,
 						})
 					}
 					onDelete={() => {
 						const found = templates.find((x) => x.id === draft.id);
-						setDraft(null);
+						edit(null);
 						if (found) setDeleting(found);
 					}}
 				/>
@@ -265,9 +285,15 @@ export function GuidanceSettings() {
 							data-testid="guidance-delete-confirm"
 							disabled={busy}
 							onClick={() => {
-								apply(guidanceApi.remove(deleting.id));
-								// A template that is gone is no default: new chats start without guidance.
-								if (deleting.id === defaultId) makeDefault(null);
+								const id = deleting.id;
+								// A template that is gone is no default: new chats start without guidance. One whose delete failed
+								// is still there, and still the default.
+								apply(guidanceApi.remove(id), {
+									after: () => {
+										if (id === defaultId) makeDefault(null);
+									},
+									failed: (why) => setError({ key: "guidance.deleteFailed", error: why }),
+								});
 								setDeleting(null);
 							}}
 						>
@@ -289,7 +315,9 @@ function TemplateDialog({
 	isDefault,
 	checkOn,
 	shipped,
+	templates,
 	busy,
+	refused,
 	onClose,
 	onSave,
 	onDuplicate,
@@ -301,7 +329,11 @@ function TemplateDialog({
 	checkOn: boolean;
 	/** The shipped template of the same id, for Reset. */
 	shipped: GuidanceTemplate | null;
+	/** Every template, so that another's name is said before the store refuses it. */
+	templates: readonly GuidanceTemplate[];
 	busy: boolean;
+	/** Why the store refused the last save. */
+	refused: string | null;
 	onClose: () => void;
 	onSave: (next: Draft, asDefault: boolean) => void;
 	onDuplicate: (from: Draft) => void;
@@ -319,9 +351,11 @@ function TemplateDialog({
 	const problem =
 		trimmed.length > GUIDANCE_NAME_MAX
 			? t("guidance.nameTooLong", { max: GUIDANCE_NAME_MAX })
-			: text.trim().length > GUIDANCE_MAX
-				? t("guidance.tooLong", { max: GUIDANCE_MAX })
-				: empty;
+			: guidanceNameProblem(trimmed, templates, draft.id) === "nameRepeated"
+				? t("guidance.nameRepeated")
+				: text.trim().length > GUIDANCE_MAX
+					? t("guidance.tooLong", { max: GUIDANCE_MAX })
+					: empty;
 	const shownProblem = problem === empty && !touched ? null : problem;
 	const changedFromShipped = shipped !== null && (shipped.name !== trimmed || shipped.text.trim() !== text.trim());
 	return (
@@ -376,6 +410,11 @@ function TemplateDialog({
 						<span className="block text-xs text-muted">{t("guidance.makeDefaultHint")}</span>
 					</span>
 				</label>
+				{refused ? (
+					<p className="text-xs text-danger" role="alert" data-testid="guidance-save-error">
+						{refused}
+					</p>
+				) : null}
 				<div className="flex flex-wrap items-center justify-between gap-3">
 					<div className="flex flex-wrap gap-1">
 						{draft.id ? (
