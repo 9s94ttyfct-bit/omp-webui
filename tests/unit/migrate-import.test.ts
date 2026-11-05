@@ -329,6 +329,41 @@ describe("merge keeps what is here and adds what is missing; replace lets the ar
 		stopMachine(here);
 	});
 
+	test("replace: a file here of the same length with other bytes is the archive's, and the preview says it differs", async () => {
+		const old = seedMachine(join(root, "v1"), "jdoe");
+		const here = seedMachine(join(root, "v2"), "alice", { rich: false });
+		const skill = (m: Machine) => join(m.agentDir, "skills", "versioned", "SKILL.md");
+		mkdirSync(join(old.agentDir, "skills", "versioned"), { recursive: true });
+		mkdirSync(join(here.agentDir, "skills", "versioned"), { recursive: true });
+		writeFileSync(skill(old), "version: 1\n");
+		const { file, manifest } = await exportOf(old);
+		const category = manifest.entries.find((e) => e.path.endsWith("/skills/versioned/SKILL.md"))?.category;
+		const same = async (): Promise<number> => {
+			const archive = await ImportArchive.open(file);
+			const preview = await archive.preview({
+				loc: { home: here.home, agentDir: here.agentDir, dataDir: here.dataDir, sessionDirs: here.sessionDirs },
+				ompVersion: "99.0.0",
+				serverVersion: "99.0.0",
+				backups: "",
+				tmp: "",
+				signal: new AbortController().signal,
+				onProgress: () => {},
+				hooks: { busy: () => 0, endIdle: async () => 0, openElsewhere: async () => false },
+			});
+			await archive.close();
+			return preview.categories.find((c) => c.id === category)?.same ?? 0;
+		};
+		writeFileSync(skill(here), "version: 1\n");
+		const sameWhenEqual = await same();
+		writeFileSync(skill(here), "version: 2\n");
+		expect(await same()).toBe(sameWhenEqual - 1);
+		const summary = await importInto(here, file, { mode: "replace" });
+		expect(text(skill(here))).toBe("version: 1\n");
+		expect(summary.files.replaced).toBeGreaterThanOrEqual(1);
+		stopMachine(old);
+		stopMachine(here);
+	});
+
 	test("the same conversation under another folder name is kept once, and a conversation a terminal's omp holds is not replaced", async () => {
 		const old = seedMachine(join(root, "k1"), "jdoe");
 		const here = seedMachine(join(root, "k2"), "alice", { rich: false });

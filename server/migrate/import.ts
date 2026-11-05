@@ -4,6 +4,7 @@ import {
 	chmodSync,
 	constants,
 	copyFileSync,
+	createReadStream,
 	existsSync,
 	mkdirSync,
 	readdirSync,
@@ -337,7 +338,13 @@ export class ImportArchive {
 					: null;
 			const known = id ? ids.get(id) : undefined;
 			const status: "added" | "same" | "differs" =
-				!here && !known ? "added" : here && here.size === e.size ? "same" : known && !here ? "same" : "differs";
+				!here && !known
+					? "added"
+					: here && dest && here.size === e.size && (await holds(dest, e.sha256))
+						? "same"
+						: known && !here
+							? "same"
+							: "differs";
 			c[status]++;
 			if (status !== "same") needed += e.size;
 			if (id) {
@@ -548,6 +555,17 @@ function freeBytesAt(path: string): number {
 	} catch {
 		return Number.POSITIVE_INFINITY;
 	}
+}
+
+/** Whether the file at `path` holds the bytes whose SHA-256 is `sha256` (an archive entry's); false when it cannot be read. */
+async function holds(path: string, sha256: string): Promise<boolean> {
+	const hash = createHash("sha256");
+	try {
+		for await (const chunk of createReadStream(path)) hash.update(chunk);
+	} catch {
+		return false;
+	}
+	return hash.digest("hex") === sha256;
 }
 
 /** What `prepare` hands back: the import that is ready to write, and where its backup is (also when it failed). */
@@ -989,9 +1007,12 @@ class Apply implements RunningImport {
 			this.summary.files.added++;
 			return;
 		}
-		// A blob is named by its hash: the same name is the same bytes.
-		const same = here.isFile() && here.size === e.size;
-		if (same || this.mode === "merge" || e.path.includes("/blobs/")) {
+		// In merge what is here stays. A blob is named by its hash: the same name is the same bytes.
+		if (
+			this.mode === "merge" ||
+			e.path.includes("/blobs/") ||
+			(here.isFile() && here.size === e.size && (await holds(dest, e.sha256)))
+		) {
 			this.summary.files.kept++;
 			return;
 		}
