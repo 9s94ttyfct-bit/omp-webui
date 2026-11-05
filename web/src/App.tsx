@@ -20,7 +20,7 @@ import { PANEL_SHEET_QUERY, useMediaQuery } from "./lib/media.ts";
 import { useProjectAsk } from "./lib/project-actions.ts";
 import { showShortcutsSettings } from "./lib/shortcut-view.ts";
 import { matches, typingInField } from "./lib/shortcuts.ts";
-import { attachLive, requestGoal, useApp } from "./store/app.ts";
+import { attachLive, hashOf, requestGoal, useApp } from "./store/app.ts";
 import { ompScreen, useOmp } from "./store/omp.ts";
 
 // Route-level code splitting: markdown/highlighting (chat), charts (usage), the
@@ -203,12 +203,14 @@ export function App() {
 		});
 	}, [viewedLive, setView]);
 
-	// On narrow screens the sidebar is an overlay drawer: start collapsed, and close it
-	// whenever the page changes (a conversation, New chat, Settings… was chosen).
-	// biome-ignore lint/correctness/useExhaustiveDependencies: `view` is the trigger.
+	// On narrow screens the sidebar is an overlay drawer: start collapsed, and close it whenever another page is chosen (a
+	// conversation, New chat in a folder, a project, Settings…). Not for a change within the conversation shown (its file
+	// arriving, its process moving to another session, a resume from another page): the drawer the person opened stays.
+	const drawerKey = view.kind === "chat" ? chatKey : hashOf(view);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `drawerKey` is the trigger.
 	useEffect(() => {
 		if (matchMedia(DRAWER_QUERY).matches) set({ sidebarOpen: false });
-	}, [set, view]);
+	}, [set, drawerKey]);
 
 	// Where the side panel is a sheet over the conversation (below `lg`), arrive at another page with it closed:
 	// it would cover the next conversation the moment that opens.
