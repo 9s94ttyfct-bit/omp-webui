@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { installGate } from "../../server/omp/gate/install.ts";
+import { platformId } from "../../server/platform/capabilities.ts";
 import { GUARD_UNAVAILABLE, type GuardDecision, type GuardWord, parseDecision } from "../../shared/guard.ts";
 import { parseRiskTitle, RISK_ALLOW, RISK_DENY, type RiskKind } from "../../shared/risk-confirm.ts";
 
@@ -623,6 +624,20 @@ describe("reviewer mode", () => {
 		expect(sent).toEqual([]);
 		expect(g.decisions()[0]).toMatchObject({ verdict: "deny", by: "guard" });
 	});
+
+	test.skipIf(platformId !== "darwin" && platformId !== "win32")(
+		"where file names have no case, an upper-cased spelling of the guard's files is refused the same way (#88)",
+		async () => {
+			answers["gpt-reviewer"] = ALLOW;
+			const g = await load();
+			const { ctx } = context({ cwd: scratch() });
+			const command = `echo '{"mode":"off"}' > '${g.data.toUpperCase()}/GUARD.JSON'`;
+			const out = await g.handler({ toolName: "bash", toolCallId: "c10", input: { command } }, ctx);
+			expect(out?.block).toBe(true);
+			expect(out?.reason).toContain("safety guard itself");
+			expect(sent).toEqual([]);
+		},
+	);
 
 	test("a kind set to Block is refused by the classifier's setting alone: no reviewer is asked, and it is written down as the classifier's", async () => {
 		answers["gpt-reviewer"] = ALLOW;

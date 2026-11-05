@@ -174,6 +174,13 @@ const real = (path: string): string => {
 	}
 };
 
+/**
+ * File names have no case on this system (macOS and Windows volumes, by default): `~/.OMP-WEBUI` is `~/.omp-webui`.
+ * Folding on a volume that does tell case apart only refuses or asks more.
+ */
+// platform-allow: the gate runs inside omp, which has no platform adapter; macOS and Windows file names have no case
+const CASELESS = process.platform === "darwin" || process.platform === "win32";
+
 function contextFor(
 	cwd: string,
 	protect: readonly string[],
@@ -193,6 +200,7 @@ function contextFor(
 		...(hosts ? { hosts } : {}),
 		// platform-allow: the gate runs inside omp, which has no platform adapter; the classifier reads Windows paths on Windows
 		...(process.platform === "win32" ? { windows: true } : {}),
+		...(CASELESS ? { caseless: true } : {}),
 	};
 }
 
@@ -211,12 +219,13 @@ function textOf(input: unknown): string {
 	}
 }
 
-/** Whether the call names one of the app's own files or folders (as written, or as they really are). */
+/** Whether the call names one of the app's own files or folders (as written, or as they really are; without case where names have none). */
 function namesOwn(input: unknown, own: readonly string[]): string | null {
-	const text = textOf(input);
+	const text = CASELESS ? textOf(input).toLowerCase() : textOf(input);
 	for (const place of own) {
 		if (place === "") continue;
-		for (const name of new Set([place, real(place)])) if (text.includes(name)) return place;
+		for (const name of new Set([place, real(place)]))
+			if (text.includes(CASELESS ? name.toLowerCase() : name)) return place;
 	}
 	return null;
 }

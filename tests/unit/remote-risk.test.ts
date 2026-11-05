@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { apiPorts } from "../../server/instance.ts";
-import { classifyCode, classifyShell, classifyToolCall, type RiskContext } from "../../shared/remote-risk.ts";
+import {
+	classifyCode,
+	classifyShell,
+	classifyToolCall,
+	isProtectedPath,
+	type RiskContext,
+} from "../../shared/remote-risk.ts";
 import { parseRiskTitle, RISK_DETAIL_MAX, type RiskKind, riskCommand, riskTitle } from "../../shared/risk-confirm.ts";
 import { growth } from "../support/growth.ts";
 import { has } from "../support/needs.ts";
@@ -627,6 +633,42 @@ describe("a command put together when it runs, another computer, the keychain, t
 		expect(call("bash", { command: "ssh host 'rm -rf ~'" })?.kinds).toContain("remote_shell");
 		expect(call("bash", { command: "security find-generic-password -wa x" })?.kinds).toEqual(["secret_read"]);
 		expect(call("bash", { command: "crontab -r" })?.kinds).toEqual(["scheduled"]);
+	});
+});
+
+describe("where file names have no case (a Mac), a protected or secret place is one however it is spelt (#88)", () => {
+	const mac: RiskContext = { ...ctx, caseless: true };
+	const on = (command: string) => classifyShell(command, mac);
+	test.each<[string, string, RiskKind[]]>([
+		["cat ~/.SSH/id_ed25519", "cat ~/.ssh/id_ed25519", ["secret_read"]],
+		["base64 < ~/.AWS/credentials", "base64 < ~/.aws/credentials", ["secret_read"]],
+		["cat ~/.NETRC", "cat ~/.netrc", ["secret_read"]],
+		["cat ~/LIBRARY/keychains/login.keychain-db", "cat ~/Library/Keychains/login.keychain-db", ["secret_read"]],
+		["echo x >> ~/.ZSHRC", "echo x >> ~/.zshrc", ["protected"]],
+		["cp a.plist ~/library/launchagents/x.plist", "cp a.plist ~/Library/LaunchAgents/x.plist", ["protected"]],
+		["echo x > ~/.OMP/agent/config.yml", "echo x > ~/.omp/agent/config.yml", ["protected"]],
+		[
+			`cat "/users/ME/library/application support/OMP-WEBUI/guard.json"`,
+			`cat "${"/Users/me/Library/Application Support/omp-webui"}/guard.json"`,
+			["protected"],
+		],
+		[
+			"touch ~/library/application\\ support/omp-webui/x",
+			`touch "/Users/me/Library/Application Support/omp-webui/x"`,
+			["protected"],
+		],
+	])("%s is %s", (spelled, plain, kinds) => {
+		expect(on(plain)).toEqual(kinds);
+		expect(on(spelled)).toEqual(kinds);
+	});
+
+	test("the read tool and isProtectedPath fold the case too; where names have case, another spelling is another file", () => {
+		expect(classifyToolCall("read", { path: "/Users/me/.SSH/id_rsa" }, mac)?.kinds).toEqual(["secret_read"]);
+		expect(classifyToolCall("read", { path: "/Users/me/.ssh/ID_RSA.PUB" }, mac)).toBeNull();
+		expect(isProtectedPath("/Users/me/.SSH/id_rsa", { home: "/Users/me", protect: [], caseless: true })).toBe(true);
+		expect(isProtectedPath("/USERS/me/.ZSHRC", { home: "/Users/me", protect: [], caseless: true })).toBe(true);
+		expect(isProtectedPath("/Users/me/.SSH/id_rsa", { home: "/Users/me", protect: [] })).toBe(false);
+		expect(shell("cat ~/.SSH/id_ed25519")).toEqual([]);
 	});
 });
 

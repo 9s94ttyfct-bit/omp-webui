@@ -75,7 +75,7 @@ A per-conversation choice is kept with the conversation (not in `guard.json`). T
 ## Limits and caveats
 
 - Best effort, not a sandbox: it judges a call from the command, code or paths it names before the tool runs, and can be wrong in both directions. It does not see what a program does once it runs, nor what the user types in a terminal. A command put together when it runs (a variable or `$(…)` as the command, `eval`, a script piped into a shell) is flagged as "A command put together when it runs" (`dynamic_command`) because what it runs cannot be read; harmless forms such as `$EDITOR file` are flagged too.
-- POSIX shells (sh, bash, zsh) are read, and so are scripts handed to `cmd.exe` and PowerShell (`cmd /c`, `powershell -Command`, `-EncodedCommand`); on Windows paths are read as Windows paths (`C:\Users\…`, `%USERPROFILE%`, `$env:APPDATA`), case-insensitively. A PowerShell or `cmd` session typed into a terminal is not seen.
+- POSIX shells (sh, bash, zsh) are read, and so are scripts handed to `cmd.exe` and PowerShell (`cmd /c`, `powershell -Command`, `-EncodedCommand`); on Windows paths are read as Windows paths (`C:\Users\…`, `%USERPROFILE%`, `$env:APPDATA`), case-insensitively. On macOS and Windows the protected and secret places are recognised in any case (`~/.SSH/id_rsa` is `~/.ssh/id_rsa`). A PowerShell or `cmd` session typed into a terminal is not seen.
 - Every reviewer call uses tokens on the same quota as the user's conversations.
 - A conversation whose omp process started before the guard (or under another server) is not covered; the conversation shows a notice with **Open it again**.
 - In Ask me mode, or when asking on unavailable/denied, the user is asked only if a page can reach them; a subagent's call is refused instead.

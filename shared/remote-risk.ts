@@ -47,6 +47,12 @@ export interface RiskContext {
 	 * (see the head of this file). Absent: a POSIX system.
 	 */
 	windows?: boolean;
+	/**
+	 * File names have no case here (macOS, as Windows): a protected or secret place is one however it is spelt
+	 * (`~/.SSH/id_rsa` is `~/.ssh/id_rsa`). Folding where a volume does tell case apart only asks more. Absent: compared as
+	 * written (Windows' view is lowercase already).
+	 */
+	caseless?: boolean;
 }
 
 /** What a risky call is: why (most serious first), and what the person is shown (the exact command or paths). */
@@ -102,6 +108,7 @@ const PROTECTED_HOME_FILES = table(
 );
 /** Folders whose files launchd starts, in the home folder or the system's: a lasting way to run something. */
 const LAUNCH_DIR = /\/Library\/Launch(Agents|Daemons)(\/|$)/;
+const LAUNCH_DIR_CASELESS = new RegExp(LAUNCH_DIR.source, "i");
 /** Windows' Startup folders (a user's and every user's): what is put there runs at each login. Compared in the lowercase view. */
 const STARTUP_DIR = /\/(?:appdata\/roaming|programdata)\/microsoft\/windows\/start menu\/programs\/startup(\/|$)/;
 
@@ -206,8 +213,9 @@ const SECRET_HOME_PLACES = [
 ];
 
 /** A path whose content is a credential: reading it hands over a key, a token or a password. */
-function isSecret(abs: string, home: string): boolean {
-	const parts = abs.split("/");
+function isSecret(abs: string, ctx: Pick<RiskContext, "home" | "caseless">): boolean {
+	const path = folded(abs, ctx);
+	const parts = path.split("/");
 	if (parts.some((s) => listed(SECRET_SEGMENTS, s))) return true;
 	const ssh = parts.lastIndexOf(".ssh");
 	if (ssh >= 0) {
@@ -215,8 +223,9 @@ function isSecret(abs: string, home: string): boolean {
 		// The folder itself (`grep -r`, `cat ~/.ssh/*`) or a file in it that is not public.
 		return rest.length === 0 || !SSH_NOT_SECRET.test(rest[rest.length - 1]);
 	}
-	const h = normalize(home);
-	if (parentOf(abs) === h && listed(SECRET_HOME_FILES, abs.slice(abs.lastIndexOf("/") + 1))) return true;
+	const h = normalize(ctx.home);
+	if (parentOf(path) === folded(h, ctx) && listed(SECRET_HOME_FILES, path.slice(path.lastIndexOf("/") + 1)))
+		return true;
 	const lower = abs.toLowerCase();
 	return SECRET_HOME_PLACES.some((p) => within(lower, `${h}/${p}`.toLowerCase()));
 }
@@ -519,6 +528,8 @@ function normalize(p: string): string {
 
 const parentOf = (p: string): string => (p === "/" ? "/" : normalize(`${p}/..`));
 const within = (p: string, dir: string): boolean => dir === "/" || p === dir || p.startsWith(`${dir}/`);
+/** `p` as a protected or secret place is compared: without case where file names have none (`RiskContext.caseless`). */
+const folded = (p: string, ctx: Pick<RiskContext, "caseless">): string => (ctx.caseless ? p.toLowerCase() : p);
 
 /**
  * A Windows path in the view every path is compared in there: `/` for `\`, the drive as the first folder (`C:\x` is `/c/x`,
@@ -572,10 +583,13 @@ function inTemp(abs: string, ctx: RiskContext): boolean {
 
 /** A place nothing changes unasked: credentials, omp's configuration, the app's data, files that start programs. */
 function isProtected(abs: string, ctx: RiskContext): boolean {
-	if (abs.split("/").some((s) => listed(PROTECTED_SEGMENTS, s))) return true;
-	if (ctx.protect.some((d) => d !== "" && within(abs, d))) return true;
-	if (LAUNCH_DIR.test(abs) || (ctx.windows && STARTUP_DIR.test(abs))) return true;
-	return parentOf(abs) === normalize(ctx.home) && listed(PROTECTED_HOME_FILES, abs.slice(abs.lastIndexOf("/") + 1));
+	const path = folded(abs, ctx);
+	if (path.split("/").some((s) => listed(PROTECTED_SEGMENTS, s))) return true;
+	if (ctx.protect.some((d) => d !== "" && within(path, folded(d, ctx)))) return true;
+	if ((ctx.caseless ? LAUNCH_DIR_CASELESS : LAUNCH_DIR).test(abs) || (ctx.windows && STARTUP_DIR.test(abs)))
+		return true;
+	const home = folded(normalize(ctx.home), ctx);
+	return parentOf(path) === home && listed(PROTECTED_HOME_FILES, path.slice(path.lastIndexOf("/") + 1));
 }
 
 /**
@@ -586,7 +600,7 @@ function isProtected(abs: string, ctx: RiskContext): boolean {
  */
 export function isProtectedPath(
 	abs: string,
-	places: { home: string; protect: readonly string[]; windows?: boolean },
+	places: { home: string; protect: readonly string[]; windows?: boolean; caseless?: boolean },
 ): boolean {
 	const ctx = viewed({ roots: [], temp: [], ...places });
 	return isProtected(normalize(ctx.windows ? windowsView(abs) : abs), ctx);
@@ -1388,14 +1402,15 @@ const PRIVATE_SAMPLES = ["token", "guard.json", "decisions.jsonl", "L1-abc.yml.r
  * sent that the guard lets through.
  */
 function namesPrivateFile(w: Word, cwd: string | null, ctx: RiskContext): boolean {
-	const dirs = ctx.protect.filter((d) => d !== "");
+	const dirs = ctx.protect.filter((d) => d !== "").map((d) => folded(d, ctx));
 	if (dirs.length === 0) return false;
 	// `--file=/…/token`: the value is what is named.
 	const given = w.text.startsWith("-") && w.text.includes("=") ? w.text.slice(w.text.indexOf("=") + 1) : w.text;
 	const text = ctx.windows ? windowsView(given) : given;
-	const last = text.slice(text.lastIndexOf("/") + 1);
-	const abs = resolveWord({ ...w, text }, cwd, ctx);
-	if (abs === null) return false;
+	const last = folded(text.slice(text.lastIndexOf("/") + 1), ctx);
+	const resolved = resolveWord({ ...w, text }, cwd, ctx);
+	if (resolved === null) return false;
+	const abs = folded(resolved, ctx);
 	if (/[*?[\uE000]/.test(last))
 		return PRIVATE_SAMPLES.some((n) => globMatches(last, n)) && dirs.some((d) => within(abs, d));
 	return PRIVATE_NAME.test(last) && !/[*?[{\uE000]/.test(text) && dirs.some((d) => within(abs, d));
@@ -2187,9 +2202,9 @@ class Scan {
 	/** A word that names a protected place: as a path, or as the value of an option (`--file=/…/.ssh/x`). */
 	private touchesProtected(w: Word, cwd: string | null): boolean {
 		if (w.text.startsWith("-") && !w.text.includes("=")) return false;
-		const text = this.ctx.windows ? windowsView(w.text) : w.text;
+		const text = folded(this.ctx.windows ? windowsView(w.text) : w.text, this.ctx);
 		if (text.split(/[/=:,]/).some((p) => listed(PROTECTED_SEGMENTS, p))) return true;
-		if (this.ctx.protect.some((d) => d !== "" && text.includes(d))) return true;
+		if (this.ctx.protect.some((d) => d !== "" && text.includes(folded(d, this.ctx)))) return true;
 		const abs = w.text.startsWith("-") ? null : resolveWord(w, cwd, this.ctx);
 		return abs !== null && isProtected(abs, this.ctx);
 	}
@@ -2206,7 +2221,7 @@ class Scan {
 			const path = part.replace(/^@/, "");
 			if (path === "") continue;
 			const abs = resolveWord({ ...w, text: path }, cwd, this.ctx);
-			if (abs !== null && isSecret(abs, this.ctx.home)) return true;
+			if (abs !== null && isSecret(abs, this.ctx)) return true;
 		}
 		return false;
 	}
@@ -2999,7 +3014,7 @@ class Scan {
 		for (const s of strings) {
 			if (/\s/.test(s)) continue;
 			const path = s === "~" ? home : s.startsWith("~/") ? `${home}${s.slice(1)}` : s;
-			if (isSecret(normalize(path.startsWith("/") ? path : `${home}/${path}`), home)) {
+			if (isSecret(normalize(path.startsWith("/") ? path : `${home}/${path}`), this.ctx)) {
 				this.add("secret_read");
 				break;
 			}
@@ -3192,7 +3207,7 @@ function readsToken(tool: string, input: Record<string, unknown>, ctx: RiskConte
 		? given.filter((p) => {
 				const s = pathText(p, ctx);
 				const abs = s === null ? null : resolveWord({ text: s, dynamic: false, subs: [] }, root, ctx);
-				return abs !== null && isSecret(abs, ctx.home);
+				return abs !== null && isSecret(abs, ctx);
 			})
 		: [];
 	const kinds: RiskKind[] = [];
