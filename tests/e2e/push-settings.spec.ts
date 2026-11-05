@@ -350,6 +350,62 @@ test("other devices are listed too; each can be revoked, and so can all", async 
 	expect(await page.evaluate((key) => localStorage.getItem(key), PUSH_DEVICE_KEY)).toBeNull();
 });
 
+test("the line under the card says what is being done, and the switch's text stays the same on and off", async ({
+	page,
+}) => {
+	await pushBrowser(page);
+	await openCard(page);
+	await expect(card(page)).toContainText("Notify this device");
+	await turnOn(enable(page));
+	await expect(rows(page)).toHaveCount(1);
+	// On, the text beside the switch still names what it switches, as its name does: not the opposite action.
+	await expect(card(page)).toContainText("Notify this device");
+	await expect(card(page)).not.toContainText("Stop notifying this device");
+
+	// Each change holds until the test lets it go, so the line can be read while it runs.
+	let release = () => {};
+	await page.route(/\/api\/push\/(test|revoke)$/, async (route) => {
+		const held = Promise.withResolvers<void>();
+		release = held.resolve;
+		await held.promise;
+		if (route.request().url().endsWith("/test")) return route.fulfill({ status: 200, json: { ok: true, status: 201 } });
+		return route.continue();
+	});
+	await rows(page).getByTestId("push-test").click();
+	await expect(status(page)).toHaveAttribute("data-state", "busy");
+	await expect(status(page)).toHaveText("Sending a test…");
+	release();
+	await expect(status(page)).toHaveAttribute("data-state", "done");
+
+	await rows(page).getByTestId("push-revoke").click();
+	await expect(status(page)).toHaveAttribute("data-state", "busy");
+	await expect(status(page)).toHaveText("Revoking…");
+	release();
+	await expect(page.getByTestId("push-none")).toBeVisible();
+});
+
+test("each device's preview switch and test button name the device they act on", async ({ page }) => {
+	await pushBrowser(page);
+	for (const [i, label] of ["Pixel · Chrome", "Mac · Firefox"].entries()) {
+		const res = await api(page, "/api/push/subscribe", {
+			subscription: { endpoint: `https://fcm.googleapis.com/fcm/send/e2e-named-${i}`, keys: newReceiver().keys },
+			device: `e2e-named-device-${String(i).padStart(10, "0")}`,
+			label,
+			lang: "en",
+		});
+		expect(res.ok()).toBe(true);
+	}
+	await openCard(page);
+	await expect(rows(page)).toHaveCount(2);
+	for (const label of ["Pixel · Chrome", "Mac · Firefox"]) {
+		const row = rows(page).filter({ hasText: label });
+		await expect(row.getByRole("switch", { name: `Show a line of the message on ${label}`, exact: true })).toHaveCount(
+			1,
+		);
+		await expect(row.getByRole("button", { name: `Send a test to ${label}`, exact: true })).toHaveCount(1);
+	}
+});
+
 test("a device revoked from another page is no longer this page's: it finds out when it opens", async ({ page }) => {
 	await pushBrowser(page);
 	await openCard(page);

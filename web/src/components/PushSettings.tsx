@@ -22,7 +22,7 @@ import { Badge, Button, CardHeader, Spinner } from "./ui.tsx";
 
 type Outcome =
 	| { state: "idle" }
-	| { state: "busy" }
+	| { state: "busy"; text: MessageKey }
 	| { state: "done"; text: MessageKey }
 	| { state: "error"; text: MessageKey; error: unknown };
 
@@ -64,13 +64,14 @@ export function PushSettings() {
 
 	if (!ready || support === "macApp") return null;
 
-	/** Run a change, then read the list again: what it did is what the server has now. */
+	/** Run a change, saying what it is doing (`busy`), then read the list again: what it did is what the server has now. */
 	const run = async (
 		change: () => Promise<unknown>,
+		busy: MessageKey,
 		done: MessageKey | null,
 		failed: MessageKey = "push.changeFailed",
 	) => {
-		setOutcome({ state: "busy" });
+		setOutcome({ state: "busy", text: busy });
 		try {
 			await change();
 			setOutcome(done ? { state: "done", text: done } : { state: "idle" });
@@ -101,10 +102,17 @@ export function PushSettings() {
 						data-testid="push-enable"
 						busy={busy}
 						disabled={blocked}
-						onCheckedChange={(next) => void run(() => (next ? enablePush() : disablePush()), null, "push.failed")}
+						onCheckedChange={(next) =>
+							void run(
+								() => (next ? enablePush() : disablePush()),
+								next ? "push.enabling" : "push.disabling",
+								null,
+								"push.failed",
+							)
+						}
 					/>
 					<div className="min-w-0 flex-1 text-sm">
-						{on ? t("push.disable") : t("push.enable")}
+						{t("push.enable")}
 						<span className="block text-xs text-muted" data-testid="push-state" data-on={on ? "on" : "off"}>
 							{blocked ? t("push.blocked") : on ? t("push.enabledNote") : ""}
 						</span>
@@ -145,10 +153,10 @@ export function PushSettings() {
 							<div className="flex items-center gap-1.5 text-xs text-muted" title={t("push.previewHint")}>
 								<Switch
 									checked={d.preview}
-									label={t("push.preview")}
+									label={t("push.previewLabel", { name: d.label })}
 									data-testid="push-preview"
 									disabled={busy}
-									onCheckedChange={(preview) => void run(() => pushApi.preview(d.id, preview), null)}
+									onCheckedChange={(preview) => void run(() => pushApi.preview(d.id, preview), "push.saving", null)}
 								/>
 								{t("push.preview")}
 							</div>
@@ -156,6 +164,7 @@ export function PushSettings() {
 								size="sm"
 								data-testid="push-test"
 								disabled={busy}
+								aria-label={t("push.testLabel", { name: d.label })}
 								onClick={() =>
 									void run(
 										async () => {
@@ -171,6 +180,7 @@ export function PushSettings() {
 												);
 											}
 										},
+										"push.testing",
 										"push.testSent",
 										"push.testFailed",
 									)
@@ -184,7 +194,7 @@ export function PushSettings() {
 								data-testid="push-revoke"
 								disabled={busy}
 								aria-label={t("push.revokeLabel", { name: d.label })}
-								onClick={() => void run(() => revokeDevice(d.id), "push.revoked")}
+								onClick={() => void run(() => revokeDevice(d.id), "push.revoking", "push.revoked")}
 							>
 								{t("push.revoke")}
 							</Button>
@@ -198,7 +208,7 @@ export function PushSettings() {
 						size="sm"
 						data-testid="push-revoke-all"
 						disabled={busy}
-						onClick={() => void run(() => revokeAllDevices(), "push.revoked")}
+						onClick={() => void run(() => revokeAllDevices(), "push.revoking", "push.revoked")}
 					>
 						{t("push.revokeAll")}
 					</Button>
@@ -209,7 +219,7 @@ export function PushSettings() {
 			<div className="mt-2 min-h-5 text-xs" role="status" data-testid="push-status" data-state={outcome.state}>
 				{outcome.state === "busy" ? (
 					<span className="inline-flex items-center gap-1.5 text-muted">
-						<Spinner size={12} /> {t("push.enabling")}
+						<Spinner size={12} /> {t(outcome.text)}
 					</span>
 				) : outcome.state === "done" ? (
 					<span className="inline-flex items-center gap-1.5 text-success">

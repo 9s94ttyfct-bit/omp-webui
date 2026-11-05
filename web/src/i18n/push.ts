@@ -10,8 +10,12 @@ export const en = {
 	hint: "A phone or computer is told when a conversation finishes or needs you, even with this page closed. The message is encrypted for the one device and names the conversation by its saved title (or just says it is a conversation) and says why: nothing of what was said unless you choose.",
 	// This device
 	enable: "Notify this device",
-	disable: "Stop notifying this device",
+	// What the line under the card says while a change runs.
 	enabling: "Turning on…",
+	disabling: "Turning off…",
+	saving: "Saving…",
+	testing: "Sending a test…",
+	revoking: "Revoking…",
 	enabledNote:
 		"This device is told by the server when a conversation finishes or needs you and none of its pages is on screen.",
 	// Why it cannot be turned on here
@@ -41,6 +45,9 @@ export const en = {
 	testWait: "A test was sent a moment ago. Wait a few seconds and try again.",
 	revoke: "Revoke",
 	revokeLabel: "Revoke {name}",
+	/** The names of a device's controls for assistive tools: which device each acts on. */
+	previewLabel: "Show a line of the message on {name}",
+	testLabel: "Send a test to {name}",
 	revokeAll: "Revoke all devices",
 	revoked: "Revoked",
 	loadFailed: "Could not read the devices: {error}",

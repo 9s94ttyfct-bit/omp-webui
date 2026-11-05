@@ -6,8 +6,12 @@ export const zh: Record<keyof typeof en, string> = {
 	hint: "对话结束或需要你时，即使这个页面已关闭，手机或电脑也会收到通知。消息只为这一台设备加密，只用对话已保存的标题（没有标题就只写“对话”）称呼它，并说明原因；除非你选择，否则不含对话内容。",
 	// This device
 	enable: "通知这台设备",
-	disable: "不再通知这台设备",
+	// What the line under the card says while a change runs.
 	enabling: "正在开启…",
+	disabling: "正在关闭…",
+	saving: "正在保存…",
+	testing: "正在发送测试…",
+	revoking: "正在撤销…",
 	enabledNote: "当对话结束或需要你、且这台设备没有页面在屏幕上时，服务器会通知它。",
 	// Why it cannot be turned on here
 	unsupported: "这个浏览器无法在页面关闭时接收通知。",
@@ -34,6 +38,8 @@ export const zh: Record<keyof typeof en, string> = {
 	testWait: "刚刚发过一条测试。请等几秒再试。",
 	revoke: "撤销",
 	revokeLabel: "撤销 {name}",
+	previewLabel: "在 {name} 上显示一行消息内容",
+	testLabel: "向 {name} 发送测试",
 	revokeAll: "撤销所有设备",
 	revoked: "已撤销",
 	loadFailed: "无法读取设备：{error}",
