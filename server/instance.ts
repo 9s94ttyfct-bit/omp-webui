@@ -25,9 +25,21 @@ interface ServerRecord extends ProcessRef {
 
 const file = (dataDir: string) => join(dataDir, "server.pid");
 
+/**
+ * This process's command line, asked once: it does not change, and on Windows each ask is a PowerShell query of about a
+ * second, which the start lock and the server's record would otherwise each pay.
+ */
+let own: string | null = null;
+function commandLineOf(pid: number): string | null {
+	if (pid !== process.pid) return platform.proc.commandLineSync(pid);
+	// Not had (a query that failed) is asked again next time.
+	own ??= platform.proc.commandLineSync(pid);
+	return own;
+}
+
 /** The process is running, and still runs the command it was recorded with (its pid was not reused). */
 function runsAs(p: ProcessRef): boolean {
-	return platform.proc.exists(p.pid) && platform.proc.commandLineSync(p.pid) === p.command;
+	return platform.proc.exists(p.pid) && commandLineOf(p.pid) === p.command;
 }
 
 function readRef<T extends ProcessRef>(path: string): T | null {
@@ -64,7 +76,7 @@ export async function stopStaleServer(dataDir: string): Promise<number | null> {
 
 /** Record this server, and the app (`parentPid`) that started it, if any. */
 export function recordServer(dataDir: string, port: number, parentPid: number | null, localPort?: number): void {
-	const command = platform.proc.commandLineSync(process.pid);
+	const command = commandLineOf(process.pid);
 	if (!command) return;
 	const parentCommand = parentPid === null ? null : platform.proc.commandLineSync(parentPid);
 	const parent = parentPid !== null && parentCommand ? { pid: parentPid, command: parentCommand } : undefined;
@@ -104,7 +116,7 @@ export async function holdStart(dataDir: string, timeoutMs = 120_000): Promise<(
 	mkdirSync(dataDir, { recursive: true, mode: 0o700 });
 	const lock = join(dataDir, "start.lock");
 	const mine = `${lock}.${process.pid}.tmp`;
-	writeFileSync(mine, JSON.stringify({ pid: process.pid, command: platform.proc.commandLineSync(process.pid) ?? "" }), {
+	writeFileSync(mine, JSON.stringify({ pid: process.pid, command: commandLineOf(process.pid) ?? "" }), {
 		mode: 0o600,
 	});
 	const until = Date.now() + timeoutMs;
