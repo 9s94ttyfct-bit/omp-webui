@@ -74,7 +74,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 	var serverGone = false
 	/// A quit is waiting for the server's answer or the user's.
 	var askingToQuit = false
-	/// The server's update has been handed to its helper and the app was asked to quit for it (`quitForUpdate`).
+	/// The server's update has been handed to its helper and the app was asked to quit for it (`quitForUpdate`). Set while a
+	/// quit's question is being prepared or is open too: the app quits for the update once it is answered, whatever the answer.
 	var quittingForUpdate = false
 	/// The built-in browser asked the app to start again and the person agreed (`restartForBrowser`): it quits, then opens again.
 	var restartingForBrowser = false
@@ -211,8 +212,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 		readQuitContext { context in
 			let finish = { (quit: Bool) in
 				self.askingToQuit = false
-				guard quit else { return }
-				self.restartingForBrowser = true
+				guard quit else { return self.quitForUpdateAfterAsking() }
+				// An update that asked to quit meanwhile opens the new app itself: this one does not open again over it.
+				self.restartingForBrowser = !self.quittingForUpdate
 				quitFromRunLoop()
 			}
 			if context.running.needsWarning { self.answer(quitDialog(context, offersBackground: false), finish) } else { finish(true) }
@@ -267,6 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 					NSApp.reply(toApplicationShouldTerminate: false)
 					// Cancelled in the background (Quit from the menu bar icon): the question activated the app, and it goes back.
 					if self.inBackground { self.background.yieldScreen() }
+					self.quitForUpdateAfterAsking()
 				}
 			}
 			if self.sessionEnd.isEnding { return finish(true) }
@@ -275,6 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 				self.askingToQuit = false
 				NSApp.reply(toApplicationShouldTerminate: false)
 				self.runInBackground()
+				self.quitForUpdateAfterAsking()
 			case .askBackgroundOrQuit:
 				self.answer(quitDialog(context, offersBackground: true), finish)
 			case .quit:
@@ -509,6 +513,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 			askingToQuit = false
 			NSApp.reply(toApplicationShouldTerminate: false)
 			runInBackground()
+			quitForUpdateAfterAsking()
 		case .quit:
 			if remember { rememberQuitAction(.quit) { finish(true) } } else { finish(true) }
 		case .quitEndingKept:
@@ -613,10 +618,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 	/// without the question: the web page asked about the conversations that are replying before the update was started, and
 	/// paused ones stay in the background as they do on any quit. The helper swaps the app once this process is gone.
 	func quitForUpdate() {
-		// A quit that is already under way (the question is open, the server is stopping) is not changed by it.
-		guard !stoppingServer, !askingToQuit else { return }
+		// A quit that is already under way (the server is stopping) ends the app anyway, and the helper swaps it then.
+		guard !stoppingServer else { return }
 		quittingForUpdate = true
+		// While a quit's question is being prepared (the server's answers are on their way) or is open, the request is kept:
+		// the person's answer is carried out, then the app quits for the update all the same (`quitForUpdateAfterAsking`).
+		// The helper waits for this app to be gone, and the server signals only once.
+		guard !askingToQuit else { return }
 		quitFromRunLoop()
+	}
+
+	/// A quit's question was answered and the app stays (Cancel, Run in Background): an update that asked to quit meanwhile
+	/// quits it now.
+	func quitForUpdateAfterAsking() {
+		if quittingForUpdate { quitFromRunLoop() }
 	}
 
 	/// The server stopped for good (see `ServerSupervisor`), or could not be started.
