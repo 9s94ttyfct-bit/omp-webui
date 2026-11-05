@@ -41,6 +41,10 @@ export function FirstRun() {
 		setMissedAgain(false);
 		ompApi.install(o.id).catch((e: Error) => toast("error", t("omp.installStartFailed", { error: e.message })));
 	};
+	/** Cancel stops the running install, Try again clears the failed one: both ask the server, and a refusal is said. */
+	const cancel = (failed: "omp.installCancelFailed" | "omp.installClearFailed") => {
+		ompApi.cancel().catch((e: Error) => toast("error", t(failed, { error: e.message })));
+	};
 	const copy = (o: InstallOption) => {
 		void navigator.clipboard?.writeText(o.command).then(() => {
 			setCopied(o.id);
@@ -122,11 +126,11 @@ export function FirstRun() {
 						<OmpLog log={log} label={t("omp.installLogLabel")} empty={t("omp.installNoOutput")} testid="install-log" />
 						<div className="mt-3 flex justify-end gap-2">
 							{running ? (
-								<Button variant="ghost" data-testid="install-cancel" onClick={() => void ompApi.cancel()}>
+								<Button variant="ghost" data-testid="install-cancel" onClick={() => cancel("omp.installCancelFailed")}>
 									{t("omp.installCancel")}
 								</Button>
 							) : (
-								<Button variant="primary" data-testid="install-retry" onClick={() => void ompApi.cancel()}>
+								<Button variant="primary" data-testid="install-retry" onClick={() => cancel("omp.installClearFailed")}>
 									{t("omp.installTryAgain")}
 								</Button>
 							)}

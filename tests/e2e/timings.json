@@ -1325,6 +1325,7 @@
 		"offline.spec.ts › oMLX not answering is said where the user is looking, and the way back is one click": 8.7,
 		"offline.spec.ts › offline settings: model, thinking, MCP servers, tools, skills and AGENTS.md are kept as chosen": 4.5,
 		"offline.spec.ts › selected MCP servers that mcp.json no longer has are listed in Settings, and choosing Light warns once": 2.1,
+		"omp-install.spec.ts › a Cancel or Try again the server does not take says why, and the install stays as it was": 0.9,
 		"omp-install.spec.ts › a choice whose program is missing says so and cannot be installed": 5.3,
 		"omp-install.spec.ts › a failed install says why, keeps its output, and the next try can succeed": 5.2,
 		"omp-install.spec.ts › an installer whose download fails reports curl's own message, not that omp was not found": 3.7,

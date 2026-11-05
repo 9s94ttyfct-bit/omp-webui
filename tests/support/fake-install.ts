@@ -335,7 +335,7 @@ export interface World {
 
 export function makeWorld(
 	dir: string,
-	o: { version: string; installers?: boolean; installed?: boolean; brewSeconds?: number },
+	o: { version: string; installers?: boolean; installed?: boolean; brewSeconds?: number; brewHoldUntil?: string },
 ): World {
 	mkdirSync(dir, { recursive: true });
 	const toolbin = makeToolbin(join(dir, "toolbin"));
@@ -351,6 +351,7 @@ export function makeWorld(
 			version: o.version,
 			log: brewLog,
 			seconds: o.brewSeconds,
+			holdUntil: o.brewHoldUntil,
 		});
 		writeFakeCurl(join(toolbin, "curl"), { template, log: curlLog });
 	}

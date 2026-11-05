@@ -74,6 +74,8 @@ export const en = {
 	installRecheckNone: "omp still wasn't found.",
 	installRecheckFailed: "Could not look again: {error}",
 	installStartFailed: "Could not start the install: {error}",
+	installCancelFailed: "Could not stop the install: {error}",
+	installClearFailed: "Could not go back to the install choices: {error}",
 
 	// First-time setup (components/Onboarding.tsx)
 	setupTitle: "Set up omp",

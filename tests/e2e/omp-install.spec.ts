@@ -22,18 +22,26 @@ interface Run {
 	world: World;
 	server: TestServer;
 	url: string;
+	/** With `held`, `brew install` waits after fetching until this file exists. */
+	release: string;
 	stop(): Promise<void>;
 }
 
 /** A server in a world without omp (and, by default, with the fake installers). */
-async function serve(options: { installers?: boolean } = {}): Promise<Run> {
+async function serve(options: { installers?: boolean; held?: boolean } = {}): Promise<Run> {
 	const dir = mkdtempSync(join(tmpdir(), "ompw-world-"));
-	const world = makeWorld(dir, { version: "18.12.1", installers: options.installers ?? true });
+	const release = join(dir, "release");
+	const world = makeWorld(dir, {
+		version: "18.12.1",
+		installers: options.installers ?? true,
+		...(options.held ? { brewHoldUntil: release } : {}),
+	});
 	const server = await startTestServer(0, { PATH: world.path, OMP_BIN: "omp" });
 	return {
 		world,
 		server,
 		url: `${server.url}/?token=${server.accessToken}`,
+		release,
 		async stop() {
 			await server.stop();
 			rmSync(dir, { recursive: true, force: true });
@@ -318,6 +326,39 @@ test("a failed install says why, keeps its output, and the next try can succeed"
 		await expect(page.getByTestId("install-start")).toBeVisible();
 		await page.getByTestId("install-start").click();
 		await expect(page.getByTestId("onboarding")).toBeVisible();
+	} finally {
+		await run.stop();
+	}
+});
+
+test("a Cancel or Try again the server does not take says why, and the install stays as it was", async ({ page }) => {
+	const run = await serve({ held: true });
+	const uncaught: string[] = [];
+	page.on("pageerror", (e) => uncaught.push(e.message));
+	try {
+		await page.goto(run.url);
+		await page.getByTestId("install-start").click();
+		await expect(page.getByTestId("install-job")).toHaveAttribute("data-state", "running");
+		await page.route("**/api/omp/cancel", (route) =>
+			route.fulfill({ status: 500, json: { error: "the server is restarting" } }),
+		);
+		const toast = page.getByTestId("toast");
+
+		await page.getByTestId("install-cancel").click();
+		await expect(toast.filter({ hasText: "Could not stop the install: the server is restarting" })).toBeVisible();
+		await expect(page.getByTestId("install-job")).toHaveAttribute("data-state", "running");
+
+		// The install then fails, and its Try again is not taken either.
+		mkdirSync(run.world.prefix, { recursive: true });
+		writeFileSync(join(run.world.prefix, ".fail"), "");
+		writeFileSync(run.release, "");
+		await expect(page.getByTestId("install-failed")).toBeVisible();
+		await page.getByTestId("install-retry").click();
+		await expect(
+			toast.filter({ hasText: "Could not go back to the install choices: the server is restarting" }),
+		).toBeVisible();
+		await expect(page.getByTestId("install-failed")).toBeVisible();
+		expect(uncaught).toEqual([]);
 	} finally {
 		await run.stop();
 	}
