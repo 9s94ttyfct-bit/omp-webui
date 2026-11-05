@@ -9,7 +9,8 @@ import {
 	type TransferFailure,
 	type TransferKind,
 } from "../shared/transfer.ts";
-import { FolderError, inside, isSecretLooking, partsOf, type Resolved, resolveFor, rootOf } from "./folder.ts";
+import { isSecretLooking } from "./files.ts";
+import { FolderError, inside, partsOf, type Resolved, resolveFor, rootOf } from "./folder.ts";
 import { platformId } from "./platform/capabilities.ts";
 import type { TransferLog } from "./transfer-log.ts";
 

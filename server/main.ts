@@ -1398,7 +1398,8 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		case "/api/files": {
 			// Loaded on the first request (see `folder-lazy.ts`): nobody completes a file name until they type an `@`.
 			const { suggestFiles } = await import("./files.ts");
-			return json(await suggestFiles(q.get("cwd") ?? "", q.get("q") ?? ""));
+			// A page that is not this computer's is offered what its Files tab shows (see `ListOptions.guarded`).
+			return json(await suggestFiles(q.get("cwd") ?? "", q.get("q") ?? "", { guarded: !onThisComputer.has(req) }));
 		}
 		case "/api/dirs": {
 			// Loaded on the first request: the folder picker is used a few times in a person's life.

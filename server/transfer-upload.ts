@@ -4,7 +4,8 @@ import { chmod, copyFile, link, lstat, mkdir, open, readdir, realpath, rename, s
 import { join } from "node:path";
 import { isRecord } from "../shared/guards.ts";
 import { type ExistsFailure, isHiddenName, type UploadProgress, type UploadSaved } from "../shared/transfer.ts";
-import { inside, isSecretLooking, partsOf } from "./folder.ts";
+import { isSecretLooking } from "./files.ts";
+import { inside, partsOf } from "./folder.ts";
 import {
 	busy,
 	conversationRoot,

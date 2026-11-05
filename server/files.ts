@@ -72,6 +72,52 @@ export function hiddenByDefault(name: string, isDirectory: boolean, path: string
 	return isDirectory ? skipped(name, path) : name.startsWith(".");
 }
 
+/** Folders whose whole content is a secret, by name (lower case). */
+const SECRET_DIRS: readonly string[] = [".ssh", ".gnupg", ".aws"];
+/** File names that are a secret, whole (lower case). */
+const SECRET_NAMES: readonly string[] = [
+	".npmrc",
+	".netrc",
+	".pgpass",
+	".htpasswd",
+	".git-credentials",
+	"credentials",
+	"secrets",
+];
+/** Extensions of files that are a key or a store of them and cannot be told by their text (lower case, with the dot). */
+const SECRET_EXTENSIONS: readonly string[] = [".p12", ".pfx", ".keystore", ".jks", ".ppk"];
+/** `credentials.json`, `secrets.yml`: data files by those names. Not `credentialsProvider.tsx` or `secrets.ts`, which are code. */
+const SECRET_DATA = /^(?:credentials|secrets)\.(?:json|ya?ml|toml|ini|cfg|conf|xml|csv|txt|enc)$/;
+/** The private keys ssh makes: `id_rsa`, `id_ed25519`, `id_ecdsa_sk`, `id_rsa.bak` (its `.pub` is public, and is not one). */
+const SSH_KEY = /^id_(?:rsa|dsa|ecdsa|ed25519)(?:_sk)?(?:\.(?!pub$).+)?$/;
+/** An environment file's name ends in what a template's does: `.env.example` has nothing in it. */
+const ENV_TEMPLATE = /\.(?:example|sample|template|dist|defaults)$/;
+
+/**
+ * Whether a path (relative to the folder, any case: a Mac's file system does not tell `.ENV` from `.env`) looks like it
+ * holds a secret, by its name: environment files (`.env`, `.env.local`, `prod.env`; not `.environment`, `.env.example`),
+ * ssh private keys (`id_rsa`, `id_ed25519`; not `id_helper.ts`), key stores (`.p12`, `.pfx`, `.keystore`), `credentials`
+ * and `secrets` data files, `.npmrc`, `.netrc` and the like, `.ssh/**` and `.git/config`. A page that is not this computer's
+ * is shown none of these (see `ListOptions.guarded` in `folder.ts`, and `suggestFiles`). A key in a PEM file is told by
+ * its text instead, when the file is read (`holdsPrivateKey`), since `server.key` may be a key and `keyboard.key` a
+ * presentation. A name is what is looked at here: a secret in a file called `notes.txt` is not found, and nothing
+ * replaces keeping secrets out of the folder.
+ * The path's parts are split at `/` and at `\`: a page writes `/`, `node:path` on Windows writes `\` (a name with a `\` in
+ * it elsewhere is looked at as parts too, which refuses no less).
+ */
+export function isSecretLooking(rel: string): boolean {
+	const parts = rel.toLowerCase().split(/[/\\]/).filter(Boolean);
+	for (const [i, part] of parts.entries()) {
+		if (SECRET_DIRS.includes(part)) return true;
+		if (part === ".git" && parts[i + 1] === "config") return true;
+	}
+	const name = parts.at(-1) ?? "";
+	if (SECRET_NAMES.includes(name) || SECRET_DATA.test(name) || SSH_KEY.test(name)) return true;
+	if (SECRET_EXTENSIONS.some((x) => name.endsWith(x))) return true;
+	if (name === ".env" || name.endsWith(".env")) return true;
+	return name.startsWith(".env.") && !ENV_TEMPLATE.test(name);
+}
+
 /** The folders the walk does not enter; it is told by the folder's name and absolute path. */
 export type SkipRule = (name: string, path: string) => boolean;
 
@@ -207,7 +253,16 @@ export class FileIndex {
 
 const index = new FileIndex();
 
-export async function suggestFiles(cwd: string, query: string, limit = 50): Promise<string[]> {
+/**
+ * Paths under `cwd` that match `query`, best first. A `guarded` page (one that is not this computer's, see
+ * `ListOptions.guarded` in `folder.ts`) is offered what the Files tab shows it: no dotfile and no name that looks like a
+ * secret (`isSecretLooking`).
+ */
+export async function suggestFiles(
+	cwd: string,
+	query: string,
+	opts: { guarded?: boolean; limit?: number } = {},
+): Promise<string[]> {
 	const dir = realpathSync(resolve(cwd));
 	if (!existsSync(dir) || !statSync(dir).isDirectory()) throw new Error("Not a directory");
 	const q = query.toLowerCase();
@@ -217,8 +272,10 @@ export async function suggestFiles(cwd: string, query: string, limit = 50): Prom
 		const lower = f.toLowerCase();
 		const base = lower.slice(lower.lastIndexOf("/") + 1);
 		const score = !q ? 1 : lower.startsWith(q) ? 0 : base.startsWith(q) ? 1 : lower.includes(q) ? 2 : -1;
-		if (score >= 0) scored.push({ f, score });
+		if (score < 0) continue;
+		if (opts.guarded && (base.startsWith(".") || isSecretLooking(f))) continue;
+		scored.push({ f, score });
 	}
 	scored.sort((a, b) => a.score - b.score || a.f.length - b.f.length);
-	return scored.slice(0, limit).map((s) => s.f);
+	return scored.slice(0, opts.limit ?? 50).map((s) => s.f);
 }

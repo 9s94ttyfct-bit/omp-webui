@@ -4,12 +4,11 @@ import { lstat, readdir, realpath, stat } from "node:fs/promises";
 import { basename, join, relative, sep } from "node:path";
 import { isRecord } from "../shared/guards.ts";
 import type { ArchivePlan, ArchiveSkipped } from "../shared/transfer.ts";
-import { hiddenByDefault } from "./files.ts";
+import { hiddenByDefault, isSecretLooking } from "./files.ts";
 import {
 	FolderError,
 	holdsPrivateKey,
 	inside,
-	isSecretLooking,
 	type OpenHooks,
 	openRegular,
 	resolveInside,

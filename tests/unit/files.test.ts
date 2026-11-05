@@ -288,6 +288,36 @@ test("suggestFiles ranks matches and leaves out hidden and dependency directorie
 	await expect(suggestFiles(join(dir, "README.md"), "")).rejects.toThrow("Not a directory");
 });
 
+test("suggestFiles leaves out dotfiles and names that look like secrets for a guarded page, as the Files tab does (#57)", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "ompw-files-"));
+	dirs.push(dir);
+	for (const f of [
+		"README.md",
+		"src/env.ts",
+		".env",
+		".env.production",
+		".env.example",
+		".prettierrc",
+		"config/credentials.json",
+		"deploy/id_rsa",
+		"deploy/id_rsa.pub",
+		".github/workflows/ci.yml",
+	]) {
+		mkdirSync(dirname(join(dir, f)), { recursive: true });
+		writeFileSync(join(dir, f), "");
+	}
+
+	expect((await suggestFiles(dir, "", { guarded: true })).sort()).toEqual([
+		".github/workflows/ci.yml",
+		"README.md",
+		"deploy/id_rsa.pub",
+		"src/env.ts",
+	]);
+	expect(await suggestFiles(dir, "env", { guarded: true })).toEqual(["src/env.ts"]);
+	// A page on this computer is shown all of it, as before.
+	expect(await suggestFiles(dir, "env")).toEqual(["src/env.ts", ".env", ".env.example", ".env.production"]);
+});
+
 test("suggestFiles offers a file created after an earlier request, a few seconds later", async () => {
 	const dir = mkdtempSync(join(tmpdir(), "ompw-files-"));
 	dirs.push(dir);

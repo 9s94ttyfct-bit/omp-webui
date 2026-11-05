@@ -24,7 +24,7 @@ The **Files** tab of a conversation's side panel shows the folder the conversati
 A page reached through the tunnel or over a network address is "guarded":
 
 - What a remote page may transfer is set on this computer by **File transfer** (`remote.json:fileTransfer`): `off` (no download, no upload, no ZIP), `download` (download only), `full` (download and upload, the default). A page on this computer is not affected and may always download and upload.
-- Hidden files are never listed to it, and names that look like secrets (`.env`, keys, credentials) are neither listed, readable, downloadable nor editable.
+- Hidden files are never listed to it, and names that look like secrets (`.env`, keys, credentials) are neither listed, readable, downloadable nor editable. The composer's `@` completion (`/api/files`) follows the same rule: it offers such a page no dotfile and no name that looks like a secret.
 - Downloads and ZIPs refuse protected places (`.ssh`, `.aws`, `.omp`, the app's data, launch agents, shell start-up files). Dotfiles and build folders can be downloaded by path except when the conversation's folder is the home folder (or holds it), where only what the Files tab shows can be downloaded.
 - Uploads and saves are refused into the home folder (or a folder that holds it), into protected places, into what CI runs on push (`.github/workflows`, `.github/actions`), into folders where an omp-webui keeps its own data, and for hidden names; an executable file or a link is never replaced.
 - Opening files in Finder or the default app is refused.

@@ -579,6 +579,14 @@ describe("a page that is not this computer's", () => {
 			expect(inDependency.matches).toEqual([]);
 		});
 
+		test(`${who}: the @ completion offers neither a dotfile nor a secret, as the filter does (#57)`, async () => {
+			const res = await get(`/api/files?${new URLSearchParams({ cwd: proj, q: "probe/" })}`);
+			expect(res.status).toBe(200);
+			expect(((await res.json()) as string[]).sort()).toEqual(
+				["deploy.key", "id_helper.ts", "keyboard.key", "notes.txt", "server.pem"].map((n) => `probe/${n}`),
+			);
+		});
+
 		test.skipIf(!has.notWindowsYet)(
 			`${who}: what looks like a secret is not read, whatever it is called, nor a link to it, nor a key by its text, nor a picture by such a name`,
 			async () => {
@@ -628,6 +636,12 @@ describe("a page that is not this computer's", () => {
 		expect((await read(".git/config")).status).toBe(200);
 		expect((await read("probe/innocent.txt")).body).toMatchObject({ text: "SECRET" });
 		expect((await ask("raw", { path: "probe/id_rsa.png" })).status).toBe(200);
+		const completion = await fetch(`${s.url}/api/files?${new URLSearchParams({ cwd: proj, q: "probe/" })}`, {
+			headers: headers(),
+		});
+		const offered = (await completion.json()) as string[];
+		for (const name of ["id_rsa", "credentials.json", ".env", ".npmrc", ".hidden-note"])
+			expect(offered, name).toContain(`probe/${name}`);
 	});
 });
 

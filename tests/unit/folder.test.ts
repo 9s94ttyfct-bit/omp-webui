@@ -14,14 +14,13 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, sep, win32 } from "node:path";
-import { hiddenByDefault } from "../../server/files.ts";
+import { hiddenByDefault, isSecretLooking } from "../../server/files.ts";
 import {
 	FolderError,
 	findFiles,
 	holdsPrivateKey,
 	inside,
 	isPackageDir,
-	isSecretLooking,
 	listFolder,
 	looksBinary,
 	neverOpened,

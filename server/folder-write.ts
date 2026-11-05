@@ -6,10 +6,10 @@ import { dirname, join, relative, sep } from "node:path";
 import { FOLDER_LIMITS, type FolderSaved } from "../shared/folder.ts";
 import { isRecord } from "../shared/guards.ts";
 import type { EditConflict } from "../shared/transfer.ts";
+import { isSecretLooking } from "./files.ts";
 import {
 	holdsPrivateKey,
 	inside,
-	isSecretLooking,
 	looksBinary,
 	type OpenHooks,
 	openRegular,
