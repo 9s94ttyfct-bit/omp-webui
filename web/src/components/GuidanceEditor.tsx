@@ -138,11 +138,13 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 	}, [key, liveId, file]);
 	const value: LiveGuidance | null = liveId ? (liveGuidance ?? null) : kept;
 	const carried = value?.text ?? "";
-	// The box follows what the conversation carries until the person types something else.
-	const [touched, setTouched] = useState(false);
+	// The box follows what the conversation carries until the person types something else. Whether they did is a ref, read
+	// when what it carries changes, not a dependency: an effect that ran again on it would run after a save that cleared
+	// it, with that render's values, and put the carried text over what was typed in the moment between the two.
+	const touched = useRef(false);
 	useEffect(() => {
-		if (!touched) setText(carried);
-	}, [carried, touched]);
+		if (!touched.current) setText(carried);
+	}, [carried]);
 	// The template it uses was changed elsewhere (its text or its name, which the conversation's live frame brings): the
 	// menu's names and Save to template's comparison read the templates again. A read that fails keeps the list it has.
 	const following = value?.template ? `${value.template}\n${value.templateName}\n${value.text}` : "";
@@ -203,7 +205,7 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 				? ((await guidanceApi.change(liveId, next)) ?? null)
 				: await guidanceApi.changeFile(file as string, next);
 			setKept(now);
-			setTouched(false);
+			touched.current = false;
 			setText(now?.text ?? "");
 			setTemplateNote(false);
 			if (checked && now && guidanceText(now.text) !== guidanceText(before)) runCheck(now.text);
@@ -221,7 +223,7 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 			? ((await guidanceApi.change(liveId, { text: next })) ?? null)
 			: await guidanceApi.changeFile(file as string, { text: next });
 		setKept(now);
-		setTouched(false);
+		touched.current = false;
 		setText(now?.text ?? "");
 		return now?.text ?? "";
 	};
@@ -504,7 +506,7 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 							placeholder={t("guidance.empty")}
 							readOnly={readOnly}
 							onChange={(e) => {
-								setTouched(true);
+								touched.current = true;
 								setText(e.target.value);
 							}}
 						/>
@@ -519,7 +521,7 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 								variant="ghost"
 								data-testid="guidance-revert"
 								onClick={() => {
-									setTouched(false);
+									touched.current = false;
 									setText(carried);
 								}}
 							>

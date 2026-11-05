@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { BUILTIN_GUIDANCE } from "../../shared/model-guidance.ts";
 import { en } from "../../web/src/i18n/guidance.ts";
@@ -25,9 +25,60 @@ const root = () => process.env.OMPW_E2E_ROOT as string;
 const dataFile = () => join(root(), "data", "model-guidance.json");
 const post = { "x-omp-webui": "1" };
 
-/** What the templates file holds (`server/omp/guidance/store.ts`). */
+/**
+ * What the templates file holds (`server/omp/guidance/store.ts`). A data dir the store has not written to yet has no file,
+ * and the store then holds the shipped templates: a test that runs first in its worker meets that.
+ */
 const stored = (): { rev: number; templates: { id: string; name: string; text: string; builtin?: true }[] } =>
-	JSON.parse(readFileSync(dataFile(), "utf8"));
+	existsSync(dataFile())
+		? JSON.parse(readFileSync(dataFile(), "utf8"))
+		: { rev: 0, templates: BUILTIN_GUIDANCE.map((t) => ({ ...t })) };
+
+/**
+ * A page script that lets a test act right after React commits, before the effects of that commit run: React reports
+ * each commit to a DevTools hook there, so the page gets one that calls `window.ompwAfterCommit` (set by the test).
+ * A busy runner puts a person's keystroke in that gap; here it is put there on purpose.
+ */
+const afterCommitHook = () => {
+	const w = window as unknown as { __REACT_DEVTOOLS_GLOBAL_HOOK__: unknown; ompwAfterCommit?: () => void };
+	w.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+		supportsFiber: true,
+		renderers: new Map(),
+		inject: () => 1,
+		onCommitFiberRoot: () => w.ompwAfterCommit?.(),
+		onCommitFiberUnmount: () => {},
+		onPostCommitFiberRoot: () => {},
+	};
+};
+
+/**
+ * Press Save for this conversation and type `text` into the box in the moment the save is drawn as finished: right
+ * after the commit that ends "Saving…" on the button, before that commit's effects ran (`afterCommitHook`), the
+ * earliest a person typing right after a save can land. Resolves once it was typed.
+ */
+const saveThenType = (editor: Locator, text: string): Promise<void> =>
+	editor.evaluate(
+		(root, [text, saving]) => {
+			const w = window as unknown as { ompwAfterCommit?: () => void };
+			const save = root.querySelector('[data-testid="guidance-save"]') as HTMLButtonElement;
+			const box = root.querySelector('[data-testid="guidance-text"]') as HTMLTextAreaElement;
+			const { promise, resolve } = Promise.withResolvers<void>();
+			let started = false;
+			w.ompwAfterCommit = () => {
+				if (save.title === saving) started = true;
+				else if (started) {
+					w.ompwAfterCommit = undefined;
+					// As a keystroke does: the value changes, then the input event React reads it from.
+					Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(box, text);
+					box.dispatchEvent(new Event("input", { bubbles: true }));
+					resolve();
+				}
+			};
+			save.click();
+			return promise;
+		},
+		[text, en.saving],
+	);
 
 /** The `open` requests the page sent (§ every one starts an omp process). */
 const opens = (tap: SocketTap) => tap.sent.filter((m) => m.t === "open");
@@ -254,6 +305,7 @@ test("Save for this conversation leaves the template alone; Save to template ask
 	expect(given.ok()).toBe(true);
 	ownSession(0x7151, "Guidance template edit 715");
 	const tap = await tapSocket(page);
+	await page.addInitScript(afterCommitHook);
 	await page.goto("/");
 	await openSidebar(page);
 	await startLive(page, tap, "Guidance template edit 715", "guidance-template-edit");
@@ -272,8 +324,11 @@ test("Save for this conversation leaves the template alone; Save to template ask
 	// Save for this conversation: it carries the text as its own, and the template is as it was.
 	await box.fill("Changed for this conversation.");
 	await expect(editor.getByTestId("guidance-save")).toHaveAttribute("title", en.saveHereHint);
-	await editor.getByTestId("guidance-save").click();
+	// Typed in the moment the save is drawn as done, what is typed stays: the box is not given the carried text again.
+	await saveThenType(editor, "Typed as it saved.");
 	await expect(editor.getByTestId("guidance-template")).toHaveAttribute("data-value", "custom");
+	await expect(box).toHaveValue("Typed as it saved.");
+	await expect(editor.getByTestId("guidance-save")).toHaveAttribute("title", en.saveHereHint);
 	expect(stored().templates.find((t) => t.id === "shared-from-tab")?.text).toBe("Original template text.");
 	// It uses no template now: Save to template says why it cannot, and to make one instead.
 	await expect(toTemplate).toHaveAttribute("aria-disabled", "true");
@@ -294,6 +349,8 @@ test("Save for this conversation leaves the template alone; Save to template ask
 	expect(stored().templates.find((t) => t.id === "shared-from-tab")?.text).toBe("Original template text.");
 	await toTemplate.click();
 	await page.getByRole("dialog").getByTestId("guidance-confirm-update").click();
+	// The save has ended once the template has the box's text (while it runs the button says it is saving).
+	await expect(toTemplate).toHaveAttribute("title", en.toTemplateSame.replace("{name}", name));
 	await expect(editor.getByTestId("guidance-template")).toHaveAttribute("data-value", "shared-from-tab");
 	await expect
 		.poll(() => stored().templates.find((t) => t.id === "shared-from-tab")?.text)
