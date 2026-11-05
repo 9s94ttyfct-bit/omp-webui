@@ -57,10 +57,16 @@ async function restartThroughOptions(page: Page, tap: SocketTap, value: string) 
 test("a thinking level chosen before the options change is on the next process", async ({ page }) => {
 	const tap = await newChat(page);
 	const picker = page.getByTestId("thinking-picker");
-	const levels = (await readOptions(picker)).map((o) => o.value);
 	const current = await picker.getAttribute("data-value");
-	const chosen = levels.find((l) => l !== current);
-	expect(chosen).toBeTruthy();
+	// The picker shows before omp has said which levels its model takes (`get_available_thinking_levels`): until then it
+	// lists only the level in use. Once on CI it was read 0.3 s before omp answered.
+	let chosen: string | undefined;
+	await expect
+		.poll(async () => {
+			chosen = (await readOptions(picker)).map((o) => o.value).find((l) => l !== current);
+			return chosen;
+		})
+		.toBeTruthy();
 	await choose(picker, chosen as string);
 	await expect.poll(() => tap.commands("set_thinking_level")).toEqual([{ type: "set_thinking_level", level: chosen }]);
 
