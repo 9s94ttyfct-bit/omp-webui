@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { GuardConfig, GuardWord } from "../../../shared/guard.ts";
 import type { GuardRules } from "../../../shared/guard-policy.ts";
 import { RISK_LOADED_SUFFIX, RISK_SUFFIX } from "../../../shared/risk-confirm.ts";
+import { replaceSync } from "../extension-files.ts";
 
 /**
  * The server's word to one process's gate: whether "Confirm risky commands" is armed (the setting is on and the turn is
@@ -84,7 +85,7 @@ export class RiskState {
 			rmSync(tmp, { force: true });
 			writeFileSync(tmp, text, { mode: 0o600, flag: "wx" });
 		}
-		renameSync(tmp, this.file);
+		replaceSync(tmp, this.file);
 		this.written = text;
 	}
 }

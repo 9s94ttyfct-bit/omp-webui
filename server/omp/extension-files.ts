@@ -1,5 +1,6 @@
 import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { platformId } from "../platform/capabilities.ts";
 
 /**
  * The files of the server's own omp extensions (the gate, the model guidance, unattended mode, the quota floor, compacting
@@ -42,5 +43,26 @@ export function writePrivateText(file: string, text: string | null): void {
 	const tmp = `${file}.tmp`;
 	writeFileSync(tmp, text, { mode: 0o600 });
 	chmodSync(tmp, 0o600);
-	renameSync(tmp, file);
+	replaceSync(tmp, file);
+}
+
+/** The errors of a rename on Windows over a file another process has open at that moment. */
+const HELD: Record<string, true> = { EPERM: true, EACCES: true, EBUSY: true };
+
+/**
+ * `tmp` renamed over `file`, which an omp process may be reading: Windows refuses to replace a file another process has open
+ * (omp reads an overlay when it changes, and a gate or extension file at each tool call or turn), so there the rename is tried
+ * again for up to a second, far longer than such a read takes. Elsewhere a rename replaces an open file, and a refusal is final.
+ */
+export function replaceSync(tmp: string, file: string): void {
+	for (let attempt = 1; ; attempt++) {
+		try {
+			renameSync(tmp, file);
+			return;
+		} catch (e) {
+			const code = (e as NodeJS.ErrnoException).code ?? "";
+			if (platformId !== "win32" || attempt >= 50 || !Object.hasOwn(HELD, code)) throw e;
+			Bun.sleepSync(20);
+		}
+	}
 }

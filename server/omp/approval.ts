@@ -36,6 +36,7 @@ import type { ConfigValue } from "../../shared/session-defaults.ts";
 import { CONCURRENCY_KEY, concurrencyOf } from "../../shared/subagent-concurrency.ts";
 import { UNATTENDED_SUFFIX } from "../../shared/unattended.ts";
 import { platform } from "../platform/index.ts";
+import { replaceSync } from "./extension-files.ts";
 import { GUIDANCE_LOADED_SUFFIX } from "./guidance/extension.ts";
 import { ParkedStore } from "./parked.ts";
 import { QUICK_MS, run } from "./run.ts";
@@ -367,7 +368,7 @@ export class ProcessOverlay {
 		// it was told to, and a directory made again has none of what kept the old one.
 		const made = mkdirSync(dirname(this.file), { recursive: true, mode: 0o700 });
 		writeFileSync(`${this.file}.tmp`, lines.join("\n"), { mode: 0o600 });
-		renameSync(`${this.file}.tmp`, this.file);
+		replaceSync(`${this.file}.tmp`, this.file);
 		if (made !== undefined) this.mark();
 	}
 
