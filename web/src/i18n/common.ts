@@ -6,6 +6,7 @@ export const en = {
 	delete: "Delete",
 	rename: "Rename",
 	copy: "Copy",
+	copyFailed: "Could not copy: the browser did not let this page use the clipboard",
 	retry: "Retry",
 	loading: "Loading…",
 	language: "Language",

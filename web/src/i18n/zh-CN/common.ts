@@ -7,6 +7,7 @@ export const zh: Record<keyof typeof en, string> = {
 	delete: "删除",
 	rename: "重命名",
 	copy: "复制",
+	copyFailed: "无法复制：浏览器不允许这个页面使用剪贴板",
 	retry: "重试",
 	loading: "加载中…",
 	language: "语言",

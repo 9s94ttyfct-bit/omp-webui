@@ -18,6 +18,7 @@ import ReactMarkdown, { type Components, defaultUrlTransform, type UrlTransform 
 import remarkGfm from "remark-gfm";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
+import { useCopy } from "../lib/clipboard.ts";
 import { hastText } from "../lib/hast-text.ts";
 import { highlight, highlighted } from "../lib/highlight.ts";
 import { isAllowedImageSrc } from "../lib/image-src.ts";
@@ -34,7 +35,7 @@ const MAX_HIGHLIGHT_CHARS = 60_000;
 
 export function CopyButton({ text, label }: { text: string; label?: string }) {
 	const t = useT();
-	const [done, setDone] = useState(false);
+	const { done, copy } = useCopy();
 	label ??= t("common.copy");
 	return (
 		<button
@@ -42,11 +43,7 @@ export function CopyButton({ text, label }: { text: string; label?: string }) {
 			aria-label={label}
 			title={label}
 			className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted hover:bg-hover hover:text-fg"
-			onClick={() => {
-				void navigator.clipboard.writeText(text);
-				setDone(true);
-				setTimeout(() => setDone(false), 1200);
-			}}
+			onClick={() => copy(text)}
 		>
 			{done ? <Check size={14} /> : <Copy size={14} />}
 		</button>

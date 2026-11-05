@@ -14,6 +14,7 @@ import {
 import { type ReactNode, useEffect, useId, useState } from "react";
 import "../i18n/later.ts";
 import { type MessageKey, useT } from "../i18n/index.ts";
+import { useCopy } from "../lib/clipboard.ts";
 import { remoteApi, useRemote } from "../lib/remote.ts";
 import { setUpWithAi } from "../lib/remote-ai.ts";
 import { webUrl } from "../lib/web-url.ts";
@@ -114,7 +115,7 @@ function Field({
 /** The address of the tunnel with a button that copies it. */
 function CopyUrl({ url }: { url: string }) {
 	const t = useT();
-	const [done, setDone] = useState(false);
+	const { done, copy } = useCopy();
 	return (
 		<span className="inline-flex min-w-0 items-center gap-1">
 			<code className="truncate font-mono text-sm" data-testid="remote-url">
@@ -126,11 +127,7 @@ function CopyUrl({ url }: { url: string }) {
 				aria-label={done ? t("remote.urlCopied") : t("remote.copyUrl")}
 				title={t("remote.copyUrl")}
 				className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-hover hover:text-fg"
-				onClick={() => {
-					void navigator.clipboard?.writeText(url);
-					setDone(true);
-					setTimeout(() => setDone(false), 1200);
-				}}
+				onClick={() => copy(url)}
 			>
 				{done ? <Check size={14} /> : <Copy size={14} />}
 			</button>

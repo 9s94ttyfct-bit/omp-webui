@@ -25,6 +25,7 @@ import { Check, CircleAlert, Copy, Download, Loader2, RefreshCw, Upload } from "
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { lazyStrings, type MessageKey, useLang, useT, type Vars } from "../i18n/index.ts";
 import { en } from "../i18n/migrate.ts";
+import { useCopy } from "../lib/clipboard.ts";
 import { codedText } from "../lib/error-text.ts";
 import { formatBytes, isNetworkError, migrateApi } from "../lib/migrate-api.ts";
 import { useApp } from "../store/app.ts";
@@ -901,21 +902,13 @@ function ImportLocked({
 /** A folder path with a button that copies it. */
 function CopyPath({ path }: { path: string }) {
 	const t = useT();
-	const [done, setDone] = useState(false);
+	const { done, copy } = useCopy();
 	return (
 		<span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
 			<code className="select-all break-all font-mono text-xs" data-testid="migrate-backup">
 				{path}
 			</code>
-			<Button
-				size="sm"
-				data-testid="migrate-backup-copy"
-				onClick={() => {
-					void navigator.clipboard?.writeText(path);
-					setDone(true);
-					setTimeout(() => setDone(false), 1200);
-				}}
-			>
+			<Button size="sm" data-testid="migrate-backup-copy" onClick={() => copy(path)}>
 				{done ? <Check size={12} /> : <Copy size={12} />} {done ? t("migrate.copied") : t("migrate.copy")}
 			</Button>
 		</span>
