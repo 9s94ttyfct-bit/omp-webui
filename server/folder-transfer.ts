@@ -1,4 +1,3 @@
-import { join } from "node:path";
 import type { OpenHooks } from "./folder.ts";
 import { editFile } from "./folder-write.ts";
 import { type ArchiveDeps, planArchive, sendArchive, TicketStore } from "./transfer-archive.ts";
@@ -84,17 +83,6 @@ export class TransferService {
 	async close(): Promise<void> {
 		clearInterval(this.#timer);
 		await this.uploads.close();
-	}
-
-	/** The route `route` (what follows `/api/folder/`), or null when it is none of the transfer's. */
-	static owns(route: string): boolean {
-		return (
-			route === "download" ||
-			route === "archive" ||
-			route.startsWith("archive/") ||
-			route === "upload" ||
-			route.startsWith("upload/")
-		);
 	}
 
 	async handle(req: Request, url: URL, ctx: TransferContext, env: TransferEnv): Promise<Response> {
@@ -195,6 +183,3 @@ export class TransferService {
 		throw new TransferError("Not found", 404, "notFound");
 	}
 }
-
-/** The place of the log under a data folder. */
-export const transferLogFile = (dataDir: string): string => join(dataDir, "transfers.jsonl");
