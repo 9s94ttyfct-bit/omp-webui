@@ -13,6 +13,7 @@
  * everything else is a path.
  */
 
+import { fenceFor } from "./fence.ts";
 import { documentTypeOf, extensionOf } from "./folder.ts";
 
 /** The most text a message carries inline. A model reads all of it: a megabyte of text is a quarter of a million tokens. */
@@ -199,13 +200,6 @@ const FENCE_LANGUAGES: Readonly<Record<string, string>> = {
 function headerName(name: string): string {
 	// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what is removed.
 	return name.replace(/[\u0000-\u001f\u007f"<>]/g, "_").slice(0, 200);
-}
-
-/** A fence of backticks longer than any run of them in `text`, so that nothing in the file can close it. */
-export function fenceFor(text: string): string {
-	let longest = 0;
-	for (const run of text.match(/`+/g) ?? []) longest = Math.max(longest, run.length);
-	return "`".repeat(Math.max(3, longest + 1));
 }
 
 /**

@@ -6,7 +6,6 @@ import {
 	classify,
 	DOCUMENT_LIMITS,
 	type DropFileInfo,
-	fenceFor,
 	formatTextFile,
 	hasMention,
 	hasTextFiles,
@@ -19,6 +18,7 @@ import {
 	splitMessage,
 	type TextFile,
 } from "../../shared/attachment.ts";
+import { fenceFor } from "../../shared/fence.ts";
 
 const bytes = (...values: number[]) => new Uint8Array(values);
 const enc = (text: string) => new TextEncoder().encode(text);

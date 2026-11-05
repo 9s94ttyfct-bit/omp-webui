@@ -1,4 +1,4 @@
-import { fenceFor } from "@shared/attachment.ts";
+import { fenceFor } from "@shared/fence.ts";
 import type { SessionEntry } from "@shared/protocol.ts";
 import { BLOB_REF, isBlobHash } from "./blob.ts";
 import { Fold } from "./lineage.ts";
