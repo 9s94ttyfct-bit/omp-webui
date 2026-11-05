@@ -154,8 +154,12 @@ export function problemOf(stderr: string): { problem: IssuesProblem; message?: s
 		.split("\n")
 		.map((l) => l.trim())
 		.find((l) => l.length > 0);
-	return line ? { problem: "failed", message: line.slice(0, 300) } : { problem: "failed" };
+	// A token gh or git printed (a remote's address with one in it) is never passed on to a page.
+	return line ? { problem: "failed", message: line.replace(TOKEN, "[token]").slice(0, 300) } : { problem: "failed" };
 }
+
+/** What looks like a GitHub token, whatever printed it. */
+const TOKEN = /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g;
 
 export interface ListOptions {
 	state: IssueFilter;

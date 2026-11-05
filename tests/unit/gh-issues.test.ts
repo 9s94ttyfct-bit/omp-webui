@@ -125,6 +125,17 @@ test("what gh cannot do is said as the page's problems", async () => {
 	expect(problemOf("")).toEqual({ problem: "failed" });
 });
 
+test("a GitHub token in what gh printed is not passed on to the page (#65)", () => {
+	const token = `ghp_${"a1".repeat(18)}`;
+	const pat = `github_pat_${"b2".repeat(20)}`;
+	for (const secret of [token, pat]) {
+		const read = problemOf(`fatal: could not read https://${secret}@github.com/me/repo.git`);
+		expect(read.problem).toBe("failed");
+		expect(read.message).not.toContain(secret);
+		expect(read.message).toContain("[token]");
+	}
+});
+
 test("a folder that is not a repository, or whose repository names a command, is not handed to gh", async () => {
 	const notRepo = world(() => ok([]), { repo: false });
 	expect(await notRepo.reader.list(DIR, { state: "open" })).toEqual({ ok: false, problem: "no-repo" });

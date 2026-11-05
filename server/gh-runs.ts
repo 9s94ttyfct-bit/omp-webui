@@ -158,14 +158,10 @@ export function parseJobs(text: string): CiJob[] | null {
 	return out;
 }
 
-/** What looks like a GitHub token, whatever printed it: never passed on to a page. */
-const TOKEN = /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/g;
-
 /** What `gh` said on a failure, as one of the problems the tab explains: GitHub's rate limit, or what the Issues tab reads. */
 export function ciProblemOf(stderr: string): { problem: CiProblem; message?: string } {
 	if (/rate limit/i.test(stderr)) return { problem: "rate-limited" };
-	const read = problemOf(stderr);
-	return read.message ? { problem: read.problem, message: read.message.replace(TOKEN, "[token]") } : read;
+	return problemOf(stderr);
 }
 
 type Answer<T> = { ok: true; value: T } | { ok: false; problem: CiProblem; message?: string };
