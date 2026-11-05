@@ -389,6 +389,7 @@
     "tests/unit/slug.test.ts": 15,
     "tests/unit/subagent-frames.test.ts": 15,
     "tests/unit/todos-server.test.ts": 15,
+    "tests/unit/transfer-store.test.ts": 15,
     "tests/unit/line-cursor.test.ts": 14,
     "tests/unit/live-motion.test.ts": 14,
     "tests/unit/omp-update.test.ts": 14,

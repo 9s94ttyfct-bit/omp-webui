@@ -49,8 +49,13 @@ export const isBusy = (rows: readonly UploadRow[]): boolean =>
 	rows.some((r) => r.state === "waiting" || r.state === "sending");
 
 const batches = new Map<string, UploadBatch>();
-/** The last summary told for a conversation, so that two batches that end together are not announced twice. */
-const told = new Map<string, string>();
+/**
+ * Where, in its batch's rows, the upload of a conversation begins: files added to a batch that has settled (nothing sent,
+ * waiting or held) begin another upload; those added while it runs are part of the one that runs.
+ */
+const begun = new Map<string, number>();
+/** The upload last announced for a conversation (where it begins), so that two waits that end together say it once. */
+const told = new Map<string, number>();
 
 function put(key: string, change: Partial<Upload>): void {
 	useTransfers.setState((s) => ({ uploads: { ...s.uploads, [key]: { ...(s.uploads[key] ?? EMPTY), ...change } } }));
@@ -71,7 +76,9 @@ function batchFor(scope: FolderScope): UploadBatch {
 function finished(scope: FolderScope, batch: UploadBatch): void {
 	const key = keyOf(scope);
 	if (batch.busy || batch.held().length > 0) return;
-	const rows = batch.rows;
+	const from = begun.get(key) ?? 0;
+	if (told.get(key) === from) return;
+	const rows = batch.rows.slice(from);
 	const done = rows.filter((r) => r.state === "done").length;
 	const failed = rows.filter((r) => r.state === "failed").length;
 	// A file left out (by the person's choice) or cancelled is no part of what was to be sent.
@@ -80,8 +87,7 @@ function finished(scope: FolderScope, batch: UploadBatch): void {
 		failed > 0
 			? t("files.transferDoneToastSome", { done, total: done + failed, failed })
 			: t("files.transferDoneToast", { n: done });
-	if (told.get(key) === text) return;
-	told.set(key, text);
+	told.set(key, from);
 	useApp.getState().toast(failed > 0 ? "warning" : "success", text);
 	// The server's watcher usually has told the tree already; this makes sure.
 	void refreshAll(scope);
@@ -112,6 +118,7 @@ export function startUpload(scope: FolderScope, target: string, gathered: Gather
 	put(key, { notes });
 	if (send.length === 0) return;
 	const batch = batchFor(scope);
+	if (!batch.busy && batch.held().length === 0) begun.set(key, batch.rows.length);
 	void batch
 		.add(send.map((i) => ({ file: i.file, dir: joinPath(target, i.dir), name: i.name, size: i.size })))
 		.then(() => finished(scope, batch));
@@ -144,6 +151,7 @@ export function clearUpload(scope: FolderScope): void {
 	const batch = batches.get(key);
 	if (batch?.busy) return;
 	batches.delete(key);
+	begun.delete(key);
 	told.delete(key);
 	useTransfers.setState((s) => {
 		const uploads = { ...s.uploads };
