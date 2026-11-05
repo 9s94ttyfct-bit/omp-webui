@@ -1,8 +1,8 @@
-import { chmodSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import type { UsageReport } from "../../../shared/protocol.ts";
 import type { QuotaFloorSettings } from "../../../shared/quota-floor.ts";
 import { type HoldFields, holdFileText, QUOTA_SUFFIX } from "../../../shared/quota-hold.ts";
+import { writePrivateText } from "../extension-files.ts";
 import { DEFAULT_TIMINGS, type QuotaTimings } from "./decide.ts";
 import { installQuotaExtension, quotaPaths } from "./install.ts";
 import { QuotaFloorStore } from "./store.ts";
@@ -84,15 +84,7 @@ export class QuotaFloorService implements QuotaFloorHooks {
 	}
 
 	write(file: string, hold: HoldFields | null): void {
-		if (hold === null) {
-			rmSync(file, { force: true });
-			return;
-		}
-		mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
-		const tmp = `${file}.tmp`;
-		writeFileSync(tmp, holdFileText(hold), { mode: 0o600 });
-		chmodSync(tmp, 0o600);
-		renameSync(tmp, file);
+		writePrivateText(file, hold === null ? null : holdFileText(hold));
 	}
 
 	floorOf(provider: string): number | null {

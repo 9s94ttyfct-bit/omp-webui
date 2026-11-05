@@ -1,7 +1,8 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { isRecord } from "../../../shared/guards.ts";
 import { GUIDANCE_SUFFIX, guidanceTextOf, type SessionGuidance } from "../../../shared/model-guidance.ts";
+import { writePrivateText } from "../extension-files.ts";
 import type { GuidanceStore } from "./store.ts";
 
 /**
@@ -187,13 +188,5 @@ export function guidanceFileFor(liveId: string, overlay: string | null, fallback
  */
 export function writeGuidanceFile(file: string, text: string | null): void {
 	const clean = text === null ? "" : text.replace(/^\s+|\s+$/g, "");
-	if (!clean) {
-		rmSync(file, { force: true });
-		return;
-	}
-	mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
-	const tmp = `${file}.tmp`;
-	writeFileSync(tmp, `${clean}\n`, { mode: 0o600 });
-	chmodSync(tmp, 0o600);
-	renameSync(tmp, file);
+	writePrivateText(file, clean ? `${clean}\n` : null);
 }

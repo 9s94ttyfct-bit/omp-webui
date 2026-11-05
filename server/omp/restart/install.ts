@@ -1,6 +1,7 @@
-import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { source } from "./source-macro.ts" with { type: "macro" };
+import { installFiles } from "../extension-files.ts";
+import { source } from "../source-macro.ts" with { type: "macro" };
 import { RestartStore } from "./store.ts";
 
 /**
@@ -10,7 +11,7 @@ import { RestartStore } from "./store.ts";
  * process started before keeps the copy it loaded).
  */
 const FILES: Readonly<Record<string, string>> = {
-	"server/omp/restart/extension.ts": source("extension.ts"),
+	"server/omp/restart/extension.ts": source("server/omp/restart/extension.ts"),
 };
 
 /** The folder the extension lives in, the file omp is given (`--extension`), and where the processes' limit files go. */
@@ -21,21 +22,9 @@ export function restartPaths(dataDir: string): { dir: string; extension: string;
 
 /** Write the extension's files under `dataDir`; the answer is the extension's path. Throws when they cannot be written. */
 export function installRestartExtension(dataDir: string): string {
-	const { dir, extension: path } = restartPaths(dataDir);
-	for (const [name, text] of Object.entries(FILES)) {
-		const file = join(dir, name);
-		try {
-			if (readFileSync(file, "utf8") === text) continue;
-		} catch {
-			// Not there yet.
-		}
-		mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
-		const temporary = `${file}.${process.pid}.tmp`;
-		writeFileSync(temporary, text, { mode: 0o600 });
-		chmodSync(temporary, 0o600);
-		renameSync(temporary, file);
-	}
-	return path;
+	const { dir, extension } = restartPaths(dataDir);
+	installFiles(dir, FILES);
+	return extension;
 }
 
 /**

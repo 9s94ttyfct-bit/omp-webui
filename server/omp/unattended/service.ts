@@ -1,6 +1,6 @@
-import { chmodSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { UNATTENDED_SUFFIX, type UnattendedSettings, waitingQuestionsBlock } from "../../../shared/unattended.ts";
+import { writePrivateText } from "../extension-files.ts";
 import { installUnattendedExtension, unattendedPaths } from "./install.ts";
 import { QuestionStore } from "./questions.ts";
 import { UnattendedStore } from "./store.ts";
@@ -77,15 +77,7 @@ export class UnattendedService implements UnattendedHooks {
 
 	write(file: string, text: string | null): void {
 		const clean = text === null ? "" : text.replace(/^\s+|\s+$/g, "");
-		if (!clean) {
-			rmSync(file, { force: true });
-			return;
-		}
-		mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
-		const tmp = `${file}.tmp`;
-		writeFileSync(tmp, `${clean}\n`, { mode: 0o600 });
-		chmodSync(tmp, 0o600);
-		renameSync(tmp, file);
+		writePrivateText(file, clean ? `${clean}\n` : null);
 	}
 
 	instruction(): string {

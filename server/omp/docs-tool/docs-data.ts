@@ -1,4 +1,4 @@
-import { agentDocs } from "./source-macro.ts" with { type: "macro" };
+import { agentDocs } from "../source-macro.ts" with { type: "macro" };
 
 /**
  * The documentation the `webui_docs` tool answers from: every file of `docs/agents/`, file name to Markdown. In the source

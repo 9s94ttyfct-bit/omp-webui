@@ -1,6 +1,6 @@
-import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { agentDocs, source } from "./source-macro.ts" with { type: "macro" };
+import { join } from "node:path";
+import { installFiles } from "../extension-files.ts";
+import { agentDocs, source } from "../source-macro.ts" with { type: "macro" };
 
 /**
  * Put the `webui_docs` extension (`extension.ts`) where omp can read it, beside the other extensions of the server: omp loads
@@ -10,8 +10,8 @@ import { agentDocs, source } from "./source-macro.ts" with { type: "macro" };
  * only when it differs (an update changes it; a process started before keeps the copy it loaded).
  */
 const FILES: Readonly<Record<string, string>> = {
-	"server/omp/docs-tool/extension.ts": source("extension.ts"),
-	"server/omp/docs-tool/lookup.ts": source("lookup.ts"),
+	"server/omp/docs-tool/extension.ts": source("server/omp/docs-tool/extension.ts"),
+	"server/omp/docs-tool/lookup.ts": source("server/omp/docs-tool/lookup.ts"),
 	"server/omp/docs-tool/docs-data.ts": `// Written by omp-webui from the documentation compiled into it (server/omp/docs-tool/install.ts).\nconst docs: Readonly<Record<string, string>> = ${JSON.stringify(agentDocs())};\n\nexport default docs;\n`,
 };
 
@@ -23,21 +23,9 @@ export function docsToolPaths(dataDir: string): { dir: string; extension: string
 
 /** Write the extension's files under `dataDir`; the answer is the extension's path. Throws when they cannot be written. */
 export function installDocsTool(dataDir: string): string {
-	const { dir, extension: path } = docsToolPaths(dataDir);
-	for (const [name, text] of Object.entries(FILES)) {
-		const file = join(dir, name);
-		try {
-			if (readFileSync(file, "utf8") === text) continue;
-		} catch {
-			// Not there yet.
-		}
-		mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
-		const temporary = `${file}.${process.pid}.tmp`;
-		writeFileSync(temporary, text, { mode: 0o600 });
-		chmodSync(temporary, 0o600);
-		renameSync(temporary, file);
-	}
-	return path;
+	const { dir, extension } = docsToolPaths(dataDir);
+	installFiles(dir, FILES);
+	return extension;
 }
 
 /**

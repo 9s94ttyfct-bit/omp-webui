@@ -1,6 +1,6 @@
-import { chmodSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { COMPACT_STEP_SUFFIX, compactStepFileText } from "../../../shared/compact-step.ts";
+import { writePrivateText } from "../extension-files.ts";
 import { compactStepPaths, installCompactStepExtension } from "./install.ts";
 
 /**
@@ -51,14 +51,6 @@ export class CompactStepService implements CompactStepHooks {
 	}
 
 	write(file: string, at: number | null): void {
-		if (at === null) {
-			rmSync(file, { force: true });
-			return;
-		}
-		mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
-		const tmp = `${file}.tmp`;
-		writeFileSync(tmp, compactStepFileText(at), { mode: 0o600 });
-		chmodSync(tmp, 0o600);
-		renameSync(tmp, file);
+		writePrivateText(file, at === null ? null : compactStepFileText(at));
 	}
 }
