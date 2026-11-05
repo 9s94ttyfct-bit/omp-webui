@@ -40,8 +40,9 @@ export interface TestServer {
 	stop(): Promise<void>;
 	/**
 	 * Settles once the server answers: at once, or when the one started again after the last exited by itself is up (#3:
-	 * Bun's test runner can end it). Rejects with the reason when it could not be started again. Every test waits for it
-	 * first (`tests/support/preload.ts`).
+	 * Bun's test runner can end it), also when it is gone and its end has not been seen yet (on Windows the runner's next test
+	 * begins that soon). Rejects with the reason when it could not be started again. Every test waits for it first
+	 * (`tests/support/preload.ts`).
 	 */
 	alive(): Promise<void>;
 	/**
@@ -175,6 +176,8 @@ async function boot(
 	let comeback: Promise<void> = Promise.resolve();
 	/** The current server. */
 	let server!: ChildProcess;
+	/** When each server has exited, told after its exit started the next one (`comeback`). */
+	const exits = new WeakMap<ChildProcess, Promise<void>>();
 	/** What the helper says of a server's life: printed, and kept with the servers' stderr (`errors`). */
 	const note = (text: string) => {
 		errors += `${text}\n`;
@@ -243,6 +246,10 @@ async function boot(
 			// Told to whoever waits for it (`alive`); nobody waiting is not an unhandled rejection.
 			comeback.catch(() => {});
 		});
+		// After the listener above: whoever waits for this exit finds the comeback it started.
+		const exited = Promise.withResolvers<void>();
+		child.once("exit", () => exited.resolve());
+		exits.set(child, exited.promise);
 		// Port 0 must be chosen by the listening socket, not a probe that another worker can race to claim.
 		printed = "";
 		const ready = Promise.withResolvers<void>();
@@ -303,8 +310,30 @@ async function boot(
 			stopping = false;
 		}
 	};
+	/** Whether the current server takes a request: any answer counts, and so does one too slow to come (a busy server is no gone one). */
+	const answers = () =>
+		fetch(`${origin()}/api/meta`, {
+			headers: { "x-omp-webui-token": accessToken },
+			signal: AbortSignal.timeout(5000),
+		}).then(
+			(r) => {
+				void r.body?.cancel();
+				return true;
+			},
+			(e: Error) => e.name === "TimeoutError",
+		);
+	const alive = async () => {
+		await comeback;
+		if (closed || (await answers())) return;
+		// Refused: the server is gone, and its exit, which starts it again, has not been seen yet (#3). A server that does not
+		// answer and does not end either is left to the test, which says what it found.
+		const bound = new AbortController();
+		await Promise.race([exits.get(server), sleep(10_000, undefined, { signal: bound.signal }).catch(() => {})]);
+		bound.abort();
+		await comeback;
+	};
 	server = await launch();
-	const untrack = trackServer(() => comeback);
+	const untrack = trackServer(alive);
 	return {
 		get url() {
 			return origin();
@@ -314,7 +343,7 @@ async function boot(
 		get pid() {
 			return server.pid;
 		},
-		alive: () => comeback,
+		alive,
 		root,
 		home: env.HOME,
 		agentDir,

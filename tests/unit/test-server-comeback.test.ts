@@ -1,5 +1,7 @@
 // needs: posixSignals
+
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -51,6 +53,25 @@ test("a server ended by a SIGTERM nobody in the helper sent is started again on 
 		await s.stop();
 	}
 	expect(existsSync(s.root)).toBe(false);
+}, 60_000);
+
+test("a server that is gone before the helper has seen it end is waited for by the next test, which finds it answering", async () => {
+	const s = await startTestServer(0, {}, { login: false });
+	try {
+		const first = s.pid as number;
+		// On Windows Bun's runner ends the server at once, and the next test begins before the exit has been told (#3): its
+		// connections were refused. Here: ended, and waited for without giving the event loop a turn, so that the helper has
+		// not seen the exit when the next test asks whether the servers answer.
+		process.kill(first, "SIGKILL");
+		while (/^[^Z]/.test(execFileSync("ps", ["-o", "stat=", "-p", String(first)], { encoding: "utf8" }).trim())) {
+			// Until it is a zombie (its sockets closed), or reaped.
+		}
+		await serversAlive();
+		expect((await meta(s)).status).toBe(200);
+		expect(s.pid).not.toBe(first);
+	} finally {
+		await s.stop();
+	}
 }, 60_000);
 
 test("a server the helper stops is not started again", async () => {
