@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { placementOf } from "../../server/migrate/layout.ts";
 import { removeOverlayFiles } from "../../server/omp/approval.ts";
@@ -293,6 +293,24 @@ describe("the question store", () => {
 		// The next attempt fails the same way, and is the same entry: no second drop, and nothing thrown to the caller.
 		expect(store.file(from, "tool", draft("Which db?"), "call-2")).toEqual({ ok: false, why: "unwritable" });
 		expect(store.list().dropped).toHaveLength(1);
+	});
+
+	test("an answer that cannot be written leaves the question open, here as in the file, and can be given again", () => {
+		const data = dir();
+		const store = new QuestionStore(data, clock());
+		const filed = store.file(from, "tool", draft("Which db?"), "call-1");
+		if (!filed.ok) throw new Error("not filed");
+		const { rev } = store.counts();
+		// The temporary file it writes is a folder: the write fails.
+		const tmp = join(data, `questions.json.${process.pid}.tmp`);
+		mkdirSync(tmp);
+		expect(() => store.answer(filed.question.id, { options: [], text: "Postgres" })).toThrow();
+		expect(() => store.dismiss(filed.question.id)).toThrow();
+		expect(store.get(filed.question.id)).toEqual(filed.question);
+		expect(store.counts().rev).toBe(rev);
+		expect(new QuestionStore(data, clock()).get(filed.question.id)?.state).toBe("open");
+		rmSync(tmp, { recursive: true });
+		expect(store.answer(filed.question.id, { options: [], text: "Postgres" }).state).toBe("answered");
 	});
 
 	test("over the limit the oldest settled go first, and only when all are open the oldest open one", () => {

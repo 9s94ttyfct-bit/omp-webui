@@ -2110,7 +2110,13 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 					{ user: true },
 				);
 				if (!sent.success) return fail(sent.error ?? "The conversation did not take the answer", 409);
-				return json({ question: unattendedMode.questions.answer(asked.id, answer) });
+				try {
+					return json({ question: unattendedMode.questions.answer(asked.id, answer) });
+				} catch (e) {
+					if (e instanceof QuestionError) throw e;
+					// The conversation has the answer; only the list could not say so, and still shows the question open.
+					return fail(`The answer was sent, but it could not be marked answered: ${(e as Error).message}`, 409);
+				}
 			} catch (e) {
 				if (e instanceof QuestionError) return fail(e.message, 409);
 				const info = errorInfoOf(e);

@@ -404,15 +404,31 @@ export class QuestionStore {
 		return this.settle(id, "dismissed");
 	}
 
+	/**
+	 * A settle that cannot be written is taken back, as a question that cannot be filed is: the question stays open here as it
+	 * is in the file, and the write's error is thrown.
+	 */
 	private settle(id: unknown, state: "answered" | "dismissed", answer?: AnswerInput): Question {
 		this.fresh();
-		const q = typeof id === "string" ? this.questions.find((x) => x.id === id) : undefined;
-		if (!q) throw new QuestionError("unknown", "That question is not in the list any more");
-		if (q.state !== "open") throw new QuestionError("settled", "That question is answered or dismissed already");
-		q.state = state;
-		q.settledAt = this.now();
-		if (answer) q.answer = { options: [...answer.options], text: answer.text };
-		this.changed();
+		const i = typeof id === "string" ? this.questions.findIndex((x) => x.id === id) : -1;
+		const was = this.questions[i];
+		if (!was) throw new QuestionError("unknown", "That question is not in the list any more");
+		if (was.state !== "open") throw new QuestionError("settled", "That question is answered or dismissed already");
+		const q: Question = {
+			...was,
+			state,
+			settledAt: this.now(),
+			...(answer ? { answer: { options: [...answer.options], text: answer.text } } : {}),
+		};
+		const rev = this.rev;
+		this.questions[i] = q;
+		try {
+			this.changed();
+		} catch (e) {
+			this.questions[i] = was;
+			this.rev = rev;
+			throw e;
+		}
 		return structuredClone(q);
 	}
 }

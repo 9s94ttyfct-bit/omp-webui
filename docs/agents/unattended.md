@@ -48,7 +48,7 @@ Other stored data (in the data folder, `~/.omp-webui`; both move with Move to an
 | `/api/unattended/session?live=<liveId>` | GET | token | Whether one conversation is unattended: `{ on, unattended }` for a running process (`live`), or what was kept for a session file without one (`?file=`). |
 | `/api/unattended/live` | POST | token | `{ liveId, on }`: turn one running conversation unattended or back; open to every page (a phone included). 404 when not running. |
 | `/api/questions` | GET | token | The list of questions. Pages are told the open counts over the WebSocket on every change. |
-| `/api/questions/answer` | POST | token | `{ id, …answer, delivery? }` with `delivery` `followUp` (default) or `steer`: send the answer to its conversation. 404 unknown question, 409 already settled / being answered / could not be sent, 422 no answer, 403 when the conversation refuses a remote page's turn (remote access's confirm-risky rule). |
+| `/api/questions/answer` | POST | token | `{ id, …answer, delivery? }` with `delivery` `followUp` (default) or `steer`: send the answer to its conversation. 404 unknown question, 409 already settled / being answered / could not be sent / sent but the list could not be written (the question stays open, the error says the answer was sent), 422 no answer, 403 when the conversation refuses a remote page's turn (remote access's confirm-risky rule). |
 | `/api/questions/dismiss` | POST | token | `{ id }`: dismiss without sending anything. |
 
 ## Limits and caveats
