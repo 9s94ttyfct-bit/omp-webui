@@ -174,17 +174,21 @@ export class GuardLog {
 		this.offset = this.size();
 	}
 
-	private size(): number {
+	private static stat(file: string): Stats | null {
 		try {
-			return statSync(this.file).size;
+			return statSync(file);
 		} catch {
-			return 0;
+			return null;
 		}
 	}
 
-	/** `length` bytes of the file from `start`, as text. */
-	private slice(start: number, length: number): string {
-		const fd = openSync(this.file, "r");
+	private size(): number {
+		return GuardLog.stat(this.file)?.size ?? 0;
+	}
+
+	/** `length` bytes of `file` from `start`, as text. */
+	private slice(file: string, start: number, length: number): string {
+		const fd = openSync(file, "r");
 		try {
 			const buffer = Buffer.alloc(length);
 			const n = readSync(fd, buffer, 0, length, start);
@@ -192,6 +196,14 @@ export class GuardLog {
 		} finally {
 			closeSync(fd);
 		}
+	}
+
+	/** The last `bytes` of `file` (which is `size` long), from its first whole line. */
+	private end(file: string, size: number, bytes: number): string {
+		const start = Math.max(0, size - bytes);
+		const text = this.slice(file, start, size - start);
+		// The first line of a part cut from the middle is not whole.
+		return start > 0 ? text.slice(text.indexOf("\n") + 1) : text;
 	}
 
 	private parse(text: string): GuardDecision[] {
@@ -208,27 +220,29 @@ export class GuardLog {
 		return out;
 	}
 
-	/** The decisions written down, oldest first: what the last 2 MB of the log holds, parsed once for as long as the file does not change. */
+	/**
+	 * The decisions written down, oldest first: what the last 2 MB of the log holds, parsed once for as long as the file does
+	 * not change. A log shorter than that (one just moved aside) is preceded by the end of the one moved aside.
+	 */
 	private readTail(): GuardDecision[] {
-		let stat: Stats;
-		try {
-			stat = statSync(this.file);
-		} catch {
+		const now = GuardLog.stat(this.file);
+		const own = now?.size ?? 0;
+		const aside = own < TAIL_BYTES ? GuardLog.stat(`${this.file}.1`) : null;
+		if (own === 0 && !aside?.size) {
 			this.cached = null;
 			return [];
 		}
-		if (stat.size === 0) return [];
-		const stamp = `${stat.mtimeMs}:${stat.size}`;
+		const stamp = `${now?.mtimeMs}:${own}:${aside?.mtimeMs}:${aside?.size}`;
 		if (this.cached?.stamp === stamp) return this.cached.all;
-		const start = Math.max(0, stat.size - TAIL_BYTES);
 		let text: string;
 		try {
-			text = this.slice(start, stat.size - start);
+			const before = aside?.size ? this.end(`${this.file}.1`, aside.size, TAIL_BYTES - own) : "";
+			// A line the moved-aside log ends in mid-way does not run into the first of the new one.
+			text =
+				(before && !before.endsWith("\n") ? `${before}\n` : before) + (own ? this.end(this.file, own, TAIL_BYTES) : "");
 		} catch {
 			return [];
 		}
-		// The first line of a part cut from the middle is not whole.
-		if (start > 0) text = text.slice(text.indexOf("\n") + 1);
 		const all = this.parse(text);
 		this.cached = { stamp, all };
 		return all;
@@ -265,7 +279,7 @@ export class GuardLog {
 		let decisions: GuardDecision[] = [];
 		if (size > this.offset) {
 			try {
-				const text = this.slice(this.offset, size - this.offset);
+				const text = this.slice(this.file, this.offset, size - this.offset);
 				const whole = text.slice(0, text.lastIndexOf("\n") + 1);
 				this.offset += Buffer.byteLength(whole);
 				decisions = this.parse(whole);
@@ -273,17 +287,29 @@ export class GuardLog {
 				// Read again at the next look.
 			}
 		}
-		if (this.offset > ROTATE_BYTES) this.rotate();
+		if (this.offset > ROTATE_BYTES) decisions = decisions.concat(this.rotate());
 		return decisions;
 	}
 
-	/** Move the log aside once it is long, replacing the one moved aside before; the gates go on appending to a new file. */
-	private rotate(): void {
+	/**
+	 * Move the log aside once it is long, replacing the one moved aside before; the gates go on appending to a new file.
+	 * Returns what a gate appended between the read of `poll` and the move: it is in the file moved aside, past `offset`.
+	 */
+	private rotate(): GuardDecision[] {
+		const aside = `${this.file}.1`;
 		try {
-			renameSync(this.file, `${this.file}.1`);
-			this.offset = 0;
+			renameSync(this.file, aside);
 		} catch {
 			// Not moved: tried again at the next look.
+			return [];
+		}
+		const from = this.offset;
+		this.offset = 0;
+		try {
+			const size = GuardLog.stat(aside)?.size ?? 0;
+			return size > from ? this.parse(this.slice(aside, from, size - from)) : [];
+		} catch {
+			return [];
 		}
 	}
 

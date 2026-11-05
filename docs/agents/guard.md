@@ -79,7 +79,7 @@ A per-conversation choice is kept with the conversation (not in `guard.json`). T
 - Every reviewer call uses tokens on the same quota as the user's conversations.
 - A conversation whose omp process started before the guard (or under another server) is not covered; the conversation shows a notice with **Open it again**.
 - In Ask me mode, or when asking on unavailable/denied, the user is asked only if a page can reach them; a subagent's call is refused instead.
-- The decisions log is `~/.omp-webui/guard/decisions.jsonl`; pages read only its last 2 MB, and it is moved aside to `decisions.jsonl.1` (replacing the previous one) beyond 8 MB.
+- The decisions log is `~/.omp-webui/guard/decisions.jsonl`; it is moved aside to `decisions.jsonl.1` (replacing the previous one) beyond 8 MB, and pages read only the last 2 MB of the two.
 - The benchmark run with the reviewer is limited to 120 reviewer requests; a classifier-only run sends nothing to a model.
 
 ## Security notes

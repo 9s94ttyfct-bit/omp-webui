@@ -1,4 +1,5 @@
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import * as fs from "node:fs";
 import {
 	appendFileSync,
 	existsSync,
@@ -415,6 +416,49 @@ describe("the log of decisions", () => {
 		expect(tail.decisions).toHaveLength(3);
 		expect(tail.total).toBeLessThan(count);
 		expect(tail.decisions[0].id.startsWith(`n${count - 1}-`)).toBe(true);
+	});
+
+	/** A log just over the size it is moved aside at, of decisions `l0`, `l1`, …: and how many it holds. */
+	const longLog = (file: string): number => {
+		const big = line(decision({ detail: "z".repeat(3_000) }));
+		const count = Math.ceil((8 * 1024 * 1024 + 1) / big.length);
+		writeFileSync(file, Array.from({ length: count }, (_, i) => big.replace('"id":"id-', `"id":"l${i}-`)).join(""));
+		return count;
+	};
+
+	test("a log just moved aside is still read from its end: the Settings log and the tool cards keep their decisions (#49)", () => {
+		const dir = scratch();
+		mkdirSync(join(dir, "guard"));
+		const file = join(dir, "guard", "decisions.jsonl");
+		const count = longLog(file);
+		const log = new GuardLog(dir);
+		expect(log.poll()).toEqual([]);
+		expect(existsSync(`${file}.1`)).toBe(true);
+		const tail = log.tail(3);
+		expect(tail.decisions.map((d) => d.id.split("-")[0])).toEqual([`l${count - 1}`, `l${count - 2}`, `l${count - 3}`]);
+		// What is written after it follows on from it, newest first.
+		appendFileSync(file, line(decision({ id: "after" })));
+		expect(log.poll().map((d) => d.id)).toEqual(["after"]);
+		expect(log.tail(2).decisions.map((d) => d.id.split("-")[0])).toEqual(["after", `l${count - 1}`]);
+	});
+
+	test("a decision a gate appends while the log is being moved aside is still told (#49)", () => {
+		const dir = scratch();
+		mkdirSync(join(dir, "guard"));
+		const file = join(dir, "guard", "decisions.jsonl");
+		longLog(file);
+		const log = new GuardLog(dir);
+		const rename = fs.renameSync;
+		// A gate appends by path: after the server read the log, before it moved it.
+		const spy = spyOn(fs, "renameSync").mockImplementation((from, to) => {
+			appendFileSync(from, line(decision({ id: "late" })));
+			rename(from, to);
+		});
+		try {
+			expect([...log.poll(), ...log.poll()].map((d) => d.id)).toEqual(["late"]);
+		} finally {
+			spy.mockRestore();
+		}
 	});
 });
 
