@@ -12,6 +12,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import "../i18n/later.ts";
 import { type MessageKey, useT } from "../i18n/index.ts";
 import { describeSelector, modelConfig } from "../lib/model-config.ts";
+import { levelName } from "../lib/thinking-levels.ts";
 import { useApp } from "../store/app.ts";
 import type { ModelInfo } from "../store/live.ts";
 import { ModelSelect } from "./ModelSelect.tsx";
@@ -42,17 +43,6 @@ const ROLE_ORDER = Object.keys(ROLES);
 export function roleLabel(role: string, t: (key: MessageKey) => string): string {
 	return Object.hasOwn(ROLES, role) ? t(ROLES[role]) : role;
 }
-
-export const LEVELS: Record<string, MessageKey> = {
-	off: "panel.thinkingOff",
-	minimal: "panel.thinkingMinimal",
-	low: "panel.thinkingLow",
-	medium: "panel.thinkingMedium",
-	high: "panel.thinkingHigh",
-	xhigh: "panel.thinkingXhigh",
-	max: "panel.thinkingMax",
-	auto: "panel.thinkingAuto",
-};
 
 export interface Row {
 	role: string;
@@ -115,7 +105,6 @@ export function RolesFields({
 	const [newRole, setNewRole] = useState("");
 	const [addError, setAddError] = useState<string | null>(null);
 	const listId = useId();
-	const levelLabel = (level: string) => (Object.hasOwn(LEVELS, level) ? t(LEVELS[level]) : level);
 	const setRow = (i: number, selector: string) => onRows(rows.map((r, j) => (j === i ? { ...r, selector } : r)));
 
 	const addRole = () => {
@@ -142,7 +131,7 @@ export function RolesFields({
 					{allowUnsetThinking ? <option value="">{t("presets.editThinkingUnset")}</option> : null}
 					{thinkingChoices.map((level) => (
 						<option key={level} value={level}>
-							{levelLabel(level)}
+							{levelName(t, level)}
 						</option>
 					))}
 				</Select>
@@ -202,7 +191,7 @@ export function RolesFields({
 									<option value="">{t("presets.thinkingNone")}</option>
 									{SELECTOR_LEVELS.map((level) => (
 										<option key={level} value={level}>
-											{levelLabel(level)}
+											{levelName(t, level)}
 										</option>
 									))}
 								</Select>

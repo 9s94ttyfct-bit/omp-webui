@@ -61,7 +61,8 @@ test("Settings says which roles and thinking level the project overrides, and wh
 	await expect(layer.locator('[data-role="plan"]')).toContainText("Claude Sonnet 5.5");
 	// The roles the project leaves alone are not listed.
 	await expect(layer.getByTestId("project-role")).toHaveCount(2);
-	await expect(layer.getByTestId("project-thinking")).toContainText("medium");
+	// The level is named as everywhere else on the page, not by omp's id for it.
+	await expect(layer.getByTestId("project-thinking")).toContainText("Medium");
 	await expect(page.getByTestId("role-storage")).toContainText("“project”");
 
 	// The card is headed like every other card of the page: a 15px title and a 12px intro (#501).

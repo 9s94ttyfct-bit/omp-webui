@@ -11,6 +11,7 @@ import { useStartConfig } from "../lib/model-config.ts";
 import { useNow } from "../lib/now.ts";
 import { fmtElapsed, fmtWindow } from "../lib/stat-format.ts";
 import { type StatusFold, statusFolds, statusItems, statusSteps } from "../lib/status-line.ts";
+import { levelText } from "../lib/thinking-levels.ts";
 import { activeMs } from "../lib/turn-stats.ts";
 import { usageLimitLabel } from "../lib/usage-limit.ts";
 import { openAgent } from "../store/agents.ts";
@@ -19,7 +20,6 @@ import { useGit, useGitSync } from "../store/git.ts";
 import type { LiveState } from "../store/live.ts";
 import { useTurnClocks } from "../store/turn-clock.ts";
 import { GitChips } from "./GitChips.tsx";
-import { levelText } from "./ModelPicker.tsx";
 import { cx, PathTail, Tip } from "./ui.tsx";
 
 /**

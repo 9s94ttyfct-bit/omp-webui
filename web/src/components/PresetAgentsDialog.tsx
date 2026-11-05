@@ -12,9 +12,9 @@ import "../i18n/later.ts";
 import { registerStrings, useT } from "../i18n/index.ts";
 import { en } from "../i18n/preset-agents.ts";
 import { presetActions } from "../lib/preset-actions.ts";
+import { levelName } from "../lib/thinking-levels.ts";
 import { useApp } from "../store/app.ts";
 import type { ModelInfo } from "../store/live.ts";
-import { LEVELS } from "./ModelRolesEditor.tsx";
 import { ModelSelect } from "./ModelSelect.tsx";
 import { Select } from "./Select.tsx";
 import { Button, IconButton, Modal, Spinner } from "./ui.tsx";
@@ -59,7 +59,6 @@ export function AgentFields({
 	const [newAgent, setNewAgent] = useState("");
 	const [addError, setAddError] = useState<string | null>(null);
 	const listId = useId();
-	const levelLabel = (level: string) => (Object.hasOwn(LEVELS, level) ? t(LEVELS[level]) : level);
 	const setRow = (i: number, selector: string) => onRows(rows.map((r, j) => (j === i ? { ...r, selector } : r)));
 
 	const add = () => {
@@ -114,7 +113,7 @@ export function AgentFields({
 									<option value="">{t("presets.thinkingNone")}</option>
 									{SELECTOR_LEVELS.map((level) => (
 										<option key={level} value={level}>
-											{levelLabel(level)}
+											{levelName(t, level)}
 										</option>
 									))}
 								</Select>

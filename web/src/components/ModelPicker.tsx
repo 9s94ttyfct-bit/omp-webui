@@ -2,7 +2,7 @@ import * as Popover from "@radix-ui/react-popover";
 import { runsLocal } from "@shared/offline.ts";
 import { Brain, ChevronDown, Cpu } from "lucide-react";
 import { type ReactNode, Suspense, use, useCallback, useEffect, useRef, useState } from "react";
-import { type MessageKey, t as translate, useT, type Vars } from "../i18n/index.ts";
+import { t as translate, useT } from "../i18n/index.ts";
 import { sessionActions } from "../lib/api.ts";
 import { lazyChunk } from "../lib/lazy-chunk.ts";
 import { useModelCatalog } from "../lib/model-config.ts";
@@ -10,6 +10,7 @@ import { noteRecentModel, onRecentModels, recentModels } from "../lib/model-rece
 import { levelsFor, modelLabel, withAuto } from "../lib/models.ts";
 import type { PickedModel } from "../lib/new-chat-picks.ts";
 import { type StartLive, useOpenAfterStart } from "../lib/start-live.ts";
+import { levelName, levelText } from "../lib/thinking-levels.ts";
 import { ReplyError, socket } from "../lib/ws.ts";
 import { noteThinking, useApp } from "../store/app.ts";
 import type { ModelInfo } from "../store/live.ts";
@@ -236,26 +237,6 @@ export function ModelPicker({
 	);
 }
 
-/** omp's thinking levels (`omp --thinking`); one omp does not name here is shown as it reports it. */
-export const LEVEL_LABELS: Record<string, MessageKey> = {
-	off: "panel.thinkingOff",
-	minimal: "panel.thinkingMinimal",
-	low: "panel.thinkingLow",
-	medium: "panel.thinkingMedium",
-	high: "panel.thinkingHigh",
-	xhigh: "panel.thinkingXhigh",
-	max: "panel.thinkingMax",
-	auto: "panel.thinkingAuto",
-};
-
-/** A thinking level as a person reads it; `auto` with the level omp resolved it to, when that is given. */
-export function levelText(t: (key: MessageKey, vars?: Vars) => string, level: string, resolved?: string): string {
-	const name = (l: string) => (Object.hasOwn(LEVEL_LABELS, l) ? t(LEVEL_LABELS[l]) : l);
-	return level === "auto" && resolved && resolved !== "auto"
-		? t("panel.thinkingAutoResolved", { level: name(resolved) })
-		: name(level);
-}
-
 /**
  * The composer's thinking-level switcher. `level` is what the conversation is set to (`auto` stays `auto`: see
  * `selectedThinking`) and `resolved` the level omp resolved `auto` to, shown beside it. Without a running omp (`liveId`
@@ -308,10 +289,9 @@ export function ThinkingPicker({
 	}, [liveId, model]);
 	const offered = withAuto(levels ?? (!liveId || paused ? levelsFor(current, catalog) : []), current);
 	const shown = asked ?? level ?? "off";
-	const shownLabel = Object.hasOwn(LEVEL_LABELS, shown) ? t(LEVEL_LABELS[shown]) : shown;
 	return (
 		<label
-			title={`${t("panel.thinkingLevel")}: ${shownLabel}`}
+			title={`${t("panel.thinkingLevel")}: ${levelName(t, shown)}`}
 			className="relative inline-flex h-8 items-center gap-1 rounded-lg px-2 text-xs text-muted hover:bg-hover hover:text-fg has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent composer-narrow:w-8 composer-narrow:justify-center composer-narrow:px-0"
 		>
 			<Brain size={14} />

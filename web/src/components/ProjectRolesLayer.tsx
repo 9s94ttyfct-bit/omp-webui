@@ -3,6 +3,7 @@ import { Lock } from "lucide-react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
 import { describeSelector } from "../lib/model-config.ts";
+import { levelName } from "../lib/thinking-levels.ts";
 import type { ModelInfo } from "../store/live.ts";
 import { roleLabel } from "./ModelRolesEditor.tsx";
 import { Badge, CardHeader } from "./ui.tsx";
@@ -47,7 +48,9 @@ export function ProjectRolesLayer({
 				{overrides.defaultThinkingLevel ? (
 					<li data-testid="project-thinking" className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
 						<span className="w-36 shrink-0 truncate text-sm font-medium">{t("presets.layerThinking")}</span>
-						<span className="min-w-0 flex-1 truncate text-sm text-muted">{overrides.defaultThinkingLevel}</span>
+						<span className="min-w-0 flex-1 truncate text-sm text-muted">
+							{levelName(t, overrides.defaultThinkingLevel)}
+						</span>
 						<Badge className="shrink-0">{t("presets.project")}</Badge>
 					</li>
 				) : null}
