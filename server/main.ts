@@ -737,10 +737,10 @@ async function startExtensionUpdates(): Promise<void> {
  * Sleep (#647): the Mac is kept from going to *idle* sleep while a conversation works, and a sleep it did go through is
  * noticed and said in the transcripts of the conversations it interrupted.
  *
- * - `keepAwake` runs `/usr/bin/caffeinate -i -w <this server's pid>` (`platform.power`) for as long as
- *   `workCounts(...).working` is above zero: the same count the macOS app's menu bar icon and the shell events show, so the
- *   two never disagree on whether anything is working. The setting (`ompw.keepAwake`) turns it off; a system without the
- *   `keepAwake` capability has no way to do it, and `/api/meta` says so.
+ * - `keepAwake` runs `/usr/bin/caffeinate -i -w <this server's pid>` (`platform.power`) for as long as one conversation is
+ *   `awakeWorking` (`workingIds` in `server/sleep.ts`): working as the macOS app's menu bar icon counts it, less a
+ *   conversation that waits out a usage limit or is held at the quota floor, which the menu bar still counts. The setting
+ *   (`ompw.keepAwake`) turns it off; a system without the `keepAwake` capability has no way to do it, and `/api/meta` says so.
  * - `sleepDetector` reads its clocks once a second and reports a gap of the wall clock that the monotonic one did not
  *   count (see `sleepBetween` in `server/sleep.ts` for why `performance.now` and not `hrtime`), with the conversations
  *   that were working when the machine went away.

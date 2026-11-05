@@ -360,7 +360,7 @@ export class SleepDetector {
 		private readonly deps: {
 			/** The clocks now. */
 			read(): ClockReading;
-			/** The conversations that are working now, by their live id: `Shared/attention.ts`'s `working`, as the menu bar counts. */
+			/** The conversations that hold the Mac awake now, by their live id: `workingIds` (not the menu bar's count). */
 			working(): Iterable<string>;
 			/** The machine was away from `from` to `to`, with what was working when it went. */
 			woke(note: { from: number; to: number; working: string[] }): void;
