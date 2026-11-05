@@ -875,30 +875,31 @@ export class SessionStore {
 	 * Look at the library for conversations the store does not know, a moment after a request that found nothing: a
 	 * conversation written between two requests, whose watcher's event has not arrived yet. What the look finds is
 	 * scanned and announced, so the page that asked asks again and gets it. One look at a time, and none of them
-	 * while the store is closed.
+	 * while the store is closed; what it finds waits for a scan that runs, and is scanned as a request's files are.
 	 */
 	private scheduleLook(): void {
 		if (this.closed || this.looking) return;
 		this.looking = setTimeout(() => {
 			this.looking = undefined;
 			if (this.closed) return;
+			let fresh: string[];
 			try {
-				const fresh = this.filesNotKnown();
-				if (fresh.length === 0) return;
-				for (const file of fresh) this.dirtyFiles.add(file);
-				this.scanning = this.scanOnce([...this.dirtyFiles])
-					.then(() => {
-						for (const fn of this.listeners) fn();
-					})
-					.catch(() => {
-						this.dirtyAll = true;
-					})
-					.finally(() => {
-						this.scanning = null;
-					});
+				fresh = this.filesNotKnown();
 			} catch {
 				// The library could not be read: the next full scan will see it.
+				return;
 			}
+			if (fresh.length === 0) return;
+			for (const file of fresh) this.dirtyFiles.add(file);
+			void (async () => {
+				// A scan that runs is waited for (and any that a waiter of it started), then the files are scanned.
+				while (this.scanning) await this.scanning.catch(() => {});
+				if (this.closed) return;
+				await this.refresh();
+				for (const fn of this.listeners) fn();
+			})().catch(() => {
+				// A scan that failed has marked the whole library to be read again by the next request.
+			});
 		}, LOOK_MS);
 		this.looking.unref?.();
 	}

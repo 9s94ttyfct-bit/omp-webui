@@ -148,3 +148,43 @@ test("a conversation written between two requests is never lost, however often t
 	expect(held.some((s) => s.file === late.file)).toBe(true);
 	store.close();
 });
+
+test("the look for conversations the store does not know waits for a scan that runs: one scan at a time", async () => {
+	const dir = join(root, `case-${n++}`);
+	seedFixtures(dir);
+	const watcher = fakeWatcher();
+	const store = storeOver(dir, watcher);
+	const first = await store.changes(null);
+
+	// Scans that take a while, as they do over a large library, counted while they run. The look's own timer is real, so a
+	// scan is held for real time too: long enough for the look to come while it runs.
+	const scans = store as unknown as { scanOnce(files: string[] | null): Promise<void> };
+	const scan = scans.scanOnce.bind(store);
+	let running = 0;
+	let most = 0;
+	scans.scanOnce = async (files) => {
+		most = Math.max(most, ++running);
+		try {
+			await Bun.sleep(300);
+			await scan(files);
+		} finally {
+			running--;
+		}
+	};
+
+	// A request that finds nothing schedules the look; a conversation the watcher saw is being scanned when it comes.
+	const late = writeSession(dir, 4);
+	const delta = await store.changes(first.cursor);
+	const seen = writeSession(dir, 5);
+	watcher.saw(`-tmp-ompw-fixture-project/${seen.name}`);
+	await store.refresh();
+	const announced = Promise.withResolvers<void>();
+	store.onChange(announced.resolve);
+	await announced.promise;
+	const again = await store.changes(delta.cursor);
+	expect(most).toBe(1);
+	const files = [...delta.sessions, ...again.sessions].map((s) => s.file);
+	expect(files).toContain(late.file);
+	expect(files).toContain(seen.file);
+	store.close();
+});
