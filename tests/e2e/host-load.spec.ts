@@ -127,10 +127,12 @@ test.describe("with figures the spec chose", () => {
 			await expect(graph).toBeVisible();
 			await expect(graph).toHaveAttribute("data-points", "120");
 			await expect(graph).toHaveAttribute("aria-label", /last 1 h: now \d+%, highest \d+%/);
-			// The area is drawn: a path with a shape, in the series' own palette colour.
+			// The area is drawn: a path with a shape, in the series' own palette colour. Recharts draws the path anew
+			// (another element) whenever the graph's points move, as a re-layout of the popover does: the one found a
+			// moment ago may be gone by the time its box is asked for, so the width is polled, not read once.
 			const area = graph.locator("path.recharts-area-area");
 			await expect(area).toHaveCount(1);
-			expect((await boxOf(area)).width).toBeGreaterThan(150);
+			await expect.poll(async () => (await area.boundingBox())?.width ?? 0).toBeGreaterThan(150);
 		}
 		await expect(page.getByTestId("host-charts")).toHaveAttribute("data-range", "1h");
 		await expect(page.getByTestId("host-footer")).toContainText(
