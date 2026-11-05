@@ -20,9 +20,10 @@ import { RISK_KINDS, type RiskKind } from "./risk-confirm.ts";
 
 /**
  * "Guard dangerous commands" (Settings › Safety): what the setting is, what the server tells the gate inside omp, and
- * what the gate writes down about each decision. One module with no imports but a type, because the gate runs inside
- * omp's own process, copied next to `shared/remote-risk.ts` (see `server/omp/gate/install.ts`); the server and the page
- * read the same file.
+ * what the gate writes down about each decision. Pure data and functions, importing only `shared/guard-policy.ts` and
+ * `shared/risk-confirm.ts`, because the gate runs inside omp's own process with these files copied next to
+ * `shared/remote-risk.ts` (see `server/omp/gate/install.ts`, which copies all of them); the server and the page read the
+ * same files.
  *
  * What it is: every conversation's omp, the main agent's and each subagent's, is started with the gate (`#608`). With
  * the guard on, a call the classifier (`shared/remote-risk.ts`) calls risky is not run until it is approved: by an

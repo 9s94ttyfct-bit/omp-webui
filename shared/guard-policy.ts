@@ -8,9 +8,10 @@ import { RISK_KINDS } from "./risk-confirm.ts";
  * `server/omp/gate/install.ts`), and so do the server and the page.
  *
  * What cannot be tuned, on purpose: the gate refuses a call that names the app's own files before any threshold, policy or
- * reviewer is asked (`namesOwn` in the gate); `protected` (credentials, omp's configuration, this server's own API) and
- * `unreadable` can be set to Ask or Block, never to Allow (`THRESHOLD_FLOOR`); and the reviewer is always told, after the
- * person's rules, that the guard's own settings, state and API are off limits whatever those rules say (`review.ts`).
+ * reviewer is asked (`namesOwn` in the gate); the kinds in `THRESHOLD_FLOOR` (`protected`: credentials, omp's
+ * configuration, this server's own API; `secret_read`, `mass_delete` and `unreadable`) can be set to Ask or Block, never to
+ * Allow; and the reviewer is always told, after the person's rules, that the guard's own settings, state and API are off
+ * limits whatever those rules say (`review.ts`).
  */
 
 // ---------------------------------------------------------------------------------------------------- thresholds
@@ -44,7 +45,7 @@ export const THRESHOLD_FLOOR: Readonly<Partial<Record<RiskKind, Threshold>>> = {
 export type SettableKind = Exclude<RiskKind, "remote_tool">;
 export const isSettable = (kind: RiskKind): kind is SettableKind => kind !== "remote_tool";
 
-/** The categories the person may set, in the order the classifier ranks them (most serious first). */
+/** The categories the person may set, in the order of `RISK_KINDS`. */
 export const SETTABLE_KINDS: readonly SettableKind[] = RISK_KINDS.filter(isSettable);
 
 /** Whether `kind` can be set to `to`: a floor is the least strict allowed. */
