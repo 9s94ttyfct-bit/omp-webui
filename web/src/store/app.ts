@@ -359,13 +359,18 @@ export function hashOf(v: View): string {
 /** The end of a conversation's address that shows its browser full screen. */
 const BROWSER_FULL = "/browser";
 
-/** A conversation's address (`<file>` or `<liveId>`) with the full screen it shows (a subagent, the browser), if any. */
+/**
+ * A conversation's address (`<file>` or `<liveId>`) with the full screen it shows (a subagent, the browser), if any. A
+ * subagent's is looked for first: its id may itself be `browser`.
+ */
 function splitFull(rest: string): { target: string; agent?: string; browser?: true } {
-	if (rest.endsWith(BROWSER_FULL)) return { target: rest.slice(0, -BROWSER_FULL.length), browser: true };
 	const at = rest.indexOf("/agent/");
-	if (at < 0) return { target: rest };
-	const agent = decodeURIComponent(rest.slice(at + "/agent/".length));
-	return agent ? { target: rest.slice(0, at), agent } : { target: rest.slice(0, at) };
+	if (at >= 0) {
+		const agent = decodeURIComponent(rest.slice(at + "/agent/".length));
+		return agent ? { target: rest.slice(0, at), agent } : { target: rest.slice(0, at) };
+	}
+	if (rest.endsWith(BROWSER_FULL)) return { target: rest.slice(0, -BROWSER_FULL.length), browser: true };
+	return { target: rest };
 }
 
 function writeHash(v: View, replace: boolean): void {

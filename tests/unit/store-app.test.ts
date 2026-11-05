@@ -6,6 +6,7 @@ import { noteServerTime, serverOffsetMs } from "../../web/src/lib/server-clock.t
 import { ReplyError, socket } from "../../web/src/lib/ws.ts";
 import {
 	answerDialog,
+	hashOf,
 	onServer,
 	refreshEntries,
 	setApprovalMode,
@@ -199,6 +200,16 @@ test("a conversation's browser full screen is #/s/<file>/browser (or #/live/<id>
 	expect(viewFromHash()).toEqual(view);
 	location.hash = `#/s/${encodeURIComponent("/tmp/a/browser")}`;
 	expect(viewFromHash()).toEqual({ kind: "chat", file: "/tmp/a/browser", liveId: null });
+});
+
+test("a subagent named `browser` is that subagent's full screen, not the conversation's browser", () => {
+	for (const view of [
+		{ kind: "chat", file: "/tmp/x.jsonl", liveId: null, agent: "browser" },
+		{ kind: "chat", file: null, liveId: "L9", agent: "browser" },
+	] as const) {
+		location.hash = hashOf(view);
+		expect(viewFromHash()).toEqual(view);
+	}
 });
 
 test("switching subagents replaces the address, so Back leaves the full screen in one step", () => {
