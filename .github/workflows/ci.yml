@@ -190,9 +190,12 @@ jobs:
       # What the runner has: the timings and the shard counts are only as good as it is like the last one.
       - if: runner.os == 'Linux'
         run: nproc && free -m
-      # `bun run test:release`'s files, a third of them by the time each took (.bun-test-timings.json).
+      # `bun run test:release`'s files, a third of them by the time each took (.bun-test-timings.json). The list is read
+      # first, so that a failing test-shard.ts fails the step: bun test with no files would run every test of the checkout.
       - run: |
-          mapfile -t files < <(bun scripts/test-shard.ts --shard ${{ matrix.shard }}/3)
+          list=$(bun scripts/test-shard.ts --shard ${{ matrix.shard }}/3)
+          [ -n "$list" ] || { echo "scripts/test-shard.ts listed no test files for shard ${{ matrix.shard }}/3" >&2; exit 1; }
+          mapfile -t files <<< "$list"
           bun scripts/with-model-login.ts bun test --parallel --timeout 30000 --timings=.bun-test-timings.json "${files[@]}"
 
   e2e:
