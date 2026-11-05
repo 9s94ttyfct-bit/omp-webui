@@ -37,6 +37,7 @@ import {
 	overFootprintBudget,
 	waitForQuiet,
 } from "./lib/bench-gate.ts";
+import { onShutdown } from "./lib/shutdown.ts";
 
 const args = process.argv.slice(2);
 const opt = (name: string, fallback: string): string => {
@@ -155,172 +156,184 @@ const harness = harnessFiles(dirB);
 say("## A's harness\n");
 if (!harness.includes("scripts/bench.ts")) throw new Error(`${dirB} has no scripts/bench.ts`);
 const copy = join(os.tmpdir(), `ompw-gate-a-${stamp}-${process.pid}`);
-let cp = spawnSync("cp", ["-cR", dirA, copy], { stdio: "ignore" });
-if (cp.status !== 0) {
-	rmSync(copy, { recursive: true, force: true });
-	cp = spawnSync("cp", ["-R", dirA, copy], { stdio: "ignore" });
-}
-if (cp.status !== 0) throw new Error(`could not copy ${dirA} to ${copy}`);
-const replaced: string[] = [];
-for (const file of harness) {
-	const from = join(dirB, file);
-	const to = join(copy, file);
-	if (!existsSync(to) || !readFileSync(to).equals(readFileSync(from))) replaced.push(file);
-	mkdirSync(dirname(to), { recursive: true });
-	copyFileSync(from, to);
-}
-say(
-	`A is measured in a temporary copy of ${dirA} (${copy}), with B's measuring harness laid over it so both sides record the footprint: ${harness.length} files from ${dirB} (\`scripts/bench.ts\`, \`tests/support/*\` it imports, the fake omp), of which ${replaced.length} differ from A's (${replaced.join(", ") || "none"}). A's app code (server, web, shared) is its own and is what is measured.`,
-);
-say("");
-for (const run of plan) if (run.dir === dirA) run.dir = copy;
+// A whole checkout, node_modules included: removed however the gate ends (its verdict in `finish`, an error, a signal).
+const removeCopy = onShutdown(() => rmSync(copy, { recursive: true, force: true }));
+try {
+	let cp = spawnSync("cp", ["-cR", dirA, copy], { stdio: "ignore" });
+	if (cp.status !== 0) {
+		rmSync(copy, { recursive: true, force: true });
+		cp = spawnSync("cp", ["-R", dirA, copy], { stdio: "ignore" });
+	}
+	if (cp.status !== 0) throw new Error(`could not copy ${dirA} to ${copy}`);
+	const replaced: string[] = [];
+	for (const file of harness) {
+		const from = join(dirB, file);
+		const to = join(copy, file);
+		if (!existsSync(to) || !readFileSync(to).equals(readFileSync(from))) replaced.push(file);
+		mkdirSync(dirname(to), { recursive: true });
+		copyFileSync(from, to);
+	}
+	say(
+		`A is measured in a temporary copy of ${dirA} (${copy}), with B's measuring harness laid over it so both sides record the footprint: ${harness.length} files from ${dirB} (\`scripts/bench.ts\`, \`tests/support/*\` it imports, the fake omp), of which ${replaced.length} differ from A's (${replaced.join(", ") || "none"}). A's app code (server, web, shared) is its own and is what is measured.`,
+	);
+	say("");
+	for (const run of plan) if (run.dir === dirA) run.dir = copy;
 
-// ------------------------------------------------------------------ build both trees (before the wait: a build is load)
-const logFile = (name: string) => openSync(join(out, name), "w");
-if (!args.includes("--no-build")) {
-	for (const [tag, dir] of [
-		["A", copy],
-		["B", dirB],
-	] as const) {
-		console.error(`building ${tag} (${dir}) ...`);
-		const fd = logFile(`build-${tag}.log`);
-		const r = spawnSync("bun", ["run", "build"], { cwd: dir, stdio: ["ignore", fd, fd] });
+	// ------------------------------------------------------------------ build both trees (before the wait: a build is load)
+	const logFile = (name: string) => openSync(join(out, name), "w");
+	if (!args.includes("--no-build")) {
+		for (const [tag, dir] of [
+			["A", copy],
+			["B", dirB],
+		] as const) {
+			console.error(`building ${tag} (${dir}) ...`);
+			const fd = logFile(`build-${tag}.log`);
+			const r = spawnSync("bun", ["run", "build"], { cwd: dir, stdio: ["ignore", fd, fd] });
+			closeSync(fd);
+			if (r.status !== 0)
+				finish(GATE_EXIT.refused, `REFUSED: \`bun run build\` failed in ${dir} (see ${join(out, `build-${tag}.log`)})`);
+		}
+	}
+	if (!readFileSync(join(dirB, "scripts", "bench.ts"), "utf8").includes("footprint")) {
+		say(
+			`> B (${dirB}) has a bench.ts that does not record the server's footprint, and it is the harness of both sides: the memory gate cannot apply.`,
+		);
+	}
+
+	// ------------------------------------------------------------------ A, B, A′
+	interface Measured {
+		run: Run;
+		report: Report;
+		loadAtStart: number;
+		waitedMin: number;
+		provisional: boolean;
+		caveats: string[];
+	}
+	const measured: Measured[] = [];
+	say("\n| run | checkout | load at start | waited | provisional |\n| --- | --- | ---: | ---: | --- |");
+	const rows: string[] = [];
+	for (const run of plan) {
+		console.error(`\n=== ${run.label}: waiting for a quiet machine (load <= ${maxLoad}) ...`);
+		const q = await waitForQuiet({
+			readLoad: () => os.loadavg()[0],
+			sleep: (ms) => sleep(ms),
+			now: () => performance.now(),
+			maxLoad,
+			maxWaitMs: maxWaitMin * 60_000,
+			pollMs: pollSec * 1000,
+			onWait: (load, waited) =>
+				console.error(`load ${load.toFixed(1)} > ${maxLoad}: waiting (${Math.round(waited / 1000)} s)${busiest()}`),
+		});
+		const allowLoad = !q.quiet;
+		if (allowLoad && onTimeout === "refuse") {
+			for (const r of rows) say(r);
+			finish(
+				GATE_EXIT.refused,
+				`REFUSED: the machine did not get quiet before ${run.label} (load ${q.load.toFixed(1)} > ${maxLoad} after ${(q.waitedMs / 60_000).toFixed(1)} min); nothing was measured under load.${busiest()} Rerun later, or pass --on-timeout provisional to measure anyway (everything is then marked PROVISIONAL)`,
+			);
+		}
+		if (allowLoad)
+			console.error(
+				`!!! load ${q.load.toFixed(1)} after ${(q.waitedMs / 60_000).toFixed(1)} min: measuring anyway (--on-timeout provisional): PROVISIONAL`,
+			);
+		const cmd = [
+			"scripts/bench.ts",
+			"--label",
+			run.label,
+			"--runs",
+			runs,
+			"--warmup",
+			warmup,
+			"--shards",
+			shards,
+			"--out",
+			out,
+		];
+		if (only) cmd.push("--only", only);
+		if (allowLoad) cmd.push("--allow-load");
+		const fd = logFile(`run-${run.label}.log`);
+		const r = spawnSync("bun", cmd, { cwd: run.dir, stdio: ["ignore", fd, fd] });
 		closeSync(fd);
-		if (r.status !== 0)
-			finish(GATE_EXIT.refused, `REFUSED: \`bun run build\` failed in ${dir} (see ${join(out, `build-${tag}.log`)})`);
+		if (r.status !== 0 || !existsSync(reportPath(run))) {
+			for (const row of rows) say(row);
+			finish(
+				GATE_EXIT.refused,
+				`RUN FAILED: ${run.label} exited ${r.status} (see ${join(out, `run-${run.label}.log`)})`,
+			);
+		}
+		const rep = JSON.parse(readFileSync(reportPath(run), "utf8")) as Report;
+		const m: Measured = {
+			run,
+			report: rep,
+			loadAtStart: q.load,
+			waitedMin: q.waitedMs / 60_000,
+			provisional: rep.provisional || allowLoad,
+			caveats: rep.caveats,
+		};
+		measured.push(m);
+		const row = `| ${run.label} | ${run.dir} | ${q.load.toFixed(1)} | ${m.waitedMin.toFixed(1)} min | ${m.provisional ? `**PROVISIONAL**: ${m.caveats.join("; ") || "run with --allow-load"}` : "no"} |`;
+		rows.push(row);
+		console.error(row);
 	}
-}
-if (!readFileSync(join(dirB, "scripts", "bench.ts"), "utf8").includes("footprint")) {
-	say(
-		`> B (${dirB}) has a bench.ts that does not record the server's footprint, and it is the harness of both sides: the memory gate cannot apply.`,
-	);
-}
+	for (const row of rows) say(row);
 
-// ------------------------------------------------------------------ A, B, A′
-interface Measured {
-	run: Run;
-	report: Report;
-	loadAtStart: number;
-	waitedMin: number;
-	provisional: boolean;
-	caveats: string[];
-}
-const measured: Measured[] = [];
-say("\n| run | checkout | load at start | waited | provisional |\n| --- | --- | ---: | ---: | --- |");
-const rows: string[] = [];
-for (const run of plan) {
-	console.error(`\n=== ${run.label}: waiting for a quiet machine (load <= ${maxLoad}) ...`);
-	const q = await waitForQuiet({
-		readLoad: () => os.loadavg()[0],
-		sleep: (ms) => sleep(ms),
-		now: () => performance.now(),
-		maxLoad,
-		maxWaitMs: maxWaitMin * 60_000,
-		pollMs: pollSec * 1000,
-		onWait: (load, waited) =>
-			console.error(`load ${load.toFixed(1)} > ${maxLoad}: waiting (${Math.round(waited / 1000)} s)${busiest()}`),
-	});
-	const allowLoad = !q.quiet;
-	if (allowLoad && onTimeout === "refuse") {
-		for (const r of rows) say(r);
-		finish(
-			GATE_EXIT.refused,
-			`REFUSED: the machine did not get quiet before ${run.label} (load ${q.load.toFixed(1)} > ${maxLoad} after ${(q.waitedMs / 60_000).toFixed(1)} min); nothing was measured under load.${busiest()} Rerun later, or pass --on-timeout provisional to measure anyway (everything is then marked PROVISIONAL)`,
+	// ------------------------------------------------------------------ the three comparisons, with B's own harness
+	const pairs = [
+		["AB", plan[0], plan[1]],
+		["AA2", plan[0], plan[2]],
+		["A2B", plan[2], plan[1]],
+	] as const;
+	const codes: Record<string, number> = {};
+	for (const [name, x, y] of pairs) {
+		const r = spawnSync(
+			"bun",
+			["scripts/bench.ts", "--compare", reportPath(x), reportPath(y), "--threshold", threshold],
+			{ cwd: dirB, encoding: "utf8" },
 		);
-	}
-	if (allowLoad)
-		console.error(
-			`!!! load ${q.load.toFixed(1)} after ${(q.waitedMs / 60_000).toFixed(1)} min: measuring anyway (--on-timeout provisional): PROVISIONAL`,
+		writeFileSync(join(out, `cmp-${name}.md`), r.stdout);
+		// A crash also exits 1: a real comparison says something on stdout and nothing on stderr.
+		codes[name] = r.stderr.trim() || !r.stdout.trim() ? 99 : (r.status ?? 99);
+		say(
+			`\ncmp-${name}.md: ${x.label} vs ${y.label}: exit ${codes[name]}${r.stderr.trim() ? ` (stderr: ${r.stderr.trim().slice(0, 200)})` : ""}`,
 		);
-	const cmd = [
-		"scripts/bench.ts",
-		"--label",
-		run.label,
-		"--runs",
-		runs,
-		"--warmup",
-		warmup,
-		"--shards",
-		shards,
-		"--out",
-		out,
-	];
-	if (only) cmd.push("--only", only);
-	if (allowLoad) cmd.push("--allow-load");
-	const fd = logFile(`run-${run.label}.log`);
-	const r = spawnSync("bun", cmd, { cwd: run.dir, stdio: ["ignore", fd, fd] });
-	closeSync(fd);
-	if (r.status !== 0 || !existsSync(reportPath(run))) {
-		for (const row of rows) say(row);
-		finish(GATE_EXIT.refused, `RUN FAILED: ${run.label} exited ${r.status} (see ${join(out, `run-${run.label}.log`)})`);
+		const worse = /^\d+ metric\(s\) worse: .*$/m.exec(r.stdout)?.[0];
+		if (worse) say(`  ${worse}`);
+		if (/Memory gate not applied/.test(r.stdout)) say("  memory gate not applied (a report has no footprint metrics)");
 	}
-	const rep = JSON.parse(readFileSync(reportPath(run), "utf8")) as Report;
-	const m: Measured = {
-		run,
-		report: rep,
-		loadAtStart: q.load,
-		waitedMin: q.waitedMs / 60_000,
-		provisional: rep.provisional || allowLoad,
-		caveats: rep.caveats,
+
+	const provisional = measured.some((m) => m.provisional);
+	const noFootprint = labelsWithoutFootprint(measured.map((m) => m.report));
+	if (noFootprint.length) say(`\nNo footprint metrics in ${noFootprint.join(", ")}: memory was not gated.`);
+	// B's footprint against v0.13.0's (measured[1] is B: the plan is A, B, A′ and every run got here).
+	const budget = overFootprintBudget(measured[1].report, process.platform);
+	const overBudget = "over" in budget ? budget.over : [];
+	if ("notApplied" in budget) say(`\nFootprint budgets not applied: ${budget.notApplied}.`);
+	for (const o of overBudget)
+		say(
+			`\n**${o.metric} over budget**: B's median ${o.medianMb.toFixed(1)} MB > ${o.budgetMb.toFixed(1)} MB (v0.13.0 + 5 %)`,
+		);
+	const code = gateExitCode(
+		{ ab: codes.AB, aa2: codes.AA2, a2b: codes.A2B },
+		{ provisionalRuns: provisional, memoryGated: noFootprint.length === 0, overBudget: overBudget.length > 0 },
+	);
+	const reasons = [
+		provisional ? "a run was made on a machine that was not quiet (or otherwise off)" : "",
+		noFootprint.length ? `memory was not gated (no footprint metrics in ${noFootprint.join(", ")})` : "",
+	].filter(Boolean);
+	const text: Record<number, string> = {
+		[GATE_EXIT.pass]:
+			"PASS: B is not worse than A or A′ on any gated metric (memory included: footprint), and A matches A′",
+		[GATE_EXIT.regression]:
+			"REGRESSION: B is worse than A or A′ on a gated metric (see cmp-AB.md, cmp-A2B.md), or its server footprint is over budget",
+		[GATE_EXIT.unusable]: "UNUSABLE: a report is invalid or the reports are not comparable (see the cmp files)",
+		[GATE_EXIT.drift]:
+			"DRIFT: A differs from A′ on a gated metric (cmp-AA2.md): the machine moved between the runs, A against B proves nothing; measure again",
+		[GATE_EXIT.provisionalPass]: `PROVISIONAL: nothing is worse, but ${reasons.join(" and ")}: this is not evidence`,
 	};
-	measured.push(m);
-	const row = `| ${run.label} | ${run.dir} | ${q.load.toFixed(1)} | ${m.waitedMin.toFixed(1)} min | ${m.provisional ? `**PROVISIONAL**: ${m.caveats.join("; ") || "run with --allow-load"}` : "no"} |`;
-	rows.push(row);
-	console.error(row);
+	finish(
+		code,
+		`${text[code]}${reasons.length && code !== GATE_EXIT.provisionalPass ? ` [${reasons.join("; ")}]` : ""}`,
+	);
+} finally {
+	await removeCopy();
 }
-for (const row of rows) say(row);
-
-// ------------------------------------------------------------------ the three comparisons, with B's own harness
-const pairs = [
-	["AB", plan[0], plan[1]],
-	["AA2", plan[0], plan[2]],
-	["A2B", plan[2], plan[1]],
-] as const;
-const codes: Record<string, number> = {};
-for (const [name, x, y] of pairs) {
-	const r = spawnSync(
-		"bun",
-		["scripts/bench.ts", "--compare", reportPath(x), reportPath(y), "--threshold", threshold],
-		{ cwd: dirB, encoding: "utf8" },
-	);
-	writeFileSync(join(out, `cmp-${name}.md`), r.stdout);
-	// A crash also exits 1: a real comparison says something on stdout and nothing on stderr.
-	codes[name] = r.stderr.trim() || !r.stdout.trim() ? 99 : (r.status ?? 99);
-	say(
-		`\ncmp-${name}.md: ${x.label} vs ${y.label}: exit ${codes[name]}${r.stderr.trim() ? ` (stderr: ${r.stderr.trim().slice(0, 200)})` : ""}`,
-	);
-	const worse = /^\d+ metric\(s\) worse: .*$/m.exec(r.stdout)?.[0];
-	if (worse) say(`  ${worse}`);
-	if (/Memory gate not applied/.test(r.stdout)) say("  memory gate not applied (a report has no footprint metrics)");
-}
-
-const provisional = measured.some((m) => m.provisional);
-const noFootprint = labelsWithoutFootprint(measured.map((m) => m.report));
-if (noFootprint.length) say(`\nNo footprint metrics in ${noFootprint.join(", ")}: memory was not gated.`);
-// B's footprint against v0.13.0's (measured[1] is B: the plan is A, B, A′ and every run got here).
-const budget = overFootprintBudget(measured[1].report, process.platform);
-const overBudget = "over" in budget ? budget.over : [];
-if ("notApplied" in budget) say(`\nFootprint budgets not applied: ${budget.notApplied}.`);
-for (const o of overBudget)
-	say(
-		`\n**${o.metric} over budget**: B's median ${o.medianMb.toFixed(1)} MB > ${o.budgetMb.toFixed(1)} MB (v0.13.0 + 5 %)`,
-	);
-const code = gateExitCode(
-	{ ab: codes.AB, aa2: codes.AA2, a2b: codes.A2B },
-	{ provisionalRuns: provisional, memoryGated: noFootprint.length === 0, overBudget: overBudget.length > 0 },
-);
-const reasons = [
-	provisional ? "a run was made on a machine that was not quiet (or otherwise off)" : "",
-	noFootprint.length ? `memory was not gated (no footprint metrics in ${noFootprint.join(", ")})` : "",
-].filter(Boolean);
-const text: Record<number, string> = {
-	[GATE_EXIT.pass]:
-		"PASS: B is not worse than A or A′ on any gated metric (memory included: footprint), and A matches A′",
-	[GATE_EXIT.regression]:
-		"REGRESSION: B is worse than A or A′ on a gated metric (see cmp-AB.md, cmp-A2B.md), or its server footprint is over budget",
-	[GATE_EXIT.unusable]: "UNUSABLE: a report is invalid or the reports are not comparable (see the cmp files)",
-	[GATE_EXIT.drift]:
-		"DRIFT: A differs from A′ on a gated metric (cmp-AA2.md): the machine moved between the runs, A against B proves nothing; measure again",
-	[GATE_EXIT.provisionalPass]: `PROVISIONAL: nothing is worse, but ${reasons.join(" and ")}: this is not evidence`,
-};
-finish(code, `${text[code]}${reasons.length && code !== GATE_EXIT.provisionalPass ? ` [${reasons.join("; ")}]` : ""}`);
