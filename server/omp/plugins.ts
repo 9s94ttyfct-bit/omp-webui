@@ -901,6 +901,12 @@ function scheduleCheck(inMs: number): void {
 async function autoCheck(): Promise<void> {
 	const deps = autoDeps;
 	if (!deps?.updates.autoOn()) return;
+	// An import writes omp's files, the marketplace catalogs the check fetches again among them: it is put off, as the
+	// check the page asks for is refused.
+	if (deps.held()) {
+		scheduleCheck(retryInstallMs());
+		return;
+	}
 	let checked = true;
 	try {
 		await check(deps);

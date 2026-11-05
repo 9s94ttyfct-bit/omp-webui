@@ -1,5 +1,14 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { checkUpdates, newer, registryLatest, updateStep } from "../../server/omp/plugin-updates.ts";
@@ -260,6 +269,7 @@ describe("the automatic update", () => {
 	const realHome = process.env.HOME;
 	const realProfile = process.env.USERPROFILE;
 	let held = { working: 1, asking: 0, paused: 0, waiting: 0 };
+	let importing: Error | null = null;
 	let on = true;
 	let plugins: typeof import("../../server/omp/plugins.ts");
 	let deps: import("../../server/omp/plugins.ts").PluginsDeps;
@@ -290,7 +300,7 @@ describe("the automatic update", () => {
 			agentDir: join(home, ".omp", "agent"),
 			neutral: root,
 			pool: { list: () => [], get: () => undefined } as unknown as import("../../server/live.ts").LivePool,
-			held: () => null,
+			held: () => importing,
 			updates: {
 				autoOn: () => on,
 				conversations: () => held,
@@ -325,6 +335,18 @@ describe("the automatic update", () => {
 			await Bun.sleep(25);
 		}
 	};
+
+	test("while an import writes omp's files it does not check (the catalogs are omp's files too), and checks after", async () => {
+		importing = new Error("An import is writing omp's files");
+		plugins.autoUpdates(deps);
+		const planned = (await updates()).auto.nextCheckAt;
+		// The check is due, and put off rather than made.
+		await until(async () => (await updates()).auto.nextCheckAt !== planned);
+		expect((await updates()).checkedAt).toBeNull();
+		const calls = join(home, ".fake-plugins-omp.calls");
+		expect(existsSync(calls) ? readFileSync(calls, "utf8") : "").not.toContain('"marketplace","update"');
+		importing = null;
+	});
 
 	test("it checks, waits while a conversation works, then installs everything newer and lists nothing left", async () => {
 		plugins.autoUpdates(deps);
