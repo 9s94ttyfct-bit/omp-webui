@@ -1,24 +1,20 @@
 /**
  * Where a CPU profile (`.cpuprofile`, from `scripts/long-run.ts --profile` or DevTools) spent its time: the functions
- * with the most self time, and the ones with the most time including what they call.
+ * with the most self time, and the ones with the most time including what they call. Each sample is charged as DevTools
+ * charges it (scripts/lib/cpu-profile.ts).
  *
  *   bun scripts/cpu-summary.ts <profile> [rows]
  */
 import { readFileSync } from "node:fs";
+import { type CpuProfile, type CpuProfileNode as Node, selfTimeByNode } from "./lib/cpu-profile.ts";
 
-interface Node {
-	id: number;
-	callFrame: { functionName: string; url: string; lineNumber: number };
-	children?: number[];
-}
 const [path, rowsArg] = process.argv.slice(2);
 if (!path) throw new Error("usage: bun scripts/cpu-summary.ts <profile> [rows]");
-const profile = JSON.parse(readFileSync(path, "utf8")) as { nodes: Node[]; samples: number[]; timeDeltas: number[] };
+const profile = JSON.parse(readFileSync(path, "utf8")) as CpuProfile;
 const byId = new Map(profile.nodes.map((n) => [n.id, n]));
 const parent = new Map<number, number>();
 for (const n of profile.nodes) for (const c of n.children ?? []) parent.set(c, n.id);
-const self = new Map<number, number>();
-for (const [i, id] of profile.samples.entries()) self.set(id, (self.get(id) ?? 0) + (profile.timeDeltas[i] ?? 0));
+const self = selfTimeByNode(profile);
 const label = (n: Node) =>
 	`${n.callFrame.functionName || "(anonymous)"} ${n.callFrame.url.split("/").at(-1)}:${n.callFrame.lineNumber}`;
 const selfBy = new Map<string, number>();
@@ -34,7 +30,7 @@ for (const [id, us] of self) {
 		totalBy.set(l, (totalBy.get(l) ?? 0) + us);
 	}
 }
-const wall = profile.timeDeltas.reduce((a, b) => a + b, 0);
+const wall = [...self.values()].reduce((a, b) => a + b, 0);
 const idle = selfBy.get("(idle) :-1") ?? 0;
 const rows = Number(rowsArg ?? 22);
 const show = (title: string, m: Map<string, number>) => {

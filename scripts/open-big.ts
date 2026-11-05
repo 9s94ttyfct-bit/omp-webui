@@ -30,6 +30,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { chromium } from "playwright";
 import type { SessionSummary } from "../shared/protocol.ts";
+import { type CpuProfile, selfTimeByNode } from "./lib/cpu-profile.ts";
 
 const args = process.argv.slice(2);
 const opt = (name: string, fallback: string): string => {
@@ -184,20 +185,16 @@ function serverUse(pid: number): { cpuMs: number; rssMb: number } {
 	return { cpuMs: cpuMs(cpu), rssMb: Number(rss) / 1024 };
 }
 
-/** Where a CPU profile's time went: the self time of each function, the largest first. */
-function topFunctions(prof: {
-	nodes: { id: number; callFrame: { functionName: string; url: string; lineNumber: number } }[];
-	samples?: number[];
-	timeDeltas?: number[];
-}): { name: string; ms: number }[] {
+/** Where a CPU profile's time went: the self time of each function, the largest first (charged as DevTools does). */
+function topFunctions(prof: CpuProfile): { name: string; ms: number }[] {
 	const byId = new Map(prof.nodes.map((n) => [n.id, n]));
 	const total = new Map<string, number>();
-	for (const [i, id] of (prof.samples ?? []).entries()) {
+	for (const [id, us] of selfTimeByNode(prof)) {
 		const frame = byId.get(id)?.callFrame;
 		if (!frame) continue;
 		const name =
 			`${frame.functionName || "(anonymous)"} ${frame.url ? basename(frame.url) : ""}:${frame.lineNumber}`.trim();
-		total.set(name, (total.get(name) ?? 0) + ((prof.timeDeltas ?? [])[i] ?? 0) / 1000);
+		total.set(name, (total.get(name) ?? 0) + us / 1000);
 	}
 	return [...total.entries()]
 		.map(([name, ms]) => ({ name, ms }))
