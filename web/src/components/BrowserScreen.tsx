@@ -1,5 +1,5 @@
 import { type BrowserInput, frameToPage, type PageInfo, type Size } from "@shared/browser-protocol.ts";
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useT } from "../i18n/index.ts";
 import { type Frame, onFrame, sendScreen } from "../store/browser-screen.ts";
 
@@ -8,9 +8,10 @@ import { type Frame, onFrame, sendScreen } from "../store/browser-screen.ts";
  * tab): the frames drawn on a canvas that fills the room it is given, the page letterboxed in it at its own proportions,
  * and the person's pointer, wheel, keys and composed text sent to the page in its CSS pixels (`frameToPage`).
  *
- * It never takes the keyboard by itself: the composer keeps it until the person clicks or taps into the page. Then a
- * hidden text area holds it, so that a phone's keyboard and an IME have somewhere to type; what they compose is sent as
- * text, and keys that type nothing (Enter, Backspace, arrows, shortcuts) as keys.
+ * It never takes the keyboard by itself: the composer keeps it until the person clicks or taps into the page, or Tabs to
+ * the screen (a tab stop of its own) and presses Enter. Then a hidden text area holds it, so that a phone's keyboard and an
+ * IME have somewhere to type; what they compose is sent as text, and keys that type nothing (Enter, Backspace, arrows, Tab,
+ * shortcuts) as keys. Ctrl+F6 alone is not the page's: it gives the keyboard back to the screen, where Tab moves on.
  */
 
 /** CDP's modifier bits. */
@@ -46,6 +47,9 @@ export function BrowserScreen({ page }: { page: PageInfo }) {
 	const t = useT();
 	const canvas = useRef<HTMLCanvasElement>(null);
 	const typing = useRef<HTMLTextAreaElement>(null);
+	/** Whether the page has the keyboard (the text area is focused): the hint says how to leave. */
+	const [hasKeys, setHasKeys] = useState(false);
+	const hintId = useId();
 	/** The last frame drawn: its page size is what a point is mapped against. */
 	const shown = useRef<{ bitmap: ImageBitmap; header: Frame["header"] } | null>(null);
 	const targetId = page.targetId;
@@ -251,6 +255,14 @@ export function BrowserScreen({ page }: { page: PageInfo }) {
 			e.key === "Process" ||
 			((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v");
 		const keyDown = (e: KeyboardEvent) => {
+			// Ctrl+F6 leaves the page: the keyboard goes back to the screen. The page had the Control press, so it is told of
+			// its release too, which the screen will not send.
+			if (e.key === "F6" && e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+				e.preventDefault();
+				toPage({ kind: "key", type: "keyUp", key: "Control", code: "ControlLeft", keyCode: 17, modifiers: 0 });
+				el.focus({ preventScroll: true });
+				return;
+			}
 			if (leftAlone(e)) return;
 			e.preventDefault();
 			key("keyDown", e);
@@ -290,6 +302,16 @@ export function BrowserScreen({ page }: { page: PageInfo }) {
 			if (e.data) toPage({ kind: "text", text: e.data });
 			text.value = "";
 		};
+		/** On the screen (a tab stop), Enter or Space gives the page the keyboard. */
+		const screenKey = (e: KeyboardEvent) => {
+			if (e.key !== "Enter" && e.key !== " ") return;
+			e.preventDefault();
+			text.focus({ preventScroll: true });
+		};
+		// A press on the page has already given it the keyboard (`down`): the screen does not take it back as it is focused.
+		const mouseDown = (e: MouseEvent) => {
+			if (document.activeElement === text) e.preventDefault();
+		};
 
 		el.addEventListener("pointerdown", down);
 		el.addEventListener("pointermove", move);
@@ -297,6 +319,8 @@ export function BrowserScreen({ page }: { page: PageInfo }) {
 		el.addEventListener("pointercancel", cancel);
 		el.addEventListener("wheel", wheel, { passive: false });
 		el.addEventListener("contextmenu", contextMenu);
+		el.addEventListener("keydown", screenKey);
+		el.addEventListener("mousedown", mouseDown);
 		text.addEventListener("keydown", keyDown);
 		text.addEventListener("keyup", keyUp);
 		text.addEventListener("beforeinput", beforeInput);
@@ -311,6 +335,8 @@ export function BrowserScreen({ page }: { page: PageInfo }) {
 			el.removeEventListener("pointercancel", cancel);
 			el.removeEventListener("wheel", wheel);
 			el.removeEventListener("contextmenu", contextMenu);
+			el.removeEventListener("keydown", screenKey);
+			el.removeEventListener("mousedown", mouseDown);
 			text.removeEventListener("keydown", keyDown);
 			text.removeEventListener("keyup", keyUp);
 			text.removeEventListener("beforeinput", beforeInput);
@@ -320,31 +346,44 @@ export function BrowserScreen({ page }: { page: PageInfo }) {
 		};
 	}, [targetId, page.w, page.h]);
 
-	const label = t("browser.screenLabel", {
-		title: !page.url || page.url === "about:blank" ? t("browser.untitled") : page.title || page.url,
-	});
+	const title = !page.url || page.url === "about:blank" ? t("browser.untitled") : page.title || page.url;
 	return (
 		<div className="relative min-h-0 flex-1 bg-bg">
+			{/* A tab stop: Enter gives the page the keyboard, as a click into it does. */}
+			{/* biome-ignore lint/a11y/useSemanticElements: the canvas draws the page and takes its pointer; a <button> cannot draw. */}
 			<canvas
 				ref={canvas}
-				className="absolute inset-0 h-full w-full touch-none select-none"
+				className="absolute inset-0 h-full w-full touch-none select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
 				data-testid="browser-screen"
 				data-target={targetId}
-				role="img"
-				aria-label={label}
+				role="button"
+				tabIndex={0}
+				aria-label={t("browser.screenEnter", { title })}
 			/>
-			{/* Where the keyboard goes once the person clicked into the page: off screen, never focused by itself. */}
+			{/* Where the keyboard goes once the person gave it to the page: off screen, never focused by itself. */}
 			<textarea
 				ref={typing}
 				className="pointer-events-none absolute top-0 left-0 h-px w-px resize-none overflow-hidden opacity-0"
-				aria-label={label}
+				aria-label={t("browser.screenLabel", { title })}
+				aria-describedby={hasKeys ? hintId : undefined}
 				data-testid="browser-keys"
 				autoCapitalize="off"
 				autoComplete="off"
 				autoCorrect="off"
 				spellCheck={false}
 				tabIndex={-1}
+				onFocus={() => setHasKeys(true)}
+				onBlur={() => setHasKeys(false)}
 			/>
+			{hasKeys ? (
+				<p
+					id={hintId}
+					className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-md border border-border bg-surface px-2 py-0.5 text-xs text-muted shadow-sm"
+					data-testid="browser-keys-hint"
+				>
+					{t("browser.keysHint")}
+				</p>
+			) : null}
 		</div>
 	);
 }

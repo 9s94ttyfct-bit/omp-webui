@@ -21,6 +21,8 @@ export const zh: Record<keyof typeof en, string> = {
 	emptyTitle: "还没有页面",
 	emptyBody: "这个对话的智能体打开的页面会显示在这里。也可以输入地址自己打开一个。",
 	screenLabel: "页面 {title}",
+	screenEnter: "页面 {title}——按 Enter 在其中输入",
+	keysHint: "按 Ctrl+F6 离开",
 	waiting: "正在等待页面…",
 	notInstalledTitle: "浏览器尚未安装",
 	notInstalledBody: "安装后即可查看和使用这个对话的智能体浏览的页面。",

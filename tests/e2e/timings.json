@@ -225,6 +225,7 @@
 		"browser-settings.spec.ts › the size of new pages is kept as the synced preference, within bounds": 2.4,
 		"browser-tab.spec.ts › New page adds a page of this conversation, which another conversation's Browser tab does not show": 2.4,
 		"browser-tab.spec.ts › a double-click on the screencast reaches the page as one, and two slow clicks do not": 3.3,
+		"browser-tab.spec.ts › from the keyboard: Tab reaches the page, Enter gives it the keys, Ctrl+F6 takes them back and Tab moves on": 2.7,
 		"browser-tab.spec.ts › in Chinese the tab, its size switch and its empty state are named in Chinese": 1.7,
 		"browser-tab.spec.ts › in the Mac app's window the tab places the native view instead of drawing the page, and hides it when not shown": 1.5,
 		"browser-tab.spec.ts › on a phone (iPhone 13) a tap lands on the button of a page laid out at 1280×800": 2.5,

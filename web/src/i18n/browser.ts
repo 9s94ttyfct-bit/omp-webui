@@ -25,6 +25,8 @@ export const en = {
 	emptyTitle: "No pages yet",
 	emptyBody: "The pages this conversation's agent opens show here. Type an address to open one yourself.",
 	screenLabel: "Page {title}",
+	screenEnter: "Page {title} — press Enter to type into it",
+	keysHint: "Ctrl+F6 to leave",
 	waiting: "Waiting for the page…",
 	notInstalledTitle: "The browser is not installed",
 	notInstalledBody: "Install it to see and use the pages this conversation's agent browses.",

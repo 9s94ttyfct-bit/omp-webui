@@ -19,8 +19,9 @@ import { expect, type Page, test } from "./fixtures.ts";
  * (`OMPW_BROWSER_EXECUTABLE`, with a mock keychain like every Chrome it starts) and a small web server of the spec's own
  * serves the pages it opens. A conversation's pages are listed, an address opens and the screencast shows it (read back
  * from the canvas's pixels), back / forward / reload, a new page is the conversation's own, the size switch, the console
- * strip and Send to agent, a phone taps a button of a page laid out at 1280×800, the strings in Chinese, and the native
- * view's messages in the Mac app's window. A second server has no browser installed. No model is called.
+ * strip and Send to agent, a phone taps a button of a page laid out at 1280×800, the keyboard's way into the page and out
+ * (Tab, Enter, Ctrl+F6), the strings in Chinese, and the native view's messages in the Mac app's window. A second server
+ * has no browser installed. No model is called.
  */
 
 let s: TestServer;
@@ -38,6 +39,7 @@ const TITLE_CONSOLE = "Browser tab console";
 const TITLE_PHONE = "Browser tab phone";
 const TITLE_BRIDGE = "Browser tab native view";
 const TITLE_DOUBLE = "Browser tab double click";
+const TITLE_KEYS = "Browser tab keyboard";
 
 const html = (title: string, body: string, head = "") =>
 	`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>${head}</head><body style="margin:0">${body}</body></html>`;
@@ -66,6 +68,14 @@ function pageFor(path: string): string | null {
 				"",
 				"<style>html,body{height:100%;background:#ffffff}</style><script>addEventListener('dblclick',()=>{document.body.style.background='#00ff00'})</script>",
 			);
+		case "/keys":
+			// The keys the page gets, as its colour: green for exactly "ok" (then a Control press), red once F6 reached it,
+			// blue for anything else, white before any key.
+			return html(
+				"Keys",
+				"",
+				"<style>html,body{height:100%;background:#ffffff}</style><script>let k='';addEventListener('keydown',(e)=>{k+=e.key.length===1?e.key:'['+e.key+']';document.body.style.background=k.includes('[F6]')?'#ff0000':/^ok(\\[Control\\])?$/.test(k)?'#00ff00':'#0000ff'})</script>",
+			);
 		default:
 			return null;
 	}
@@ -86,11 +96,19 @@ test.beforeAll(async () => {
 	s = await startTestServer(0, { OMP_BIN: omp, OMPW_BROWSER_EXECUTABLE: chromium.executablePath() }, { login: false });
 	bare = await startTestServer(0, { OMP_BIN: omp }, { login: false });
 	for (const server of [s, bare])
-		[TITLE_A, TITLE_B, TITLE_NEW, TITLE_SIZE, TITLE_CONSOLE, TITLE_PHONE, TITLE_BRIDGE, TITLE_DOUBLE].forEach(
-			(title, i) => {
-				writeChatSession(server.agentDir, { n: 0xb1 + i, title, turns: [{ prompt: "hello", reply: "hi" }] });
-			},
-		);
+		[
+			TITLE_A,
+			TITLE_B,
+			TITLE_NEW,
+			TITLE_SIZE,
+			TITLE_CONSOLE,
+			TITLE_PHONE,
+			TITLE_BRIDGE,
+			TITLE_DOUBLE,
+			TITLE_KEYS,
+		].forEach((title, i) => {
+			writeChatSession(server.agentDir, { n: 0xb1 + i, title, turns: [{ prompt: "hello", reply: "hi" }] });
+		});
 });
 test.afterAll(async () => {
 	await s?.stop();
@@ -300,6 +318,48 @@ test("a double-click on the screencast reaches the page as one, and two slow cli
 	expect(near(await centre(page), [255, 255, 255])).toBe(true);
 	await canvas.dblclick();
 	await expect.poll(async () => near(await centre(page), GREEN)).toBe(true);
+});
+
+test("from the keyboard: Tab reaches the page, Enter gives it the keys, Ctrl+F6 takes them back and Tab moves on", async ({
+	page,
+}) => {
+	await withPage(page, TITLE_KEYS);
+	await go(page, "/keys");
+	await showing(page, "/keys");
+	await expect.poll(async () => near(await centre(page), [255, 255, 255]), { timeout: 20_000 }).toBe(true);
+	const screen = page.getByTestId("browser-screen");
+	const keys = page.getByTestId("browser-keys");
+	const hint = page.getByTestId("browser-keys-hint");
+
+	// The page is the tab stop after the size switch, named for what Enter does.
+	await page.getByTestId("browser-size-phone").focus();
+	await page.keyboard.press("Tab");
+	await expect(screen).toBeFocused();
+	await expect(screen).toHaveAccessibleName("Page Keys — press Enter to type into it");
+	await expect(hint).toHaveCount(0);
+	// On the screen, a key goes nowhere: the page has not been given the keys (it would not be "ok" below).
+	await page.keyboard.press("x");
+	await page.keyboard.press("Enter");
+	await expect(keys).toBeFocused();
+	await expect(hint).toHaveText("Ctrl+F6 to leave");
+	const found = await new AxeBuilder({ page }).include('[data-testid="browser-tab"]').analyze();
+	expect(found.violations.map((v) => v.id)).toEqual([]);
+
+	await page.keyboard.type("ok");
+	await expect.poll(async () => near(await centre(page), GREEN)).toBe(true);
+	// Ctrl+F6 is not the page's: the keys come back to the screen, and the next Tab leaves it without reaching the page.
+	await page.keyboard.press("Control+F6");
+	await expect(screen).toBeFocused();
+	await expect(hint).toHaveCount(0);
+	await page.keyboard.press("Tab");
+	await expect(screen).not.toBeFocused();
+	await expect(keys).not.toBeFocused();
+	await page.waitForTimeout(500);
+	expect(near(await centre(page), GREEN)).toBe(true);
+	// A click into the page gives it the keys as well, and they stay there.
+	await screen.click();
+	await expect(keys).toBeFocused();
+	await expect(hint).toBeVisible();
 });
 
 test("in Chinese the tab, its size switch and its empty state are named in Chinese", async ({ page }) => {
