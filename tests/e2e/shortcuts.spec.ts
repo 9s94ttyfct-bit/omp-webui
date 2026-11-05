@@ -96,6 +96,8 @@ test("a shortcut is changed by pressing the new keys: they do it, on this device
 	await page.keyboard.up("Shift");
 	await page.keyboard.press("ControlOrMeta+j");
 	await expect(row(page, "search").getByTestId("shortcut-keys")).toContainText("J");
+	// Focus is back on the row's Change, not dropped to the page.
+	await expect(row(page, "search").getByTestId("shortcut-change")).toBeFocused();
 	// The keys pressed in the recorder did nothing else: no palette.
 	await expect(page.getByTestId("palette-input")).toHaveCount(0);
 
@@ -126,6 +128,8 @@ test("a key another action has is a swap, a surface's own key is refused, a type
 		"is already “Steer: interrupt omp with this message now” (Composer)",
 	);
 	await expect(row(page, "send").getByTestId("shortcut-message")).toContainText("gets ");
+	// The recorder is gone; its choices have focus.
+	await expect(row(page, "send").getByTestId("shortcut-swap")).toBeFocused();
 	await row(page, "send").getByTestId("shortcut-swap").click();
 	await expect(row(page, "send").getByTestId("shortcut-keys")).not.toHaveText(
 		await row(page, "steer").getByTestId("shortcut-keys").innerText(),
@@ -141,6 +145,7 @@ test("a key another action has is a swap, a surface's own key is refused, a type
 	await expect(row(page, "presetCycle").getByTestId("shortcut-message")).toContainText("“New line”");
 	await expect(row(page, "presetCycle").getByTestId("shortcut-swap")).toHaveCount(0);
 	await row(page, "presetCycle").getByTestId("shortcut-cancel").click();
+	await expect(row(page, "presetCycle").getByTestId("shortcut-change")).toBeFocused();
 
 	// A letter alone would be typed into the message box: the recorder says so and keeps listening.
 	await row(page, "presetCycle").getByTestId("shortcut-change").click();
@@ -151,6 +156,7 @@ test("a key another action has is a swap, a surface's own key is refused, a type
 	await page.keyboard.press("Escape");
 	await expect(row(page, "presetCycle").getByTestId("shortcut-record")).toHaveCount(0);
 	await expect(row(page, "presetCycle").getByTestId("shortcut-keys")).toContainText("M");
+	await expect(row(page, "presetCycle").getByTestId("shortcut-change")).toBeFocused();
 
 	// ⌘W is the browser's: warned, and kept only on Use anyway.
 	await row(page, "goal").getByTestId("shortcut-change").click();

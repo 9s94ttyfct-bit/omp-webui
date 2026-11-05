@@ -68,6 +68,8 @@ test("a list is built and changed with the state icon, the menus and the fields,
 	await expect(panel.getByTestId("todo-task")).toHaveCount(1);
 	await expect(taskRow(panel, "Write the parser")).toHaveAttribute("data-status", "in_progress");
 	expect(reported(tap)).toEqual([{ name: "Todos", tasks: [{ content: "Write the parser", status: "in_progress" }] }]);
+	// Once saved, focus is back on the button that opened the field.
+	await expect(panel.getByTestId("todo-add-task")).toBeFocused();
 
 	await panel.getByTestId("todo-add-task").click();
 	await enter(panel, "New task", "Wire the strip");
@@ -81,6 +83,7 @@ test("a list is built and changed with the state icon, the menus and the fields,
 	await page.getByTestId("todo-phase-add-task").click();
 	await enter(panel, "New task", "Deploy");
 	await expect(phaseOf(panel, "Ship").getByTestId("todo-task")).toHaveCount(1);
+	await expect(phaseOf(panel, "Ship").getByTestId("todo-phase-menu")).toBeFocused();
 
 	// The state icon finishes a task; omp keeps the other one in progress.
 	await taskRow(panel, "Wire the strip").getByTestId("todo-status-button").click();
@@ -101,6 +104,7 @@ test("a list is built and changed with the state icon, the menus and the fields,
 	await page.getByTestId("todo-edit-text").click();
 	await enter(panel, "Task text", "Write the parser v2");
 	await expect(taskRow(panel, "Write the parser v2")).toBeVisible();
+	await expect(taskRow(panel, "Write the parser v2").getByTestId("todo-task-menu")).toBeFocused();
 	await taskRow(panel, "Write the parser v2").getByTestId("todo-task-menu").click();
 	await page.getByTestId("todo-move-down").click();
 	await expect(phaseOf(panel, "Todos").getByTestId("todo-task-text")).toHaveText([
@@ -155,6 +159,8 @@ test("Escape closes a field without a change; an empty one is not saved", async 
 	await expect(field).toBeVisible();
 	await field.press("Escape");
 	await expect(panel.getByTestId("todo-entry")).toHaveCount(0);
+	// Focus is back on what opened the field, not dropped to the page.
+	await expect(panel.getByTestId("todo-add-task")).toBeFocused();
 	// Escape stayed with the field: the panel itself is still open.
 	await expect(page.getByTestId("right-panel")).toBeVisible();
 	expect(tap.replies("get_state").some((s) => ((s as { todoPhases?: unknown[] }).todoPhases ?? []).length > 0)).toBe(

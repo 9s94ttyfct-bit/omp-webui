@@ -1,6 +1,6 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import { ArrowDown, ArrowUp, Check, FileText, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
 import { controls } from "../lib/api.ts";
@@ -44,12 +44,13 @@ const menuCls = "z-50 min-w-44 rounded-xl border border-border bg-surface p-1 sh
 /**
  * The field that is open: a task's text or blocker, a new task or phase, a phase's name. `p`/`i` say where in the list,
  * and `content`/`phase`/`name` what was there when it was opened: if the list moves on beneath it (the model changes
- * it mid-edit), the field closes instead of landing its text on a different task.
+ * it mid-edit), the field closes instead of landing its text on a different task. A new task's `from` is what opened it:
+ * its phase's menu or the footer's Add task.
  */
 type Draft =
 	| { kind: "text"; p: number; i: number; content: string }
 	| { kind: "blocker"; p: number; i: number; content: string }
-	| { kind: "newTask"; p: number; phase: string }
+	| { kind: "newTask"; p: number; phase: string; from: "menu" | "footer" }
 	| { kind: "phase"; p: number; name: string }
 	| { kind: "newPhase" };
 
@@ -57,8 +58,25 @@ interface Ctrl {
 	busy: boolean;
 	editing: Draft | null;
 	setEditing: (d: Draft | null) => void;
+	/** Close the field that is open (saved, or cancelled); focus goes back to what opened it. */
+	close: () => void;
 	/** Change the list omp reports now; skipped, and said so, when `still` no longer holds of it (the list moved on). */
 	run: (still: (cur: TodoPhase[]) => boolean, make: (cur: TodoPhase[]) => TodoPhase[]) => Promise<void>;
+}
+
+/**
+ * The control that opened the field `draft`, once the list is drawn again: the menu of its task or phase, or the footer's
+ * button. Found by place, for a task or phase whose text was just changed is drawn anew.
+ */
+function openerOf(root: HTMLElement, draft: Draft): HTMLElement | null {
+	if (draft.kind === "newPhase") return root.querySelector<HTMLElement>('[data-testid="todo-add-phase"]');
+	if (draft.kind === "newTask" && draft.from === "footer")
+		return root.querySelector<HTMLElement>('[data-testid="todo-add-task"]');
+	const phase = root.querySelectorAll('[data-testid="todo-phase"]')[draft.p];
+	if (!phase) return null;
+	if (draft.kind === "text" || draft.kind === "blocker")
+		return phase.querySelectorAll<HTMLElement>('[data-testid="todo-task-menu"]')[draft.i] ?? null;
+	return phase.querySelector<HTMLElement>('[data-testid="todo-phase-menu"]');
 }
 
 /** One line of text with Enter to save and Escape to cancel. */
@@ -85,7 +103,7 @@ function Entry({
 			data-testid="todo-entry"
 			onSubmit={(e) => {
 				e.preventDefault();
-				onSave(value);
+				if (!busy) onSave(value);
 			}}
 		>
 			<input
@@ -95,13 +113,14 @@ function Entry({
 				onChange={(e) => setValue(e.target.value)}
 				onKeyDown={(e) => {
 					if (e.key !== "Escape") return;
-					// Not the side panel's: Escape closes this field first.
+					// Not the side panel's: Escape closes this field first (once what it saves is saved).
 					e.preventDefault();
-					onCancel();
+					if (!busy) onCancel();
 				}}
 				aria-label={label}
 				placeholder={placeholder}
-				disabled={busy}
+				// Read-only, not disabled, while it saves: a disabled field loses the focus, and it would be the page's.
+				readOnly={busy}
 				className="h-7 min-w-0 flex-1 rounded-md border border-border bg-bg-soft px-2 text-sm outline-none focus:border-faint"
 			/>
 			<IconButton label={t("common.save")} size="sm" type="submit" disabled={busy}>
@@ -160,7 +179,7 @@ function TaskRow({ ctrl, p, i, task, last }: { ctrl: Ctrl; p: number; i: number;
 							if (!value.trim()) return;
 							void ctrl.run(here, (cur) => setContent(cur, p, i, value));
 						}}
-						onCancel={() => ctrl.setEditing(null)}
+						onCancel={ctrl.close}
 					/>
 				) : (
 					<span className={cx("break-words", over && "text-faint line-through")} data-testid="todo-task-text">
@@ -176,7 +195,7 @@ function TaskRow({ ctrl, p, i, task, last }: { ctrl: Ctrl; p: number; i: number;
 							initial={task.blocker ?? ""}
 							busy={ctrl.busy}
 							onSave={(value) => void ctrl.run(here, (cur) => setStatus(cur, p, i, "blocked", value))}
-							onCancel={() => ctrl.setEditing(null)}
+							onCancel={ctrl.close}
 						/>
 					</div>
 				) : task.status === "blocked" ? (
@@ -297,7 +316,7 @@ function PhaseSection({ ctrl, p, phase, phases }: { ctrl: Ctrl; p: number; phase
 							if (!value.trim()) return;
 							void ctrl.run(here, (cur) => renamePhase(cur, p, value));
 						}}
-						onCancel={() => ctrl.setEditing(null)}
+						onCancel={ctrl.close}
 					/>
 				) : (
 					<>
@@ -336,7 +355,7 @@ function PhaseSection({ ctrl, p, phase, phases }: { ctrl: Ctrl; p: number; phase
 										data-testid="todo-phase-add-task"
 										onSelect={() => {
 											toField.current = true;
-											ctrl.setEditing({ kind: "newTask", p, phase: phase.name });
+											ctrl.setEditing({ kind: "newTask", p, phase: phase.name, from: "menu" });
 										}}
 									>
 										<Plus size={14} /> {t("panel.todoEditAddTaskHere")}
@@ -409,7 +428,7 @@ function NewTask({ ctrl, p }: { ctrl: Ctrl; p: number }) {
 					(cur) => addTask(cur, p, value),
 				);
 			}}
-			onCancel={() => ctrl.setEditing(null)}
+			onCancel={ctrl.close}
 		/>
 	);
 }
@@ -504,20 +523,35 @@ export function TodoEditList({ live, empty }: { live: LiveState; empty?: ReactNo
 	const [busy, setBusy] = useState(false);
 	const [editing, setEditing] = useState<Draft | null>(null);
 	const [markdown, setMarkdown] = useState(false);
+	const rootRef = useRef<HTMLDivElement>(null);
+	/** The field just closed, whose opener takes the focus back once the list is drawn again and nothing is saving. */
+	const closed = useRef<Draft | null>(null);
+	const close = () => {
+		closed.current = editing;
+		setEditing(null);
+	};
+	useEffect(() => {
+		const draft = closed.current;
+		if (!draft || busy || editing || !rootRef.current) return;
+		closed.current = null;
+		// Only the focus the closed field took with it is put back: focus the person moved elsewhere stays there.
+		if (document.activeElement && document.activeElement !== document.body) return;
+		openerOf(rootRef.current, draft)?.focus();
+	}, [editing, busy]);
 
 	const run: Ctrl["run"] = async (still, make) => {
 		// What omp reports now, not what was on screen when the menu was opened.
 		const cur = useApp.getState().lives[liveId]?.state?.todoPhases ?? [];
 		if (!still(cur)) {
 			toast("warning", t("panel.todoEditStale"));
-			setEditing(null);
+			close();
 			return;
 		}
 		setBusy(true);
 		try {
 			await controls.replaceTodos(liveId, todosToMarkdown(make(cur)));
 			await refreshState(liveId, true);
-			setEditing(null);
+			close();
 		} catch (e) {
 			// An edit that cannot be made says why in the page's language; anything else (omp's answer) as it came.
 			const why = e instanceof TodoEditError ? t(TODO_EDIT_MESSAGES[e.code]) : (e as Error).message;
@@ -526,10 +560,10 @@ export function TodoEditList({ live, empty }: { live: LiveState; empty?: ReactNo
 			setBusy(false);
 		}
 	};
-	const ctrl: Ctrl = { busy, editing, setEditing, run };
+	const ctrl: Ctrl = { busy, editing, setEditing, close, run };
 	const keyed = withKeys(phases, (p) => p.name);
 	return (
-		<div data-testid="todo-editor" aria-busy={busy}>
+		<div ref={rootRef} data-testid="todo-editor" aria-busy={busy}>
 			{phases.length === 0 ? (
 				empty
 			) : (
@@ -557,7 +591,7 @@ export function TodoEditList({ live, empty }: { live: LiveState; empty?: ReactNo
 								(cur) => addPhase(cur, value),
 							);
 						}}
-						onCancel={() => setEditing(null)}
+						onCancel={close}
 					/>
 				</div>
 			) : null}
@@ -567,7 +601,12 @@ export function TodoEditList({ live, empty }: { live: LiveState; empty?: ReactNo
 					disabled={busy}
 					data-testid="todo-add-task"
 					onClick={() =>
-						setEditing({ kind: "newTask", p: Math.max(0, phases.length - 1), phase: phases.at(-1)?.name ?? "" })
+						setEditing({
+							kind: "newTask",
+							p: Math.max(0, phases.length - 1),
+							phase: phases.at(-1)?.name ?? "",
+							from: "footer",
+						})
 					}
 				>
 					<Plus size={13} /> {t("panel.todoEditAddTask")}

@@ -1,5 +1,5 @@
 import "../i18n/later.ts";
-import { type KeyboardEvent, useState } from "react";
+import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { registerStrings, useT } from "../i18n/index.ts";
 import { en as quickPromptStrings } from "../i18n/quick-prompts.ts";
 import { keyLabel, shortcutLabel } from "../lib/platform.ts";
@@ -129,9 +129,27 @@ function Row({
 	const shipped = defaultChord(entry.id);
 	const overridden = entry.id in shortcutOverrides();
 	const keys = chordKeys(entry.chord);
+	const rowRef = useRef<HTMLLIElement>(null);
+	/**
+	 * Set when a key or a button of the row ends the recorder or a conflict's choices, the control that had focus: focus
+	 * then goes to the row's Change, or to the first choice of a conflict, not to the page. Not when focus left the row
+	 * (the recorder's blur): it is where the person put it.
+	 */
+	const refocus = useRef(false);
+	const end = (next: RowState) => {
+		refocus.current = true;
+		setState(next);
+	};
+	useEffect(() => {
+		if (!refocus.current) return;
+		refocus.current = false;
+		const target =
+			state.kind === "pending" ? '[data-testid="shortcut-message"] button' : '[data-testid="shortcut-change"]';
+		rowRef.current?.querySelector<HTMLElement>(target)?.focus();
+	}, [state]);
 
 	const take = (chord: string) => {
-		if (chord === entry.chord) return setState({ kind: "idle" });
+		if (chord === entry.chord) return end({ kind: "idle" });
 		const check = checkBinding(entries, entry.id, chord);
 		if (check.bare) {
 			return setState({
@@ -139,9 +157,9 @@ function Row({
 				message: t("pages.shortcutBare", { mod: keyLabel("Mod"), alt: keyLabel("Alt") }),
 			});
 		}
-		if (check.conflicts.length || check.reserved) return setState({ kind: "pending", chord, check });
+		if (check.conflicts.length || check.reserved) return end({ kind: "pending", chord, check });
 		setBinding(entry.id, chord);
-		setState({ kind: "idle" });
+		end({ kind: "idle" });
 	};
 
 	const onRecordKey = (e: KeyboardEvent<HTMLButtonElement>) => {
@@ -150,7 +168,7 @@ function Row({
 		e.stopPropagation();
 		const native = e.nativeEvent;
 		if (native.key === "Escape" && !native.metaKey && !native.ctrlKey && !native.altKey && !native.shiftKey) {
-			return setState({ kind: "idle" });
+			return end({ kind: "idle" });
 		}
 		const made = chordFromEvent(native);
 		if ("chord" in made) return take(made.chord);
@@ -160,7 +178,7 @@ function Row({
 
 	const other = state.kind === "pending" ? state.check.conflicts[0] : undefined;
 	return (
-		<li className="py-1.5 text-sm" data-testid={`shortcut-${entry.id}`}>
+		<li ref={rowRef} className="py-1.5 text-sm" data-testid={`shortcut-${entry.id}`}>
 			{/* In a narrow column every row puts its name above its keys, so long and short names line up the same way. */}
 			<div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
 				<span className="min-w-0 basis-full @min-[36rem]:basis-auto">{label}</span>
@@ -264,7 +282,7 @@ function Row({
 								data-testid="shortcut-swap"
 								onClick={() => {
 									swapBinding(entry.id, state.chord, other.id);
-									setState({ kind: "idle" });
+									end({ kind: "idle" });
 								}}
 							>
 								{t("pages.shortcutSwap")}
@@ -276,13 +294,13 @@ function Row({
 								data-testid="shortcut-use-anyway"
 								onClick={() => {
 									setBinding(entry.id, state.chord);
-									setState({ kind: "idle" });
+									end({ kind: "idle" });
 								}}
 							>
 								{t("pages.shortcutUseAnyway")}
 							</Button>
 						) : null}
-						<Button size="sm" variant="ghost" data-testid="shortcut-cancel" onClick={() => setState({ kind: "idle" })}>
+						<Button size="sm" variant="ghost" data-testid="shortcut-cancel" onClick={() => end({ kind: "idle" })}>
 							{t("common.cancel")}
 						</Button>
 					</div>
