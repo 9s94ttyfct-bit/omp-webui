@@ -88,22 +88,24 @@ test.describe("beside the conversation (1400 px)", () => {
 		await page.goto("/");
 		const sidebar = sidebarOf(page);
 		const grip = handle(page, "sidebar");
+		// The page has drawn its list before the handle is pressed, and each width is read once the page has laid it out.
+		await expect(sessionRow(page, FIXTURE.gammaTitle)).toBeVisible();
 		await grip.focus();
 		await page.keyboard.press("ArrowRight");
-		expect(await widthOf(sidebar)).toBe(SIDEBAR_DEFAULT + 16);
+		await expect.poll(() => widthOf(sidebar)).toBe(SIDEBAR_DEFAULT + 16);
 		await page.keyboard.press("Shift+ArrowRight");
-		expect(await widthOf(sidebar)).toBe(SIDEBAR_DEFAULT + 16 + 64);
+		await expect.poll(() => widthOf(sidebar)).toBe(SIDEBAR_DEFAULT + 16 + 64);
 		await page.keyboard.press("ArrowLeft");
-		expect(await widthOf(sidebar)).toBe(SIDEBAR_DEFAULT + 64);
+		await expect.poll(() => widthOf(sidebar)).toBe(SIDEBAR_DEFAULT + 64);
 		const min = Number(await grip.getAttribute("aria-valuemin"));
 		const max = Number(await grip.getAttribute("aria-valuemax"));
 		await page.keyboard.press("Home");
-		expect(await widthOf(sidebar)).toBe(min);
+		await expect.poll(() => widthOf(sidebar)).toBe(min);
 		await page.keyboard.press("End");
-		expect(await widthOf(sidebar)).toBe(max);
+		await expect.poll(() => widthOf(sidebar)).toBe(max);
 		// Still there after a reload, and the handle keeps its place in the tab order.
 		await page.reload();
-		expect(await widthOf(sidebarOf(page))).toBe(max);
+		await expect.poll(() => widthOf(sidebarOf(page))).toBe(max);
 	});
 
 	test("on the panel the left arrow widens it, since its handle is on its left edge", async ({ page }) => {
