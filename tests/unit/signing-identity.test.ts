@@ -226,7 +226,7 @@ function keychainWithPassword(name: string, password: string): { path: string; s
 	Bun.spawnSync(["security", "import", join(tmp, "cert.pem"), "-k", path, "-T", "/usr/bin/codesign"]);
 	Bun.spawnSync(["security", "import", join(tmp, "key.pem"), "-k", path, "-T", "/usr/bin/codesign"]);
 	rmSync(tmp, { recursive: true, force: true });
-	// The keychain is still unlocked here: list it directly (findIdentity would unlock it with a password it may not have).
+	// The keychain is still unlocked here: list it directly (as findIdentity does, without a password).
 	const [sha] = parseIdentities(
 		Bun.spawnSync(["security", "find-identity", "-p", "codesigning", path]).stdout.toString(),
 	);
@@ -300,7 +300,7 @@ test.skipIf(!mac || Bun.which("script") === null)(
 );
 
 test.skipIf(!mac)(
-	"a keychain is deleted only when the old password is definitely wrong, never on another failure",
+	"a keychain is never deleted, whether its password is definitely not the old one or the unlock failed otherwise (#162)",
 	() => {
 		// A `security` that fails the way a timeout or an unknown error does (not exit status 51) when asked to unlock.
 		const stubs = mkdtempSync(join(tmpdir(), "ompw-stub-"));
@@ -324,11 +324,13 @@ test.skipIf(!mac)(
 		expect(existsSync(path)).toBe(true);
 		expect(findIdentity(path)).not.toBeNull();
 		expect(existsSync(passwordFileFor(path))).toBe(false);
-		// A password that is definitely wrong (exit status 51) is the one case where the unusable keychain is made anew.
-		const { path: other } = keychainWithPassword("other.keychain-db", "some other password");
-		keychainPassword(other);
-		expect(existsSync(other)).toBe(false);
-		rmSync(passwordFileFor(other), { force: true });
+		// A password that is definitely wrong (exit status 51) is an error too, and the keychain stays where it is.
+		const { path: other, sha } = keychainWithPassword("other.keychain-db", "some other password");
+		expect(() => keychainPassword(other)).toThrow(/does not open/);
+		expect(existsSync(other)).toBe(true);
+		expect(existsSync(passwordFileFor(other))).toBe(false);
+		expect(findIdentity(other)).toBe(sha);
+		Bun.spawnSync(["security", "delete-keychain", other]);
 		Bun.spawnSync(["security", "delete-keychain", path]);
 	},
 );
@@ -347,11 +349,20 @@ test.skipIf(!mac)("without an identity the bundle is signed ad hoc, and the warn
 });
 
 test.skipIf(!mac)(
-	"a keychain that does not open is an error, not 'no identity' (which would sign ad hoc and lose the permissions)",
+	"a keychain that does not open is an error that stops the build and leaves it in place, not 'no identity' (#162)",
 	() => {
-		const { path } = keychainWithPassword("closed.keychain-db", "a password nobody wrote down");
+		const { path, sha } = keychainWithPassword("closed.keychain-db", "a password nobody wrote down");
 		Bun.spawnSync(["security", "lock-keychain", path]);
-		expect(() => findIdentity(path)).toThrow(/unlock-keychain/);
+		// Listing it needs no password: its identity is found, and it stays locked.
+		expect(findIdentity(path)).toBe(sha);
+		expect(isKeychainLocked(path)).toBe(true);
+		// What has to open it refuses, before anything is signed, made or deleted.
+		expect(() => ensureIdentity(path)).toThrow(/does not open/);
+		const app = bundle("closed", "7");
+		expect(() => signBundle(app, { keychain: path })).toThrow(/does not open/);
+		expect(existsSync(path)).toBe(true);
+		expect(existsSync(passwordFileFor(path))).toBe(false);
+		expect(findIdentity(path)).toBe(sha);
 		Bun.spawnSync(["security", "delete-keychain", path]);
 	},
 );

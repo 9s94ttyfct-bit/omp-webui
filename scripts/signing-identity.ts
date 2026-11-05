@@ -69,6 +69,9 @@ const LEGACY_PASSWORD = "omp-webui local signing";
  * code that macOS takes for the app, with its Screen Recording and Accessibility grants. What this leaves is: anyone who
  * can run commands as the user, or read that file, can do the same. The keychain is unlocked only while a build signs and
  * locked again right after, so the window in which that is possible is the build's, not the session's.
+ *
+ * A keychain that is there without the file and does not open with the first version's password is an error that stops
+ * the build: it is never deleted or made anew, since its certificate is what the app's macOS permissions are kept by.
  */
 export function keychainPassword(keychain: string): string {
 	const file = passwordFileFor(keychain);
@@ -78,18 +81,16 @@ export function keychainPassword(keychain: string): string {
 		// A keychain made by the version of this script that used a fixed password: it is given this one instead, so that
 		// the certificate stays the same (and with it the app's macOS permissions).
 		const old = run(["security", "unlock-keychain", "-p", LEGACY_PASSWORD, keychain]);
-		if (old.code === 0) {
-			must(["security", "set-keychain-password", "-o", LEGACY_PASSWORD, "-p", password, keychain]);
-			lock(keychain);
-		} else if (old.code === WRONG_PASSWORD) {
-			// Definitely not the old password, so nothing here can open this keychain: it is made anew. The certificate is a
-			// new one, and macOS asks for the app's permissions once more.
-			run(["security", "delete-keychain", keychain]);
-		} else {
-			// A timeout, or a failure that says nothing about the password: the keychain may be perfectly good, so it is
-			// left alone.
-			throw new Error(describe(["security", "unlock-keychain"], old));
+		if (old.code === WRONG_PASSWORD) {
+			throw new Error(
+				`${keychain} does not open: ${file} is not there and the keychain's password is not the one the first version of this script used. The keychain is left as it is: write its password into ${file}, or delete the keychain and run \`bun scripts/signing-identity.ts\` again (the certificate will be a new one, so macOS asks for the app's permissions once more)`,
+			);
 		}
+		// A timeout, or a failure that says nothing about the password: the keychain may be perfectly good, so it is left
+		// alone too.
+		if (old.code !== 0) throw new Error(describe(["security", "unlock-keychain"], old));
+		must(["security", "set-keychain-password", "-o", LEGACY_PASSWORD, "-p", password, keychain]);
+		lock(keychain);
 	}
 	mkdirSync(dirname(keychain), { recursive: true, mode: 0o700 });
 	writeFileSync(file, `${password}\n`, { mode: 0o600 });
@@ -177,26 +178,13 @@ export function requirementFor(sha1: string, identifier = BUNDLE_ID): string {
 
 /**
  * The SHA-1 of the identity in `keychain`, or null when the keychain does not exist. Two of that name are an error. The
- * keychain is unlocked for the listing (a locked one lists no identity at all, which would read as "none" and have a
- * second certificate made), with the password it has now: listing never changes it (that is `secureKeychain`'s job).
+ * keychain is listed as it is, without its password: a locked keychain lists its identity (seen on macOS 27.2), so
+ * unlocking it here would only leave the signing key open for a listing. Whether it opens is asked where it has to be
+ * opened (`keychainPassword`, `unlock`), and a keychain that does not is an error there.
  */
 export function findIdentity(keychain = SIGNING_KEYCHAIN): string | null {
 	if (!existsSync(keychain)) return null;
-	const file = passwordFileFor(keychain);
-	// A keychain that does not open lists no identity, and "none" would sign ad hoc and lose the permissions: say so instead.
-	must([
-		"security",
-		"unlock-keychain",
-		"-p",
-		existsSync(file) ? readFileSync(file, "utf8").trim() : LEGACY_PASSWORD,
-		keychain,
-	]);
-	let found: string[];
-	try {
-		found = parseIdentities(must(["security", "find-identity", "-p", "codesigning", keychain]));
-	} finally {
-		lock(keychain);
-	}
+	const found = parseIdentities(must(["security", "find-identity", "-p", "codesigning", keychain]));
 	if (found.length > 1) {
 		throw new Error(
 			`${found.length} identities named "${IDENTITY_NAME}" in ${keychain} (${found.join(", ")}): builds would be signed by whichever is found first and lose the permissions again. Delete the keychain file and run \`bun scripts/signing-identity.ts\` again`,
