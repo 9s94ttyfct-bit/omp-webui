@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { PORT_WINDOW } from "../../server/instance.ts";
 import {
 	boundHosts,
+	isServedHost,
 	listenOnLoopback,
 	loopbackCandidates,
 	loopbackRequiredByApp,
@@ -41,6 +42,20 @@ test("the address the gate is told of is the one of a network the server is boun
 	// What no URL could carry is not one address the server answers on.
 	expect(boundHosts("a/b")).toEqual([]);
 	expect(boundHosts("192.168.1.5 192.168.1.6")).toEqual([]);
+});
+
+test("a request's Host names this server: a loopback name, or the address it is bound to, IPv6 in brackets too (#52)", () => {
+	for (const host of ["127.0.0.1:7878", "localhost:7878", "[::1]:7878", "localhost"])
+		expect(isServedHost(host, "127.0.0.1"), host).toBe(true);
+	expect(isServedHost("192.168.1.5:7878", "192.168.1.5")).toBe(true);
+	// A Host writes an IPv6 address in brackets, whether OMP_WEBUI_HOST gave it with them or not.
+	expect(isServedHost("[2001:db8::5]:7878", "2001:db8::5")).toBe(true);
+	expect(isServedHost("[2001:db8::5]", "2001:db8::5")).toBe(true);
+	expect(isServedHost("[2001:db8::5]:7878", "[2001:db8::5]")).toBe(true);
+	// Any other name is not this server's.
+	for (const host of ["evil.example.com:7878", "[2001:db8::6]:7878", "192.168.1.6:7878"])
+		expect(isServedHost(host, "2001:db8::5"), host).toBe(false);
+	expect(isServedHost("192.168.1.5:7878", "127.0.0.1")).toBe(false);
 });
 
 test("the loopback port is the server's own, then the window above it, then any free one", () => {

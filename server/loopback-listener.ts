@@ -36,6 +36,17 @@ export function boundHosts(host: string): string[] {
 	return name !== "" && !/[\s/\\?#@,]/.test(name) ? [name] : [];
 }
 
+/**
+ * Whether a request's `Host` (port and all) names this server, which listens on `bound` (`OMP_WEBUI_HOST`): a loopback
+ * name, or the text of `bound`. A `Host` writes an IPv6 address in brackets (`[2001:db8::5]:7878`), whether `bound` gives
+ * it with them or not.
+ */
+export function isServedHost(hostHeader: string, bound: string): boolean {
+	const host = hostHeader.replace(/:\d+$/, "");
+	if (["127.0.0.1", "localhost", "[::1]"].includes(host) || host === bound) return true;
+	return /^\[.+\]$/.test(host) && host.slice(1, -1) === bound.replace(/^\[|\]$/g, "");
+}
+
 /** The ports the loopback listener tries after the one the server got: that one, the next `PORT_WINDOW`, then any free one (`0`). */
 export function loopbackCandidates(port: number): number[] {
 	const window: number[] = [];

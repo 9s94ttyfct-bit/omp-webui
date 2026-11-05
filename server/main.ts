@@ -74,7 +74,13 @@ import {
 } from "./instance.ts";
 import { FINISH_WAIT_MS, heldByImport, type Live, LivePool, type Subscriber, stopKindOf } from "./live.ts";
 import { LOGIN_START_PATH, LoginStart } from "./login-start.ts";
-import { boundHosts, listenOnLoopback, loopbackRequiredByApp, needsLoopbackListener } from "./loopback-listener.ts";
+import {
+	boundHosts,
+	isServedHost,
+	listenOnLoopback,
+	loopbackRequiredByApp,
+	needsLoopbackListener,
+} from "./loopback-listener.ts";
 import type { MemoryService } from "./memory/routes.ts";
 import type { MigrateService } from "./migrate/service.ts";
 import { sweepMigrateDir } from "./migrate/sweep.ts";
@@ -1079,8 +1085,7 @@ function guidanceConflicts(): Promise<GuidanceConflictCheck> {
  */
 function trusted(req: Request): boolean {
 	const hostHeader = req.headers.get("host") ?? "";
-	const host = hostHeader.replace(/:\d+$/, "");
-	if (!["127.0.0.1", "localhost", "[::1]"].includes(host) && host !== cfg.host) return false;
+	if (!isServedHost(hostHeader, cfg.host)) return false;
 	const origin = req.headers.get("origin");
 	if (origin) {
 		try {
