@@ -6,8 +6,8 @@ import { writeBunProgram } from "./bun-program.ts";
  *
  * - `omp config get tools.approvalMode` prints `options.configured` (and fails without it).
  * - The rpc loop appends every line it receives, and its own argv, to `log` as JSON lines
- *   (`{ argv, browserRelay }`, `{ in: <frame> }`), so a test can see exactly what reached omp (`browserRelay`: its
- *   `PI_BROWSER_RELAY`, null when unset).
+ *   (`{ pid, argv, browserRelay }`, `{ pid, in: <frame> }`), so a test can see exactly what reached omp, and which of
+ *   the processes sharing the log it reached (`browserRelay`: its `PI_BROWSER_RELAY`, null when unset).
  * - A `prompt` whose message is `call` makes it send a `propose_goal` host tool call (id `h1`); `cancel` sends
  *   the matching `host_tool_cancel`. Every command is answered with success.
  * - A `prompt` whose message is `tool <name> [<json>]` makes it call that host tool with those arguments (ids `ht1`,
@@ -44,7 +44,7 @@ if (!process.argv.includes("--mode")) {
   console.log("fake-host-omp 0.0.0");
   process.exit(0);
 }
-const note = (o) => appendFileSync(log, JSON.stringify(o) + "\\n");
+const note = (o) => appendFileSync(log, JSON.stringify({ pid: process.pid, ...o }) + "\\n");
 note({ argv: process.argv.slice(2), browserRelay: process.env.PI_BROWSER_RELAY ?? null });
 const resumeAt = process.argv.indexOf("--resume");
 let sessionFile = resumeAt >= 0 ? process.argv[resumeAt + 1] : "/nonexistent/fake.jsonl";

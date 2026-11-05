@@ -30,8 +30,8 @@ const AUD = "c".repeat(64);
 interface Run {
 	server: TestServer;
 	dir: string;
-	/** Everything the scripted omp was sent, one frame per line. */
-	sent(): { in?: Record<string, unknown> }[];
+	/** Everything the scripted omp was sent, one frame per line, each with the pid of the process it reached. */
+	sent(): { pid?: number; argv?: string[]; in?: Record<string, unknown> }[];
 	stop(): Promise<void>;
 }
 
@@ -85,9 +85,18 @@ async function openCard(page: Page, run: Run, lang = "en", theme = "light"): Pro
 	await expect(page.getByTestId("remote-settings")).toBeVisible();
 }
 
-/** The prompts the scripted omp was sent. */
-const prompts = (run: Run): string[] =>
-	run.sent().flatMap((l) => (l.in?.type === "prompt" && typeof l.in.message === "string" ? [l.in.message] : []));
+/**
+ * The prompts the scripted omp was sent by conversations. Settings' Full / Light card has the server start short omp
+ * processes of its own (`--no-session`, `server/offline/context.ts`) that are sent `/context`, and they log to the same
+ * file: once on CI two of them did while the test counted.
+ */
+const prompts = (run: Run): string[] => {
+	const lines = run.sent();
+	const own = new Set(lines.filter((l) => l.argv && !l.argv.includes("--no-session")).map((l) => l.pid));
+	return lines.flatMap((l) =>
+		own.has(l.pid) && l.in?.type === "prompt" && typeof l.in.message === "string" ? [l.in.message] : [],
+	);
+};
 
 const answers = (run: Run) => run.sent().filter((l) => l.in?.type === "host_tool_result").length;
 
