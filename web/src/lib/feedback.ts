@@ -110,7 +110,8 @@ export function sanitize(text: string, home?: string, user?: string): string {
 	let out = text.replace(PRIVATE_KEY_BLOCK, REDACTED);
 	if (home && home.length > 1) {
 		const bare = home.replace(/[\\/]+$/, "");
-		out = out.split(bare).join("~");
+		// Only the folder itself: `/Users/jdoex` starts with `/Users/jdoe` and is another one (the shapes below take it).
+		out = out.replace(new RegExp(`${literal(bare)}(?![A-Za-z0-9._-])`, "g"), "~");
 		const dashed = bare.replace(/^[\\/]+/, "").replace(/[\\/:]/g, "-");
 		if (dashed.includes("-")) {
 			out = out.replace(new RegExp(`(?<![A-Za-z0-9])${literal(dashed)}(?![A-Za-z0-9])`, "g"), "~");

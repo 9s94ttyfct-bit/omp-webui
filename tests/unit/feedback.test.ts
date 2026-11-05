@@ -64,6 +64,9 @@ test("the home folder becomes ~, this machine's and other people's", () => {
 	expect(sanitize("ENOENT '/home/alice/.omp/agent/x'", undefined)).toBe("ENOENT '~/.omp/agent/x'");
 	expect(sanitize("C:\\Users\\Bob\\AppData\\x", undefined)).toBe("~\\AppData\\x");
 	expect(sanitize("cwd is /Users/other.name/proj", HOME)).toBe("cwd is ~/proj");
+	// A folder whose name starts with this machine's home is another one, not a part of it.
+	expect(sanitize("see /Users/jdoex/proj and /Users/jdoe/work", HOME)).toBe("see ~/proj and ~/work");
+	expect(sanitize("see /Users/jdoe.x/proj", HOME)).toBe("see ~/proj");
 });
 
 test("ordinary text, versions and git hashes are left alone, and cleaning twice changes nothing more", () => {
