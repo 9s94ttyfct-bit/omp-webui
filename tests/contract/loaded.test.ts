@@ -6,6 +6,7 @@ import { isFailure, type LoadedData, type LoadedTools } from "../../shared/loade
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { FIXTURE_CWD, writeSimpleSession } from "../support/fixtures.ts";
 import { has } from "../support/needs.ts";
+import { pollUntil } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
 import { connect, request } from "../support/ws.ts";
@@ -39,29 +40,26 @@ const toolsOf = (d: LoadedData) => {
 async function open(target: object) {
 	const ws = await connect(s);
 	const frames: { type: string; [key: string]: unknown }[] = [];
-	const watchers = new Set<() => void>();
 	ws.addEventListener("message", (ev) => {
 		const m = JSON.parse(String(ev.data));
 		if (m.frame) frames.push(m.frame);
-		for (const check of watchers) check();
 	});
 	const info = await request<LiveInfo>(ws, { t: "open", target });
-	/** omp announces each MCP tool it mounts (`xd://: mounted mcp__alpha_ping`) as its server registers. */
+	/**
+	 * omp has mounted the MCP server's tool, as its tool list says. Not its notice (`xd://: mounted mcp__alpha_ping`): omp
+	 * says it once, as the server registers, which can be before the open is answered and this socket is attached; it then
+	 * never reaches the socket (on an idle machine it came about 10 ms after the answer).
+	 */
 	const mounted = (server: string) =>
-		new Promise<void>((resolve, reject) => {
-			const check = () => {
-				if (!frames.some((f) => f.type === "notice" && String(f.message).includes(`mcp__${server}_`))) return;
-				watchers.delete(check);
-				clearTimeout(guard);
-				resolve();
-			};
-			const guard = setTimeout(() => {
-				watchers.delete(check);
-				reject(new Error(`${server} did not mount its tool`));
-			}, 30_000);
-			watchers.add(check);
-			check();
-		});
+		pollUntil(
+			async () => {
+				const tools = (await loaded(`live=${info.liveId}`)).tools;
+				if (tools === null || isFailure(tools)) return false;
+				return tools.servers.some((x) => x.name === server && x.tools.some((t) => t.state === "mounted"));
+			},
+			`${server} to mount its tool`,
+			30_000,
+		);
 	return {
 		info,
 		frames,
