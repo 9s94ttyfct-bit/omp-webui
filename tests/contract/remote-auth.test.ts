@@ -424,6 +424,22 @@ describe("remote access turned off", () => {
 		expect(again).not.toBeNull();
 		again?.close();
 	}, 30_000);
+
+	test("a remote Browser tab's socket is closed too when the allow-list changes or remote access is turned off (#45)", async () => {
+		for (const over of [{ emails: [EMAIL, "someone-else@example.test"] }, { enabled: false }]) {
+			const open = (await remoteSocket({}, "/ws/browser")) as WebSocket;
+			expect(open, JSON.stringify(over)).not.toBeNull();
+			const closed = Promise.withResolvers<CloseEvent>();
+			open.onclose = (ev) => closed.resolve(ev);
+			setSettings(over);
+			// A remote request reads the settings again, as the once-a-second look does.
+			await remote("/api/meta");
+			const ev = await closed.promise;
+			expect(ev.code, JSON.stringify(over)).toBe(1008);
+			setSettings();
+			expect((await remote("/api/meta")).status).toBe(200);
+		}
+	}, 30_000);
 });
 
 describe("a remote page and a conversation's permission mode", () => {

@@ -265,6 +265,8 @@ function isAppToken(offered: string | null): boolean {
 }
 
 const sockets = new Set<Bun.ServerWebSocket<WsData>>();
+/** The Browser tabs' sockets (`/ws/browser`): a remote one is closed with the pages when remote access changes. */
+const screenSockets = new Set<Bun.ServerWebSocket<ScreenWsData>>();
 const broadcastAll = (msg: ServerMessage) => {
 	const text = JSON.stringify(msg);
 	for (const ws of sockets) ws.data.out?.send(text);
@@ -2978,6 +2980,7 @@ const listen = (hostname: string, port: number) =>
 					const data = screen.data;
 					const out = new WsOutbox(socket);
 					data.out = out;
+					screenSockets.add(screen);
 					// As a page's socket: the keepalive first, so that the close handler finds the interval to clear.
 					if (data.remote) data.ping = setInterval(() => socket.ping(), remotePing);
 					watchAccess(screen);
@@ -3095,6 +3098,7 @@ const listen = (hostname: string, port: number) =>
 				if (socket.data.kind === "screen") {
 					const data = socket.data;
 					data.closed = true;
+					screenSockets.delete(socket as Bun.ServerWebSocket<ScreenWsData>);
 					clearTimeout(data.expiry);
 					clearInterval(data.ping);
 					data.client?.close();
@@ -3207,6 +3211,7 @@ void startExtensionUpdates();
 // requests look at it.
 remoteAuth.onChange(() => {
 	for (const ws of [...sockets]) if (ws.data.remote) ws.close(1008, "Remote access changed");
+	for (const ws of [...screenSockets]) if (ws.data.remote) ws.close(1008, "Remote access changed");
 	shellEvents.closeRemote();
 });
 // The remote chain is loaded only when remote access is used (see `LazyRemote`); the settings are looked at as often
