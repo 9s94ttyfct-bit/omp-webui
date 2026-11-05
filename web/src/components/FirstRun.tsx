@@ -38,13 +38,20 @@ export function FirstRun() {
 	const running = job?.state === "running";
 	const failed = job?.state === "failed";
 
-	const install = (o: InstallOption) => {
+	const install = (method: InstallOptionId) => {
 		setMissedAgain(false);
-		ompApi.install(o.id).catch((e: Error) => toast("error", t("omp.installStartFailed", { error: e.message })));
+		ompApi.install(method).catch((e: Error) => toast("error", t("omp.installStartFailed", { error: e.message })));
 	};
-	/** Cancel stops the running install, Try again clears the failed one: both ask the server, and a refusal is said. */
-	const cancel = (failed: "omp.installCancelFailed" | "omp.installClearFailed") => {
-		ompApi.cancel().catch((e: Error) => toast("error", t(failed, { error: e.message })));
+	/** Cancel stops the running install; a refusal is said. */
+	const cancel = () => {
+		ompApi.cancel().catch((e: Error) => toast("error", t("omp.installCancelFailed", { error: e.message })));
+	};
+	/** Try again clears the failed install and runs the same one again; a refusal of either is said. */
+	const retry = (method: InstallOptionId) => {
+		ompApi.cancel().then(
+			() => install(method),
+			(e: Error) => toast("error", t("omp.installRetryFailed", { error: e.message })),
+		);
 	};
 	const copy = (o: InstallOption) => {
 		void copyText(o.command).then((copied) => {
@@ -128,11 +135,16 @@ export function FirstRun() {
 						<OmpLog log={log} label={t("omp.installLogLabel")} empty={t("omp.installNoOutput")} testid="install-log" />
 						<div className="mt-3 flex justify-end gap-2">
 							{running ? (
-								<Button variant="ghost" data-testid="install-cancel" onClick={() => cancel("omp.installCancelFailed")}>
+								<Button variant="ghost" data-testid="install-cancel" onClick={cancel}>
 									{t("omp.installCancel")}
 								</Button>
 							) : (
-								<Button variant="primary" data-testid="install-retry" onClick={() => cancel("omp.installClearFailed")}>
+								// An install job's method is the `InstallOptionId` it was started with.
+								<Button
+									variant="primary"
+									data-testid="install-retry"
+									onClick={() => retry(job.method as InstallOptionId)}
+								>
 									{t("omp.installTryAgain")}
 								</Button>
 							)}
@@ -227,7 +239,7 @@ export function FirstRun() {
 								variant="primary"
 								data-testid="install-start"
 								disabled={!selected?.available}
-								onClick={() => selected && install(selected)}
+								onClick={() => selected && install(selected.id)}
 							>
 								<Download size={14} /> {t("omp.installButton")}
 							</Button>

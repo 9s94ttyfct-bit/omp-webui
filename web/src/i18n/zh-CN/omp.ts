@@ -32,7 +32,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	installRecheckFailed: "无法重新查找：{error}",
 	installStartFailed: "无法开始安装：{error}",
 	installCancelFailed: "无法停止安装：{error}",
-	installClearFailed: "无法回到安装选项：{error}",
+	installRetryFailed: "无法重新安装：{error}",
 
 	setupTitle: "设置 omp",
 	setupStep: "第 {n} 步，共 {total} 步",

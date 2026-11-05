@@ -340,11 +340,11 @@ test("a failed install says why, keeps its output, and the next try can succeed"
 		await expect(page.getByTestId("install-log")).toContainText("==> Fetching can1357/tap/omp");
 		await expect(page.getByTestId("first-run")).toBeVisible();
 
-		// Try again: the choices are back, and with the cause gone the install goes through.
+		// Try again: the same install runs again at once, and with the cause gone it goes through.
 		rmSync(join(run.world.prefix, ".fail"));
+		const again = page.waitForRequest((r) => r.method() === "POST" && new URL(r.url()).pathname === "/api/omp/install");
 		await page.getByTestId("install-retry").click();
-		await expect(page.getByTestId("install-start")).toBeVisible();
-		await page.getByTestId("install-start").click();
+		expect((await again).postDataJSON()).toEqual({ method: "homebrew" });
 		await expect(page.getByTestId("onboarding")).toBeVisible();
 	} finally {
 		await run.stop();
@@ -374,10 +374,17 @@ test("a Cancel or Try again the server does not take says why, and the install s
 		writeFileSync(run.release, "");
 		await expect(page.getByTestId("install-failed")).toBeVisible();
 		await page.getByTestId("install-retry").click();
-		await expect(
-			toast.filter({ hasText: "Could not go back to the install choices: the server is restarting" }),
-		).toBeVisible();
+		await expect(toast.filter({ hasText: "Could not try the install again: the server is restarting" })).toBeVisible();
 		await expect(page.getByTestId("install-failed")).toBeVisible();
+
+		// The failed install is cleared, but the new one is refused: that is said too, and the choices are back.
+		await page.unroute("**/api/omp/cancel");
+		await page.route("**/api/omp/install", (route) =>
+			route.fulfill({ status: 500, json: { error: "the server is restarting" } }),
+		);
+		await page.getByTestId("install-retry").click();
+		await expect(toast.filter({ hasText: "Could not start the install: the server is restarting" })).toBeVisible();
+		await expect(page.getByTestId("install-start")).toBeVisible();
 		expect(uncaught).toEqual([]);
 	} finally {
 		await run.stop();
@@ -425,11 +432,11 @@ test("an installer whose download fails reports curl's own message, not that omp
 		await expect(failed).toContainText("curl: (6) Could not resolve host: omp.sh");
 		await expect(failed).not.toContainText("was not found afterwards");
 
-		// Back online, the same choice installs.
+		// Back online, Try again runs the same choice again, and it installs.
 		rmSync(unreachable);
+		const again = page.waitForRequest((r) => r.method() === "POST" && new URL(r.url()).pathname === "/api/omp/install");
 		await page.getByTestId("install-retry").click();
-		await page.getByTestId("install-option-installer").getByRole("radio").check();
-		await page.getByTestId("install-start").click();
+		expect((await again).postDataJSON()).toEqual({ method: "installer" });
 		await expect(page.getByTestId("onboarding")).toBeVisible();
 	} finally {
 		await run.stop();
