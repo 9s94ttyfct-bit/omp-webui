@@ -1455,6 +1455,7 @@
 		"plugins-page.spec.ts › Commands & terminal is a page of Settings: opened from Settings, from #/cli and from Settings' search; the sidebar has Plugins": 1.7,
 		"plugins-page.spec.ts › a local plugin is installed, switched and uninstalled from the Plugins page": 3.1,
 		"plugins-page.spec.ts › a sidebar layout saved with Commands & terminal shows Plugins in its place": 0.6,
+		"plugins-page.spec.ts › the Overview says the plugin list could not be read, and Retry reads it again": 1.2,
 		"polish.spec.ts › chatgpt dark: scrollbar, slider, resize handle and focus ring": 4.6,
 		"polish.spec.ts › chatgpt light: scrollbar, slider, resize handle and focus ring": 4.7,
 		"polish.spec.ts › claude dark: scrollbar, slider, resize handle and focus ring": 5.4,

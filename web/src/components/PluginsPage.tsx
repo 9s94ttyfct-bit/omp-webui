@@ -330,7 +330,10 @@ export function PluginsPage() {
 					className="-mt-2 flex flex-col gap-6"
 					data-testid={`plugins-panel-${tab}`}
 				>
-					{needsList && error ? <LoadError title={t("plugins.loadError")} error={error} onRetry={load} /> : null}
+					{/* The Overview counts from the list too: without it, its tiles are dashes that look like loading. */}
+					{(needsList || tab === "overview") && error ? (
+						<LoadError title={t("plugins.loadError")} error={error} onRetry={load} />
+					) : null}
 					{needsList && !data && !error ? (
 						<div className="flex justify-center py-12">
 							<Spinner />

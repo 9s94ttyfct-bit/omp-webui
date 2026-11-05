@@ -44,6 +44,23 @@ test("a local plugin is installed, switched and uninstalled from the Plugins pag
 	await expect(card).toHaveCount(0);
 });
 
+test("the Overview says the plugin list could not be read, and Retry reads it again", async ({ page }) => {
+	let fail = true;
+	await page.route(/\/api\/plugins(\?|$)/, async (route) => {
+		if (!fail) return route.continue();
+		return route.fulfill({ status: 500, json: { error: "omp could not be started" } });
+	});
+	await page.goto("/#/plugins");
+	const panel = page.getByTestId("plugins-panel-overview");
+	const error = panel.getByTestId("load-error");
+	await expect(error).toContainText("Couldn't list the plugins");
+	await expect(error).toContainText("omp could not be started");
+	fail = false;
+	await error.getByTestId("load-retry").click();
+	await expect(error).toHaveCount(0);
+	await expect(panel.getByTestId("plugins-stat-installed")).not.toContainText("–");
+});
+
 test("Commands & terminal is a page of Settings: opened from Settings, from #/cli and from Settings' search; the sidebar has Plugins", async ({
 	page,
 }) => {
