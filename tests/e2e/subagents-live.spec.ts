@@ -70,6 +70,8 @@ test("running subagents come first in the Agents tab, the newest start first, wi
 	await expect.poll(() => order(page)).toEqual(["Newer", "Older", "Finished"]);
 	await expect(items(page).nth(0)).toHaveAttribute("data-running", "true");
 	await expect(items(page).nth(1)).toHaveAttribute("data-running", "true");
+	// A running row is named by its status, as a finished one is, not as something that loads.
+	await expect(items(page).nth(0)).toHaveAccessibleName(/^(running|started) /);
 	await expect(items(page).nth(2)).toHaveAttribute("data-running", "false");
 	// The tab counts how many of them run.
 	await expect(topTab(page, "Agents 2/3")).toBeVisible();
@@ -180,6 +182,7 @@ test("while subagents run the chat lists them as jobs: kind, model, name, descri
 	await expect(first).toContainText("Job1");
 	await expect(first).toContainText("Description 1");
 	await expect(first).toContainText("10%");
+	await expect(first).toHaveAccessibleName(/^(running|started) /);
 	await expect(first.getByTestId("job-elapsed")).toHaveText(/^\d+s$/);
 	const clock = first.getByTestId("job-elapsed");
 	const before = await clock.innerText();

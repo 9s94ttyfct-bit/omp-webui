@@ -132,9 +132,10 @@ export function Tip({
 	);
 }
 
-export function Spinner({ size = 16, className }: { size?: number; className?: string }) {
+/** A turning circle, named `label` for screen readers (what turns: a running subagent's status), else "Loading". */
+export function Spinner({ size = 16, className, label }: { size?: number; className?: string; label?: string }) {
 	const t = useT();
-	return <Loader2 size={size} className={cx("animate-spin", className)} aria-label={t("shell.uiLoading")} />;
+	return <Loader2 size={size} className={cx("animate-spin", className)} aria-label={label ?? t("shell.uiLoading")} />;
 }
 
 export function Badge({

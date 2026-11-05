@@ -88,7 +88,8 @@ export function StatusIcon({ status }: { status: string }) {
 		return <CircleCheck size={14} className="text-success" aria-label={t("panel.iconCompleted")} />;
 	if (status === ENDED) return <CircleMinus size={14} className="text-faint" aria-label={statusLabel(t, status)} />;
 	if (isOver(status)) return <CircleX size={14} className="text-danger" aria-label={statusLabel(t, status)} />;
-	if (status === "running" || status === "started") return <Spinner size={14} className="text-accent" />;
+	if (status === "running" || status === "started")
+		return <Spinner size={14} className="text-accent" label={statusLabel(t, status)} />;
 	return <CircleDashed size={14} className="text-faint" aria-label={statusLabel(t, status)} />;
 }
 

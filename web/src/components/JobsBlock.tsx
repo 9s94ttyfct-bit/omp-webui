@@ -8,7 +8,7 @@ import { useShownInPanel } from "../lib/panel-panes.ts";
 import { type AgentRow, elapsedMs, jobRows } from "../lib/subagents.ts";
 import { openAgent } from "../store/agents.ts";
 import type { LiveState } from "../store/live.ts";
-import { StatusIcon } from "./Agents.tsx";
+import { StatusIcon, statusLabel } from "./Agents.tsx";
 import { ScrollPane } from "./ScrollPane.tsx";
 import { Empty, Spinner } from "./ui.tsx";
 
@@ -30,7 +30,11 @@ function Job({ row, now, inPane }: { row: AgentRow; now: number; inPane: boolean
 			data-running={row.running}
 			onClick={() => openAgent(row.id)}
 		>
-			{row.running ? <Spinner size={12} className="shrink-0 text-accent" /> : <StatusIcon status={row.status} />}
+			{row.running ? (
+				<Spinner size={12} className="shrink-0 text-accent" label={statusLabel(t, row.status)} />
+			) : (
+				<StatusIcon status={row.status} />
+			)}
 			<span className="shrink-0 rounded bg-hover px-1.5 py-0.5 text-xs font-medium text-muted" data-testid="job-kind">
 				{row.live?.detached ? t("panel.jobKindBackground") : t("panel.jobKindTask")}
 			</span>
