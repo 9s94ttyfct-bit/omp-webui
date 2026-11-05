@@ -1,7 +1,8 @@
 import { isRecord } from "../../shared/guards.ts";
 import { compareVersions, parseVersion } from "../../shared/omp-install.ts";
 import type { PlatformId } from "../../shared/platform.ts";
-import { type AppRelease, type CheckFailure, UPDATE_REPO, type UpdateNotes } from "../../shared/update.ts";
+import { REPO } from "../../shared/repo.ts";
+import type { AppRelease, CheckFailure, UpdateNotes } from "../../shared/update.ts";
 import type { WindowsArch } from "./windows.ts";
 
 /**
@@ -102,7 +103,7 @@ export function installerUrlAllowed(url: string, api: string): boolean {
 		return (
 			target.protocol === "https:" &&
 			target.host === "github.com" &&
-			target.pathname.startsWith(`/${UPDATE_REPO}/releases/download/`)
+			target.pathname.startsWith(`/${REPO}/releases/download/`)
 		);
 	}
 	try {
@@ -180,8 +181,7 @@ export function parseRelease(json: unknown, api: string, platform: InstallerPlat
 	const version = `${m[1]}.${m[2]}.${m[3]}`;
 	let url = text(json.html_url);
 	// The page the card links to: GitHub's, for this app (anything else in an answer is not a place to send the user).
-	if (url === null || !url.startsWith("https://github.com/"))
-		url = `https://github.com/${UPDATE_REPO}/releases/tag/${tag}`;
+	if (url === null || !url.startsWith("https://github.com/")) url = `https://github.com/${REPO}/releases/tag/${tag}`;
 
 	let asset: AppRelease["asset"] = null;
 	let installer: Installer | null = null;
@@ -262,7 +262,7 @@ export async function fetchLatest(opts: FetchOptions): Promise<Fetched> {
 	if (opts.etag) headers["if-none-match"] = opts.etag;
 	let res: Response;
 	try {
-		res = await (opts.fetch ?? fetch)(`${opts.api}/repos/${UPDATE_REPO}/releases/latest`, {
+		res = await (opts.fetch ?? fetch)(`${opts.api}/repos/${REPO}/releases/latest`, {
 			headers,
 			signal: AbortSignal.timeout(opts.timeoutMs ?? 15_000),
 		});

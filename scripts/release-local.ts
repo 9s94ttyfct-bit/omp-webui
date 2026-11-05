@@ -49,11 +49,11 @@
 import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { availableParallelism, tmpdir } from "node:os";
 import { join } from "node:path";
+import { REPO } from "../shared/repo.ts";
 import { type Needs, type Probe, preflight } from "./lib/release-preflight.ts";
 import { isShuttingDown, killTree, onShutdown } from "./lib/shutdown.ts";
 import { gateWorkers, TEST_WORKERS_ENV } from "./lib/test-workers.ts";
 
-const REPO = "9s94ttyfct-bit/omp-webui";
 /** The workflow whose success on the released commit is required (.github/workflows/ci.yml). */
 const CI_WORKFLOW = "ci.yml";
 const args = process.argv.slice(2);

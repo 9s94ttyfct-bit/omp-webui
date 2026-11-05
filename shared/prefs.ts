@@ -274,8 +274,7 @@ const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 	[PREF.graphTime]: oneOf(TIME_FILTERS),
 	// What each entry says is read by `readRemembered`, which leaves out what it does not know: here only the shape.
 	[PREF.guardBefore]: json(isRecord),
-	// A template's id, as the store bounds it (`GUIDANCE_ID_MAX`).
-	[PREF.guidanceDefault]: (v) => /^[^\s]{1,80}$/.test(v),
+	[PREF.guidanceDefault]: (v) => TEMPLATE_ID.test(v),
 	[PREF.guidanceLast]: json(isRememberedGuidance),
 	[PREF.guidanceCheck]: switchValue,
 	[PREF.animations]: switchValue,

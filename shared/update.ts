@@ -7,9 +7,6 @@
  * or has none) is a state to show quietly, never an error to retry in a loop.
  */
 
-/** The repository whose releases the app updates from. */
-export const UPDATE_REPO = "9s94ttyfct-bit/omp-webui";
-
 /** The release notes of a release, one per language (the body has a `## English` and a `## 中文` section). */
 export interface UpdateNotes {
 	/** Markdown. Empty when the release has no English section and no notes at all. */
