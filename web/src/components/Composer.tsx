@@ -8,6 +8,7 @@ import {
 	Suspense,
 	useCallback,
 	useEffect,
+	useId,
 	useImperativeHandle,
 	useMemo,
 	useRef,
@@ -261,6 +262,8 @@ export function Composer({
 		};
 	}, []);
 	const [sel, setSel] = useState(0);
+	/** The suggestion list's id, and its entries' (`${listId}-<n>`): the message box names the list and the highlighted entry. */
+	const listId = useId();
 	const [dismissed, setDismissed] = useState<string | null>(null);
 	// A `/name` omp would not run is held back with the web UI's counterpart; the notice shows for that text only.
 	const [held, setHeld] = useState<{ name: string; text: string; mode: SendMode } | null>(null);
@@ -661,6 +664,7 @@ export function Composer({
 			) : null}
 			{suggestions.length ? (
 				<div
+					id={listId}
 					role="listbox"
 					aria-label={mention !== null ? t("chat.composerFiles") : t("chat.composerCommands")}
 					className="absolute bottom-full left-0 z-30 mb-2 max-h-72 w-full overflow-y-auto rounded-xl border border-border bg-surface p-1 shadow-xl"
@@ -670,14 +674,17 @@ export function Composer({
 						<button
 							type="button"
 							role="option"
+							id={`${listId}-${i}`}
+							tabIndex={-1}
 							aria-selected={i === sel}
 							key={s.value}
 							className={cx(
 								"flex w-full items-baseline gap-3 rounded-lg px-2.5 py-1.5 text-left text-sm",
 								i === sel ? "bg-hover" : "hover:bg-hover",
 							)}
-							onMouseDown={(e) => {
-								e.preventDefault();
+							// The message box keeps the keyboard: a press does not take focus from it.
+							onMouseDown={(e) => e.preventDefault()}
+							onClick={() => {
 								setText(s.value);
 								ta.current?.focus();
 							}}
@@ -762,6 +769,11 @@ export function Composer({
 						rows={1}
 						value={text}
 						aria-label={t("chat.composerMessage")}
+						// A textarea takes no combobox role: as a text box it says it completes from the list it controls,
+						// and which entry of it Tab or Enter would insert, while the keyboard stays here.
+						aria-autocomplete="list"
+						aria-controls={suggestions.length ? listId : undefined}
+						aria-activedescendant={suggestions[sel] ? `${listId}-${sel}` : undefined}
 						data-testid="composer"
 						placeholder={hint}
 						className={cx(
