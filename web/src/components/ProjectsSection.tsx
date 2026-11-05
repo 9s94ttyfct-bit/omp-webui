@@ -27,6 +27,8 @@ export interface ProjectRowProps {
 	pinSet: ReadonlySet<string>;
 	archivedSet: ReadonlySet<string>;
 	liveFiles: ReadonlyMap<string, LiveDot>;
+	/** The conversations whose process runs in Light mode. */
+	lightFiles: ReadonlySet<string>;
 	selecting: boolean;
 	selected: ReadonlySet<string>;
 	onOpen: (file: string) => void;
@@ -230,6 +232,7 @@ const ProjectLine = memo(function ProjectLine({
 								pinned={row.pinSet.has(s.file)}
 								archived={row.archivedSet.has(s.file)}
 								liveState={row.liveFiles.get(s.file)}
+								light={row.lightFiles.has(s.file)}
 								onOpen={row.onOpen}
 								onTogglePin={row.onTogglePin}
 								onToggleArchive={row.onToggleArchive}

@@ -59,6 +59,8 @@ interface Props {
 	archived: boolean;
 	/** The conversation's live omp process, if any. */
 	liveState: LiveDot | undefined;
+	/** Its process was started in Light mode (it keeps its mode, whatever new chats start in). */
+	light: boolean;
 	/** The callbacks are handed the row's own file or session, so one function can serve every row (the row is memoized). */
 	onOpen: (file: string) => void;
 	onTogglePin: (file: string) => void;
@@ -115,6 +117,7 @@ export const SessionItem = memo(function SessionItem({
 	pinned,
 	archived,
 	liveState,
+	light,
 	onOpen,
 	onTogglePin,
 	onToggleArchive,
@@ -129,12 +132,6 @@ export const SessionItem = memo(function SessionItem({
 	const menuTrigger = useRef<HTMLButtonElement>(null);
 	// Open or not is the row's to know: a menu that could not be loaded is closed from here.
 	const [menuOpen, setMenuOpen] = useState(false);
-	// Whether the conversation's process was started in Light mode (it keeps its mode, whatever new chats start in).
-	const light = useApp(
-		(st) =>
-			liveState !== undefined &&
-			Object.values(st.lives).some((l) => !l.info.exited && l.info.sessionFile === s.file && l.info.mode === "light"),
-	);
 	const stateLabel = (state: keyof typeof DOT) =>
 		light ? t("mode.liveState", { state: t(DOT[state][0]) }) : t(DOT[state][0]);
 	// What the live process is doing, after the name.

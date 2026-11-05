@@ -84,6 +84,8 @@ interface Props {
 	pinSet: ReadonlySet<string>;
 	archivedSet: ReadonlySet<string>;
 	liveFiles: ReadonlyMap<string, LiveDot>;
+	/** The conversations whose process runs in Light mode. */
+	lightFiles: ReadonlySet<string>;
 	selecting: boolean;
 	selected: ReadonlySet<string>;
 	onOpen: (file: string) => void;
@@ -119,6 +121,7 @@ export function SessionList({
 	pinSet,
 	archivedSet,
 	liveFiles,
+	lightFiles,
 	selecting,
 	selected,
 	onOpen,
@@ -337,6 +340,7 @@ export function SessionList({
 											pinned={pinSet.has(entry.session.file)}
 											archived={archivedSet.has(entry.session.file)}
 											liveState={liveFiles.get(entry.session.file)}
+											light={lightFiles.has(entry.session.file)}
 											onOpen={onOpen}
 											onTogglePin={onTogglePin}
 											onToggleArchive={onToggleArchive}

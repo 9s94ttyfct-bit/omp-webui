@@ -107,6 +107,18 @@ export function liveDotsOf(lives: Record<string, LiveState>): Record<string, Liv
 	}
 	return dots;
 }
+
+/**
+ * The conversations whose process was started in Light mode (it keeps its mode, whatever new chats start in), by session
+ * file. The rows are handed it: a row that asked the store itself would be one more listener, per row, on every update.
+ */
+function lightFilesOf(lives: Record<string, LiveState>): string[] {
+	const files: string[] = [];
+	for (const l of Object.values(lives))
+		if (!l.info.exited && l.info.sessionFile && l.info.mode === "light") files.push(l.info.sessionFile);
+	return files;
+}
+
 export function Sidebar() {
 	const t = useT();
 	const newChatHint = useShortcutLabel("newChat");
@@ -147,11 +159,13 @@ export function Sidebar() {
 	const setShowArchived = useCallback((on: boolean) => set({ sidebarArchived: on }), [set]);
 	// Equal for every token of a streamed reply (only a process starting, stopping, asking or pausing changes it).
 	const liveDots = useApp(useShallow((s) => liveDotsOf(s.lives)));
+	const lightList = useApp(useShallow((s) => lightFilesOf(s.lives)));
 	const [selecting, setSelecting] = useState(false);
 	const [selected, setSelected] = useState<Set<string>>(new Set());
 	const [anchor, setAnchor] = useState<string | null>(null);
 	const [bulkDelete, setBulkDelete] = useState<SessionSummary[] | null>(null);
 	const liveFiles = useMemo(() => new Map(Object.entries(liveDots)), [liveDots]);
+	const lightFiles = useMemo(() => new Set(lightList), [lightList]);
 	const archivedSet = useMemo(() => new Set(archived), [archived]);
 	/**
 	 * What the search bar (a chunk of its own, see `SessionSearch`) came to: the conversations to list, where the query
@@ -604,6 +618,7 @@ export function Sidebar() {
 						pinSet={pinSet}
 						archivedSet={archivedSet}
 						liveFiles={liveFiles}
+						lightFiles={lightFiles}
 						selecting={selecting}
 						selected={selected}
 						onOpen={openRow}
@@ -665,6 +680,7 @@ export function Sidebar() {
 					pinSet={pinSet}
 					archivedSet={archivedSet}
 					liveFiles={liveFiles}
+					lightFiles={lightFiles}
 					selecting={selecting}
 					selected={selected}
 					onOpen={openRow}
