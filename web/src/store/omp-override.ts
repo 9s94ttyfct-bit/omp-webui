@@ -67,12 +67,18 @@ export function ompOverride<O, S, D>(server: {
 	const useStore = create<State<O, S>>(() => ({ omp: undefined, sessions: {} }));
 	/** How many places show each file's choice right now: those files are asked again together with omp's value. */
 	const shown = new Map<string, number>();
+	/** The latest change shown and not answered yet, by what it changed (null: omp's value; else the file's choice). */
+	const unanswered = new Map<string | null, object>();
 
-	const take = (file: string | null, r: OverrideAnswer<O, S>) =>
+	/** The server's word: omp's value, and `file`'s choice. It is newer than any change shown before it of either. */
+	const take = (file: string | null, r: OverrideAnswer<O, S>) => {
+		unanswered.delete(null);
+		if (file !== null) unanswered.delete(file);
 		useStore.setState((s) => ({
 			omp: r.omp,
 			sessions: file === null ? s.sessions : { ...s.sessions, [file]: r.session },
 		}));
+	};
 	const load = (file: string | null): void => {
 		void server
 			.get(file)
@@ -84,18 +90,27 @@ export function ompOverride<O, S, D>(server: {
 		for (const file of shown.keys()) load(file);
 	};
 
-	/** Show `next` at once and keep the server's answer instead when it comes; a refusal puts the old state back and throws. */
+	/**
+	 * Show a change at once (`show` shows it and returns how to put back what it replaced; null: nothing is shown until
+	 * the answer) and keep the server's answer instead when it comes. A refusal throws and puts back only what this change
+	 * showed, unless a newer change or the server's word has replaced it since: what else the store learned meanwhile
+	 * (another conversation's choice, omp's value) stays.
+	 */
 	async function change(
-		next: (s: State<O, S>) => State<O, S>,
-		ask: () => Promise<OverrideAnswer<O, S>>,
 		file: string | null,
+		show: () => (() => void) | null,
+		ask: () => Promise<OverrideAnswer<O, S>>,
 	): Promise<void> {
-		const before = useStore.getState();
-		useStore.setState(next(before));
+		const mine = {};
+		const undo = show();
+		if (undo) unanswered.set(file, mine);
 		try {
 			take(file, await ask());
 		} catch (e) {
-			useStore.setState(before);
+			if (undo && unanswered.get(file) === mine) {
+				unanswered.delete(file);
+				undo();
+			}
 			throw e;
 		}
 	}
@@ -128,18 +143,29 @@ export function ompOverride<O, S, D>(server: {
 		use: useOverride,
 		setDefault: (value) =>
 			change(
-				(s) => {
+				null,
+				() => {
 					const omp = server.shownDefault(value);
-					return omp === undefined ? s : { ...s, omp };
+					if (omp === undefined) return null;
+					const before = useStore.getState().omp;
+					useStore.setState({ omp });
+					return () => useStore.setState({ omp: before });
 				},
 				() => server.setDefault(value),
-				null,
 			),
 		setConversation: (file, value) =>
 			change(
-				(s) => ({ ...s, sessions: { ...s.sessions, [file]: value } }),
-				() => server.setSession(file, value),
 				file,
+				() => {
+					const before = useStore.getState().sessions[file];
+					useStore.setState((s) => ({ sessions: { ...s.sessions, [file]: value } }));
+					return () =>
+						useStore.setState((s) => {
+							const { [file]: _, ...rest } = s.sessions;
+							return { sessions: before === undefined ? rest : { ...rest, [file]: before } };
+						});
+				},
+				() => server.setSession(file, value),
 			),
 	};
 }

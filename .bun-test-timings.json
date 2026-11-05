@@ -434,6 +434,7 @@
     "tests/unit/macos-popout.test.ts": 9,
     "tests/unit/mcp-switch.test.ts": 9,
     "tests/unit/model-rank.test.ts": 9,
+    "tests/unit/omp-override.test.ts": 9,
     "tests/unit/plugins.test.ts": 9,
     "tests/unit/raw-keys.test.ts": 9,
     "tests/unit/service-worker.test.ts": 9,
