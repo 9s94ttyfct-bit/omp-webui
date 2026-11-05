@@ -114,6 +114,9 @@ test("a connection that drops everything is given up on, what waited on it fails
 	await openAlpha(page);
 	const banner = page.getByText("Reconnecting to the omp-webui server");
 	await expect(banner).toHaveCount(0);
+	// The sidebar's dot says it in words too, not only in its colour.
+	const dot = (name: string) => page.getByRole("img", { name, exact: true });
+	await expect(dot("Connected")).toBeVisible();
 
 	// The connection stops carrying anything, and the ones the page makes next are refused.
 	sock.dead = true;
@@ -126,6 +129,7 @@ test("a connection that drops everything is given up on, what waited on it fails
 	// fails (the draft comes back), and the page says it is reconnecting.
 	await expect(page.getByText(/Send failed: Connection lost/)).toBeVisible({ timeout: 60_000 });
 	await expect(banner).toBeVisible();
+	await expect(dot("Disconnected")).toBeVisible();
 	await expect(composer).toHaveValue("!echo back-$((40+2))");
 	await expect(page.getByText(/Working…/)).toHaveCount(0);
 	// While it is gone the box still takes text, but Send is grey and the box says why; Enter sends nothing (C9).
@@ -138,6 +142,7 @@ test("a connection that drops everything is given up on, what waited on it fails
 	sock.dead = false;
 	sock.refuse = false;
 	await expect(banner).toHaveCount(0, { timeout: 60_000 });
+	await expect(dot("Connected")).toBeVisible();
 	await expect(page.getByTestId("composer-offline")).toHaveCount(0);
 	await expect(page.getByTestId("send")).toBeEnabled();
 	await composer.press("Enter");

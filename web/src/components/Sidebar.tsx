@@ -543,8 +543,11 @@ export function Sidebar() {
 					<img src="/favicon.png" alt="" className="h-6 w-6" />
 					<span className="text-[15px] font-semibold tracking-tight">omp</span>
 				</button>
+				{/* Said in words, and in its shape (a ring while disconnected), not only in its colour. */}
 				<span
-					className={cx("ml-1 h-2 w-2 rounded-full", connected ? "bg-success" : "bg-danger")}
+					className={cx("ml-1 h-2 w-2 rounded-full", connected ? "bg-success" : "border-2 border-danger")}
+					role="img"
+					aria-label={connected ? t("shell.sidebarConnected") : t("shell.sidebarDisconnected")}
 					title={connected ? t("shell.sidebarConnected") : t("shell.sidebarDisconnected")}
 				/>
 				<span className="flex-1" />
