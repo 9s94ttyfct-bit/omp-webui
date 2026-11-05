@@ -362,6 +362,22 @@ test.describe("the filter", () => {
 		await expect(page.getByTestId("files-hit")).toHaveAttribute("data-path", "zzz-new-file.txt");
 		rmSync(join(proj, "zzz-new-file.txt"));
 	});
+
+	test("a search that fails says why and is tried again from there, instead of spinning", async ({ page }) => {
+		await openFiles(page);
+		await treeReady(page);
+		let fail = true;
+		await page.route("**/api/folder/find?**", (route) =>
+			fail ? route.fulfill({ status: 500, json: { error: "the walk broke" } }) : route.fallback(),
+		);
+		await page.getByTestId("files-filter").fill("README");
+		const error = page.getByTestId("files-find-error");
+		await expect(error).toContainText("the walk broke");
+		fail = false;
+		await error.getByRole("button", { name: "Try again" }).click();
+		await expect(page.getByTestId("files-hit").first()).toHaveAttribute("data-path", "README.md");
+		await expect(error).toHaveCount(0);
+	});
 });
 
 /** The preview of a file, opened from the tree. */

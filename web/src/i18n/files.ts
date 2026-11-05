@@ -8,6 +8,7 @@ export const en = {
 	filterNoneHidden: "No file matches “{query}”. Files that are hidden are left out; show them to search those too.",
 	filterPartial: "This folder is too large to search all of it: files deeper in may be missing.",
 	filterMore: "Showing the first {n} matches. Type more to narrow them down.",
+	filterFailed: "Can't search this folder",
 
 	treeLabel: "Files",
 	showHidden: "Show hidden files",

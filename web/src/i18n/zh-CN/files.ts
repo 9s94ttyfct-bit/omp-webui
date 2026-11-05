@@ -9,6 +9,7 @@ export const zh: Record<keyof typeof en, string> = {
 	filterNoneHidden: "没有文件匹配“{query}”。已隐藏的文件不在搜索范围内；显示它们即可一并搜索。",
 	filterPartial: "此文件夹太大，无法搜索全部内容：更深层的文件可能不在结果中。",
 	filterMore: "仅显示前 {n} 个匹配项。输入更多字符可缩小范围。",
+	filterFailed: "无法搜索此文件夹",
 
 	treeLabel: "文件",
 	showHidden: "显示隐藏文件",

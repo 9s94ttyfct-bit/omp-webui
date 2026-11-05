@@ -162,35 +162,56 @@ function useFolderSync(scope: FolderScope, key: string) {
 	return refresh;
 }
 
+/** What the walk for one query came to: the matches, or why there are none to show. */
+type Matches = { query: string; all: boolean } & ({ result: FolderFound } | { error: string });
+
 /**
  * The files that match what is typed, read once the typing pauses, and walked for again when the folder was read again
- * (something changed): the walk the server keeps for a moment is then not used.
+ * (something changed): the walk the server keeps for a moment is then not used. A walk that failed says why (`error`);
+ * `retry` walks again. A walk let go of for a newer query is no failure.
  */
-function useMatches(scope: FolderScope, query: string, all: boolean, reads: number): FolderFound | null {
-	const [found, setFound] = useState<{ query: string; all: boolean; result: FolderFound } | null>(null);
+function useMatches(
+	scope: FolderScope,
+	query: string,
+	all: boolean,
+	reads: number,
+): { found: FolderFound | null; error: string | null; retry: () => void } {
+	const [matches, setMatches] = useState<Matches | null>(null);
+	const [tries, setTries] = useState(0);
 	const seen = useRef(reads);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: `scope` is rebuilt from these two ids
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `scope` is rebuilt from these two ids; `tries` asks again
 	useEffect(() => {
 		const q = query.trim();
 		const fresh = reads !== seen.current;
 		seen.current = reads;
 		if (!q) {
-			setFound(null);
+			setMatches(null);
 			return;
 		}
 		const ctl = new AbortController();
 		const timer = setTimeout(() => {
 			folder.find(scope, q, all, fresh, ctl.signal).then(
-				(result) => setFound({ query, all, result }),
-				() => {},
+				(result) => setMatches({ query, all, result }),
+				(e: unknown) => {
+					if (!ctl.signal.aborted) setMatches({ query, all, error: e instanceof Error ? e.message : String(e) });
+				},
 			);
 		}, FILTER_MS);
 		return () => {
 			clearTimeout(timer);
 			ctl.abort();
 		};
-	}, [scope.live, scope.file, query, all, reads]);
-	return found && found.query === query && found.all === all ? found.result : null;
+	}, [scope.live, scope.file, query, all, reads, tries]);
+	const retry = useCallback(() => {
+		setMatches(null);
+		setTries((n) => n + 1);
+	}, []);
+	const mine = matches && matches.query === query && matches.all === all ? matches : null;
+	return {
+		found: mine && "result" in mine ? mine.result : null,
+		error: mine && "error" in mine ? mine.error : null,
+		retry,
+	};
 }
 
 function Toolbar({
@@ -301,20 +322,41 @@ function Toolbar({
 /** What matches the filter: a list to pick from with the arrow keys while the typing stays in the box. */
 function Results({
 	found,
+	error,
 	query,
 	active,
 	showAll,
+	onRetry,
 	onPick,
 	onHover,
 }: {
 	found: FolderFound | null;
+	/** Why the search failed; null while it runs or once it has matches. */
+	error: string | null;
 	query: string;
 	active: number;
 	showAll: boolean;
+	onRetry: () => void;
 	onPick: (path: string) => void;
 	onHover: (i: number) => void;
 }) {
 	const t = useT();
+	if (error !== null) {
+		return (
+			<div data-testid="files-find-error">
+				<Empty icon={<FolderX size={22} />} title={t("files.filterFailed")}>
+					<div>{error}</div>
+					<button
+						type="button"
+						className="mt-2 rounded-md border border-border px-2 py-1 text-xs hover:bg-hover"
+						onClick={onRetry}
+					>
+						{t("files.retry")}
+					</button>
+				</Empty>
+			</div>
+		);
+	}
 	if (!found) {
 		return (
 			<div className="flex justify-center py-6">
@@ -454,7 +496,7 @@ function FilesPane({
 
 	// The filter.
 	const filterRef = useRef<HTMLInputElement>(null);
-	const found = useMatches(scope, tree.filter, tree.showAll, tree.reads);
+	const { found, error: findError, retry: retryFind } = useMatches(scope, tree.filter, tree.showAll, tree.reads);
 	const [active, setActive] = useState(0);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: the first match is the one to pick when the matches change
 	useEffect(() => setActive(0), [found]);
@@ -628,6 +670,8 @@ function FilesPane({
 				{filtering ? (
 					<Results
 						found={found}
+						error={findError}
+						onRetry={retryFind}
 						query={tree.filter}
 						active={active}
 						showAll={tree.showAll || (root?.guarded ?? false)}

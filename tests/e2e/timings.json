@@ -635,6 +635,7 @@
 		"files-tab.spec.ts › open the folder in Finder › nor does a page that the server did not say may open: guarded alone hides it, and so does a missing `local`": 1.7,
 		"files-tab.spec.ts › open the folder in Finder › the tab's header opens the conversation's folder itself, and each folder row's menu opens that folder": 0.3,
 		"files-tab.spec.ts › the filter › a file made while the filter is on is found": 2.7,
+		"files-tab.spec.ts › the filter › a search that fails says why and is tried again from there, instead of spinning": 2.6,
 		"files-tab.spec.ts › the filter › searches names across the project and opens a match with Enter, and Escape clears it": 2.7,
 		"files-tab.spec.ts › the filter › what is hidden is searched only when it is shown, and a miss says so": 2.2,
 		"files-tab.spec.ts › the message box › Insert as @mention puts the file's path at the end of what is typed, and focus in the box": 2,
