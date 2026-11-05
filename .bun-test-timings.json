@@ -438,6 +438,7 @@
     "tests/unit/plugins.test.ts": 9,
     "tests/unit/raw-keys.test.ts": 9,
     "tests/unit/service-worker.test.ts": 9,
+    "tests/unit/settings-help-store.test.ts": 9,
     "tests/unit/store-attach.test.ts": 9,
     "tests/unit/store-host-call.test.ts": 9,
     "tests/unit/store-listed.test.ts": 9,

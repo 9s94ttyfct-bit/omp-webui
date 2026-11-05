@@ -182,6 +182,10 @@ export class SettingsHelp implements HostToolServer {
 	private changes: SettingsChange[];
 	private readonly logFile: string;
 	private readonly grantMs: number;
+	/** Names this run of the server in every state it sends (`SettingsHelpState.boot`). */
+	private readonly boot = randomUUID();
+	/** Counts up with every change told to the pages (`SettingsHelpState.rev`). */
+	private rev = 0;
 
 	constructor(
 		private readonly catalog: SettingsCatalog,
@@ -205,10 +209,13 @@ export class SettingsHelp implements HostToolServer {
 			ended: [...this.ends.values()],
 			requests: [...this.waiting.values()].map((w) => w.request),
 			changes: [...this.changes].reverse(),
+			boot: this.boot,
+			rev: this.rev,
 		};
 	}
 
 	private changed(): void {
+		this.rev++;
 		this.hooks?.changed(this.state());
 	}
 

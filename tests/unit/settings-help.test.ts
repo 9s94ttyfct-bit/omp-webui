@@ -273,6 +273,14 @@ describe("the grant", () => {
 		expect((await call("L2", { action: "get" })).isError).toBe(true);
 	});
 
+	test("every state told carries a higher rev of the same run, and the state read after it carries that rev", () => {
+		help.grant("L1");
+		help.revoke("L1", "revoked");
+		expect(told.map((s) => s.rev)).toEqual([1, 2]);
+		expect(new Set(told.map((s) => s.boot)).size).toBe(1);
+		expect(help.state()).toMatchObject({ boot: told[0]?.boot, rev: 2 });
+	});
+
 	test("the access ends after 30 minutes: the tool then says so, and changes nothing", async () => {
 		help.grant("L1");
 		clock.advance(SETTINGS_GRANT_MS - 1);

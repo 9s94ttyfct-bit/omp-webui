@@ -46,7 +46,7 @@ None of its own. What it changes is listed above; the change log is kept in `~/.
 
 | Route | Methods | Access | Purpose |
 |---|---|---|---|
-| `/api/settings-help` | GET | local-only | The state: the folder, the conversations that can change settings (`liveId`, `startedAt`, `expiresAt`), the ones whose access ended and why, the changes waiting for an answer, and the change log (newest first). |
+| `/api/settings-help` | GET | local-only | The state: the folder, the conversations that can change settings (`liveId`, `startedAt`, `expiresAt`), the ones whose access ended and why, the changes waiting for an answer, the change log (newest first), and which run of the server said it and in what order (`boot`, `rev`: a page keeps the newer of this answer and a `settings_help` message). |
 | `/api/settings-help/start` | POST | local-only | Start a dedicated conversation with 30 minutes of access; answers the conversation (`liveId` …). |
 | `/api/settings-help/revoke` | POST | local-only | `{ liveId }`: end that conversation's access now (404 when it has none). |
 | `/api/settings-help/answer` | POST | local-only | `{ id, allow }`: Allow (`true`) or Deny (`false`) a waiting change (404 when it no longer waits). |

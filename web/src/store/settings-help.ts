@@ -10,7 +10,12 @@ import { create } from "zustand";
  */
 export const useSettingsHelp = create<{ state: SettingsHelpState | null }>(() => ({ state: null }));
 
-/** The socket's `settings_help` message, and the answer of every request that returns the state. */
+/**
+ * The socket's `settings_help` message, and the answer of every request that returns the state. The answer is the state
+ * as of the request, so one older than the state held (`rev`, within one run of the server: `boot`) is dropped.
+ */
 export function setSettingsHelpState(state: SettingsHelpState): void {
-	useSettingsHelp.setState({ state });
+	useSettingsHelp.setState((s) =>
+		s.state !== null && s.state.boot === state.boot && state.rev < s.state.rev ? {} : { state },
+	);
 }

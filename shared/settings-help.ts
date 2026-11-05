@@ -200,6 +200,13 @@ export interface SettingsHelpState {
 	requests: SettingsRequest[];
 	/** Newest first. */
 	changes: SettingsChange[];
+	/**
+	 * Which run of the server said this (`boot`), and the order it said things in (`rev` counts up with every change). A
+	 * page gets the state twice over, on the socket and as the answer to a request, which is the state as of the request
+	 * and can arrive after a newer message: a page keeps the one with the higher `rev` (as `OmpState` is kept).
+	 */
+	boot: string;
+	rev: number;
 }
 
 /** Two values of a setting are the same one (values are JSON: strings, numbers, booleans, null, lists and objects). */
