@@ -589,8 +589,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 				self.browserLink.connect(to: self.origin)
 				// The token link stores the access cookie and redirects to the UI. After a restart of the server too: the
 				// page loads again and signs in with the same token, on whatever port the new server took. (No window: the
-				// next one opens on it.)
-				if let url = self.takePageURL() { self.webView?.load(URLRequest(url: url)) }
+				// next one opens on it, with the view the last page was on, which is only taken for a page that loads.)
+				if let web = self.webView, let url = self.takePageURL() { web.load(URLRequest(url: url)) }
 			case .failed(let title, let detail):
 				self.fail(title, detail)
 			}
