@@ -112,6 +112,8 @@ describe("isLocalOnlyRoute", () => {
 			// What the macOS app is told on its own: the titles of the conversations that need somebody.
 			"/api/shell",
 			"/api/shell/events",
+			// Stopping the server (`omp-webui --stop`).
+			"/api/shutdown",
 		])
 			expect(isLocalOnlyRoute(path), path).toBe(true);
 	});

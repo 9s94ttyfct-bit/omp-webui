@@ -138,10 +138,13 @@ test("--background starts the server and opens no page; --stop stops it", async 
 	expect(again.output()).toContain("already running");
 	expect(pages()).toHaveLength(before);
 
+	// Asked through the server's own route, the same on every platform (on Windows a signal would end it without its shutdown).
 	const stop = await launch({ OMP_WEBUI_DATA_DIR: folder }, ["--stop"]);
 	expect(await stop.exited).toBe(0);
 	expect(stop.output()).toContain("omp-webui is stopped.");
-	await run.exited;
+	expect(await run.exited).toBe(0);
+	expect(run.output()).toContain("omp-webui: stopping, as asked through /api/shutdown");
+	expect(existsSync(join(folder, "server.pid"))).toBe(false);
 	const none = await launch({ OMP_WEBUI_DATA_DIR: folder }, ["--stop"]);
 	expect(await none.exited).toBe(0);
 	expect(none.output()).toContain("not running");

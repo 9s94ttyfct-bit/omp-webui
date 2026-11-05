@@ -139,6 +139,30 @@ test.skipIf(!has.posixSignals)(
 	60_000,
 );
 
+test("POST /api/shutdown stops the server as a signal does, for a request from this computer with the token only (#176)", async () => {
+	const dir = dataDir("asked");
+	const s = await startServer(dir);
+	const url = `http://127.0.0.1:${s.port}/api/shutdown`;
+	const headers = { "x-omp-webui-token": s.token, "x-omp-webui": "1" };
+	// Without the token, without the CSRF header, as a GET, or from a page that is not this computer's (the tunnel's,
+	// a proxy's): refused, and the server runs on.
+	expect((await fetch(url, { method: "POST", headers: { "x-omp-webui": "1" } })).status).toBe(401);
+	expect((await fetch(url, { method: "POST", headers: { "x-omp-webui-token": s.token } })).status).toBe(403);
+	expect((await fetch(url, { headers })).status).toBe(405);
+	for (const header of ["cf-ray", "x-forwarded-for", "forwarded", "via"]) {
+		const res = await fetch(url, { method: "POST", headers: { ...headers, [header]: "203.0.113.9" } });
+		expect(res.status, header).toBe(403);
+	}
+	expect(s.proc.exitCode).toBeNull();
+	expect(record(dir).pid).toBe(s.proc.pid);
+
+	const res = await fetch(url, { method: "POST", headers });
+	expect(res.status).toBe(202);
+	expect(await s.proc.exited).toBe(0);
+	expect(s.output()).toContain("omp-webui: stopping, as asked through /api/shutdown");
+	expect(() => readFileSync(join(dir, "server.pid"))).toThrow();
+}, 60_000);
+
 /** The pid file of a data dir, as the server wrote it. */
 const record = (dir: string) => JSON.parse(readFileSync(join(dir, "server.pid"), "utf8"));
 

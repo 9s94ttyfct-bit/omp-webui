@@ -1549,6 +1549,14 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		case LOGIN_START_PATH:
 			// Settings › Start at login (local-only), for the launcher on Windows and Linux (see `LoginStart`).
 			return loginStart.handle(req);
+		case "/api/shutdown":
+			// `omp-webui --stop` (server/launcher.ts), on every platform: on Windows a signal ends the process outright, without
+			// the shutdown. Local-only (see `isLocalOnlyRoute`), with the token and the CSRF header as every API POST is.
+			if (req.method !== "POST") return fail("POST required", 405);
+			console.log("omp-webui: stopping, as asked through /api/shutdown");
+			// After this answer has gone: the shutdown stops the listener, which would cut it short.
+			setTimeout(() => void shutdown(), 0);
+			return json({ stopping: true }, 202);
 		case "/api/shell/quota": {
 			// The menu bar icon's quota lines (local-only: `/api/shell`), in the saved language, else the app's (`lang`). omp is
 			// asked through the same cache as the page's quota pills: an icon opened often starts no more `omp usage` than they do.

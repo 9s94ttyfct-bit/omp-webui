@@ -25,10 +25,12 @@
  * `omp-webui --background` is what the system starts at login when Settings › Start at login is on (server/login-start.ts):
  * the server starts and no page is opened (nor is one when this data folder's server already runs). On Windows its console
  * window is minimized (the `Run` value starts it with `start /min`); on Linux it has no terminal, and `omp-webui --stop`
- * stops it (it stops this data folder's server, however it was started).
+ * stops it (it stops this data folder's server, however it was started: it asks the server through `POST /api/shutdown`
+ * with the folder's token, and sends a signal only when that request cannot be made).
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { isRecord } from "../shared/guards.ts";
 import { Auth } from "./auth.ts";
 import { loadConfig } from "./config.ts";
 import { holdStart, runningServer } from "./instance.ts";
@@ -73,6 +75,35 @@ async function holdWindow(): Promise<void> {
 	for await (const _ of console) break;
 }
 
+/**
+ * Ask this data folder's server on `port` to stop through its own route (`POST /api/shutdown`, with the folder's token),
+ * the same on every platform: on Windows a signal ends the process outright, without the shutdown. False when the request
+ * cannot be made (no token to send, nothing answers); a refusal is an error.
+ */
+async function askToStop(dataDir: string, port: number): Promise<boolean> {
+	let token: string;
+	try {
+		token = readFileSync(join(dataDir, "token"), "utf8").trim();
+	} catch {
+		return false;
+	}
+	if (!token) return false;
+	let res: Response;
+	try {
+		res = await fetch(`http://127.0.0.1:${port}/api/shutdown`, {
+			method: "POST",
+			headers: { "x-omp-webui-token": token, "x-omp-webui": "1" },
+			signal: AbortSignal.timeout(10_000),
+		});
+	} catch {
+		return false;
+	}
+	if (res.status === 202) return true;
+	const body: unknown = await res.json().catch(() => null);
+	const said = isRecord(body) && typeof body.error === "string" ? `: ${body.error}` : "";
+	throw new Error(`the server refused to stop (${res.status}${said})`);
+}
+
 // Lets go of the start of this data folder's server (`holdStart`): once it has recorded itself, or this launcher ends or fails.
 let letGo = () => {};
 try {
@@ -83,7 +114,7 @@ try {
 			console.log("omp-webui is not running.");
 			process.exit(0);
 		}
-		process.kill(running.pid, "SIGTERM");
+		if (!(await askToStop(dataDir, running.port))) process.kill(running.pid, "SIGTERM");
 		const until = Date.now() + 15_000;
 		while (runningServer(dataDir) && Date.now() < until) await Bun.sleep(100);
 		if (runningServer(dataDir)) throw new Error(`the server (pid ${running.pid}) did not stop within 15 s`);
