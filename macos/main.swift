@@ -677,8 +677,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 		config.userContentController.addScriptMessageHandler(drops, contentWorld: .page, name: DropPaths.handlerName)
 		config.userContentController.addScriptMessageHandler(
 			LoginBridge(origin: { [unowned self] in self.origin }), contentWorld: .page, name: LoginBridge.handlerName)
-		// The Browser tab lays CEF's view of its page over itself in this window only, while CEF runs; without the handler the
-		// tab draws the screencast (as in pop-outs and windows onto other Macs, whose configurations never have it).
+		// The Browser tab lays CEF's view of its page over itself in this window and the pop-outs it opens (they share its
+		// configuration), while CEF runs; without the handler the tab draws the screencast (as in windows onto other Macs, whose
+		// configurations never have it).
 		if CEFHost.running() { config.userContentController.add(browserBridge, name: BrowserBridge.handlerName) }
 		// The page's switcher of Macs asks the app to open a saved Mac's window or to show the sheet that adds one (macOS 14 and
 		// later, where the Macs menu is). Only this window's page has it: a remote window's configuration is made in remotewindow.swift.
