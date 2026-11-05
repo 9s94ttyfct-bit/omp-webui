@@ -1,8 +1,9 @@
-import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { isRecord } from "../../shared/guards.ts";
 import type { PluginScope, PluginUpdate, UncheckedUpdate } from "../../shared/plugins.ts";
+import { isLink, parsePluginList } from "./plugin-list.ts";
 import { parseSkillList } from "./plugin-skills.ts";
 import { npmPackageLatest } from "./update.ts";
 
@@ -213,18 +214,14 @@ export async function checkUpdates(deps: CheckDeps): Promise<CheckResult> {
 
 	// npm plugins: the user's only.
 	try {
-		const doc: unknown = JSON.parse(await d.run(["plugin", "list", "--json"], home));
-		const npm = (isRecord(doc) && Array.isArray(doc.npm) ? doc.npm : []).filter(
-			(p): p is Record<string, unknown> => isRecord(p) && typeof p.name === "string",
+		const npm = parsePluginList(JSON.parse(await d.run(["plugin", "list", "--json"], home))).filter(
+			(p) => p.kind === "npm",
 		);
-		const specs = npmSpecs(npm.map((p) => (typeof p.path === "string" ? p.path : null)));
+		const specs = npmSpecs(npm.map((p) => p.path));
 		await Promise.all(
-			npm.map(async (p) => {
-				const name = p.name as string;
-				const path = typeof p.path === "string" ? p.path : null;
+			npm.map(async ({ id: name, path, version }) => {
 				// A linked folder is the person's own copy: there is nothing to fetch.
-				if (path && isLinked(path)) return;
-				const version = typeof p.version === "string" ? p.version : null;
+				if (isLink(path)) return;
 				if (npmSpecKind(specs.get(name) ?? null) === "git") {
 					unchecked.push({
 						kind: "plugin",
@@ -261,15 +258,6 @@ export async function checkUpdates(deps: CheckDeps): Promise<CheckResult> {
 }
 
 type Ordered = { kind: string; folder: string | null; id: string };
-
-/** A folder linked in (`omp plugin link`): the person's own copy, with nothing to fetch. */
-function isLinked(path: string): boolean {
-	try {
-		return lstatSync(path).isSymbolicLink();
-	} catch {
-		return false;
-	}
-}
 
 /**
  * An npm package's `latest`, within 15 s, from the registry npm and omp would install it from (a scope's own registry in

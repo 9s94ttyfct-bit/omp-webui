@@ -52,10 +52,34 @@ export function serialized<T>(work: () => Promise<T>): Promise<T> {
 	return run;
 }
 
-async function globalDisabled(t: ToggleTarget): Promise<string[]> {
-	const doc = await runJson(t.bin, ["config", "get", "disabledExtensions", "--json"], t.neutral, t.env);
+/**
+ * omp's global `disabledExtensions`, read in `neutral` (a folder with no `.omp` of its own): no project's value is merged
+ * in, which writing the list back would copy into the global config.
+ */
+export async function globalDisabled(bin: string, neutral: string, env: Record<string, string>): Promise<string[]> {
+	const doc = await runJson(bin, ["config", "get", "disabledExtensions", "--json"], neutral, env);
 	const value = isRecord(doc) ? doc.value : undefined;
 	return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
+}
+
+/**
+ * Write omp's global `disabledExtensions` (`omp config set`, run in `cwd`). The answer is the layer of omp's settings that
+ * decides in `cwd` instead (`project`, `overlay`…), as omp names it, or null.
+ */
+export async function setGlobalDisabled(
+	bin: string,
+	cwd: string,
+	env: Record<string, string>,
+	list: string[],
+): Promise<string | null> {
+	const doc = await runJson(bin, ["config", "set", "disabledExtensions", JSON.stringify(list), "--json"], cwd, env);
+	return isRecord(doc) && typeof doc.overriddenBy === "string" ? doc.overriddenBy : null;
+}
+
+/** `list` with `skill:<name>` of each of `names` taken out (`enabled`) or added, in the order it had. */
+export function switched(list: string[], names: string[], enabled: boolean): string[] {
+	const ids = names.map((n) => `skill:${n}`);
+	return enabled ? list.filter((x) => !ids.includes(x)) : [...list, ...ids.filter((id) => !list.includes(id))];
 }
 
 /**
@@ -71,21 +95,16 @@ export function setSkillEnabled(t: ToggleTarget, name: string, enabled: boolean)
 		return off === enabled;
 	};
 	return serialized(async () => {
-		// Read where no project's value is merged in: writing that back would copy it into the global config.
-		const current = await globalDisabled(t);
-		const next = enabled ? current.filter((x) => x !== id) : current.includes(id) ? current : [...current, id];
+		const current = await globalDisabled(t.bin, t.neutral, t.env);
+		const next = switched(current, [name], enabled);
 		// The global list already says it, yet the folder's own setting may not: `config set` names the layer that decides
 		// (writing the same list again changes nothing), which only a write reports.
 		if (next.length === current.length && !(await disagrees())) return null;
-		const doc = await runJson(
-			t.bin,
-			["config", "set", "disabledExtensions", JSON.stringify(next), "--json"],
-			t.cwd,
-			t.env,
-		);
-		if (!isRecord(doc) || typeof doc.overriddenBy !== "string") return null;
+		// Written from the conversation's folder, so that omp names the layer that decides there.
+		const overriddenBy = await setGlobalDisabled(t.bin, t.cwd, t.env, next);
+		if (!overriddenBy) return null;
 		// Another layer wins here; whether it already says what was asked is what counts.
-		return (await disagrees()) ? doc.overriddenBy : null;
+		return (await disagrees()) ? overriddenBy : null;
 	});
 }
 

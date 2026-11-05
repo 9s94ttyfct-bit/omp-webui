@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { lstatSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { isRecord } from "../../shared/guards.ts";
 import type { McpAdded } from "../../shared/mcp-registry.ts";
@@ -32,6 +32,7 @@ import {
 	searchRegistry,
 	validConfigName,
 } from "./mcp-registry.ts";
+import { isLink, parsePluginList } from "./plugin-list.ts";
 import {
 	asksToConfirmScripts,
 	parseSkillSearch,
@@ -262,16 +263,6 @@ export function splitMarketplaceId(id: string): { name: string; marketplace: str
 	return at > 0 ? { name: id.slice(0, at), marketplace: id.slice(at + 1) } : null;
 }
 
-/** Whether a path is a link (a plugin `omp plugin link` or a path install put in place). */
-function isLink(path: string | null): boolean {
-	if (!path) return false;
-	try {
-		return lstatSync(path).isSymbolicLink();
-	} catch {
-		return false;
-	}
-}
-
 /** The `description` of a plugin's own `package.json`, which `omp plugin list --json` does not carry. */
 function packageDescription(path: string | null): string | null {
 	if (!path) return null;
@@ -284,8 +275,9 @@ function packageDescription(path: string | null): string | null {
 }
 
 /**
- * `omp plugin list --json`: `npm` (git installs too; a link to a local folder is `linked`) and `marketplace` plugins, each
- * with the newer version its catalog has (`upgrades`) and its description (the catalog's, else its `package.json`'s).
+ * `omp plugin list --json` (`parsePluginList`) as the Plugins page lists it: a link to a local folder is `linked`, each
+ * marketplace plugin has the newer version its catalog has (`upgrades`), and each its description (the catalog's, else its
+ * `package.json`'s).
  */
 export function parseInstalled(
 	doc: unknown,
@@ -293,52 +285,41 @@ export function parseInstalled(
 	descriptions: (id: string, path: string | null) => string | null = (_, path) => packageDescription(path),
 	linked: (path: string | null) => boolean = isLink,
 ): InstalledPlugin[] {
-	if (!isRecord(doc)) throw new Error("omp plugin list answered in a form this does not know");
-	const out: InstalledPlugin[] = [];
-	for (const p of Array.isArray(doc.npm) ? doc.npm : []) {
-		if (!isRecord(p) || typeof p.name !== "string") continue;
-		const path = str(p.path);
-		const manifest = isRecord(p.manifest) ? p.manifest : {};
-		out.push({
-			id: p.name,
-			name: p.name,
-			source: linked(path) ? "linked" : "npm",
-			marketplace: null,
-			scope: "user",
-			version: str(p.version),
-			description: str(manifest.description) ?? descriptions(p.name, path),
-			enabled: p.enabled !== false,
-			path,
-			features: featuresOf(manifest, p.enabledFeatures),
-			hasSettings: isRecord(manifest.settings) && Object.keys(manifest.settings).length > 0,
-			upgrade: null,
-		});
-	}
-	for (const p of Array.isArray(doc.marketplace) ? doc.marketplace : []) {
-		if (!isRecord(p) || typeof p.id !== "string") continue;
-		const entry = Array.isArray(p.entries) && isRecord(p.entries[0]) ? p.entries[0] : {};
-		const scope = isPluginScope(p.scope) ? p.scope : isPluginScope(entry.scope) ? entry.scope : "user";
+	return parsePluginList(doc).map((p): InstalledPlugin => {
+		if (p.kind === "npm")
+			return {
+				id: p.id,
+				name: p.id,
+				source: linked(p.path) ? "linked" : "npm",
+				marketplace: null,
+				scope: "user",
+				version: p.version,
+				description: str(p.manifest.description) ?? descriptions(p.id, p.path),
+				enabled: p.enabled,
+				path: p.path,
+				features: featuresOf(p.manifest, p.enabledFeatures),
+				hasSettings: isRecord(p.manifest.settings) && Object.keys(p.manifest.settings).length > 0,
+				upgrade: null,
+			};
+		const scope = isPluginScope(p.scope) ? p.scope : "user";
 		const split = splitMarketplaceId(p.id);
-		const path = str(entry.installPath);
 		const newer = upgrades.find((u) => u.id === p.id && u.scope === scope);
-		out.push({
+		return {
 			id: p.id,
 			name: split?.name ?? p.id,
 			source: "marketplace",
 			marketplace: split?.marketplace ?? null,
 			scope,
-			version: str(entry.version),
-			description: descriptions(p.id, path),
-			// A marketplace plugin's switch is on each of its entries (`omp plugin disable` writes it there).
-			enabled: p.enabled !== false && entry.enabled !== false,
-			...(p.shadowedBy === "project" ? { shadowedBy: "project" as const } : {}),
-			path,
+			version: p.version,
+			description: descriptions(p.id, p.path),
+			enabled: p.enabled,
+			...(p.shadowedBy ? { shadowedBy: p.shadowedBy } : {}),
+			path: p.path,
 			features: [],
 			hasSettings: false,
 			upgrade: newer ? { from: newer.from, to: newer.to } : null,
-		});
-	}
-	return out;
+		};
+	});
 }
 
 /** `omp plugin doctor --json`: one check per line of the terminal's health check. */

@@ -4,7 +4,7 @@ import { isRecord } from "../../shared/guards.ts";
 import type { InstalledSkill, SkillSwitchScope, SkillsData } from "../../shared/plugins.ts";
 import { runJson } from "./loaded.ts";
 import { type ListedSkill, parseSkillList } from "./plugin-skills.ts";
-import { serialized } from "./toggles.ts";
+import { globalDisabled, serialized, setGlobalDisabled, switched } from "./toggles.ts";
 
 /**
  * The Skills section's switches. A skill is off where `skill:<name>` is in omp's `disabledExtensions`: the global
@@ -43,11 +43,6 @@ function probeFolder(neutral: string): string {
 		writeFileSync(file, want);
 	}
 	return dir;
-}
-
-async function globalList(d: SkillSwitchDeps): Promise<string[]> {
-	const doc = await runJson(d.bin, ["config", "get", "disabledExtensions", "--json"], d.neutral, {});
-	return ids(isRecord(doc) ? doc.value : undefined);
 }
 
 /** The project folder's own list (its `.omp` layer, as omp reads it), or null where it has none. */
@@ -89,7 +84,7 @@ export async function readSkills(d: SkillSwitchDeps, cwd: string): Promise<Skill
 	const [here, all, global, project] = await Promise.all([
 		runJson(d.bin, ["skill", "list", "--json"], cwd, {}).then(parseSkillList),
 		runJson(d.bin, ["skill", "list", "--json"], probeFolder(d.neutral), {}).then(parseSkillList),
-		globalList(d),
+		globalDisabled(d.bin, d.neutral, {}),
 		projectList(d, cwd),
 	]);
 	return {
@@ -169,12 +164,6 @@ async function writeProjectList(d: SkillSwitchDeps, cwd: string, list: string[] 
 		throw new ProjectConfigError(`${file} was written, but omp reads another list there (another config file sets it)`);
 }
 
-/** `list` with `skill:<name>` of each of `names` taken out (`enabled`) or added, in the order it had. */
-export function switched(list: string[], names: string[], enabled: boolean): string[] {
-	const ids = names.map((n) => `${SKILL}${n}`);
-	return enabled ? list.filter((x) => !ids.includes(x)) : [...list, ...ids.filter((id) => !list.includes(id))];
-}
-
 /**
  * Turn skills on or off in every folder without a list of its own (`global`), or in one project folder (`project`).
  * A project with no list of its own starts from a copy of the global list, which it then replaces: what is off
@@ -191,13 +180,13 @@ export async function switchSkills(
 		throw new ProjectConfigError("The home folder has no project list");
 	await serialized(async () => {
 		if (scope === "global") {
-			const current = await globalList(d);
+			const current = await globalDisabled(d.bin, d.neutral, {});
 			const next = switched(current, names, enabled);
 			if (JSON.stringify(next) === JSON.stringify(current)) return;
-			await runJson(d.bin, ["config", "set", "disabledExtensions", JSON.stringify(next), "--json"], d.neutral, {});
+			await setGlobalDisabled(d.bin, d.neutral, {}, next);
 			return;
 		}
-		const current = (await projectList(d, cwd)) ?? (await globalList(d));
+		const current = (await projectList(d, cwd)) ?? (await globalDisabled(d.bin, d.neutral, {}));
 		await writeProjectList(d, cwd, switched(current, names, enabled));
 	});
 }

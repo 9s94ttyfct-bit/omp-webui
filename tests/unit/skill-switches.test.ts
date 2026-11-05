@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { mergeSkills, switched, withDisabledList } from "../../server/omp/skill-switches.ts";
+import { mergeSkills, withDisabledList } from "../../server/omp/skill-switches.ts";
+import { switched } from "../../server/omp/toggles.ts";
 
 const listed = (name: string) => ({
 	name,

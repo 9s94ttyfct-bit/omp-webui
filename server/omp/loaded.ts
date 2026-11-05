@@ -14,6 +14,7 @@ import {
 	type LoadedTools,
 	type ToolState,
 } from "../../shared/loaded.ts";
+import { parsePluginList } from "./plugin-list.ts";
 import { summarizeStderr } from "./rpc-client.ts";
 import { run } from "./run.ts";
 
@@ -257,36 +258,17 @@ export async function runJson(
 	}
 }
 
-/** `omp plugin list --json`: `npm` (linked and git installs too) and `marketplace` plugins. */
+/** `omp plugin list --json` (`parsePluginList`) as the Loaded dialog lists it. */
 export function parsePlugins(doc: unknown): LoadedPlugin[] {
-	if (!isRecord(doc)) throw new Error("omp plugin list answered in a form this does not know");
-	const plugins: LoadedPlugin[] = [];
-	for (const p of Array.isArray(doc.npm) ? doc.npm : []) {
-		if (!isRecord(p) || typeof p.name !== "string") continue;
-		plugins.push({
-			name: p.name,
-			version: str(p.version),
-			kind: "npm",
-			scope: str(p.scope),
-			enabled: p.enabled !== false,
-			path: str(p.path),
-		});
-	}
-	for (const p of Array.isArray(doc.marketplace) ? doc.marketplace : []) {
-		if (!isRecord(p) || typeof p.id !== "string") continue;
-		const entry = Array.isArray(p.entries) && isRecord(p.entries[0]) ? p.entries[0] : {};
-		plugins.push({
-			name: p.id,
-			version: str(entry.version),
-			kind: "marketplace",
-			scope: str(p.scope) ?? str(entry.scope),
-			// A marketplace plugin's switch is on each of its entries (`omp plugin disable` writes it there).
-			enabled: p.enabled !== false && entry.enabled !== false,
-			path: str(entry.installPath),
-			...(p.shadowedBy === "project" ? { shadowedBy: "project" as const } : {}),
-		});
-	}
-	return plugins;
+	return parsePluginList(doc).map((p) => ({
+		name: p.id,
+		version: p.version,
+		kind: p.kind,
+		scope: p.scope,
+		enabled: p.enabled,
+		path: p.path,
+		...(p.shadowedBy ? { shadowedBy: p.shadowedBy } : {}),
+	}));
 }
 
 /** One `mcp.json`: its servers as omp reads them, and when it was last written (0: no such file). */
