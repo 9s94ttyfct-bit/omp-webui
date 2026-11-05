@@ -207,14 +207,40 @@ describe("keep awake: who is started, and who is stopped", () => {
 		expect(reports[0]).toContain("caffeinate");
 	});
 
-	test("a caffeinate that dies on its own is started again while something still works", () => {
+	test("a caffeinate that dies on its own is started again at the next look while something still works", () => {
 		const { awake, spawner } = keeper();
 		awake.setCount(true);
 		expect(spawner.children.length).toBe(1);
 		// Someone's `killall caffeinate`: the Mac would go unprotected until the count dropped otherwise.
 		spawner.children[0].die();
+		expect(awake.holding).toBe(false);
+		expect(spawner.children.length).toBe(1);
+		// The next look (once a second) starts it again.
+		awake.setCount(true);
 		expect(spawner.children.length).toBe(2);
 		expect(awake.holding).toBe(true);
+	});
+
+	test("a holder that ends as soon as it starts is started once a look, not in a loop (#47)", async () => {
+		let spawned = 0;
+		const awake = new KeepAwake({
+			hold: holdOf("darwin"),
+			spawn: () => {
+				// A bound, so that a keeper that restarts it in a loop fails this test rather than hanging it.
+				if (++spawned > 50) return null;
+				// Ends at once: caffeinate refusing its assertion, a wrong OMP_WEBUI_CAFFEINATE.
+				return { pid: 1, stop() {}, onExit: (fn) => queueMicrotask(fn) };
+			},
+			pid: () => 1,
+			report: () => {},
+		});
+		awake.setCount(true);
+		for (let i = 0; i < 20; i++) await Promise.resolve();
+		expect(spawned).toBe(1);
+		awake.setCount(true);
+		for (let i = 0; i < 20; i++) await Promise.resolve();
+		expect(spawned).toBe(2);
+		awake.stop();
 	});
 
 	test("a caffeinate that dies with nothing working is not started again", () => {

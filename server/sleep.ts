@@ -227,11 +227,10 @@ export class KeepAwake {
 		this.refused = false;
 		this.child = child;
 		// A child that ends without being asked to (a `killall caffeinate`, a crash of it) is started again at the next look
-		// while something still works; one this keeper ended is not (`this.child` is another by then).
+		// (`setCount`, once a second) while something still works, not from here: one that ends as soon as it starts would be
+		// started again as fast as processes can be made. One this keeper ended is not (`this.child` is another by then).
 		child.onExit(() => {
-			if (this.child !== child) return;
-			this.child = null;
-			if (this.working) this.begin();
+			if (this.child === child) this.child = null;
 		});
 	}
 
