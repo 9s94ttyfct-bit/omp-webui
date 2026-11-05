@@ -39,10 +39,10 @@ export function PausedBanner({
 	}, []);
 	const frozenMs = now - (since - serverOffsetMs());
 	return (
+		// biome-ignore lint/a11y/noStaticElementInteractions: Esc from its buttons bubbles here; the buttons are the controls.
 		<div
 			// Wraps: on a phone the buttons take a row of their own, not the text, which a column beside them wrapped to ten lines.
 			className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-accent/30 bg-accent-soft px-3 py-2 text-sm"
-			role="status"
 			data-testid="paused-banner"
 			onKeyDown={(e) => {
 				if (e.key !== "Escape" || imeKey(e)) return;
@@ -50,6 +50,10 @@ export function PausedBanner({
 				if (!e.repeat) onStopKey();
 			}}
 		>
+			{/* The ticking time is no live region: a screen reader is told once that the conversation is paused. */}
+			<span className="sr-only" role="status" data-testid="paused-announce">
+				{t("chat.pausedTitleBare")}
+			</span>
 			<Pause size={15} className="shrink-0 text-accent" fill="currentColor" />
 			<div className="min-w-0 flex-1 basis-56">
 				<div className="font-medium">

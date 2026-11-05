@@ -66,3 +66,32 @@ test("a page whose clock is ahead of the server's does not count the difference 
 test("a page on the server's clock reads the time as it always did", () => {
 	expect(title(0, 5_000)).toMatch(/^5\.[0-9]s$|^4\.9s$/);
 });
+
+/** The text a screen reader is told of: everything inside the banner's `role="status"` elements, tags dropped. */
+function announced(html: string): string {
+	const said: string[] = [];
+	for (const at of [...html.matchAll(/role="status"/g)].map((m) => m.index)) {
+		let i = html.lastIndexOf("<", at);
+		let depth = 0;
+		let text = "";
+		do {
+			const end = html.indexOf(">", i);
+			const tag = html.slice(i, end + 1);
+			if (tag.startsWith("</")) depth--;
+			else if (!tag.startsWith("<!") && !tag.endsWith("/>")) depth++;
+			i = end + 1;
+			const next = html.indexOf("<", i);
+			if (depth > 0) text += html.slice(i, next);
+			i = next;
+		} while (depth > 0);
+		said.push(text);
+	}
+	return said.join(" | ");
+}
+
+test("a screen reader is told once that the conversation is paused, not the time every second", () => {
+	const first = announced(banner(0, 5_000));
+	expect(first).toContain("Paused");
+	expect(announced(banner(0, 6_000))).toBe(first);
+	expect(announced(banner(0, 65_000))).toBe(first);
+});
