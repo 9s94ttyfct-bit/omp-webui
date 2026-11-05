@@ -391,7 +391,8 @@ export function UpdatesSection({
 				testId="updates-confirm"
 				onConfirm={() => {
 					if (!asking) return;
-					onJob({ action: "update", keys: asking.length === list.length ? "all" : asking.map((u) => u.key) });
+					// The updates the dialog listed, by key: "all" would be the server's latest check, which can list others.
+					onJob({ action: "update", keys: asking.map((u) => u.key) });
 					setChosen(new Set());
 				}}
 			/>

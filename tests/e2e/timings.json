@@ -1455,6 +1455,7 @@
 		"plan-mode.spec.ts › a --plan-yolo chat shows Plan mode in its header until omp's handoff entry arrives": 7.9,
 		"plan-mode.spec.ts › a chat started without --plan-yolo shows no Plan mode": 5.9,
 		"plan-mode.spec.ts › the badge and the /plan hint are in Chinese with the interface in Chinese": 8.4,
+		"plugins-discover.spec.ts › Update all installs the updates its dialog listed, not one a check from elsewhere found since": 4.8,
 		"plugins-discover.spec.ts › in Chinese › the tabs and the recommended card speak Chinese": 1.4,
 		"plugins-discover.spec.ts › the MCP tab finds a server in the registry and adds it to omp after its required value is filled in": 2.7,
 		"plugins-discover.spec.ts › the Overview lists the updates a check finds; some are installed, then the rest, and the marketplaces in bulk": 4.5,

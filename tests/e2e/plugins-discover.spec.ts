@@ -214,6 +214,48 @@ test("the Overview lists the updates a check finds; some are installed, then the
 	);
 });
 
+test("Update all installs the updates its dialog listed, not one a check from elsewhere found since", async ({
+	page,
+}) => {
+	const file = join(s.home, ".fake-plugins-omp.json");
+	// What omp has: one marketplace plugin with a newer version in its catalog, and nothing else.
+	const held = {
+		marketplaces: [{ name: "market", source: "someone/market" }],
+		skills: [],
+		plugins: [{ id: "seen@market", scope: "user", version: "1.0.0", latest: "1.1.0" }],
+	};
+	writeFileSync(file, JSON.stringify(held));
+
+	await page.goto(`${s.url}/?token=${s.accessToken}#/plugins`);
+	await page.getByTestId("updates-check").click();
+	const rows = page.getByTestId("update-row");
+	await expect(rows).toHaveCount(1);
+	await expect(page.getByTestId("updates-check")).toBeEnabled();
+
+	// Another window checks again and finds one more; this page still lists the one it found.
+	held.plugins.push({ id: "unseen@market", scope: "user", version: "1.0.0", latest: "2.0.0" });
+	writeFileSync(file, JSON.stringify(held));
+	const other = await page.context().newPage();
+	await other.goto(`${s.url}/#/plugins`);
+	await other.getByTestId("updates-check").click();
+	await expect(other.getByTestId("update-row")).toHaveCount(2);
+	await other.close();
+	await expect(rows).toHaveCount(1);
+
+	await page.getByTestId("updates-all").click();
+	await expect(page.getByRole("dialog")).toContainText("seen@market");
+	await expect(page.getByRole("dialog")).not.toContainText("unseen@market");
+	await page.getByTestId("updates-confirm").click();
+	await expect(page.getByTestId("plugins-outcome")).toHaveAttribute("data-state", "done");
+	await expect(page.getByTestId("plugins-outcome")).toContainText("omp plugin upgrade seen@market --scope user");
+	await expect(page.getByTestId("plugins-outcome")).not.toContainText("unseen@market");
+	const now = JSON.parse(readFileSync(file, "utf8"));
+	expect(now.plugins.map((p: { id: string; version: string }) => `${p.id} ${p.version}`)).toEqual([
+		"seen@market 1.1.0",
+		"unseen@market 1.0.0",
+	]);
+});
+
 test.describe("in Chinese", () => {
 	test.use({ locale: "zh-CN" });
 
