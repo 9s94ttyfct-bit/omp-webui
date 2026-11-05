@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import AxeBuilder from "@axe-core/playwright";
 import { chromium, devices } from "@playwright/test";
 import type { BrowserState } from "../../shared/browser.ts";
 import { DESKTOP_SIZE } from "../../shared/browser-protocol.ts";
@@ -122,7 +123,7 @@ async function switchTo(page: Page, title: string): Promise<void> {
 }
 
 const tabs = (page: Page) => page.getByTestId("browser-page-tab");
-const selectedTab = (page: Page) => page.locator('[data-testid="browser-page-tab"][aria-selected="true"]');
+const selectedTab = (page: Page) => page.locator('[data-testid="browser-page-tab"][aria-current="true"]');
 /** The page shown is at `path` of the spec's site (a page tab's tooltip is its address). */
 const showing = (page: Page, path: string) => expect(selectedTab(page)).toHaveAttribute("title", `${site}${path}`);
 
@@ -201,6 +202,11 @@ test("New page adds a page of this conversation, which another conversation's Br
 	await withPage(page, TITLE_NEW);
 	await page.getByTestId("browser-new").click();
 	await expect(tabs(page)).toHaveCount(2);
+	// A list of the pages, the shown one marked current: nothing in it claims to be a tab of a panel it is not.
+	const found = await new AxeBuilder({ page }).include('[data-testid="browser-tab"]').analyze();
+	expect(found.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
+	await expect(page.getByTestId("browser-tab").getByRole("tab")).toHaveCount(0);
+	await expect(page.getByRole("list", { name: "Pages" }).getByRole("listitem")).toHaveCount(2);
 	await expect(selectedTab(page)).toHaveText("New page");
 	await expect(page.getByTestId("browser-address")).toHaveValue("");
 	await expect(page.getByTestId("browser-address")).toBeFocused();

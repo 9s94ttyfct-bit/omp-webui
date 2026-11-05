@@ -239,17 +239,14 @@ function BrowserPages({ owner, place }: { owner: string; place: BrowserPlace }) 
 		<div className="flex min-h-0 flex-1 flex-col" data-testid="browser-tab">
 			{listed.length ? (
 				<div className="flex items-center gap-1 border-b border-border px-1.5 py-1">
-					<div
-						className="flex min-w-0 flex-1 gap-1 overflow-x-auto"
-						role="tablist"
-						aria-label={t("browser.pagesLabel")}
-					>
+					{/* A list of the pages, the one shown marked current: each is a button that shows it, and its close button. */}
+					<ul className="flex min-w-0 flex-1 gap-1 overflow-x-auto" aria-label={t("browser.pagesLabel")}>
 						{listed.map((p) => {
 							// A blank page is a new one (Chrome calls it by its address).
 							const title = !p.url || p.url === "about:blank" ? t("browser.untitled") : p.title || p.url;
 							const on = p.targetId === current?.targetId;
 							return (
-								<div
+								<li
 									key={p.targetId}
 									className={cx(
 										"flex max-w-44 min-w-0 shrink-0 items-center rounded-md text-xs",
@@ -258,8 +255,7 @@ function BrowserPages({ owner, place }: { owner: string; place: BrowserPlace }) 
 								>
 									<button
 										type="button"
-										role="tab"
-										aria-selected={on}
+										aria-current={on ? "true" : undefined}
 										className="min-w-0 truncate py-1 pr-1 pl-2 text-left"
 										title={p.url}
 										data-testid="browser-page-tab"
@@ -276,10 +272,10 @@ function BrowserPages({ owner, place }: { owner: string; place: BrowserPlace }) 
 									>
 										<X size={12} />
 									</IconButton>
-								</div>
+								</li>
 							);
 						})}
-					</div>
+					</ul>
 					<IconButton size="sm" label={t("browser.newPage")} onClick={newPage} data-testid="browser-new">
 						<Plus size={15} />
 					</IconButton>
