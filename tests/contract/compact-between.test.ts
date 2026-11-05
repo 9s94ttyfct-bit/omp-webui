@@ -184,6 +184,10 @@ test("between steps: the tools of the step run, the compact follows them, the ne
 
 	c.open();
 	await c.finished();
+	// The held messages are sent once the compact has ended, one prompt after the other: the conversation can look settled (no
+	// turn streaming, the compact over) before the last of them has been asked of the model. What is waited for is that both
+	// were, and that their turns have ended (a turn left running here would be counted as the next test's).
+	await until(async () => c.mains().length === 4 && !(await c.info()).streaming, "the held messages' turns to end");
 	const mains = c.mains();
 	// The step's tool call, the request after the compact, and one for each message that was held.
 	expect(c.kinds()).toEqual(["main", "summary", "main", "main", "main"]);
