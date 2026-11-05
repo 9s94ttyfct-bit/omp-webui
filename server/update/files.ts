@@ -129,3 +129,19 @@ export function rotateLog(file: string, max = MAX_LOG_BYTES): void {
 export function removeFiles(...files: string[]): void {
 	for (const f of files) rmSync(f, { force: true });
 }
+
+/**
+ * What an install that is ending made (its staged folder, its download), removed as far as it can be. Never throws: on
+ * Windows a program that was just run or written can be held open a moment longer (an antivirus scan, the process still
+ * ending), and an install that failed must still say why and let the next one start. What stays is the server's next
+ * start's to remove (`sweep`).
+ */
+export function removeLeftovers(...paths: string[]): void {
+	for (const path of paths) {
+		try {
+			rmSync(path, { recursive: true, force: true });
+		} catch (e) {
+			console.warn(`omp-webui: updates: ${path} could not be removed: ${(e as Error).message}`);
+		}
+	}
+}

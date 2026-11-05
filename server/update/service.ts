@@ -34,6 +34,7 @@ import {
 	readJson,
 	readOutcome,
 	removeFiles,
+	removeLeftovers,
 	rotateLog,
 	type UpdatePaths,
 	writeJson,
@@ -648,10 +649,11 @@ export class AppUpdater {
 				failure = { code: error.code, tag: release.tag, params: error.params };
 			}
 		}
-		// What was made is removed before the page is told it is over: it never sees a failure with its files still there.
+		// What was made is removed before the page is told it is over: it never sees a failure with its files still there,
+		// unless one is held open (Windows): then it is left, logged, rather than the failure never being told at all (a
+		// throw here left the job in its phase for good, and no other install could start).
 		if (!handedOver) {
-			rmSync(staged, { recursive: true, force: true });
-			removeFiles(part, file);
+			removeLeftovers(staged, part, file);
 			this.job = null;
 			// An automatic install that failed or was cancelled is not started again by itself: the card offers it.
 			if (this.autoTag === job.tag) this.skipAuto(release.version);

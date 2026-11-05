@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { run } from "../omp/run.ts";
+import { removeLeftovers } from "./files.ts";
 import { detailOf, freeSpace, UpdateError } from "./steps.ts";
 
 /**
@@ -291,7 +292,9 @@ export async function stageWindows(
 			throw new UpdateError("version", { tag: `v${expectedVersion}`, found: found.slice(0, 40) || "?" });
 		}
 	} catch (e) {
-		rmSync(staged, { recursive: true, force: true });
+		// The program was just run: Windows may hold it a moment longer, and a removal that threw would put its own error in
+		// place of the refusal (the install then said "stage" where it should say which version it found).
+		removeLeftovers(staged);
 		throw e;
 	}
 }

@@ -551,6 +551,35 @@ test.skipIf(!mac)(
 );
 
 test.skipIf(!mac)(
+	"a refusal whose leftovers cannot be removed is still told, and the next install is not refused as busy",
+	async () => {
+		const w = world();
+		const good = fixtures.installers.good;
+		fake.publish({ tag: `v${NEWER}`, dmg: good?.dmg, digest: `sha256:${"0".repeat(64)}` });
+		await w.updater.check();
+		// The staged copy is held: on Windows a program that was just run can be for a moment. Here a folder in it cannot
+		// be emptied, so removing the copy throws as it does there.
+		const held = join(w.installDir, "omp-webui.app.updating", "held");
+		mkdirSync(held, { recursive: true });
+		writeFileSync(join(held, "omp-webui.exe"), "");
+		chmodSync(held, 0o555);
+		try {
+			await w.updater.install(`v${NEWER}`, true);
+			const failed = await until(w, "the digest refusal", (s) => s.failed !== null);
+			expect(failed.failed).toMatchObject({ code: "digest" });
+			expect(failed.job).toBeNull();
+			// Over, not stuck: another install starts.
+			expect(await w.updater.install(`v${NEWER}`, true)).toHaveProperty("state");
+			expect((await until(w, "the second refusal", (s) => s.failed !== null)).failed).toMatchObject({ code: "digest" });
+		} finally {
+			chmodSync(held, 0o755);
+			rmSync(join(w.installDir, "omp-webui.app.updating"), { recursive: true, force: true });
+		}
+	},
+	90_000,
+);
+
+test.skipIf(!mac)(
 	"a failed install can be tried again, and says nothing of the failure once it works",
 	async () => {
 		const w = world();
