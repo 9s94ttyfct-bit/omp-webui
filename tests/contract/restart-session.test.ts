@@ -28,12 +28,24 @@ import { removeScratch } from "../support/scratch.ts";
 
 const root = mkdtempSync(join(tmpdir(), "ompw-restart-"));
 const pools: LivePool[] = [];
-/** Processes a failing test may leave behind. */
-const strays = new Set<number>();
+/**
+ * Processes a failing test may leave behind, with what identified each when it was seen (`platform.proc.identity`): Windows
+ * gives the number of a process that ended to the next one soon, and a test file running beside this one had its omp killed
+ * by the number of one of these, long gone.
+ */
+const strays = new Map<number, Promise<string | null>>();
+const stray = (pid: number) =>
+	strays.set(
+		pid,
+		platform.proc.identity(pid).catch(() => null),
+	);
 
 afterAll(async () => {
 	for (const pool of pools.splice(0)) await pool.shutdown(200, 200);
-	for (const pid of strays) {
+	const now = await platform.proc.identities([...strays.keys()]);
+	for (const [pid, seen] of strays) {
+		const was = await seen;
+		if (was === null || now.get(pid) !== was) continue;
 		try {
 			process.kill(pid, "SIGKILL");
 		} catch {
@@ -59,7 +71,7 @@ function world(options: FakeOmpOptions = {}, dir = mkdtempSync(join(root, "w-"))
 	pool.restarts = coordinator;
 	const open = async (): Promise<Live> => {
 		const live = await pool.open({ kind: "resume", sessionFile: file }, async () => dir);
-		if (live.info.pid !== null) strays.add(live.info.pid);
+		if (live.info.pid !== null) stray(live.info.pid);
 		return live;
 	};
 	return { dir, file, key: sessionKey(file), prompts, pool, coordinator, store: coordinator.service.store, open };
@@ -116,7 +128,7 @@ describe("the agent's restart", () => {
 			await live.rpc({ type: "wedge", file: pidsFile });
 			await pollUntil(() => existsSync(pidsFile), "the wedge");
 			const { children } = JSON.parse(readFileSync(pidsFile, "utf8")) as { children: number[] };
-			for (const pid of children) strays.add(pid);
+			for (const pid of children) stray(pid);
 			const before = await platform.proc.identities([ompPid, ...children]);
 			expect(before.size).toBe(3);
 			// A background job keeps the session unsettled: the conversation is never idle, and the restart does not wait for that.
@@ -149,7 +161,7 @@ describe("the agent's restart", () => {
 			expect(next).toBeDefined();
 			expect(next?.info.liveId).not.toBe(live.info.liveId);
 			expect(next?.info.pid).not.toBe(ompPid);
-			if (next?.info.pid) strays.add(next.info.pid);
+			if (next?.info.pid) stray(next.info.pid);
 			expect(w.store.get(record.id)?.newLiveId).toBe(next?.info.liveId);
 			// Told once, with the request's id and the agent's own words; the session file has it. Still once a moment later
 			// (nothing sends it again): the second look is the point of the wait.
@@ -188,7 +200,7 @@ describe("the agent's restart", () => {
 		await pollUntil(() => w.store.get(record.id)?.state === "delivered", "the restart", 30_000);
 		expect(live.info.exited).toBe(true);
 		const next = w.pool.liveOfFile(w.file);
-		if (next?.info.pid) strays.add(next.info.pid);
+		if (next?.info.pid) stray(next.info.pid);
 		expect(sent(w.prompts).filter((m) => m.includes(record.id))).toHaveLength(1);
 	}, 60_000);
 });
@@ -232,7 +244,7 @@ describe("refusals: told to the agent, nothing ended", () => {
 		await pollUntil(() => w.store.list().some((r) => r.state === "delivered"), "the restart", 30_000);
 		expect(live.info.exited).toBe(true);
 		const next = w.pool.liveOfFile(w.file);
-		if (next?.info.pid) strays.add(next.info.pid);
+		if (next?.info.pid) stray(next.info.pid);
 	}, 60_000);
 
 	test.skipIf(!capabilities.pauseResume)(
@@ -327,7 +339,7 @@ describe("Force restart", () => {
 		await emit(live, [{ type: "agent_start" }]);
 		await pollUntil(() => live.info.streaming, "the turn");
 		const next = await w.coordinator.forceRestart(live);
-		if (next.info.pid) strays.add(next.info.pid);
+		if (next.info.pid) stray(next.info.pid);
 		expect(live.info.exited).toBe(true);
 		expect(w.pool.exitOf(live.info.liveId)?.exit).toMatchObject({ by: "server", reason: "forceRestart" });
 		expect(next.info.liveId).not.toBe(live.info.liveId);
@@ -342,7 +354,7 @@ describe("Force restart", () => {
 		await emit(live, [{ type: "agent_start" }, ...call(ARGS)]);
 		await pollUntil(() => w.store.list().length === 1, "the request");
 		const next = await w.coordinator.forceRestart(live);
-		if (next.info.pid) strays.add(next.info.pid);
+		if (next.info.pid) stray(next.info.pid);
 		const record = only(w.store);
 		expect(record).toMatchObject({ by: "agent", state: "delivered", force: true });
 		expect(sent(w.prompts).filter((m) => m.includes(record.id))).toHaveLength(1);
@@ -391,7 +403,7 @@ describe("a server that stopped between two steps finishes the restart when it s
 			expect(w.store.get(id)?.state).toBe("delivered");
 			const live = w.pool.liveOfFile(w.file);
 			expect(live).toBeDefined();
-			if (live?.info.pid) strays.add(live.info.pid);
+			if (live?.info.pid) stray(live.info.pid);
 			expect(sent(w.prompts).filter((m) => m.includes(id))).toHaveLength(1);
 			// And a server that starts after that has nothing left to do.
 			const again = world({}, first.dir);
@@ -412,7 +424,7 @@ describe("a server that stopped between two steps finishes the restart when it s
 		await w.coordinator.recover();
 		expect(w.store.get(id)?.state).toBe("delivered");
 		const live = w.pool.liveOfFile(w.file);
-		if (live?.info.pid) strays.add(live.info.pid);
+		if (live?.info.pid) stray(live.info.pid);
 		expect(live).toBeDefined();
 		expect(sent(w.prompts)).toEqual([]);
 	}, 30_000);
