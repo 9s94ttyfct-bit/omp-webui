@@ -187,10 +187,15 @@ function writeLocal(changes: PrefsChanges): PrefKey[] {
  * The server's copy as another page (or this page's own request) left it: take it in, key by key, except what this origin
  * has chosen and the server has not heard yet (this page's own edits, and another tab's: see `told`). Older than what was
  * seen is ignored; a store this page never met (a data dir that was replaced under it) is merged as at start-up, so that
- * this page's own choices are not wiped by it.
+ * this page's own choices are not wiped by it. Before the page has met the server's copy (its first read failed), this
+ * is that meeting: the start-up merge.
  */
 export function receiveSnapshot(snapshot: PrefsSnapshot): void {
-	if (!synced) return;
+	if (!started) return;
+	if (!synced) {
+		void meet(snapshot);
+		return;
+	}
 	if (seen?.id === snapshot.id) {
 		if (snapshot.rev <= seen.rev) return;
 		seen = { id: snapshot.id, rev: snapshot.rev };
@@ -236,7 +241,9 @@ function onStorage(e: StorageEvent): void {
 
 /**
  * Start keeping the server's copy in step with this origin's. Once per page; the page does not wait for it.
- * `web/index.html` has already applied the server's values where the server put them into the page.
+ * `web/index.html` has already applied the server's values where the server put them into the page. A page that came
+ * without them and cannot read them now meets the server's copy with the first snapshot that reaches it
+ * (`receiveSnapshot`: a reconnect's `refreshPrefs`, another page's change).
  */
 export async function startPrefsSync(): Promise<void> {
 	if (started) return;
@@ -248,6 +255,13 @@ export async function startPrefsSync(): Promise<void> {
 	});
 	const snapshot = injectedSnapshot() ?? (await fetchSnapshot());
 	if (!snapshot) return;
+	// Another snapshot may have reached the page while it read this one: then it has met the server's copy already.
+	if (synced) receiveSnapshot(snapshot);
+	else await meet(snapshot);
+}
+
+/** The start-up merge: this origin and the server's copy, met for the first time in this page. */
+async function meet(snapshot: PrefsSnapshot): Promise<void> {
 	// A value no part of the app ever writes (an older build's, or a hand edit) is dropped, so that it shows as the default
 	// and does not make the server refuse what is sent with it.
 	const stale: PrefsChanges = {};

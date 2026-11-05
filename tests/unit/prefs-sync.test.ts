@@ -227,6 +227,25 @@ describe("an origin that predates the server's copy", () => {
 		expect(dev.storage.get(PREF.palette)).toBe("omp");
 		expect(dev.storage.get(PREFS_SYNC_KEY)).toBe(syncMarker(server.snapshot()));
 	});
+
+	test("a page served without the preferences whose first read failed starts with the server's next answer", async () => {
+		const server = new UiPrefs(dir);
+		server.apply({ [PREF.palette]: "omp" });
+		outage = 503;
+		const dev = await open(server, { [PREF.theme]: "light" }, false);
+		expect(dev.storage.has(PREF.palette)).toBe(false);
+
+		// The connection comes back (`refreshPrefs`): the start-up merge is done then.
+		outage = null;
+		await dev.prefs.refreshPrefs();
+		await dev.prefs.flushPrefs();
+		expect(dev.storage.get(PREF.palette)).toBe("omp");
+		expect(server.snapshot().values[PREF.theme]).toBe("light");
+
+		// And from then on another page's change is taken.
+		dev.prefs.receiveSnapshot(server.apply({ [PREF.palette]: "hermes" }));
+		expect(dev.storage.get(PREF.palette)).toBe("hermes");
+	});
 });
 
 describe("sending changes", () => {
