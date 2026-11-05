@@ -451,6 +451,7 @@
     "tests/unit/attention-looking.test.ts": 8,
     "tests/unit/auto-refresh.test.ts": 8,
     "tests/unit/changes-rows.test.ts": 8,
+    "tests/unit/cli-args.test.ts": 8,
     "tests/unit/files-store.test.ts": 8,
     "tests/unit/files.test.ts": 8,
     "tests/unit/goal-session.test.ts": 8,

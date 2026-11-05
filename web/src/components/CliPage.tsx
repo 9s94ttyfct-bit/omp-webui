@@ -5,6 +5,7 @@ import { useShallow } from "zustand/react/shallow";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
 import { api } from "../lib/api.ts";
+import { commandLine, splitArgs } from "../lib/cli-args.ts";
 import { socket } from "../lib/ws.ts";
 import { useApp } from "../store/app.ts";
 import { LoadError } from "./LoadError.tsx";
@@ -12,45 +13,13 @@ import { SettingsCrumb } from "./SettingsCrumb.tsx";
 import { Terminal } from "./Terminal.tsx";
 import { Button, cx, Spinner } from "./ui.tsx";
 
-/** Split a command line like a POSIX shell would for simple quoting. */
-export function splitArgs(line: string): string[] {
-	const out: string[] = [];
-	let cur = "";
-	let quote: string | null = null;
-	let has = false;
-	for (const ch of line) {
-		if (quote) {
-			if (ch === quote) quote = null;
-			else cur += ch;
-		} else if (ch === '"' || ch === "'") {
-			quote = ch;
-			has = true;
-		} else if (/\s/.test(ch)) {
-			if (cur || has) out.push(cur);
-			cur = "";
-			has = false;
-		} else {
-			cur += ch;
-		}
-	}
-	if (cur || has) out.push(cur);
-	return out;
-}
-
-/** Quote an argument for display on the command line. */
-function quoteArg(a: string): string {
-	return /[\s"']/.test(a) ? `'${a.replaceAll("'", "'\\''")}'` : a;
-}
-
 export function CliPage({ command, run: initialRun }: { command?: string; run?: string[] }) {
 	const t = useT();
 	const { setView, meta } = useApp(useShallow((s) => ({ setView: s.setView, meta: s.meta })));
 	const [inv, setInv] = useState<CliInventory | null>(null);
 	const [help, setHelp] = useState<CliHelp | null>(null);
 	const [q, setQ] = useState("");
-	const [line, setLine] = useState(() =>
-		initialRun ? initialRun.map(quoteArg).join(" ") : command ? `${command} ` : "",
-	);
+	const [line, setLine] = useState(() => (initialRun ? commandLine(initialRun) : command ? `${command} ` : ""));
 	// `attach`: a terminal the macOS app's Run in Background held for this window (see `PtyManager.held`).
 	const [run, setRun] = useState<{ args: string[]; key: number; attach?: string } | null>(() =>
 		initialRun ? { args: initialRun, key: Date.now() } : null,
@@ -88,7 +57,7 @@ export function CliPage({ command, run: initialRun }: { command?: string; run?: 
 				// The panel's shells are the panel's to take back (`lib/shell-terminals.ts`).
 				const held = terminals.find((x) => !x.shell);
 				if (gone || !held) return;
-				setLine(held.args.map(quoteArg).join(" "));
+				setLine(commandLine(held.args));
 				setRun((now) => now ?? { args: held.args, key: Date.now(), attach: held.ptyId });
 			})
 			.catch(() => {});
