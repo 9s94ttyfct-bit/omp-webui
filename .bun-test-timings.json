@@ -360,6 +360,7 @@
     "tests/unit/omp-settings-write.test.ts": 29,
     "tests/unit/stats-db.test.ts": 29,
     "tests/unit/turn-fold.test.ts": 29,
+    "tests/unit/i18n-pack.test.ts": 25,
     "tests/unit/markdown-depth.test.ts": 25,
     "tests/unit/prefs-sync.test.ts": 25,
     "tests/unit/transfer-api.test.ts": 25,

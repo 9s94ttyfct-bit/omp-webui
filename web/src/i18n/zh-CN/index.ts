@@ -9,7 +9,6 @@ export * as drop from "./drop.ts";
 export * as errors from "./errors.ts";
 export * as feedback from "./feedback.ts";
 export * as files from "./files.ts";
-export * as guidance from "./guidance.ts";
 export * as issues from "./issues.ts";
 export * as loaded from "./loaded.ts";
 export * as mode from "./mode.ts";
