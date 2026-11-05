@@ -181,3 +181,16 @@ test("only the requests omp counted are moved out of its buckets: one it never i
 	const unread = by(await addGuardUsage(body, sessions, undefined, join(root, "absent.db")));
 	expect(unread.guard?.totalRequests).toBeGreaterThanOrEqual(3);
 });
+
+test("without omp's database a copy of an entry in a fork is still one request (#50)", async () => {
+	const sessions = join(root, "fork", "sessions");
+	const folder = join(sessions, "-tmp-f");
+	mkdirSync(folder, { recursive: true });
+	// The fork holds a copy of g1, as omp's forks do: the same id and time.
+	writeFileSync(join(folder, "2026-10-27T10-00-00-000Z_01d.jsonl"), guard("g1", T, 0.5));
+	writeFileSync(join(folder, "2026-10-27T11-00-00-000Z_01e.jsonl"), guard("g1", T, 0.5));
+	const out = JSON.parse(await addGuardUsage(stats([bucket("main", 5, 2)]), sessions));
+	const by = Object.fromEntries(out.byAgentType.map((b: { agentType: string }) => [b.agentType, b]));
+	expect(by.guard).toMatchObject({ totalRequests: 1, totalInputTokens: 100 });
+	expect(by.main).toMatchObject({ totalRequests: 4, totalInputTokens: 900 });
+});

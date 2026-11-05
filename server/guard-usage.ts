@@ -236,14 +236,15 @@ export function withGuardBucket(
  * The requests of `requests` that omp counted (#706), each marked with the agent type omp counted it under (`under`, from
  * `agentTypesOf`). A `model_usage` entry omp never ingested (a stretch of a transcript it did not sync) is in no bucket of
  * its answer, so taking it out of one took a request that was never there and gave the guard one the totals do not hold.
- * An entry copied into a fork is in two transcripts and one row of omp's: one request.
+ * `under` null (no database to tell): every request is taken for counted, under the type of the transcript it was read from.
+ * Either way an entry copied into a fork is in two transcripts and one row of omp's: one request.
  */
-export function counted(requests: readonly GuardRequest[], under: ReadonlyMap<string, string>): GuardRequest[] {
+export function counted(requests: readonly GuardRequest[], under: ReadonlyMap<string, string> | null): GuardRequest[] {
 	const seen = new Set<string>();
 	const out: GuardRequest[] = [];
 	for (const r of requests) {
 		const key = entryKey(r.id, r.at);
-		const kind = under.get(key);
+		const kind = under ? under.get(key) : r.kind;
 		if (kind === undefined || seen.has(key)) continue;
 		seen.add(key);
 		out.push({ ...r, kind });
@@ -279,5 +280,5 @@ export async function addGuardUsage(
 	// `dbPath`: omp's database that `body` was made from. Without one (or when it cannot be read) there is no telling what omp
 	// counted, and every request of the window is taken for counted.
 	const under = dbPath ? agentTypesOf(dbPath, requests) : null;
-	return withGuardBucket(body, under ? counted(requests, under) : requests, window);
+	return withGuardBucket(body, counted(requests, under), window);
 }
