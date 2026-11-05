@@ -7,9 +7,10 @@ test("a command line shown for arguments splits back into the same arguments", (
 	for (const args of [
 		["commit", "-m", "it's done"],
 		["say", 'a "quoted" word'],
+		["both", `it's "this"`],
 		["path", "C:\\Users\\someone\\x y"],
 		["empty", ""],
-		["tab\there", "new\nline", "'", "\\"],
+		["tab\there", "new\nline", "'", '"', "\\"],
 		["plain", "--flag=value"],
 	])
 		expect(splitArgs(commandLine(args))).toEqual(args);
@@ -18,10 +19,12 @@ test("a command line shown for arguments splits back into the same arguments", (
 test("plain arguments are shown as they are, and only those that need it are quoted", () => {
 	expect(commandLine(["status", "--short"])).toBe("status --short");
 	expect(commandLine(["commit", "-m", "two words"])).toBe("commit -m 'two words'");
+	// A Windows path is no special case: its backslashes are ordinary characters.
+	expect(commandLine(["--resume", "C:\\Users\\someone\\x.jsonl"])).toBe("--resume C:\\Users\\someone\\x.jsonl");
 });
 
-test("a typed line splits as a POSIX shell splits it", () => {
-	expect(splitArgs(`a\\ b "c \\"d\\" \\\\e" 'f\\g' h''i ""`)).toEqual(["a b", 'c "d" \\e', "f\\g", "hi", ""]);
+test("a typed line keeps its backslashes, and quoted parts next to each other make one argument", () => {
+	expect(splitArgs("--resume C:\\Users\\someone\\x.jsonl")).toEqual(["--resume", "C:\\Users\\someone\\x.jsonl"]);
+	expect(splitArgs(`'it'"'"'s' "a b" h''i ""`)).toEqual(["it's", "a b", "hi", ""]);
 	expect(splitArgs("  one   two\tthree ")).toEqual(["one", "two", "three"]);
-	expect(splitArgs("it\\'s")).toEqual(["it's"]);
 });
