@@ -130,6 +130,8 @@ export interface UpdaterOptions {
 	startHelper?: (args: string[]) => Promise<number>;
 	/** How long the Windows launcher waits for `helper.ps1` to say it runs (`HELPER_START_MS`); a test's shorter one. */
 	helperStartMs?: number;
+	/** How long past the helper's time for the app to quit this server looks whether it gave up (`HANDOVER_SLACK_SECS`); a test's shorter one. */
+	handoverSlackSecs?: number;
 }
 
 /** An install that was asked for and will not start: the 409 the page words (`UpdateRefusal`). */
@@ -153,6 +155,8 @@ const PROGRESS_MS = 250;
 const QUIT_DELAY_MS = 1000;
 /** How long `helper.ps1` has to say it runs (it does so first thing; PowerShell starts in a second or two). */
 const HELPER_START_MS = 10_000;
+/** How long past `quitSecs` a server that is still here looks whether the helper gave up: it has ended and written why by then. */
+const HANDOVER_SLACK_SECS = 20;
 
 /** What either helper is started with, besides the install's paths. */
 interface HelperRun {
@@ -756,7 +760,8 @@ export class AppUpdater {
 		}
 		// Normally the app quits and this server with it. A helper that gave up (the app did not quit in time) has written
 		// why and put nothing in place: this server is still here to say so.
-		const waiting = setTimeout(() => this.handoverEnded(handover), (quitSecs + 20) * 1000);
+		const slack = this.opts.handoverSlackSecs ?? HANDOVER_SLACK_SECS;
+		const waiting = setTimeout(() => this.handoverEnded(handover), (quitSecs + slack) * 1000);
 		waiting.unref();
 		this.timers.push(waiting);
 	}
@@ -872,9 +877,13 @@ export class AppUpdater {
 		}
 	}
 
-	/** The app did not quit and the helper ended (or died): how it ended is on the page, and what was staged is gone. */
+	/**
+	 * The app did not quit and the helper ended (or died): how it ended is on the page, and what was staged is gone. A helper
+	 * that gave up removed the handover record after it wrote why; only another handover's record is not this one's to end.
+	 */
 	private handoverEnded(handover: Handover): void {
-		if (readHandover(this.paths)?.id !== handover.id) return;
+		const record = readHandover(this.paths);
+		if (record !== null && record.id !== handover.id) return;
 		const written = readOutcome(this.paths);
 		if (!alive(handover.helperPid)) {
 			this.outcome = written ?? {

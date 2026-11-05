@@ -722,9 +722,9 @@ test.skipIf(!mac)(
 );
 
 test.skipIf(!mac)(
-	"an app that does not quit is not swapped: the helper gives up, removes the staged copy and says so",
+	"an app that does not quit is not swapped: the helper gives up, removes the staged copy and says so, and the page is told",
 	async () => {
-		const w = world({ quitSecs: 1, onSignal: () => {} });
+		const w = world({ quitSecs: 1, onSignal: () => {}, options: { handoverSlackSecs: 3 } });
 		await install(w, "good");
 		await until(w, "the handover", (s) => s.job?.phase === "handover");
 		await helperEnded(w);
@@ -734,6 +734,10 @@ test.skipIf(!mac)(
 		expect(readdirSync(w.installDir)).toEqual(["omp-webui.app"]);
 		expect(w.launches()).toEqual([]);
 		expect(processExists(w.app.pid)).toBe(true);
+		// This server is still here: past the helper's time it shows how the install ended, and another may start.
+		const after = await until(w, "the handover to end", (s) => s.job === null, 30_000);
+		expect(after.outcome).toMatchObject({ ok: false, problem: "quitTimeout" });
+		expect(latest(w)).toMatchObject({ job: null, outcome: { ok: false, problem: "quitTimeout" } });
 	},
 	120_000,
 );
