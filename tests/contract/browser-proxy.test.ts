@@ -78,7 +78,7 @@ test("each conversation's puppeteer sees its own blank page, and never the other
 	expect(await b.pages()).toHaveLength(2);
 	const titlesA = await Promise.all((await a.pages()).map((p) => p.title()));
 	expect(titlesA).toEqual(["ompw-a"]);
-	// Every page is its window's active one: A's, older than B's new tab, still renders (engine.ts `keepVisible`).
+	// Every page is its window's active one: A's, older than B's new tab, still renders (engine.ts `ownSession`).
 	expect(await pagesA[0].evaluate(() => document.visibilityState)).toBe("visible");
 	expect(await pagesA[0].evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve("frame"))))).toBe(
 		"frame",

@@ -161,8 +161,8 @@ export class LazyBrowser {
 						executable,
 						profileDir: installer?.profileDir() ?? join(root, "cft-profile"),
 					});
-					// Its pages are tabs of one headless window: each is kept visible, not only the newest (engine.ts).
-					return { transport, generation: randomUUID(), fresh: true, keepVisible: true };
+					// Its pages are tabs of one headless window, and Chrome tells nobody of their titles (engine.ts `cft`).
+					return { transport, generation: randomUUID(), fresh: true, cft: true };
 				};
 				const host = new EngineHost(registry, start);
 				// Whether CfT ran before Clear or an update stopped it: it runs again for the conversations that used it.

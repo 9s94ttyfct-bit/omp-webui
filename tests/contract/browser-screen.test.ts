@@ -36,6 +36,7 @@ beforeAll(async () => {
 		}),
 		generation: "g",
 		fresh: true,
+		cft: true,
 	}));
 	hub = new ScreenHub(host, registry);
 	engine = await host.ready();
@@ -200,6 +201,22 @@ test("the tabs learn a page's title once it has loaded, and again after it moves
 		JSON.stringify({ t: "navigate", targetId, action: "url", url: "data:text/html,<title>second-title</title>" }),
 	);
 	await until("the second title", () => titled("second-title"));
+	client.close();
+}, 30_000);
+
+test("the tabs learn a title the page sets itself: its <title>, and one its script sets later, watched or not", async () => {
+	const parsed = await engine.createPage(OWNER, "data:text/html,<title>ompw-parsed</title><h1>hello</h1>");
+	const scripted = await engine.createPage(
+		OWNER,
+		"data:text/html,<title>t0</title><script>onload = () => setTimeout(() => { document.title = 'ompw-scripted' }, 300)</script>",
+	);
+	const tab = new Tab();
+	const client = hub.connect(tab);
+	client.message(JSON.stringify({ t: "watch", owner: OWNER, targetId: null, panel: { w: 400, h: 300 } }));
+	const latest = (targetId: string) =>
+		tab.texts.flatMap((m) => (m.t === "pages" ? m.pages.filter((pg) => pg.targetId === targetId) : [])).at(-1)?.title;
+	await until("the parsed title", () => latest(parsed) === "ompw-parsed");
+	await until("the scripted title", () => latest(scripted) === "ompw-scripted");
 	client.close();
 }, 30_000);
 

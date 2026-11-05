@@ -11,7 +11,7 @@ import {
 	type Size,
 } from "../../shared/browser-protocol.ts";
 import type { Engine, EngineHost } from "./engine.ts";
-import type { PageRegistry, TargetInfo } from "./registry.ts";
+import type { PageRegistry } from "./registry.ts";
 
 /**
  * The Browser tab's socket (`/ws/browser`, see shared/browser-protocol.ts): the page list of the conversation it shows,
@@ -427,21 +427,12 @@ export class ScreenHub {
 			if (p.canceled) return;
 			view.note({ level: "error", text: p.errorText, source: "network", ...(url ? { url } : {}), time: Date.now() });
 		});
-		// Chrome tells target discovery of a new address, not of a new title: the title is asked for once the page has loaded
-		// or moved, and the conversation's tabs are told through the registry's change.
-		const retitle = (view: PageView) =>
-			void engine.client
-				.call<{ targetInfo: TargetInfo }>("Target.getTargetInfo", { targetId: view.targetId })
-				.then(({ targetInfo }) => {
-					if (this.registry.info(view.targetId)) this.registry.track(targetInfo);
-				})
-				.catch(() => {});
-		const navigated = (view: PageView) => {
-			retitle(view);
+		// The page's title reaches the registry on its own (engine.ts `cft`; the app tells CEF's): a page that moved is told
+		// to its conversation's tabs once its history is read again.
+		const navigated = (view: PageView) =>
 			void view.history().then(() => {
 				for (const c of this.clients) if (c.owner === this.registry.ownerOfTarget(view.targetId)) c.sendPages();
 			});
-		};
 		on<{ frame: { parentId?: string } }>("Page.frameNavigated", (view, p) => {
 			if (p.frame.parentId) return;
 			view.framed = false;
