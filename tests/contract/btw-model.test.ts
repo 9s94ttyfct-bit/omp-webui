@@ -19,6 +19,7 @@ import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { type Frame, watchFrames } from "../support/frames.ts";
 import { expectMode } from "../support/modes.ts";
 import { pollUntil } from "../support/poll.ts";
+import { rejectionOf } from "../support/rejection.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type StubChat, type StubOmlx, startStubOmlx } from "../support/stub-omlx.ts";
 import { connect, request } from "../support/ws.ts";
@@ -554,7 +555,7 @@ test("a conversation keeps two side questions waiting at most: the next is refus
 		await pollUntil(() => requestsTo(SIDE).length === asked + 1, "the first question to reach its model");
 		await chat.ask("waiting, first");
 		await chat.ask("waiting, second");
-		await expect(chat.ask("one too many")).rejects.toMatchObject({ code: "btwTooMany" });
+		expect(await rejectionOf(chat.ask("one too many"))).toThrow(expect.objectContaining({ code: "btwTooMany" }));
 		expect(runs()).toHaveLength(1);
 
 		// Cancelled, they leave room again.
