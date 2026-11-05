@@ -172,6 +172,8 @@ export interface RpcClientOptions {
 }
 
 const MAX_STDERR = 64 * 1024;
+/** How long an ended omp's stderr is waited for when something it started still holds the pipe open. */
+const STDERR_DRAIN_MS = 2000;
 
 export class RpcClient {
 	readonly proc: OmpProcess;
@@ -241,8 +243,10 @@ export class RpcClient {
 		void this.readStdout().catch(reading("output"));
 		const stderrDone = this.readStderr().catch(reading("error output"));
 		void this.proc.exited.then(async (code) => {
-			// Let the stderr reader drain so the error can say why omp stopped.
-			await Promise.race([stderrDone, Bun.sleep(250)]);
+			// Let the stderr reader drain so the error can say why omp stopped: until the pipe ends, which it does with the
+			// process unless something omp started still holds it. 250 ms could be overtaken on a loaded machine, and the reason
+			// came out empty; the cap is for that held pipe only.
+			await Promise.race([stderrDone, Bun.sleep(STDERR_DRAIN_MS)]);
 			this.exited = true;
 			// A process ended by a signal has no exit code (what `exited` resolves to for it is made up).
 			const signal = typeof this.proc.signalCode === "string" ? this.proc.signalCode : null;
