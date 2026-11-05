@@ -784,9 +784,11 @@ final class MacsBridge: NSObject, WKScriptMessageHandlerWithReply {
 		case .open(let id):
 			reply(["ok": open(id)])
 		case .add:
-			// The page's promise is answered before the sheet: the sheet is modal, and runs on the next turn of the main queue.
+			// The page's promise is answered before the sheet: the sheet is modal, and runs on the next turn of the run loop. Not
+			// from a block of the main queue: the queue runs no other block until that one returns, so the probe's answer
+			// (`RemoteProbe`, a block of the main queue) would never reach the open sheet (`quitFromRunLoop` has the same trap).
 			reply(["ok": true])
-			DispatchQueue.main.async { [add] in add() }
+			RunLoop.main.perform(inModes: [.common]) { [add] in add() }
 		}
 	}
 }

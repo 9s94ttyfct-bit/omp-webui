@@ -684,6 +684,9 @@ test.skipIf(!mac)(
 		expect(h.add).toBe("ok:true");
 		expect(h.shownBeforeNextTurn).toBe(0);
 		expect(h.shownAfterNextTurn).toBe(1);
+		// The sheet hears its probe's answer while it is up (#167): it is not started from a block of the main queue, which runs
+		// no other block of that queue until it returns.
+		expect(h.answeredWhileShown).toBe("true");
 	},
 );
 

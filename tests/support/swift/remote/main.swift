@@ -578,8 +578,18 @@ func pure(directory: URL) -> [String: Any] {
 		"noPort": request(origin: URL(string: "http://127.0.0.1")),
 	]
 	// The handler itself: it replies to every message, calls the app only for a good one, and shows the sheet after the reply.
-	var opened: [UUID] = [], shown = 0
-	let bridge = MacsBridge(origin: { own }, open: { opened.append($0); return $0 == idA }, add: { shown += 1 })
+	// The sheet is modal: while it is up, its run loop turns, and a probe's answer reaches it as a block of the main queue
+	// (`RemoteProbe`); `add` stands for it, running the loop until that answer arrives or a second has passed.
+	var opened: [UUID] = [], shown = 0, answeredWhileShown: Bool?
+	let bridge = MacsBridge(
+		origin: { own }, open: { opened.append($0); return $0 == idA },
+		add: {
+			shown += 1
+			var answered = false
+			DispatchQueue.global().async { DispatchQueue.main.async { answered = true } }
+			runLoop(until: { answered }, seconds: 1)
+			answeredWhileShown = answered
+		})
 	func send(_ body: Any, main: Bool = true, port: Int = 7878) -> String {
 		var reply: Any?
 		bridge.handle(isMainFrame: main, scheme: "http", host: "127.0.0.1", port: port, body: body) { reply = $0 }
@@ -600,6 +610,7 @@ func pure(directory: URL) -> [String: Any] {
 	handler["shownBeforeNextTurn"] = shown
 	spin(0.1)
 	handler["shownAfterNextTurn"] = shown
+	handler["answeredWhileShown"] = answeredWhileShown.map { "\($0)" } ?? "not shown"
 	report["bridgeHandler"] = handler
 
 	// Probes.
