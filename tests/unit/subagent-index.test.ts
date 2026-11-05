@@ -76,6 +76,13 @@ describe("listing", () => {
 		expect(list.find((s) => s.id === "Beta")?.modifiedAt).toBe(2_000_000);
 	});
 
+	test("transcripts of the same modification time are listed by name, whatever order the directory gives", async () => {
+		const names = Array.from({ length: 24 }, (_, i) => `Agent${String.fromCharCode(97 + ((i * 7) % 24))}${i}`);
+		for (const name of names) transcript(join(artifacts(), `${name}.jsonl`), { calls: [1], mtime: 2000 });
+		const list = await new SubagentIndex().list(session());
+		expect(list.map((s) => s.id)).toEqual([...names].sort());
+	});
+
 	test("has no subagents when the session has no artifacts directory", async () => {
 		expect(await new SubagentIndex().list(session())).toEqual([]);
 	});

@@ -170,10 +170,11 @@ export class SubagentIndex {
 			else subagents.push({ id: f.id, ...of });
 		}
 		for (const path of [...(this.byOwner.get(sessionFile) ?? [])]) if (!found.has(path)) this.forget(path);
-		return {
-			subagents: subagents.sort((a, b) => a.modifiedAt - b.modifiedAt),
-			advisors: advisors.sort((a, b) => a.modifiedAt - b.modifiedAt),
-		};
+		// Transcripts written in the same clock tick have the same time: their ids keep the order the same on every
+		// file system (a directory's own order differs between them).
+		const byTime = (a: { modifiedAt: number; id: string }, b: { modifiedAt: number; id: string }) =>
+			a.modifiedAt - b.modifiedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+		return { subagents: subagents.sort(byTime), advisors: advisors.sort(byTime) };
 	}
 
 	/** Forget the sessions that are not in `keep` (deleted, or moved away). */
