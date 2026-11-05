@@ -34,10 +34,12 @@ const SEPARATOR = new Set(" \t\n\r\f\v-_/\\.,:;·|()[]{}<>\"'`~!?@#$%^&*+=");
 /** What a word of the query may be split on besides whitespace. */
 const WORD_BREAK = /[\s\-_/\\.,:;·|()[\]{}<>"'`~!?@#$%^&*+=]+/;
 
-/** One character of the text, folded, and where it came from. */
+/** The text, folded, one entry per character (code point), and where each came from. */
 interface Folded {
 	/** The folded text: lowercase, without diacritics or combining marks. */
 	text: string;
+	/** Its characters (code points, so that an emoji is one), which `at` and `start` follow index for index. */
+	chars: string[];
 	/** For each folded character, its index in the original text (the start of a surrogate pair). */
 	at: number[];
 	/** For each folded character, whether it starts a word in the original text. */
@@ -53,7 +55,7 @@ const UPPER = /\p{Lu}/u;
  * original, so that what matched can be shown in the text a person reads.
  */
 function fold(text: string): Folded {
-	const out: Folded = { text: "", at: [], start: [] };
+	const out: Folded = { text: "", chars: [], at: [], start: [] };
 	let afterSeparator = true;
 	let previous = "";
 	for (let i = 0; i < text.length; ) {
@@ -65,6 +67,7 @@ function fold(text: string): Folded {
 		const startsWord = afterSeparator || (LOWER.test(previous) && UPPER.test(char));
 		for (const one of base) {
 			out.text += one;
+			out.chars.push(one);
 			out.at.push(i);
 			out.start.push(startsWord);
 		}
@@ -110,7 +113,7 @@ export interface FuzzyOptions {
  */
 function align(word: string, text: Folded, maxSkip: number): number[] | null {
 	const chars = [...word];
-	const n = text.text.length;
+	const n = text.chars.length;
 	const at: number[] = [];
 	if (maxSkip === Number.POSITIVE_INFINITY) {
 		// No limit: the earliest place of each letter after the one before always works when any alignment does.
@@ -118,7 +121,7 @@ function align(word: string, text: Folded, maxSkip: number): number[] | null {
 		for (const char of chars) {
 			let found = -1;
 			for (let i = from; i < n; i++) {
-				if (text.text[i] === char) {
+				if (text.chars[i] === char) {
 					found = i;
 					break;
 				}
@@ -138,7 +141,7 @@ function align(word: string, text: Folded, maxSkip: number): number[] | null {
 		if (dead.has(key)) return false;
 		const to = i === 0 ? n - 1 : Math.min(n - 1, last + 1 + maxSkip);
 		for (let p = last + 1; p <= to; p++) {
-			if (text.text[p] !== chars[i]) continue;
+			if (text.chars[p] !== chars[i]) continue;
 			at.push(p);
 			if (place(i + 1, p)) return true;
 			at.pop();

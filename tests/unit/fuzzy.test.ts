@@ -147,6 +147,17 @@ describe("where the characters it matched are", () => {
 		const found = fuzzyMatch("sonnet claude", "Claude Sonnet 4.5");
 		expect(found?.positions).toEqual([0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12]);
 	});
+
+	test("an emoji or another character beyond the BMP before the match does not move it, and can be searched for (#89)", () => {
+		const t = "🚀 deploy app";
+		const found = fuzzyMatch("deploy", t);
+		expect(found?.positions).toEqual([3, 4, 5, 6, 7, 8]);
+		expect(text(t, found?.positions ?? [])).toBe("deploy");
+		// The word starts where it is: as well placed as without the emoji in front.
+		expect(found?.score).toBe(fuzzyMatch("deploy", "x deploy app")?.score);
+		expect(fuzzyMatch("🚀", t)?.positions).toEqual([0]);
+		expect(fuzzyMatch("𠀀b", "a 𠀀b")?.positions).toEqual([2, 4]);
+	});
 });
 
 describe("a limit on the characters skipped between letters", () => {
