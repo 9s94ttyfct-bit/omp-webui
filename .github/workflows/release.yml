@@ -14,8 +14,11 @@ on:
         description: Existing tag to (re)publish, e.g. v0.1.0
         required: true
 
+# Read-only by default: the job that builds and tests runs third-party code (the actions, `bun install`, the tests, the app
+# build) and never holds a token that can change a release. Only `publish`, which runs none of the tag's code, may write.
+# Actions are pinned to commits (a tag can be moved), and no checkout keeps its token in .git/config.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   release:
@@ -23,11 +26,12 @@ jobs:
     env:
       TAG: ${{ inputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ env.TAG }}
-      - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
       - run: bun install --frozen-lockfile
@@ -46,6 +50,22 @@ jobs:
       # this job never uploads one, and never with --clobber over a signed one (#483).
       - name: Build the macOS app (also builds dist/web; ad hoc here, only to prove that the build works)
         run: bun run app
+
+  # The one job that may write: it creates the release from the tag's notes once the build and the tests passed, and runs
+  # nothing of the tag's (the checkout is only read).
+  publish:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
       - name: Create the release (notes only, no installer)
         run: |
           # shellcheck disable=SC2016 # the backticks are literal Markdown
