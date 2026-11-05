@@ -64,3 +64,10 @@ test("cpu-summary.ts and freeze/profile.ts give one profile the same self times"
 	expect(freeze).toMatch(/^\s+1000 ms\s+[\d.]+ % {2}b \/x\/b\.js:5$/m);
 	expect(freeze).toMatch(/^\s+110 ms\s+[\d.]+ % {2}a \/x\/a\.js:2$/m);
 });
+
+test("freeze/profile.ts lists its rows without --top too, and only as many as --top says", () => {
+	const rows = (out: string) => out.split("\n").filter((line) => / ms\s+[\d.]+ % /.test(line));
+	// The default is 15 rows: both functions of this profile.
+	expect(rows(run("freeze/profile.ts")).map((row) => row.trim().split(/\s+/).at(-2))).toEqual(["b", "a"]);
+	expect(rows(run("freeze/profile.ts", "--top", "1"))).toHaveLength(1);
+});

@@ -13,7 +13,9 @@ import { type CpuProfile, selfTimeByNode } from "../lib/cpu-profile.ts";
 
 const file = process.argv[2];
 if (!file) throw new Error("usage: profile.ts <file.cpuprofile> [--top N]");
-const top = Number(process.argv[process.argv.indexOf("--top") + 1] || 15);
+const topAt = process.argv.indexOf("--top");
+const top = topAt === -1 ? 15 : Number(process.argv[topAt + 1]);
+if (!Number.isInteger(top) || top < 1) throw new Error("--top wants a whole number of rows, 1 or more");
 const profile: CpuProfile = JSON.parse(readFileSync(file, "utf8"));
 
 const byId = new Map(profile.nodes.map((n) => [n.id, n]));
