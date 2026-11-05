@@ -261,7 +261,10 @@ export class ChatProjectStore {
 		return answer;
 	}
 
-	/** The project groups of #636 as projects, when there is no list of projects yet (once per server). */
+	/**
+	 * The project groups of #636 as projects, when there is no list of projects yet (once per server). Conversations that
+	 * cannot be listed now leave the move for the next look: made without them, every project would stay empty for good.
+	 */
 	private migrate(): Promise<void> {
 		this.migrated ??= (async () => {
 			if (existsSync(this.file) || !existsSync(this.groupsFile)) return;
@@ -274,11 +277,15 @@ export class ChatProjectStore {
 				);
 				return;
 			}
-			let sessions: readonly { id: string; cwd: string }[] = [];
+			let sessions: readonly { id: string; cwd: string }[];
 			try {
 				sessions = await this.sessionsOf();
 			} catch (e) {
-				console.warn(`omp-webui: the conversations could not be listed for the projects: ${(e as Error).message}`);
+				console.warn(
+					`omp-webui: the conversations could not be listed for the projects (${(e as Error).message}): tried again later`,
+				);
+				this.migrated = null;
+				return;
 			}
 			const projects = projectsFromGroups(raw, sessions);
 			if (projects === null) {

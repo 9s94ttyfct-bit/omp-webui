@@ -251,6 +251,24 @@ test("the project groups of #636 become projects the first time, by the folders 
 	expect(asked).toBe(1);
 });
 
+test("conversations that cannot be listed leave the move from groups for the next look, not empty projects for good (#58)", async () => {
+	writeFileSync(
+		join(dir, "project-groups.json"),
+		JSON.stringify({ version: 1, groups: [{ id: "g1", name: "Clients", order: 0, projects: ["/work/acme"] }] }),
+	);
+	let listable = false;
+	const s = store(async () => {
+		if (!listable) throw new Error("the sessions folder cannot be read now");
+		return [{ id: "s-acme", cwd: "/work/acme" }];
+	});
+	await s.list();
+	expect(existsSync(file())).toBe(false);
+	listable = true;
+	expect((await s.list()).projects).toMatchObject([{ id: "g1", name: "Clients", sessions: ["s-acme"] }]);
+	// A server that starts later has the move made already.
+	expect((await store(async () => []).list()).projects).toMatchObject([{ id: "g1", sessions: ["s-acme"] }]);
+});
+
 test("the move from groups is pure: a file that is not a list of groups makes nothing", () => {
 	expect(projectsFromGroups({ projects: [] }, [])).toBeNull();
 	expect(projectsFromGroups({ groups: [] }, [])).toEqual([]);
