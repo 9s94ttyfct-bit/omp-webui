@@ -294,6 +294,30 @@ test.describe("read in the Files tab", () => {
 		await expect(page.getByTestId("big-file-source")).toHaveCount(0);
 	});
 
+	test("a PDF page's text is laid over its drawing: read by a screen reader, and selected with the mouse", async ({
+		page,
+	}) => {
+		await openFiles(page);
+		await openLarge(page, "report.pdf");
+		const first = page.getByTestId("big-view").locator('[data-testid="file-pdf-page"][data-page="1"]');
+		await expect(first).toHaveAttribute("data-state", "drawn");
+		// The text is in the page, where the drawing has it, and does not draw over it (it is transparent).
+		const words = first.getByText("Quarterly report", { exact: true });
+		await expect(words).toBeVisible();
+		expect(await words.evaluate((el) => getComputedStyle(el).color)).toBe("rgba(0, 0, 0, 0)");
+		const box = await first.boundingBox();
+		const at = await words.boundingBox();
+		if (!box || !at) throw new Error("the page or its text is not laid out");
+		expect(at.x).toBeGreaterThanOrEqual(box.x);
+		expect(at.y).toBeGreaterThanOrEqual(box.y);
+		expect(at.x + at.width).toBeLessThanOrEqual(box.x + box.width);
+		expect(at.y + at.height).toBeLessThanOrEqual(box.y + box.height);
+		// It is in the accessibility tree, and a double click selects a word of it.
+		expect(await page.getByTestId("big-view").ariaSnapshot()).toContain("Quarterly report");
+		await words.dblclick();
+		expect(await page.evaluate(() => window.getSelection()?.toString().trim())).toBe("Quarterly");
+	});
+
 	test("a scanned page is drawn too, and a PDF that is not one says so", async ({ page }) => {
 		await openFiles(page);
 		await openLarge(page, "scan.pdf");

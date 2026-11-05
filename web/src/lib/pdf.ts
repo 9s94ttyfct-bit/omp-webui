@@ -82,6 +82,27 @@ export function drawPage(
 	return { done: task.promise, cancel: () => task.cancel() };
 }
 
+/**
+ * Lay the text of `page` in `layer` (an element of the `textLayer` class over the page's drawing), `scale` CSS pixels to a
+ * point of the page: PDF.js's text layer, each run of text where the drawing has it and transparent, so that a screen
+ * reader reads the page and the mouse selects and copies its text. Resolves when it is laid.
+ */
+export function layText(
+	page: PDFPageProxy,
+	layer: HTMLElement,
+	scale: number,
+): { done: Promise<void>; cancel(): void } {
+	layer.replaceChildren();
+	// What the layer's sizes are given in (PDF.js's viewer sets it on the page).
+	layer.style.setProperty("--total-scale-factor", String(scale));
+	const text = new pdfjs.TextLayer({
+		textContentSource: page.streamTextContent(),
+		container: layer,
+		viewport: page.getViewport({ scale }),
+	});
+	return { done: text.render(), cancel: () => text.cancel() };
+}
+
 /** A picture of `page` as a JPEG of `PAGE_IMAGE_EDGE` pixels on its longer side (a small page is drawn larger, up to three times). */
 export async function pageImage(page: PDFPageProxy): Promise<Blob> {
 	const size = page.getViewport({ scale: 1 });

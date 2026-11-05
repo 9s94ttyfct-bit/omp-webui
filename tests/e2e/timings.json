@@ -564,6 +564,7 @@
 		"documents.spec.ts › attached to a message › the choice is in Chinese, and so are the chip's words": 3,
 		"documents.spec.ts › attached to a message › what cannot be read attaches nothing, and the toast says why": 2.7,
 		"documents.spec.ts › read in the Files tab › a PDF opens large as its pages, drawn; it is read only, with no Edit": 3,
+		"documents.spec.ts › read in the Files tab › a PDF page's text is laid over its drawing: read by a screen reader, and selected with the mouse": 2.7,
 		"documents.spec.ts › read in the Files tab › a Word document opens large as its text, with the table as lines; there is no Edit": 2.5,
 		"documents.spec.ts › read in the Files tab › a long PDF is drawn as it comes near: the pages far from the reader are not drawn": 3,
 		"documents.spec.ts › read in the Files tab › a scanned page is drawn too, and a PDF that is not one says so": 3.6,

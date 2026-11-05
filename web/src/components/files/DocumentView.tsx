@@ -6,8 +6,9 @@ import { useT } from "../../i18n/index.ts";
 import { type DocumentError, readDocx } from "../../lib/document-text.ts";
 import { fmtBytes } from "../../lib/files-rows.ts";
 import { type FolderScope, folder } from "../../lib/folder-api.ts";
-import type { drawPage } from "../../lib/pdf.ts";
+import type { drawPage, layText } from "../../lib/pdf.ts";
 import { cx, Empty, Spinner } from "../ui.tsx";
+import "./pdf-text-layer.css";
 
 /**
  * A PDF or a Word document, read only (#697), as the Files tab's body draws it: a PDF as its pages, drawn as they come near
@@ -117,7 +118,7 @@ function WordView({ bytes }: { bytes: Uint8Array }) {
 type Pdf =
 	| { phase: "loading" }
 	| { phase: "failed"; reason: DocumentError }
-	| { phase: "ready"; doc: PDFDocumentProxy; ratio: number; draw: typeof drawPage };
+	| { phase: "ready"; doc: PDFDocumentProxy; ratio: number; draw: typeof drawPage; lay: typeof layText };
 
 /** The nearest ancestor that scrolls, or null when the window does. */
 function scrollParent(el: HTMLElement): Element | null {
@@ -159,7 +160,15 @@ function PdfView({ bytes, size }: { bytes: Uint8Array; size: number }) {
 				const first = await open.doc.getPage(1);
 				const page = first.getViewport({ scale: 1 });
 				first.cleanup();
-				if (live) setPdf({ phase: "ready", doc: open.doc, ratio: page.height / page.width, draw: lib.drawPage });
+				if (live) {
+					setPdf({
+						phase: "ready",
+						doc: open.doc,
+						ratio: page.height / page.width,
+						draw: lib.drawPage,
+						lay: lib.layText,
+					});
+				}
 			} catch (e) {
 				if (live) setPdf({ phase: "failed", reason: e instanceof lib.PdfError ? e.reason : "damaged" });
 			}
@@ -209,6 +218,7 @@ function PdfView({ bytes, size }: { bytes: Uint8Array; size: number }) {
 						width={pageWidth}
 						root={scroller}
 						draw={pdf.draw}
+						lay={pdf.lay}
 					/>
 				))}
 			</div>
@@ -227,6 +237,7 @@ function PdfPage({
 	width,
 	root,
 	draw,
+	lay,
 }: {
 	doc: PDFDocumentProxy;
 	n: number;
@@ -236,10 +247,12 @@ function PdfPage({
 	/** What the pages scroll in (null: the window); undefined while it is not known, when nothing is drawn but the first page. */
 	root: Element | null | undefined;
 	draw: typeof drawPage;
+	lay: typeof layText;
 }) {
 	const t = useT();
 	const [box, setBox] = useState<HTMLDivElement | null>(null);
 	const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
+	const [layer, setLayer] = useState<HTMLDivElement | null>(null);
 	const [near, setNear] = useState(n === 1);
 	const [state, setState] = useState<"idle" | "drawing" | "drawn" | "failed">("idle");
 	const [shape, setShape] = useState(ratio);
@@ -255,12 +268,13 @@ function PdfPage({
 	}, [box, root]);
 
 	useEffect(() => {
-		if (!near || !canvas || width <= 0) {
+		if (!near || !canvas || !layer || width <= 0) {
 			setState("idle");
 			return;
 		}
 		let live = true;
 		let drawing: { done: Promise<void>; cancel(): void } | null = null;
+		let laying: { done: Promise<void>; cancel(): void } | null = null;
 		setState("drawing");
 		void (async () => {
 			try {
@@ -268,23 +282,29 @@ function PdfPage({
 				if (!live) return;
 				const base = page.getViewport({ scale: 1 });
 				setShape(base.height / base.width);
-				drawing = draw(page, canvas, (width / base.width) * Math.min(2, window.devicePixelRatio || 1));
-				await drawing.done;
+				const scale = width / base.width;
+				drawing = draw(page, canvas, scale * Math.min(2, window.devicePixelRatio || 1));
+				laying = lay(page, layer, scale);
+				await Promise.all([drawing.done, laying.done]);
 				page.cleanup();
 				if (live) setState("drawn");
 			} catch (e) {
 				// A page that was drawn over by a newer draw (or let go) was cancelled, which is no failure.
-				if (live && !(e instanceof Error && e.name === "RenderingCancelledException")) setState("failed");
+				const cancelled =
+					e instanceof Error && (e.name === "RenderingCancelledException" || e.name === "AbortException");
+				if (live && !cancelled) setState("failed");
 			}
 		})();
 		return () => {
 			live = false;
 			drawing?.cancel();
-			// A canvas keeps its pixels until it is resized, drawn or not.
+			laying?.cancel();
+			// A canvas keeps its pixels until it is resized, drawn or not; the text goes with them.
 			canvas.width = 0;
 			canvas.height = 0;
+			layer.replaceChildren();
 		};
-	}, [near, canvas, width, doc, n, draw]);
+	}, [near, canvas, layer, width, doc, n, draw, lay]);
 
 	return (
 		<div
@@ -301,6 +321,8 @@ function PdfPage({
 				aria-label={t("files.docPageAria", { n, total: doc.numPages })}
 				className={cx("block h-full w-full", state === "failed" && "hidden")}
 			/>
+			{/* The page's text over its drawing (`lib/pdf.ts`, `layText`): what a screen reader reads and the mouse selects. */}
+			<div ref={setLayer} className={cx("textLayer", state === "failed" && "hidden")} />
 			{state === "drawing" ? (
 				<div
 					className="absolute inset-0 flex items-center justify-center"
