@@ -9,6 +9,7 @@ import {
 	chatProjectScope,
 	PROJECT_NAME_MAX,
 	parseChatProjects,
+	parseProjectFolder,
 	parseProjectName,
 	projectNameProblem,
 	projectsFromGroups,
@@ -97,6 +98,21 @@ test("the file is read leniently: what does not fit is dropped, a conversation i
 	expect(parsed?.excluded).toEqual(["s9"]);
 	const text = serializeChatProjects(parsed?.projects ?? [], parsed?.excluded ?? []);
 	expect(parseChatProjects(JSON.parse(text))).toEqual(parsed);
+});
+
+test("a folder at the root keeps its separator, so it is read back the same: `/`, `C:\\`, `C:/` (#90)", () => {
+	for (const [given, kept] of [
+		["/", "/"],
+		["//", "/"],
+		["C:\\", "C:\\"],
+		["C:/", "C:/"],
+		["d:\\\\", "d:\\"],
+		["D:\\work\\", "D:\\work"],
+		["/work/a/", "/work/a"],
+	]) {
+		expect(parseProjectFolder(given), given).toBe(kept);
+		expect(parseProjectFolder(kept), kept).toBe(kept);
+	}
 });
 
 test("membership is by session id, so a moved or renamed file keeps its project", () => {

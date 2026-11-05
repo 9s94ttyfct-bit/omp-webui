@@ -116,12 +116,17 @@ export function projectNameProblem(
 	return projects.some((p) => p.id !== except && foldProjectName(p.name) === folded) ? "taken" : null;
 }
 
-/** A folder as a project keeps it: an absolute path without a trailing slash, or null when `value` is not one. */
+/**
+ * A folder as a project keeps it: an absolute path without a trailing slash, or null when `value` is not one. A root keeps
+ * its separator (`/`, `C:\`, `C:/`): `C:` alone is the current folder of drive C, not its root.
+ */
 export function parseProjectFolder(value: unknown): string | null {
 	if (typeof value !== "string" || value === "" || value.length > 4096) return null;
 	if (!value.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(value)) return null;
 	// biome-ignore lint/suspicious/noControlCharactersInRegex: a newline or a NUL is not part of a path.
 	if (/[\u0000-\u001f\u007f]/.test(value)) return null;
+	const drive = /^[A-Za-z]:([\\/])[\\/]*$/.exec(value);
+	if (drive) return `${value.slice(0, 2)}${drive[1]}`;
 	return value.replace(/[\\/]+$/, "") || "/";
 }
 
