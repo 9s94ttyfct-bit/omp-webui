@@ -42,6 +42,10 @@ jobs:
     name: what changed
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # actions: read lets it ask whether CI passed on the commit before a push (below).
+    permissions:
+      contents: read
+      actions: read
     outputs:
       code: ${{ steps.diff.outputs.code }}
     steps:
@@ -50,13 +54,15 @@ jobs:
           fetch-depth: 0
       # The tests run unless every file the push or pull request changes is documentation: a README, a release note, or
       # a page of docs/ other than TECHNICAL.md (the unit tests read its table of omp's interfaces) and docs/agents/ (the
-      # agent-facing docs: a unit test holds them to the code, and the server compiles them in). A run by hand, a new
-      # branch or a force push runs them.
+      # agent-facing docs: a unit test holds them to the code, and the server compiles them in). A push skips them only
+      # when CI passed on the commit before it, so a documentation push after a cancelled or failed run tests the code
+      # that run did not. A run by hand, a new branch or a force push runs them.
       - id: diff
         env:
           BEFORE: ${{ github.event.before }}
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ -n "$BASE" ]; then
             range="$BASE...$HEAD"
@@ -66,14 +72,24 @@ jobs:
             echo "code=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # Read first, so that a failing git diff fails the step rather than reading as no files.
+          files=$(git diff --name-only "$range")
           code=false
           while IFS= read -r file; do
             case "$file" in
               docs/TECHNICAL.md | docs/agents/*) code=true ;;
-              README*.md | release-notes/* | docs/*) ;;
+              "" | README*.md | release-notes/* | docs/*) ;;
               *) code=true ;;
             esac
-          done < <(git diff --name-only "$range")
+          done <<< "$files"
+          if [ "$code" = false ] && [ -z "$BASE" ]; then
+            passed=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$BEFORE&status=success" \
+              --jq '[.workflow_runs[] | select(.event == "push" or .event == "workflow_dispatch")] | length')
+            if [ "$passed" = 0 ]; then
+              echo "CI did not pass on $BEFORE: the tests run."
+              code=true
+            fi
+          fi
           echo "code=$code" | tee -a "$GITHUB_OUTPUT"
 
   checks:
