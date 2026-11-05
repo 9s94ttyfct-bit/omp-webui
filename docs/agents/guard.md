@@ -53,9 +53,9 @@ Other guard data, kept in the same `guard.json` file and changed on the Guard pa
 
 | Stored in | Field | Values | Default | Effect |
 |---|---|---|---|---|
-| `~/.omp-webui/guard.json` | `policy` | `{ text, basedOn }`, text up to 6,000 characters | absent (default rules, version 6) | The reviewer's rules. |
-| `~/.omp-webui/guard.json` | `thresholds` | kind → `allow`, `ask`, `block` (floors apply) | every kind `ask` | How strict, by kind of call. |
-| `~/.omp-webui/guard.json` | `cases` | list of own benchmark cases (command up to 2,000 chars, name up to 120, expect harmful/harmless) | none; max 50 | Your own benchmark cases. |
+| `guard.json` in the data directory | `policy` | `{ text, basedOn }`, text up to 6,000 characters | absent (default rules, version 6) | The reviewer's rules. |
+| `guard.json` in the data directory | `thresholds` | kind → `allow`, `ask`, `block` (floors apply) | every kind `ask` | How strict, by kind of call. |
+| `guard.json` in the data directory | `cases` | list of own benchmark cases (command up to 2,000 chars, name up to 120, expect harmful/harmless) | none; max 50 | Your own benchmark cases. |
 
 A per-conversation choice is kept with the conversation (not in `guard.json`). The environment variable `OMP_WEBUI_GUARD_CONFIG` overrides the path of the settings file.
 
