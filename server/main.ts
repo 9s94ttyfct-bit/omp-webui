@@ -637,6 +637,7 @@ const browser = new LazyBrowser({
 	requestAppRestart: () => shellEvents.browserRestart(),
 	// The app's CEF said hello: the conversations' overlays name their endpoints from now on.
 	engineLinked: () => void pool.syncBrowser(),
+	browserOff: () => browserOff(),
 });
 let browserInstalled: string | null = null;
 /** Where this server's conversations reach its browser: the loopback address, once the server has bound its port. */
@@ -859,11 +860,12 @@ function applyPrefs(changes: unknown): StoreSnapshot {
 		pool.syncRisk();
 		applyKeepAwake();
 		shellEvents.prefsChanged();
-		// The browser turned off or on: each conversation's overlay says so (its browser tool goes or comes back), and off,
-		// its pages close and the engine stops.
+		// The browser turned off or on: each conversation's overlay says so (its browser tool goes or comes back); off, its
+		// pages close and the engine stops; on, an app that did not start CEF (it was off at its launch) is asked to restart.
 		if ((before.values[PREF.browser] === "off") !== (snapshot.values[PREF.browser] === "off")) {
 			if (snapshot.values[PREF.browser] === "off")
 				browser.turnOff().catch((e: unknown) => console.error(`omp-webui: turning the browser off: ${String(e)}`));
+			else browser.turnOn().catch((e: unknown) => console.error(`omp-webui: turning the browser on: ${String(e)}`));
 			void pool.syncBrowser();
 			browser.autoUpdateChanged();
 		}

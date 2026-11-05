@@ -82,7 +82,10 @@ export function BrowserSettings() {
 				/>
 				<span>
 					{t("browser.enabledTitle")}
-					<span className="block text-xs text-muted">{t("browser.enabledHint")}</span>
+					<span className="block text-xs text-muted">
+						{t("browser.enabledHint")}
+						{cef ? ` ${t("browser.enabledHintCef")}` : ""}
+					</span>
 				</span>
 			</label>
 			{on ? null : (

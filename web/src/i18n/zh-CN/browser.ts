@@ -85,6 +85,7 @@ export const zh: Record<keyof typeof en, string> = {
 	cannotManage: "只能在这台电脑上，或在用你的账号登录的页面上安装、更新、清除、卸载和开关浏览器。",
 	enabledTitle: "使用内置浏览器",
 	enabledHint: "关闭后：没有浏览器标签页，对话中的智能体也完全没有浏览器工具，直到你重新打开。",
+	enabledHintCef: "应用启动时浏览器若是关闭的，应用不会加载它；之后打开它会重启应用。",
 	offNote: "内置浏览器已关闭。智能体没有浏览器工具。",
 	autoUpdateTitle: "自动更新内置浏览器",
 	autoUpdateHint: "服务器启动时和之后每天检查一次新版本，在后台下载，并在没有对话使用浏览器时换用新版本。",

@@ -565,6 +565,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 		env["OMP_WEBUI_DATA_DIR"] = dataDir.path
 		// The built-in browser of the app is CEF (macos/browser.swift), which the app ships and the server drives through the app.
 		env["OMP_WEBUI_BROWSER_ENGINE"] = "cef"
+		// Not started because the browser was turned off (macos/browser.swift): turning it on asks this app to restart.
+		if BrowserEngine.skipped { env["OMP_WEBUI_CEF_STARTED"] = "0" }
 		env["OMP_WEBUI_DIST"] = resources.appendingPathComponent("web").path
 		env["OMP_WEBUI_PORT"] = env["OMP_WEBUI_PORT"] ?? "7878"
 		env["OMP_WEBUI_AUTO_PORT"] = "1"

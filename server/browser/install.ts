@@ -92,6 +92,11 @@ export interface BrowserInstallerOptions {
 	 */
 	downloadBase?: string | null;
 	hooks?: BrowserHooks;
+	/**
+	 * CEF: whether the app is to restart for the browser to work, apart from a Clear (the browser was turned on in an app that
+	 * did not start CEF at its launch). Shown as `restartNeeded`.
+	 */
+	appRestartPending?: () => boolean;
 	idleMs?: number;
 	/** The clock `autoCheck` is told by (tests). */
 	now?: () => number;
@@ -149,7 +154,7 @@ export class BrowserInstaller {
 			latest: this.latest,
 			job: this.job ? { ...this.job } : null,
 			error: this.error,
-			restartNeeded: this.restartNeeded,
+			restartNeeded: this.restartNeeded || (this.opts.appRestartPending?.() ?? false),
 			autoCheck: this.autoCheck ? { ...this.autoCheck } : null,
 			canManage,
 		};
@@ -277,6 +282,15 @@ export class BrowserInstaller {
 			this.restartNeeded = true;
 			this.hooks.requestAppRestart?.();
 		});
+	}
+
+	/**
+	 * Whether the app is to restart for the browser to work may have changed (`appRestartPending`): the pages are told; with
+	 * `ask`, the app is asked to restart now.
+	 */
+	appRestartChanged(ask: boolean): void {
+		if (ask) this.hooks.requestAppRestart?.();
+		this.emit();
 	}
 
 	/**

@@ -95,6 +95,8 @@ export const en = {
 	enabledTitle: "Use the built-in browser",
 	enabledHint:
 		"Off: no Browser tab, and the agents of your conversations have no browser tool at all, until you turn it on again.",
+	enabledHintCef:
+		"The app does not load the browser while it is off when the app starts; turning it on then restarts the app.",
 	offNote: "The built-in browser is off. Agents have no browser tool.",
 	autoUpdateTitle: "Update the built-in browser automatically",
 	autoUpdateHint:

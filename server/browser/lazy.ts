@@ -28,10 +28,20 @@ export interface LazyBrowserOptions {
 	requestAppRestart(): void;
 	/** CEF: the app's browser can be used now (the app said hello): the conversations' endpoints are named again. */
 	engineLinked(): void;
+	/** Whether the person turned the browser off (Settings › Browser, `PREF.browser`). */
+	browserOff(): boolean;
 }
 
 export function engineHere(env: Record<string, string | undefined> = process.env): EngineKind {
 	return env.OMP_WEBUI_BROWSER_ENGINE === "cef" ? "cef" : "cft";
+}
+
+/**
+ * CEF: whether the app started it at its launch. It does not while the browser is turned off (macos/browser.swift), and
+ * says so with `OMP_WEBUI_CEF_STARTED=0`; turning the browser on then takes the app's restart.
+ */
+export function cefStartedHere(env: Record<string, string | undefined> = process.env): boolean {
+	return env.OMP_WEBUI_CEF_STARTED !== "0";
 }
 
 /**
@@ -183,6 +193,8 @@ export class LazyBrowser {
 						},
 						requestAppRestart: () => this.opts.requestAppRestart(),
 					},
+					// The browser is on in an app that did not start CEF (it was off at the app's launch): restarting starts it.
+					appRestartPending: () => engine === "cef" && !cefStartedHere() && !this.opts.browserOff(),
 				});
 				const inst = installer;
 				inst.onChange(() => this.opts.changed(inst));
@@ -261,8 +273,18 @@ export class LazyBrowser {
 	async turnOff(): Promise<void> {
 		const service = this.#service;
 		if (!service) return;
+		service.installer.appRestartChanged(false);
 		await service.registry.closeAll();
 		await service.host.stop("The browser was turned off");
+	}
+
+	/**
+	 * The person turned the browser on (`PREF.browser`). In an app that did not start CEF, because the browser was off at its
+	 * launch, the app is asked to restart, which starts it; elsewhere the engine starts on first use, as always.
+	 */
+	async turnOn(): Promise<void> {
+		if (engineHere() !== "cef" || cefStartedHere()) return;
+		(await this.service()).installer.appRestartChanged(true);
 	}
 
 	/** The service, when there is anything of the browser to change: it ran here or before (its owners file is there). */

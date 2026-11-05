@@ -2,8 +2,9 @@ import AppKit
 
 /// The built-in browser's engine in the app (docs/agents/browser.md): CEF (macos/cef/CEFHost.mm), the framework the app ships
 /// in Contents/Frameworks (scripts/app.ts), with its profile in `<data>/browser/cef-profile/`. Started before the app's run
-/// loop, once; a Clear of its profile takes the app's next start (the server asks for a restart and writes `clearPending` into
-/// `<data>/browser/current.json`).
+/// loop, once, unless the person turned the browser off (Settings › Browser); a Clear of its profile, and turning the browser
+/// on in an app that did not start it, take the app's next start (the server asks for a restart; a Clear writes `clearPending`
+/// into `<data>/browser/current.json`).
 enum BrowserEngine {
 	private struct Current: Decodable {
 		let clearPending: Bool?
@@ -13,6 +14,9 @@ enum BrowserEngine {
 
 	/// The version CEF runs (the server is told it, macos/browserlink.swift); nil while it does not.
 	private(set) static var version: String?
+	/// Whether the browser was turned off when the app started, so CEF was not: the server is told (`OMP_WEBUI_CEF_STARTED=0`,
+	/// main.swift), and asks the app to restart when the browser is turned on again.
+	private(set) static var skipped = false
 
 	/// The profile, after a clear the server asked for is done, and what an app that installed CEF into the data folder left
 	/// there is gone: its builds in `<data>/browser/cef/` (about 330 MB each) and the keys it kept in `current.json`.
@@ -46,9 +50,24 @@ enum BrowserEngine {
 		if (try? out.write(to: temporary)) != nil { _ = try? FileManager.default.replaceItemAt(file, withItemAt: temporary) }
 	}
 
-	/// Start CEF. A failure leaves the app without it (the Browser tab says the browser cannot be used).
+	/// Whether the person turned the browser off: `ompw.browser` is `off` in the server's preferences (`<data>/ui-prefs.json`,
+	/// server/prefs.ts). A file that cannot be read counts as on, the preference's default.
+	private static func turnedOff(dataDir: URL) -> Bool {
+		guard let data = try? Data(contentsOf: dataDir.appendingPathComponent("ui-prefs.json")),
+			let store = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+			let values = store["values"] as? [String: Any]
+		else { return false }
+		return values["ompw.browser"] as? String == "off"
+	}
+
+	/// Start CEF, unless the browser is turned off. A failure leaves the app without it (the Browser tab says the browser
+	/// cannot be used).
 	static func start(dataDir: URL) {
 		let profile = profile(dataDir: dataDir)
+		if turnedOff(dataDir: dataDir) {
+			skipped = true
+			return
+		}
 		try? FileManager.default.createDirectory(at: profile, withIntermediateDirectories: true)
 		do {
 			try CEFHost.start(withProfile: profile.path)

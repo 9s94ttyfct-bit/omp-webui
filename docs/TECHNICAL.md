@@ -483,6 +483,7 @@ Settings › Move to another computer puts what you have made in omp and in this
 | `OMP_WEBUI_CLOUDFLARED_RELEASES` | `https://api.github.com/repos/cloudflare/cloudflared/releases/latest` | where Install reads cloudflared's latest release on Linux and Windows (for tests) |
 | `OMP_WEBUI_BREW` | found on `PATH`, then Homebrew's own directories | the `brew` that Install runs; when it is set it is the only one used (for tests) |
 | `OMP_WEBUI_BROWSER_ENGINE` | unset (Chrome for Testing) | `cef`: the built-in browser is the Mac app's CEF, which the app connects on `/browser-engine` (the app sets it); anything else is Chrome for Testing, which the server starts itself |
+| `OMP_WEBUI_CEF_STARTED` | unset (CEF started) | `0`: the Mac app did not start CEF, because the built-in browser was turned off when it started (the app sets it); turning the browser on then asks the app to restart |
 | `OMPW_BROWSER_EXECUTABLE` | unset | tests and CI only: a Chrome to run as the built-in browser instead of an installed Chrome for Testing (the tests give Playwright's Chromium) |
 | `OMPW_BROWSER_DOWNLOAD_BASE` | unset | tests only: an origin (`http://127.0.0.1:<port>`) that stands for Google's servers: CfT's version list is `<base>/cft/versions.json`, and downloads may come from it over plain http |
 
