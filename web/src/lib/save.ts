@@ -14,12 +14,12 @@ export function startSave(url: string, name: string): void {
 }
 
 /**
- * Save what the page made (`blob`) as `name`, through `startSave`. Its address stays valid for a minute: WebKit (Safari,
- * the macOS app) decides on the download after the click has returned, and an address revoked at once can leave that
- * download nothing to read.
+ * Save what the page made (`blob`) as `name`, through `startSave`. Its address is revoked at once: the download the
+ * click started keeps the blob (checked in Chromium, Playwright's WebKit and a WKWebView with the macOS app's download
+ * delegate, a 30 MB blob and a save panel that took 3 s; #99).
  */
 export function saveBlob(blob: Blob, name: string): void {
 	const url = URL.createObjectURL(blob);
 	startSave(url, name);
-	setTimeout(() => URL.revokeObjectURL(url), 60_000);
+	URL.revokeObjectURL(url);
 }
