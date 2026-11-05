@@ -2396,9 +2396,22 @@ class Scan {
 	}
 
 	private find(args: Word[], cwd: string | null, depth: number): void {
-		const end = args.findIndex((a) => a.text.startsWith("-") || a.text === "(" || a.text === "!");
-		const roots = end < 0 ? args : args.slice(0, end);
-		const expression = end < 0 ? [] : args.slice(end);
+		// Its own options come before the roots: GNU's `-H`, `-L`, `-P`, `-D <what>`, `-O<n>`, BSD's `-E`, `-X`, `-d`,
+		// `-s`, `-x` and `-f <root>` (`find -L ~ -delete`, `find -x / -delete`, `find -f ~ -delete`).
+		const roots: Word[] = [];
+		let start = 0;
+		for (; start < args.length; start++) {
+			const t = args[start].text;
+			if (/^-[HLPEXdsx]+$/.test(t) || /^-O\d*$/.test(t)) continue;
+			if (t === "-D") start++;
+			else if (t === "-f") {
+				if (start + 1 < args.length) roots.push(args[++start]);
+			} else break;
+		}
+		const rest = args.slice(start);
+		const end = rest.findIndex((a) => a.text.startsWith("-") || a.text === "(" || a.text === "!");
+		roots.push(...(end < 0 ? rest : rest.slice(0, end)));
+		const expression = end < 0 ? [] : rest.slice(end);
 		// What the search finds under its roots is deleted, not the roots themselves: only a root that is too broad matters.
 		const sweep = (recursive: boolean): void => {
 			for (const r of roots) {
