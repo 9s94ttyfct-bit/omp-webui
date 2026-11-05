@@ -173,6 +173,8 @@ final class RemoteWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUI
 	var phase: RemotePhase { navigator.phase }
 	private(set) var status = RemoteStatus.connecting
 	private var titleObservation: NSKeyValueObservation?
+	/// Where this Mac's window was left (not a pop-out's): each window made for the Mac is put there and followed.
+	private var frameMemory: WindowFrameMemory?
 	/// A page's alert or question is open (one at a time: a page that asks again meanwhile is answered "no").
 	private var dialogOpen = false
 	/// The narrowest a remote window goes: the bar needs this much to name the host that has the page.
@@ -220,9 +222,15 @@ final class RemoteWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUI
 		window.center()
 		if popOut {
 			session.cascade = window.cascadeTopLeft(from: session.cascade)
-		} else {
-			// One window of its own size and place for each Mac.
-			if session.rememberFrames { window.setFrameAutosaveName("remote-\(session.mac.id.uuidString)") }
+		} else if session.rememberFrames {
+			// One window of its own size and place for each Mac, kept as the main window's is (see windowframe.swift: AppKit's
+			// autosave loses the frame of a window made again under a name the last one still holds); the autosave name it had
+			// before is read once.
+			let name = "remote-\(session.mac.id.uuidString)"
+			let memory = WindowFrameMemory(key: name)
+			memory.restore(window, legacyName: name)
+			memory.follow(window)
+			frameMemory = memory
 		}
 		titleObservation = web.observe(\.title, options: [.initial, .new]) { [weak self] _, _ in self?.refreshTitle() }
 		// What the person really does in this window, as far as the app can tell: a link counts as clicked only while one of these
