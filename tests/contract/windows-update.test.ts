@@ -229,14 +229,20 @@ describe.skipIf(!has.windowsLauncher)("the Windows launcher's update", () => {
 		fake.publish({ tag: "v98.0.0", dmg: nextZip, assetName: zipName("98.0.0") });
 		await installRelease(install, "v98.0.0");
 		let failed: AppUpdateState["failed"] = null;
-		await pollUntil(
-			async () => {
-				failed = (await updateState(install)).failed;
-				return failed !== null;
-			},
-			"the install to be refused",
-			120_000,
-		);
+		// A wait that ends without the refusal says where the install got to (its phase, the launcher's output), as
+		// `untilHelper` does: once on x64 it was not refused within 120 s, and arm64 takes 66-86 s where x64 takes 7-14 s.
+		try {
+			await pollUntil(
+				async () => {
+					failed = (await updateState(install)).failed;
+					return failed !== null;
+				},
+				"the install to be refused",
+				120_000,
+			);
+		} catch (e) {
+			throw new Error(`${(e as Error).message}\n${await diagnosis(install)}`);
+		}
 		expect(failed).toMatchObject({ code: "version", params: { tag: "v98.0.0", found: NEXT } });
 		expect(versionOf(install.folder)).toBe(pkg.version);
 		expect(existsSync(`${install.folder}.updating`)).toBe(false);
