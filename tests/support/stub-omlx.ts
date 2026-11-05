@@ -34,6 +34,12 @@ export interface StubOmlx {
 	refused: { at: number }[];
 	/** While in the future, chat requests are refused with a 429 that says when the limit ends (needs the `limit` option). */
 	limitUntil: number;
+	/**
+	 * The next chat request of a conversation's turn (one that offers tools; omp's helper requests, a title, offer none) is
+	 * refused as the limit refuses (needs the `limit` option), with a `retry-after-ms` of `retryAfterMs`, whenever it comes:
+	 * unlike `limitUntil`, it does not depend on the request coming before a time a busy machine can pass first.
+	 */
+	refuseNextTurn(retryAfterMs: number): void;
 	/** How long an accepted chat completion waits before it answers (a turn that runs for a while); 0: it answers at once. */
 	replyDelayMs: number;
 	/**
@@ -84,7 +90,12 @@ export async function startStubOmlx(opts: StubOptions = {}): Promise<StubOmlx> {
 	const authorizations: (string | null)[] = [];
 	const requests: string[] = [];
 	const refused: { at: number }[] = [];
-	const state = { limitUntil: 0, replyDelayMs: 0, gate: null as Promise<void> | null };
+	const state = {
+		limitUntil: 0,
+		refuseTurnMs: null as number | null,
+		replyDelayMs: 0,
+		gate: null as Promise<void> | null,
+	};
 	const chunk = (delta: object, finish: string | null = null) =>
 		`data: ${JSON.stringify({
 			id: "chatcmpl-stub",
@@ -195,16 +206,20 @@ export async function startStubOmlx(opts: StubOptions = {}): Promise<StubOmlx> {
 			send(res, 200, { capabilities: ["completion", "tools"], model_info: { "llama.context_length": 32768 } });
 			return;
 		}
-		if (opts.limit && req.method === "POST" && (path === "/v1/chat/completions" || path === "/v1/responses")) {
+		const chatPath = req.method === "POST" && (path === "/v1/chat/completions" || path === "/v1/responses");
+		const text = chatPath ? await readBody(req) : "";
+		if (opts.limit && chatPath) {
 			const left = state.limitUntil - Date.now();
-			if (left > 0) {
-				await readBody(req);
+			const turn = state.refuseTurnMs !== null && (JSON.parse(text).tools?.length ?? 0) > 0;
+			if (left > 0 || turn) {
+				const wait = left > 0 ? left : (state.refuseTurnMs as number);
+				if (turn) state.refuseTurnMs = null;
 				if (opts.limit.delayMs) await new Promise<void>((resolve) => setTimeout(resolve, opts.limit?.delayMs));
 				refused.push({ at: Date.now() });
 				res
 					.writeHead(opts.limit.status ?? 429, {
 						"content-type": "application/json",
-						"retry-after-ms": String(left),
+						"retry-after-ms": String(wait),
 						"x-should-retry": "false",
 					})
 					.end(
@@ -220,7 +235,7 @@ export async function startStubOmlx(opts: StubOptions = {}): Promise<StubOmlx> {
 			}
 		}
 		if (req.method === "POST" && path === "/v1/chat/completions") {
-			const chat: StubChat = { authorization, at: Date.now(), body: JSON.parse(await readBody(req)) };
+			const chat: StubChat = { authorization, at: Date.now(), body: JSON.parse(text) };
 			chats.push(chat);
 			if (state.replyDelayMs > 0) {
 				const { promise, resolve } = Promise.withResolvers<void>();
@@ -255,7 +270,7 @@ export async function startStubOmlx(opts: StubOptions = {}): Promise<StubOmlx> {
 			return;
 		}
 		if (opts.ollama && req.method === "POST" && path === "/v1/responses") {
-			const body = JSON.parse(await readBody(req));
+			const body = JSON.parse(text);
 			const input: { role?: string; content?: unknown }[] = Array.isArray(body.input) ? body.input : [];
 			chats.push({
 				authorization,
@@ -288,6 +303,9 @@ export async function startStubOmlx(opts: StubOptions = {}): Promise<StubOmlx> {
 		},
 		set limitUntil(at: number) {
 			state.limitUntil = at;
+		},
+		refuseNextTurn(retryAfterMs: number) {
+			state.refuseTurnMs = retryAfterMs;
 		},
 		get replyDelayMs() {
 			return state.replyDelayMs;

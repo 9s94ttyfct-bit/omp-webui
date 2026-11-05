@@ -28,14 +28,15 @@ afterEach(() => writeFileSync(join(fixture.server.agentDir, "config.yml"), origi
 const configured = async (chat: Chat) => (await api("/api/controls/settings", { live: chat.liveId })).json();
 
 /**
- * Whether the process retries a request the provider refuses, as it is now. The provider refuses the next one for a
- * moment, and after that refused request omp either announces its retry (auto-retry on) or ends the turn (off): the
- * frames come in that order, so whichever of the two comes first says which it is, with no window to guess at. A turn
- * that retries is let end, so that the conversation is idle again. omp reads a changed config.yml or overlay after a
- * debounce, which the callers wait for first (`reloaded`).
+ * Whether the process retries a request the provider refuses, as it is now. The provider refuses the turn's next request
+ * (whenever it comes: a refusal for a time, from the prompt on, can be over before a loaded runner's omp asks), and after
+ * that refused request omp either announces its retry (auto-retry on) or ends the turn (off): the frames come in that order,
+ * so whichever of the two comes first says which it is, with no window to guess at. A turn that retries is let end, so that
+ * the conversation is idle again. omp reads a changed config.yml or overlay after a debounce, which the callers wait for
+ * first (`reloaded`).
  */
 async function retries(chat: Chat): Promise<boolean> {
-	fixture.backend.limitUntil = Date.now() + 1200;
+	fixture.backend.refuseNextTurn(1200);
 	const announced = chat.next("auto_retry_start");
 	const ended = chat.next("agent_end");
 	await chat.prompt("probe");
