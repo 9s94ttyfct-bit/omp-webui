@@ -72,6 +72,29 @@ test("New chat offers a new project in the projects folder, focused, and makes n
 	expect(readdirSync(root)).toEqual([]);
 });
 
+test("what is typed in the message box before the project's name arrives stays there, and the name does not take the caret", async ({
+	page,
+}) => {
+	await setRoot(freshRoot());
+	// The name is a chunk of its own: here it arrives once the person has started typing.
+	const field = Promise.withResolvers<void>();
+	await page.route(/\/assets\/NewProjectField-[^/]*\.js$/, async (route) => {
+		await field.promise;
+		await route.continue();
+	});
+	await page.goto("/");
+	const composer = page.getByTestId("composer");
+	await composer.click();
+	await page.keyboard.type("/sk");
+	field.resolve();
+	await expect(page.getByTestId("new-project-name")).toBeVisible();
+	// Typed on where the caret is, as a person does.
+	await page.keyboard.type("ills");
+	await expect(composer).toHaveValue("/skills");
+	await expect(composer).toBeFocused();
+	await expect(page.getByTestId("new-project-name")).toHaveValue("");
+});
+
 test("the first message makes a folder named by the time, and a !command runs there, never in the projects folder", async ({
 	page,
 }) => {

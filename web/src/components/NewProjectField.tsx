@@ -7,6 +7,16 @@ import { problemText, projectsErrorText } from "../lib/projects-api.ts";
 import { useProjectsStrings } from "../lib/projects-strings.ts";
 
 /**
+ * New chat opens on the project's name (Enter goes on to the message), unless the person is typing somewhere already: this
+ * field is a chunk of its own and can arrive after the caret was put in the message box, and taking it then sent what they
+ * typed into the name. Stable, so that it runs when the field is mounted only.
+ */
+function focusUnlessTyping(el: HTMLInputElement | null): void {
+	const at = document.activeElement as HTMLElement | null;
+	if (el && !(at?.matches("input, textarea") || at?.isContentEditable)) el.focus();
+}
+
+/**
  * New chat's default (v0.17.0): the name of the new project its conversation starts in, and the projects folder it is made
  * in (Settings › Projects folder; "Change" sets that same setting, on this computer only). An existing folder instead is
  * New chat's folder button's choice (`NewChatFolderMenu`). The folder is made by New chat when the first message is sent,
@@ -50,8 +60,7 @@ export default function NewProjectField({
 				</label>
 				<input
 					id={id}
-					// biome-ignore lint/a11y/noAutofocus: New chat opens on the project's name; Enter goes on to the message.
-					autoFocus
+					ref={focusUnlessTyping}
 					data-testid="new-project-name"
 					value={name}
 					placeholder={t("projects.autoPlaceholder", { name: autoProjectName(new Date()) })}
