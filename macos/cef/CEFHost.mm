@@ -587,10 +587,11 @@ NSError* failure(NSString* text) {
   }
 }
 
+/// The pages the server may know (a retired one is gone for it, also on a new connection's hello).
 + (NSArray<NSDictionary<NSString*, NSString*>*>*)pages {
   NSMutableArray* all = [NSMutableArray array];
   for (auto& [_, page] : gPages)
-    if (!page.targetId.empty()) [all addObject:infoOf(page)];
+    if (!page.targetId.empty() && !page.retired) [all addObject:infoOf(page)];
   return all;
 }
 
