@@ -83,8 +83,9 @@ test("a remote page has a shell by default; off refuses new ones and ends its op
 		const { ptyId: remoteId } = await openShell(remote);
 		const remoteSeen = follow(remote, remoteId);
 		remote.send(JSON.stringify({ t: "pty_input", ptyId: remoteId, data: "echo REMOTE-$((40+2))\r" }));
-		// A shell's first answer includes its start: pwsh with its profile on a loaded Windows runner took over 10 s once
-		// (run 42221419329). The waits on a shell that has already answered stay short.
+		// A shell's first answer includes its start. On a loaded Windows runner this wait once timed out at 10 s with no
+		// matching output (run 42221419329; the cause was not measured, a slow start is the likely one). The waits on a
+		// shell that has already answered stay short.
 		await pollUntil(() => remoteSeen.text.includes("REMOTE-42"), "the remote shell to answer", 30_000);
 
 		const { ptyId: localId } = await openShell(local);
