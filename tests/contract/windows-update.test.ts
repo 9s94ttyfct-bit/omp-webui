@@ -241,7 +241,6 @@ describe.skipIf(!has.windowsLauncher)("the Windows launcher's update", () => {
 		mark("published");
 		await installRelease(install, "v98.0.0");
 		mark("install asked");
-		let failed: AppUpdateState["failed"] = null;
 		let testLag = 0;
 		let testLast = Date.now();
 		const testTimer = setInterval(() => {
