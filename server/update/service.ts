@@ -603,14 +603,6 @@ export class AppUpdater {
 		try {
 			// Before the first byte: the installer, the new version out of it and the room the swap needs are all on disk at once.
 			this.ensureRoom(release.asset?.size ?? 0, installed);
-			const dlStart = Date.now();
-			let chunks = 0;
-			let lagMax = 0;
-			let lagLast = Date.now();
-			const lagTimer = setInterval(() => {
-				lagMax = Math.max(lagMax, Date.now() - lagLast - 100);
-				lagLast = Date.now();
-			}, 100);
 			await download({
 				url: installer.url,
 				dest: part,
@@ -619,7 +611,6 @@ export class AppUpdater {
 				signal,
 				fetch: this.opts.fetch,
 				onProgress: (received) => {
-					chunks++;
 					job.received = received;
 					const now = this.now();
 					if (now - this.lastProgressAt >= PROGRESS_MS) {
@@ -627,11 +618,6 @@ export class AppUpdater {
 						this.emit();
 					}
 				},
-			}).finally(() => {
-				clearInterval(lagTimer);
-				console.warn(
-					`TIMING download ${Date.now() - dlStart} ms, ${job.received} bytes in ${chunks} chunks, server loop lag max ${lagMax} ms`,
-				);
 			});
 			renameOver(part, file);
 			checkCancelled();
