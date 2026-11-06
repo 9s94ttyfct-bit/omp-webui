@@ -79,12 +79,16 @@ test("deleting a conversation forgets its unsent message, one at a time and in b
 		await page.getByRole("menuitem", { name: "Delete…" }).click();
 		await page.getByTestId("confirm-session-action").click();
 		await expect(rowOf(page, "Tapir single")).toHaveCount(0, { timeout: 60_000 });
+		// The delete has ended once its dialog closes: the row goes as soon as omp has removed the file, while the server
+		// is still on it, and a file written again before it ends makes it report "omp did not delete the session".
+		await expect(page.getByTestId("confirm-session-action")).toHaveCount(0, { timeout: 60_000 });
 
 		await page.getByTestId("select-sessions").click();
 		await rowOf(page, "Tapir bulk").click();
 		await page.getByTestId("selection-bar").getByRole("button", { name: "Delete" }).click();
 		await page.getByTestId("confirm-bulk-delete").click();
 		await expect(rowOf(page, "Tapir bulk")).toHaveCount(0, { timeout: 60_000 });
+		await expect(page.getByTestId("confirm-bulk-delete")).toHaveCount(0, { timeout: 60_000 });
 
 		// The same files are back (same names): nothing of what was typed in their previous life comes with them.
 		// The list reloads when a session file changes; touch the files until it has seen both.
