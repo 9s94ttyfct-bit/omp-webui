@@ -231,12 +231,15 @@ jobs:
           bun install -g @oh-my-pi/pi-coding-agent@latest
           echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
       # Chromium for most specs; WebKit for the iPhone, iPad and macOS-app ones, which launch it themselves. The browsers
-      # are kept between runs (their versions are bun.lock's Playwright's).
+      # are kept between runs (their versions are bun.lock's Playwright's), per Ubuntu release of the runner's image
+      # (`ImageOS`): Playwright builds WebKit for each, and the one for 24.04 does not start on 26.04 (it needs libicu 74).
+      - id: image
+        run: echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
       - id: browsers
         uses: actions/cache@v4
         with:
           path: ${{ runner.tool_cache }}/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          key: playwright-${{ runner.os }}-${{ steps.image.outputs.os }}-${{ hashFiles('bun.lock') }}
       - if: steps.browsers.outputs.cache-hit != 'true'
         run: bunx playwright install chromium webkit
       # The system libraries, from packages kept between runs: the mirror is slow at times (the action says how much).
