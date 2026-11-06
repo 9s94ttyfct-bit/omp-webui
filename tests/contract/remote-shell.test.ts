@@ -83,7 +83,9 @@ test("a remote page has a shell by default; off refuses new ones and ends its op
 		const { ptyId: remoteId } = await openShell(remote);
 		const remoteSeen = follow(remote, remoteId);
 		remote.send(JSON.stringify({ t: "pty_input", ptyId: remoteId, data: "echo REMOTE-$((40+2))\r" }));
-		await pollUntil(() => remoteSeen.text.includes("REMOTE-42"), "the remote shell to answer", 10_000);
+		// A shell's first answer includes its start: pwsh with its profile on a loaded Windows runner took over 10 s once
+		// (run 42221419329). The waits on a shell that has already answered stay short.
+		await pollUntil(() => remoteSeen.text.includes("REMOTE-42"), "the remote shell to answer", 30_000);
 
 		const { ptyId: localId } = await openShell(local);
 		const localSeen = follow(local, localId);
@@ -100,7 +102,7 @@ test("a remote page has a shell by default; off refuses new ones and ends its op
 
 		// This computer's shell goes on, and this computer may still open one.
 		local.send(JSON.stringify({ t: "pty_input", ptyId: localId, data: "echo LOCAL-$((6*7))\r" }));
-		await pollUntil(() => localSeen.text.includes("LOCAL-42"), "this computer's shell to answer", 10_000);
+		await pollUntil(() => localSeen.text.includes("LOCAL-42"), "this computer's shell to answer", 30_000);
 		expect(localSeen.exited).toBe(false);
 		await openShell(local);
 
