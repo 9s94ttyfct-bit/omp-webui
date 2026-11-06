@@ -63,15 +63,23 @@ async function drag(page: Page, from: Locator, to: () => Promise<{ x: number; y:
 test.describe("at 1400 px", () => {
 	test.use({ viewport: { width: 1400, height: 900 } });
 
-	test("the sidebar's foot lists the pages once, with the Guard among them and Send feedback gone", async ({
+	test("the sidebar's foot lists the pages once, with the Guard among them, and Send feedback under them opens its dialog", async ({
 		page,
 	}) => {
 		await page.goto("/");
 		await expect(page.getByTestId("nav-settings")).toBeVisible();
 		await expectRows(page, "top", []);
 		await expectRows(page, "bottom", ALL);
-		await expect(page.getByTestId("sidebar-feedback")).toHaveCount(0);
-		await expect(sidebar(page).getByRole("button", { name: /Send feedback/ })).toHaveCount(0);
+		// Send feedback is not a page of the bar: one row of its own, under the pages, that opens the dialog.
+		const feedback = sidebar(page).getByRole("button", { name: "Send feedback", exact: true });
+		await expect(feedback).toBeVisible();
+		const settingsRow = await boxOf(page.getByTestId("nav-settings"));
+		expect((await boxOf(feedback)).y).toBeGreaterThan(settingsRow.y);
+		await feedback.click();
+		const dialog = page.getByRole("dialog", { name: "Send feedback" });
+		await expect(dialog).toBeVisible();
+		await page.keyboard.press("Escape");
+		await expect(dialog).toBeHidden();
 		// Nothing is stored until the person arranges something.
 		expect(await stored(page)).toBeNull();
 

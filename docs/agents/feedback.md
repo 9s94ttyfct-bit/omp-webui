@@ -16,6 +16,7 @@ Before anything is shown, tokens, keys (private keys included), passwords, cooki
 
 ## Where it is
 
+- **The sidebar**: a **Send feedback** row under the pages at the bottom (an icon in the same place when that foot is folded to a row of icons).
 - **Settings › App & system › Feedback** (`#/settings/app`): **Send feedback** button, and the checkbox **Offer to ask for a GitHub star** ("After several days of use the sidebar may ask once for a star, only while the repository is public. Turn this off and the app neither asks nor looks up the repository on GitHub.").
 - The command palette's feedback entry, and the keyboard shortcuts card ("Something broken or missing?" › Send feedback) also open the dialog.
 - The star card appears near the bottom of the sidebar.

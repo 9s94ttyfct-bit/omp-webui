@@ -10,4 +10,5 @@ export const en = {
 	starAction: "Star on GitHub",
 	starLater: "Not now",
 	starNever: "Don't ask again",
+	navFeedback: "Send feedback",
 };
