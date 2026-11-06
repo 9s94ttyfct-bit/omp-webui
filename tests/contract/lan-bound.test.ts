@@ -46,7 +46,8 @@ const baseEnv = (): Record<string, string> => ({
 	OMP_WEBUI_BREW: program.brew,
 });
 
-const portOf = (server: TestServer) => Number(new URL(server.url).port);
+/** The port the server is bound to (a network address's, for `bound`; its page on this computer is `server.url`). */
+const portOf = (server: TestServer) => server.port;
 
 /** The three members both kinds of socket (a browser's, and the one made from a network address) have. */
 interface Events {
@@ -248,10 +249,36 @@ networkOnly("the owner of a server bound to a network address", () => {
 		OMP_WEBUI_GUARD_CONFIG: "",
 	});
 
+	/**
+	 * A port free on 127.0.0.1 and on the network address both. With port 0 the server takes one free on the network
+	 * address only, and another test's server can hold it on 127.0.0.1, so its page on this computer moves to the next
+	 * port: what the test below checks only holds when the port is free there. Between the probe and the server's bind,
+	 * another program could still take it; the other servers of the tests ask the system for a port (0), which hands out
+	 * one it chooses, so that is much less likely than a port taken on one address only.
+	 */
+	function freeOnBoth(): number {
+		for (;;) {
+			const loop = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
+			const port = loop.port as number;
+			try {
+				Bun.serve({ hostname: LAN as string, port, fetch: () => new Response() }).stop(true);
+				return port;
+			} catch {
+				// Taken on the network address: another one.
+			} finally {
+				loop.stop(true);
+			}
+		}
+	}
+
 	test("has the page on this computer at 127.0.0.1 on the same port, and the network's page is refused what is for this computer alone", async () => {
 		mkdirSync(dataDir, { recursive: true });
 		mkdirSync(projects, { recursive: true });
-		const bound = await startTestServer(0, { ...settingsEnv(), OMP_WEBUI_HOST: LAN as string }, { login: false });
+		const bound = await startTestServer(
+			freeOnBoth(),
+			{ ...settingsEnv(), OMP_WEBUI_HOST: LAN as string },
+			{ login: false },
+		);
 		try {
 			const port = portOf(bound);
 			const here = (path: string, init: RequestInit = {}) =>

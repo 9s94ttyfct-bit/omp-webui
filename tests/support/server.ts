@@ -25,8 +25,13 @@ export interface TestServer {
 	errors(): string;
 	/** The current server's process id. */
 	readonly pid: number | undefined;
-	/** Where the server listens now: another one after `restart(port)`. */
+	/** Where the server listens now: another one after `restart(port)`. A page on this computer, on 127.0.0.1. */
 	readonly url: string;
+	/**
+	 * The port the server is bound to: `url`'s, except for a server bound to a network address (`OMP_WEBUI_HOST`), whose
+	 * page on this computer may be on another port of 127.0.0.1 (`url`) when that one was taken.
+	 */
+	readonly port: number;
 	root: string;
 	home: string;
 	agentDir: string;
@@ -153,7 +158,13 @@ async function boot(
 	mkdirSync(work, { recursive: true });
 	const accessToken = randomBytes(18).toString("base64url");
 	let listening = port;
-	const origin = () => `http://127.0.0.1:${listening}`;
+	/**
+	 * The port of the loopback listener of a server bound to a network address (`OMP_WEBUI_HOST`): the same as `listening`
+	 * unless another program held that port on 127.0.0.1, when the server takes the next free one there and says so. Null
+	 * for a server that has no such listener.
+	 */
+	let here: number | null = null;
+	const origin = () => `http://127.0.0.1:${here ?? listening}`;
 	const dataDir = join(root, "data");
 	// "Guard dangerous commands" (#609) is on in a fresh install, and every risky call then waits for a reviewer: a spec that
 	// is about something else must not. The guard's settings are in a file of the test's own, off unless it says otherwise
@@ -267,9 +278,15 @@ async function boot(
 		);
 		child.stdout?.on("data", (chunk: Buffer) => {
 			printed += chunk.toString();
-			const address = /omp-webui listening on http:\/\/[^:\s]+:(\d+)/.exec(printed);
+			const address = /omp-webui listening on http:\/\/([^\s/]+):(\d+)/.exec(printed);
 			if (!address) return;
-			listening = Number(address[1]);
+			// A server bound to one network address also listens on 127.0.0.1, and says where on the next line (see
+			// `listenOnLoopback`): a page on this computer is there, on another port when the bound one was taken there.
+			const specific = !["127.0.0.1", "localhost", "0.0.0.0", "::1", "::", "[::1]", "[::]"].includes(address[1]);
+			const loopback = /omp-webui also listening on http:\/\/127\.0\.0\.1:(\d+)/.exec(printed);
+			if (specific && !loopback) return;
+			listening = Number(address[2]);
+			here = loopback ? Number(loopback[1]) : null;
 			clearTimeout(timeout);
 			up = true;
 			ready.resolve();
@@ -337,6 +354,9 @@ async function boot(
 	return {
 		get url() {
 			return origin();
+		},
+		get port() {
+			return listening;
 		},
 		output: () => printed,
 		errors: () => errors,

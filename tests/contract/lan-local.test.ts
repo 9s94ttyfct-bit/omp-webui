@@ -61,7 +61,8 @@ let bound: TestServer | null = null;
 /** The conversation (its session file) that works in the project. */
 let file = "";
 
-const portOf = (server: TestServer) => Number(new URL(server.url).port);
+/** The port the server is bound to (a network address's, for `bound`; its page on this computer is `server.url`). */
+const portOf = (server: TestServer) => server.port;
 
 beforeAll(async () => {
 	program = makeFakeCloudflared(join(root, "cf"), { installed: false });
