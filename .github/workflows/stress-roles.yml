@@ -1,0 +1,37 @@
+# Throwaway (branch stress-roles only, never merged): runs the Windows unit + contract shards that hold the preset role tests
+# many times, to catch their rare failure with the diagnostics they now print.
+name: stress-roles
+on:
+  push:
+    branches: [stress-roles]
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  stress:
+    name: windows shard ${{ matrix.shard }} try ${{ matrix.try }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+        try: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - shell: pwsh
+        run: Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:USERPROFILE
+      - uses: actions/checkout@v4
+      - run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - run: printf 'TEMP=%s\nTMP=%s\n' "$RUNNER_TEMP" "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: |
+          bun install -g "@oh-my-pi/pi-coding-agent@latest"
+          echo "$(bun pm bin -g)" >> "$GITHUB_PATH"
+      - run: omp --version
+      - run: |
+          list=$(bun scripts/test-shard.ts --shard ${{ matrix.shard }}/3)
+          mapfile -t files <<< "$list"
+          bun scripts/with-model-login.ts bun test --parallel --timeout 30000 --timings=.bun-test-timings.json "${files[@]}"
