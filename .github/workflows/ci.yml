@@ -244,11 +244,25 @@ jobs:
         timeout-minutes: 15
         with:
           browsers: chromium webkit
+      # The scripts omp's exports pin (its viewer, marked, highlight.js), kept between runs so that the export tests do not
+      # need the network (tests/support/export-viewer.ts fetches one it does not have, checks its hash and marks the folder).
+      - uses: actions/cache/restore@v4
+        with:
+          path: tests/e2e/.cache/export-viewer
+          key: export-viewer-
+          restore-keys: export-viewer-
       - run: bun scripts/e2e-shard.ts --shard ${{ matrix.shard }}/16 --out "$RUNNER_TEMP/e2e-tests.txt"
       - run: bun run test:e2e --test-list "$RUNNER_TEMP/e2e-tests.txt"
         env:
           PLAYWRIGHT_CHANNEL: chromium
           OMPW_E2E_JSON: ${{ runner.temp }}/e2e-report.json
+      - if: always() && hashFiles('tests/e2e/.cache/export-viewer/fetched') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            tests/e2e/.cache/export-viewer
+            !tests/e2e/.cache/export-viewer/fetched
+          key: export-viewer-${{ hashFiles('tests/e2e/.cache/export-viewer/*.js') }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

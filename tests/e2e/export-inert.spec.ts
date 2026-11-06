@@ -1,5 +1,6 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { serveExportViewer } from "../support/export-viewer.ts";
 import { FIXTURE_BUCKET, FIXTURE_CWD } from "../support/fixtures.ts";
 import { expect, test } from "./fixtures.ts";
 
@@ -10,17 +11,9 @@ import { expect, test } from "./fixtures.ts";
  * one of a hostile transcript from disk in a browser that has no cookie, and nothing may run, load or leave. The one
  * exception is what a released omp (18.14 and later) puts in the file instead of inlining it: its viewer, `marked` and
  * `highlight.js`, each a `<script src>` pinned by an `integrity` hash, which the file loads when it is opened (with an omp
- * that inlines them there are none).
+ * that inlines them there are none). Those are the genuine files, served from a cache (`support/export-viewer.ts`) so that
+ * the test does not depend on the network.
  */
-
-/** The external scripts the export pins by Subresource Integrity: the only addresses it may load. */
-function pinnedScripts(file: string): string[] {
-	return [...readFileSync(file, "utf8").matchAll(/<script\b[^>]*>/g)]
-		.map((tag) => tag[0])
-		.filter((tag) => / integrity="sha(?:256|384|512)-[A-Za-z0-9+/]+={0,2}"/.test(tag))
-		.map((tag) => / src="(https:\/\/[^"]+)"/.exec(tag)?.[1])
-		.filter((src): src is string => src !== undefined);
-}
 
 const ts = (min: number) => new Date(Date.UTC(2026, 0, 12, 10, min)).toISOString();
 const usage = {
@@ -154,8 +147,8 @@ test("an exported hostile conversation opened from disk runs nothing, loads noth
 
 	// Opened as a user does: from disk, in a browser with no cookie, where anything but the file itself and the scripts it
 	// pins is a failure.
-	const pinned = pinnedScripts(saved);
 	const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+	const pinned = await serveExportViewer(context, saved);
 	const outside: string[] = [];
 	const fetched: string[] = [];
 	await context.route(
@@ -164,7 +157,7 @@ test("an exported hostile conversation opened from disk runs nothing, loads noth
 			const url = route.request().url();
 			if (pinned.includes(url)) {
 				fetched.push(url);
-				return route.continue();
+				return route.fallback();
 			}
 			outside.push(url);
 			return route.abort();
@@ -237,6 +230,7 @@ test("the export keeps working: cards and compactions open, the tree navigates",
 	await download.saveAs(saved);
 
 	const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+	await serveExportViewer(context, saved);
 	const opened = await context.newPage();
 	await opened.goto(`file://${saved}`);
 	const compaction = opened.locator(".compaction").first();

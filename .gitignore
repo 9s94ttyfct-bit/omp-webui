@@ -9,3 +9,6 @@ playwright-report/
 .DS_Store
 *.tsbuildinfo
 .personal-words
+
+# The genuine scripts omp's exports pin, kept for the export tests (tests/support/export-viewer.ts).
+tests/e2e/.cache/
