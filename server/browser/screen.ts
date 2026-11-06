@@ -571,8 +571,13 @@ export class ScreenClient {
 
 	sendDownloads(): void {
 		if (this.closed || this.owner === null) return;
-		const downloads = this.hub.downloads.of(this.owner);
-		this.socket.sendText(JSON.stringify({ t: "downloads", owner: this.owner, downloads } satisfies ScreenServerMessage));
+		const msg: ScreenServerMessage = {
+			t: "downloads",
+			owner: this.owner,
+			downloads: this.hub.downloads.of(this.owner),
+			local: this.socket.local === true,
+		};
+		this.socket.sendText(JSON.stringify(msg));
 	}
 
 	tellUnavailable(reason: string): void {

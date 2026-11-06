@@ -28,6 +28,7 @@ import { useApp } from "../store/app.ts";
 import { browserApi, useBrowserState } from "../store/browser.ts";
 import { holdScreen, sendScreen, useScreen } from "../store/browser-screen.ts";
 import { BrowserConsole } from "./BrowserConsole.tsx";
+import { BrowserDownloads } from "./BrowserDownloads.tsx";
 import { BrowserScreen } from "./BrowserScreen.tsx";
 import { Button, cx, Empty, IconButton, Spinner } from "./ui.tsx";
 
@@ -325,6 +326,7 @@ function BrowserPages({ owner, place }: { owner: string; place: BrowserPlace }) 
 						<Plus size={15} />
 					</IconButton>
 				)}
+				<BrowserDownloads owner={owner} />
 				{bridge && current ? (
 					<IconButton
 						size="sm"

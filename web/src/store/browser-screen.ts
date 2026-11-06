@@ -1,4 +1,5 @@
 import {
+	type BrowserDownload,
 	type ConsoleEntry,
 	decodeFrame,
 	type FrameHeader,
@@ -28,6 +29,8 @@ interface ScreenStore {
 	unavailable: string | null;
 	/** The server answered the current watch (a page list, or why it cannot): until then nothing is known. */
 	answered: boolean;
+	/** Whose downloads `downloads` are (null: nobody's yet), newest first; `local`: this page can show one in Finder. */
+	downloads: { owner: string | null; list: BrowserDownload[]; local: boolean };
 }
 
 export const useScreen = create<ScreenStore>(() => ({
@@ -36,6 +39,7 @@ export const useScreen = create<ScreenStore>(() => ({
 	console: {},
 	unavailable: null,
 	answered: false,
+	downloads: { owner: null, list: [], local: false },
 }));
 
 export interface Frame {
@@ -104,6 +108,10 @@ function received(msg: ScreenServerMessage): void {
 			return;
 		case "available":
 			useScreen.setState({ unavailable: null });
+			return;
+		case "downloads":
+			if (msg.owner !== lastWatch?.owner) return;
+			useScreen.setState({ downloads: { owner: msg.owner, list: msg.downloads, local: msg.local } });
 			return;
 	}
 }

@@ -117,8 +117,9 @@ export type ScreenServerMessage =
 	| { t: "unavailable"; reason: string }
 	/** It can be used again: the tab's last watch, which could not be carried out, has been now. */
 	| { t: "available" }
-	/** The conversation's downloads, newest first: sent on watch and whenever one changes. */
-	| { t: "downloads"; owner: string; downloads: BrowserDownload[] };
+	/** The conversation's downloads, newest first: sent on watch and whenever one changes. `local`: this page is on the
+	 *  computer they are saved on (it can show one in Finder; any other page fetches the file instead). */
+	| { t: "downloads"; owner: string; downloads: BrowserDownload[]; local: boolean };
 
 /** What precedes a frame's JPEG. `w`/`h`: the page's layout size in CSS pixels the frame shows. */
 export interface FrameHeader {

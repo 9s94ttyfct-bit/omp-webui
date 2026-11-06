@@ -218,7 +218,13 @@ export async function downloadFile(
 }
 
 /** The file `file`, resolved by the rules, opened and sent. */
-async function send(req: Request, file: Resolved, env: TransferEnv, trace: Trace, deps: DownloadDeps): Promise<Response> {
+async function send(
+	req: Request,
+	file: Resolved,
+	env: TransferEnv,
+	trace: Trace,
+	deps: DownloadDeps,
+): Promise<Response> {
 	const head = req.method === "HEAD";
 	const { handle } = await viaFolder(() => openRegular(file.abs, deps.hooks));
 	let answered = false;
