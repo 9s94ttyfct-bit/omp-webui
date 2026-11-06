@@ -16,6 +16,7 @@ import {
 	tarCommand,
 	WINDOWS_EXE,
 	type WindowsArch,
+	whileBusy,
 	zipTop,
 } from "../../server/update/windows.ts";
 import type { AppUpdateState } from "../../shared/update.ts";
@@ -167,6 +168,28 @@ test("each processor's zip has a top folder of its own, and a launcher takes onl
 	expect(memberAllowed("omp-webui-windows-arm64/omp-webui.exe", zipTop("arm64"))).toBe(true);
 	expect(memberAllowed("omp-webui-windows-x64/omp-webui.exe", zipTop("arm64"))).toBe(false);
 	expect(memberAllowed("omp-webui-windows-arm64/omp-webui.exe", zipTop("x64"))).toBe(false);
+});
+
+test("a rename or removal Windows refuses as busy (a program just run, a scan) is tried again; any other error is not", async () => {
+	const failing = (codes: string[]) => {
+		const calls: string[] = [];
+		const op = () => {
+			const code = codes[calls.length];
+			calls.push(code ?? "ok");
+			if (code) throw Object.assign(new Error(code), { code });
+		};
+		return { op, calls };
+	};
+	// Seen in CI: the refused install's folder could not be removed at once (EBUSY), right after its program had run.
+	const busy = failing(["EBUSY", "EPERM", "EACCES"]);
+	await whileBusy(busy.op, 20, 1);
+	expect(busy.calls).toEqual(["EBUSY", "EPERM", "EACCES", "ok"]);
+	const gone = failing(["ENOENT"]);
+	await expect(whileBusy(gone.op, 20, 1)).rejects.toThrow("ENOENT");
+	expect(gone.calls).toEqual(["ENOENT"]);
+	const held = failing(Array(5).fill("EBUSY"));
+	await expect(whileBusy(held.op, 3, 1)).rejects.toThrow("EBUSY");
+	expect(held.calls).toHaveLength(3);
 });
 
 // ------------------------------------------------------------------ staging

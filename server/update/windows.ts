@@ -210,17 +210,18 @@ function isPlainFile(path: string): boolean {
 	}
 }
 
-/** The errors of a rename that a moment later may work: a file in the folder is still open (an antivirus scan, an indexer). */
+/** The errors of a rename or removal that a moment later may work: a file in the folder is still open. */
 const BUSY: Record<string, true> = { EPERM: true, EBUSY: true, EACCES: true };
 
 /**
- * `from` renamed to `to`, tried for about ten seconds: Windows refuses to rename a folder while a file in it is open, and
- * antivirus software opens a program that was just written to scan it (helper.ps1's `Move-Folder` does the same).
+ * `op` (a rename or a removal in the update's folders), tried for about ten seconds while it fails as busy: Windows refuses
+ * to rename or remove a folder while a file in it is open, antivirus software opens a program that was just written to scan
+ * it, and a program that was just run is held a moment after it has ended (helper.ps1's `Move-Folder` waits the same way).
  */
-export async function renameRetrying(from: string, to: string, tries = 20, gapMs = 500): Promise<void> {
+export async function whileBusy(op: () => void, tries = 20, gapMs = 500): Promise<void> {
 	for (let i = 1; ; i++) {
 		try {
-			renameSync(from, to);
+			op();
 			return;
 		} catch (e) {
 			const code = (e as NodeJS.ErrnoException).code ?? "";
@@ -277,7 +278,7 @@ export async function stageWindows(
 			throw new UpdateError("noApp", { name: topName });
 		}
 		rmSync(staged, { recursive: true, force: true });
-		await renameRetrying(top, staged);
+		await whileBusy(() => renameSync(top, staged));
 	} finally {
 		rmSync(unpack, { recursive: true, force: true });
 	}
@@ -292,9 +293,10 @@ export async function stageWindows(
 			throw new UpdateError("version", { tag: `v${expectedVersion}`, found: found.slice(0, 40) || "?" });
 		}
 	} catch (e) {
-		// The program was just run: Windows may hold it a moment longer, and a removal that threw would put its own error in
+		// The program was just run: Windows holds it a moment after it has ended (seen in CI: EBUSY at once, and the refused
+		// install's folder left beside the app). A removal that still fails is logged, never thrown: its error would take the
 		// place of the refusal (the install then said "stage" where it should say which version it found).
-		removeLeftovers(staged);
+		await whileBusy(() => rmSync(staged, { recursive: true, force: true })).catch(() => removeLeftovers(staged));
 		throw e;
 	}
 }
