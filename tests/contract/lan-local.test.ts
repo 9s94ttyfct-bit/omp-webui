@@ -226,6 +226,7 @@ const ROUTES: { method: string; path: string; body?: unknown }[] = [
 	})),
 	{ method: "POST", path: "/api/remote/ai", body: { enabled: true } },
 	{ method: "GET", path: "/api/remote/anything" },
+	// The app's updates: let in for a page signed in through Access too (`isOwnerRoute`), never for one on the network.
 	{ method: "GET", path: "/api/update" },
 	...["check", "cancel", "dismiss"].map((route) => ({ method: "POST", path: `/api/update/${route}`, body: {} })),
 	{ method: "POST", path: "/api/update/install", body: { tag: "v9.9.9", anyway: true } },

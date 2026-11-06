@@ -107,9 +107,9 @@ describe("isLocalOnlyRoute", () => {
 			"/api/guard/bench/preview",
 			"/api/guard/anything",
 			"/api/guard/live/x",
-			"/api/update",
-			"/api/update/check",
-			"/api/update/install",
+			// A route under the app's updates that `isOwnerRoute` does not name.
+			"/api/update/anything",
+			"/api/update/check/x",
 			"/api/migrate",
 			"/api/migrate/state",
 			"/api/migrate/export",
@@ -162,8 +162,16 @@ describe("isLocalOnlyRoute", () => {
 });
 
 describe("isOwnerRoute", () => {
-	test("the guard's settings and a conversation's own guard, by their exact path, and nothing else", () => {
-		for (const path of ["/api/guard", "/api/guard/live"]) {
+	test("the guard's settings, a conversation's own guard and the app's updates, by their exact path, and nothing else", () => {
+		for (const path of [
+			"/api/guard",
+			"/api/guard/live",
+			"/api/update",
+			"/api/update/check",
+			"/api/update/install",
+			"/api/update/cancel",
+			"/api/update/dismiss",
+		]) {
 			expect(isOwnerRoute(path), path).toBe(true);
 			// Not local-only: `route` lets in a page signed in through Access too (`isOwnerPage`), and refuses any other.
 			expect(isLocalOnlyRoute(path), path).toBe(false);
@@ -175,6 +183,9 @@ describe("isOwnerRoute", () => {
 			"/api/guard/log",
 			"/api/guards",
 			"/API/GUARD",
+			"/api/update/",
+			"/api/update/anything",
+			"/api/updates",
 		])
 			expect(isOwnerRoute(path), path).toBe(false);
 	});

@@ -49,10 +49,10 @@ export function isThisComputer(req: Request, peer: string | undefined): boolean 
 /**
  * Whether a page is the person's own: on this computer, or signed in as the person through Cloudflare Access (`remote`, the
  * identity `RemoteAuth.verify` checked; null for any other request). Such a page may install, update and clear the built-in
- * browser, change the guard's settings and a conversation's own guard (`isOwnerRoute`), and change the guidance (its
- * templates and a conversation's). A page holding only the server's token (one on the network, or any page with auth off)
- * may use the conversations and look at these, not change them. Decided from the request's or socket's own
- * authentication, never from what the page says.
+ * browser, use the owner's routes (`isOwnerRoute`: the guard's settings, a conversation's own guard, the app's own
+ * updates), and change the guidance (its templates and a conversation's). A page holding only the server's token (one on
+ * the network, or any page with auth off) may use the conversations and look at these, not change them. Decided from the
+ * request's or socket's own authentication, never from what the page says.
  */
 export function isOwnerPage(remote: RemoteIdentity | null, local: boolean): boolean {
 	return remote !== null || local;
@@ -72,14 +72,24 @@ const LOCAL_ONLY = [
 ];
 
 /**
- * The guard's routes a page signed in through Access may use as well as this computer's (`isOwnerPage`), each by its exact
- * path: the settings of Settings › Safety (`/api/guard`: mode, reviewer, ask when unavailable, ask when denied) and one
- * conversation's own guard (`/api/guard/live`). The rest of `/api/guard*` stays this computer's (`LOCAL_ONLY`): the
- * decisions log (`log`, `decisions`: every risky call of every conversation, with its folder, and the reviewer's reasons),
- * the reviewer's rules and the threshold of each kind (`rules`) and the benchmark (`bench*`), which are the Guard page's,
- * and a route added under `/api/guard` later is this computer's until it is named here.
+ * The routes a page signed in through Access may use as well as this computer's (`isOwnerPage`), each by its exact path:
+ * the settings of Settings › Safety (`/api/guard`: mode, reviewer, ask when unavailable, ask when denied), one
+ * conversation's own guard (`/api/guard/live`), and Settings › Updates (`/api/update`, `/check`, `/install`, `/cancel`,
+ * `/dismiss`: the person updates the app from their phone too; what is installed is still only a release signed as the
+ * running app is). The rest of `/api/guard*` stays this computer's (`LOCAL_ONLY`): the decisions log (`log`, `decisions`:
+ * every risky call of every conversation, with its folder, and the reviewer's reasons), the reviewer's rules and the
+ * threshold of each kind (`rules`) and the benchmark (`bench*`), which are the Guard page's, and a route added under
+ * `/api/guard` or `/api/update` later is this computer's until it is named here.
  */
-const OWNER_ROUTES = ["/api/guard", "/api/guard/live"];
+const OWNER_ROUTES = [
+	"/api/guard",
+	"/api/guard/live",
+	"/api/update",
+	"/api/update/check",
+	"/api/update/install",
+	"/api/update/cancel",
+	"/api/update/dismiss",
+];
 
 /** Whether `pathname` is one of the routes this computer's page and a page signed in through Access may use (`OWNER_ROUTES`). */
 export function isOwnerRoute(pathname: string): boolean {
@@ -89,7 +99,8 @@ export function isOwnerRoute(pathname: string): boolean {
 /**
  * The routes that are the person's at this computer, and nobody else's: the tunnel's settings (`/api/remote*`), the list of
  * saved Macs (`/api/macs*`: every route of it changes the list, which pages read in `/api/meta`), what the guard decided
- * and how strict it is (`/api/guard/*` but the routes `isOwnerRoute` names), the app's own updates (`/api/update*`), moving to another
+ * and how strict it is (`/api/guard/*` but the routes `isOwnerRoute` names), the app's own updates (`/api/update*` but the
+ * routes `isOwnerRoute` names), moving to another
  * computer (`/api/migrate/*`), what omp remembers (`/api/memory*`: the folders of the projects and excerpts of
  * conversations, and what is written to it is put into the prompt of every later conversation, which a page that is not
  * on this computer must not be able to do), what the macOS app is told on its own (`/api/shell/*`: which
@@ -103,8 +114,8 @@ export function isOwnerRoute(pathname: string): boolean {
  * `route` in `main.ts`; one that is for this computer and is not listed is open to every page that has the token. The stream
  * the app of another Mac reads (`/api/notify/events`, #656) is deliberately not listed: it is how a window onto this Mac is
  * told what needs the person, and `route` lets it in only for a request that came through Access (or from this computer).
- * Nor are the guard's settings and a conversation's own guard (`isOwnerRoute`): `route` lets them in for this computer's
- * page and one signed in through Access (`isOwnerPage`), and refuses them to any other.
+ * Nor are the owner's routes (`isOwnerRoute`: the guard's settings, a conversation's own guard, the app's updates): `route`
+ * lets them in for this computer's page and one signed in through Access (`isOwnerPage`), and refuses them to any other.
  */
 export function isLocalOnlyRoute(pathname: string): boolean {
 	if (isOwnerRoute(pathname)) return false;

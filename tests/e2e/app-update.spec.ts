@@ -169,22 +169,39 @@ test.describe("a release that is newer, on a copy that cannot install", () => {
 		await expect.poll(async () => (await prefs(run)).values[PREF.appUpdateCheck]).toBe("on");
 	});
 
-	test("a page that came in through the tunnel is told the card is not for it, and asks for nothing", async ({
+	test("a page on the network that holds only the token is told the card is not for it, and asks for nothing", async ({
 		page,
 	}) => {
 		const asked: string[] = [];
 		page.on("request", (r) => asked.push(new URL(r.url()).pathname));
 		await page.route("**/api/meta", async (route) => {
 			const real = await (await route.fetch()).json();
-			return route.fulfill({ json: { ...real, remote: true } });
+			return route.fulfill({ json: { ...real, remote: true, local: false, owner: false } });
 		});
 		await page.goto(run.url);
 		await openSettings(page);
-		await expect(page.getByTestId("update-refused")).toContainText("not available on a remote page");
+		await expect(page.getByTestId("update-refused")).toContainText("signed in through Cloudflare Access");
 		await expect(page.getByTestId("update-check")).toHaveCount(0);
 		await expect(page.getByTestId("update-install")).toHaveCount(0);
 		await page.waitForLoadState("networkidle");
 		expect(asked.filter((p) => p.startsWith("/api/update"))).toEqual([]);
+	});
+
+	test("a page signed in through Cloudflare Access has the whole card, as the page on this computer has", async ({
+		page,
+	}) => {
+		await page.route("**/api/meta", async (route) => {
+			const real = await (await route.fetch()).json();
+			return route.fulfill({ json: { ...real, remote: true, local: false, owner: true } });
+		});
+		await page.goto(run.url);
+		await openSettings(page);
+		await expect(page.getByTestId("update-latest")).toHaveText(`v${VERSION} is available`);
+		await expect(page.getByTestId("update-refused")).toHaveCount(0);
+		const checked = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith("/api/update/check"));
+		await page.getByTestId("update-check").click();
+		await checked;
+		await expect(page.getByTestId("update-check")).toBeEnabled();
 	});
 });
 

@@ -67,11 +67,11 @@ Environment: `OMP_WEBUI_UPDATE_CHECK=off` stops the automatic look-ups for both 
 
 | Route | Methods | Access | Purpose |
 |---|---|---|---|
-| `/api/update` | GET | local-only | `{ state }`: installed version, whether this copy can install (`install.allowed` or the reason), `checking`, `checkedAt`, `latest` release, `newer`, the last check `failure`, the running `job` (phase `downloading`, `verifying`, `staging`, `handover`; bytes received/total), `failed` and `outcome`. |
-| `/api/update/check` | POST | local-only | Look for a release now; returns `{ state }`. |
-| `/api/update/install` | POST | local-only | Body `{ tag, anyway? }`: start installing that release. 409 with `{ code, params, error }` when refused: `blocked` (this copy cannot replace itself), `busy`, `nothingToInstall`, or `replying` (conversations are working or waiting; send `anyway: true` to go on). |
-| `/api/update/cancel` | POST | local-only | Stop a download or the checks after it (not after the handover). |
-| `/api/update/dismiss` | POST | local-only | Clear the shown failure and outcome. |
+| `/api/update` | GET | token, and this computer or a verified Access sign-in | `{ state }`: installed version, whether this copy can install (`install.allowed` or the reason), `checking`, `checkedAt`, `latest` release, `newer`, the last check `failure`, the running `job` (phase `downloading`, `verifying`, `staging`, `handover`; bytes received/total), `failed` and `outcome`. |
+| `/api/update/check` | POST | token, and this computer or a verified Access sign-in | Look for a release now; returns `{ state }`. |
+| `/api/update/install` | POST | token, and this computer or a verified Access sign-in | Body `{ tag, anyway? }`: start installing that release. 409 with `{ code, params, error }` when refused: `blocked` (this copy cannot replace itself), `busy`, `nothingToInstall`, or `replying` (conversations are working or waiting; send `anyway: true` to go on). |
+| `/api/update/cancel` | POST | token, and this computer or a verified Access sign-in | Stop a download or the checks after it (not after the handover). |
+| `/api/update/dismiss` | POST | token, and this computer or a verified Access sign-in | Clear the shown failure and outcome. |
 | `/api/omp` | GET | token | `{ state, log }`: omp status (`ready`, `missing`, `broken`), path, version, install method, supported range and verdict, latest release (`newer`, `compat`, changelog), `autoUpdate`, what an automatic update waits for, `onboarding`, the current job; `log` is the job's output. |
 | `/api/omp/check` | POST | token | Look up the latest omp release now. |
 | `/api/omp/update` | POST | token | Body `{ acknowledgeCompat?, anyway? }`: run `omp update` (now, or once conversations have finished). 409 with a `code`: `not_ready`, `not_updatable`, `busy`, `up_to_date`, `outside_compat` (repeat with `acknowledgeCompat: true`). `anyway: true` on a waiting update stops it waiting for paused/asking conversations. |
@@ -94,7 +94,7 @@ Every omp route answers with the new `{ state, log }`; errors are `{ error, code
 
 ## Security notes
 
-- All `/api/update*` routes are local-only: a page through the tunnel or the network cannot replace the app, whatever token it holds. Update state is sent only to pages on this computer.
+- The `/api/update*` routes are for the person's own page: one on this computer, or one signed in through Cloudflare Access (Settings › Updates works from a phone through the tunnel too; the app restarts on the computer it runs on, and the page reconnects once it is back). A page on the network that holds only the token is refused them (403, "The app is updated on the computer omp-webui runs on, or from a page signed in through Cloudflare Access"), and a route under `/api/update` that is not one of these is this computer's alone. Update state is sent only to those pages.
 - A downloaded macOS app is installed only if its signature is valid and made with the same certificate as the running app, so a file merely published under a release's name is refused. The Windows launcher is unsigned: its zip is installed only with the SHA-256 GitHub lists for it, which guards against a broken or altered download, not against a compromised release or account.
 - The `/api/omp*` routes are open to any page with the access token, including remote ones: such a page can update or install the omp of the computer omp-webui runs on.
 - Agents should not install updates or switch automatic updates on or off unless the user asks.

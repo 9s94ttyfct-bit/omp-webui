@@ -4,7 +4,7 @@ export const zh: Record<keyof typeof en, string> = {
 	// The card
 	title: "更新",
 	hint: "omp-webui 会从 GitHub 上的公开发布版本更新自己。",
-	remoteRefused: "远程页面不能更新：只能在运行它的那台 Mac 上更新应用。",
+	remoteRefused: "这个页面不能更新应用：请在运行它的那台电脑上更新，或从通过 Cloudflare Access 登录的页面更新。",
 	loadFailed: "读不到应用的更新状态。",
 	versionInstalled: "当前版本：v{version}",
 	versionLatest: "最新版本：v{version}",

@@ -373,6 +373,17 @@ describe("with the app", () => {
 		}
 	});
 
+	test("after an update's restart, the tunnel that ran comes back though it does not start with the app; never while off", async () => {
+		const w = await prepared({ autostart: false, enabled: true });
+		await w.service.autostart(true);
+		await pollUntil(() => w.service.tunnel.status().state === "connected", "the tunnel to connect");
+		expect(w.service.tunnelRuns()).toBe(true);
+		const off = await prepared({ autostart: false, enabled: false });
+		await off.service.autostart(true);
+		expect(off.fake.runs()).toBe(0);
+		expect(off.service.tunnelRuns()).toBe(false);
+	});
+
 	test("a program that is not there is no reason for the app not to start", async () => {
 		const w = world({ installed: false });
 		w.service.store.patch({

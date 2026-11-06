@@ -604,10 +604,16 @@ const automaticAppUpdates = process.env.OMP_WEBUI_UPDATE_CHECK !== "off" || appU
 let updater: AppUpdater | null = null;
 let loadingUpdater: Promise<AppUpdater> | null = null;
 
-/** What is said to the pages on this computer (any other has no use for the update, and is refused it and the guard's log). */
+/** What is said to the pages on this computer (any other is refused the guard's log and Ask agent for help). */
 function broadcastLocal(msg: ServerMessage): void {
 	const text = JSON.stringify(msg);
 	for (const ws of sockets) if (ws.data.local) ws.data.out?.send(text);
+}
+
+/** What is said to the person's pages (`isOwnerPage`): this computer's, and those signed in through Access (the app's updates). */
+function broadcastOwner(msg: ServerMessage): void {
+	const text = JSON.stringify(msg);
+	for (const ws of sockets) if (isOwnerPage(ws.data.remote, ws.data.local)) ws.data.out?.send(text);
 }
 
 /**
@@ -699,7 +705,9 @@ function appUpdater(): Promise<AppUpdater> {
 				autoChecks: () => uiPrefs.snapshot().values[PREF.appUpdateCheck] !== "off",
 				autoInstall: () => uiPrefs.snapshot().values[PREF.appAutoUpdate] === "on",
 				conversations: conversationsHeld,
-				broadcast: (state) => broadcastLocal({ t: "app_update", state }),
+				broadcast: (state) => broadcastOwner({ t: "app_update", state }),
+				// A tunnel that runs comes back with the next server: the person may be updating from their phone through it.
+				beforeHandover: () => remoteAuth.keepThroughRestart(),
 				// The Windows launcher is this server: after the handover it ends itself, as a quit of the app would.
 				quit: () => void shutdown(),
 			});
@@ -1130,11 +1138,13 @@ const remoteOf = new WeakMap<Request, RemoteIdentity>();
 /** Whether the request is from the person's own page (`isOwnerPage`): this computer's, or one signed in through Access. */
 const fromOwner = (req: Request): boolean => isOwnerPage(remoteOf.get(req) ?? null, onThisComputer.has(req));
 
-/** What a page that is not the person's own (`isOwnerPage`) is told when it asks to change the guard or the guidance. */
+/** What a page that is not the person's own (`isOwnerPage`) is told when it asks to change the guard, the guidance or the app. */
 const GUARD_NOT_HERE =
 	"The guard is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access";
 const GUIDANCE_NOT_HERE =
 	"Guidance is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access";
+const UPDATE_NOT_HERE =
+	"The app is updated on the computer omp-webui runs on, or from a page signed in through Cloudflare Access";
 /** What the file transfer asks of a request: who it is from, what this computer lets that page do, and what must not be touched. */
 function transferEnv(req: Request, peer: string | undefined): TransferEnv {
 	const local = onThisComputer.has(req);
@@ -2871,17 +2881,18 @@ async function route(req: Request, srv: Bun.Server<SocketData>): Promise<Respons
 	// The API and the socket answer a page of this origin only; the page itself (and the token link) is served to anyone.
 	const isApi = url.pathname === "/ws" || url.pathname === "/ws/browser" || url.pathname.startsWith("/api/");
 	if (isApi && !fromOwnPage(req)) return new Response("Forbidden", { status: 403 });
-	// What the guard decided and how strict it is, the tunnel's settings, the app's updates and moving to another computer
-	// are the person's at this computer (see `isLocalOnlyRoute`): a page that is not on it must never be able to
-	// reconfigure what it came in through, replace the app, nor carry every conversation (and, with a password, every
+	// What the guard decided and how strict it is, the tunnel's settings and moving to another computer are the person's
+	// at this computer (see `isLocalOnlyRoute`): a page that is not on it must never be able to reconfigure what it came
+	// in through, nor carry every conversation (and, with a password, every
 	// login) away, nor rewrite the user's files from an uploaded archive. That is the socket's say (see
 	// `isThisComputer`), not the bind address's: a server that listens on a network address answers the people on that
 	// network, and they are not this computer. Nor is the token any proof of it: it is what a page on the network has.
 	if (!local && isLocalOnlyRoute(url.pathname)) return new Response("Forbidden", { status: 403 });
-	// The guard's settings and a conversation's own guard (`isOwnerRoute`) are this computer's page's and the person's
-	// signed in through Access (`isOwnerPage`): a page that holds only the token (one on the network) may not switch the
-	// guard off. Said in words, for the page to show.
-	if (isOwnerRoute(url.pathname) && !isOwnerPage(remote, local)) return fail(GUARD_NOT_HERE, 403);
+	// The owner's routes (`isOwnerRoute`: the guard's settings, a conversation's own guard, the app's updates) are this
+	// computer's page's and the person's signed in through Access (`isOwnerPage`): a page that holds only the token (one on
+	// the network) may not switch the guard off nor replace the app. Said in words, for the page to show.
+	if (isOwnerRoute(url.pathname) && !isOwnerPage(remote, local))
+		return fail(url.pathname.startsWith("/api/update") ? UPDATE_NOT_HERE : GUARD_NOT_HERE, 403);
 	// The token link and the token itself are not for a page that came in through the tunnel: it has its Access login and
 	// is given the cookie. A page on the network exchanges the token it has for the cookie, as it would on this computer:
 	// refusing it would leave a browser there no way to sign in, and it protects nothing, for what the token opens is
@@ -3078,8 +3089,9 @@ const listen = (hostname: string, port: number) =>
 						time: Date.now(),
 					} satisfies ServerMessage),
 				);
-				// The app's own updates, to a local page that opens while there is something to show (nothing loads for it).
-				if (ws.data.local && updater?.worthShowing()) {
+				// The app's own updates, to the person's page (`isOwnerPage`) that opens while there is something to show
+				// (nothing loads for it).
+				if (isOwnerPage(ws.data.remote, ws.data.local) && updater?.worthShowing()) {
 					out.send(JSON.stringify({ t: "app_update", state: updater.state() } satisfies ServerMessage));
 				}
 				// The built-in browser's state, once something asked for it (nothing loads for it here).

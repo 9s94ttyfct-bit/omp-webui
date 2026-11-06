@@ -4,6 +4,7 @@ import { CircleCheck, Download, ExternalLink, RefreshCw, TriangleAlert, X } from
 import { lazy, Suspense, useEffect, useState } from "react";
 import { registerStrings, useLang, useT } from "../i18n/index.ts";
 import { en } from "../i18n/update.ts";
+import { ownerPage } from "../lib/api.ts";
 import {
 	BLOCK_KEYS,
 	canCancel,
@@ -122,14 +123,15 @@ function Progress({ job, onCancel }: { job: NonNullable<AppUpdateState["job"]>; 
  * Settings › Updates: which omp-webui runs and which is the newest release, a button to look now, the release's notes,
  * the button that downloads and installs it (with the reasons it cannot, when it cannot), the install's progress, why
  * an install did not go on, how the last update ended, and whether the app looks on its own. The server owns all of it
- * (`server/update/`); the card shows its state and sends the user's clicks. A page that came in through the tunnel is
- * refused by every route and shows one line.
+ * (`server/update/`); the card shows its state and sends the user's clicks. The person's own page (`ownerPage`: this
+ * computer's, or one signed in through Cloudflare Access) has all of it; any other page is refused by every route and
+ * shows one line.
  */
 export function UpdateSettings() {
 	const t = useT();
 	const lang = useLang((s) => s.lang);
 	const toast = useApp((s) => s.toast);
-	const remotePage = useApp((s) => s.meta?.remote === true);
+	const notOwner = useApp((s) => s.meta !== null && !ownerPage(s.meta));
 	const state = useAppUpdate((s) => s.state);
 	const loaded = useAppUpdate((s) => s.loaded);
 	const [auto, setAuto] = useState(autoCheckOn);
@@ -143,8 +145,8 @@ export function UpdateSettings() {
 
 	// Look when the page opens, not before: the first page does not ask.
 	useEffect(() => {
-		if (!remotePage) void appUpdateApi.load().catch(() => {});
-	}, [remotePage]);
+		if (!notOwner) void appUpdateApi.load().catch(() => {});
+	}, [notOwner]);
 	// Another window chose whether the app looks on its own.
 	useEffect(
 		() =>
@@ -155,7 +157,7 @@ export function UpdateSettings() {
 		[],
 	);
 
-	if (remotePage) {
+	if (notOwner) {
 		return (
 			<section className="rounded-2xl border border-border bg-surface p-4" data-testid="update-settings">
 				<CardHeader title={t("update.title")} />

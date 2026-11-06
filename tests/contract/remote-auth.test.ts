@@ -226,17 +226,10 @@ describe("a remote request with a valid Access token", () => {
 		expect((await remote("/api/remote")).status).toBe(403);
 		expect((await remote("/api/remote/config", { method: "POST", headers: csrf }, "{}")).status).toBe(403);
 		expect((await remote("/api/remote/start", { method: "POST", headers: csrf })).status).toBe(403);
-		// The app replaces itself from there: a remote page can neither ask about updates nor start an install (#571).
-		expect((await remote("/api/update")).status).toBe(403);
-		for (const route of ["check", "install", "cancel", "dismiss"]) {
-			const attempt = await remote(
-				`/api/update/${route}`,
-				{ method: "POST", headers: csrf },
-				JSON.stringify({ tag: "v9.9.9", anyway: true }),
-			);
-			expect(attempt.status, route).toBe(403);
-		}
-		expect((await local("/api/update")).status).toBe(200);
+		// The app's updates are the person's (`isOwnerRoute`, tested below); a route under them that is not named stays this
+		// computer's.
+		expect((await remote("/api/update/anything")).status).toBe(403);
+		expect((await remote("/api/update/anything", { method: "POST", headers: csrf }, "{}")).status).toBe(403);
 		// Moving to another computer: an archive holds every conversation, and an import rewrites the user's own files.
 		expect((await remote("/api/migrate/plan")).status).toBe(403);
 		expect((await remote("/api/migrate/state")).status).toBe(403);
@@ -667,7 +660,8 @@ describe("the stream of notices the app of another Mac reads (#656)", () => {
 
 /**
  * A page signed in through Cloudflare Access counts as the person (`isOwnerPage`): it may change the guard's settings, a
- * conversation's own guard and the guidance, as the page on this computer may. What the Guard page shows and tunes, the
+ * conversation's own guard and the guidance, and update the app, as the page on this computer may. What the Guard page
+ * shows and tunes, the
  * guidance conflict check (it reads what omp remembers) and the tunnel's own settings stay this computer's. A page on the
  * network that holds only the token is still refused all of it: `lan-local.test.ts`.
  */
@@ -708,6 +702,24 @@ describe("a page signed in through Access is the person's own", () => {
 		} finally {
 			phone.close();
 			expect((await postHere("/api/guard", before)).status).toBe(200);
+		}
+	});
+
+	test("updates the app as the page on this computer does, and is told the update state over its socket", async () => {
+		setSettings();
+		expect((await remote("/api/update")).status).toBe(200);
+		// It reaches the updater: this server is no app to replace, so the install is refused for that, not for the page.
+		const install = await post("/api/update/install", { tag: "v9.9.9", anyway: true });
+		expect(install.status).toBe(409);
+		expect(await install.json()).toMatchObject({ code: "blocked", params: { reason: "notApp" } });
+		expect((await post("/api/update/cancel", {})).status).toBe(200);
+		const phone = (await remoteSocket()) as WebSocket;
+		try {
+			const said = messageWhere(phone, (m) => m.t === "app_update");
+			expect((await post("/api/update/dismiss", {})).status).toBe(200);
+			expect((await said).state).toMatchObject({ failed: null, outcome: null });
+		} finally {
+			phone.close();
 		}
 	});
 

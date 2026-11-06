@@ -6,7 +6,8 @@ export const en = {
 	// The card
 	title: "Updates",
 	hint: "omp-webui updates itself from its public releases on GitHub.",
-	remoteRefused: "Updates are not available on a remote page: the app can only be updated from the Mac it runs on.",
+	remoteRefused:
+		"This page cannot update the app: update it on the computer it runs on, or from a page signed in through Cloudflare Access.",
 	loadFailed: "Could not read the update state from the app.",
 	versionInstalled: "Installed version: v{version}",
 	versionLatest: "Latest version: v{version}",

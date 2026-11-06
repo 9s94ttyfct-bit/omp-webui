@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ServerMessage } from "../shared/protocol.ts";
 import { asciiLower, isRemoteOn, parseRemoteConfig, type RemoteConfig } from "../shared/remote.ts";
@@ -27,6 +27,12 @@ import type { RemoteService } from "./remote-routes.ts";
  * load the chain is made by the same file the chain would read: a file that is not valid settings, or settings that
  * are off, means remote access off, and no chain.
  */
+
+/**
+ * How long after an update's handover the next server still brings the tunnel back (`LazyRemote.keepThroughRestart`):
+ * the helper waits up to 90 seconds for the app to quit and 60 for the new one to start; longer is another start.
+ */
+const RESUME_MS = 10 * 60_000;
 
 /** What the loader needs of the chain. */
 interface Chain {
@@ -229,16 +235,18 @@ export class LazyRemote {
 	}
 
 	/**
-	 * The chain is loaded and started: the tunnel comes up when the settings ask for it.
+	 * The chain is loaded and started: the tunnel comes up when the settings ask for it, or when it ran as the last server
+	 * was ended for an update of the app (`keepThroughRestart`).
 	 *
 	 * A tunnel a crashed server left behind is ended even when the settings do not ask for a tunnel: that is what the
 	 * record of it (a file beside the settings) is for. The chain is loaded for that only when the record is there.
 	 */
 	start(): void {
+		const resume = this.takeResume();
 		if (!this.readOff() && !this.hasLeftover()) return;
 		void (async () => {
 			const chain = await this.load();
-			await chain.service.autostart();
+			await chain.service.autostart(resume);
 		})().catch((e: unknown) => {
 			console.warn(`omp-webui: remote access could not be started: ${e instanceof Error ? e.message : String(e)}`);
 		});
@@ -247,6 +255,44 @@ export class LazyRemote {
 	/** Whether a tunnel a former server left behind is on record: it is to be ended. */
 	private hasLeftover(): boolean {
 		return existsSync(join(this.dataDir, "cloudflared.pid"));
+	}
+
+	/** The note `keepThroughRestart` leaves for the next server. */
+	private get resumeFile(): string {
+		return join(this.dataDir, "remote-resume.json");
+	}
+
+	/**
+	 * The app is about to be ended for an update: a tunnel that runs now is to come back with the next server, whether or
+	 * not it starts with the app (a person who updates from their phone through it must not be locked out by the update).
+	 * A note in the data folder says so; nothing is noted when the tunnel does not run.
+	 */
+	keepThroughRestart(): void {
+		if (!this.chain?.service.tunnelRuns()) return;
+		writeFileSync(this.resumeFile, JSON.stringify({ at: Date.now() }), { mode: 0o600 });
+	}
+
+	/**
+	 * Whether the last server asked for the tunnel to come back (`keepThroughRestart`), and lately: the note is removed
+	 * whatever it says, and one older than `RESUME_MS` (an update whose app never quit, a server started much later) is
+	 * not followed.
+	 */
+	private takeResume(): boolean {
+		let text: string;
+		try {
+			text = readFileSync(this.resumeFile, "utf8");
+		} catch {
+			return false;
+		}
+		rmSync(this.resumeFile, { force: true });
+		let at: unknown;
+		try {
+			at = (JSON.parse(text) as { at?: unknown } | null)?.at;
+		} catch {
+			return false;
+		}
+		const age = typeof at === "number" ? Date.now() - at : -1;
+		return age >= 0 && age < RESUME_MS;
 	}
 
 	/** The server is going away: the tunnel (and what it started) ends first. */

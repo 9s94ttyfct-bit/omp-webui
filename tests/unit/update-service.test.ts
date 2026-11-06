@@ -682,7 +682,15 @@ const result = (w: World) => JSON.parse(readFileSync(join(w.data, "update", "res
 test.skipIf(!mac)(
 	"an update is installed: staged and checked, the app asked to quit after the handover is recorded, swapped in by rename, started, and the backup removed",
 	async () => {
-		const w = world();
+		// What is to come back with the next server (the remote tunnel) is noted before the app is asked to quit.
+		const order: string[] = [];
+		const w = world({
+			options: { beforeHandover: () => order.push("noted") },
+			onSignal: (x) => {
+				order.push("quit");
+				x.app.kill("SIGKILL");
+			},
+		});
 		const phases: string[] = [];
 		const answer = await install(w, "quarantined");
 		expect("state" in answer && answer.state.job?.phase).toBe("downloading");
@@ -692,6 +700,7 @@ test.skipIf(!mac)(
 		expect(phases).toEqual(["downloading", "verifying", "staging", "handover"]);
 		expect(handover.job?.received).toBe(handover.job?.total);
 		expect(w.signals).toEqual([{ recorded: true }]);
+		expect(order).toEqual(["noted", "quit"]);
 		// It quit (the stand-in was killed by the signal), and the helper swaps and starts the new app.
 		await helperEnded(w);
 		expect(w.launches()).toEqual([NEWER]);

@@ -96,8 +96,13 @@ export interface UpdaterOptions {
 	 */
 	autoInstall(): boolean;
 	conversations(): Conversations;
-	/** Every change, for the pages (local ones only). */
+	/** Every change, for the pages (the person's own: this computer's, and those signed in through Access). */
 	broadcast(state: AppUpdateState): void;
+	/**
+	 * Just before this server is ended for the update: what is to come back with the next server is noted (the remote
+	 * tunnel, `LazyRemote.keepThroughRestart`). A failure of it is logged, and the update goes on.
+	 */
+	beforeHandover?: () => void;
 	/** How long after `start` the first look is made; 0: at once (the server starts the updater itself some time after it starts). */
 	firstCheckMs?: number;
 	intervalMs?: number;
@@ -749,6 +754,11 @@ export class AppUpdater {
 			backup,
 			helperPid: pid,
 		};
+		try {
+			this.opts.beforeHandover?.();
+		} catch (e) {
+			console.warn(`omp-webui: updates: before the handover: ${(e as Error).message}`);
+		}
 		// Before the app is ended: the shell quits only for an update it can see, and the next server looks for it.
 		writeJson(this.paths.handover, handover);
 		this.phase(job, "handover");

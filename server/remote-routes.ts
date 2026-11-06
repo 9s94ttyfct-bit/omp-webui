@@ -103,6 +103,12 @@ export class RemoteService {
 		this.opts.broadcast({ t: "remote", status: this.tunnel.status() });
 	}
 
+	/** Whether the tunnel runs (or is coming up) now. */
+	tunnelRuns(): boolean {
+		const { state } = this.tunnel.status();
+		return state === "connected" || state === "starting";
+	}
+
 	// ------------------------------------------------------------------ what the card's buttons do
 
 	/** Change the settings. Refused whole (`RemoteConfigError`) when a value does not fit. Turned off, the tunnel has nothing to carry. */
@@ -151,14 +157,15 @@ export class RemoteService {
 	/**
 	 * What a server does when it comes up: a tunnel that the last one left behind (it crashed) is ended whatever the
 	 * settings say, since it carries the hostname to a port where this server may not listen; then the tunnel starts with
-	 * the app when the person asked for that and everything it needs is there.
+	 * the app when the person asked for that, or when it ran as the last server was ended for an update of the app
+	 * (`resume`: the person may be away, updating from their phone), and everything it needs is there.
 	 */
-	async autostart(): Promise<void> {
+	async autostart(resume = false): Promise<void> {
 		await this.tunnel.reapLeftover().catch((e: unknown) => {
 			console.warn(`omp-webui: a tunnel left by an earlier server could not be ended: ${(e as Error).message}`);
 		});
 		const config = this.store.read();
-		if (!config.autostart || !isRemoteOn(config) || !config.tunnelId || !this.tunnel.installed()) return;
+		if (!(config.autostart || resume) || !isRemoteOn(config) || !config.tunnelId || !this.tunnel.installed()) return;
 		try {
 			await this.tunnel.start();
 		} catch (e) {
