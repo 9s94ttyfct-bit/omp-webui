@@ -25,7 +25,8 @@ NS_ASSUME_NONNULL_BEGIN
 + (NSView* _Nullable)viewForTarget:(NSString*)targetId;
 /// A new page at `url`, parked in the hidden window; `reply` gets its DevTools target id (nil when it could not be made).
 + (void)createPage:(NSString*)url reply:(void (^)(NSString* _Nullable targetId))reply;
-/// Close the page.
+/// Close the page. One whose download is still running is closed for the server at once (the observer is told) and by
+/// CEF once its downloads end: CEF tells a download's end only while its page is open.
 + (void)closePage:(NSString*)targetId;
 /// A CDP message (JSON text) to the page's DevTools channel; its answers and events go to the observer.
 + (void)sendCdp:(NSString*)targetId message:(NSString*)json;

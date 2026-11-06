@@ -50,6 +50,8 @@ struct Page {
   /// The page that opened it (its CefBrowser identifier; 0 for none), and its target id once that is known.
   int openerKey = 0;
   std::string openerId;
+  /// Closed for the server, kept open by CEF until its downloads end (`retire`): nothing lists, drives or tells it.
+  bool retired = false;
 };
 /// By CefBrowser identifier.
 std::map<int, Page> gPages;
@@ -61,7 +63,7 @@ NSString* ns(const std::string& s) {
 Page* pageOf(NSString* targetId) {
   std::string id = targetId.UTF8String;
   for (auto& [_, page] : gPages)
-    if (page.targetId == id) return &page;
+    if (page.targetId == id && !page.retired) return &page;
   return nullptr;
 }
 
@@ -74,7 +76,7 @@ NSDictionary<NSString*, NSString*>* infoOf(const Page& page) {
 
 /// The page appeared or changed (`closed`: it is gone), told on the next turn of the run loop.
 void tell(const Page& page, bool closed = false) {
-  if (page.targetId.empty() || !gPageObserver) return;
+  if (page.targetId.empty() || page.retired || !gPageObserver) return;
   auto observer = gPageObserver;
   NSString* target = ns(page.targetId);
   NSDictionary* info = closed ? nil : infoOf(page);
@@ -124,7 +126,7 @@ class Observer : public CefDevToolsMessageObserver {
       return true;
     }
     auto page = gPages.find(browser->GetIdentifier());
-    if (page == gPages.end() || page->second.targetId.empty() || !gObserver) return true;
+    if (page == gPages.end() || page->second.targetId.empty() || page->second.retired || !gObserver) return true;
     NSString* target = ns(page->second.targetId);
     NSString* json = ns(std::string(data, size));
     auto observer = gObserver;
@@ -138,16 +140,47 @@ class Observer : public CefDevToolsMessageObserver {
 
 /// A download that is running (by CEF's id): where it goes, whose page started it, its way to stop, when it was last told.
 struct Download {
+  /// The page that started it (its CefBrowser identifier), and its target id and its opener's once known.
+  int pageKey = 0;
   std::string targetId;
   std::string openerId;
   std::string path;
   CefRefPtr<CefDownloadItemCallback> callback;
   CFAbsoluteTime told = 0;
-  /// The page is a tab opened only for this download (a link to a new tab that is a file): it closes when the download
-  /// ends, as Chrome closes it. Not before: CEF tells a download's progress through its page.
-  CefRefPtr<CefBrowser> emptyTab;
 };
 std::map<uint32_t, Download> gDownloads;
+
+/// Whether a download the page `key` started is running.
+bool downloading(int key) {
+  for (auto& [_, d] : gDownloads)
+    if (d.pageKey == key) return true;
+  return false;
+}
+
+/// The page is closed for the server now (it is told so, and the page is gone from every list), and CEF closes it once
+/// no download it started runs: CEF tells a download's progress and its end only while its page is open, and a page
+/// closed earlier left its download unfinished and never told (chromiumembedded/cef#4103). It waits in the hidden window.
+void retire(Page& page) {
+  if (page.retired) return;
+  tell(page, true);
+  page.retired = true;
+  NSView* view = (__bridge NSView*)page.browser->GetHost()->GetWindowHandle();
+  if (view && gHidden && view.window != gHidden) {
+    [view removeFromSuperview];
+    [gHidden.contentView addSubview:view];
+  }
+}
+
+/// A retired page with no download running any more is closed (on the next turn of the run loop).
+void closeWhenIdle(int key) {
+  auto it = gPages.find(key);
+  if (it == gPages.end() || !it->second.retired || downloading(key)) return;
+  CefRefPtr<CefBrowser> browser = it->second.browser;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (browser->IsValid()) browser->GetHost()->CloseBrowser(true);
+  });
+}
+
 /// Progress is told at most this often (seconds); its start and its end always are.
 constexpr CFAbsoluteTime kDownloadEvery = 0.25;
 
@@ -232,11 +265,13 @@ class Client : public CefClient,
                         CefRefPtr<CefBeforeDownloadCallback> callback) override {
     Download& d = known(browser, item->GetId());
     d.path = freeDownloadPath(suggested.ToString());
+    callback->Continue(d.path, false);
+    // A tab opened only for this download (a link to a new tab that is a file) goes from the conversation's pages at
+    // once, as Chrome closes it; CEF closes it when the download ends.
     auto page = gPages.find(browser->GetIdentifier());
     if (page != gPages.end() && page->second.openerKey != 0 && !browser->CanGoBack() &&
         (page->second.url.empty() || page->second.url == "about:blank"))
-      d.emptyTab = browser;
-    callback->Continue(d.path, false);
+      retire(page->second);
     return true;
   }
 
@@ -260,12 +295,9 @@ class Client : public CefClient,
       d.told = now;
     }
     if (!ended) return;
-    if (CefRefPtr<CefBrowser> tab = d.emptyTab) {
-      dispatch_async(dispatch_get_main_queue(), ^{
-        if (tab->IsValid()) tab->GetHost()->CloseBrowser(true);
-      });
-    }
+    int key = d.pageKey;
     gDownloads.erase(id);
+    closeWhenIdle(key);
   }
 
   // A page takes the keyboard only when the person clicks in it: never because it loaded (the composer keeps it).
@@ -368,17 +400,21 @@ class Client : public CefClient,
   }
 
  private:
-  /// The running download `id`, made known with the page that started it.
+  /// The running download `id`, made known with the page that started it. The page's target id and its opener's are
+  /// taken as soon as they are known: a tab opened for a download may start it before CEF has said its target id.
   static Download& known(CefRefPtr<CefBrowser> browser, uint32_t id) {
-    auto [it, made] = gDownloads.try_emplace(id);
-    if (made) {
-      auto page = gPages.find(browser->GetIdentifier());
-      if (page != gPages.end()) {
-        it->second.targetId = page->second.targetId;
-        it->second.openerId = page->second.openerId;
-      }
+    Download& d = gDownloads[id];
+    d.pageKey = browser->GetIdentifier();
+    auto page = gPages.find(d.pageKey);
+    if (page == gPages.end()) return d;
+    if (d.targetId.empty()) d.targetId = page->second.targetId;
+    if (d.openerId.empty()) {
+      auto opener = gPages.find(page->second.openerKey);
+      d.openerId = !page->second.openerId.empty()  ? page->second.openerId
+                   : opener != gPages.end()         ? opener->second.targetId
+                                                    : "";
     }
-    return it->second;
+    return d;
   }
 
   void (^reply_)(NSString* _Nullable);
@@ -473,6 +509,7 @@ NSError* failure(NSString* text) {
 + (void)shutdown {
   if (!gRunning) return;
   gPageObserver = nil;
+  gDownloadObserver = nil;
   for (auto& [_, page] : gPages) page.browser->GetHost()->CloseBrowser(true);
   NSDate* deadline = [NSDate dateWithTimeIntervalSinceNow:3];
   while (!gPages.empty() && [deadline timeIntervalSinceNow] > 0) {
@@ -483,6 +520,7 @@ NSError* failure(NSString* text) {
   gObserver = nil;
   gOwnCalls.clear();
   gPages.clear();
+  gDownloads.clear();
   CefShutdown();
   cef_unload_library();
 }
@@ -501,9 +539,12 @@ NSError* failure(NSString* text) {
   if (!CefBrowserHost::CreateBrowser(info, new Client(reply, 0), url.UTF8String, settings, nullptr, nullptr)) reply(nil);
 }
 
+/// A page that is downloading is retired rather than closed: it closes once its downloads end.
 + (void)closePage:(NSString*)targetId {
   Page* page = pageOf(targetId);
-  if (page) page->browser->GetHost()->CloseBrowser(true);
+  if (!page) return;
+  if (downloading(page->browser->GetIdentifier())) retire(*page);
+  else page->browser->GetHost()->CloseBrowser(true);
 }
 
 + (void)sendCdp:(NSString*)targetId message:(NSString*)json {

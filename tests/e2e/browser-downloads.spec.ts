@@ -42,12 +42,17 @@ const saved: BrowserDownload = { id: "run.0", name: "notes.txt", state: "done", 
 
 /**
  * The tab's socket, answered by the spec: the watched conversation has no pages and the downloads `list` (on this Mac
- * when `local`). `say` sends that conversation a new list; `asked` is what the tab sent.
+ * when `local`). `say` sends that conversation a new list; `drop` closes the connection, and the tab's next one is told
+ * `next`; `asked` is what the tab sent.
  */
 async function socket(page: Page, list: BrowserDownload[], local: boolean) {
 	const asked: ScreenClientMessage[] = [];
+	/** What the server would answer a watch with now: the list it last said. */
+	let current = list;
 	let send: ((downloads: BrowserDownload[]) => void) | null = null;
+	let close: (() => void) | null = null;
 	await page.routeWebSocket(/\/ws\/browser$/, (ws) => {
+		close = () => void ws.close();
 		ws.onMessage((raw) => {
 			const msg = JSON.parse(String(raw)) as ScreenClientMessage;
 			asked.push(msg);
@@ -55,14 +60,19 @@ async function socket(page: Page, list: BrowserDownload[], local: boolean) {
 			const owner = msg.owner;
 			send = (downloads) => ws.send(JSON.stringify({ t: "downloads", owner, downloads, local }));
 			ws.send(JSON.stringify({ t: "pages", owner, pages: [] }));
-			send(list);
+			send(current);
 		});
 	});
 	return {
 		asked,
 		say: (downloads: BrowserDownload[]) => {
 			if (!send) throw new Error("the tab has not watched yet");
+			current = downloads;
 			send(downloads);
+		},
+		drop: (next: BrowserDownload[]) => {
+			current = next;
+			close?.();
 		},
 	};
 }
@@ -117,7 +127,7 @@ test("no button until there is a download; the list shows each, with its progres
 		.toEqual([{ t: "download_cancel", id: "run.1" }]);
 });
 
-test("a finished one is shown in Finder from a page on the Mac, and fetched to the device from any other", async ({
+test("a finished one is shown in Finder from a page on the Mac, and fetched to the device from any other that may download files", async ({
 	page,
 }) => {
 	const tab = await socket(page, [saved], true);
@@ -138,6 +148,18 @@ test("a finished one is shown in Finder from a page on the Mac, and fetched to t
 	await expect(fetch).toHaveText("Download to this device");
 	await expect(fetch).toHaveAttribute("href", "/api/browser/downloads/run.0/file");
 	await expect(fetch).toHaveAttribute("download", "notes.txt");
+
+	// A page File transfer gives nothing to (`off`) is offered no fetch.
+	const off = await page.context().newPage();
+	await off.route("**/api/meta", async (route) => {
+		const response = await route.fetch();
+		await route.fulfill({ response, json: { ...(await response.json()), fileTransfer: "off" } });
+	});
+	await socket(off, [saved], false);
+	await openTab(off);
+	await off.getByTestId("browser-downloads").click();
+	await expect(off.getByTestId("browser-download")).toContainText("notes.txt");
+	await expect(off.getByTestId("browser-download-fetch")).toHaveCount(0);
 });
 
 test("what changes while the tab is shown is told in a toast, what was there before is not; in Chinese too", async ({
@@ -157,7 +179,13 @@ test("what changes while the tab is shown is told in a toast, what was there bef
 	tab.say([{ ...running, id: "run.2", name: "big.iso", state: "failed", error: "Interrupted (reason 20)" }, saved]);
 	await expect(page.getByTestId("toast-text").last()).toHaveText("big.iso 下载失败");
 
+	// What finished while the connection was down is no news: the list after it comes back toasts nothing.
+	const toasts = await page.getByTestId("toast").count();
+	const watches = tab.asked.filter((m) => m.t === "watch").length;
+	tab.drop([{ ...running, id: "run.3", name: "late.zip", state: "done", received: 100 }, saved]);
+	await expect.poll(() => tab.asked.filter((m) => m.t === "watch").length).toBeGreaterThan(watches);
 	await page.getByTestId("browser-downloads").click();
-	await expect(rows(page).first()).toContainText("失败：Interrupted (reason 20)");
+	await expect(rows(page).first()).toContainText("late.zip");
+	await expect(page.getByTestId("toast")).toHaveCount(toasts);
 	await expect(rows(page).nth(1).getByRole("button", { name: "在访达中显示" })).toBeVisible();
 });

@@ -220,7 +220,7 @@
 		"branch.spec.ts › editing a prompt of a chat opened from the sidebar switches to the branch and shows the edit and its reply": 0.6,
 		"branch.spec.ts › forking a chat opened from the sidebar moves the view to the new file, and the next send stays on that process": 8.1,
 		"browser-agent.spec.ts › with a model › the agent's page is its conversation's, and no other conversation's": 0,
-		"browser-downloads.spec.ts › a finished one is shown in Finder from a page on the Mac, and fetched to the device from any other": 4.5,
+		"browser-downloads.spec.ts › a finished one is shown in Finder from a page on the Mac, and fetched to the device from any other that may download files": 6,
 		"browser-downloads.spec.ts › no button until there is a download; the list shows each, with its progress, and a running one is cancelled": 3.5,
 		"browser-downloads.spec.ts › what changes while the tab is shown is told in a toast, what was there before is not; in Chinese too": 3.5,
 		"browser-settings.spec.ts › Clear browser data asks first: Cancel clears nothing, Clear clears": 1.7,

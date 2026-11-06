@@ -19,6 +19,8 @@ import { create } from "zustand";
 const CONSOLE_KEPT = 200;
 /** How long after a closed socket it is opened again. */
 const RECONNECT_MS = 1000;
+/** No conversation's downloads (none told yet). */
+const NO_DOWNLOADS: ScreenStore["downloads"] = { owner: null, list: [], local: false };
 
 interface ScreenStore {
 	/** Whose pages `pages` are (null: nobody's yet). */
@@ -39,7 +41,7 @@ export const useScreen = create<ScreenStore>(() => ({
 	console: {},
 	unavailable: null,
 	answered: false,
-	downloads: { owner: null, list: [], local: false },
+	downloads: NO_DOWNLOADS,
 }));
 
 export interface Frame {
@@ -87,6 +89,8 @@ function open(): void {
 	socket.onclose = () => {
 		if (ws !== socket) return;
 		ws = null;
+		// The list the server sends on the next connection is the first one again: what changed meanwhile is not news.
+		useScreen.setState({ downloads: NO_DOWNLOADS });
 		if (holders > 0) retry = setTimeout(open, RECONNECT_MS);
 	};
 }
@@ -144,7 +148,9 @@ export function sendScreen(msg: ScreenClientMessage): void {
 		// The server ends the fits of a conversation the tab stops watching.
 		if (ownerChanged) fits.clear();
 		useScreen.setState(
-			ownerChanged ? { owner: null, pages: [], unavailable: null, answered: false } : { unavailable: null },
+			ownerChanged
+				? { owner: null, pages: [], unavailable: null, answered: false, downloads: NO_DOWNLOADS }
+				: { unavailable: null },
 		);
 		// The server sends what it kept of a page's console to a tab that starts showing it: the list starts over.
 		if (pageChanged && msg.targetId)

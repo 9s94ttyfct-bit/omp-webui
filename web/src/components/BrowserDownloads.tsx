@@ -82,6 +82,8 @@ export function BrowserDownloads({ owner }: { owner: string }) {
 
 function Row({ d, local }: { d: BrowserDownload; local: boolean }) {
 	const t = useT();
+	// A page that is not on this Mac fetches a file only when File transfer lets it, as the Files tab's downloads.
+	const fetchable = useApp((s) => s.meta?.fileTransfer !== undefined && s.meta.fileTransfer !== "off");
 	const percent = d.total ? Math.min(100, Math.floor((d.received / d.total) * 100)) : null;
 	const status =
 		d.state === "progress"
@@ -120,7 +122,7 @@ function Row({ d, local }: { d: BrowserDownload; local: boolean }) {
 						{t("browser.downloadReveal")}
 					</Button>
 				) : null}
-				{d.state === "done" && !local ? (
+				{d.state === "done" && !local && fetchable ? (
 					<a
 						href={`/api/browser/downloads/${encodeURIComponent(d.id)}/file`}
 						download={d.name}
