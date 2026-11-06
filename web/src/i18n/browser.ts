@@ -45,6 +45,8 @@ export const en = {
 	downloadCancel: "Cancel",
 	downloadCancelOne: "Cancel the download of {name}",
 	downloadReveal: "Show in Finder",
+	downloadRevealGone: "{name} is not where it was saved any more: it was moved or deleted",
+	downloadRevealFailed: "Finder could not show {name}",
 	downloadFetch: "Download to this device",
 	downloadSaved: "Saved, {size}",
 	downloadCancelled: "Cancelled",

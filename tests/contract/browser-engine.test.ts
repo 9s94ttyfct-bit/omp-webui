@@ -126,13 +126,15 @@ test("a page's download is its conversation's: only that conversation's Browser 
 		const ws = await opens("/ws/browser", { "x-omp-webui-token": server.accessToken });
 		if (!ws) throw new Error("the Browser tab was not let in");
 		const lists: Record<string, unknown>[][] = [];
+		const told: Record<string, unknown>[] = [];
 		ws.onmessage = (e) => {
 			const m = JSON.parse(String(e.data)) as Downloads;
+			told.push(m);
 			if (m.t === "downloads" && m.downloads) lists.push(m.downloads);
 		};
 		ws.send(JSON.stringify({ t: "watch", owner, targetId: null, panel: { w: 800, h: 600 } }));
 		await waitFor(() => lists.length > 0);
-		return { ws, lists };
+		return { ws, lists, told };
 	};
 	const mine = await tab(A);
 	const other = await tab("/sessions/b.jsonl");
@@ -176,6 +178,20 @@ test("a page's download is its conversation's: only that conversation's Browser 
 	expect(fetched.status, await fetched.clone().text()).toBe(200);
 	expect(fetched.headers.get("content-disposition")).toStartWith('attachment; filename="notes.txt"');
 	expect(await fetched.text()).toBe("the notes");
+
+	// Show in Finder of one whose file is gone (moved or deleted) is told to the tab that asked, which says so; `open`
+	// is never run for it.
+	const gone = { ...download, id: "9", name: "gone.zip", path: join(data, "gone.zip") };
+	app.send(JSON.stringify({ t: "download", download: { ...gone, state: "done", received: 10, total: 10 } }));
+	await waitFor(() => mine.lists.at(-1)?.[0]?.id === "run-D1.9");
+	other.ws.send(JSON.stringify({ t: "download_reveal", id: "run-D1.9" }));
+	mine.ws.send(JSON.stringify({ t: "download_reveal", id: "run-D1.9" }));
+	await waitFor(() => mine.told.some((m) => m.t === "download_reveal_failed"));
+	expect(mine.told.filter((m) => m.t === "download_reveal_failed")).toEqual([
+		{ t: "download_reveal_failed", id: "run-D1.9", gone: true },
+	]);
+	await new Promise((r) => setTimeout(r, 200));
+	expect(other.told.some((m) => m.t === "download_reveal_failed")).toBe(false);
 
 	for (const ws of [mine.ws, other.ws, conversation, app]) ws.close();
 });

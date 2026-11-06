@@ -50,8 +50,8 @@ On Linux, omp-webui runs from the Linux package (the release's `omp-webui-vX.Y.Z
 
 | Key | Values | Default | Effect |
 |---|---|---|---|
-| `ompw.appUpdateCheck` | `on`, `off` | unset (on) | Synced preference. Whether the server looks for a newer omp-webui release on its own (shortly after start and every 6 hours). **Check now** works either way. |
-| `ompw.appAutoUpdate` | `on`, `off` | unset (off) | Synced preference. Whether the server installs a newer omp-webui release by itself once no conversation is working, asking, paused or waiting (then the app restarts). Needs a copy that can install its updates (the macOS app, the Windows launcher). |
+| `ompw.appUpdateCheck` | `on`, `off` | unset (on) | Synced preference. Whether the server looks for a newer omp-webui release on its own (shortly after start and every 6 hours). **Check now** works either way. Changed from this computer or a page signed in through Cloudflare Access only: a page on the network that holds only the token is refused the whole change (403), as for `/api/update*`. |
+| `ompw.appAutoUpdate` | `on`, `off` | unset (off) | Synced preference. Whether the server installs a newer omp-webui release by itself once no conversation is working, asking, paused or waiting (then the app restarts). Needs a copy that can install its updates (the macOS app, the Windows launcher). Changed from this computer or a page signed in through Cloudflare Access only (403 to a page that holds only the token). |
 | `ompw.omp.dismissed` | JSON object `{ update?: <version>, compat?: <version> }` | unset | Synced preference. The omp notices put away: `update` names the omp release whose "is available" notice was put away with **Later**, `compat` the installed omp whose out-of-range warning was dismissed. A notice comes back when the version it names changes. |
 
 Other stored values:

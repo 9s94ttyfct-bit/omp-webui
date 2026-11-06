@@ -8,6 +8,8 @@ import {
 	type ScreenServerMessage,
 } from "@shared/browser-protocol.ts";
 import { create } from "zustand";
+import { t } from "../i18n/index.ts";
+import { useApp } from "./app.ts";
 
 /**
  * The Browser tab's socket (`/ws/browser`, see shared/browser-protocol.ts): one per page, opened while a Browser tab is
@@ -117,6 +119,13 @@ function received(msg: ScreenServerMessage): void {
 			if (msg.owner !== lastWatch?.owner) return;
 			useScreen.setState({ downloads: { owner: msg.owner, list: msg.downloads, local: msg.local } });
 			return;
+		case "download_reveal_failed": {
+			const name = useScreen.getState().downloads.list.find((d) => d.id === msg.id)?.name ?? "";
+			useApp
+				.getState()
+				.toast("error", t(msg.gone ? "browser.downloadRevealGone" : "browser.downloadRevealFailed", { name }));
+			return;
+		}
 	}
 }
 

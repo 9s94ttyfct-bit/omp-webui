@@ -586,9 +586,26 @@ export async function openFolderFile(
 	if (code !== 0) throw new FolderError(`open failed with code ${code}`, 404);
 }
 
-/** Shows a file that is no folder's in Finder (a download of the built-in browser); nothing where there is no Finder. */
-export async function revealFile(abs: string, desktop: DesktopOps | null = platform.desktop): Promise<void> {
-	if (desktop) await runOpen(desktop.revealArgv(abs));
+/**
+ * Shows a file that is no folder's in Finder (a download of the built-in browser): `gone` when nothing is at `abs` any
+ * more (moved or deleted), `failed` when the system's `open` did not show it or there is no Finder to show it in.
+ */
+export async function revealFile(
+	abs: string,
+	desktop: DesktopOps | null = platform.desktop,
+	runner: Runner = runOpen,
+): Promise<"shown" | "gone" | "failed"> {
+	if (!desktop) return "failed";
+	try {
+		await stat(abs);
+	} catch {
+		return "gone";
+	}
+	try {
+		return (await runner(desktop.revealArgv(abs))) === 0 ? "shown" : "failed";
+	} catch {
+		return "failed";
+	}
 }
 
 /**

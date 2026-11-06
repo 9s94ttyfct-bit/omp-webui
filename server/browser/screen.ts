@@ -34,10 +34,10 @@ export interface ScreenSocket {
 	local?: boolean;
 }
 
-/** What the Browser tab can have done with a download: the app's CEF stops it, Finder shows it. */
+/** What the Browser tab can have done with a download: the app's CEF stops it, Finder shows it (and says how that went). */
 export interface DownloadControl {
 	cancel(id: string): void;
-	reveal(path: string): Promise<void>;
+	reveal(path: string): Promise<"shown" | "gone" | "failed">;
 }
 
 /** A socket further behind than this misses frames until it catches up. */
@@ -544,7 +544,7 @@ export class ScreenClient {
 
 	/**
 	 * A download of the conversation this tab watches is stopped, or shown in Finder from a page on this computer (not
-	 * waited for: Finder's `open` holds no other message of the tab).
+	 * waited for: Finder's `open` holds no other message of the tab). A file Finder could not show is told to the tab.
 	 */
 	private download(msg: Extract<ScreenClientMessage, { t: "download_cancel" | "download_reveal" }>): void {
 		const d = typeof msg.id === "string" ? this.hub.downloads.get(msg.id) : null;
@@ -553,7 +553,16 @@ export class ScreenClient {
 			if (d.item.state === "progress") this.hub.control?.cancel(msg.id);
 			return;
 		}
-		if (this.socket.local === true && d.item.state === "done") void this.hub.control?.reveal(d.path).catch(() => {});
+		const control = this.hub.control;
+		if (this.socket.local !== true || d.item.state !== "done" || !control) return;
+		void control
+			.reveal(d.path)
+			.catch(() => "failed" as const)
+			.then((outcome) => {
+				if (outcome === "shown" || this.closed) return;
+				const told: ScreenServerMessage = { t: "download_reveal_failed", id: msg.id, gone: outcome === "gone" };
+				this.socket.sendText(JSON.stringify(told));
+			});
 	}
 
 	close(): void {

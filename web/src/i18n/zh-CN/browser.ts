@@ -40,6 +40,8 @@ export const zh: Record<keyof typeof en, string> = {
 	downloadCancel: "取消",
 	downloadCancelOne: "取消下载 {name}",
 	downloadReveal: "在访达中显示",
+	downloadRevealGone: "{name} 已不在保存它的位置：它被移走或删除了",
+	downloadRevealFailed: "访达无法显示 {name}",
 	downloadFetch: "下载到这台设备",
 	downloadSaved: "已保存，{size}",
 	downloadCancelled: "已取消",

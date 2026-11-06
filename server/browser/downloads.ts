@@ -63,14 +63,34 @@ export class DownloadList {
 		return this.entries.get(id) ?? null;
 	}
 
-	/** The conversation's session file moved (omp `/move`): its downloads are the new file's. */
+	/**
+	 * The conversation's session file moved (omp `/move`): its downloads are the new file's. The tabs that watch either
+	 * are told at once (the old one's list is empty now).
+	 */
 	rekey(from: string, to: string): void {
-		for (const e of this.entries.values()) if (e.owner === from) e.owner = to;
+		let moved = false;
+		for (const e of this.entries.values()) {
+			if (e.owner !== from) continue;
+			e.owner = to;
+			moved = true;
+		}
+		if (!moved) return;
+		this.changed(from);
+		this.changed(to);
 	}
 
-	/** The conversation is gone: its downloads are no page's to show (the files stay where they are). */
+	/**
+	 * The conversation is gone: its downloads are no page's to show (the files stay where they are). The tabs that watch
+	 * it are told at once (an empty list).
+	 */
 	forget(owner: string): void {
-		for (const [id, e] of this.entries) if (e.owner === owner) this.entries.delete(id);
+		let gone = false;
+		for (const [id, e] of this.entries) {
+			if (e.owner !== owner) continue;
+			this.entries.delete(id);
+			gone = true;
+		}
+		if (gone) this.changed(owner);
 	}
 
 	/** Past the limit, the conversation's oldest finished ones go. */

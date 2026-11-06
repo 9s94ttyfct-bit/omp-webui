@@ -119,7 +119,10 @@ export type ScreenServerMessage =
 	| { t: "available" }
 	/** The conversation's downloads, newest first: sent on watch and whenever one changes. `local`: this page is on the
 	 *  computer they are saved on (it can show one in Finder; any other page fetches the file instead). */
-	| { t: "downloads"; owner: string; downloads: BrowserDownload[]; local: boolean };
+	| { t: "downloads"; owner: string; downloads: BrowserDownload[]; local: boolean }
+	/** A finished download this tab asked to show in Finder could not be: `gone` when its file is not there any more
+	 *  (moved or deleted), otherwise Finder did not show it. */
+	| { t: "download_reveal_failed"; id: string; gone: boolean };
 
 /** What precedes a frame's JPEG. `w`/`h`: the page's layout size in CSS pixels the frame shows. */
 export interface FrameHeader {

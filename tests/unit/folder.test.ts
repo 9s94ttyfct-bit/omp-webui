@@ -30,6 +30,7 @@ import {
 	readFolderFile,
 	readFolderImage,
 	resolveInside,
+	revealFile,
 	rootOf,
 	viewOf,
 } from "../../server/folder.ts";
@@ -696,6 +697,23 @@ describe("open and reveal", () => {
 			openFolderFile(root, "src/app.ts", false, mac, async () => 1),
 			404,
 		);
+	});
+
+	test("a download is shown by its path; a file that is gone, a failed `open` and no Finder each say so", async () => {
+		calls.length = 0;
+		const file = join(root, "src/app.ts");
+		expect(await revealFile(file, mac, runner)).toBe("shown");
+		expect(calls).toEqual([["/usr/bin/open", "-R", file]]);
+		expect(await revealFile(join(root, "moved-away.pdf"), mac, runner)).toBe("gone");
+		expect(calls).toHaveLength(1);
+		expect(await revealFile(file, mac, async () => 1)).toBe("failed");
+		expect(
+			await revealFile(file, mac, async () => {
+				throw new Error("spawn failed");
+			}),
+		).toBe("failed");
+		expect(await revealFile(file, linux, runner)).toBe("failed");
+		expect(calls).toHaveLength(1);
 	});
 });
 

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
-import type { BrowserDownload, ScreenClientMessage } from "../../shared/browser-protocol.ts";
+import type { BrowserDownload, ScreenClientMessage, ScreenServerMessage } from "../../shared/browser-protocol.ts";
 import { writeChatSession } from "../support/chat-session.ts";
 import { openSidebar } from "../support/live.ts";
 import { writeLongFakeOmp } from "../support/long-fake-omp-bin.ts";
@@ -42,8 +42,8 @@ const saved: BrowserDownload = { id: "run.0", name: "notes.txt", state: "done", 
 
 /**
  * The tab's socket, answered by the spec: the watched conversation has no pages and the downloads `list` (on this Mac
- * when `local`). `say` sends that conversation a new list; `drop` closes the connection, and the tab's next one is told
- * `next`; `asked` is what the tab sent.
+ * when `local`). `say` sends that conversation a new list; `tell` sends the tab any message; `drop` closes the
+ * connection, and the tab's next one is told `next`; `asked` is what the tab sent.
  */
 async function socket(page: Page, list: BrowserDownload[], local: boolean) {
 	const asked: ScreenClientMessage[] = [];
@@ -51,8 +51,10 @@ async function socket(page: Page, list: BrowserDownload[], local: boolean) {
 	let current = list;
 	let send: ((downloads: BrowserDownload[]) => void) | null = null;
 	let close: (() => void) | null = null;
+	let tellTab: ((msg: ScreenServerMessage) => void) | null = null;
 	await page.routeWebSocket(/\/ws\/browser$/, (ws) => {
 		close = () => void ws.close();
+		tellTab = (msg) => ws.send(JSON.stringify(msg));
 		ws.onMessage((raw) => {
 			const msg = JSON.parse(String(raw)) as ScreenClientMessage;
 			asked.push(msg);
@@ -69,6 +71,10 @@ async function socket(page: Page, list: BrowserDownload[], local: boolean) {
 			if (!send) throw new Error("the tab has not watched yet");
 			current = downloads;
 			send(downloads);
+		},
+		tell: (msg: ScreenServerMessage) => {
+			if (!tellTab) throw new Error("the tab has not connected yet");
+			tellTab(msg);
 		},
 		drop: (next: BrowserDownload[]) => {
 			current = next;
@@ -138,6 +144,11 @@ test("a finished one is shown in Finder from a page on the Mac, and fetched to t
 	await expect
 		.poll(() => tab.asked.filter((m) => m.t === "download_reveal"))
 		.toEqual([{ t: "download_reveal", id: "run.0" }]);
+	// Finder could not show it (the file was moved or deleted since): the page says so, naming it.
+	tab.tell({ t: "download_reveal_failed", id: "run.0", gone: true });
+	await expect(page.getByText("notes.txt is not where it was saved any more: it was moved or deleted")).toBeVisible();
+	tab.tell({ t: "download_reveal_failed", id: "run.0", gone: false });
+	await expect(page.getByText("Finder could not show notes.txt")).toBeVisible();
 
 	const remote = await page.context().newPage();
 	await socket(remote, [saved], false);

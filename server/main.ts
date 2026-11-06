@@ -1782,6 +1782,14 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 						"The browser is turned on and off, and its automatic updates, from this computer, or from a page signed in with your account",
 						403,
 					);
+				// Whether the app looks for its own updates and installs them by itself are the person's who may update it
+				// (`isOwnerPage`, as for `/api/update*`): a page that holds only the token must not have the app replace itself.
+				if (
+					isRecord(body?.changes) &&
+					(Object.hasOwn(body.changes, PREF.appUpdateCheck) || Object.hasOwn(body.changes, PREF.appAutoUpdate)) &&
+					!fromOwner(req)
+				)
+					return fail(UPDATE_NOT_HERE, 403);
 				// How the app looks and is laid out belongs to the device (`DEVICE_PREF_KEYS`, while `perDevice`): what a page that
 				// is not on this computer says of it stays on that page, and is dropped here rather than refused, so that the rest
 				// of its change still goes through.

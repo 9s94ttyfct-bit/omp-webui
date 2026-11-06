@@ -83,6 +83,23 @@ test("a finished download is not changed back by a late progress report", () => 
 	expect(l.of("c1")[0]).toMatchObject({ state: "done", received: 100 });
 });
 
+test("a moved conversation's downloads follow it and a gone one's are dropped, each told at once; nothing to move tells nobody", () => {
+	const { l, changed } = list({ T1: "c1", T2: "c2" });
+	l.update(download("d1"));
+	l.update(download("d2", { targetId: "T2" }));
+	changed.length = 0;
+	l.rekey("c1", "moved");
+	expect(changed).toEqual(["c1", "moved"]);
+	expect(l.of("c1")).toEqual([]);
+	expect(l.of("moved").map((d) => d.id)).toEqual(["d1"]);
+	l.forget("c2");
+	expect(changed).toEqual(["c1", "moved", "c2"]);
+	expect(l.of("c2")).toEqual([]);
+	l.rekey("nobody", "else");
+	l.forget("nobody");
+	expect(changed).toEqual(["c1", "moved", "c2"]);
+});
+
 test("the app's download ids are its CEF run's: after CEF started again the same id is another download, and only the current run's is stopped", () => {
 	const told: ServerToApp[] = [];
 	const got: AppDownload[] = [];

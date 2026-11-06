@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FolderFile, FolderListing } from "../../shared/folder.ts";
 import { MIGRATE_API } from "../../shared/migrate.ts";
+import { PREF } from "../../shared/prefs.ts";
 import { writeChatSession } from "../support/chat-session.ts";
 import { type FakeCloudflared, makeFakeCloudflared } from "../support/fake-cloudflared.ts";
 import { messageWhere } from "../support/frames.ts";
@@ -263,12 +264,15 @@ const ROUTES: { method: string; path: string; body?: unknown }[] = [
 	{ method: "DELETE", path: "/api/macs/:mac" },
 	{ method: "GET", path: "/api/macs" },
 	{ method: "GET", path: "/api/macs/anything" },
+	// Whether the app looks for its own updates and installs them by itself: the person's who may update it (`isOwnerPage`).
+	{ method: "POST", path: "/api/prefs", body: { changes: { [PREF.appAutoUpdate]: "on" } } },
+	{ method: "POST", path: "/api/prefs", body: { changes: { [PREF.appUpdateCheck]: "off", [PREF.theme]: "dark" } } },
 ];
 
 /** What a refused request would have changed or run, looked at from the page on this computer. */
 async function whatCouldHaveChanged() {
 	const here = onThisComputer();
-	const [guard, rules, bench, remote, migrate, projects, meta, guidance] = await Promise.all([
+	const [guard, rules, bench, remote, migrate, projects, meta, guidance, prefs] = await Promise.all([
 		here.send("/api/guard").then((r) => r.json()),
 		here.send("/api/guard/rules").then((r) => r.json()),
 		here.send("/api/guard/bench").then((r) => r.json()),
@@ -277,6 +281,7 @@ async function whatCouldHaveChanged() {
 		here.send("/api/projects").then((r) => r.json()),
 		here.send("/api/meta").then((r) => r.json()),
 		here.send("/api/model-guidance").then((r) => r.json()),
+		here.send("/api/prefs").then((r) => r.json()),
 	]);
 	// The saved Macs (#628) are read by every page and changed by this computer's alone.
 	const { macs }: MetaAnswer = meta;
@@ -284,6 +289,8 @@ async function whatCouldHaveChanged() {
 		guard,
 		rules,
 		guidance,
+		// The whole change is refused, not the update keys alone: the theme sent with one is not taken either.
+		prefs: (prefs as { values: Record<string, unknown> }).values,
 		// A refused POST must not have started a run: no run exists.
 		run: (bench as { run: unknown }).run,
 		remote,
