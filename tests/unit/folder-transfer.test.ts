@@ -1169,3 +1169,43 @@ describe("the log", () => {
 		expect(readFileSync(target, "utf8")).toBe("keep\n");
 	});
 });
+
+describe("a file the built-in browser downloaded (`sendFile`)", () => {
+	const send = (w: ReturnType<typeof world>, abs: string, e = w.env(), headers: Record<string, string> = {}) => {
+		const answered = w.service.sendFile(new Request("http://x/api/browser/downloads/1/file", { headers }), abs, e);
+		void answered.then((r) => answers.push(r));
+		return answered;
+	};
+
+	test("it is sent as an attachment by its name, and a part of it when a range is asked for", async () => {
+		const w = world();
+		const abs = join(w.home, "Downloads", "report (1).pdf");
+		write(abs, "0123456789");
+		const r = await send(w, abs);
+		expect(r.status).toBe(200);
+		expect(r.headers.get("content-disposition")).toStartWith('attachment; filename="report (1).pdf"');
+		expect((await body(r)).toString()).toBe("0123456789");
+		const part = await send(w, abs, w.env(), { range: "bytes=4-" });
+		expect(part.status).toBe(206);
+		expect((await body(part)).toString()).toBe("456789");
+		expect(w.log().at(-1)).toMatchObject({ kind: "download", path: "report (1).pdf", status: "ok" });
+	});
+
+	test("a page not on this computer gets it only when it may download files, and never a private key", async () => {
+		const w = world();
+		const abs = join(w.home, "Downloads", "a.txt");
+		write(abs, "x");
+		expect(await failed(await send(w, abs, w.env({ setting: "off" })))).toMatchObject({ status: 403, code: "off" });
+		expect((await send(w, abs, w.env({ setting: "download" }))).status).toBe(200);
+		expect((await send(w, abs, w.env({ setting: "off", local: true }))).status).toBe(200);
+		const key = join(w.home, "Downloads", "notes.txt");
+		write(key, "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n");
+		expect(await failed(await send(w, key))).toMatchObject({ status: 403, code: "secret" });
+		expect((await send(w, key, w.env({ local: true }))).status).toBe(200);
+	});
+
+	test("one moved or deleted since is not found", async () => {
+		const w = world();
+		expect(await failed(await send(w, join(w.home, "Downloads", "gone.zip")))).toMatchObject({ status: 404 });
+	});
+});

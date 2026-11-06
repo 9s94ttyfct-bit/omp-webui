@@ -2395,6 +2395,15 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		return (await pushService()).handle(req, url, { remote: remoteOf.has(req) });
 	if (p === "/api/omp" || p.startsWith("/api/omp/")) return omp.handle(req, url);
 	if (p === "/api/update" || p.startsWith("/api/update/")) return (await appUpdater()).handle(req, url);
+	// A finished download of the built-in browser, under the File transfer rules (a page not on this computer gets it only
+	// when it may download files, never a private key or a protected place's).
+	const fetched = /^\/api\/browser\/downloads\/([^/]+)\/file$/.exec(p);
+	if (fetched) {
+		const d = browser.download(fetched[1] ?? "");
+		if (!d) return fail("No such download", 404);
+		if (d.state !== "done") return fail("That download has not finished", 409);
+		return folder.sendFile(req, d.path, transferEnv(req, peer));
+	}
 	if (p === "/api/browser" || p.startsWith("/api/browser/"))
 		return browser.handle(req, url, { remote: remoteOf.get(req) ?? null, local: onThisComputer.has(req) });
 	const remoteAnswer = await remoteAuth.handle(req, url, peer);

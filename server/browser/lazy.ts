@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { EngineKind } from "../../shared/browser.ts";
+import type { DownloadState } from "../../shared/browser-protocol.ts";
 import type { RemoteIdentity } from "../remote-auth.ts";
 import { BrowserAutoUpdater, type BrowserUse } from "./autoupdate.ts";
 import { type AppSocket, CefLink, startCefEngine } from "./cef.ts";
@@ -259,6 +260,12 @@ export class LazyBrowser {
 		const { installer, registry } = await this.service();
 		const usable = installer.engine === "cef" ? this.#link?.ready === true : installer.executable() !== null;
 		return usable ? cdpUrlOf(origin, registry.tokenFor(owner)) : null;
+	}
+
+	/** A download of the built-in browser, for its file (`/api/browser/downloads/<id>/file`); null: no such download. */
+	download(id: string): { path: string; state: DownloadState } | null {
+		const d = this.#service?.screen.downloads.get(id);
+		return d ? { path: d.path, state: d.item.state } : null;
 	}
 
 	/** The conversation in `from` moved to `to` (omp's `/move`): its pages, endpoint and downloads are the new file's. */

@@ -13,7 +13,7 @@ import {
 	type TransferEnv,
 	TransferError,
 } from "./transfer-core.ts";
-import { download } from "./transfer-download.ts";
+import { type DownloadDeps, download, downloadFile } from "./transfer-download.ts";
 import { TransferLog } from "./transfer-log.ts";
 import { type UploadDeps, Uploads } from "./transfer-upload.ts";
 
@@ -87,21 +87,37 @@ export class TransferService {
 
 	async handle(req: Request, url: URL, ctx: TransferContext, env: TransferEnv): Promise<Response> {
 		const route = url.pathname.slice("/api/folder/".length);
-		const head = req.method === "HEAD";
-		const trace: Trace = {
-			kind: route.startsWith("upload")
+		const trace = this.#trace(
+			route.startsWith("upload")
 				? "upload"
 				: route.startsWith("archive")
 					? "zip"
 					: route === "file"
 						? "edit"
 						: "download",
-			root: "",
-			path: "",
-			started: this.#now(),
-		};
+		);
+		return this.#answer(req, env, trace, () => this.#route(route, req, url, ctx, env, trace));
+	}
+
+	/** A file the built-in browser downloaded (`/api/browser/downloads/<id>/file`), sent as a download of a folder is. */
+	async sendFile(req: Request, abs: string, env: TransferEnv): Promise<Response> {
+		const trace = this.#trace("download");
+		return this.#answer(req, env, trace, async () => {
+			if (req.method !== "GET" && req.method !== "HEAD")
+				throw new TransferError("GET or HEAD required", 405, "badRequest", {}, { allow: "GET, HEAD" });
+			return downloadFile(req, abs, env, trace, this.#downloadDeps());
+		});
+	}
+
+	#trace(kind: Trace["kind"]): Trace {
+		return { kind, root: "", path: "", started: this.#now() };
+	}
+
+	/** What `job` answers, or the failure it ran into. */
+	async #answer(req: Request, env: TransferEnv, trace: Trace, job: () => Promise<Response>): Promise<Response> {
+		const head = req.method === "HEAD";
 		try {
-			return await this.#route(route, req, url, ctx, env, trace);
+			return await job();
 		} catch (e) {
 			if (e instanceof TransferError) {
 				// What the person's rule said no to is written down (a page that tried is worth knowing of); a mistake of a request is not.
@@ -116,6 +132,10 @@ export class TransferService {
 			}
 			throw e;
 		}
+	}
+
+	#downloadDeps(): DownloadDeps {
+		return { log: this.log, gate: this.#downloads, limits: this.limits, now: this.#now, hooks: this.#hooks };
 	}
 
 	async #route(
@@ -139,13 +159,7 @@ export class TransferService {
 		};
 		if (route === "download") {
 			only("GET", "HEAD");
-			return download(req, url, ctx, env, trace, {
-				log: this.log,
-				gate: this.#downloads,
-				limits: this.limits,
-				now: this.#now,
-				hooks: this.#hooks,
-			});
+			return download(req, url, ctx, env, trace, this.#downloadDeps());
 		}
 		const archive: ArchiveDeps = {
 			tickets: this.tickets,

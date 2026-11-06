@@ -1,5 +1,6 @@
-import type { FileHandle } from "node:fs/promises";
-import { holdsPrivateKey, type OpenHooks, openRegular } from "./folder.ts";
+import { type FileHandle, realpath } from "node:fs/promises";
+import { basename, dirname } from "node:path";
+import { holdsPrivateKey, type OpenHooks, openRegular, type Resolved } from "./folder.ts";
 import {
 	busy,
 	conversationRoot,
@@ -183,15 +184,42 @@ export async function download(
 	trace: Trace,
 	deps: DownloadDeps,
 ): Promise<Response> {
-	const head = req.method === "HEAD";
 	const q = url.searchParams;
 	// What was asked for is written down even when the setting says no (a refusal is in the log with who asked and for what).
 	trace.path = (q.get("path") ?? "").slice(0, 4096);
 	requireDownload(env);
 	const root = await conversationRoot(ctx, q.get("live"), q.get("file"));
 	trace.root = root;
-	const home = holdsHome(root, env);
-	const file = await resolveDownload(root, q.get("path") ?? "", env, home);
+	const file = await resolveDownload(root, q.get("path") ?? "", env, holdsHome(root, env));
+	return send(req, file, env, trace, deps);
+}
+
+/**
+ * A file of no conversation's folder that a page may still have: one the built-in browser downloaded
+ * (`/api/browser/downloads/<id>/file`). The rules are a folder's, with the folder the file is in (its real path, as a
+ * conversation's is) as the root.
+ */
+export async function downloadFile(
+	req: Request,
+	abs: string,
+	env: TransferEnv,
+	trace: Trace,
+	deps: DownloadDeps,
+): Promise<Response> {
+	trace.root = dirname(abs);
+	trace.path = basename(abs);
+	requireDownload(env);
+	const root = await realpath(trace.root).catch(() => {
+		throw new TransferError("Not found", 404, "notFound");
+	});
+	trace.root = root;
+	const file = await resolveDownload(root, trace.path, env, holdsHome(root, env));
+	return send(req, file, env, trace, deps);
+}
+
+/** The file `file`, resolved by the rules, opened and sent. */
+async function send(req: Request, file: Resolved, env: TransferEnv, trace: Trace, deps: DownloadDeps): Promise<Response> {
+	const head = req.method === "HEAD";
 	const { handle } = await viaFolder(() => openRegular(file.abs, deps.hooks));
 	let answered = false;
 	try {

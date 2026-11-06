@@ -160,6 +160,22 @@ test("a page's download is its conversation's: only that conversation's Browser 
 	await new Promise((r) => setTimeout(r, 200));
 	expect(said.filter((m) => m.t === "download_cancel")).toHaveLength(1);
 
+	// A finished one's file is fetched by its id; one that is running, or none at all, is not.
+	const file = (id: string) =>
+		fetch(`${server.url}/api/browser/downloads/${id}/file`, { headers: { "x-omp-webui-token": server.accessToken } });
+	const saved = { ...download, id: "8", name: "notes.txt", path: join(data, "notes.txt") };
+	writeFileSync(saved.path, "the notes");
+	app.send(JSON.stringify({ t: "download", download: { ...saved, state: "progress", total: 9 } }));
+	await waitFor(() => mine.lists.at(-1)?.[0]?.id === "8");
+	expect((await file("8")).status).toBe(409);
+	expect((await file("nothing")).status).toBe(404);
+	app.send(JSON.stringify({ t: "download", download: { ...saved, state: "done", received: 9, total: 9 } }));
+	await waitFor(() => mine.lists.at(-1)?.[0]?.state === "done");
+	const fetched = await file("8");
+	expect(fetched.status, await fetched.clone().text()).toBe(200);
+	expect(fetched.headers.get("content-disposition")).toStartWith('attachment; filename="notes.txt"');
+	expect(await fetched.text()).toBe("the notes");
+
 	for (const ws of [mine.ws, other.ws, conversation, app]) ws.close();
 });
 

@@ -59,7 +59,18 @@ export class LazyFolder {
 	 * loaded by the first of them. Nothing of it is in memory before.
 	 */
 	async transfer(req: Request, url: URL, ctx: TransferContext, env: TransferEnv): Promise<Response> {
-		if (!this.options) return new Response("Not found", { status: 404 });
+		const service = await this.#transferService();
+		return service ? service.handle(req, url, ctx, env) : new Response("Not found", { status: 404 });
+	}
+
+	/** A file the built-in browser downloaded, sent under the same rules (`TransferService.sendFile`). */
+	async sendFile(req: Request, abs: string, env: TransferEnv): Promise<Response> {
+		const service = await this.#transferService();
+		return service ? service.sendFile(req, abs, env) : new Response("Not found", { status: 404 });
+	}
+
+	#transferService(): Promise<TransferService> | null {
+		if (!this.options) return null;
 		const options = this.options;
 		this.#transfers ??= import("./folder-transfer.ts").then(
 			(m) => new m.TransferService(options()),
@@ -68,7 +79,7 @@ export class LazyFolder {
 				throw error;
 			},
 		);
-		return (await this.#transfers).handle(req, url, ctx, env);
+		return this.#transfers;
 	}
 
 	/** The server is going away: uploads that were not finished are removed (nothing was loaded: nothing to remove). */
