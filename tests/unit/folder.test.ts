@@ -713,6 +713,8 @@ describe("open and reveal", () => {
 			}),
 		).toBe("failed");
 		expect(await revealFile(file, linux, runner)).toBe("failed");
+		// Whether it is there is said with a Finder or without.
+		expect(await revealFile(join(root, "moved-away.pdf"), linux, runner)).toBe("gone");
 		// A file that cannot be looked at is not said to be gone: only a missing one is.
 		const locked = join(world, "reveal-locked");
 		mkdirSync(locked);

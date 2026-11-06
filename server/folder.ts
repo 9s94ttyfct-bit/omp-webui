@@ -596,13 +596,14 @@ export async function revealFile(
 	desktop: DesktopOps | null = platform.desktop,
 	runner: Runner = runOpen,
 ): Promise<"shown" | "gone" | "failed"> {
-	if (!desktop) return "failed";
+	// Whether the file is there is said first, with a Finder or without.
 	try {
 		await stat(abs);
 	} catch (e) {
 		const code = (e as NodeJS.ErrnoException).code;
 		return code === "ENOENT" || code === "ENOTDIR" ? "gone" : "failed";
 	}
+	if (!desktop) return "failed";
 	try {
 		return (await runner(desktop.revealArgv(abs))) === 0 ? "shown" : "failed";
 	} catch {
