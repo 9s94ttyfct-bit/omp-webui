@@ -54,7 +54,8 @@ test("the sidebar has no shortcuts block, and its row is not there to open", asy
 	await page.goto("/");
 	await appReady(page);
 	const side = page.getByRole("complementary");
-	// The pages are still in its foot; the shortcuts row that used to sit between them is gone.
+	// The pages are still in its foot (Send feedback moved to Settings, #660); the shortcuts row that used to sit between them is gone.
+	await expect(side.getByTestId("sidebar-feedback")).toHaveCount(0);
 	for (const name of [/^Settings$/, /^Usage & cost$/]) await expect(side.getByRole("button", { name })).toBeVisible();
 	await expect(side.getByRole("button", { name: /Keyboard shortcuts/ })).toHaveCount(0);
 	await expect(side.getByText("Keyboard shortcuts")).toHaveCount(0);

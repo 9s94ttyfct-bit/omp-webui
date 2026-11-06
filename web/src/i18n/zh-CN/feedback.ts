@@ -4,6 +4,7 @@ import type { en as later } from "../feedback-later.ts";
 export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	settingsSendHint:
 		"报告问题或提出功能建议。这会在 GitHub 上打开一个已填好内容的 issue；在那里提交之前不会发送任何内容。",
+	settingsFootHint: "遇到问题，或想要新功能？告诉我们。",
 	navFeedback: "发送反馈",
 	title: "发送反馈",
 	intro:

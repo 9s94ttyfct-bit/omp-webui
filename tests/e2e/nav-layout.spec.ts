@@ -6,8 +6,8 @@ import { expect, type Locator, type Page, test } from "./fixtures.ts";
  * The sidebar's and the rail's pages (#654, #660): one model feeds the sidebar, the rail and the palette's *Go to*; each
  * bar's items sit in a top group, a bottom group or nowhere, in an order the person sets by dragging (pointer and touch) or
  * with the controls of Settings (keyboard), kept on this device. The Guard page has its entry there (not on a page that came
- * through the tunnel), and Send feedback is a row of the sidebar's foot under the pages (an icon when the foot is folded), not a
- * page of the bar. No model call.
+ * through the tunnel), and Send feedback is in Settings (under the pages' names in its index, or at the foot of a narrow
+ * page), not a button of the sidebar. No model call.
  */
 
 const KEY = "ompw.navLayout";
@@ -64,36 +64,17 @@ async function drag(page: Page, from: Locator, to: () => Promise<{ x: number; y:
 test.describe("at 1400 px", () => {
 	test.use({ viewport: { width: 1400, height: 900 } });
 
-	test("the sidebar's foot lists the pages once, with the Guard among them, and Send feedback under them opens its dialog", async ({
+	test("the sidebar's foot lists the pages once, with the Guard among them and Send feedback gone", async ({
 		page,
 	}) => {
 		await page.goto("/");
 		await expect(page.getByTestId("nav-settings")).toBeVisible();
 		await expectRows(page, "top", []);
 		await expectRows(page, "bottom", ALL);
-		// Send feedback is not a page of the bar: one row of its own, under the pages, that opens the dialog.
-		const feedback = sidebar(page).getByRole("button", { name: "Send feedback", exact: true });
-		await expect(feedback).toBeVisible();
-		const settingsRow = await boxOf(page.getByTestId("nav-settings"));
-		expect((await boxOf(feedback)).y).toBeGreaterThan(settingsRow.y);
-		await feedback.click();
-		const dialog = page.getByRole("dialog", { name: "Send feedback" });
-		await expect(dialog).toBeVisible();
-		await page.keyboard.press("Escape");
-		await expect(dialog).toBeHidden();
+		await expect(page.getByTestId("sidebar-feedback")).toHaveCount(0);
+		await expect(sidebar(page).getByRole("button", { name: /Send feedback/ })).toHaveCount(0);
 		// Nothing is stored until the person arranges something.
 		expect(await stored(page)).toBeNull();
-		// Folded, the foot keeps Send feedback as an icon beside the pages.
-		await page.getByTestId("sidebar-footer-fold").click();
-		await expect(page.getByTestId("sidebar-footer")).toHaveAttribute("data-folded", "on");
-		const folded = sidebar(page).getByRole("button", { name: "Send feedback", exact: true });
-		await expect(folded).toBeVisible();
-		await folded.click();
-		await expect(dialog).toBeVisible();
-		await page.keyboard.press("Escape");
-		await expect(dialog).toBeHidden();
-		await page.getByTestId("sidebar-footer-fold").click();
-		await expect(page.getByTestId("sidebar-footer")).toHaveAttribute("data-folded", "off");
 
 		await sidebar(page).getByRole("button", { name: "Guard", exact: true }).click();
 		await expect(page.getByTestId("guard-page")).toBeVisible();
@@ -210,6 +191,24 @@ test.describe("at 1400 px", () => {
 		await page.locator('[data-testid="settings-page-tab"][data-page="look"]').click();
 		await page.getByTestId("shortcuts-settings").scrollIntoViewIfNeeded();
 		await expect(page.getByTestId("shortcuts-settings").getByTestId("help-feedback")).toBeVisible();
+	});
+
+	test("Send feedback is under the Settings index's pages on every page, in view without scrolling", async ({
+		page,
+	}) => {
+		await page.goto("/#/settings/look");
+		const entry = page.getByTestId("settings-index-feedback");
+		for (const p of ["look", "chats", "models", "safety", "app"]) {
+			await page.locator(`[data-testid="settings-page-tab"][data-page="${p}"]`).click();
+			await expect(entry).toBeInViewport();
+		}
+		// The wide page has the margin: no foot of its own.
+		await expect(page.getByTestId("settings-feedback-foot")).toBeHidden();
+		await entry.click();
+		const dialog = page.getByRole("dialog", { name: "Send feedback" });
+		await expect(dialog).toBeVisible();
+		await page.keyboard.press("Escape");
+		await expect(dialog).toBeHidden();
 	});
 
 	test("dragging a page reorders it within its group, and the order is kept on this device across a reload", async ({
@@ -417,5 +416,24 @@ test.describe("on a phone (390 px, touch)", () => {
 		await expectRows(page, "bottom", order);
 		expect((await stored(page))?.sidebar.bottom).toEqual(order);
 		await expect(page.getByTestId("usage-page")).toHaveCount(0);
+	});
+
+	test("Send feedback is at the foot of a Settings page, a button that opens the dialog; the sidebar has none", async ({
+		page,
+	}) => {
+		await page.goto("/#/settings/chats");
+		await expect(page.getByTestId("settings-index-feedback")).toBeHidden();
+		const foot = page.getByTestId("settings-feedback-foot");
+		await foot.scrollIntoViewIfNeeded();
+		await expect(foot).toBeVisible();
+		// It is the page's last block, under every card the page shows.
+		expect(await foot.evaluate((el) => el.nextElementSibling === null)).toBe(true);
+		const last = await boxOf(page.getByTestId("settings-page").locator("section").filter({ visible: true }).last());
+		expect((await boxOf(foot)).y).toBeGreaterThan(last.y + last.height - 1);
+		await foot.getByRole("button", { name: "Send feedback" }).tap();
+		await expect(page.getByRole("dialog", { name: "Send feedback" })).toBeVisible();
+		await page.keyboard.press("Escape");
+		await page.getByRole("button", { name: "Show sidebar" }).click();
+		await expect(page.getByTestId("sidebar-feedback")).toHaveCount(0);
 	});
 });

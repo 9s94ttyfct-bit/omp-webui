@@ -45,8 +45,10 @@ export const en = {
 	copy: "Copy text",
 	copied: "Copied",
 	copyFailed: "Could not copy",
+	navFeedback: "Send feedback",
 	settingsSendHint:
 		"Report something broken or ask for a feature. This opens a prefilled issue on GitHub; nothing is sent until you submit it there.",
+	settingsFootHint: "Something broken, or a feature you want? Tell us.",
 	settingsTitle: "Feedback",
 	settingsStar: "Offer to ask for a GitHub star",
 	settingsStarHint:

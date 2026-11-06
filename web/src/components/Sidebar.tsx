@@ -15,7 +15,6 @@ import {
 	MessageSquarePlus,
 	PanelLeftClose,
 	Search,
-	Send,
 	Trash2,
 } from "lucide-react";
 import {
@@ -797,13 +796,6 @@ export function Sidebar() {
 									<NavGroup variant="strip" surface="sidebar" group="bottom" remote={remotePage} />
 								</div>
 								<IconButton
-									label={t("feedback.navFeedback")}
-									data-testid="sidebar-feedback"
-									onClick={() => set({ feedbackOpen: true })}
-								>
-									<Send size={16} />
-								</IconButton>
-								<IconButton
 									label={t("shell.navUnfold")}
 									data-testid="sidebar-footer-fold"
 									onClick={() => setNavFolded(false)}
@@ -815,15 +807,6 @@ export function Sidebar() {
 							<>
 								<NavGroup variant="rows" surface="sidebar" group="hidden" remote={remotePage} />
 								<NavGroup variant="rows" surface="sidebar" group="bottom" remote={remotePage} />
-								{/* Not a page of the bar (it opens a dialog over the page): always here, under the pages. */}
-								<button
-									type="button"
-									data-testid="sidebar-feedback"
-									className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted hover:bg-hover hover:text-fg"
-									onClick={() => set({ feedbackOpen: true })}
-								>
-									<Send size={16} /> {t("feedback.navFeedback")}
-								</button>
 								<div className="flex items-center gap-1 pl-2.5">
 									<div className="min-w-0 flex-1 truncate text-xs text-faint" data-testid="app-versions">
 										{meta ? `omp ${meta.ompVersion} · webui ${meta.serverVersion}` : null}

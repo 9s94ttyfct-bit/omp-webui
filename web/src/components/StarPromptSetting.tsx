@@ -7,8 +7,9 @@ import { useApp } from "../store/app.ts";
 import { Button, CardHeader } from "./ui.tsx";
 
 /**
- * Settings › Feedback (#660): *Send feedback* opens the dialog (it was a button in the sidebar's foot; the command palette
- * and the shortcuts card still open it too), and whether the sidebar may ask for a GitHub star after sustained use.
+ * Settings › Feedback (#660): *Send feedback* opens the dialog (as the entry under the Settings index's pages, the foot of a
+ * narrow Settings page, the command palette and the shortcuts card do; the main sidebar has none), and whether the sidebar
+ * may ask for a GitHub star after sustained use.
  * Off also stops the page asking the server to look the repository's visibility up (which is a request to api.github.com),
  * and it is the same answer as "Don't ask again".
  */

@@ -1,11 +1,13 @@
+import { Send } from "lucide-react";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
 import type { IndexEntry } from "../lib/section-index.ts";
 import { SETTINGS_PAGE_LABEL } from "../lib/settings-page-labels.ts";
 import { SETTINGS_PAGES, type SettingsPageId } from "../lib/settings-pages.ts";
+import { useApp } from "../store/app.ts";
 import { ScrollRow } from "./ScrollRow.tsx";
-import { cx } from "./ui.tsx";
+import { Button, cx } from "./ui.tsx";
 
 /**
  * The list of Settings' pages (v0.11.18 §10), with the cards of the page shown under its name. Where the page is wide
@@ -13,6 +15,10 @@ import { cx } from "./ui.tsx";
  * never taller than the page's box and scrolls by itself. Below that it is two rows under the title, which stay at the
  * top of the page: the pages' names, then the shown page's cards as chips. Which one shows is decided by the room the
  * page's own box has (a container query, not the window: the sidebar takes room too).
+ *
+ * Where it hangs in the margin, *Send feedback* is under the pages' names (a page too narrow for the margin has it at
+ * the foot of the page instead, `SettingsFeedbackFoot`): the app's one place for a report that is in view on every page of
+ * Settings, not only on App & system's Feedback card.
  */
 export function SettingsIndex({
 	page,
@@ -32,6 +38,7 @@ export function SettingsIndex({
 	scroller: HTMLElement | null;
 }) {
 	const t = useT();
+	const set = useApp((s) => s.set);
 	const list = useRef<HTMLUListElement>(null);
 	// The list hangs 2rem under the top of the page and keeps 1rem clear of its bottom.
 	const [room, setRoom] = useState<number | undefined>(undefined);
@@ -118,6 +125,16 @@ export function SettingsIndex({
 						</li>
 					);
 				})}
+				<li className="hidden border-t border-border pt-2 mt-2 @min-[65rem]:block">
+					<button
+						type="button"
+						data-testid="settings-index-feedback"
+						onClick={() => set({ feedbackOpen: true })}
+						className="inline-flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-sm font-medium text-accent hover:bg-accent-soft"
+					>
+						<Send size={14} aria-hidden /> <span className="truncate">{t("feedback.navFeedback")}</span>
+					</button>
+				</li>
 			</ScrollRow>
 			{/* A narrow page has no margin: its cards are a row of chips under the row of pages. */}
 			{entries.length ? (
@@ -143,5 +160,22 @@ export function SettingsIndex({
 				</ScrollRow>
 			) : null}
 		</nav>
+	);
+}
+
+/** *Send feedback* at the foot of every Settings page too narrow for the index's margin (where it is under the pages' names). */
+export function SettingsFeedbackFoot() {
+	const t = useT();
+	const set = useApp((s) => s.set);
+	return (
+		<div
+			data-testid="settings-feedback-foot"
+			className="flex flex-wrap items-center gap-3 rounded-2xl border border-accent/40 bg-accent-soft p-4 @min-[65rem]:hidden"
+		>
+			<span className="min-w-0 flex-1 basis-48 text-sm">{t("feedback.settingsFootHint")}</span>
+			<Button variant="primary" className="shrink-0" onClick={() => set({ feedbackOpen: true })}>
+				<Send size={14} aria-hidden /> {t("feedback.navFeedback")}
+			</Button>
+		</div>
 	);
 }

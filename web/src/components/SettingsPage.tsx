@@ -29,7 +29,7 @@ import { PalettePicker } from "./PalettePicker.tsx";
 import { QuitSettings } from "./QuitSettings.tsx";
 import { RemoteSettings } from "./RemoteSettings.tsx";
 import { Select } from "./Select.tsx";
-import { SettingsIndex } from "./SettingsIndex.tsx";
+import { SettingsFeedbackFoot, SettingsIndex } from "./SettingsIndex.tsx";
 import { SettingsSearch } from "./SettingsSearch.tsx";
 import { StarPromptSetting } from "./StarPromptSetting.tsx";
 import { SubagentConcurrencySettings } from "./SubagentConcurrencySettings.tsx";
@@ -573,6 +573,8 @@ export function SettingsPage() {
 						) : null}
 					</>,
 				)}
+				{/* Under every page's cards where the index has no margin to hang Send feedback in. */}
+				<SettingsFeedbackFoot />
 			</div>
 		</div>
 	);
