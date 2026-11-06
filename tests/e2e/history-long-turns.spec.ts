@@ -1,4 +1,5 @@
 import { realpathSync, rmSync } from "node:fs";
+import type { Route } from "@playwright/test";
 import { type LongTurns, longAnswer, longPrompt, writeLongTurns } from "../support/long-history.ts";
 import { expect, test } from "./fixtures.ts";
 
@@ -11,7 +12,6 @@ import { expect, test } from "./fixtures.ts";
 
 const LONG_STEPS = 350;
 const SHORT_TURNS = 80;
-const PAGE_DELAY_MS = 1500;
 let conversation: LongTurns;
 
 test.beforeAll(() => {
@@ -32,15 +32,28 @@ test("going up through a turn longer than a window brings its steps in and never
 	page,
 }) => {
 	const asked: string[] = [];
+	const askedBefore = () => asked.filter((v) => v === "before").length;
+	/** The pages above asked for and not answered yet. */
+	let inFlight = 0;
 	page.on("request", (r) => {
 		const u = new URL(r.url());
-		if (u.pathname === "/api/family") asked.push(u.searchParams.get("view") ?? "whole");
+		if (u.pathname !== "/api/family") return;
+		const view = u.searchParams.get("view") ?? "whole";
+		asked.push(view);
+		if (view === "before") inFlight++;
 	});
-	// The pages above come after a little while (a link that is not this machine's): the reader is at the top of what is held
-	// when one arrives, which is when it matters where it goes.
-	await page.route(/\/api\/family\?.*view=before/, async (route) => {
-		await new Promise((r) => setTimeout(r, PAGE_DELAY_MS));
-		await route.continue();
+	const settled = (r: { url(): string }) => {
+		const u = new URL(r.url());
+		if (u.pathname === "/api/family" && u.searchParams.get("view") === "before") inFlight--;
+	};
+	page.on("requestfinished", settled);
+	page.on("requestfailed", settled);
+	// The pages above come after a little while (a link that is not this machine's), which here is when the round lets them
+	// go: once it has looked at what is at the top while they are on their way, which is the block one that joins a turn at
+	// its head joins, and where the reader is when it arrives.
+	const held: Route[] = [];
+	await page.route(/\/api\/family\?.*view=before/, (route) => {
+		held.push(route);
 	});
 	await page.goto(address());
 	const transcript = page.getByTestId("transcript");
@@ -48,23 +61,25 @@ test("going up through a turn longer than a window brings its steps in and never
 	await transcript.hover();
 	await page.mouse.wheel(0, -40);
 	const order = new Map(conversation.path.map((id, i) => [id, i]));
+	/** Whether an entry (or the segment it names) is of the long turn, `s0_<k>` or `r0_<k>`: a page that ends before one joins that turn. */
+	const ofLongTurn = (id: string | null) => id !== null && /^[sr]0_/.test(id);
 	/**
-	 * The first segment on screen, where it is, and how many there are. `begin` takes the reader to the top and tags the
-	 * first segment with `mark` first (what is measured is before anything the move brings in is drawn); `mark` alone finds that
-	 * element again, wherever it is now.
+	 * The first segment on screen, where it is, and how many there are. `top` takes the reader to the top and tags the first
+	 * segment with `mark` (what is measured is before anything the move brings in is drawn), `mark` tags it where it is (a
+	 * segment can carry several tags); `mark` alone finds that element again, wherever it is now.
 	 */
-	const look = (mark: string | null, begin = false) =>
+	const look = (mark: string | null, how: "top" | "mark" | "find" = "find") =>
 		transcript.evaluate(
-			(el, [tag, start]) => {
-				if (start) {
+			(el, [tag, mode]) => {
+				if (mode === "top") {
 					el.scrollTop = 0;
 					// The reader's hand is on the scroll (the page holds that for a couple of seconds after the last wheel).
 					el.dispatchEvent(new WheelEvent("wheel", { deltaY: -40, bubbles: true }));
 				}
 				const segments = [...el.querySelectorAll<HTMLElement>("[data-segment]")];
 				const first = segments[0];
-				if (first && tag && start) first.dataset.mark = tag;
-				const found = tag ? el.querySelector<HTMLElement>(`[data-mark="${tag}"]`) : first;
+				if (first && tag && mode !== "find") first.setAttribute(`data-at-${tag}`, "");
+				const found = tag ? el.querySelector<HTMLElement>(`[data-at-${tag}]`) : first;
 				const offset = found ? Math.round(found.getBoundingClientRect().top - el.getBoundingClientRect().top) : null;
 				return {
 					name: first?.dataset.segment ?? "",
@@ -73,7 +88,7 @@ test("going up through a turn longer than a window brings its steps in and never
 					markedIsFirst: found === first,
 				};
 			},
-			[mark, begin] as const,
+			[mark, how] as const,
 		);
 	let previous = Number.POSITIVE_INFINITY;
 	let inTurn = false;
@@ -81,17 +96,24 @@ test("going up through a turn longer than a window brings its steps in and never
 	let joined = 0;
 	const log: { round: number; first: string; segments: number; moved: number }[] = [];
 	for (let round = 0; round < 80; round++) {
-		const before = await look(`r${round}`, true);
-		const pages = asked.filter((v) => v === "before").length;
-		// Something is brought in: more segments above, or a page (which may join the turn at the top).
+		const before = await look(`r${round}`, "top");
+		const pages = askedBefore();
+		// Something is brought in: more segments above, or a page asked for (which may join the turn at the top).
 		await expect
-			.poll(
-				async () =>
-					(await look(null)).segments !== before.segments || asked.filter((v) => v === "before").length !== pages,
-				{ timeout: 4000 },
-			)
+			.poll(async () => (await look(null)).segments !== before.segments || askedBefore() !== pages || held.length > 0, {
+				timeout: 4000,
+			})
 			.toBe(true)
 			.catch(() => {});
+		// The layout settles: the scroll that keeps the reader in place is made with what was shown.
+		await page.waitForTimeout(300);
+		// What is at the top while the pages are on their way, and whether one of them joins the long turn at its head.
+		const coming = held.splice(0);
+		const waiting = coming.length > 0 ? await look(`m${round}`, "mark") : null;
+		const joining = coming.some((r) => ofLongTurn(new URL(r.request().url()).searchParams.get("at")));
+		for (const r of coming) await r.continue();
+		// They have arrived: none is on its way but one their arrival asked for, which the next round lets go.
+		await expect.poll(() => inFlight === held.length, { timeout: 15_000 }).toBe(true);
 		// The layout settles: the scroll that keeps the reader in place is made with the new messages.
 		await page.waitForTimeout(300);
 		const after = await look(`r${round}`);
@@ -104,16 +126,23 @@ test("going up through a turn longer than a window brings its steps in and never
 		expect(at as number, JSON.stringify(log)).toBeLessThanOrEqual(previous);
 		// What the reader was looking at is where it was, whether the page brought in new messages or joined the turn at the top.
 		expect(moved, `round ${round}: ${JSON.stringify(log)}`).toBeLessThanOrEqual(4);
-		if (/^[sr]0_/.test(now.name)) inTurn = true;
-		if (inTurn && after.markedIsFirst && asked.filter((v) => v === "before").length !== pages) joined++;
-		const ended =
-			at === previous && now.segments === before.segments && asked.filter((v) => v === "before").length === pages;
+		if (ofLongTurn(now.name)) inTurn = true;
+		if (waiting && joining && ofLongTurn(waiting.name)) {
+			// The long turn was the block at the top when a page that joins it arrived: it is that block still, under its
+			// name, where it was.
+			const kept = await look(`m${round}`);
+			const shift = kept.top === null ? 0 : Math.abs(kept.top - (waiting.top ?? 0));
+			expect(shift, `round ${round}: the block the page joined moved: ${JSON.stringify(log)}`).toBeLessThanOrEqual(4);
+			if (kept.markedIsFirst && kept.name === waiting.name) joined++;
+		}
+		// The top is reached when a round brought nothing: no segment, and no page asked for or let go.
+		const ended = at === previous && now.segments === before.segments && askedBefore() === pages && coming.length === 0;
 		previous = at as number;
 		if (previous === 0 || ended) break;
 	}
 	expect(inTurn, `the long turn was reached: ${JSON.stringify(log)}`).toBe(true);
 	// Pages were asked for while the reader was inside the long turn (700 entries: more than three windows).
-	expect(asked.filter((v) => v === "before").length).toBeGreaterThan(3);
+	expect(askedBefore()).toBeGreaterThan(3);
 	// A reader who only goes up is not brought the messages below them (the far end is let go of, and is not asked for again).
 	expect(asked.filter((v) => v === "after").length, "pages below were asked for by a reader going up").toBe(0);
 	expect(joined, "pages joined the long turn at its head, and it stayed the block the reader was at").toBeGreaterThan(
