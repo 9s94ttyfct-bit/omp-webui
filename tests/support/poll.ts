@@ -1,13 +1,19 @@
 /**
  * Wait until `condition` holds, or fail after `ms` naming what was awaited. For effects in another process
  * (a server reacting to a closed socket, a process ending) that offer no event to await; the interval is the
- * only wall-clock time involved, and the deadline just bounds a failing run.
+ * only wall-clock time involved, and the deadline just bounds a failing run. `everyMs`: the gap between two looks, wider
+ * for a condition that asks a server what it is busy doing.
  */
-export async function pollUntil(condition: () => boolean | Promise<boolean>, what: string, ms = 15_000): Promise<void> {
+export async function pollUntil(
+	condition: () => boolean | Promise<boolean>,
+	what: string,
+	ms = 15_000,
+	everyMs = 25,
+): Promise<void> {
 	const deadline = Date.now() + ms;
 	while (!(await condition())) {
 		if (Date.now() > deadline) throw new Error(`timed out after ${ms} ms waiting for ${what}`);
-		await Bun.sleep(25);
+		await Bun.sleep(everyMs);
 	}
 }
 
