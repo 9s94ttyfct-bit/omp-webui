@@ -134,6 +134,10 @@ export function App() {
 	const chatKey = chatKeyRef.current?.key ?? "";
 	/** Which page is showing: another conversation or another kind of page, not a change within one conversation. */
 	const pageKey = view.kind === "chat" ? chatKey : view.kind;
+	/** How many times the page has come to New chat (`NewChat`'s key). Derived during render, idempotent like `chatKeyRef`. */
+	const newVisit = useRef({ visit: 0, kind: view.kind });
+	if (view.kind !== newVisit.current.kind)
+		newVisit.current = { visit: newVisit.current.visit + (view.kind === "new" ? 1 : 0), kind: view.kind };
 	const paletteOpen = useApp((s) => s.paletteOpen);
 	const screen = useOmp(ompScreen);
 	const [paletteWanted, setPaletteWanted] = useState(false);
@@ -298,12 +302,9 @@ export function App() {
 								</IconButton>
 							</div>
 						) : null}
-						{/* A page that fails to render (or whose chunk is gone) shows the Reload screen here; the sidebar keeps working.
-						    The boundary is the page's own (`pageKey`): a page left for one whose chunk is still on its way is gone, not
-						    kept hidden under the fallback, where coming back before the chunk landed would show it again as it was (New
-						    chat after a send, its warm-up process by then the conversation it started, so no new one was started). */}
+						{/* A page that fails to render (or whose chunk is gone) shows the Reload screen here; the sidebar keeps working. */}
 						<ErrorBoundary resetKey={pageKey}>
-							<Suspense key={pageKey} fallback={<PageFallback />}>
+							<Suspense fallback={<PageFallback />}>
 								{view.kind === "chat" ? (
 									<ChatView
 										key={chatKey}
@@ -315,9 +316,16 @@ export function App() {
 										reading={view.reading}
 									/>
 								) : null}
-								{/* Keyed by the folder and the project it was opened in: New chat in another starts over, as a new page. */}
+								{/* Keyed by the visit, the folder and the project it was opened in: New chat in another starts over, as a new
+								    page, and so does each visit. A page left for one whose chunk is still on its way is kept hidden under the
+								    fallback, and coming back before it landed showed New chat as it was: after a send, its warm-up process was by
+								    then the conversation it started, so none was started. */}
 								{view.kind === "new" ? (
-									<NewChat key={`${view.cwd ?? ""}\u0000${view.project ?? ""}`} cwd={view.cwd} project={view.project} />
+									<NewChat
+										key={`${newVisit.current.visit}\u0000${view.cwd ?? ""}\u0000${view.project ?? ""}`}
+										cwd={view.cwd}
+										project={view.project}
+									/>
 								) : null}
 								{view.kind === "project" ? <ProjectPage key={view.id} id={view.id} /> : null}
 								{view.kind === "usage" ? <UsagePage /> : null}
