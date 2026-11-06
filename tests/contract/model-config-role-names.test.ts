@@ -117,7 +117,9 @@ test("a role named `__proto__` is an ordinary role, as in omp's config, and is n
 	const applied = await post("preset/apply", { name: "proto" });
 	expect(applied.status).toBe(200);
 	expect(stored("modelRoles")).toEqual(withProto(""));
-}, 60_000);
+	// About fourteen `omp config` runs (the test's own and the server's): a Windows runner takes ~6.5 s each (the
+	// 'applying it gives back…' test above, three runs, takes 19.5 s there), so 60 s was not enough.
+}, 180_000);
 
 test("roles with such names can be saved explicitly in a preset and set as the roles; a role with no name cannot", async () => {
 	const roles = { default: HAIKU, "x.y": HAIKU, "9": HAIKU };
