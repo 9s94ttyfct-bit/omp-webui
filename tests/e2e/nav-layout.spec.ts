@@ -6,7 +6,8 @@ import { expect, type Locator, type Page, test } from "./fixtures.ts";
  * The sidebar's and the rail's pages (#654, #660): one model feeds the sidebar, the rail and the palette's *Go to*; each
  * bar's items sit in a top group, a bottom group or nowhere, in an order the person sets by dragging (pointer and touch) or
  * with the controls of Settings (keyboard), kept on this device. The Guard page has its entry there (not on a page that came
- * through the tunnel), and Send feedback is a card of Settings, not a button of the sidebar. No model call.
+ * through the tunnel), and Send feedback is a row of the sidebar's foot under the pages (an icon when the foot is folded), not a
+ * page of the bar. No model call.
  */
 
 const KEY = "ompw.navLayout";
@@ -82,6 +83,17 @@ test.describe("at 1400 px", () => {
 		await expect(dialog).toBeHidden();
 		// Nothing is stored until the person arranges something.
 		expect(await stored(page)).toBeNull();
+		// Folded, the foot keeps Send feedback as an icon beside the pages.
+		await page.getByTestId("sidebar-footer-fold").click();
+		await expect(page.getByTestId("sidebar-footer")).toHaveAttribute("data-folded", "on");
+		const folded = sidebar(page).getByRole("button", { name: "Send feedback", exact: true });
+		await expect(folded).toBeVisible();
+		await folded.click();
+		await expect(dialog).toBeVisible();
+		await page.keyboard.press("Escape");
+		await expect(dialog).toBeHidden();
+		await page.getByTestId("sidebar-footer-fold").click();
+		await expect(page.getByTestId("sidebar-footer")).toHaveAttribute("data-folded", "off");
 
 		await sidebar(page).getByRole("button", { name: "Guard", exact: true }).click();
 		await expect(page.getByTestId("guard-page")).toBeVisible();
