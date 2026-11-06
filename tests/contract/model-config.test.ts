@@ -35,6 +35,9 @@ async function call(path: string, body?: unknown, headers: Record<string, string
 		body: body === undefined ? undefined : JSON.stringify(body),
 	});
 	const json: Reply = await res.json();
+	// No test here expects a server error: one says what the server logged, where alone its cause is (once on Windows a
+	// preset apply answered 500, with nothing to say why).
+	if (res.status >= 500) throw new Error(`HTTP ${res.status} for ${path}\nserver stderr:\n${s.errors().slice(-4000)}`);
 	return { status: res.status, body: json };
 }
 
@@ -44,16 +47,26 @@ const post = (action: string, body: unknown) => call(`/api/model-config/${action
 /** The environment of an omp process that reads the test server's isolated config. */
 const ompEnv = () => ({ ...process.env, HOME: s.home, PI_CODING_AGENT_DIR: s.agentDir });
 
+/** `omp config <args>` on the isolated config; a failure says all omp left of it: exit code, stdout and stderr. */
+function ompConfig(args: string[]): string {
+	const r = Bun.spawnSync(["omp", "config", ...args], { env: ompEnv(), cwd: s.work });
+	const stdout = r.stdout.toString();
+	if (r.exitCode !== 0) {
+		throw new Error(
+			`omp config ${args.slice(0, 2).join(" ")} exited ${r.exitCode ?? r.signalCode}\nstdout: ${stdout}\nstderr: ${r.stderr.toString()}`,
+		);
+	}
+	return stdout;
+}
+
 /** What omp itself reads from the isolated config (the reference for what the API wrote). */
 function stored<T = unknown>(key: string): T {
-	const r = Bun.spawnSync(["omp", "config", "get", key, "--json"], { env: ompEnv(), cwd: s.work });
-	const parsed: { value: T } = JSON.parse(r.stdout.toString());
+	const parsed: { value: T } = JSON.parse(ompConfig(["get", key, "--json"]));
 	return parsed.value;
 }
 
 function setStored(key: string, value: unknown): void {
-	const r = Bun.spawnSync(["omp", "config", "set", key, JSON.stringify(value)], { env: ompEnv(), cwd: s.work });
-	if (r.exitCode !== 0) throw new Error(r.stderr.toString());
+	ompConfig(["set", key, JSON.stringify(value)]);
 }
 
 const storedPresets = () => stored<Record<string, unknown>>("modelPresets");
