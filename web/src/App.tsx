@@ -298,9 +298,12 @@ export function App() {
 								</IconButton>
 							</div>
 						) : null}
-						{/* A page that fails to render (or whose chunk is gone) shows the Reload screen here; the sidebar keeps working. */}
+						{/* A page that fails to render (or whose chunk is gone) shows the Reload screen here; the sidebar keeps working.
+						    The boundary is the page's own (`pageKey`): a page left for one whose chunk is still on its way is gone, not
+						    kept hidden under the fallback, where coming back before the chunk landed would show it again as it was (New
+						    chat after a send, its warm-up process by then the conversation it started, so no new one was started). */}
 						<ErrorBoundary resetKey={pageKey}>
-							<Suspense fallback={<PageFallback />}>
+							<Suspense key={pageKey} fallback={<PageFallback />}>
 								{view.kind === "chat" ? (
 									<ChatView
 										key={chatKey}

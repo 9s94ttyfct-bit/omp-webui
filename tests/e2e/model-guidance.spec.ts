@@ -672,6 +672,13 @@ test("New chat starts with the guidance the last new chat was started with: a te
 	page,
 }) => {
 	const tap = await tapSocket(page);
+	// The conversation's page has its chunk only once New chat is open again, as on a runner where it came late: New chat
+	// left for it is not shown again as it was then (its warm-up process the conversation it started, and none started).
+	const chatChunk = Promise.withResolvers<void>();
+	await page.route(/\/assets\/ChatView-[^/]*\.js$/, async (route) => {
+		await chatChunk.promise;
+		await route.continue();
+	});
 	await newChatHere(page);
 	const control = page.getByTestId("guidance-picker");
 	await control.click();
@@ -688,6 +695,7 @@ test("New chat starts with the guidance the last new chat was started with: a te
 	await newChatHere(page);
 	await expect(control).toHaveText(en.chip.replace("{name}", "One of each kind at a time"));
 	await expect.poll(() => opens(tap).at(-1)?.target?.guidance).toEqual({ template: "builtin-one-of-each" });
+	chatChunk.resolve();
 
 	// Started with none, though Settings now has a default: the next starts with none.
 	await page.evaluate(() => localStorage.setItem("ompw.guidanceDefault", "builtin-one-of-each"));
