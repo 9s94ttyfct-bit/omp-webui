@@ -119,9 +119,14 @@ test.describe("at 1400 px", () => {
 			await release.promise;
 			await route.continue();
 		});
+		// The host's load line under the bars takes its height (one line or two) once the server has said what it measures
+		// (`GET /api/host`) and a reading has come: measured after that, the line is not what moves.
+		const hostRead = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/host");
 		await page.goto("/");
 		const group = page.getByTestId("nav-group-sidebar-bottom");
 		await expect(group).toHaveAttribute("data-reserved", "true");
+		await hostRead;
+		await expect(page.getByTestId("host-figures")).toHaveText(/\d+%/);
 		const before = await boxOf(group);
 		const below = await boxOf(page.getByTestId("new-chat"));
 		release.resolve();
