@@ -40,17 +40,35 @@ async function call(path: string, body?: unknown) {
 const get = () => call("/api/model-config");
 const post = (action: string, body: unknown) => call(`/api/model-config/${action}`, body);
 
+/** A 200; any other answer fails with what the server said, and what it logged (the cause of a 500 is only there). */
+function expectOk(reply: { status: number; body: Reply }): void {
+	if (reply.status === 200) return;
+	throw new Error(
+		`HTTP ${reply.status}: ${reply.body.error ?? JSON.stringify(reply.body)}\nserver stderr:\n${s.errors().slice(-4000)}`,
+	);
+}
+
 const ompEnv = () => ({ ...process.env, HOME: s.home, PI_CODING_AGENT_DIR: s.agentDir });
 
+/** `omp config <args>` as the terminal runs it; a failure says all omp left of it: exit code, stdout and stderr. */
+function ompConfig(args: string[]): string {
+	const r = Bun.spawnSync(["omp", "config", ...args], { env: ompEnv(), cwd: s.work });
+	const stdout = r.stdout.toString();
+	if (r.exitCode !== 0) {
+		throw new Error(
+			`omp config ${args.slice(0, 2).join(" ")} exited ${r.exitCode ?? r.signalCode}\nstdout: ${stdout}\nstderr: ${r.stderr.toString()}`,
+		);
+	}
+	return stdout;
+}
+
 function stored<T = unknown>(key: string): T {
-	const r = Bun.spawnSync(["omp", "config", "get", key, "--json"], { env: ompEnv(), cwd: s.work });
-	const parsed: { value: T } = JSON.parse(r.stdout.toString());
+	const parsed: { value: T } = JSON.parse(ompConfig(["get", key, "--json"]));
 	return parsed.value;
 }
 
 function setStored(key: string, value: unknown): void {
-	const r = Bun.spawnSync(["omp", "config", "set", key, JSON.stringify(value)], { env: ompEnv(), cwd: s.work });
-	if (r.exitCode !== 0) throw new Error(r.stderr.toString());
+	ompConfig(["set", key, JSON.stringify(value)]);
 }
 
 test("a preset with role names of any shape is usable, and is the active one when the config has exactly its roles", async () => {
@@ -59,8 +77,9 @@ test("a preset with role names of any shape is usable, and is the active one whe
 	setStored("modelPresets", { dotted: { modelRoles: roles, defaultThinkingLevel: "high" } });
 	setStored("defaultThinkingLevel", "high");
 
-	const { status, body } = await get();
-	expect(status).toBe(200);
+	const reply = await get();
+	expectOk(reply);
+	const { body } = reply;
 	expect(body.roles).toEqual(roles);
 	expect(body.presets).toHaveLength(1);
 	expect(body.presets[0].problem).toBeUndefined();
@@ -71,14 +90,14 @@ test("a preset with role names of any shape is usable, and is the active one whe
 test("applying it gives back exactly its roles, odd names included, as /modelpreset switch does", async () => {
 	setStored("modelRoles", { default: HAIKU, smol: HAIKU });
 	const applied = await post("preset/apply", { name: "dotted" });
-	expect(applied.status).toBe(200);
+	expectOk(applied);
 	expect(stored("modelRoles")).toEqual({ default: HAIKU, ...ODD });
 	expect(applied.body.active).toBe("dotted");
 }, 60_000);
 
 test("Save current stores every role, as omp's own /modelpreset save does", async () => {
 	const saved = await post("preset/save", { name: "kept" });
-	expect(saved.status).toBe(200);
+	expectOk(saved);
 	expect(stored<Record<string, { modelRoles: unknown }>>("modelPresets").kept.modelRoles).toEqual({
 		default: HAIKU,
 		...ODD,
@@ -96,26 +115,26 @@ test("a role named `__proto__` is an ordinary role, as in omp's config, and is n
 	// Saving it again keeps it: a plain assignment would hit the prototype setter and drop the role.
 	const roles = withProto("");
 	const set = await post("roles", { roles });
-	expect(set.status).toBe(200);
+	expectOk(set);
 	expect(set.body.roles).toEqual(withProto(""));
 	expect(stored("modelRoles")).toEqual(withProto(""));
 
 	// And in a preset, which omp applies the same way.
 	const preset = await post("preset/save", { name: "proto", roles });
-	expect(preset.status).toBe(200);
+	expectOk(preset);
 	expect(preset.body.presets.find((p) => p.name === "proto")?.roles).toEqual(withProto(""));
 	expect(stored<Record<string, { modelRoles: unknown }>>("modelPresets").proto.modelRoles).toEqual(withProto(""));
 
 	// "Save current" takes the roles as they are, the role included.
 	const kept = await post("preset/save", { name: "kept-proto" });
-	expect(kept.status).toBe(200);
+	expectOk(kept);
 	expect(stored<Record<string, { modelRoles: unknown }>>("modelPresets")["kept-proto"].modelRoles).toEqual(
 		withProto(""),
 	);
 
 	// And applying the preset gives the role back, as `/modelpreset switch` does.
 	const applied = await post("preset/apply", { name: "proto" });
-	expect(applied.status).toBe(200);
+	expectOk(applied);
 	expect(stored("modelRoles")).toEqual(withProto(""));
 	// About fourteen `omp config` runs (the test's own and the server's): a Windows runner takes ~6.5 s each (the
 	// 'applying it gives back…' test above, three runs, takes 19.5 s there), so 60 s was not enough.
@@ -124,11 +143,11 @@ test("a role named `__proto__` is an ordinary role, as in omp's config, and is n
 test("roles with such names can be saved explicitly in a preset and set as the roles; a role with no name cannot", async () => {
 	const roles = { default: HAIKU, "x.y": HAIKU, "9": HAIKU };
 	const preset = await post("preset/save", { name: "explicit", roles });
-	expect(preset.status).toBe(200);
+	expectOk(preset);
 	expect(preset.body.presets.find((p) => p.name === "explicit")).toMatchObject({ roles });
 
 	const set = await post("roles", { roles });
-	expect(set.status).toBe(200);
+	expectOk(set);
 	expect(stored("modelRoles")).toEqual(roles);
 
 	for (const bad of [{ "": HAIKU }, { "  ": HAIKU }]) {
