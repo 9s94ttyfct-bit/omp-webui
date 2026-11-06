@@ -653,9 +653,7 @@ export class AppUpdater {
 		// unless one is held open (Windows): then it is left, logged, rather than the failure never being told at all (a
 		// throw here left the job in its phase for good, and no other install could start).
 		if (!handedOver) {
-			const removing = Date.now();
 			removeLeftovers(staged, part, file);
-			console.warn(`TIMING leftovers removed in ${Date.now() - removing} ms`);
 			this.job = null;
 			// An automatic install that failed or was cancelled is not started again by itself: the card offers it.
 			if (this.autoTag === job.tag) this.skipAuto(release.version);

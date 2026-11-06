@@ -245,12 +245,9 @@ export async function stageWindows(
 	opts: StageWindowsOptions = {},
 ): Promise<void> {
 	const command = opts.tar ?? tarCommand();
-	const t0 = Date.now();
-	const tick = (what: string) => console.warn(`TIMING stage ${Date.now() - t0} ms ${what}`);
 	const topName = zipTop(arch);
 	if (!isZip(zip)) throw new UpdateError("noApp", { name: topName });
 	const members = await listMembers(command, zip, topName);
-	tick("listed");
 	for (const m of members) {
 		if (m.kind === "other" || !memberAllowed(m.name, topName)) throw new UpdateError("noApp", { name: topName });
 	}
@@ -273,7 +270,6 @@ export async function stageWindows(
 	}
 	try {
 		const unpacked = await tar([command, "-xf", zip], unpack);
-		tick("unpacked");
 		if (unpacked.code !== 0) throw new UpdateError("stage", { detail: detailOf(unpacked) });
 		const top = join(unpack, topName);
 		const roots = readdirSync(unpack);
@@ -282,10 +278,8 @@ export async function stageWindows(
 		}
 		rmSync(staged, { recursive: true, force: true });
 		await renameRetrying(top, staged);
-		tick("renamed");
 	} finally {
 		rmSync(unpack, { recursive: true, force: true });
-		tick("unzip folder removed");
 	}
 
 	try {
@@ -293,7 +287,6 @@ export async function stageWindows(
 		if (!isPlainFile(exe) || !isPlainFile(join(staged, WEB_INDEX)))
 			throw new UpdateError("noApp", { name: WINDOWS_EXE });
 		const said = await run([exe, "--version"], { timeoutMs: VERSION_MS, cwd: staged }).catch(() => null);
-		tick("version run");
 		const found = said?.code === 0 ? (linesOf(said.stdout)[0] ?? "").trim() : "";
 		if (found !== expectedVersion) {
 			throw new UpdateError("version", { tag: `v${expectedVersion}`, found: found.slice(0, 40) || "?" });
@@ -302,7 +295,6 @@ export async function stageWindows(
 		// The program was just run: Windows may hold it a moment longer, and a removal that threw would put its own error in
 		// place of the refusal (the install then said "stage" where it should say which version it found).
 		removeLeftovers(staged);
-		tick("staged removed");
 		throw e;
 	}
 }
