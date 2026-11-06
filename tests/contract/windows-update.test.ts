@@ -224,17 +224,32 @@ describe.skipIf(!has.windowsLauncher)("the Windows launcher's update", () => {
 	}, 300_000);
 
 	test("refuses a zip whose program is not the version the release says, and changes nothing", async () => {
+		const t0 = Date.now();
+		const marks: string[] = [];
+		const mark = (what: string) => marks.push(`${Date.now() - t0} ms ${what}`);
 		const install = await startInstall();
+		mark("started");
 		// The 99.0.0 build offered as 98.0.0: the SHA-256 is right (it is the asset's), the version is not.
 		fake.publish({ tag: "v98.0.0", dmg: nextZip, assetName: zipName("98.0.0") });
+		mark("published");
 		await installRelease(install, "v98.0.0");
+		mark("install asked");
 		let failed: AppUpdateState["failed"] = null;
+		let phase = "";
 		// A wait that ends without the refusal says where the install got to (its phase, the launcher's output), as
 		// `untilHelper` does: once on x64 it was not refused within 120 s, and arm64 takes 66-86 s where x64 takes 7-14 s.
 		try {
 			await pollUntil(
 				async () => {
-					failed = (await updateState(install)).failed;
+					const asked = Date.now();
+					const state = await updateState(install);
+					if (Date.now() - asked > 1000) mark(`/api/update took ${Date.now() - asked} ms`);
+					const now = state.job?.phase ?? "none";
+					if (now !== phase) {
+						phase = now;
+						mark(`phase ${now}`);
+					}
+					failed = state.failed;
 					return failed !== null;
 				},
 				"the install to be refused",
@@ -243,6 +258,8 @@ describe.skipIf(!has.windowsLauncher)("the Windows launcher's update", () => {
 		} catch (e) {
 			throw new Error(`${(e as Error).message}\n${await diagnosis(install)}`);
 		}
+		mark("refused");
+		console.log(`TIMING refusal:\n${marks.join("\n")}\n--- launcher output:\n${install.output()}`);
 		expect(failed).toMatchObject({ code: "version", params: { tag: "v98.0.0", found: NEXT } });
 		expect(versionOf(install.folder)).toBe(pkg.version);
 		expect(existsSync(`${install.folder}.updating`)).toBe(false);
