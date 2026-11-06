@@ -586,6 +586,11 @@ export async function openFolderFile(
 	if (code !== 0) throw new FolderError(`open failed with code ${code}`, 404);
 }
 
+/** Shows a file that is no folder's in Finder (a download of the built-in browser); nothing where there is no Finder. */
+export async function revealFile(abs: string, desktop: DesktopOps | null = platform.desktop): Promise<void> {
+	if (desktop) await runOpen(desktop.revealArgv(abs));
+}
+
 /**
  * Directory extensions macOS treats as one thing that `open` starts or hands to an app: an application, a plug-in, an
  * installer package, a project, a disk image, a library or a document of an app. A folder called that is shown in Finder

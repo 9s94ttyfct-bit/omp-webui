@@ -240,6 +240,8 @@ interface CdpWsData {
 interface ScreenWsData {
 	kind: "screen";
 	remote: RemoteIdentity | null;
+	/** The page is on this computer (`onThisComputer`). */
+	local: boolean;
 	out: WsOutbox | null;
 	client: ScreenClient | null;
 	inbox: string[];
@@ -2902,6 +2904,7 @@ async function route(req: Request, srv: Bun.Server<SocketData>): Promise<Respons
 		const data: ScreenWsData = {
 			kind: "screen",
 			remote,
+			local,
 			out: null,
 			client: null,
 			inbox: [],
@@ -3036,6 +3039,7 @@ const listen = (hostname: string, port: number) =>
 							sendBinary: (bytes) => socket.sendBinary(bytes),
 							buffered: () => socket.getBufferedAmount(),
 							close: (code, reason) => socket.close(code, reason),
+							local: data.local,
 						})
 						.then(
 							(client) => {

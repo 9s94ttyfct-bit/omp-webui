@@ -67,7 +67,28 @@ export type ScreenClientMessage =
 	/** The page is drawn by the Mac app's own view of it (not a screencast) in `room` (CSS pixels of the tab, the view's
 	 *  points), scaled down to fit when it is laid out larger; null: it is not any more. */
 	| { t: "fit"; targetId: string; room: Size | null }
-	| { t: "input"; targetId: string; event: BrowserInput };
+	| { t: "input"; targetId: string; event: BrowserInput }
+	/** Cancel one of the conversation's downloads that is still running. */
+	| { t: "download_cancel"; id: string }
+	/** Show one of the conversation's finished downloads in Finder (a page on this Mac only). */
+	| { t: "download_reveal"; id: string };
+
+/** Where a download of the built-in browser is (the Mac app's CEF saves them to the Downloads folder). */
+export type DownloadState = "progress" | "done" | "cancelled" | "failed";
+
+/** A download as the Browser tab is told it: its name, never where it is on the Mac. */
+export interface BrowserDownload {
+	id: string;
+	name: string;
+	state: DownloadState;
+	received: number;
+	/** Its size in bytes; null while it is not known. */
+	total: number | null;
+	/** When the server first heard of it (ms since the epoch). */
+	startedAt: number;
+	/** Why it failed, as the engine says it. */
+	error?: string;
+}
 
 export interface PageInfo {
 	targetId: string;
@@ -95,7 +116,9 @@ export type ScreenServerMessage =
 	/** The browser cannot be used now (not installed, failed to start, restarted): why, in words. */
 	| { t: "unavailable"; reason: string }
 	/** It can be used again: the tab's last watch, which could not be carried out, has been now. */
-	| { t: "available" };
+	| { t: "available" }
+	/** The conversation's downloads, newest first: sent on watch and whenever one changes. */
+	| { t: "downloads"; owner: string; downloads: BrowserDownload[] };
 
 /** What precedes a frame's JPEG. `w`/`h`: the page's layout size in CSS pixels the frame shows. */
 export interface FrameHeader {

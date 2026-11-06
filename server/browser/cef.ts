@@ -1,3 +1,4 @@
+import type { DownloadState } from "../../shared/browser-protocol.ts";
 import type { TargetInfo } from "./registry.ts";
 import { type CdpMessage, type CdpTransport, TransportListeners } from "./transport.ts";
 
@@ -42,13 +43,34 @@ export type AppMessage =
 	/** The page asked for by `create` (`req`) is made (null: it could not be). */
 	| { t: "created"; req: number; targetId: string | null }
 	/** A message of the page's DevTools channel (JSON text). */
-	| { t: "cdp"; targetId: string; message: string };
+	| { t: "cdp"; targetId: string; message: string }
+	/** A download a page started: when it begins, as it goes (a few times a second at most) and how it ended. */
+	| { t: "download"; download: AppDownload };
+
+/** A download as the app tells it (`macos/cef/CEFHost.mm`). */
+export interface AppDownload {
+	/** CEF's id of the download, for this run of the app. */
+	id: string;
+	/** The page that started it. */
+	targetId: string;
+	name: string;
+	/** Where it is saved on this Mac (the Downloads folder, or the folder an agent asked for). */
+	path: string;
+	state: DownloadState;
+	received: number;
+	/** Its size in bytes; 0 or less while it is not known. */
+	total: number;
+	/** Why it failed. */
+	error?: string;
+}
 
 /** What the server says to the app. */
 export type ServerToApp =
 	| { t: "create"; req: number; url: string }
 	| { t: "close"; targetId: string }
-	| { t: "cdp"; targetId: string; message: string };
+	| { t: "cdp"; targetId: string; message: string }
+	/** Stop a download that is running. */
+	| { t: "download_cancel"; id: string };
 
 export interface AppSocket {
 	send(text: string): void;
@@ -65,10 +87,11 @@ export class CefLink {
 	transport: CefTransport | null = null;
 	private ended: string | null = null;
 
-	/** `onHello`: the app said hello (its browser can be used from now on). */
+	/** `onHello`: the app said hello (its browser can be used from now on). `onDownload`: a page's download, as the app tells it. */
 	constructor(
 		private readonly socket: AppSocket,
 		private readonly onHello: () => void = () => {},
+		private readonly onDownload: (download: AppDownload) => void = () => {},
 	) {}
 
 	/** Whether the app has said hello (its pages are known). */
@@ -107,6 +130,10 @@ export class CefLink {
 				return;
 			case "cdp":
 				this.transport?.fromPage(m.targetId, m.message);
+				return;
+			case "download":
+				if (m.download && typeof m.download.id === "string" && typeof m.download.targetId === "string")
+					this.onDownload(m.download);
 				return;
 		}
 	}

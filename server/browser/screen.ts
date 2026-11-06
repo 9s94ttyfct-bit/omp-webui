@@ -10,6 +10,7 @@ import {
 	type ScreenServerMessage,
 	type Size,
 } from "../../shared/browser-protocol.ts";
+import { DownloadList } from "./downloads.ts";
 import type { Engine, EngineHost } from "./engine.ts";
 import type { PageRegistry } from "./registry.ts";
 
@@ -29,6 +30,14 @@ export interface ScreenSocket {
 	/** Bytes the socket has not sent yet. */
 	buffered(): number;
 	close(code?: number, reason?: string): void;
+	/** The page is on this computer: it may have a download shown in Finder. */
+	local?: boolean;
+}
+
+/** What the Browser tab can have done with a download: the app's CEF stops it, Finder shows it. */
+export interface DownloadControl {
+	cancel(id: string): void;
+	reveal(path: string): Promise<void>;
 }
 
 /** A socket further behind than this misses frames until it catches up. */
@@ -268,11 +277,21 @@ export class ScreenHub {
 	private readonly wired = new WeakSet<Engine>();
 	/** When a Browser tab last stopped showing one of the pages (ms since the epoch; 0: never). */
 	lastUse = 0;
+	/** The built-in browser's downloads, each its conversation's (the app's CEF tells them; CfT has none of its own). */
+	readonly downloads: DownloadList;
 
+	/** `control`: what is done to a download (null: nothing can be, as with CfT). */
 	constructor(
 		readonly host: EngineHost,
 		readonly registry: PageRegistry,
+		readonly control: DownloadControl | null = null,
 	) {
+		this.downloads = new DownloadList(
+			(targetId) => registry.ownerOfTarget(targetId),
+			(owner) => {
+				for (const c of this.clients) if (c.owner === owner) c.sendDownloads();
+			},
+		);
 		registry.onChange(() => {
 			for (const c of this.clients) c.sendPages();
 		});
@@ -498,6 +517,8 @@ export class ScreenClient {
 				this.owner = null;
 				return;
 			}
+			// The app's CEF and Finder, not the engine's CDP: the engine need not be there.
+			if (msg.t === "download_cancel" || msg.t === "download_reveal") return this.download(msg);
 			let engine: Engine | null = null;
 			try {
 				engine = await this.hub.host.ready();
@@ -521,6 +542,20 @@ export class ScreenClient {
 		if (this.stale && this.lastWatch && !this.closed) this.enqueue(this.lastWatch);
 	}
 
+	/**
+	 * A download of the conversation this tab watches is stopped, or shown in Finder from a page on this computer (not
+	 * waited for: Finder's `open` holds no other message of the tab).
+	 */
+	private download(msg: Extract<ScreenClientMessage, { t: "download_cancel" | "download_reveal" }>): void {
+		const d = typeof msg.id === "string" ? this.hub.downloads.get(msg.id) : null;
+		if (!d || this.owner === null || d.owner !== this.owner) return;
+		if (msg.t === "download_cancel") {
+			if (d.item.state === "progress") this.hub.control?.cancel(msg.id);
+			return;
+		}
+		if (this.socket.local === true && d.item.state === "done") void this.hub.control?.reveal(d.path).catch(() => {});
+	}
+
 	close(): void {
 		this.closed = true;
 		this.unwatch();
@@ -532,6 +567,12 @@ export class ScreenClient {
 		if (this.closed || this.owner === null) return;
 		const pages = this.hub.host.running ? this.hub.registry.pagesOf(this.owner).map((id) => this.hub.pageInfo(id)) : [];
 		this.socket.sendText(JSON.stringify({ t: "pages", owner: this.owner, pages } satisfies ScreenServerMessage));
+	}
+
+	sendDownloads(): void {
+		if (this.closed || this.owner === null) return;
+		const downloads = this.hub.downloads.of(this.owner);
+		this.socket.sendText(JSON.stringify({ t: "downloads", owner: this.owner, downloads } satisfies ScreenServerMessage));
 	}
 
 	tellUnavailable(reason: string): void {
@@ -579,6 +620,7 @@ export class ScreenClient {
 				this.panel = { w: Math.max(1, Number(msg.panel?.w) || 1), h: Math.max(1, Number(msg.panel?.h) || 1) };
 				this.frames = msg.frames !== false;
 				this.sendPages();
+				this.sendDownloads();
 				if (!msg.targetId || this.hub.registry.ownerOfTarget(msg.targetId) !== msg.owner) return;
 				this.targetId = msg.targetId;
 				const view = await this.page(engine, msg.targetId);

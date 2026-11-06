@@ -126,10 +126,15 @@ export class LazyBrowser {
 		this.#link?.end("The app connected again");
 		// The app's CEF said hello: the conversations' endpoints are named again, and the Browser tabs told it could not be
 		// used watch again.
-		const link = new CefLink(socket, () => {
-			this.opts.engineLinked();
-			this.#service?.screen.engineBack();
-		});
+		const link = new CefLink(
+			socket,
+			() => {
+				this.opts.engineLinked();
+				this.#service?.screen.engineBack();
+			},
+			// A page's download: a page is the service's, so it is there for any download there is.
+			(download) => this.#service?.screen.downloads.update(download),
+		);
 		this.#link = link;
 		return link;
 	}
@@ -203,7 +208,10 @@ export class LazyBrowser {
 					registry,
 					host,
 					proxy: new CdpProxy(host, registry),
-					screen: new ScreenHub(host, registry),
+					screen: new ScreenHub(host, registry, {
+						cancel: (id) => this.#link?.send({ t: "download_cancel", id }),
+						reveal: async (path) => (await import("../folder.ts")).revealFile(path),
+					}),
 				};
 				this.#service = service;
 				return service;
@@ -253,17 +261,21 @@ export class LazyBrowser {
 		return usable ? cdpUrlOf(origin, registry.tokenFor(owner)) : null;
 	}
 
-	/** The conversation in `from` moved to `to` (omp's `/move`): its pages and endpoint are the new file's. */
+	/** The conversation in `from` moved to `to` (omp's `/move`): its pages, endpoint and downloads are the new file's. */
 	async moved(from: string, to: string): Promise<void> {
-		(await this.known())?.registry.rekey(from, to);
+		const service = await this.known();
+		service?.registry.rekey(from, to);
+		service?.screen.downloads.rekey(from, to);
 	}
 
 	/**
-	 * The conversation was deleted (`forget`: its endpoint goes too) or archived (its omp may still run, and keeps its
-	 * endpoint): its pages are closed.
+	 * The conversation was deleted (`forget`: its endpoint and list of downloads go too) or archived (its omp may still
+	 * run, and keeps its endpoint): its pages are closed.
 	 */
 	async closeOwner(owner: string, forget: boolean): Promise<void> {
-		await (await this.known())?.registry.closeOwner(owner, forget);
+		const service = await this.known();
+		if (forget) service?.screen.downloads.forget(owner);
+		await service?.registry.closeOwner(owner, forget);
 	}
 
 	/**

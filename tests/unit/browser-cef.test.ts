@@ -71,7 +71,7 @@ class FakeApp {
 				this.link.receive(JSON.stringify({ t: "created", req: m.req, targetId }));
 			} else if (m.t === "close") {
 				this.close(m.targetId);
-			} else {
+			} else if (m.t === "cdp") {
 				const c = JSON.parse(m.message) as { id: number; method: string; params: unknown; sessionId?: string };
 				const result = this.answer(c.method, c.params);
 				if (result === NO_ANSWER) return;

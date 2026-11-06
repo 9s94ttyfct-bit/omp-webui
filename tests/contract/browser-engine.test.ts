@@ -54,31 +54,35 @@ test("only the app, with the token it started the server with and no page's Orig
 	app?.close();
 });
 
-test("a conversation's endpoint works over the app's pages, and ends when the app's connection does", async () => {
+/** The app, let in and saying hello: it makes the page it is asked for (`targetId`) and answers every page command. */
+async function scriptedApp(targetId: string) {
 	const app = await opens("/browser-engine", { "x-omp-webui-token": server.accessToken });
 	if (!app) throw new Error("the app was not let in");
-	const said: { t: string; req?: number; url?: string; targetId?: string; message?: string }[] = [];
+	const said: { t: string; req?: number; url?: string; targetId?: string; message?: string; id?: string }[] = [];
 	app.onmessage = (e) => {
 		const m = JSON.parse(String(e.data));
 		said.push(m);
-		// The app makes the page it is asked for, and every page command is answered.
 		if (m.t === "create") {
-			app.send(JSON.stringify({ t: "page", page: { targetId: "P1", url: m.url, title: "" } }));
-			app.send(JSON.stringify({ t: "created", req: m.req, targetId: "P1" }));
+			app.send(JSON.stringify({ t: "page", page: { targetId, url: m.url, title: "" } }));
+			app.send(JSON.stringify({ t: "created", req: m.req, targetId }));
 		}
 		if (m.t === "cdp") {
 			const { id } = JSON.parse(m.message);
 			app.send(JSON.stringify({ t: "cdp", targetId: m.targetId, message: JSON.stringify({ id, result: {} }) }));
 		}
 	};
-	app.send(JSON.stringify({ t: "hello", run: "run-1", version: "156.0.0", pages: [] }));
+	app.send(JSON.stringify({ t: "hello", run: `run-${targetId}`, version: "156.0.0", pages: [] }));
 	// The hello is on another socket than the conversation's: a server that has not taken it yet answers the conversation's
 	// first request "the app's browser is not connected" (503) and ends the connection. Said by the endpoint's discovery,
 	// which is 200 once it has (#23).
 	await waitFor(
 		async () => (await fetch(`${server.url}/browser-cdp/${TA}/json/version`).catch(() => null))?.status === 200,
 	);
+	return { app, said };
+}
 
+/** Conversation A's endpoint, and its answer to `Target.getTargets` (its first page is made then). */
+async function conversationTargets() {
 	const conversation = await opens(`/browser-cdp/${TA}/devtools/browser`, {});
 	if (!conversation) throw new Error("the conversation was not let in");
 	const answers = new Map<number, unknown>();
@@ -96,13 +100,67 @@ test("a conversation's endpoint works over the app's pages, and ends when the ap
 		if (closed !== null && !answers.has(1)) throw new Error(`the conversation's endpoint closed first: ${closed}`);
 		return answers.has(1);
 	});
+	return {
+		conversation,
+		infos: (answers.get(1) as { targetInfos: { targetId: string; type: string }[] }).targetInfos,
+		closed: () => closed,
+	};
+}
+
+test("a conversation's endpoint works over the app's pages, and ends when the app's connection does", async () => {
+	const { app, said } = await scriptedApp("P1");
+	const { infos, closed } = await conversationTargets();
 	// Its first page was made by the app, on the server's request.
 	expect(said.some((m) => m.t === "create")).toBe(true);
-	const infos = (answers.get(1) as { targetInfos: { targetId: string; type: string }[] }).targetInfos;
 	expect(infos.map((t) => [t.targetId, t.type])).toEqual([["P1", "page"]]);
 
 	app.close();
-	await waitFor(() => closed !== null);
+	await waitFor(() => closed() !== null);
+});
+
+test("a page's download is its conversation's: only that conversation's Browser tab sees it, by name, and can stop it", async () => {
+	const { app, said } = await scriptedApp("D1");
+	const { conversation } = await conversationTargets();
+	type Downloads = { t: string; owner?: string; downloads?: Record<string, unknown>[] };
+	const tab = async (owner: string) => {
+		const ws = await opens("/ws/browser", { "x-omp-webui-token": server.accessToken });
+		if (!ws) throw new Error("the Browser tab was not let in");
+		const lists: Record<string, unknown>[][] = [];
+		ws.onmessage = (e) => {
+			const m = JSON.parse(String(e.data)) as Downloads;
+			if (m.t === "downloads" && m.downloads) lists.push(m.downloads);
+		};
+		ws.send(JSON.stringify({ t: "watch", owner, targetId: null, panel: { w: 800, h: 600 } }));
+		await waitFor(() => lists.length > 0);
+		return { ws, lists };
+	};
+	const mine = await tab(A);
+	const other = await tab("/sessions/b.jsonl");
+	expect(mine.lists.at(-1)).toEqual([]);
+
+	const download = { id: "7", targetId: "D1", name: "report.pdf", path: join(data, "report.pdf"), received: 10 };
+	app.send(JSON.stringify({ t: "download", download: { ...download, state: "progress", total: 100 } }));
+	await waitFor(() => (mine.lists.at(-1)?.length ?? 0) > 0);
+	const [item] = mine.lists.at(-1) ?? [];
+	expect(item).toMatchObject({ id: "7", name: "report.pdf", state: "progress", received: 10, total: 100 });
+	expect(item).not.toHaveProperty("path");
+
+	// Another conversation's tab neither hears of it nor stops it; its own does.
+	other.ws.send(JSON.stringify({ t: "download_cancel", id: "7" }));
+	mine.ws.send(JSON.stringify({ t: "download_cancel", id: "7" }));
+	await waitFor(() => said.some((m) => m.t === "download_cancel"));
+	await new Promise((r) => setTimeout(r, 200));
+	expect(said.filter((m) => m.t === "download_cancel")).toEqual([{ t: "download_cancel", id: "7" }]);
+	expect(other.lists.every((l) => l.length === 0)).toBe(true);
+
+	// Once it ended, it is not stopped any more.
+	app.send(JSON.stringify({ t: "download", download: { ...download, state: "cancelled", total: 100 } }));
+	await waitFor(() => mine.lists.at(-1)?.[0]?.state === "cancelled");
+	mine.ws.send(JSON.stringify({ t: "download_cancel", id: "7" }));
+	await new Promise((r) => setTimeout(r, 200));
+	expect(said.filter((m) => m.t === "download_cancel")).toHaveLength(1);
+
+	for (const ws of [mine.ws, other.ws, conversation, app]) ws.close();
 });
 
 async function waitFor(ok: () => boolean | Promise<boolean>, ms = 10_000): Promise<void> {
