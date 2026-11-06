@@ -199,6 +199,12 @@ export interface Meta {
 	shell?: boolean;
 	/** This page is on the computer the server runs on: the server's own test for what only that computer may change. */
 	local: boolean;
+	/**
+	 * This page is the person's own: on this computer, or signed in through Cloudflare Access (the server's `isOwnerPage`).
+	 * It may change the guard's settings, a conversation's own guard and the guidance; any other page only sees them. A
+	 * server of an earlier version leaves it out (`ownerPage` then reads `local`).
+	 */
+	owner?: boolean;
 	/** The other Macs the server knows (#628): the sidebar's machine switcher is there once there is one. */
 	macs: SavedMac[];
 	/** How many questions of unattended mode wait for the person (#646), and in which conversations; kept current by the `questions` message. A server of an earlier version leaves it out. */
@@ -211,6 +217,9 @@ export interface Meta {
 	/** The folder Ask agent for help's conversations run in (Settings, v0.13.0): told to a page on this computer only. */
 	settingsHelpFolder?: string;
 }
+
+/** Whether this page may change the guard's settings, a conversation's own guard and the guidance (`Meta.owner`). */
+export const ownerPage = (meta: Meta | null | undefined): boolean => meta?.owner ?? meta?.local === true;
 
 /** The permission mode new conversations start in: the user's choice, or null to follow omp's own setting (`omp`). */
 export interface ApprovalDefault {

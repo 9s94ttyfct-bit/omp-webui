@@ -150,7 +150,8 @@ test("a page that is not this computer's is shown the conversation's guard and c
 	});
 	await page.route("**/api/meta", async (route) => {
 		const real = await (await route.fetch()).json();
-		return route.fulfill({ json: { ...real, remote: true, local: false } });
+		// A page on the network, holding only the token: one signed in through Access may change it (`access-owner.spec.ts`).
+		return route.fulfill({ json: { ...real, remote: true, local: false, owner: false } });
 	});
 	await page.reload();
 	await sessionRow(page, "Guard panel remote").click();

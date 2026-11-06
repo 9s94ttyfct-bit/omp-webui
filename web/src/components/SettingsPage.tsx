@@ -451,7 +451,8 @@ export function SettingsPage() {
 					"safety",
 					<>
 						<ApprovalSettings />
-						{meta && !meta.remote ? (
+						{/* Changed from the person's own page (this computer's, or one signed in through Access); any other is told where. */}
+						{meta ? (
 							<Suspense fallback={null}>
 								<GuardSettings />
 							</Suspense>

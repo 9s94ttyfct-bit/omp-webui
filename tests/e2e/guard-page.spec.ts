@@ -652,7 +652,8 @@ test("on a page that came through the tunnel the Guard page says so and asks for
 	});
 	await page.route("**/api/meta", async (route) => {
 		const real = await (await route.fetch()).json();
-		return route.fulfill({ json: { ...real, remote: true } });
+		// Not signed in through Access either: one that is is shown the way to Settings (`access-owner.spec.ts`).
+		return route.fulfill({ json: { ...real, remote: true, local: false, owner: false } });
 	});
 	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
 	await page.goto(`${s.url}/?token=${s.accessToken}`);

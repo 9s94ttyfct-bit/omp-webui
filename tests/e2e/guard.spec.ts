@@ -193,7 +193,7 @@ test("a change made in another tab arrives on this one", async ({ page, context 
 	await expect(page.getByTestId("guard-reviewer")).toHaveCount(0);
 });
 
-test("on a page that came through the tunnel there is no Safety section, and nothing is asked of /api/guard", async ({
+test("on a page on the network that holds only the token the card says where the guard is changed, and nothing is asked of /api/guard", async ({
 	page,
 }) => {
 	const asked: string[] = [];
@@ -202,12 +202,14 @@ test("on a page that came through the tunnel there is no Safety section, and not
 	});
 	await page.route("**/api/meta", async (route) => {
 		const real = await (await route.fetch()).json();
-		return route.fulfill({ json: { ...real, remote: true } });
+		return route.fulfill({ json: { ...real, remote: true, local: false, owner: false } });
 	});
 	await page.goto("/#/settings/safety");
 	await expect(page.getByTestId("settings-page")).toBeVisible();
 	await expect(page.getByTestId("approval-settings")).toBeVisible();
-	await expect(card(page)).toHaveCount(0);
+	await expect(page.getByTestId("guard-settings-not-here")).toHaveText(en.settingsNotHere);
+	await expect(card(page).getByRole("radio")).toHaveCount(0);
+	await expect(page.getByTestId("guard-open-page")).toHaveCount(0);
 	expect(asked).toEqual([]);
 });
 

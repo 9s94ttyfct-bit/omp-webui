@@ -3,6 +3,7 @@ import { PREF } from "@shared/prefs.ts";
 import { EyeOff, ScanEye } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useT } from "../i18n/index.ts";
+import { ownerPage } from "../lib/api.ts";
 import { guardApi } from "../lib/guard-api.ts";
 import { MODE_TEXT } from "../lib/guard-format.ts";
 import { useGuardStrings } from "../lib/guard-strings.ts";
@@ -28,8 +29,9 @@ export const GUARD_TOGGLE_BAR = "h-8 w-8 shrink-0 rounded-lg";
  * on to what it was under before (`lib/guard-toggle.ts`). It is the conversation's own guard as This session shows it
  * (`LiveInfo.guard`, which every page is told), so a change made in either is shown by both, on every page. Red while the
  * guard is off for this conversation alone; muted, struck through, while it is off because it follows Settings › Safety,
- * which say Off. A page that may not change the guard (not this computer's) has the switch shown and not usable, and says
- * why. Drawn for a conversation whose omp runs (`ChatView`). A chunk of its own, with the guard's strings.
+ * which say Off. A page that may not change the guard (not the person's own: neither this computer's nor one signed in
+ * through Cloudflare Access) has the switch shown and not usable, and says why. Drawn for a conversation whose omp runs
+ * (`ChatView`). A chunk of its own, with the guard's strings.
  */
 export default function GuardToggle({ liveId }: { liveId: string }) {
 	const t = useT();
@@ -37,7 +39,7 @@ export default function GuardToggle({ liveId }: { liveId: string }) {
 	const toast = useApp((s) => s.toast);
 	const guard = useApp((s) => s.lives[liveId]?.info.guard);
 	const file = useApp((s) => s.lives[liveId]?.info.sessionFile ?? null);
-	const local = useApp((s) => s.meta?.local === true);
+	const owner = useApp((s) => ownerPage(s.meta));
 	const settings = useGuard((s) => s.config?.mode ?? null);
 	const [busy, setBusy] = useState(false);
 	// A conversation's file names it across its processes; one that has none yet (a new chat) is its process.
@@ -46,20 +48,20 @@ export default function GuardToggle({ liveId }: { liveId: string }) {
 
 	// What it is under while on, kept for when the switch turns it back on: written whichever control put it there.
 	useEffect(() => {
-		if (!local || choice === null) return;
+		if (!owner || choice === null) return;
 		const next = withRemembered(localStorage.getItem(PREF.guardBefore), key, choice);
 		if (next !== null) setPref(PREF.guardBefore, next);
-	}, [local, key, choice]);
+	}, [owner, key, choice]);
 
 	// Settings' mode, for the way back on of a conversation that followed them: asked once by a page that may read them.
 	useEffect(() => {
-		if (local && settings === null) void guardApi.config().catch(() => {});
-	}, [local, settings]);
+		if (owner && settings === null) void guardApi.config().catch(() => {});
+	}, [owner, settings]);
 
 	if (!ready || !guard) return <span aria-hidden className={GUARD_TOGGLE_BAR} />;
 	const shown = guardToggleState(guard);
 	const on = shown === "on";
-	const block = guardToggleBlock({ local });
+	const block = guardToggleBlock({ owner });
 	const modeName = t(MODE_TEXT[guard.config.mode].label);
 	const back = guardOnPatch(rememberedChoice(localStorage.getItem(PREF.guardBefore), key), settings);
 	const state =

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isLocalOnlyRoute } from "../../server/this-computer.ts";
+import { isLocalOnlyRoute, isOwnerPage, isOwnerRoute } from "../../server/this-computer.ts";
 import { DEFAULT_GUARD_CONFIG, type GuardConfig, type LiveGuard, resolveGuard } from "../../shared/guard.ts";
 import { isValidPref, MAX_PREF_LENGTH, PREF } from "../../shared/prefs.ts";
 import {
@@ -102,16 +102,21 @@ describe("turning it off and on", () => {
 });
 
 describe("the pages that may switch it", () => {
-	test("only the page of the computer omp-webui runs on: any other is shown the switch and cannot use it", () => {
-		expect(guardToggleBlock({ local: true })).toBeNull();
-		expect(guardToggleBlock({ local: false })).toBe("remote");
+	test("only the person's own page (this computer's, or one signed in through Access): any other is shown the switch and cannot use it", () => {
+		expect(guardToggleBlock({ owner: true })).toBeNull();
+		expect(guardToggleBlock({ owner: false })).toBe("remote");
 	});
 
 	test("what the switch sends is refused to any other page by the server, whatever the page draws", () => {
-		// The switch changes the conversation's guard through the same route as This session; a page that is not this
-		// computer's is answered 403 there (`route` in server/main.ts), so a page that drew the switch enabled changes nothing.
-		expect(isLocalOnlyRoute("/api/guard/live")).toBe(true);
-		expect(isLocalOnlyRoute("/api/guard")).toBe(true);
+		// The switch changes the conversation's guard through the same route as This session; a page that is not the
+		// person's own is answered 403 there (`route` in server/main.ts), so a page that drew the switch enabled changes nothing.
+		for (const path of ["/api/guard/live", "/api/guard"]) {
+			expect(isOwnerRoute(path), path).toBe(true);
+			expect(isLocalOnlyRoute(path), path).toBe(false);
+		}
+		expect(isOwnerPage(null, false)).toBe(false);
+		expect(isOwnerPage({ email: "someone@example.com", validUntil: Date.now() + 60_000 }, false)).toBe(true);
+		expect(isOwnerPage(null, true)).toBe(true);
 	});
 });
 

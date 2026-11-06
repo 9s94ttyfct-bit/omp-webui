@@ -46,7 +46,8 @@ export const zh: Record<keyof typeof en, string> = {
 	nameEmpty: "模板需要一个名称。",
 	textEmpty: "模板需要一些内容。",
 	nameTooLong: "名称最多 {max} 个字符。",
-	readOnlyRemote: "指引只能在运行 omp-webui 的这台电脑上修改。",
+	readOnlyRemote: "指引只能在运行 omp-webui 的电脑上，或在通过 Cloudflare Access 登录的页面上修改。",
+	pickFailed: "无法更改指引：{error}",
 	chip: "指引：{name}",
 	chipOff: "指引：关",
 	defaultBadge: "默认",
@@ -119,6 +120,7 @@ export const zh: Record<keyof typeof en, string> = {
 	conflictCheckHint:
 		"用一个小模型把这段指引与文件夹的 AGENTS.md（以及 omp 在那里加载的其他文件）和 omp 对这个项目的记忆进行对照。除非你应用，否则不会修改任何内容。",
 	conflictCheckOff: "冲突检查已关闭（设置 › 指引）。",
+	conflictCheckLocal: "冲突检查在运行 omp-webui 的电脑上进行：它要读取 omp 在那里的记忆，而这个页面看不到这些记忆。",
 	conflictTruncated: "只读了一部分（太长）：{files}。",
 	conflictModel: "由 {model} 检查。",
 	conflictCached: "由 {model} 检查（刚刚检查过同样的文字）。",

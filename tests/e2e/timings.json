@@ -1,6 +1,11 @@
 {
 	"version": 1,
 	"tests": {
+		"access-owner.spec.ts › a page holding only the token is shown New chat's guard and guidance, says why it cannot change them, and sends nothing": 1.2,
+		"access-owner.spec.ts › a pick the server refuses is said in a toast, and the chip keeps what the conversation carries": 1.3,
+		"access-owner.spec.ts › an Access page changes the guard in Settings › Safety, and is told the Guard page is on the computer": 1.4,
+		"access-owner.spec.ts › an Access page picks New chat's guard and guidance, and the warm-up process is given them": 1.4,
+		"access-owner.spec.ts › on a touch screen › a row shows its text under a mouse only, so a tap on it picks at once": 1.3,
 		"accounts.spec.ts › Manage says why when omp's account list cannot be fetched, instead of doing nothing": 5.7,
 		"accounts.spec.ts › Settings starts no omp until Accounts is asked for; the helper is named as one and stops with the list": 7.4,
 		"accounts.spec.ts › a reconnect of the page's socket keeps the Accounts list and its helper omp, and starts no second one": 4.8,
@@ -784,7 +789,7 @@
 		"guard.spec.ts › a mode change takes the notice of every conversation away": 3.5,
 		"guard.spec.ts › a tool card says what the guard decided: heard live, and read back after a reload": 5.8,
 		"guard.spec.ts › en: the card, its log and a verdict are in the page's language, and the card passes axe": 4,
-		"guard.spec.ts › on a page that came through the tunnel there is no Safety section, and nothing is asked of /api/guard": 2.1,
+		"guard.spec.ts › on a page on the network that holds only the token the card says where the guard is changed, and nothing is asked of /api/guard": 1.1,
 		"guard.spec.ts › the Chinese pack has every string of the English one, with the same parameters, and says 对话, never 会话": 1.2,
 		"guard.spec.ts › the card shows the three choices, Reviewer model first chosen, and each change is sent at once and kept": 5.7,
 		"guard.spec.ts › the log is closed until asked for, lists the decisions newest first, shows the exact call as text, and follows live": 4,

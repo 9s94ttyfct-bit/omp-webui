@@ -13,6 +13,7 @@ import { PREF } from "@shared/prefs.ts";
 import { Check, Pencil, Sparkles, X } from "lucide-react";
 import { type ComponentProps, lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { useT } from "../i18n/index.ts";
+import { ownerPage } from "../lib/api.ts";
 import { GuidanceApiError, guidanceApi, nameProblemText, refusalText } from "../lib/guidance-api.ts";
 import { templateName } from "../lib/guidance-names.ts";
 import { useGuidanceStrings } from "../lib/guidance-strings.ts";
@@ -72,13 +73,15 @@ function ReasonButton({
  *
  * A running conversation is changed in its process, which reads its file at each turn. One with no process (`file` only)
  * has the change kept for when it is opened next. A template changed elsewhere (another page, Settings) reaches a running
- * conversation's live frame, so the box (while not being edited) and the template menu follow it. A page that is not on
- * the computer omp-webui runs on reads only, as the server allows template and guidance changes from this computer only:
- * every control says so.
+ * conversation's live frame, so the box (while not being edited) and the template menu follow it. A page that is not the
+ * person's own (`Meta.owner`: neither this computer's nor one signed in through Cloudflare Access) reads only, as the server
+ * allows template and guidance changes from those alone: every control says so. The conflict check is this computer's alone
+ * (it reads what omp remembers there): elsewhere its button says so and a save is not checked.
  */
 export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: string | null }) {
 	const t = useT();
 	const ready = useGuidanceStrings();
+	const owner = useApp((s) => (s.meta ? ownerPage(s.meta) : true));
 	const local = useApp((s) => s.meta?.local !== false);
 	// The running conversation's guidance as the live frames keep it; a closed one's is what the server kept.
 	const liveGuidance = useApp((s) => (liveId ? s.lives[liveId]?.info.guidance : undefined));
@@ -172,7 +175,7 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 	const template = value?.template ? (templates?.find((x) => x.id === value.template) ?? null) : null;
 	const changed = text.trim() !== carried.trim();
 	const tooLong = text.length > GUIDANCE_MAX;
-	const readOnly = !local || busy;
+	const readOnly = !owner || busy;
 
 	/** Ask the server to check `guidance`, now saved for this conversation, for conflicts (v0.13.0); a page elsewhere never does. */
 	const runCheck = (guidance: string) => {
@@ -323,7 +326,7 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 		endRename();
 	};
 
-	const remote = local ? null : t("guidance.readOnlyRemote");
+	const remote = owner ? null : t("guidance.readOnlyRemote");
 	const waiting = busy ? t("guidance.saving") : null;
 	const tooLongText = t("guidance.tooLong", { max: GUIDANCE_MAX });
 	const hasText = guidanceText(text) !== "";
@@ -353,6 +356,7 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 	// Check for conflicts: the text the conversation carries now (saved), compared again on the person's word.
 	const checkReason =
 		remote ??
+		(local ? null : t("guidance.conflictCheckLocal")) ??
 		waiting ??
 		(!checkOn
 			? t("guidance.conflictCheckOff")
@@ -369,7 +373,7 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 				<Sparkles size={13} className="mt-0.5 shrink-0 text-accent" aria-hidden />
 				{t("guidance.changeIntro")}
 			</p>
-			{!local ? (
+			{!owner ? (
 				<p className="text-xs text-muted" data-testid="guidance-readonly-remote">
 					{t("guidance.readOnlyRemote")}
 				</p>

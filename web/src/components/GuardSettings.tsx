@@ -3,6 +3,7 @@ import { type PolicyStatus, policyStatus } from "@shared/guard-policy.ts";
 import { Check, CircleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { type MessageKey, useT } from "../i18n/index.ts";
+import { ownerPage } from "../lib/api.ts";
 import { guardApi } from "../lib/guard-api.ts";
 import { MODE_TEXT } from "../lib/guard-format.ts";
 import { useGuardStrings } from "../lib/guard-strings.ts";
@@ -33,8 +34,10 @@ const POLICY_TEXT: Record<PolicyStatus, MessageKey> = {
  * or refused by a reviewer model, or by the person ("Ask me"), or not looked at (Off). A change is sent at once and the
  * answer is what the card shows; a change made in another tab arrives as `guard_config`. What the guard decided, how strict
  * it is for each kind of call, the reviewer's rules and the benchmark are on the Guard page; this card keeps a link to it and
- * a line that says where they stand. The settings and the decisions are for the page on this computer: a page that came
- * through the tunnel has no such card (see `SettingsPage`).
+ * a line that says where they stand. The settings are for the person's own page: this computer's, or one signed in through
+ * Cloudflare Access (`Meta.owner`). The Guard page (the decisions, the rules by kind, the benchmark) is this computer's
+ * alone, so a page signed in through Access is told so in place of the summary. Any other page (one on the network, which
+ * holds only the token) is told where the guard is changed, and asks the server for nothing.
  */
 export function GuardSettings() {
 	const t = useT();
@@ -43,28 +46,32 @@ export function GuardSettings() {
 	const rules = useGuard((s) => s.rules);
 	const lastId = useGuard((s) => s.last?.id);
 	const setView = useApp((s) => s.setView);
+	const owner = useApp((s) => ownerPage(s.meta));
+	const local = useApp((s) => s.meta?.local === true);
 	// What was chosen shows at once, and stays until the server has answered: kept, or refused (it goes back).
 	const [draft, setDraft] = useState<Partial<GuardConfig>>({});
 	const config = stored && { ...stored, ...draft };
-	const models = useModelCatalog(true, "omp");
+	const models = useModelCatalog(owner, "omp");
 	const [outcome, setOutcome] = useState<Outcome>({ state: "idle" });
 	/** How many decisions the log holds: the line under the settings says so. */
 	const [recorded, setRecorded] = useState<number | null>(null);
 
 	useEffect(() => {
+		if (!owner) return;
 		let alive = true;
 		guardApi
 			.config()
 			.catch((e) => alive && setOutcome({ state: "error", why: "guard.loadFailed", error: messageOf(e) }));
-		guardApi.rules().catch(() => {});
+		if (local) guardApi.rules().catch(() => {});
 		return () => {
 			alive = false;
 		};
-	}, []);
+	}, [owner, local]);
 
-	// The count is read again when a decision is made while this card is open.
+	// The count is read again when a decision is made while this card is open (on this computer: the log is its own).
 	// biome-ignore lint/correctness/useExhaustiveDependencies: `lastId` is what says a decision arrived.
 	useEffect(() => {
+		if (!local) return;
 		let alive = true;
 		guardApi.log({ limit: 1 }).then(
 			(res) => alive && setRecorded(res.total),
@@ -73,9 +80,18 @@ export function GuardSettings() {
 		return () => {
 			alive = false;
 		};
-	}, [lastId]);
+	}, [lastId, local]);
 
 	if (!ready) return null;
+	if (!owner)
+		return (
+			<section className="rounded-2xl border border-border bg-surface p-4" data-testid="guard-settings">
+				<CardHeader title={t("guard.title")} hint={t("guard.guardIntro")} />
+				<p className="text-xs text-muted" data-testid="guard-settings-not-here">
+					{t("guard.settingsNotHere")}
+				</p>
+			</section>
+		);
 
 	const change = async (patch: Partial<GuardConfig>) => {
 		setDraft((d) => ({ ...d, ...patch }));
@@ -195,30 +211,36 @@ export function GuardSettings() {
 				{t("guard.perConversation")}
 			</p>
 
-			<div className="mt-3 flex flex-wrap items-center gap-3" data-testid="guard-summary">
-				<dl
-					className="grid min-w-0 flex-1 basis-56 grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs"
-					data-testid="guard-summary-line"
-				>
-					{recorded === null ? null : (
-						<>
-							<dt className="text-muted">{t("guard.settingsSummaryDecisions")}</dt>
-							<dd>
-								{recorded === 0
-									? t("guard.settingsSummaryDecisionsNone")
-									: t("guard.settingsSummaryDecisionsCount", { count: recorded })}
-							</dd>
-							<dt className="text-muted">{t("guard.settingsSummaryRules")}</dt>
-							<dd>{summary.policy}</dd>
-							<dt className="text-muted">{t("guard.settingsSummaryChanged")}</dt>
-							<dd className="tabular-nums">{summary.changed}</dd>
-						</>
-					)}
-				</dl>
-				<Button size="sm" data-testid="guard-open-page" onClick={() => setView({ kind: "guard" })}>
-					{t("guard.settingsOpenPage")}
-				</Button>
-			</div>
+			{local ? (
+				<div className="mt-3 flex flex-wrap items-center gap-3" data-testid="guard-summary">
+					<dl
+						className="grid min-w-0 flex-1 basis-56 grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs"
+						data-testid="guard-summary-line"
+					>
+						{recorded === null ? null : (
+							<>
+								<dt className="text-muted">{t("guard.settingsSummaryDecisions")}</dt>
+								<dd>
+									{recorded === 0
+										? t("guard.settingsSummaryDecisionsNone")
+										: t("guard.settingsSummaryDecisionsCount", { count: recorded })}
+								</dd>
+								<dt className="text-muted">{t("guard.settingsSummaryRules")}</dt>
+								<dd>{summary.policy}</dd>
+								<dt className="text-muted">{t("guard.settingsSummaryChanged")}</dt>
+								<dd className="tabular-nums">{summary.changed}</dd>
+							</>
+						)}
+					</dl>
+					<Button size="sm" data-testid="guard-open-page" onClick={() => setView({ kind: "guard" })}>
+						{t("guard.settingsOpenPage")}
+					</Button>
+				</div>
+			) : (
+				<p className="mt-3 text-xs text-muted" data-testid="guard-page-local">
+					{t("guard.settingsPageLocal")}
+				</p>
+			)}
 		</section>
 	);
 }

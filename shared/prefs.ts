@@ -145,13 +145,13 @@ export const PREF = {
 	/**
 	 * Whether the built-in browser is used at all (v0.18.4): `on` (the default) or `off`. Off, the side panel has no Browser
 	 * tab, no conversation is given its endpoint and omp's own browser tool is turned off (`browser.enabled: false` in each
-	 * conversation's overlay), until it is turned on again. Changed only where the browser is managed (`canManageBrowser`).
+	 * conversation's overlay), until it is turned on again. Changed only where the browser is managed (`isOwnerPage` in `server/this-computer.ts`).
 	 */
 	browser: "ompw.browser",
 	/**
 	 * Whether the built-in browser updates itself: `on` (the default) or `off`. On, the server looks for a newer version a
 	 * minute after it starts and every 24 hours, downloads it in the background and switches to it once no conversation
-	 * uses the browser (`server/browser/autoupdate.ts`). Changed only where the browser is managed (`canManageBrowser`).
+	 * uses the browser (`server/browser/autoupdate.ts`). Changed only where the browser is managed (`isOwnerPage` in `server/this-computer.ts`).
 	 */
 	browserAutoUpdate: "ompw.browserAutoUpdate",
 	/**

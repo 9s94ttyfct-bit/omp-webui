@@ -73,7 +73,7 @@ export const zh: Record<keyof typeof en, string> = {
 	sessionFromSettings: "来自“设置 › 安全”",
 	sessionSetHere: "为这个对话单独设置",
 	sessionUseSettings: "改用设置里的值",
-	sessionReadOnly: "要在运行 omp-webui 的电脑上更改。这个页面只显示。",
+	sessionReadOnly: "要在运行 omp-webui 的电脑上，或在通过 Cloudflare Access 登录的页面上更改。这个页面只显示。",
 	sessionFailed: "无法更改这个对话的防护：{error}",
 	sessionAskOn: "联系不上审查模型时，会询问你",
 	sessionAskOff: "联系不上审查模型时，有风险的调用会被拒绝",
@@ -88,7 +88,7 @@ export const zh: Record<keyof typeof en, string> = {
 	toggleTurnOnPrevious: "重新开启：{mode}。",
 	toggleTurnOnHere: "只对这个对话开启：{mode}。",
 	toggleTurnOnSettings: "重新开启：跟随设置（{mode}）。",
-	toggleRemote: "要在运行 omp-webui 的电脑上切换。",
+	toggleRemote: "要在运行 omp-webui 的电脑上，或在通过 Cloudflare Access 登录的页面上切换。",
 	toggleTip: "{state}{action}",
 	toggleFailed: "无法切换这个对话的防护：{error}",
 	perConversation:
@@ -106,6 +106,9 @@ export const zh: Record<keyof typeof en, string> = {
 	settingsPolicyDefault: "默认",
 	settingsPolicyCustom: "你自己的",
 	settingsPolicyOutdated: "你自己的（默认规则已更新）",
+	settingsPageLocal: "“防护”页面（防护做过的决定、各类调用有多严格、审查规则和基准测试）在运行 omp-webui 的电脑上。",
+	settingsNotHere:
+		"防护要在运行 omp-webui 的电脑上，或在通过 Cloudflare Access 登录的页面上更改。这个页面只持有访问令牌，所以看不到防护的设置。",
 
 	// ---- “防护”页面
 	pageTitle: "防护",
@@ -116,6 +119,9 @@ export const zh: Record<keyof typeof en, string> = {
 	pageTabs: "防护的各部分",
 	pageRemoteTitle: "请在运行 omp-webui 的电脑上更改防护",
 	pageRemoteHint: "防护做过的决定和它的设置只属于那台电脑。请在那台电脑上打开 omp-webui 查看。",
+	pageAccessTitle: "“防护”页面在运行 omp-webui 的电脑上",
+	pageAccessHint:
+		"防护做过的决定、各类调用有多严格和基准测试只属于那台电脑。防护的设置可以在这个页面的“设置 › 安全”里更改。",
 	tabDecisions: "决定记录",
 	tabPolicy: "策略",
 	tabBench: "基准测试",

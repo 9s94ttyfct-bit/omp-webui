@@ -788,38 +788,47 @@ describe("the settings", () => {
 		expect(((await res.json()) as { config: GuardConfig }).config.mode).toBe("reviewer");
 	}, 60_000);
 
-	test("a page that came in through the tunnel is refused the guard's settings, its log and its decisions", async () => {
+	test("a page signed in through Access changes the guard's settings and is told them, and is refused its log and its decisions", async () => {
+		await setGuard({
+			mode: "reviewer",
+			reviewer: "revco/stub-reviewer",
+			askWhenUnavailable: true,
+			askWhenDenied: true,
+		});
 		const phone = remoteClient(s, key);
-		for (const [path, method, body] of [
-			["/api/guard", "GET", undefined],
-			["/api/guard", "POST", JSON.stringify({ mode: "off" })],
-			["/api/guard/log", "GET", undefined],
-			["/api/guard/decisions?session=x", "GET", undefined],
-		] as const) {
-			const res = await phone.fetch(
-				path,
-				{ method, headers: method === "POST" ? { "x-omp-webui": "1", "content-type": "application/json" } : undefined },
-				body,
-			);
-			expect(res.status, `${method} ${path}`).toBe(403);
-		}
-		// Not changed, and a remote socket is not told of decisions.
+		const json = { "x-omp-webui": "1", "content-type": "application/json" };
+		// The settings are the person's, and an Access sign-in is the person (`isOwnerPage`): read and changed.
+		expect((await phone.fetch("/api/guard", { method: "GET" })).status).toBe(200);
+		const changed = await phone.fetch(
+			"/api/guard",
+			{ method: "POST", headers: json },
+			JSON.stringify({ askWhenDenied: false }),
+		);
+		expect(changed.status).toBe(200);
 		expect(
-			((await (await fetch(`${s.url}/api/guard`, { headers: authed() })).json()) as { config: GuardConfig }).config
-				.mode,
-		).toBe("reviewer");
+			((await (await fetch(`${s.url}/api/guard`, { headers: authed() })).json()) as { config: GuardConfig }).config,
+		).toMatchObject({ mode: "reviewer", askWhenDenied: false });
+		// What the guard decided is the Guard page's, this computer's alone.
+		for (const path of ["/api/guard/log", "/api/guard/decisions?session=x"]) {
+			expect((await phone.fetch(path, { method: "GET" })).status, path).toBe(403);
+		}
 		const remote = await phone.socket();
 		expect(remote).not.toBeNull();
-		let heard = false;
+		const heard: string[] = [];
 		remote?.addEventListener("message", (ev) => {
-			if (String(ev.data).includes('"guard_')) heard = true;
+			if (String(ev.data).includes('"guard_')) heard.push(String(ev.data));
 		});
-		// A page on this computer hears of the change; the remote one, attached at the same moment, does not.
+		// Both pages hear of the change; the remote one is told the settings, not the reviewer's rules nor any decision.
 		const local = await connect(s);
 		const told = messageWhere(local, (m) => m.t === "guard_config");
-		await setGuard({ mode: "reviewer", askWhenUnavailable: false });
+		const toldThere = remote ? messageWhere(remote, (m) => m.t === "guard_config") : Promise.resolve(null);
+		await setGuard({ mode: "reviewer", askWhenUnavailable: false, askWhenDenied: true });
 		await told;
-		expect(heard).toBe(false);
+		expect((await toldThere)?.config).toMatchObject({ askWhenUnavailable: false });
+		for (const text of heard) {
+			expect(text).not.toContain('"guard_decision"');
+			expect(JSON.parse(text)).not.toHaveProperty("rules");
+		}
 		local.close();
 		remote?.close();
 	}, 60_000);
@@ -887,32 +896,35 @@ describe("a conversation's own guard", () => {
 		await following.close();
 	}, 240_000);
 
-	test("a page that came in through the tunnel is refused to change it, by the route and by opening a chat with one, and is shown what it is", async () => {
+	test("a page signed in through Access changes it, by the route and by opening a chat with one", async () => {
 		await setGuard({ mode: "reviewer", reviewer: "revco/stub-reviewer", askWhenUnavailable: true });
 		const c = await conversation();
 		expect((await choose(c.live.liveId, { mode: "ask" })).status).toBe(200);
 		const phone = remoteClient(s, key);
-		const refused = await phone.fetch(
+		const changed = await phone.fetch(
 			"/api/guard/live",
 			{ method: "POST", headers: { "x-omp-webui": "1", "content-type": "application/json" } },
-			JSON.stringify({ liveId: c.live.liveId, guard: { mode: "off" } }),
+			JSON.stringify({ liveId: c.live.liveId, guard: { mode: "reviewer" } }),
 		);
-		expect(refused.status).toBe(403);
+		expect(changed.status).toBe(200);
 		const socket = await phone.socket();
 		expect(socket).not.toBeNull();
 		if (socket) {
-			expect(
-				await rejectionOf(request(socket, { t: "open", target: { kind: "new", cwd: s.work, guard: { mode: "off" } } })),
-			).toThrow(/computer omp-webui runs on/);
+			const mine = await request<{ liveId: string; guard?: { own?: unknown } }>(socket, {
+				t: "open",
+				target: { kind: "new", cwd: s.work, guard: { mode: "ask" } },
+			});
+			expect(mine.guard?.own).toEqual({ mode: "ask" });
+			await request(socket, { t: "close", liveId: mine.liveId }).catch(() => {});
 			const listing = await request<{ liveId: string; guard?: { own?: unknown } }[]>(socket, { t: "list_lives" });
-			expect(listing.find((l) => l.liveId === c.live.liveId)?.guard?.own).toEqual({ mode: "ask" });
+			expect(listing.find((l) => l.liveId === c.live.liveId)?.guard?.own).toEqual({ mode: "reviewer" });
 			socket.close();
 		}
 		const word = await fetch(`${s.url}/api/lives`, { headers: authed() });
 		const listed: { liveId: string; guard?: { config: { mode: string }; own?: unknown } }[] = await word.json();
 		expect(listed.find((l) => l.liveId === c.live.liveId)?.guard).toMatchObject({
-			config: { mode: "ask" },
-			own: { mode: "ask" },
+			config: { mode: "reviewer" },
+			own: { mode: "reviewer" },
 		});
 		await c.close();
 	}, 120_000);

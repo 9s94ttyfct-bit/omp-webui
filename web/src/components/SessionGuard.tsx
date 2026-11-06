@@ -10,6 +10,7 @@ import {
 import { EyeOff, ScanEye } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useT } from "../i18n/index.ts";
+import { ownerPage } from "../lib/api.ts";
 import { guardApi } from "../lib/guard-api.ts";
 import { MODE_TEXT } from "../lib/guard-format.ts";
 import { useGuardStrings } from "../lib/guard-strings.ts";
@@ -204,8 +205,9 @@ export function GuardControls({
 	const ready = useGuardStrings();
 	const toast = useApp((s) => s.toast);
 	const stored = useApp((s) => s.lives[liveId]?.info.guard);
-	// Only the page on the computer the server runs on changes it; the server refuses any other (see `isLocalOnlyRoute`).
-	const editable = useApp((s) => s.meta?.local === true);
+	// Only the person's own page changes it (this computer's, or one signed in through Access); the server refuses any other
+	// (see `isOwnerRoute`).
+	const editable = useApp((s) => ownerPage(s.meta));
 	const settings = useGuard((s) => s.config);
 	const [busy, setBusy] = useState(false);
 	// What was asked and the server has not answered yet: shown at once, and given up if the server refuses it.

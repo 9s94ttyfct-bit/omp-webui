@@ -2,8 +2,8 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { canManageBrowser } from "../../server/browser/gate.ts";
 import { BrowserInstaller, handleBrowserRoute } from "../../server/browser/install.ts";
+import { isOwnerPage } from "../../server/this-computer.ts";
 import { BROWSER_NOT_HERE, type BrowserState } from "../../shared/browser.ts";
 
 /**
@@ -21,9 +21,9 @@ const post = (path: string) =>
 const identity = { email: "a@b", validUntil: Date.now() + 60_000 };
 
 test("only this computer or a verified Access sign-in may manage the browser", () => {
-	expect(canManageBrowser(null, false)).toBe(false);
-	expect(canManageBrowser(null, true)).toBe(true);
-	expect(canManageBrowser(identity, false)).toBe(true);
+	expect(isOwnerPage(null, false)).toBe(false);
+	expect(isOwnerPage(null, true)).toBe(true);
+	expect(isOwnerPage(identity, false)).toBe(true);
 });
 
 test("a token-only network page is refused install, update, cancel and clear, and may read the state", async () => {

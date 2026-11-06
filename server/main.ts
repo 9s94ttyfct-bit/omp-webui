@@ -21,7 +21,7 @@ import {
 	parseGuardOverridePatch,
 	reviewerSelectors,
 } from "../shared/guard.ts";
-import { GUARD_DEFAULTS } from "../shared/guard-policy.ts";
+import { GUARD_DEFAULTS, type GuardRules } from "../shared/guard-policy.ts";
 import { isRecord } from "../shared/guards.ts";
 import {
 	GUIDANCE_MAX,
@@ -43,7 +43,6 @@ import type { UploadFailure } from "../shared/upload.ts";
 import { DEFAULT_USAGE_RANGE, isUsageRange } from "../shared/usage-range.ts";
 import { Auth } from "./auth.ts";
 import type { CefLink } from "./browser/cef.ts";
-import { canManageBrowser } from "./browser/gate.ts";
 import { cdpPath, engineHere, LazyBrowser } from "./browser/lazy.ts";
 import type { ProxyConnection } from "./browser/proxy.ts";
 import type { ScreenClient } from "./browser/screen.ts";
@@ -138,7 +137,7 @@ import { handleSettingsHelp } from "./settings-help/routes.ts";
 import { SettingsHelp } from "./settings-help/service.ts";
 import { NOTIFY_EVENTS_PATH, SHELL_EVENTS_PATH, ShellEvents } from "./shell-events.ts";
 import { KeepAwake, SleepDetector, spawnCaffeinate, workingIds } from "./sleep.ts";
-import { isLocalOnlyRoute, isThisComputer } from "./this-computer.ts";
+import { isLocalOnlyRoute, isOwnerPage, isOwnerRoute, isThisComputer } from "./this-computer.ts";
 import type { TransferEnv } from "./transfer-core.ts";
 import type { AppUpdater, InstallTarget } from "./update/service.ts";
 import { APP_VERSION } from "./version.ts";
@@ -603,10 +602,23 @@ const automaticAppUpdates = process.env.OMP_WEBUI_UPDATE_CHECK !== "off" || appU
 let updater: AppUpdater | null = null;
 let loadingUpdater: Promise<AppUpdater> | null = null;
 
-/** What is said to the pages on this computer (any other has no use for the update, and is refused it and the guard). */
+/** What is said to the pages on this computer (any other has no use for the update, and is refused it and the guard's log). */
 function broadcastLocal(msg: ServerMessage): void {
 	const text = JSON.stringify(msg);
 	for (const ws of sockets) if (ws.data.local) ws.data.out?.send(text);
+}
+
+/**
+ * Tell the pages that may change the guard (`isOwnerPage`) what its settings are now. `rules`, the Guard page's, go to this
+ * computer's pages alone (`/api/guard/rules` is local-only); a page that holds only the token is told nothing of the guard.
+ */
+function broadcastGuardConfig(config: GuardConfig, rules?: GuardRules): void {
+	const here = JSON.stringify({ t: "guard_config", config, ...(rules ? { rules } : {}) } satisfies ServerMessage);
+	const signedIn = JSON.stringify({ t: "guard_config", config } satisfies ServerMessage);
+	for (const ws of sockets) {
+		if (ws.data.local) ws.data.out?.send(here);
+		else if (isOwnerPage(ws.data.remote, false)) ws.data.out?.send(signedIn);
+	}
 }
 
 /** Tell every open page what the preferences are now, each as it is given them (`pageSnapshot`: its device's keys or not). */
@@ -618,13 +630,13 @@ function broadcastPrefs(snapshot: StoreSnapshot): void {
 
 /**
  * The built-in browser (docs/agents/browser.md): its install state goes to every page the server lets in, each told whether
- * it may install, update and clear (this computer, or a verified Access sign-in; see `canManageBrowser`).
+ * it may install, update and clear (this computer, or a verified Access sign-in; see `isOwnerPage`).
  */
 const browser = new LazyBrowser({
 	dataDir: cfg.dataDir,
 	changed(inst) {
 		for (const ws of sockets) {
-			const state = inst.state(canManageBrowser(ws.data.remote, ws.data.local));
+			const state = inst.state(isOwnerPage(ws.data.remote, ws.data.local));
 			ws.data.out?.send(JSON.stringify({ t: "browser_state", state } satisfies ServerMessage));
 		}
 		// Installed (or gone): the conversations' overlays name their endpoints from now on (or no more).
@@ -882,7 +894,7 @@ function applyPrefs(changes: unknown): StoreSnapshot {
 /** The guard's settings changed (Settings › Safety, or Ask agent for help): every gate and every page on this computer is told now. */
 function guardChanged(config: GuardConfig): void {
 	pool.syncRisk();
-	broadcastLocal({ t: "guard_config", config });
+	broadcastGuardConfig(config);
 }
 
 /**
@@ -1004,7 +1016,7 @@ function migrateService(): Promise<MigrateService> {
 				// The guard choices an import brought are the person's own act (Move to another computer), not something to write over.
 				approval.reload();
 				// So are the guard's own settings: taken from the file the import wrote, then told to every gate and page.
-				broadcastLocal({ t: "guard_config", config: guardSettings.reload(), rules: guardSettings.rules() });
+				broadcastGuardConfig(guardSettings.reload(), guardSettings.rules());
 				pool.syncRisk();
 				modes.reload();
 				await store.refresh(true);
@@ -1113,6 +1125,14 @@ function fromOwnPage(req: Request): boolean {
 /** The remote requests `route` let in (see `RemoteAuth.verify`), and who each is from. */
 const remoteOf = new WeakMap<Request, RemoteIdentity>();
 
+/** Whether the request is from the person's own page (`isOwnerPage`): this computer's, or one signed in through Access. */
+const fromOwner = (req: Request): boolean => isOwnerPage(remoteOf.get(req) ?? null, onThisComputer.has(req));
+
+/** What a page that is not the person's own (`isOwnerPage`) is told when it asks to change the guard or the guidance. */
+const GUARD_NOT_HERE =
+	"The guard is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access";
+const GUIDANCE_NOT_HERE =
+	"Guidance is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access";
 /** What the file transfer asks of a request: who it is from, what this computer lets that page do, and what must not be touched. */
 function transferEnv(req: Request, peer: string | undefined): TransferEnv {
 	const local = onThisComputer.has(req);
@@ -1271,6 +1291,9 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				remote: !onThisComputer.has(req),
 				// Whether it is on the computer the server runs on (see `isThisComputer`): what only that computer may change.
 				local: onThisComputer.has(req),
+				// Whether it is the person's own (`isOwnerPage`): on this computer, or signed in through Cloudflare Access. Such a
+				// page may change the guard's settings, a conversation's own guard and the guidance; any other only sees them.
+				owner: fromOwner(req),
 				// What this page may do with the files of a conversation's folder (see `shared/transfer.ts`): all of it for a page
 				// on this computer, what the person set on this computer for any other.
 				fileTransfer: onThisComputer.has(req) ? "full" : remoteAuth.fileTransfer(),
@@ -1629,7 +1652,8 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			);
 		}
 		case "/api/guard":
-			// "Guard dangerous commands" (Settings › Safety): changed from a page on this computer only (see `route`).
+			// "Guard dangerous commands" (Settings › Safety): read and changed from the person's own page only, this computer's
+			// or one signed in through Access (`isOwnerRoute`, refused to any other in `route`).
 			if (req.method === "POST") {
 				const body: unknown = await req.json().catch(() => null);
 				try {
@@ -1644,9 +1668,10 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			return json({ config: guardSettings.get() });
 		case "/api/guard/live": {
 			// One conversation's own settings over the global ones (see `GuardOverride`); `guard` null: it follows them again.
-			// For a page on this computer only, as the global settings are (see `route`).
+			// For the person's own page only, as the global settings are (`isOwnerRoute`; `route` refused any other, and this
+			// asks again).
 			if (req.method !== "POST") return fail("POST required", 405);
-			if (!onThisComputer.has(req)) return fail("The guard is changed on the computer omp-webui runs on", 403);
+			if (!fromOwner(req)) return fail(GUARD_NOT_HERE, 403);
 			const body = (await req.json().catch(() => null)) as { liveId?: unknown; guard?: unknown } | null;
 			const live = typeof body?.liveId === "string" ? pool.get(body.liveId) : undefined;
 			if (!live || live.info.exited) return fail("Live session not found", 404);
@@ -1661,14 +1686,14 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		}
 		case "/api/guard/rules":
 			// What the person tuned of the guard: the reviewer's rules, the threshold of each category, their own benchmark
-			// cases. Local only like the rest of `/api/guard*` (see `route`); the shipped defaults come with it.
+			// cases. This computer's alone, as the rest of the Guard page is (see `isLocalOnlyRoute`); the shipped defaults come with it.
 			if (req.method === "POST") {
 				const body: unknown = await req.json().catch(() => null);
 				try {
 					const rules = guardSettings.setRules(body);
 					// Every gate is told now, not at the next look.
 					pool.syncRisk();
-					broadcastLocal({ t: "guard_config", config: guardSettings.get(), rules });
+					broadcastGuardConfig(guardSettings.get(), rules);
 					return json({ rules, defaults: GUARD_DEFAULTS });
 				} catch (e) {
 					if (e instanceof GuardConfigError) return fail(e.message);
@@ -1735,11 +1760,11 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				if (!onThisComputer.has(req) && isRecord(body?.changes) && Object.hasOwn(body.changes, PREF.keepAwake))
 					return fail("Keep the Mac awake is changed on the computer omp-webui runs on", 403);
 				// Whether conversations have a browser at all, and whether it updates itself, are the person's who manages the
-				// browser (`canManageBrowser`).
+				// browser (`isOwnerPage`).
 				if (
 					isRecord(body?.changes) &&
 					(Object.hasOwn(body.changes, PREF.browser) || Object.hasOwn(body.changes, PREF.browserAutoUpdate)) &&
-					!canManageBrowser(remoteOf.get(req) ?? null, onThisComputer.has(req))
+					!fromOwner(req)
 				)
 					return fail(
 						"The browser is turned on and off, and its automatic updates, from this computer, or from a page signed in with your account",
@@ -1942,11 +1967,12 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		}
 		case "/api/model-guidance": {
 			// The model guidance templates (#641): what Settings › Model guidance edits and the New chat picker offers. Every
-			// page may read them (a phone's New chat offers the same list); a change is made on this computer only, as the
-			// guard's settings are: what a template says is put into the system prompt of every conversation that picks it,
-			// which is the reason omp's memory is changed here too and nowhere else (see `isLocalOnlyRoute`).
+			// page may read them (a phone's New chat offers the same list); a change is made from the person's own page only
+			// (`isOwnerPage`: this computer's, or one signed in through Access), as the guard's settings are: what a template
+			// says is put into the system prompt of every conversation that picks it, and a page that holds only the token (one
+			// on the network) must not write into it.
 			if (req.method === "POST") {
-				if (!onThisComputer.has(req)) return fail("Guidance is changed on the computer omp-webui runs on", 403);
+				if (!fromOwner(req)) return fail(GUIDANCE_NOT_HERE, 403);
 				const body = (await req.json().catch(() => null)) as {
 					template?: unknown;
 					remove?: unknown;
@@ -1973,9 +1999,9 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		}
 		case "/api/model-guidance/restore": {
 			// Put the shipped templates back as they ship (the ones the person deleted come back, the ones they edited are
-			// set to the shipped text; templates they made are left alone). This computer only, as a change is.
+			// set to the shipped text; templates they made are left alone). The person's own page only, as a change is.
 			if (req.method !== "POST") return fail("POST required", 405);
-			if (!onThisComputer.has(req)) return fail("Guidance is changed on the computer omp-webui runs on", 403);
+			if (!fromOwner(req)) return fail(GUIDANCE_NOT_HERE, 403);
 			try {
 				const set = modelGuidance.restoreDefaults();
 				pool.followGuidanceTemplates();
@@ -2013,10 +2039,10 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			// One conversation's guidance changes (`guidance` null, or empty: none). It reaches the process's next turn
 			// without a restart when its omp runs the extension, and the choice is kept for its next opening either way.
 			// A conversation named by its session `file` that has no process (#715) has the choice kept for when it is
-			// opened; one whose process runs is changed in it, as by its live id. This computer only, as the conversation's
-			// own guard settings are: both put words into what its agent is told.
+			// opened; one whose process runs is changed in it, as by its live id. The person's own page only, as the
+			// conversation's own guard settings are: both put words into what its agent is told.
 			if (req.method !== "POST") return fail("POST required", 405);
-			if (!onThisComputer.has(req)) return fail("Guidance is changed on the computer omp-webui runs on", 403);
+			if (!fromOwner(req)) return fail(GUIDANCE_NOT_HERE, 403);
 			const body = (await req.json().catch(() => null)) as {
 				liveId?: unknown;
 				file?: unknown;
@@ -2044,10 +2070,15 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		case "/api/model-guidance/conflicts": {
 			// The guidance conflict check (v0.13.0): `text`, the guidance the conversation (`liveId`, or its session `file`) was
 			// just given, compared with its folder's AGENTS.md and the like and the project's memories by a small model. It
-			// writes nothing: the page proposes each change for the person to apply. This computer only, as a change of the
-			// guidance is, and because it reads the folder's files and what omp remembers.
+			// writes nothing: the page proposes each change for the person to apply. This computer only, even for a page signed
+			// in through Access that may change the guidance: it shows what omp remembers (`/api/memory*`, this computer's alone)
+			// and its proposals are applied through that memory, so a page that may not open the Memory page is not shown it here.
 			if (req.method !== "POST") return fail("POST required", 405);
-			if (!onThisComputer.has(req)) return fail("Guidance is changed on the computer omp-webui runs on", 403);
+			if (!onThisComputer.has(req))
+				return fail(
+					"The conflict check runs on the computer omp-webui runs on: it reads what omp remembers there",
+					403,
+				);
 			const body: unknown = await req.json().catch(() => null);
 			if (!isRecord(body) || typeof body.text !== "string" || body.text.length > GUIDANCE_MAX)
 				return fail("Bad value", 422);
@@ -2455,15 +2486,10 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 				if (refused) return reply({ t: "reply", req: msg.req, ok: false, error: refused });
 			}
 			if (target.kind === "new" && target.guard !== undefined) {
-				// A conversation's own guard settings are changed on the computer omp-webui runs on, like the global ones (see
-				// `isLocalOnlyRoute`): a page that is not this computer's starts it under the global settings.
-				if (!ws.data.local)
-					return reply({
-						t: "reply",
-						req: msg.req,
-						ok: false,
-						error: "The guard is changed on the computer omp-webui runs on",
-					});
+				// A conversation's own guard settings are changed from the person's own page, like the global ones (`isOwnerPage`:
+				// this computer's, or one signed in through Access): any other page starts it under the global settings.
+				if (!isOwnerPage(ws.data.remote, ws.data.local))
+					return reply({ t: "reply", req: msg.req, ok: false, error: GUARD_NOT_HERE });
 				try {
 					target = {
 						...target,
@@ -2475,23 +2501,17 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 				}
 			}
 			if (target.kind === "new" && target.guidance !== undefined) {
-				// What a template says is authored on this computer; text typed by a page goes into the system prompt of a new
-				// conversation's main agent, so it is for a page on this computer only, as `/api/model-guidance/live` is. A page
-				// that is not this computer's may name a template (the text it stands for is the store's) but not write one.
+				// Text typed by a page goes into the system prompt of a new conversation's main agent, so it is for the person's
+				// own page only (`isOwnerPage`), as `/api/model-guidance/live` is. Any other page may name a template (the text it
+				// stands for is the store's) but not write one.
 				let asked: SessionGuidance | null;
 				try {
 					asked = parseSessionGuidance(target.guidance);
 				} catch (e) {
 					return reply({ t: "reply", req: msg.req, ok: false, error: (e as Error).message });
 				}
-				if (!ws.data.local && asked?.text) {
-					if (!asked.template)
-						return reply({
-							t: "reply",
-							req: msg.req,
-							ok: false,
-							error: "Guidance is written on the computer omp-webui runs on",
-						});
+				if (!isOwnerPage(ws.data.remote, ws.data.local) && asked?.text) {
+					if (!asked.template) return reply({ t: "reply", req: msg.req, ok: false, error: GUIDANCE_NOT_HERE });
 					asked = { template: asked.template };
 				}
 				target = { ...target, guidance: asked ?? undefined };
@@ -2840,13 +2860,17 @@ async function route(req: Request, srv: Bun.Server<SocketData>): Promise<Respons
 	// The API and the socket answer a page of this origin only; the page itself (and the token link) is served to anyone.
 	const isApi = url.pathname === "/ws" || url.pathname === "/ws/browser" || url.pathname.startsWith("/api/");
 	if (isApi && !fromOwnPage(req)) return new Response("Forbidden", { status: 403 });
-	// What guards the agent and what it decided, the tunnel's settings, the app's updates and moving to another computer
+	// What the guard decided and how strict it is, the tunnel's settings, the app's updates and moving to another computer
 	// are the person's at this computer (see `isLocalOnlyRoute`): a page that is not on it must never be able to
-	// reconfigure what it came in through, switch the guard off, replace the app, nor carry every conversation (and, with a
-	// password, every login) away, nor rewrite the user's files from an uploaded archive. That is the socket's say (see
+	// reconfigure what it came in through, replace the app, nor carry every conversation (and, with a password, every
+	// login) away, nor rewrite the user's files from an uploaded archive. That is the socket's say (see
 	// `isThisComputer`), not the bind address's: a server that listens on a network address answers the people on that
 	// network, and they are not this computer. Nor is the token any proof of it: it is what a page on the network has.
 	if (!local && isLocalOnlyRoute(url.pathname)) return new Response("Forbidden", { status: 403 });
+	// The guard's settings and a conversation's own guard (`isOwnerRoute`) are this computer's page's and the person's
+	// signed in through Access (`isOwnerPage`): a page that holds only the token (one on the network) may not switch the
+	// guard off. Said in words, for the page to show.
+	if (isOwnerRoute(url.pathname) && !isOwnerPage(remote, local)) return fail(GUARD_NOT_HERE, 403);
 	// The token link and the token itself are not for a page that came in through the tunnel: it has its Access login and
 	// is given the cookie. A page on the network exchanges the token it has for the cookie, as it would on this computer:
 	// refusing it would leave a browser there no way to sign in, and it protects nothing, for what the token opens is
@@ -3047,7 +3071,7 @@ const listen = (hostname: string, port: number) =>
 				}
 				// The built-in browser's state, once something asked for it (nothing loads for it here).
 				if (browser.loaded) {
-					const state = browser.loaded.state(canManageBrowser(ws.data.remote, ws.data.local));
+					const state = browser.loaded.state(isOwnerPage(ws.data.remote, ws.data.local));
 					out.send(JSON.stringify({ t: "browser_state", state } satisfies ServerMessage));
 				}
 			},

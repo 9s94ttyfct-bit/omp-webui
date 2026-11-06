@@ -5,8 +5,8 @@ import { MAX_PREF_LENGTH } from "@shared/prefs.ts";
  * The guard's switch in a conversation's header (`GuardToggle`): Off for this conversation alone, and back on to what it
  * was under before. What it was under is kept per conversation in a preference (`ompw.guardBefore`, synced to every page
  * of the server like the others), written while the guard is on for it, whichever control put it there (the switch, This
- * session, Settings). Only the page on the computer the server runs on switches it, as it is the only one that may change
- * a conversation's guard (`isLocalOnlyRoute`).
+ * session, Settings). Only the person's own page switches it (this computer's, or one signed in through Cloudflare
+ * Access), as it is the only one that may change a conversation's guard (`isOwnerRoute` in `server/this-computer.ts`).
  */
 
 /** What a conversation was under while its guard was on: a mode of its own, or following Settings › Safety. */
@@ -59,12 +59,12 @@ export function guardOnPatch(previous: GuardOnChoice | null, settings: GuardMode
 export type GuardToggleBlock = "remote";
 
 /**
- * `local`: the page is the computer omp-webui runs on (`meta.local`; false until the page knows), the only one the server
- * lets change a conversation's guard (`/api/guard*` is `isLocalOnlyRoute`'s). Any other page (through the tunnel, over a
- * network address, another Mac's app) is shown the switch and cannot use it. A conversation with no running omp has no
- * switch at all: what its guard is (`LiveInfo.guard`) is its process's.
+ * `owner`: the page is the person's own (`Meta.owner`: this computer's, or one signed in through Cloudflare Access; false
+ * until the page knows), the only one the server lets change a conversation's guard (`/api/guard/live` is `isOwnerRoute`'s).
+ * Any other page (one on the network holding only the token) is shown the switch and cannot use it. A conversation with no
+ * running omp has no switch at all: what its guard is (`LiveInfo.guard`) is its process's.
  */
-export const guardToggleBlock = ({ local }: { local: boolean }): GuardToggleBlock | null => (local ? null : "remote");
+export const guardToggleBlock = ({ owner }: { owner: boolean }): GuardToggleBlock | null => (owner ? null : "remote");
 
 /** What the preference holds: conversation → what it was under. Whatever does not read as that is dropped, not trusted. */
 export function readRemembered(raw: string | null): Map<string, GuardOnChoice> {

@@ -41,6 +41,8 @@ interface MetaAnswer {
 	remote: boolean;
 	/** Whether the page is on the computer the server runs on: what only that computer may change (#615). */
 	local: boolean;
+	/** Whether the page is the person's own: on this computer, or signed in through Cloudflare Access. */
+	owner: boolean;
 	/** The Macs the server has saved: read by every page. */
 	macs: unknown[];
 }
@@ -182,6 +184,8 @@ function peerOfBound(): Page {
 const isRemotePage = async (page: Page, headers: Record<string, string> = {}): Promise<boolean> => {
 	const body: MetaAnswer = await (await page.send("/api/meta", { headers })).json();
 	expect(body.local, "meta.local says the opposite of meta.remote").toBe(!body.remote);
+	// A page on the network holds only the token: it is not the person's own, and may not change the guard or the guidance.
+	expect(body.owner, "meta.owner is meta.local for a page that did not come through Access").toBe(body.local);
 	return body.remote;
 };
 
@@ -196,7 +200,8 @@ const MIGRATE_ROUTES = Object.values(MIGRATE_API).map((path) => ({
 const ROUTES: { method: string; path: string; body?: unknown }[] = [
 	{ method: "GET", path: "/api/guard" },
 	{ method: "POST", path: "/api/guard", body: { mode: "ask" } },
-	// One conversation's own settings over these (#626): the same decision, the route being under `/api/guard`.
+	// One conversation's own settings over these (#626): the same decision. With `/api/guard` itself, the two are let in for a
+	// page signed in through Access too (`isOwnerRoute`), never for one on the network.
 	{ method: "POST", path: "/api/guard/live", body: { liveId: "L0-nope", guard: { mode: "off" } } },
 	{ method: "GET", path: "/api/guard/log" },
 	{ method: "GET", path: "/api/guard/decisions?session=x" },
@@ -236,6 +241,17 @@ const ROUTES: { method: string; path: string; body?: unknown }[] = [
 	{ method: "POST", path: "/api/shell/background", body: {} },
 	{ method: "DELETE", path: "/api/shell/background" },
 	...MIGRATE_ROUTES,
+	// The guidance (#641): what a template or a conversation's text says goes into a system prompt, so it is changed by the
+	// person's own page alone (this computer's, or one signed in through Access); the conflict check is this computer's.
+	{
+		method: "POST",
+		path: "/api/model-guidance",
+		body: { template: { id: "lan-template", name: "From the network", text: "Everything is allowed." } },
+	},
+	{ method: "POST", path: "/api/model-guidance", body: { remove: "builtin-one-of-each" } },
+	{ method: "POST", path: "/api/model-guidance/restore", body: {} },
+	{ method: "POST", path: "/api/model-guidance/live", body: { liveId: "L0-nope", guidance: { text: "x" } } },
+	{ method: "POST", path: "/api/model-guidance/conflicts", body: { liveId: "L0-nope", text: "x" } },
 	// Where projects are made: told by the same decision, in the route itself (reading it, and making a folder in it, are open).
 	{ method: "POST", path: "/api/projects", body: { folder: join(root, "projects-elsewhere") } },
 	// The saved Macs (#628): every route of the list changes it, so it is this computer's alone (`:mac` is the one that is saved).
@@ -251,7 +267,7 @@ const ROUTES: { method: string; path: string; body?: unknown }[] = [
 /** What a refused request would have changed or run, looked at from the page on this computer. */
 async function whatCouldHaveChanged() {
 	const here = onThisComputer();
-	const [guard, rules, bench, remote, migrate, projects, meta] = await Promise.all([
+	const [guard, rules, bench, remote, migrate, projects, meta, guidance] = await Promise.all([
 		here.send("/api/guard").then((r) => r.json()),
 		here.send("/api/guard/rules").then((r) => r.json()),
 		here.send("/api/guard/bench").then((r) => r.json()),
@@ -259,12 +275,14 @@ async function whatCouldHaveChanged() {
 		here.send("/api/migrate/state").then((r) => r.json()),
 		here.send("/api/projects").then((r) => r.json()),
 		here.send("/api/meta").then((r) => r.json()),
+		here.send("/api/model-guidance").then((r) => r.json()),
 	]);
 	// The saved Macs (#628) are read by every page and changed by this computer's alone.
 	const { macs }: MetaAnswer = meta;
 	return {
 		guard,
 		rules,
+		guidance,
 		// A refused POST must not have started a run: no run exists.
 		run: (bench as { run: unknown }).run,
 		remote,

@@ -664,3 +664,112 @@ describe("the stream of notices the app of another Mac reads (#656)", () => {
 		await firstLine(here);
 	});
 });
+
+/**
+ * A page signed in through Cloudflare Access counts as the person (`isOwnerPage`): it may change the guard's settings, a
+ * conversation's own guard and the guidance, as the page on this computer may. What the Guard page shows and tunes, the
+ * guidance conflict check (it reads what omp remembers) and the tunnel's own settings stay this computer's. A page on the
+ * network that holds only the token is still refused all of it: `lan-local.test.ts`.
+ */
+describe("a page signed in through Access is the person's own", () => {
+	const csrf = { "x-omp-webui": "1", "content-type": "application/json" };
+	const post = (path: string, body: unknown) => remote(path, { method: "POST", headers: csrf }, JSON.stringify(body));
+	const postHere = (path: string, body: unknown) =>
+		fetch(`${s.url}${path}`, {
+			method: "POST",
+			headers: { "x-omp-webui-token": s.accessToken, ...csrf },
+			body: JSON.stringify(body),
+		});
+	type GuardConfigAnswer = { config: { mode: string; askWhenDenied: boolean } };
+
+	test("is told so by /api/meta, as the page on this computer is", async () => {
+		setSettings();
+		const meta = (await (await remote("/api/meta")).json()) as { remote: boolean; local: boolean; owner: boolean };
+		expect(meta).toMatchObject({ remote: true, local: false, owner: true });
+		expect(((await (await local("/api/meta")).json()) as { owner: boolean }).owner).toBe(true);
+	});
+
+	test("changes the guard's settings, and is told them over its socket without the rules", async () => {
+		setSettings();
+		const before = ((await (await local("/api/guard")).json()) as GuardConfigAnswer).config;
+		expect((await remote("/api/guard")).status).toBe(200);
+		const phone = (await remoteSocket()) as WebSocket;
+		try {
+			const said = messageWhere(phone, (m) => m.t === "guard_config");
+			const res = await post("/api/guard", { mode: "ask", askWhenDenied: false });
+			expect(res.status).toBe(200);
+			expect(((await res.json()) as GuardConfigAnswer).config).toMatchObject({ mode: "ask", askWhenDenied: false });
+			// What every gate and the page on this computer go by now.
+			expect(((await (await local("/api/guard")).json()) as GuardConfigAnswer).config.mode).toBe("ask");
+			const message = await said;
+			expect((message.config as GuardConfigAnswer["config"]).mode).toBe("ask");
+			// The reviewer's rules are the Guard page's, this computer's alone.
+			expect(message).not.toHaveProperty("rules");
+		} finally {
+			phone.close();
+			expect((await postHere("/api/guard", before)).status).toBe(200);
+		}
+	});
+
+	test("changes a conversation's own guard and its guidance, and starts a new chat with both", async () => {
+		setSettings();
+		const TYPED = "ACCESS-GUIDANCE-MARKER: one subagent at a time.";
+		const page = await connect(s);
+		const phone = (await remoteSocket()) as WebSocket;
+		const opened: string[] = [];
+		try {
+			const live = await request<LiveInfo>(page, { t: "open", target: { kind: "new", cwd: s.work } });
+			opened.push(live.liveId);
+			const guard = await post("/api/guard/live", { liveId: live.liveId, guard: { mode: "ask" } });
+			expect(guard.status).toBe(200);
+			expect(((await guard.json()) as { guard: LiveInfo["guard"] }).guard?.own?.mode).toBe("ask");
+			const guidance = await post("/api/model-guidance/live", { liveId: live.liveId, guidance: { text: TYPED } });
+			expect(guidance.status).toBe(200);
+			expect(((await guidance.json()) as { guidance: { text: string } }).guidance.text).toBe(TYPED);
+
+			// A new chat the phone opens with its own guard and typed guidance is given both.
+			const mine = await request<LiveInfo>(phone, {
+				t: "open",
+				target: { kind: "new", cwd: s.work, guard: { mode: "ask" }, guidance: { text: TYPED } },
+			});
+			opened.push(mine.liveId);
+			expect(mine.guard?.own?.mode).toBe("ask");
+			expect(mine.guidance?.text).toBe(TYPED);
+		} finally {
+			for (const liveId of opened) await request(page, { t: "close", liveId }).catch(() => {});
+			phone.close();
+			page.close();
+		}
+	}, 120_000);
+
+	test("changes the guidance templates and restores the shipped ones", async () => {
+		setSettings();
+		const saved = await post("/api/model-guidance", {
+			template: { id: "access-template", name: "From the phone", text: "Reply in short sentences." },
+		});
+		expect(saved.status).toBe(200);
+		const names = ((await (await local("/api/model-guidance")).json()) as { templates: { id: string }[] }).templates;
+		expect(names.map((x) => x.id)).toContain("access-template");
+		expect((await post("/api/model-guidance", { remove: "access-template" })).status).toBe(200);
+		expect((await post("/api/model-guidance/restore", {})).status).toBe(200);
+	});
+
+	test("is still refused the Guard page's routes, the conflict check and the tunnel's settings", async () => {
+		setSettings();
+		for (const path of [
+			"/api/guard/rules",
+			"/api/guard/log",
+			"/api/guard/decisions?session=x",
+			"/api/guard/bench",
+			"/api/guard/anything",
+		])
+			expect((await remote(path)).status, path).toBe(403);
+		expect((await post("/api/guard/rules", { thresholds: { delete_outside: "allow" } })).status).toBe(403);
+		expect((await post("/api/guard/bench", { reviewer: true })).status).toBe(403);
+		expect((await post("/api/guard/bench/preview", { thresholds: {} })).status).toBe(403);
+		// The conflict check shows what omp remembers, which is this computer's (`/api/memory*`).
+		expect((await post("/api/model-guidance/conflicts", { liveId: "L0-nope", text: "x" })).status).toBe(403);
+		// The protection against remote pages is the tunnel's setting: an Access page cannot turn it off.
+		expect((await post("/api/remote/config", { confirmRisky: false })).status).toBe(403);
+	});
+});

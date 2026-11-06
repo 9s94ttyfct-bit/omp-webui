@@ -11,6 +11,7 @@ import { PREF } from "@shared/prefs.ts";
 import { Copy, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { type MessageKey, useT } from "../i18n/index.ts";
+import { ownerPage } from "../lib/api.ts";
 import { guidanceApi, refusalText } from "../lib/guidance-api.ts";
 import { templateName, templateSummary } from "../lib/guidance-names.ts";
 import { useGuidanceStrings } from "../lib/guidance-strings.ts";
@@ -36,13 +37,13 @@ interface Draft {
  * changed. Kept in the app's data folder (`model-guidance.json`), so they follow the person to another computer; a
  * conversation that picked one keeps the text it stood for, and a template edited here reaches the conversations that use
  * it at their next turn (a running one's file is rewritten; one not running carries it when opened). Changing them is
- * for the page on this computer (see `isLocalOnlyRoute`): what a template says is put into the system prompt of every
- * conversation that picks it. A chunk of its own, with its strings.
+ * for the person's own page (`Meta.owner`: this computer's, or one signed in through Cloudflare Access): what a template
+ * says is put into the system prompt of every conversation that picks it. A chunk of its own, with its strings.
  */
 export function GuidanceSettings() {
 	const t = useT();
 	const ready = useGuidanceStrings();
-	const local = useApp((s) => s.meta?.local !== false);
+	const owner = useApp((s) => (s.meta ? ownerPage(s.meta) : true));
 	const [set, setSet] = useState<GuidanceTemplates | null>(null);
 	/** What went wrong that the card says: reading the templates, a restore or a delete (a save is said in its editor). */
 	const [error, setError] = useState<{ key: MessageKey; error: string } | null>(null);
@@ -113,7 +114,7 @@ export function GuidanceSettings() {
 				title={t("guidance.title")}
 				hint={t("guidance.settingsIntro")}
 				action={
-					local ? (
+					owner ? (
 						<div className="flex shrink-0 gap-2">
 							<Button
 								size="sm"
@@ -136,7 +137,7 @@ export function GuidanceSettings() {
 					) : null
 				}
 			/>
-			{!local ? (
+			{!owner ? (
 				<p className="text-xs text-muted" data-testid="guidance-readonly-remote">
 					{t("guidance.readOnlyRemote")}
 				</p>
@@ -153,7 +154,7 @@ export function GuidanceSettings() {
 					className="mt-1 accent-[var(--accent)]"
 					data-testid="guidance-check-toggle"
 					checked={checkOn}
-					disabled={!local}
+					disabled={!owner}
 					onChange={(e) => {
 						setPref(PREF.guidanceCheck, e.target.checked ? "on" : "off");
 						setCheckOn(e.target.checked);
@@ -213,7 +214,7 @@ export function GuidanceSettings() {
 						);
 						return (
 							<li key={template.id} data-testid="guidance-template-row">
-								{local ? (
+								{owner ? (
 									<button
 										type="button"
 										className="block w-full rounded-lg px-2 py-2 text-left hover:bg-hover focus-visible:bg-hover"

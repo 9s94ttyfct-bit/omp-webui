@@ -1,6 +1,7 @@
 import { Lock, ScanEye } from "lucide-react";
 import { type KeyboardEvent, lazy, type ReactNode, Suspense, useEffect, useId, useRef, useState } from "react";
 import { useT } from "../i18n/index.ts";
+import { ownerPage } from "../lib/api.ts";
 import { guardApi } from "../lib/guard-api.ts";
 import { MODE_TEXT } from "../lib/guard-format.ts";
 import { useGuardStrings } from "../lib/guard-strings.ts";
@@ -25,8 +26,9 @@ const TABS: readonly { value: Tab; label: "guard.tabDecisions" | "guard.tabPolic
 /**
  * The Guard page ("Guard dangerous commands" at full size): what the guard decided, in a list of its own (Decisions); how
  * strict it is for each kind of call and the rules the reviewer follows (Policy); and a benchmark that shows what it would
- * stop and what it would let through (Benchmark). It is the page of this computer: the guard is changed here, and a page that
- * came through the tunnel is told so and asks for nothing (the routes refuse it too).
+ * stop and what it would let through (Benchmark). It is the page of this computer: a page that came through the tunnel is
+ * told so and asks for nothing (the routes refuse it too); one signed in through Access is shown the way to Settings ›
+ * Safety, whose settings it may change.
  *
  * The tabs are written out here, not taken from Radix: its tab list shares two packages with the panel's, which a bundler then
  * moves into the first page load for the sake of one more page that uses them.
@@ -60,13 +62,30 @@ export default function GuardPage() {
 	);
 
 	if (remote) {
+		// The Guard page is this computer's alone; a page signed in through Access may still change the guard's settings in
+		// Settings › Safety, and is shown the way there.
+		const owner = ownerPage(meta);
 		return shell(
 			<div className="mx-auto w-full max-w-xl space-y-6 px-6 py-8">
 				{title}
 				<div data-testid="guard-page-remote">
-					<Empty icon={<Lock size={28} className="text-accent" />} title={t("guard.pageRemoteTitle")}>
-						{t("guard.pageRemoteHint")}
+					<Empty
+						icon={<Lock size={28} className="text-accent" />}
+						title={owner ? t("guard.pageAccessTitle") : t("guard.pageRemoteTitle")}
+					>
+						{owner ? t("guard.pageAccessHint") : t("guard.pageRemoteHint")}
 					</Empty>
+					{owner ? (
+						<div className="mt-4 flex justify-center">
+							<Button
+								size="sm"
+								data-testid="guard-page-settings"
+								onClick={() => showSettingsCard('[data-testid="guard-settings"]')}
+							>
+								{t("guard.pageOpenSettings")}
+							</Button>
+						</div>
+					) : null}
 				</div>
 			</div>,
 		);

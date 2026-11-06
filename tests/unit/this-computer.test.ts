@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { isLocalOnlyRoute, isLoopbackPeer, isThisComputer } from "../../server/this-computer.ts";
+import {
+	isLocalOnlyRoute,
+	isLoopbackPeer,
+	isOwnerPage,
+	isOwnerRoute,
+	isThisComputer,
+} from "../../server/this-computer.ts";
 
 /**
  * What decides that a page is on this computer (#621): the address its socket is from, and nothing it says. The Host and
@@ -87,14 +93,20 @@ describe("isThisComputer is the socket's say", () => {
 });
 
 describe("isLocalOnlyRoute", () => {
-	test("the tunnel's settings, the guard, the app's updates and moving to another computer, with everything under them", () => {
+	test("the tunnel's settings, the Guard page's routes, the app's updates and moving to another computer, with everything under them", () => {
 		for (const path of [
 			"/api/remote",
 			"/api/remote/config",
 			"/api/remote/ai/start",
-			"/api/guard",
+			// What the guard decided and how strict it is: the Guard page's, this computer's alone (and any later route under it).
 			"/api/guard/log",
 			"/api/guard/decisions",
+			"/api/guard/rules",
+			"/api/guard/bench",
+			"/api/guard/bench/cancel",
+			"/api/guard/bench/preview",
+			"/api/guard/anything",
+			"/api/guard/live/x",
 			"/api/update",
 			"/api/update/check",
 			"/api/update/install",
@@ -146,5 +158,33 @@ describe("isLocalOnlyRoute", () => {
 			"/API/GUARD",
 		])
 			expect(isLocalOnlyRoute(path), path).toBe(false);
+	});
+});
+
+describe("isOwnerRoute", () => {
+	test("the guard's settings and a conversation's own guard, by their exact path, and nothing else", () => {
+		for (const path of ["/api/guard", "/api/guard/live"]) {
+			expect(isOwnerRoute(path), path).toBe(true);
+			// Not local-only: `route` lets in a page signed in through Access too (`isOwnerPage`), and refuses any other.
+			expect(isLocalOnlyRoute(path), path).toBe(false);
+		}
+		for (const path of [
+			"/api/guard/",
+			"/api/guard/live/",
+			"/api/guard/rules",
+			"/api/guard/log",
+			"/api/guards",
+			"/API/GUARD",
+		])
+			expect(isOwnerRoute(path), path).toBe(false);
+	});
+});
+
+describe("isOwnerPage", () => {
+	test("this computer's page, or one signed in through Access; a page holding only the token is neither", () => {
+		const access = { email: "someone@example.com", validUntil: Date.now() + 60_000 };
+		expect(isOwnerPage(null, true)).toBe(true);
+		expect(isOwnerPage(access, false)).toBe(true);
+		expect(isOwnerPage(null, false)).toBe(false);
 	});
 });

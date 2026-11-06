@@ -13,7 +13,7 @@ import { useApp } from "../store/app.ts";
 /**
  * `/api/model-guidance*` (#641): the templates the person saved, and what one conversation carries. Every route reads for
  * any page with the token (a phone's New chat offers the same templates); a change is answered 403 to a page that is not
- * on this computer, as the guard's settings are.
+ * the person's own (neither on this computer nor signed in through Cloudflare Access), as the guard's settings are.
  */
 /** A change the server refused, with its word for why when it has one (`GuidanceProblem`), for the page to say. */
 export class GuidanceApiError extends Error {

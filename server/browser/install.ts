@@ -11,8 +11,8 @@ import {
 import cefBuild from "../../third_party/cef/cef-build.json";
 import { platform } from "../platform/index.ts";
 import type { RemoteIdentity } from "../remote-auth.ts";
+import { isOwnerPage } from "../this-computer.ts";
 import { isNewer } from "./autoupdate.ts";
-import { canManageBrowser } from "./gate.ts";
 
 /**
  * Installing, updating, clearing and uninstalling the built-in browser's engine, in `<dataDir>/browser/`:
@@ -547,7 +547,7 @@ const ACTIONS: Record<EngineKind, readonly string[]> = {
 
 /**
  * `GET /api/browser` (the state, to any page the server lets in) and `POST /api/browser/{check,install,cancel,clear,uninstall}`
- * (`ACTIONS`; only to a page `canManageBrowser` allows, decided from the request's own authentication).
+ * (`ACTIONS`; only to a page `isOwnerPage` allows, decided from the request's own authentication).
  */
 export async function handleBrowserRoute(
 	req: Request,
@@ -555,7 +555,7 @@ export async function handleBrowserRoute(
 	inst: BrowserInstaller,
 	who: { remote: RemoteIdentity | null; local: boolean },
 ): Promise<Response> {
-	const canManage = canManageBrowser(who.remote, who.local);
+	const canManage = isOwnerPage(who.remote, who.local);
 	if (url.pathname === "/api/browser") {
 		return req.method === "GET" ? json(inst.state(canManage)) : json({ error: "GET required" }, 405);
 	}

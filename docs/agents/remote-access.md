@@ -34,10 +34,11 @@ The Access application is created by the user in the Cloudflare dashboard (the c
 
 ### What a remote page can and cannot do
 
-A page reached through the tunnel (or over a network address, see server-and-security) holding a valid login:
+A page reached through the tunnel holding a valid login (signed in through Cloudflare Access), or over a network address (see server-and-security) holding the token:
 
 - **Can**: use conversations (read, send, steer, approve), start new chats, read most settings, download/upload files as `fileTransfer` allows (see file-transfer), open a Terminal shell if `remoteShell` is on, receive push notifications.
-- **Cannot**: any `/api/remote*`, `/api/guard*`, `/api/update*`, `/api/migrate*`, `/api/memory*`, `/api/shell*`, `/api/macs*` route (403); change a conversation's guard or see the Guard page; change the projects folder, the guidance templates, the unattended instruction or "Keep the Mac awake"; use `/?token=` or `/api/auth`. Settings shows "This page is not on the computer the server runs on, so the tunnel cannot be changed from here."
+- **Can, when signed in through Access** (an Access sign-in counts as the person, as on this computer): change the guard's settings (Settings › Safety: mode, reviewer, ask when unavailable, ask when denied) and a conversation's own guard (header switch, This session, New chat), change the guidance (templates, a conversation's guidance, New chat's pick), and manage the built-in browser. A page on the network holding only the token cannot ("… on the computer omp-webui runs on, or from a page signed in through Cloudflare Access").
+- **Cannot**: any `/api/remote*`, `/api/update*`, `/api/migrate*`, `/api/memory*`, `/api/shell*`, `/api/macs*` route, nor the Guard page's routes (`/api/guard/log`, `/api/guard/decisions`, `/api/guard/rules`, `/api/guard/bench*`) (403), whether signed in through Access or not; see the Guard page; turn **Confirm risky commands from remote pages** off (it is in this card, which is local-only); run the guidance conflict check; change the projects folder, the unattended instruction or "Keep the Mac awake"; use `/?token=` or `/api/auth`. Settings shows "This page is not on the computer the server runs on, so the tunnel cannot be changed from here."
 
 ## Where it is
 

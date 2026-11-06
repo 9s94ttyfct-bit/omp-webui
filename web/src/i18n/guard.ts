@@ -82,7 +82,8 @@ export const en = {
 	sessionFromSettings: "From Settings › Safety",
 	sessionSetHere: "Set for this conversation",
 	sessionUseSettings: "Use Settings' value",
-	sessionReadOnly: "It is changed on the computer omp-webui runs on. This page only shows it.",
+	sessionReadOnly:
+		"It is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access. This page only shows it.",
 	sessionFailed: "Could not change the guard of this conversation: {error}",
 	sessionAskOn: "If no reviewer can be reached, it asks you",
 	sessionAskOff: "If no reviewer can be reached, risky calls are refused",
@@ -98,7 +99,7 @@ export const en = {
 	toggleTurnOnPrevious: "Turn it back on: {mode}.",
 	toggleTurnOnHere: "Turn it on for this conversation alone: {mode}.",
 	toggleTurnOnSettings: "Turn it back on: follow Settings ({mode}).",
-	toggleRemote: "It is switched on the computer omp-webui runs on.",
+	toggleRemote: "It is switched on the computer omp-webui runs on, or from a page signed in through Cloudflare Access.",
 	toggleTip: "{state} {action}",
 	toggleFailed: "Could not switch the guard of this conversation: {error}",
 	perConversation:
@@ -117,6 +118,10 @@ export const en = {
 	settingsPolicyDefault: "default",
 	settingsPolicyCustom: "yours",
 	settingsPolicyOutdated: "yours (the default has changed)",
+	settingsPageLocal:
+		"The Guard page (what the guard decided, how strict it is by kind of call, the reviewer's rules and the benchmark) is on the computer omp-webui runs on.",
+	settingsNotHere:
+		"The guard is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access. This page holds only the access token, so it is not shown the guard's settings.",
 
 	// ---- the Guard page
 	pageTitle: "Guard",
@@ -128,6 +133,9 @@ export const en = {
 	pageRemoteTitle: "Change the guard on the computer that runs omp-webui",
 	pageRemoteHint:
 		"What the guard decided and how it is set are private to that computer. Open omp-webui there to see them.",
+	pageAccessTitle: "The Guard page is on the computer that runs omp-webui",
+	pageAccessHint:
+		"What the guard decided, how strict it is by kind of call and the benchmark are private to that computer. The guard's settings can be changed from this page, in Settings › Safety.",
 	tabDecisions: "Decisions",
 	tabPolicy: "Policy",
 	tabBench: "Benchmark",
