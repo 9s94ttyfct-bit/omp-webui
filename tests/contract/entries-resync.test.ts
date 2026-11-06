@@ -21,7 +21,7 @@ let s: TestServer;
 let omlx: StubOmlx;
 
 beforeAll(async () => {
-	omlx = await startStubOmlx({ limit: { status: 402 } });
+	omlx = await startStubOmlx({ limit: {} });
 	s = await startTestServer();
 	writeFileSync(
 		join(s.agentDir, "models.yml"),

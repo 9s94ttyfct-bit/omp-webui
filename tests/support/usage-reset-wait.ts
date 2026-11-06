@@ -40,7 +40,8 @@ export interface UsageConversation {
 /**
  * A real server, omp and stub provider owned by one contract file. Retry deadline assertions need real clocks;
  * independent files get their own config and provider limit so those waits can overlap without weakening them.
- * The stub answers 402: omp classifies it as a usage limit and its transport never retries below the retry under test.
+ * The stub refuses with `usageLimitStatus()`: a usage limit to omp, which its transport never retries below the retry
+ * under test.
  */
 export function usageResetWaitFixture() {
 	let server: TestServer;
@@ -120,7 +121,7 @@ export function usageResetWaitFixture() {
 	}
 
 	beforeAll(async () => {
-		backend = await startStubOmlx({ limit: { status: 402 } });
+		backend = await startStubOmlx({ limit: {} });
 		server = await startTestServer();
 		writeFileSync(
 			join(server.agentDir, "models.yml"),
