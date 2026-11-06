@@ -53,6 +53,8 @@ export interface AppDownload {
 	id: string;
 	/** The page that started it. */
 	targetId: string;
+	/** The page that opened that page (a link to a new tab that turned out to be a download closes as it starts). */
+	openerId?: string;
 	name: string;
 	/** Where it is saved on this Mac (the Downloads folder, or the folder an agent asked for). */
 	path: string;
@@ -132,14 +134,22 @@ export class CefLink {
 				this.transport?.fromPage(m.targetId, m.message);
 				return;
 			case "download":
+				// CEF numbers downloads from 1 in each run: the server knows them by run as well, so that one of a CEF that
+				// started again is never taken for one of the earlier run.
 				if (m.download && typeof m.download.id === "string" && typeof m.download.targetId === "string")
-					this.onDownload(m.download);
+					this.onDownload({ ...m.download, id: `${this.run}.${m.download.id}` });
 				return;
 		}
 	}
 
 	send(m: ServerToApp): void {
 		if (this.ended === null) this.socket.send(JSON.stringify(m));
+	}
+
+	/** Stop a running download, by the id `onDownload` gave it; one of an earlier run of CEF is not running any more. */
+	cancelDownload(id: string): void {
+		const run = `${this.run}.`;
+		if (this.run !== "" && id.startsWith(run)) this.send({ t: "download_cancel", id: id.slice(run.length) });
 	}
 
 	/** The app went away: the engine on it ends. */

@@ -30,7 +30,7 @@ export class DownloadList {
 	update(d: AppDownload): void {
 		let entry = this.entries.get(d.id);
 		if (!entry) {
-			const owner = this.ownerOf(d.targetId);
+			const owner = this.ownerOf(d.targetId) ?? (d.openerId ? this.ownerOf(d.openerId) : null);
 			if (!owner) return;
 			entry = {
 				owner,

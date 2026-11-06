@@ -34,6 +34,12 @@ NS_ASSUME_NONNULL_BEGIN
 /// Where it is told that a page appeared or its address, title or opener changed (`info`: `targetId`, `url`, `title`,
 /// `openerId` when another page opened it), or that it closed (`info` nil); nil: nowhere.
 + (void)setPageObserver:(void (^_Nullable)(NSString* targetId, NSDictionary<NSString*, NSString*>* _Nullable info))observer;
+/// Where it is told how a download a page started goes (`AppDownload` of server/browser/cef.ts: `id`, `targetId`,
+/// `openerId`, `name`, `path`, `state` progress|done|cancelled|failed, `received`, `total`, `error`); nil: nowhere.
+/// Downloads go to the Downloads folder under a name no file there has; progress is told a few times a second at most.
++ (void)setDownloadObserver:(void (^_Nullable)(NSDictionary<NSString*, id>* download))observer;
+/// Stop the running download `downloadId` (as the observer named it); nothing when it is not running.
++ (void)cancelDownload:(NSString*)downloadId;
 /// Open Chrome's DevTools for the page in a window of their own.
 + (void)showDevTools:(NSString*)targetId;
 /// Move every page's view back into the hidden window (the window they are in is closing). Pages go on running there.

@@ -35,6 +35,7 @@ final class BrowserLink: NSObject, URLSessionWebSocketDelegate {
 		task = nil
 		CEFHost.setCdpObserver(nil)
 		CEFHost.setPageObserver(nil)
+		CEFHost.setDownloadObserver(nil)
 	}
 
 	private func open() {
@@ -58,6 +59,9 @@ final class BrowserLink: NSObject, URLSessionWebSocketDelegate {
 		}
 		CEFHost.setPageObserver { [weak self] target, info in
 			if let info { self?.send(["t": "page", "page": info]) } else { self?.send(["t": "closed", "targetId": target]) }
+		}
+		CEFHost.setDownloadObserver { [weak self] download in
+			self?.send(["t": "download", "download": download])
 		}
 		task.resume()
 		// First on the connection (sent once it is open): what is there now. What changes after comes as it happens.
@@ -106,6 +110,8 @@ final class BrowserLink: NSObject, URLSessionWebSocketDelegate {
 			if let targetId = message["targetId"] as? String, let json = message["message"] as? String {
 				CEFHost.sendCdp(targetId, message: json)
 			}
+		case "download_cancel":
+			if let id = message["id"] as? String { CEFHost.cancelDownload(id) }
 		default:
 			break
 		}

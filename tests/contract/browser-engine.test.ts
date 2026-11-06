@@ -142,12 +142,13 @@ test("a page's download is its conversation's: only that conversation's Browser 
 	app.send(JSON.stringify({ t: "download", download: { ...download, state: "progress", total: 100 } }));
 	await waitFor(() => (mine.lists.at(-1)?.length ?? 0) > 0);
 	const [item] = mine.lists.at(-1) ?? [];
-	expect(item).toMatchObject({ id: "7", name: "report.pdf", state: "progress", received: 10, total: 100 });
+	// Known by the app's CEF run (`scriptedApp` says hello as run-D1) and CEF's id in it.
+	expect(item).toMatchObject({ id: "run-D1.7", name: "report.pdf", state: "progress", received: 10, total: 100 });
 	expect(item).not.toHaveProperty("path");
 
 	// Another conversation's tab neither hears of it nor stops it; its own does.
-	other.ws.send(JSON.stringify({ t: "download_cancel", id: "7" }));
-	mine.ws.send(JSON.stringify({ t: "download_cancel", id: "7" }));
+	other.ws.send(JSON.stringify({ t: "download_cancel", id: "run-D1.7" }));
+	mine.ws.send(JSON.stringify({ t: "download_cancel", id: "run-D1.7" }));
 	await waitFor(() => said.some((m) => m.t === "download_cancel"));
 	await new Promise((r) => setTimeout(r, 200));
 	expect(said.filter((m) => m.t === "download_cancel")).toEqual([{ t: "download_cancel", id: "7" }]);
@@ -156,7 +157,7 @@ test("a page's download is its conversation's: only that conversation's Browser 
 	// Once it ended, it is not stopped any more.
 	app.send(JSON.stringify({ t: "download", download: { ...download, state: "cancelled", total: 100 } }));
 	await waitFor(() => mine.lists.at(-1)?.[0]?.state === "cancelled");
-	mine.ws.send(JSON.stringify({ t: "download_cancel", id: "7" }));
+	mine.ws.send(JSON.stringify({ t: "download_cancel", id: "run-D1.7" }));
 	await new Promise((r) => setTimeout(r, 200));
 	expect(said.filter((m) => m.t === "download_cancel")).toHaveLength(1);
 
@@ -166,12 +167,12 @@ test("a page's download is its conversation's: only that conversation's Browser 
 	const saved = { ...download, id: "8", name: "notes.txt", path: join(data, "notes.txt") };
 	writeFileSync(saved.path, "the notes");
 	app.send(JSON.stringify({ t: "download", download: { ...saved, state: "progress", total: 9 } }));
-	await waitFor(() => mine.lists.at(-1)?.[0]?.id === "8");
-	expect((await file("8")).status).toBe(409);
-	expect((await file("nothing")).status).toBe(404);
+	await waitFor(() => mine.lists.at(-1)?.[0]?.id === "run-D1.8");
+	expect((await file("run-D1.8")).status).toBe(409);
+	expect((await file("run-D1.9")).status).toBe(404);
 	app.send(JSON.stringify({ t: "download", download: { ...saved, state: "done", received: 9, total: 9 } }));
 	await waitFor(() => mine.lists.at(-1)?.[0]?.state === "done");
-	const fetched = await file("8");
+	const fetched = await file("run-D1.8");
 	expect(fetched.status, await fetched.clone().text()).toBe(200);
 	expect(fetched.headers.get("content-disposition")).toStartWith('attachment; filename="notes.txt"');
 	expect(await fetched.text()).toBe("the notes");

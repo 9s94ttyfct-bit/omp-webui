@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { AppDownload } from "../../server/browser/cef.ts";
+import { type AppDownload, CefLink, type ServerToApp } from "../../server/browser/cef.ts";
 import { DownloadList, KEPT_PER_CONVERSATION } from "../../server/browser/downloads.ts";
 
 /**
@@ -50,6 +50,12 @@ test("a download of a page nobody owns is not kept", () => {
 	expect(changed).toEqual([]);
 });
 
+test("a download of a page that is already gone is the conversation of the page that opened it", () => {
+	const { l } = list({ OPENER: "c1" });
+	l.update(download("d1", { targetId: "GONE", openerId: "OPENER" }));
+	expect(l.of("c1").map((d) => d.id)).toEqual(["d1"]);
+});
+
 test("a page is told the name, never the path; an unknown size is null", () => {
 	const { l } = list();
 	l.update(download("d1", { total: -1 }));
@@ -75,4 +81,22 @@ test("a finished download is not changed back by a late progress report", () => 
 	l.update(download("d1", { state: "done", received: 100 }));
 	l.update(download("d1", { state: "progress", received: 50 }));
 	expect(l.of("c1")[0]).toMatchObject({ state: "done", received: 100 });
+});
+
+test("the app's download ids are its CEF run's: after CEF started again the same id is another download, and only the current run's is stopped", () => {
+	const told: ServerToApp[] = [];
+	const got: AppDownload[] = [];
+	const link = new CefLink(
+		{ send: (text) => told.push(JSON.parse(text) as ServerToApp) },
+		() => {},
+		(d) => got.push(d),
+	);
+	for (const run of ["r1", "r2"]) {
+		link.receive(JSON.stringify({ t: "hello", run, version: "156.0.0", pages: [] }));
+		link.receive(JSON.stringify({ t: "download", download: download("7") }));
+	}
+	expect(got.map((d) => d.id)).toEqual(["r1.7", "r2.7"]);
+	link.cancelDownload("r1.7");
+	link.cancelDownload("r2.7");
+	expect(told).toEqual([{ t: "download_cancel", id: "7" }]);
 });

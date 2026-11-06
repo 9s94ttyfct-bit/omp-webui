@@ -210,7 +210,7 @@ export class LazyBrowser {
 					host,
 					proxy: new CdpProxy(host, registry),
 					screen: new ScreenHub(host, registry, {
-						cancel: (id) => this.#link?.send({ t: "download_cancel", id }),
+						cancel: (id) => this.#link?.cancelDownload(id),
 						reveal: async (path) => (await import("../folder.ts")).revealFile(path),
 					}),
 				};

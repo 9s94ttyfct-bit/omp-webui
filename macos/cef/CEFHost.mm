@@ -11,6 +11,7 @@
 #include "include/cef_client.h"
 #include "include/cef_command_line.h"
 #include "include/cef_devtools_message_observer.h"
+#include "include/cef_download_handler.h"
 #include "include/cef_display_handler.h"
 #include "include/cef_focus_handler.h"
 #include "include/cef_life_span_handler.h"
@@ -32,6 +33,7 @@ bool gRunning = false;
 NSWindow* gHidden = nil;
 void (^gObserver)(NSString*, NSString*) = nil;
 void (^gPageObserver)(NSString*, NSDictionary<NSString*, NSString*>* _Nullable) = nil;
+void (^gDownloadObserver)(NSDictionary<NSString*, id>*) = nil;
 
 /// The host's own CDP calls are numbered from here: the server numbers its own from 1 up.
 constexpr int kOwnIds = 1 << 30;
@@ -134,13 +136,137 @@ class Observer : public CefDevToolsMessageObserver {
   IMPLEMENT_REFCOUNTING(Observer);
 };
 
-class Client : public CefClient, public CefLifeSpanHandler, public CefDisplayHandler, public CefFocusHandler {
+/// A download that is running (by CEF's id): where it goes, whose page started it, its way to stop, when it was last told.
+struct Download {
+  std::string targetId;
+  std::string openerId;
+  std::string path;
+  CefRefPtr<CefDownloadItemCallback> callback;
+  CFAbsoluteTime told = 0;
+  /// The page is a tab opened only for this download (a link to a new tab that is a file): it closes when the download
+  /// ends, as Chrome closes it. Not before: CEF tells a download's progress through its page.
+  CefRefPtr<CefBrowser> emptyTab;
+};
+std::map<uint32_t, Download> gDownloads;
+/// Progress is told at most this often (seconds); its start and its end always are.
+constexpr CFAbsoluteTime kDownloadEvery = 0.25;
+
+/// A path in the Downloads folder for `suggested` that no file has and no running download is going to: `name.ext`, then
+/// `name (1).ext`, `name (2).ext`… Chromium writes `<path>.crdownload` and renames it when done, so that is free too.
+std::string freeDownloadPath(const std::string& suggested) {
+  NSURL* folder = [NSFileManager.defaultManager URLsForDirectory:NSDownloadsDirectory inDomains:NSUserDomainMask].firstObject;
+  NSString* dir = folder.path ?: [NSHomeDirectory() stringByAppendingPathComponent:@"Downloads"];
+  NSString* name = ns(suggested).lastPathComponent;
+  if (name.length == 0 || [name isEqualToString:@"."] || [name isEqualToString:@".."] || [name isEqualToString:@"/"])
+    name = @"download";
+  NSString* base = name.stringByDeletingPathExtension;
+  NSString* ext = name.pathExtension;
+  for (int n = 0;; n++) {
+    NSString* file = n == 0 ? name : [NSString stringWithFormat:@"%@ (%d)%@%@", base, n, ext.length ? @"." : @"", ext];
+    NSString* path = [dir stringByAppendingPathComponent:file];
+    std::string candidate = path.UTF8String;
+    bool reserved = false;
+    for (auto& [_, d] : gDownloads)
+      if (d.path == candidate) reserved = true;
+    if (reserved || [NSFileManager.defaultManager fileExistsAtPath:path] ||
+        [NSFileManager.defaultManager fileExistsAtPath:[path stringByAppendingString:@".crdownload"]])
+      continue;
+    return candidate;
+  }
+}
+
+/// A finished download is marked as one from the web (Gatekeeper asks before it is opened), unless Chromium marked it.
+void quarantine(const std::string& path, const std::string& url) {
+  NSURL* file = [NSURL fileURLWithPath:ns(path)];
+  id props = nil;
+  if ([file getResourceValue:&props forKey:NSURLQuarantinePropertiesKey error:nil] && props) return;
+  NSMutableDictionary* q = [@{(__bridge NSString*)kLSQuarantineTypeKey : (__bridge NSString*)kLSQuarantineTypeWebDownload} mutableCopy];
+  NSURL* from = [NSURL URLWithString:ns(url)];
+  if (from) q[(__bridge NSString*)kLSQuarantineDataURLKey] = from;
+  [file setResourceValue:q forKey:NSURLQuarantinePropertiesKey error:nil];
+}
+
+/// What the server is told of a download (`AppDownload` of server/browser/cef.ts), on the next turn of the run loop.
+void tellDownload(uint32_t id, const Download& d, CefRefPtr<CefDownloadItem> item, NSString* state) {
+  if (!gDownloadObserver) return;
+  std::string path = item->GetFullPath().ToString();
+  if (path.empty()) path = d.path;
+  NSMutableDictionary* info = [@{
+    @"id" : [NSString stringWithFormat:@"%u", id],
+    @"targetId" : ns(d.targetId),
+    @"name" : ns(path).lastPathComponent ?: @"",
+    @"path" : ns(path),
+    @"state" : state,
+    @"received" : @(item->GetReceivedBytes()),
+    @"total" : @(item->GetTotalBytes()),
+  } mutableCopy];
+  if (!d.openerId.empty()) info[@"openerId"] = ns(d.openerId);
+  if ([state isEqualToString:@"failed"])
+    info[@"error"] = [NSString stringWithFormat:@"Interrupted (reason %d)", (int)item->GetInterruptReason()];
+  auto observer = gDownloadObserver;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    observer(info);
+  });
+}
+
+class Client : public CefClient,
+               public CefLifeSpanHandler,
+               public CefDisplayHandler,
+               public CefFocusHandler,
+               public CefDownloadHandler {
  public:
   Client(void (^reply)(NSString* _Nullable), int openerKey) : reply_(reply), openerKey_(openerKey) {}
 
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
   CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
   CefRefPtr<CefFocusHandler> GetFocusHandler() override { return this; }
+  // Without a download handler CEF (Alloy, as for pages made in a view) cancels every download a page starts.
+  CefRefPtr<CefDownloadHandler> GetDownloadHandler() override { return this; }
+
+  // A download the person (or a page) starts goes to the Downloads folder, under a name no file has, with no dialog: the
+  // Browser tab lists it (docs/agents/browser.md, "Downloads"). Not called for one an agent placed (CDP
+  // `Browser.setDownloadBehavior`), which goes where it asked.
+  bool OnBeforeDownload(CefRefPtr<CefBrowser> browser,
+                        CefRefPtr<CefDownloadItem> item,
+                        const CefString& suggested,
+                        CefRefPtr<CefBeforeDownloadCallback> callback) override {
+    Download& d = known(browser, item->GetId());
+    d.path = freeDownloadPath(suggested.ToString());
+    auto page = gPages.find(browser->GetIdentifier());
+    if (page != gPages.end() && page->second.openerKey != 0 && !browser->CanGoBack() &&
+        (page->second.url.empty() || page->second.url == "about:blank"))
+      d.emptyTab = browser;
+    callback->Continue(d.path, false);
+    return true;
+  }
+
+  void OnDownloadUpdated(CefRefPtr<CefBrowser> browser,
+                         CefRefPtr<CefDownloadItem> item,
+                         CefRefPtr<CefDownloadItemCallback> callback) override {
+    uint32_t id = item->GetId();
+    Download& d = known(browser, id);
+    d.callback = callback;
+    NSString* state = item->IsComplete()      ? @"done"
+                      : item->IsCanceled()    ? @"cancelled"
+                      : item->IsInterrupted() ? @"failed"
+                                              : @"progress";
+    bool ended = ![state isEqualToString:@"progress"];
+    // Before it has a path (the first updates come before `OnBeforeDownload`) there is nothing to show yet.
+    bool placed = !item->GetFullPath().empty() || !d.path.empty();
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    if (placed && (ended || d.told == 0 || now - d.told >= kDownloadEvery)) {
+      if ([state isEqualToString:@"done"]) quarantine(item->GetFullPath().ToString(), item->GetURL().ToString());
+      tellDownload(id, d, item, state);
+      d.told = now;
+    }
+    if (!ended) return;
+    if (CefRefPtr<CefBrowser> tab = d.emptyTab) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        if (tab->IsValid()) tab->GetHost()->CloseBrowser(true);
+      });
+    }
+    gDownloads.erase(id);
+  }
 
   // A page takes the keyboard only when the person clicks in it: never because it loaded (the composer keeps it).
   bool OnSetFocus(CefRefPtr<CefBrowser>, FocusSource source) override { return source == FOCUS_SOURCE_NAVIGATION; }
@@ -242,6 +368,19 @@ class Client : public CefClient, public CefLifeSpanHandler, public CefDisplayHan
   }
 
  private:
+  /// The running download `id`, made known with the page that started it.
+  static Download& known(CefRefPtr<CefBrowser> browser, uint32_t id) {
+    auto [it, made] = gDownloads.try_emplace(id);
+    if (made) {
+      auto page = gPages.find(browser->GetIdentifier());
+      if (page != gPages.end()) {
+        it->second.targetId = page->second.targetId;
+        it->second.openerId = page->second.openerId;
+      }
+    }
+    return it->second;
+  }
+
   void (^reply_)(NSString* _Nullable);
   int openerKey_;
   IMPLEMENT_REFCOUNTING(Client);
@@ -378,6 +517,15 @@ NSError* failure(NSString* text) {
 
 + (void)setPageObserver:(void (^)(NSString*, NSDictionary<NSString*, NSString*>* _Nullable))observer {
   gPageObserver = observer;
+}
+
++ (void)setDownloadObserver:(void (^)(NSDictionary<NSString*, id>*))observer {
+  gDownloadObserver = observer;
+}
+
++ (void)cancelDownload:(NSString*)downloadId {
+  auto it = gDownloads.find((uint32_t)downloadId.longLongValue);
+  if (it != gDownloads.end() && it->second.callback) it->second.callback->Cancel();
 }
 
 + (void)showDevTools:(NSString*)targetId {
