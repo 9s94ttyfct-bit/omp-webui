@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage } from "node:http";
+import { usageLimitStatus } from "./usage-limit-status.ts";
 
 /**
  * A stand-in for a model server whose every answer a test writes: an OpenAI-compatible chat completions endpoint (model
@@ -21,9 +22,9 @@ export interface ScriptedRequest {
 
 /**
  * What the stub answers: a text, a call of one tool, or a refusal as a provider says its usage limit is used up: HTTP
- * `status` (402 by default: a billing cap, which omp's transport never retries below the turn retry under test) with a
- * `retry-after-ms` header of `retryAfterMs`, or with `seconds` a standard `retry-after` header of that time in whole
- * seconds, rounded up (what a 429 usually carries).
+ * `status` (by default `usageLimitStatus()`: the usage limit the running omp's turn retry waits out, never retried by
+ * its transport below it) with a `retry-after-ms` header of `retryAfterMs`, or with `seconds` a standard `retry-after`
+ * header of that time in whole seconds, rounded up (what a 429 usually carries).
  */
 export type ScriptedTurn =
 	| { text: string }
@@ -99,7 +100,7 @@ export async function startScriptedStub(
 		if ("refuse" in turn) {
 			refused.push(request);
 			res
-				.writeHead(turn.refuse.status ?? 402, {
+				.writeHead(turn.refuse.status ?? usageLimitStatus(), {
 					"content-type": "application/json",
 					...(turn.refuse.seconds
 						? { "retry-after": String(Math.max(0, Math.ceil(turn.refuse.retryAfterMs / 1000))) }

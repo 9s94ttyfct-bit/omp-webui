@@ -35,7 +35,7 @@ beforeAll(async () => {
 		'<!doctype html>\n<html><head></head><body><div="root"></div></body></html>\n',
 	);
 	writeFileSync(settingsFile, JSON.stringify(remoteSettings()));
-	backend = await startStubOmlx({ limit: { status: 402 } });
+	backend = await startStubOmlx({ limit: {} });
 	s = await startTestServer(
 		0,
 		{
@@ -46,7 +46,7 @@ beforeAll(async () => {
 		{ login: false },
 	);
 	remote = remoteClient(s, key);
-	// A local model server that refuses with 402 (a billing cap), so a turn that hits the limit waits for the reset.
+	// A local model server that refuses with a usage limit (`usageLimitStatus()`), so a turn that hits it waits for the reset.
 	writeFileSync(
 		join(s.agentDir, "models.yml"),
 		`providers:\n  omlx:\n    baseUrl: ${backend.url}\n    api: openai-completions\n    apiKey: ${backend.apiKey}\n    discovery:\n      type: openai-models-list\n`,

@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { usageLimitStatus } from "./usage-limit-status.ts";
 
 /** What the stub saw of one chat request (chat completions, or Responses for a backend omp talks to that way). */
 export interface StubChat {
@@ -32,7 +33,7 @@ export interface StubOmlx {
 	requests: string[];
 	/** Chat requests refused for the usage limit (`limit`), as `{ at }` in order; they are not in `chats`. */
 	refused: { at: number }[];
-	/** While in the future, chat requests are refused with a 429 that says when the limit ends (needs the `limit` option). */
+	/** While in the future, chat requests are refused for a usage limit that says when it ends (needs the `limit` option). */
 	limitUntil: number;
 	/**
 	 * The next chat request of a conversation's turn (one that offers tools; omp's helper requests, a title, offer none) is
@@ -59,13 +60,12 @@ export interface StubOptions {
 	/** Also answer as Ollama does (`/api/tags`, `/api/show`, `/v1/responses`). */
 	ollama?: boolean;
 	/**
-	 * A usage limit in force: every chat request is refused with 429 and a `retry-after-ms` of the time that is left,
-	 * until `StubOmlx.limitUntil` has passed (epoch ms; the stub begins with none, a test sets it to start the limit).
-	 * `message` is the error text, which names the limit the way providers do. omp's transport retries a 429 whose
-	 * reset is under a minute by itself, below the turn retry that waits out a usage limit; `status: 402` (a billing
-	 * cap, never retried by the transport) lets a test exercise the turn retry with a short reset. `delayMs` is how long
-	 * the stub takes to say so (a provider is a network round trip away; a test that needs the turn's end to come
-	 * after what the process did meanwhile sets it).
+	 * A usage limit in force: every chat request is refused with `status` and a `retry-after-ms` of the time that is
+	 * left, until `StubOmlx.limitUntil` has passed (epoch ms; the stub begins with none, a test sets it to start the
+	 * limit). `message` is the error text, which names the limit the way providers do. `status` is by default
+	 * `usageLimitStatus()`: the usage limit the running omp's turn retry waits out, even with a reset of seconds, which
+	 * its transport does not retry below it. `delayMs` is how long the stub takes to say so (a provider is a network
+	 * round trip away; a test that needs the turn's end to come after what the process did meanwhile sets it).
 	 */
 	limit?: { message?: string; status?: number; delayMs?: number };
 	/**
@@ -217,7 +217,7 @@ export async function startStubOmlx(opts: StubOptions = {}): Promise<StubOmlx> {
 				if (opts.limit.delayMs) await new Promise<void>((resolve) => setTimeout(resolve, opts.limit?.delayMs));
 				refused.push({ at: Date.now() });
 				res
-					.writeHead(opts.limit.status ?? 429, {
+					.writeHead(opts.limit.status ?? usageLimitStatus(), {
 						"content-type": "application/json",
 						"retry-after-ms": String(wait),
 						"x-should-retry": "false",

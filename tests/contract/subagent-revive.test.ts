@@ -15,6 +15,7 @@ import {
 	type StubScripted,
 	startScriptedStub,
 } from "../support/stub-scripted.ts";
+import { usageLimitStatus } from "../support/usage-limit-status.ts";
 import { connect, request } from "../support/ws.ts";
 
 /**
@@ -46,7 +47,8 @@ let limitUntil = 0;
 /** How long the limit lasts from the subagent's first request, until that request comes. */
 let pendingLimitMs: number | null = null;
 /** How the provider refuses: the status, and whether the time is a standard `retry-after` header (seconds) or `retry-after-ms`. */
-let refusal: { status: number; seconds: boolean } = { status: 402, seconds: false };
+const USAGE_LIMIT = { status: usageLimitStatus(), seconds: false };
+let refusal: { status: number; seconds: boolean } = USAGE_LIMIT;
 /** The subagent's requests that were not refused: the retries that went out. */
 const answered: ScriptedRequest[] = [];
 /** What the scripted main agent was asked and answered, in order, for a failure to be read from. */
@@ -178,7 +180,7 @@ function frameSummary(frames: Frame[]): string {
 }
 
 /** A conversation whose main agent has started a subagent called `name`, which is refused for ten minutes from its first request. */
-async function started(how: typeof refusal = { status: 402, seconds: false }, name = "Sub") {
+async function started(how: typeof refusal = USAGE_LIMIT, name = "Sub") {
 	answered.length = 0;
 	mainTrace.length = 0;
 	limitUntil = 0;
@@ -245,7 +247,7 @@ test("a stopped subagent is parked, not gone: omp lists nothing and takes no mes
  */
 for (const name of NAMES) {
 	test(`a subagent called ${JSON.stringify(name.slice(0, 24))} is brought back by the address the request carries`, async () => {
-		const chat = await started({ status: 402, seconds: false }, name);
+		const chat = await started(USAGE_LIMIT, name);
 		try {
 			expect(await chat.rpc({ type: "cancel_subagent", subagentId: name })).toEqual({ cancelled: true });
 			lift();
@@ -268,11 +270,12 @@ for (const name of NAMES) {
 
 /**
  * What the Agents tab sends (Stop, and as soon as omp says it stopped it, the request: steered when the agent still runs
- * its task call), against the refusals a provider gives for a used-up quota: the 402 of the tests above, and the issue's
- * 429 with `retry-after-ms` and with a standard `retry-after` in seconds.
+ * its task call), against the refusals a provider gives for a used-up quota: the issue's 429 with `retry-after-ms` and
+ * with a standard `retry-after` in seconds, and a 402 where omp waits one out (before 18.17; from 18.17 a 402 is a
+ * billing cap, which omp does not wait for).
  */
 for (const how of [
-	{ status: 402, seconds: false },
+	...(usageLimitStatus() === 402 ? [{ status: 402, seconds: false }] : []),
 	{ status: 429, seconds: false },
 	{ status: 429, seconds: true },
 ]) {
@@ -291,7 +294,7 @@ for (const how of [
 			expect(revivals(chat.frames.seen)).toBe(1);
 		} finally {
 			lift();
-			refusal = { status: 402, seconds: false };
+			refusal = USAGE_LIMIT;
 			chat.close();
 		}
 	}, 90_000);
