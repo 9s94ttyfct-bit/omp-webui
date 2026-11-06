@@ -1284,7 +1284,7 @@
 		"nav-layout.spec.ts › at 1400 px › the pages' place is held while their chunk loads: nothing moves when they arrive": 2.1,
 		"nav-layout.spec.ts › at 1400 px › the palette's Go to lists every page, Questions and Guard included, whatever the bars show": 2.9,
 		"nav-layout.spec.ts › at 1400 px › the rail has the same pages in its own arrangement, and the Guard opens from it": 1.9,
-		"nav-layout.spec.ts › at 1400 px › the sidebar's foot lists the pages once, with the Guard among them and Send feedback gone": 1.9,
+		"nav-layout.spec.ts › at 1400 px › the sidebar's foot lists the pages once, with the Guard among them, and Send feedback under them opens its dialog": 1.9,
 		"nav-layout.spec.ts › on a phone (390 px, touch) › a finger drags a page in the drawer, and the order is kept": 1.9,
 		"needs-input.spec.ts › a background chat waiting for input shows its own sidebar state, even while running": 7.2,
 		"new-chat-images.spec.ts › a !command with an image is sent as a message with the image, not run without it": 7.9,
