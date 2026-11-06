@@ -229,8 +229,10 @@ describe.skipIf(!has.windowsLauncher)("the Windows launcher's update", () => {
 		fake.publish({ tag: "v98.0.0", dmg: nextZip, assetName: zipName("98.0.0") });
 		await installRelease(install, "v98.0.0");
 		let failed: AppUpdateState["failed"] = null;
-		// A wait that ends without the refusal says where the install got to (its phase, the launcher's output), as
-		// `untilHelper` does: once on x64 it was not refused within 120 s, and arm64 takes 66-86 s where x64 takes 7-14 s.
+		// Asked every half second, not every 25 ms: this process also serves the release's zip (`fake`), and on Windows asking
+		// its server 40 times a second starved that download (timed in CI: 0.3-0.5 s unasked, 6-41 s asked, the test's own event
+		// loop up to 0.6 s late), which is why arm64 took 66-86 s here. A wait that ends without the refusal says where the
+		// install got to (its phase, the launcher's output), as `untilHelper` does.
 		try {
 			await pollUntil(
 				async () => {
@@ -239,6 +241,7 @@ describe.skipIf(!has.windowsLauncher)("the Windows launcher's update", () => {
 				},
 				"the install to be refused",
 				120_000,
+				500,
 			);
 		} catch (e) {
 			throw new Error(`${(e as Error).message}\n${await diagnosis(install)}`);
