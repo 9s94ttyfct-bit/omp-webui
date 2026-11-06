@@ -120,7 +120,11 @@ function received(msg: ScreenServerMessage): void {
 			useScreen.setState({ downloads: { owner: msg.owner, list: msg.downloads, local: msg.local } });
 			return;
 		case "download_reveal_failed": {
-			const name = useScreen.getState().downloads.list.find((d) => d.id === msg.id)?.name ?? "";
+			// Said of the conversation the tab watched when it asked: one it has left since is not this list's.
+			const { downloads } = useScreen.getState();
+			if (msg.owner !== lastWatch?.owner || downloads.owner !== msg.owner) return;
+			const name = downloads.list.find((d) => d.id === msg.id)?.name;
+			if (name === undefined) return;
 			useApp
 				.getState()
 				.toast("error", t(msg.gone ? "browser.downloadRevealGone" : "browser.downloadRevealFailed", { name }));

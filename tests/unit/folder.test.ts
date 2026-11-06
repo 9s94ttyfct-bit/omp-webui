@@ -713,6 +713,16 @@ describe("open and reveal", () => {
 			}),
 		).toBe("failed");
 		expect(await revealFile(file, linux, runner)).toBe("failed");
+		// A file that cannot be looked at is not said to be gone: only a missing one is.
+		const locked = join(world, "reveal-locked");
+		mkdirSync(locked);
+		writeFileSync(join(locked, "kept.pdf"), "x");
+		chmodSync(locked, 0o000);
+		try {
+			expect(await revealFile(join(locked, "kept.pdf"), mac, runner)).toBe("failed");
+		} finally {
+			chmodSync(locked, 0o755);
+		}
 		expect(calls).toHaveLength(1);
 	});
 });

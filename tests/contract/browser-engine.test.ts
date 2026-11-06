@@ -188,7 +188,7 @@ test("a page's download is its conversation's: only that conversation's Browser 
 	mine.ws.send(JSON.stringify({ t: "download_reveal", id: "run-D1.9" }));
 	await waitFor(() => mine.told.some((m) => m.t === "download_reveal_failed"));
 	expect(mine.told.filter((m) => m.t === "download_reveal_failed")).toEqual([
-		{ t: "download_reveal_failed", id: "run-D1.9", gone: true },
+		{ t: "download_reveal_failed", owner: A, id: "run-D1.9", gone: true },
 	]);
 	await new Promise((r) => setTimeout(r, 200));
 	expect(other.told.some((m) => m.t === "download_reveal_failed")).toBe(false);

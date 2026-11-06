@@ -723,10 +723,13 @@ describe("a page signed in through Access is the person's own", () => {
 		}
 		// And chooses whether the app looks for its updates on its own (a page holding only the token may not:
 		// `lan-local.test.ts`).
-		const prefs = await post("/api/prefs", { changes: { "ompw.appUpdateCheck": "off" } });
-		expect(prefs.status).toBe(200);
-		expect(((await prefs.json()) as { values: Record<string, string> }).values["ompw.appUpdateCheck"]).toBe("off");
-		expect((await postHere("/api/prefs", { changes: { "ompw.appUpdateCheck": null } })).status).toBe(200);
+		try {
+			const prefs = await post("/api/prefs", { changes: { "ompw.appUpdateCheck": "off" } });
+			expect(prefs.status).toBe(200);
+			expect(((await prefs.json()) as { values: Record<string, string> }).values["ompw.appUpdateCheck"]).toBe("off");
+		} finally {
+			expect((await postHere("/api/prefs", { changes: { "ompw.appUpdateCheck": null } })).status).toBe(200);
+		}
 	});
 
 	test("changes a conversation's own guard and its guidance, and starts a new chat with both", async () => {

@@ -555,12 +555,14 @@ export class ScreenClient {
 		}
 		const control = this.hub.control;
 		if (this.socket.local !== true || d.item.state !== "done" || !control) return;
+		// The conversation it was asked in: the tab may watch another one by the time Finder answers.
+		const owner = this.owner;
 		void control
 			.reveal(d.path)
 			.catch(() => "failed" as const)
 			.then((outcome) => {
 				if (outcome === "shown" || this.closed) return;
-				const told: ScreenServerMessage = { t: "download_reveal_failed", id: msg.id, gone: outcome === "gone" };
+				const told: ScreenServerMessage = { t: "download_reveal_failed", owner, id: msg.id, gone: outcome === "gone" };
 				this.socket.sendText(JSON.stringify(told));
 			});
 	}

@@ -588,7 +588,8 @@ export async function openFolderFile(
 
 /**
  * Shows a file that is no folder's in Finder (a download of the built-in browser): `gone` when nothing is at `abs` any
- * more (moved or deleted), `failed` when the system's `open` did not show it or there is no Finder to show it in.
+ * more (moved or deleted), `failed` when it cannot be looked at (no permission, an I/O error), the system's `open` did
+ * not show it, or there is no Finder to show it in.
  */
 export async function revealFile(
 	abs: string,
@@ -598,8 +599,9 @@ export async function revealFile(
 	if (!desktop) return "failed";
 	try {
 		await stat(abs);
-	} catch {
-		return "gone";
+	} catch (e) {
+		const code = (e as NodeJS.ErrnoException).code;
+		return code === "ENOENT" || code === "ENOTDIR" ? "gone" : "failed";
 	}
 	try {
 		return (await runner(desktop.revealArgv(abs))) === 0 ? "shown" : "failed";

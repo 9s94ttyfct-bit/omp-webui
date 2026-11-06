@@ -42,8 +42,8 @@ const saved: BrowserDownload = { id: "run.0", name: "notes.txt", state: "done", 
 
 /**
  * The tab's socket, answered by the spec: the watched conversation has no pages and the downloads `list` (on this Mac
- * when `local`). `say` sends that conversation a new list; `tell` sends the tab any message; `drop` closes the
- * connection, and the tab's next one is told `next`; `asked` is what the tab sent.
+ * when `local`). `say` sends that conversation a new list; `tell` sends the tab any message (`owner()`: the conversation
+ * it watches); `drop` closes the connection, and the tab's next one is told `next`; `asked` is what the tab sent.
  */
 async function socket(page: Page, list: BrowserDownload[], local: boolean) {
 	const asked: ScreenClientMessage[] = [];
@@ -52,6 +52,7 @@ async function socket(page: Page, list: BrowserDownload[], local: boolean) {
 	let send: ((downloads: BrowserDownload[]) => void) | null = null;
 	let close: (() => void) | null = null;
 	let tellTab: ((msg: ScreenServerMessage) => void) | null = null;
+	let watched: string | null = null;
 	await page.routeWebSocket(/\/ws\/browser$/, (ws) => {
 		close = () => void ws.close();
 		tellTab = (msg) => ws.send(JSON.stringify(msg));
@@ -60,6 +61,7 @@ async function socket(page: Page, list: BrowserDownload[], local: boolean) {
 			asked.push(msg);
 			if (msg.t !== "watch") return;
 			const owner = msg.owner;
+			watched = owner;
 			send = (downloads) => ws.send(JSON.stringify({ t: "downloads", owner, downloads, local }));
 			ws.send(JSON.stringify({ t: "pages", owner, pages: [] }));
 			send(current);
@@ -71,6 +73,10 @@ async function socket(page: Page, list: BrowserDownload[], local: boolean) {
 			if (!send) throw new Error("the tab has not watched yet");
 			current = downloads;
 			send(downloads);
+		},
+		owner: () => {
+			if (watched === null) throw new Error("the tab has not watched yet");
+			return watched;
 		},
 		tell: (msg: ScreenServerMessage) => {
 			if (!tellTab) throw new Error("the tab has not connected yet");
@@ -144,11 +150,16 @@ test("a finished one is shown in Finder from a page on the Mac, and fetched to t
 	await expect
 		.poll(() => tab.asked.filter((m) => m.t === "download_reveal"))
 		.toEqual([{ t: "download_reveal", id: "run.0" }]);
-	// Finder could not show it (the file was moved or deleted since): the page says so, naming it.
-	tab.tell({ t: "download_reveal_failed", id: "run.0", gone: true });
-	await expect(page.getByText("notes.txt is not where it was saved any more: it was moved or deleted")).toBeVisible();
-	tab.tell({ t: "download_reveal_failed", id: "run.0", gone: false });
+	// Finder could not show it: the page says so, naming it. An answer about a conversation the tab no longer watches
+	// says nothing (it came first: by the time the next toast shows, it has been dealt with).
+	tab.tell({ t: "download_reveal_failed", owner: "/elsewhere/old.jsonl", id: "run.0", gone: true });
+	tab.tell({ t: "download_reveal_failed", owner: tab.owner(), id: "run.0", gone: false });
 	await expect(page.getByText("Finder could not show notes.txt")).toBeVisible();
+	const gone = page.getByText("notes.txt is not where it was saved any more: it was moved or deleted");
+	await expect(gone).toHaveCount(0);
+	// The file was moved or deleted since.
+	tab.tell({ t: "download_reveal_failed", owner: tab.owner(), id: "run.0", gone: true });
+	await expect(gone).toBeVisible();
 
 	const remote = await page.context().newPage();
 	await socket(remote, [saved], false);
