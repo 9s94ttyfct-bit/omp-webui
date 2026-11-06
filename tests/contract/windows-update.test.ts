@@ -211,6 +211,13 @@ describe.skipIf(!has.windowsLauncher)("the Windows launcher's update", () => {
 			"the new version to say it is up",
 			240_000,
 		);
+		console.log(
+			`TIMING install (no polling of the server):\n${install
+				.output()
+				.split("\n")
+				.filter((l) => l.includes("TIMING"))
+				.join("\n")}`,
+		);
 		expect(readJson(result)).toMatchObject({ ok: true, from: pkg.version, to: NEXT });
 		await untilHelper(install, () => !existsSync(`${install.folder}.previous`), "the old folder to be removed", 30_000);
 		expect(versionOf(install.folder)).toBe(NEXT);
@@ -234,7 +241,12 @@ describe.skipIf(!has.windowsLauncher)("the Windows launcher's update", () => {
 		mark("published");
 		await installRelease(install, "v98.0.0");
 		mark("install asked");
-		let failed: AppUpdateState["failed"] = null;
+		let testLag = 0;
+		let testLast = Date.now();
+		const testTimer = setInterval(() => {
+			testLag = Math.max(testLag, Date.now() - testLast - 100);
+			testLast = Date.now();
+		}, 100);
 		let phase = "";
 		// A wait that ends without the refusal says where the install got to (its phase, the launcher's output), as
 		// `untilHelper` does: once on x64 it was not refused within 120 s, and arm64 takes 66-86 s where x64 takes 7-14 s.
@@ -258,7 +270,8 @@ describe.skipIf(!has.windowsLauncher)("the Windows launcher's update", () => {
 		} catch (e) {
 			throw new Error(`${(e as Error).message}\n${await diagnosis(install)}`);
 		}
-		mark("refused");
+		clearInterval(testTimer);
+		mark(`refused; test loop lag max ${testLag} ms`);
 		console.log(`TIMING refusal:\n${marks.join("\n")}\n--- launcher output:\n${install.output()}`);
 		expect(failed).toMatchObject({ code: "version", params: { tag: "v98.0.0", found: NEXT } });
 		expect(versionOf(install.folder)).toBe(pkg.version);
