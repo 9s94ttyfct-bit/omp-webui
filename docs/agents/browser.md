@@ -96,6 +96,7 @@ The browser's own endpoints, outside `/api`:
 - Clear with CEF restarts the app, which stops the conversations that are working (after the quit question) as any quit does.
 - The screencast follows what the connection carries: through the tunnel it is less smooth than on this computer.
 - A page sized by Settings › Browser is sized when a Browser tab first shows it; a page shown before keeps its size.
+- Passkeys (Mac app, CEF): a page that asks for one opens Chrome's *Passkeys & Security Keys* window on the Mac, which offers a QR code to scan with a phone or tablet that has the passkey (Chrome's hybrid sign-in, over Bluetooth) and a USB security key. The window is the Mac's own, so a page used from a browser tab or a phone shows only that it waits. The passkeys of this Mac's iCloud Keychain are not offered: an app may use them for any site only with Apple's managed entitlement `com.apple.developer.web-browser.public-key-credential`, which Apple grants on request to the Account Holder of an organisation's developer account, after review, through a provisioning profile; the app's self-signed identity cannot carry it (Chromium builds without it behave the same). The app's Info.plist has `NSBluetoothAlwaysUsageDescription` for this window: without it macOS ended the whole app (TCC, SIGABRT) the moment a page asked for a passkey, up to v0.22.3.
 
 ## Security notes
 

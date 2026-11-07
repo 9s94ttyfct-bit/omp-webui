@@ -273,6 +273,8 @@ try {
 	<key>NSHighResolutionCapable</key><true/>
 	<key>NSSupportsAutomaticGraphicsSwitching</key><true/>
 	<key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
+	<!-- Without it macOS kills the app (SIGABRT, TCC) the moment a page asks for a passkey: CEF's WebAuthn dialog looks for Bluetooth devices for the phone (hybrid) sign-in. -->
+	<key>NSBluetoothAlwaysUsageDescription</key><string>omp-webui uses Bluetooth when a page in its built-in browser asks for a passkey, so that you can sign in with your phone or a security key nearby.</string>
 </dict>
 </plist>
 `,
