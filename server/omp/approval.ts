@@ -442,7 +442,8 @@ export class ProcessOverlay {
 	 * process says the value is in force (`ADVISOR_APPLIED_SUFFIX`, which its gate keeps): omp's reload of the file takes
 	 * longer than `reloadMs` on a slow machine, and a turn sent before it would be reviewed by the advisor the person just
 	 * turned off. A process that says nothing of it (no gate, an omp without what the gate reads, `on` null: the value then
-	 * is the configuration's) gets `reloadMs`, as every other setting does; one that does not say it in `APPLY_MAX_MS`, that long.
+	 * is the configuration's) gets `reloadMs`, as every other setting does; one that does not say it in `APPLY_MAX_MS`, that
+	 * long, and the server log says so (the file is written and omp may still take it; the switch is not undone).
 	 */
 	async setAdvisor(on: boolean | null): Promise<void> {
 		this.advisor = on;
@@ -458,6 +459,9 @@ export class ProcessOverlay {
 			}
 			await Bun.sleep(APPLY_POLL_MS);
 		}
+		console.warn(
+			`omp-webui: omp did not say within ${APPLY_MAX_MS} ms that the advisor is ${on ? "on" : "off"} (${this.file})`,
+		);
 	}
 
 	/** The conversation's browser endpoint becomes `cdpUrl` (null: none; false: the browser is off); resolves as `set` does. */
@@ -559,6 +563,8 @@ export function removeOverlayFiles(file: string): void {
 		`${file}${COMPACT_STEP_SUFFIX}`,
 		`${file}${COMPACT_STEP_SUFFIX}.tmp`,
 		`${file}${COMPACT_STEP_SUFFIX}${COMPACT_STEP_LOADED_SUFFIX}`,
+		// And what the gate says of the advisor in force (`ProcessOverlay.setAdvisor`): a process after this one must not read it as its own.
+		`${file}${ADVISOR_APPLIED_SUFFIX}`,
 	])
 		rmSync(f, { force: true });
 	try {
