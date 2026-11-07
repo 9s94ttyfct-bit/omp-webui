@@ -180,8 +180,8 @@ test.skipIf(!has.notWindowsYet)(
 test("a saved conversation without a process still has its folder's plugins and rules, and no tools to list", async () => {
 	const data = await loaded(`file=${encodeURIComponent(s.fixtures.alpha)}`);
 	expect([data.tools, data.commands, data.skills]).toEqual([null, null, null]);
-	expect(Array.isArray(data.plugins)).toBe(true);
-	expect(Array.isArray(data.rules)).toBe(true);
+	expect(data.plugins).toBeArray();
+	expect(data.rules).toBeArray();
 	expect((await http("/api/loaded?file=%2Fnowhere.jsonl")).status).toBe(404);
 	expect((await http("/api/loaded?live=nope")).status).toBe(404);
 });
@@ -233,8 +233,9 @@ test.skipIf(!capabilities.pauseResume)(
 			await chat.pause();
 			const data = await loaded(`live=${chat.info.liveId}`);
 			expect([data.tools, data.commands, data.skills]).toEqual([null, null, null]);
-			expect(Array.isArray(data.plugins)).toBe(true);
-			expect(Array.isArray(data.rules)).toBe(true);
+			// `toBeArray` prints a failed section's `{ error }`, which says why omp's CLI could not answer.
+			expect(data.plugins).toBeArray();
+			expect(data.rules).toBeArray();
 			await chat.resume();
 			expect(toolsOf(await loaded(`live=${chat.info.liveId}`)).builtin.length).toBeGreaterThan(0);
 		} finally {
