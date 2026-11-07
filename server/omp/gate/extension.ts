@@ -1,6 +1,7 @@
 import { appendFileSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname } from "node:path";
+import { ADVISOR_APPLIED_SUFFIX, ADVISOR_KEY } from "../../../shared/advisor.ts";
 import {
 	GUARD_DETAIL_MAX,
 	GUARD_UNAVAILABLE,
@@ -61,6 +62,9 @@ import {
  * Which wins: while the first is armed it decides alone (the person is asked, or a subagent's call refused); the guard
  * decides every other risky call. A call that is not risky, or is made while neither applies, runs as the permission
  * mode says. Anything the gate cannot read is read as the strictest word.
+ *
+ * One more thing it does, because it runs in every gated process: it keeps `<overlay>.advisor` saying whether the
+ * advisor is on there now (`echoAdvisor`), so that the server knows when a conversation's switch is in force.
  */
 
 /** What omp passes to a `tool_call` handler, as far as the gate reads it. */
@@ -613,6 +617,39 @@ async function guardCall(
 	return refuse(unavailableText(outcome.reason, risk.kinds, subagent));
 }
 
+/** omp's settings of the process, as far as `echoAdvisor` reads them (omp's registry plumbing behind its setting handles). */
+interface SettingsLike {
+	onEffectiveChange(sources: readonly unknown[], listener: () => void): () => void;
+}
+
+/**
+ * Keep `<overlay>.advisor` saying the advisor's value in force in this process (`ADVISOR_APPLIED_SUFFIX`): now, and each
+ * time omp's value changes, which for the overlay's own line is once omp has reloaded the file and started or stopped the
+ * advisor (omp's own listener runs in the same synchronous round). An omp without these parts gets no file, and the server
+ * then gives the reload its usual moment.
+ */
+async function echoAdvisor(pi: Pi, overlay: string): Promise<void> {
+	try {
+		// @ts-expect-error TS2307: resolved by the running omp.
+		const library = await import("@oh-my-pi/pi-coding-agent/config/registry");
+		const registry: { lookup(id: string): { get(scope: unknown): unknown } | undefined } = library;
+		const setting = registry.lookup(ADVISOR_KEY);
+		const settings = pi.pi?.settings as Partial<SettingsLike> | undefined;
+		if (!setting || typeof settings?.onEffectiveChange !== "function") return;
+		const write = () => {
+			try {
+				writeFileSync(`${overlay}${ADVISOR_APPLIED_SUFFIX}`, String(setting.get(settings) === true), { mode: 0o600 });
+			} catch {
+				// Not written: the server waits for it in vain, then goes on as before.
+			}
+		};
+		settings.onEffectiveChange([setting], write);
+		write();
+	} catch {
+		// Not readable: no file, and the server gives the reload its usual moment.
+	}
+}
+
 export default function remoteRiskGate(pi: Pi): void {
 	const overlay = overlayFile(process.argv);
 	pi.on("tool_call", async (event, ctx) => {
@@ -633,4 +670,5 @@ export default function remoteRiskGate(pi: Pi): void {
 	} catch {
 		// No note: the server takes the process for one without the gate, and refuses a remote page's turn while the setting is on.
 	}
+	void echoAdvisor(pi, overlay);
 }

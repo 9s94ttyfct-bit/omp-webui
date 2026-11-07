@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { ADVISOR_KEY, advisorOf } from "../../shared/advisor.ts";
+import { ADVISOR_APPLIED_SUFFIX, ADVISOR_KEY, advisorOf } from "../../shared/advisor.ts";
 import { type ApprovalMode, isApprovalMode } from "../../shared/approval.ts";
 import { type CompactAt, compactAtOf, compactAtWrites } from "../../shared/compact-at.ts";
 import { COMPACT_STEP_LOADED_SUFFIX, COMPACT_STEP_SUFFIX } from "../../shared/compact-step.ts";
@@ -54,6 +54,10 @@ import { UNATTENDED_LOADED_SUFFIX } from "./unattended/extension.ts";
 
 /** omp reloads a changed overlay after a 200 ms debounce; give it a margin before saying a change is in force. */
 export const OMP_RELOAD_MS = 400;
+
+/** The longest a change waits for its process to say it is in force (`ProcessOverlay.setAdvisor`), and how often it looks. */
+const APPLY_MAX_MS = 5_000;
+const APPLY_POLL_MS = 20;
 
 /**
  * The mode omp itself resolves for `cwd` from its settings (global, project, overlays), as `omp config get` prints it;
@@ -433,11 +437,27 @@ export class ProcessOverlay {
 		return Bun.sleep(this.reloadMs);
 	}
 
-	/** Whether the advisor reviews this conversation becomes `on` (null: omp's configuration again); resolves as `set` does. */
-	setAdvisor(on: boolean | null): Promise<void> {
+	/**
+	 * Whether the advisor reviews this conversation becomes `on` (null: omp's configuration again). It resolves once the
+	 * process says the value is in force (`ADVISOR_APPLIED_SUFFIX`, which its gate keeps): omp's reload of the file takes
+	 * longer than `reloadMs` on a slow machine, and a turn sent before it would be reviewed by the advisor the person just
+	 * turned off. A process that says nothing of it (no gate, an omp without what the gate reads, `on` null: the value then
+	 * is the configuration's) gets `reloadMs`, as every other setting does; one that does not say it in `APPLY_MAX_MS`, that long.
+	 */
+	async setAdvisor(on: boolean | null): Promise<void> {
 		this.advisor = on;
 		this.write();
-		return Bun.sleep(this.reloadMs);
+		const echo = `${this.file}${ADVISOR_APPLIED_SUFFIX}`;
+		if (on === null || !existsSync(echo)) return Bun.sleep(this.reloadMs);
+		const until = Date.now() + APPLY_MAX_MS;
+		while (Date.now() < until) {
+			try {
+				if (readFileSync(echo, "utf8") === String(on)) return;
+			} catch {
+				// Gone meanwhile (the overlay's folder was swept): the loop ends at its limit.
+			}
+			await Bun.sleep(APPLY_POLL_MS);
+		}
 	}
 
 	/** The conversation's browser endpoint becomes `cdpUrl` (null: none; false: the browser is off); resolves as `set` does. */

@@ -100,7 +100,7 @@ The Todos tab and the todo strip let the user finish/reopen a task, change its s
 | `/api/controls/panel-config` | POST | token | `{ live }`: Claude slow mode in omp's config and the folder's defaults (which rows are already the default). |
 | `/api/controls/claude-slow` | POST | token | `{ live, enabled }`: Claude slow mode in omp's global config (every conversation). Refused in Light. |
 | `/api/advisor` | GET | token | `{ omp }`: whether omp's own configuration runs the advisor (`advisor.enabled`; null when it could not be read): what New chat's switch starts at. |
-| `/api/advisor/live` | POST | token | `{ liveId, on }`: the advisor on or off for one running conversation from its next turn (its overlay), kept with the conversation. 404 for no such process, 422 for an `on` that is not a boolean. |
+| `/api/advisor/live` | POST | token | `{ liveId, on }`: the advisor on or off for one running conversation from its next turn (its overlay), kept with the conversation. It answers once the process says the change is in force (at most 5 s), so a turn sent after it follows the new choice. 404 for no such process, 422 for an `on` that is not a boolean. |
 | `/api/loaded` | GET | token | `?live=&file=`: the Loaded dialog's contents (tools, MCP servers, commands, skills, plugins, rules) and `restartOwed`. |
 | `/api/lives` | GET | token | The omp processes this server runs (live id, session file, folder, mode, paused/working state), as Settings › Running sessions lists them. |
 | `/api/lives/end-kept` | POST | token | End every kept conversation (paused, or waiting out a usage limit), as the macOS app's *Quit and end* does; answers `{ ended }`. |

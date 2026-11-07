@@ -15,6 +15,7 @@ const FILES: Readonly<Record<string, string>> = {
 	"shared/risk-confirm.ts": source("shared/risk-confirm.ts"),
 	"shared/guard.ts": source("shared/guard.ts"),
 	"shared/guard-policy.ts": source("shared/guard-policy.ts"),
+	"shared/advisor.ts": source("shared/advisor.ts"),
 };
 
 /** The folder the gate lives in, and the file omp is given (`--extension`). */
