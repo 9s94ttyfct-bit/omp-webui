@@ -87,9 +87,8 @@ function world(opts: Partial<TransferOptions> = {}, root: "proj" | "home" = "pro
 	const cwd = root === "proj" ? proj : home;
 	const env = (over: Partial<TransferEnv> = {}): TransferEnv => ({
 		setting: "full",
-		local: false,
 		// A page that is not the person's own (one on the network with the token) unless a test says otherwise.
-		owner: over.local ?? false,
+		owner: false,
 		who: "me@example.test",
 		dataDirs: [data],
 		protect: [data],
@@ -268,8 +267,8 @@ describe("downloading a file", () => {
 		symlinkSync(w.outside, join(w.proj, "outdir"));
 		write(join(w.proj, "in.txt"), "inside");
 		symlinkSync(join(w.proj, "in.txt"), join(w.proj, "alias.txt"));
-		for (const local of [false, true]) {
-			const e = w.env({ local });
+		for (const owner of [false, true]) {
+			const e = w.env({ owner });
 			for (const path of [
 				"../outside/secret.txt",
 				`${w.outside}/secret.txt`,
@@ -277,7 +276,7 @@ describe("downloading a file", () => {
 				"outdir/secret.txt",
 				"a/../../outside/secret.txt",
 			]) {
-				expect(await failed(await dl(w, path, e)), `${local ? "local" : "remote"} ${path}`).toMatchObject({
+				expect(await failed(await dl(w, path, e)), `${owner ? "owner" : "guarded"} ${path}`).toMatchObject({
 					status: 403,
 					code: "outside",
 				});
@@ -312,7 +311,7 @@ describe("downloading a file", () => {
 		}
 		expect((await dl(w, "plain.txt")).status).toBe(200);
 		// The person's own page (this computer's, or one signed in through Access) is sent them: by name and by a key in its text.
-		for (const owner of [w.env({ local: true, who: "local" }), w.env({ owner: true, who: "owner@example.test" })]) {
+		for (const owner of [w.env({ owner: true, who: "local" }), w.env({ owner: true, who: "owner@example.test" })]) {
 			for (const path of [".env", "notes.txt"]) expect((await dl(w, path, owner)).status, path).toBe(200);
 		}
 	});
@@ -331,7 +330,7 @@ describe("downloading a file", () => {
 		write(join(h.home, "notes.txt"), "n");
 		expect(await failed(await dl(h, "dist/app.js"))).toMatchObject({ status: 403, code: "hidden" });
 		expect((await dl(h, "notes.txt")).status).toBe(200);
-		expect((await dl(h, "dist/app.js", h.env({ local: true }))).status).toBe(200);
+		expect((await dl(h, "dist/app.js", h.env({ owner: true }))).status).toBe(200);
 	});
 
 	test("a place nothing is carried out of unasked is refused: omp's folder, launch agents, the app's data, whatever the folder is", async () => {
@@ -356,7 +355,7 @@ describe("downloading a file", () => {
 			code: "off",
 			header: "off",
 		});
-		expect((await dl(w, "f.txt", w.env({ setting: "off", local: true }))).status).toBe(200);
+		expect((await dl(w, "f.txt", w.env({ setting: "off", owner: true }))).status).toBe(200);
 		// A `HEAD` that is refused carries its code in the header, and no body.
 		const head = await dl(w, "f.txt", w.env({ setting: "off" }), {}, "HEAD");
 		expect(head.status).toBe(403);
@@ -492,7 +491,7 @@ describe("a folder as a ZIP", () => {
 	test("the person's own page (this computer's, or one signed in through Access) is sent secrets too, as many as the plan said", async () => {
 		const w = tree();
 		write(join(w.proj, "app", "id_ed25519"), "-----BEGIN OPENSSH PRIVATE KEY-----\nx\n");
-		for (const owner of [w.env({ local: true }), w.env({ owner: true })]) {
+		for (const owner of [w.env({ owner: true }), w.env({ owner: true })]) {
 			const { plan: p } = await plan(w, "app", { hidden: true }, owner);
 			expect(p?.skipped.secret).toBe(0);
 			const z = await unzip(await w.call(`archive/${p?.ticket}`, {}, owner), w.top);
@@ -990,7 +989,7 @@ describe("uploading a file", () => {
 			code: "off",
 		});
 		expect((await w.call(`upload/state?id=${"0".repeat(32)}`, {}, w.env({ setting: "download" }))).status).toBe(403);
-		expect((await up(w, { name: "a.txt", size: 1, body: "x" }, w.env({ setting: "off", local: true }))).status).toBe(
+		expect((await up(w, { name: "a.txt", size: 1, body: "x" }, w.env({ setting: "off", owner: true }))).status).toBe(
 			200,
 		);
 		expect(existsSync(join(w.proj, "a.txt"))).toBe(true);
@@ -1215,11 +1214,11 @@ describe("a file the built-in browser downloaded (`sendFile`)", () => {
 		write(abs, "x");
 		expect(await failed(await send(w, abs, w.env({ setting: "off" })))).toMatchObject({ status: 403, code: "off" });
 		expect((await send(w, abs, w.env({ setting: "download" }))).status).toBe(200);
-		expect((await send(w, abs, w.env({ setting: "off", local: true }))).status).toBe(200);
+		expect((await send(w, abs, w.env({ setting: "off", owner: true }))).status).toBe(200);
 		const key = join(w.home, "Downloads", "notes.txt");
 		write(key, "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n");
 		expect(await failed(await send(w, key))).toMatchObject({ status: 403, code: "secret" });
-		expect((await send(w, key, w.env({ local: true }))).status).toBe(200);
+		expect((await send(w, key, w.env({ owner: true }))).status).toBe(200);
 	});
 
 	test("one moved or deleted since is not found", async () => {

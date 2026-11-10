@@ -63,7 +63,8 @@ export const en = {
 	dirNotFolder: "{path} is not a folder.",
 	dirNoAccess: "No permission to open {path}.",
 	dirNotWritable: "No permission to make folders in {path}.",
-	projectsNotHere: "The projects folder is changed on the computer omp-webui runs on.",
+	projectsNotHere:
+		"The projects folder is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access.",
 	projectsFolderShape: "Name the folder, or choose the default.",
 	// The page words the reason from `problem` (chatProjects namespace); this is what a page that does not know it shows.
 	projectNameInvalid: "That name cannot be used for a project.",

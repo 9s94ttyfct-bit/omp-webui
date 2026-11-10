@@ -137,7 +137,7 @@ import { handleSettingsHelp } from "./settings-help/routes.ts";
 import { SettingsHelp } from "./settings-help/service.ts";
 import { NOTIFY_EVENTS_PATH, SHELL_EVENTS_PATH, ShellEvents } from "./shell-events.ts";
 import { KeepAwake, SleepDetector, spawnCaffeinate, workingIds } from "./sleep.ts";
-import { isLocalOnlyRoute, isOwnerPage, isOwnerRoute, isThisComputer } from "./this-computer.ts";
+import { isOwnerPage, isOwnerRoute, isThisComputer } from "./this-computer.ts";
 import type { TransferEnv } from "./transfer-core.ts";
 import type { AppUpdater, InstallTarget } from "./update/service.ts";
 import { APP_VERSION } from "./version.ts";
@@ -533,10 +533,11 @@ let remotePort = 0;
 /** The port of the loopback listener of a server bound to a network address (`0`: it has none); the gates ask about it too. */
 let loopbackPort = 0;
 /**
- * The conversations a page that came in through the tunnel has touched (attached to, or sent anything to, answers of
- * omp's approval prompts included), by live id. The AI help's tools are refused on them (see `RemoteAi.refusal`) even after
- * that page has gone: a page could answer omp's approval prompt of a tool call and leave, and the call arrives afterwards.
- * It is lifted by a page on this Mac sending the conversation a message, and ends with the process.
+ * The conversations a page that is not the person's own (one that holds only the token: on the network, or behind a proxy
+ * without Access) has touched (attached to, or sent anything to, answers of omp's approval prompts included), by live id.
+ * The AI help's tools are refused on them (see `RemoteAi.refusal`) even after that page has gone: a page could answer omp's
+ * approval prompt of a tool call and leave, and the call arrives afterwards. It is lifted by the person's own page (this
+ * Mac's, or one signed in through Access) sending the conversation a message, and ends with the process.
  */
 const remoteTouched = new Set<string>();
 const remoteAuth = new LazyRemote(
@@ -548,9 +549,10 @@ const remoteAuth = new LazyRemote(
 		// "Set up with AI" (Settings › Remote access): a conversation whose tools this server answers (see `RemoteAi`).
 		open: async (server, cwd) => (await pool.openServing(cwd, server)).attached(),
 		withdraw: (liveId) => pool.get(liveId)?.serveHostTools(null) ?? Promise.resolve(),
-		// A remote page on the conversation could answer omp's approval prompts itself: its tools are refused while one is.
+		// A page that is not the person's own could answer omp's approval prompts on the conversation: its tools are refused while one is.
 		heldRemotely: (liveId) =>
-			remoteTouched.has(liveId) || [...sockets].some((ws) => !ws.data.local && ws.data.attached.has(liveId)),
+			remoteTouched.has(liveId) ||
+			[...sockets].some((ws) => !isOwnerPage(ws.data.remote, ws.data.local) && ws.data.attached.has(liveId)),
 	},
 	// Shells for remote pages turned off: the ones they have open end now, not when their pages next close.
 	(config) => {
@@ -606,29 +608,21 @@ const automaticAppUpdates = process.env.OMP_WEBUI_UPDATE_CHECK !== "off" || appU
 let updater: AppUpdater | null = null;
 let loadingUpdater: Promise<AppUpdater> | null = null;
 
-/** What is said to the pages on this computer (any other is refused the guard's log and Ask agent for help). */
-function broadcastLocal(msg: ServerMessage): void {
-	const text = JSON.stringify(msg);
-	for (const ws of sockets) if (ws.data.local) ws.data.out?.send(text);
-}
-
-/** What is said to the person's pages (`isOwnerPage`): this computer's, and those signed in through Access (the app's updates). */
+/**
+ * What is said to the person's pages (`isOwnerPage`): this computer's, and those signed in through Access (the app's
+ * updates, the guard's log, Ask agent for help); a page that holds only the token is told none of it.
+ */
 function broadcastOwner(msg: ServerMessage): void {
 	const text = JSON.stringify(msg);
 	for (const ws of sockets) if (isOwnerPage(ws.data.remote, ws.data.local)) ws.data.out?.send(text);
 }
 
 /**
- * Tell the pages that may change the guard (`isOwnerPage`) what its settings are now. `rules`, the Guard page's, go to this
- * computer's pages alone (`/api/guard/rules` is local-only); a page that holds only the token is told nothing of the guard.
+ * Tell the pages that may change the guard (`isOwnerPage`) what its settings are now, with `rules`, the Guard page's, when
+ * they changed; a page that holds only the token is told nothing of the guard.
  */
 function broadcastGuardConfig(config: GuardConfig, rules?: GuardRules): void {
-	const here = JSON.stringify({ t: "guard_config", config, ...(rules ? { rules } : {}) } satisfies ServerMessage);
-	const signedIn = JSON.stringify({ t: "guard_config", config } satisfies ServerMessage);
-	for (const ws of sockets) {
-		if (ws.data.local) ws.data.out?.send(here);
-		else if (isOwnerPage(ws.data.remote, false)) ws.data.out?.send(signedIn);
-	}
+	broadcastOwner({ t: "guard_config", config, ...(rules ? { rules } : {}) });
 }
 
 /** Tell every open page what the preferences are now, each as it is given them (`pageSnapshot`: its device's keys or not). */
@@ -939,8 +933,9 @@ const settingsHelp = new SettingsHelp(
 	{
 		open: async (server, cwd) => (await pool.openServing(cwd, server)).attached(),
 		heldRemotely: (liveId) =>
-			remoteTouched.has(liveId) || [...sockets].some((ws) => !ws.data.local && ws.data.attached.has(liveId)),
-		changed: (state) => broadcastLocal({ t: "settings_help", state }),
+			remoteTouched.has(liveId) ||
+			[...sockets].some((ws) => !isOwnerPage(ws.data.remote, ws.data.local) && ws.data.attached.has(liveId)),
+		changed: (state) => broadcastOwner({ t: "settings_help", state }),
 	},
 	undefined,
 	// Tests shorten the access to see it end (`OMP_WEBUI_SETTINGS_HELP_MS`); the service never lets it be longer than 30 minutes.
@@ -1151,10 +1146,11 @@ const UPDATE_NOT_HERE =
 function transferEnv(req: Request, peer: string | undefined): TransferEnv {
 	const local = onThisComputer.has(req);
 	const remote = remoteOf.get(req);
+	const owner = isOwnerPage(remote ?? null, local);
 	return {
-		setting: local ? "full" : remoteAuth.fileTransfer(),
-		local,
-		owner: isOwnerPage(remote ?? null, local),
+		// The person's own page may do all of it; Settings › Remote access › File transfer is for any other page.
+		setting: owner ? "full" : remoteAuth.fileTransfer(),
+		owner,
 		// The Access email of a page that came through the tunnel; `net:` and the address for one on the network.
 		who: remote ? remote.email : local ? "local" : `net:${peer ?? "unknown"}`,
 		validUntil: remote?.validUntil,
@@ -1304,16 +1300,16 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				// Whether this page is not on this computer: it came in through the public hostname (see `RemoteAuth`), or over a
 				// network address the server listens on. Either one is shown what a remote page is shown.
 				remote: !onThisComputer.has(req),
-				// Whether it is on the computer the server runs on (see `isThisComputer`): what only that computer may change.
+				// Whether it is on the computer the server runs on (see `isThisComputer`): what is the device's own (its layout).
 				local: onThisComputer.has(req),
 				// Whether it is the person's own (`isOwnerPage`): on this computer, or signed in through Cloudflare Access. Such a
-				// page may change the guard's settings, a conversation's own guard and the guidance; any other only sees them.
+				// page may do everything this computer's page may; any other uses the conversations and only sees the rest.
 				owner: fromOwner(req),
-				// What this page may do with the files of a conversation's folder (see `shared/transfer.ts`): all of it for a page
-				// on this computer, what the person set on this computer for any other.
-				fileTransfer: onThisComputer.has(req) ? "full" : remoteAuth.fileTransfer(),
-				// Whether this page may open a shell in the panel's Terminal tab: always on this computer, as the person set it for any other.
-				shell: onThisComputer.has(req) || remoteAuth.remoteShell(),
+				// What this page may do with the files of a conversation's folder (see `shared/transfer.ts`): all of it for the
+				// person's own page, what the person set on this computer for any other.
+				fileTransfer: fromOwner(req) ? "full" : remoteAuth.fileTransfer(),
+				// Whether this page may open a shell in the panel's Terminal tab: always for the person's own page, as the person set it for any other.
+				shell: fromOwner(req) || remoteAuth.remoteShell(),
 				// The other Macs this one knows, for the sidebar's machine switcher: what a page needs to open one and nothing of the app's own.
 				macs: savedMacs.saved(),
 				// How many questions wait for the person (#646): the sidebar's badge is there from the first look.
@@ -1321,8 +1317,8 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				// What the system the server runs on lets it do (`shared/platform.ts`): the page shows what a flag turns off (the
 				// Sleep card without `keepAwake`, the Remote access card without `remoteAccess`) rather than asking which OS it is.
 				capabilities: platform.capabilities,
-				// The folder Ask agent for help's conversations run in, for a page on this computer: it marks one when it shows it.
-				...(onThisComputer.has(req) ? { settingsHelpFolder: settingsHelp.state().folder } : {}),
+				// The folder Ask agent for help's conversations run in, for the person's own page: it marks one when it shows it.
+				...(fromOwner(req) ? { settingsHelpFolder: settingsHelp.state().folder } : {}),
 			});
 		case "/api/diagnostics":
 			return json({ os: await platform.describe(), mode: modes.mode });
@@ -1467,10 +1463,10 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 					// start a conversation in any folder (`/api/dirs` lists them all) and has an agent's whole reach there.
 					return json(projects.create(body?.name));
 				}
-				// Where projects are made is the person's at this computer, as the tunnel's settings are: a page that came through
-				// the tunnel (or from the network) must not move it, though it may use it.
-				if (!onThisComputer.has(req)) {
-					return fail("The projects folder is changed on the computer omp-webui runs on", 403, {
+				// Where projects are made is the person's, as the tunnel's settings are: this computer's page or one signed in
+				// through Access may move it; a page that holds only the token (one on the network) may use it, not move it.
+				if (!fromOwner(req)) {
+					return fail("The projects folder is changed from your own page", 403, {
 						code: "projectsNotHere",
 					});
 				}
@@ -1769,11 +1765,11 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		case "/api/prefs":
 			if (req.method === "POST") {
 				const body = (await req.json().catch(() => null)) as { changes?: unknown } | null;
-				// "Keep the Mac awake while a conversation works" is the person's at this computer (#647): a page that came in
-				// through the tunnel or over the network would be turning off the protection of the conversations it drives
-				// while they work. Its key is refused with the rest, not silently dropped, so the page can say why.
-				if (!onThisComputer.has(req) && isRecord(body?.changes) && Object.hasOwn(body.changes, PREF.keepAwake))
-					return fail("Keep the Mac awake is changed on the computer omp-webui runs on", 403);
+				// "Keep the Mac awake while a conversation works" is the person's (#647): a page that holds only the token (one on
+				// the network) would be turning off the protection of the conversations it drives while they work. Its key is
+				// refused with the rest, not silently dropped, so the page can say why.
+				if (!fromOwner(req) && isRecord(body?.changes) && Object.hasOwn(body.changes, PREF.keepAwake))
+					return fail("Keep the Mac awake is changed from your own page", 403);
 				// Whether conversations have a browser at all, and whether it updates itself, are the person's who manages the
 				// browser (`isOwnerPage`).
 				if (
@@ -2093,15 +2089,11 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		case "/api/model-guidance/conflicts": {
 			// The guidance conflict check (v0.13.0): `text`, the guidance the conversation (`liveId`, or its session `file`) was
 			// just given, compared with its folder's AGENTS.md and the like and the project's memories by a small model. It
-			// writes nothing: the page proposes each change for the person to apply. This computer only, even for a page signed
-			// in through Access that may change the guidance: it shows what omp remembers (`/api/memory*`, this computer's alone)
-			// and its proposals are applied through that memory, so a page that may not open the Memory page is not shown it here.
+			// writes nothing: the page proposes each change for the person to apply. The person's own page only (this
+			// computer's, or one signed in through Access): it shows what omp remembers (`/api/memory*`, the owner's alone) and
+			// its proposals are applied through that memory, so a page that may not open the Memory page is not shown it here.
 			if (req.method !== "POST") return fail("POST required", 405);
-			if (!onThisComputer.has(req))
-				return fail(
-					"The conflict check runs on the computer omp-webui runs on: it reads what omp remembers there",
-					403,
-				);
+			if (!fromOwner(req)) return fail("The conflict check runs from your own page: it reads what omp remembers", 403);
 			const body: unknown = await req.json().catch(() => null);
 			if (!isRecord(body) || typeof body.text !== "string" || body.text.length > GUIDANCE_MAX)
 				return fail("Bad value", 422);
@@ -2159,7 +2151,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				const live = await pool.open({ kind: "resume", sessionFile: asked.session }, cwdOfSessionFile);
 				const refusal = turnRefusal(live, remote);
 				if (refusal) return fail(refusal, 403);
-				if (remote) remoteTouched.add(live.info.liveId);
+				if (!fromOwner(req)) remoteTouched.add(live.info.liveId);
 				else remoteTouched.delete(live.info.liveId);
 				// A paused conversation is continued first, as the composer does.
 				if (live.info.pausedAt !== null) await live.resume();
@@ -2204,10 +2196,10 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		}
 		case "/api/unattended": {
 			// The instruction the main agent is told while a conversation is unattended (Settings › Unattended mode). Every page
-			// may read it; a change is made on this computer only, as the model guidance's templates are: what it says is put into
-			// the system prompt of every conversation that is unattended (see `isLocalOnlyRoute`).
+			// may read it; a change is the person's own page's, as the model guidance's templates are: what it says is put into
+			// the system prompt of every conversation that is unattended (see `isOwnerRoute`).
 			if (req.method === "POST") {
-				if (!onThisComputer.has(req)) return fail("The instruction is changed on the computer omp-webui runs on", 403);
+				if (!fromOwner(req)) return fail("The instruction is changed from your own page", 403);
 				const body = (await req.json().catch(() => null)) as unknown;
 				const text = isRecord(body) ? body.instruction : undefined;
 				if (text !== null && typeof text !== "string") return fail("Not an instruction", 422);
@@ -2408,9 +2400,9 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 	}
 	if (p.startsWith("/api/migrate/")) return (await (await migrateService()).handle(req, url)) ?? fail("Not found", 404);
 	if (p === "/api/memory" || p.startsWith("/api/memory/")) return (await memoryService()).handle(req, url);
-	// Ask agent for help (local-only: `isLocalOnlyRoute`, refused to any other page in `route`).
+	// Ask agent for help (the owner's: `isOwnerRoute`, refused to any other page in `route`).
 	if (p === "/api/settings-help" || p.startsWith("/api/settings-help/"))
-		return handleSettingsHelp(req, url, settingsHelp, onThisComputer.has(req), { json, fail });
+		return handleSettingsHelp(req, url, settingsHelp, fromOwner(req), { json, fail });
 	// Not local-only (phones come in through the tunnel): the token (or Access) is the gate, as for the conversations.
 	if (p === PUSH_API || p.startsWith(`${PUSH_API}/`))
 		return (await pushService()).handle(req, url, { remote: remoteOf.has(req) });
@@ -2427,9 +2419,9 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 	}
 	if (p === "/api/browser" || p.startsWith("/api/browser/"))
 		return browser.handle(req, url, { remote: remoteOf.get(req) ?? null, local: onThisComputer.has(req) });
-	const remoteAnswer = await remoteAuth.handle(req, url, peer);
+	const remoteAnswer = await remoteAuth.handle(req, url, fromOwner(req));
 	if (remoteAnswer) return remoteAnswer;
-	const macsAnswer = await savedMacs.handle(req, url, peer);
+	const macsAnswer = await savedMacs.handle(req, url, fromOwner(req));
 	if (macsAnswer) return macsAnswer;
 	if (p.startsWith("/api/folder/")) {
 		return folder.handle(req, url, {
@@ -2437,16 +2429,15 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			marks: (cwd, fresh) => git.marks(cwd, { fresh }),
 			changes: (cwd, fresh) => git.changes(cwd, { fresh }),
 			diff: (cwd, path) => git.diff(cwd, path),
-			local: onThisComputer.has(req),
 			owner: fromOwner(req),
 			transfer: (r, u) => folder.transfer(r, u, { cwdOf: conversationCwd }, transferEnv(req, peer)),
 			env: () => transferEnv(req, peer),
 		});
 	}
 	if (p === "/api/upload") {
-		// What this computer lets a page that is not on it do with files (Settings › Remote access › File transfer) applies to the
-		// composer's upload as well: a page that may not send files here does not send them by this route either.
-		if (!onThisComputer.has(req) && remoteAuth.fileTransfer() !== "full") {
+		// What this computer lets a page that is not the person's own do with files (Settings › Remote access › File transfer)
+		// applies to the composer's upload as well: a page that may not send files here does not send them by this route either.
+		if (!fromOwner(req) && remoteAuth.fileTransfer() !== "full") {
 			return json(
 				{ error: "Receiving files is switched off on this computer", code: "off" } satisfies UploadFailure,
 				403,
@@ -2501,15 +2492,16 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 		ws.data.out?.send(JSON.stringify(m));
 	};
 	const attach = (live: Live) => {
-		if (!ws.data.local) remoteTouched.add(live.info.liveId);
+		if (!isOwnerPage(ws.data.remote, ws.data.local)) remoteTouched.add(live.info.liveId);
 		if (ws.data.closed) return;
 		live.subscribers.add(ws.data.sub);
 		ws.data.attached.add(live.info.liveId);
 		pool.announce(live);
 	};
-	// A conversation a remote page sends anything to is noted, so that the AI help's tools stay refused on it (`remoteTouched`).
+	// A conversation a page that is not the person's own sends anything to is noted, so that the AI help's tools stay
+	// refused on it (`remoteTouched`).
 	const touch = (live: Live): void => {
-		if (!ws.data.local) remoteTouched.add(live.info.liveId);
+		if (!isOwnerPage(ws.data.remote, ws.data.local)) remoteTouched.add(live.info.liveId);
 	};
 	switch (msg.t) {
 		case "open": {
@@ -2611,8 +2603,8 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 					ok: false,
 					error: "Live session not found",
 				});
-			// A message the person at this Mac sends is theirs to answer for: it lifts what a remote page left on the conversation.
-			if (ws.data.local && (msg.command.type === "prompt" || msg.command.type === "steer"))
+			// A message the person sends from their own page is theirs to answer for: it lifts what another page left on the conversation.
+			if (isOwnerPage(ws.data.remote, ws.data.local) && (msg.command.type === "prompt" || msg.command.type === "steer"))
 				remoteTouched.delete(live.info.liveId);
 			// The turn this message starts (or steers) is its sender's: a remote page's when the sender came in through the
 			// tunnel, and then "Confirm risky commands from remote pages" asks about its risky calls; a page on this computer
@@ -2757,9 +2749,10 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 		}
 		case "pty_open": {
 			const shell = msg.shell === true;
-			// A shell for a page that is not on this computer is the person's to allow (Settings › Remote access): the login
-			// shell, and omp's own shell console (`omp shell`), which is one too (#682).
-			if ((shell || (Array.isArray(msg.args) && runsOmpShell(msg.args))) && !ws.data.local && !remoteAuth.remoteShell())
+			// A shell for a page that is not the person's own is the person's to allow (Settings › Remote access): the login
+			// shell, and omp's own shell console (`omp shell`), which is one too (#682). The person's own page always may.
+			const owner = isOwnerPage(ws.data.remote, ws.data.local);
+			if ((shell || (Array.isArray(msg.args) && runsOmpShell(msg.args))) && !owner && !remoteAuth.remoteShell())
 				return reply({ t: "reply", req: msg.req, ok: false, error: REMOTE_SHELL_OFF });
 			// A terminal's omp would write the same files an import is writing.
 			if (!shell && importWriting) throw heldByImport();
@@ -2769,7 +2762,8 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 			if (ws.data.closed) return;
 			const id = ptys.open(ws.data.sub, msg.args, msg.cwd, msg.cols, msg.rows, {
 				shell,
-				remote: !ws.data.local,
+				// Ended when the person turns shells for remote pages off: those of pages that are not the person's own.
+				remote: !owner,
 				tag: msg.tag,
 			});
 			return reply({ t: "reply", req: msg.req, ok: true, data: { ptyId: id } });
@@ -2893,18 +2887,17 @@ async function route(req: Request, srv: Bun.Server<SocketData>): Promise<Respons
 	// The API and the socket answer a page of this origin only; the page itself (and the token link) is served to anyone.
 	const isApi = url.pathname === "/ws" || url.pathname === "/ws/browser" || url.pathname.startsWith("/api/");
 	if (isApi && !fromOwnPage(req)) return new Response("Forbidden", { status: 403 });
-	// What the guard decided and how strict it is, the tunnel's settings and moving to another computer are the person's
-	// at this computer (see `isLocalOnlyRoute`): a page that is not on it must never be able to reconfigure what it came
-	// in through, nor carry every conversation (and, with a password, every
-	// login) away, nor rewrite the user's files from an uploaded archive. That is the socket's say (see
-	// `isThisComputer`), not the bind address's: a server that listens on a network address answers the people on that
-	// network, and they are not this computer. Nor is the token any proof of it: it is what a page on the network has.
-	if (!local && isLocalOnlyRoute(url.pathname)) return new Response("Forbidden", { status: 403 });
-	// The owner's routes (`isOwnerRoute`: the guard's settings, a conversation's own guard, the app's updates) are this
-	// computer's page's and the person's signed in through Access (`isOwnerPage`): a page that holds only the token (one on
-	// the network) may not switch the guard off nor replace the app. Said in words, for the page to show.
-	if (isOwnerRoute(url.pathname) && !isOwnerPage(remote, local))
-		return fail(url.pathname.startsWith("/api/update") ? UPDATE_NOT_HERE : GUARD_NOT_HERE, 403);
+	// What the guard decided and how strict it is, the tunnel's settings, the app's updates and moving to another computer
+	// are the person's (see `isOwnerRoute`): this computer's page's and one signed in through Access (`isOwnerPage`). A page
+	// that holds only the token (one on the network, or behind a proxy without Access) must never be able to reconfigure
+	// what it came in through, switch the guard off, replace the app, nor carry every conversation (and, with a password,
+	// every login) away. That is the request's own authentication's say, not the bind address's: a server that listens on a
+	// network address answers the people on that network, and they are not the person. Said in words, for the page to show.
+	if (isOwnerRoute(url.pathname) && !isOwnerPage(remote, local)) {
+		if (url.pathname === "/api/update" || url.pathname.startsWith("/api/update/")) return fail(UPDATE_NOT_HERE, 403);
+		if (url.pathname === "/api/guard" || url.pathname.startsWith("/api/guard/")) return fail(GUARD_NOT_HERE, 403);
+		return new Response("Forbidden", { status: 403 });
+	}
 	// The token link and the token itself are not for a page that came in through the tunnel: it has its Access login and
 	// is given the cookie. A page on the network exchanges the token it has for the cookie, as it would on this computer:
 	// refusing it would leave a browser there no way to sign in, and it protects nothing, for what the token opens is
@@ -3072,6 +3065,7 @@ const listen = (hostname: string, port: number) =>
 							buffered: () => socket.getBufferedAmount(),
 							close: (code, reason) => socket.close(code, reason),
 							local: data.local,
+							owner: isOwnerPage(data.remote, data.local),
 						})
 						.then(
 							(client) => {
@@ -3310,8 +3304,8 @@ setInterval(() => {
 	if (!importWriting) approval.verify();
 	// The same goes for the record of a conversation the server keeps (see `LivePool.syncRisk`): an import's own records stay.
 	pool.syncRisk();
-	// What the gates decided since the last look, said to the pages on this computer.
-	for (const decision of guardLog.poll()) broadcastLocal({ t: "guard_decision", decision });
+	// What the gates decided since the last look, said to the person's own pages.
+	for (const decision of guardLog.poll()) broadcastOwner({ t: "guard_decision", decision });
 }, 1000).unref();
 remoteAuth.start();
 

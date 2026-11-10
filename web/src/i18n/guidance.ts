@@ -139,8 +139,6 @@ export const en = {
 	conflictCheckHint:
 		"Compares this guidance with the folder's AGENTS.md (and the other files omp loads there) and with omp's memories of the project, using a small model. Nothing is changed unless you apply it.",
 	conflictCheckOff: "The conflict check is off (Settings › Guidance).",
-	conflictCheckLocal:
-		"The conflict check runs on the computer omp-webui runs on: it reads what omp remembers there, which this page is not shown.",
 	conflictTruncated: "Read only in part (too long): {files}.",
 	conflictModel: "Checked by {model}.",
 	conflictCached: "Checked by {model} (the same text was checked a moment ago).",

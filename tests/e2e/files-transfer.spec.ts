@@ -444,6 +444,18 @@ test.describe("uploading", () => {
 
 	test("a name the server refuses is said in words, and the others go on", async ({ page }) => {
 		await openFiles(page);
+		// This computer's page is the person's own, which the server lets write a key; what a page that is not its own is
+		// answered for one (the server's own words, tested in tests/contract/folder-transfer.test.ts) is stood in for here.
+		await page.route("**/api/folder/upload?**", (route) =>
+			new URL(route.request().url()).searchParams.get("name") === "id_rsa"
+				? route.fulfill({
+						status: 403,
+						contentType: "application/json",
+						headers: { "x-omp-webui-error": "secret" },
+						body: JSON.stringify({ error: "This looks like a secret: nothing is sent into it", code: "secret" }),
+					})
+				: route.continue(),
+		);
 		await drop(page, pane, [
 			{ name: "id_rsa", text: "-----BEGIN OPENSSH PRIVATE KEY-----" },
 			{ name: "fine.txt", text: "ok" },

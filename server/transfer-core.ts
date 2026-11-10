@@ -35,14 +35,13 @@ export class TransferError extends Error {
 
 /** What the request is, as `main.ts` knows it: who asked, from where, and what this computer allows that page. */
 export interface TransferEnv {
-	/** What this page may do with files: `full` for a page on this computer, the person's setting for any other. */
+	/** What this page may do with files: `full` for the person's own page, the person's setting for any other. */
 	setting: FileTransfer;
-	/** The page is on this computer (see `isThisComputer`). */
-	local: boolean;
 	/**
-	 * The page is the person's own (`isOwnerPage`): this computer's, or one signed in through Cloudflare Access. It is sent
-	 * every file it asks for, secrets and protected places included; a page that is neither (one on the network with the
-	 * token) is not.
+	 * The page is the person's own (`isOwnerPage`): this computer's, or one signed in through Cloudflare Access. It may do
+	 * everything with the folder's files whatever Settings › Remote access says: it is sent every file it asks for, secrets
+	 * and protected places included, and writes anywhere in the folder but the app's own data. A page that is neither (one
+	 * on the network with the token) is not.
 	 */
 	owner: boolean;
 	/** Who asked, for the log and for what belongs to one asker: the Access email, `local`, or `net:<address>`. */
@@ -150,15 +149,15 @@ export async function viaFolder<T>(job: () => Promise<T>): Promise<T> {
 	}
 }
 
-/** A page may download when this computer lets it (a page on this computer always may). */
+/** A page may download when this computer lets it (the person's own page always may). */
 export function requireDownload(env: TransferEnv): void {
-	if (!env.local && env.setting === "off")
+	if (!env.owner && env.setting === "off")
 		throw new TransferError("Sending files is switched off on this computer", 403, "off");
 }
 
-/** A page may upload when this computer lets it (a page on this computer always may). */
+/** A page may upload when this computer lets it (the person's own page always may). */
 export function requireUpload(env: TransferEnv): void {
-	if (env.local || env.setting === "full") return;
+	if (env.owner || env.setting === "full") return;
 	throw new TransferError(
 		env.setting === "off"
 			? "Receiving files is switched off on this computer"

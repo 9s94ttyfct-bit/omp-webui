@@ -1,6 +1,6 @@
 import type { SessionEntry } from "@shared/protocol.ts";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "../lib/api.ts";
+import { api, ownerPage } from "../lib/api.ts";
 import { loadGuardDecisions } from "../lib/guard-decisions.ts";
 import {
 	appendPage,
@@ -152,7 +152,8 @@ export function useSubagentTranscript(
 	// "Guard dangerous commands": what it decided about this subagent's calls, asked of the server by the transcript file the
 	// decisions name (nothing of the transcript is read for it); the ones that come while the view is open arrive on the socket.
 	useEffect(() => {
-		loadGuardDecisions(file, useApp.getState().meta?.remote === true);
+		const { meta } = useApp.getState();
+		loadGuardDecisions(file, meta !== null && !ownerPage(meta));
 	}, [file]);
 
 	// What its frames say has just been written: a message ended, a tool finished, or it changed state.

@@ -211,7 +211,7 @@ describe("a remote request with a valid Access token", () => {
 			expect((await remote("/api/meta", sec(site))).status, site).toBe(403);
 	});
 
-	test("cannot use the token link, post a token, touch the tunnel's settings, or carry the data away or overwrite it", async () => {
+	test("cannot use the token link nor post a token; it reads the tunnel's settings and the move to another computer as the person's own page", async () => {
 		const link = await remote(`/?token=${s.accessToken}`, { token: false });
 		expect(link.status).toBe(403);
 		expect(link.headers.get("set-cookie")).toBeNull();
@@ -223,32 +223,9 @@ describe("a remote request with a valid Access token", () => {
 		);
 		expect(post.status).toBe(403);
 		expect(post.headers.get("set-cookie")).toBeNull();
-		expect((await remote("/api/remote")).status).toBe(403);
-		expect((await remote("/api/remote/config", { method: "POST", headers: csrf }, "{}")).status).toBe(403);
-		expect((await remote("/api/remote/start", { method: "POST", headers: csrf })).status).toBe(403);
-		// The app's updates are the person's (`isOwnerRoute`, tested below); a route under them that is not named stays this
-		// computer's.
-		expect((await remote("/api/update/anything")).status).toBe(403);
-		expect((await remote("/api/update/anything", { method: "POST", headers: csrf }, "{}")).status).toBe(403);
-		// Moving to another computer: an archive holds every conversation, and an import rewrites the user's own files.
-		expect((await remote("/api/migrate/plan")).status).toBe(403);
-		expect((await remote("/api/migrate/state")).status).toBe(403);
-		expect((await remote("/api/migrate/export/file")).status).toBe(403);
-		// What the macOS app is told on its own (#627): the titles of the conversations that need somebody.
-		expect((await remote("/api/shell/events")).status).toBe(403);
-		expect((await remote("/api/shell/background", { method: "POST", headers: csrf }, "{}")).status).toBe(403);
-		expect((await remote("/api/shell/background", { method: "DELETE", headers: csrf })).status).toBe(403);
-		for (const path of [
-			"export",
-			"export/cancel",
-			"import/begin",
-			"import/chunk?offset=0",
-			"import/verify",
-			"import/apply",
-			"import/restore",
-		]) {
-			expect((await remote(`/api/migrate/${path}`, { method: "POST", headers: csrf }, "{}")).status, path).toBe(403);
-		}
+		// The person's own page (`isOwnerPage`): what was this computer's alone is its too.
+		expect((await remote("/api/remote")).status).toBe(200);
+		expect((await remote("/api/migrate/state")).status).toBe(200);
 		// Locally the link is checked against the token (this one is wrong), not refused outright.
 		expect((await local("/?token=wrong")).status).toBe(401);
 	});
@@ -650,8 +627,11 @@ describe("the stream of notices the app of another Mac reads (#656)", () => {
 		expect(post.status).not.toBe(200);
 	});
 
-	test("is not the local-only stream: that one is still refused to a request that came through the tunnel, token and Access both", async () => {
-		expect((await remote("/api/shell/events")).status).toBe(403);
+	test("is not the macOS app's own stream: that one is refused to a page that is not the person's own", async () => {
+		const proxied = await fetch(`${s.url}/api/shell/events`, {
+			headers: { "x-omp-webui-token": s.accessToken, "x-forwarded-for": "203.0.113.9" },
+		});
+		expect(proxied.status).toBe(403);
 		const here = await local("/api/notify/events");
 		expect(here.status).toBe(200);
 		await firstLine(here);
@@ -659,11 +639,8 @@ describe("the stream of notices the app of another Mac reads (#656)", () => {
 });
 
 /**
- * A page signed in through Cloudflare Access counts as the person (`isOwnerPage`): it may change the guard's settings, a
- * conversation's own guard and the guidance, and update the app, as the page on this computer may. What the Guard page
- * shows and tunes, the
- * guidance conflict check (it reads what omp remembers) and the tunnel's own settings stay this computer's. A page on the
- * network that holds only the token is still refused all of it: `lan-local.test.ts`.
+ * A page signed in through Cloudflare Access counts as the person (`isOwnerPage`): it may do all that the page on this
+ * computer may. A page on the network that holds only the token is still refused all of it: `lan-local.test.ts`.
  */
 describe("a page signed in through Access is the person's own", () => {
 	const csrf = { "x-omp-webui": "1", "content-type": "application/json" };
@@ -775,22 +752,11 @@ describe("a page signed in through Access is the person's own", () => {
 		expect((await post("/api/model-guidance/restore", {})).status).toBe(200);
 	});
 
-	test("is still refused the Guard page's routes, the conflict check and the tunnel's settings", async () => {
+	test("reads the Guard page's routes and the tunnel's settings, and may run the conflict check", async () => {
 		setSettings();
-		for (const path of [
-			"/api/guard/rules",
-			"/api/guard/log",
-			"/api/guard/decisions?session=x",
-			"/api/guard/bench",
-			"/api/guard/anything",
-		])
-			expect((await remote(path)).status, path).toBe(403);
-		expect((await post("/api/guard/rules", { thresholds: { delete_outside: "allow" } })).status).toBe(403);
-		expect((await post("/api/guard/bench", { reviewer: true })).status).toBe(403);
-		expect((await post("/api/guard/bench/preview", { thresholds: {} })).status).toBe(403);
-		// The conflict check shows what omp remembers, which is this computer's (`/api/memory*`).
-		expect((await post("/api/model-guidance/conflicts", { liveId: "L0-nope", text: "x" })).status).toBe(403);
-		// The protection against remote pages is the tunnel's setting: an Access page cannot turn it off.
-		expect((await post("/api/remote/config", { confirmRisky: false })).status).toBe(403);
+		for (const path of ["/api/guard/rules", "/api/guard/log", "/api/guard/bench", "/api/remote"])
+			expect((await remote(path)).status, path).toBe(200);
+		// The conflict check is not refused at the gate: a conversation it does not know is not found.
+		expect((await post("/api/model-guidance/conflicts", { liveId: "L0-nope", text: "x" })).status).not.toBe(403);
 	});
 });

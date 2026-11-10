@@ -17,5 +17,6 @@ export const en = {
 	moveDown: "Move {item} down in the {surface}",
 	reset: "Reset to default",
 	resetHint: "Every page at the bottom of both bars, in the original order.",
-	guardNote: "The Guard page is not offered to a page that is not on this computer.",
+	guardNote:
+		"The Guard page is offered only on the computer omp-webui runs on, or on a page signed in through Cloudflare Access.",
 };

@@ -63,9 +63,8 @@ function world(opts: Partial<TransferOptions> = {}, root: "proj" | "home" = "pro
 	const cwd = root === "proj" ? proj : home;
 	const env = (over: Partial<TransferEnv> = {}): TransferEnv => ({
 		setting: "full",
-		local: false,
 		// A page that is not the person's own (one on the network with the token) unless a test says otherwise.
-		owner: over.local ?? false,
+		owner: false,
 		who: "me@example.test",
 		dataDirs: [data],
 		protect: [data, join(proj, "protected")],
@@ -288,7 +287,7 @@ describe("what a save refuses", () => {
 	});
 
 	test.skipIf(!has.notWindowsYet)(
-		"what CI runs, what looks like a secret, a protected place and the app's own data: for a page on this computer too",
+		"what CI runs, what looks like a secret and a protected place: refused to a page that is not the person's own, written for the person's own page",
 		async () => {
 			const w = world();
 			const key = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----\n";
@@ -302,30 +301,37 @@ describe("what a save refuses", () => {
 			];
 			for (const [path, text] of files) write(join(w.proj, path), text);
 			// Where names differ by case alone (Linux; not a Mac's APFS) `.GitHub` is a folder of its own, not `.github`: a hidden
-			// folder, which a page that is not on this computer is refused before anything else. This computer's page is refused it
-			// as what CI runs, by its name, as on a Mac.
+			// folder, which a page that is not the person's own is refused before anything else.
 			const oneGithub = existsSync(join(w.proj, ".github", "Actions", "run.yml"));
-			for (const local of [true, false]) {
-				for (const [path, text, protectedCode] of files) {
-					const code = !local && !oneGithub && path.startsWith(".GitHub/") ? "hidden" : protectedCode;
-					const { status, json } = await w.save({ path, text: "changed", etag: sha(text) }, w.env({ local }));
-					expect([status, json.code], `${path} ${local ? "local" : "remote"}`).toEqual([403, code]);
-					expect(readFileSync(join(w.proj, path), "utf8"), path).toBe(text);
-				}
+			for (const [path, text, protectedCode] of files) {
+				const code = !oneGithub && path.startsWith(".GitHub/") ? "hidden" : protectedCode;
+				const { status, json } = await w.save({ path, text: "changed", etag: sha(text) });
+				expect([status, json.code], path).toEqual([403, code]);
+				expect(readFileSync(join(w.proj, path), "utf8"), path).toBe(text);
 			}
-			// The data folder of an omp-webui, when the conversation's folder holds it (and a path that goes there through a link).
-			const inner = world();
-			const dataIn = join(inner.proj, "appdata");
-			write(join(dataIn, "state.json"), "{}");
-			const env = inner.env({ dataDirs: [dataIn], protect: [] });
-			const refused = await inner.save({ path: "appdata/state.json", text: "{}", etag: sha("{}") }, env);
-			expect([refused.status, refused.json.code]).toEqual([403, "ownData"]);
-			symlinkSync(dataIn, join(inner.proj, "via-link"));
-			const viaLink = await inner.save({ path: "via-link/state.json", text: "{ }", etag: sha("{}") }, env);
-			expect([viaLink.status, viaLink.json.code]).toEqual([403, "ownData"]);
-			expect(readFileSync(join(dataIn, "state.json"), "utf8")).toBe("{}");
+			for (const [path, text] of files) {
+				const { status } = await w.save({ path, text: "changed", etag: sha(text) }, w.env({ owner: true }));
+				expect(status, path).toBe(200);
+				expect(readFileSync(join(w.proj, path), "utf8"), path).toBe("changed");
+			}
 		},
 	);
+
+	test("the app's own data is written for no page, the person's own neither", async () => {
+		// The data folder of an omp-webui, when the conversation's folder holds it (and a path that goes there through a link).
+		const inner = world();
+		const dataIn = join(inner.proj, "appdata");
+		write(join(dataIn, "state.json"), "{}");
+		symlinkSync(dataIn, join(inner.proj, "via-link"));
+		for (const owner of [false, true]) {
+			const env = inner.env({ dataDirs: [dataIn], protect: [], owner });
+			const refused = await inner.save({ path: "appdata/state.json", text: "{}", etag: sha("{}") }, env);
+			expect([refused.status, refused.json.code]).toEqual([403, "ownData"]);
+			const viaLink = await inner.save({ path: "via-link/state.json", text: "{ }", etag: sha("{}") }, env);
+			expect([viaLink.status, viaLink.json.code]).toEqual([403, "ownData"]);
+		}
+		expect(readFileSync(join(dataIn, "state.json"), "utf8")).toBe("{}");
+	});
 
 	test("a request that is not a save: no body, not JSON, the wrong kinds, no etag", async () => {
 		const w = world();
@@ -361,7 +367,7 @@ describe("who may save", () => {
 			expect(readFileSync(join(w.proj, "a.txt"), "utf8")).toBe("a");
 		}
 		expect((await w.save({ text: "b", etag: sha("a") }, w.env({ setting: "full" }))).status).toBe(200);
-		expect((await w.save({ text: "c", etag: sha("b") }, w.env({ setting: "off", local: true }))).status).toBe(200);
+		expect((await w.save({ text: "c", etag: sha("b") }, w.env({ setting: "off", owner: true }))).status).toBe(200);
 		// The refusals are the person's rule saying no: they are in the log, with who asked.
 		expect(w.log().map((l) => l.status)).toEqual(["refused:off", "refused:uploadOff", "ok", "ok"]);
 	});
@@ -375,13 +381,13 @@ describe("who may save", () => {
 			expect([status, json.code], path).toEqual([403, "hidden"]);
 		}
 		// This computer's page is shown them, and so edits them.
-		const local = await w.save({ path: ".hidden.txt", text: "x", etag: sha("h") }, w.env({ local: true }));
+		const local = await w.save({ path: ".hidden.txt", text: "x", etag: sha("h") }, w.env({ owner: true }));
 		expect(local.status).toBe(200);
 		const home = world({}, "home");
 		write(join(home.home, "notes.txt"), "n");
 		const remote = await home.save({ path: "notes.txt", text: "x", etag: sha("n") });
 		expect([remote.status, remote.json.code]).toEqual([403, "homeFolder"]);
-		expect((await home.save({ path: "notes.txt", text: "x", etag: sha("n") }, home.env({ local: true }))).status).toBe(
+		expect((await home.save({ path: "notes.txt", text: "x", etag: sha("n") }, home.env({ owner: true }))).status).toBe(
 			200,
 		);
 	});
@@ -430,10 +436,14 @@ describe("what the read says of a file: its etag, and whether it is editable", (
 		write(join(w.proj, "src/.env"), "A=1\n");
 		const asked = (e: TransferEnv, path: string) => mayEdit(w.proj, path, e);
 		expect(await asked(w.env(), "a.txt")).toBe(true);
-		expect(await asked(w.env({ local: true, setting: "off" }), "a.txt")).toBe(true);
+		expect(await asked(w.env({ owner: true, setting: "off" }), "a.txt")).toBe(true);
 		for (const setting of ["off", "download"] as const) expect(await asked(w.env({ setting }), "a.txt")).toBe(false);
-		for (const path of [".github/workflows/ci.yml", "src/.env", "../outside/o.txt", "missing.txt"])
-			expect([path, await asked(w.env({ local: true }), path)]).toEqual([path, false]);
+		for (const path of [".github/workflows/ci.yml", "src/.env"]) {
+			expect([path, await asked(w.env(), path)]).toEqual([path, false]);
+			expect([path, await asked(w.env({ owner: true }), path)]).toEqual([path, true]);
+		}
+		for (const path of ["../outside/o.txt", "missing.txt"])
+			expect([path, await asked(w.env({ owner: true }), path)]).toEqual([path, false]);
 		const file: FolderFile = await text(w.proj, "a.txt");
 		expect(file.kind).toBe("text");
 	});

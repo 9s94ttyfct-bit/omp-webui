@@ -1,6 +1,6 @@
 ---
 title: Memory page
-summary: A page on this computer that lists, searches and edits what omp remembers across conversations (omp's Mnemopi long-term memory), with automatic backups before changes.
+summary: A page that lists, searches and edits what omp remembers across conversations (omp's Mnemopi long-term memory), with automatic backups before changes; shown on this computer's page and on a page signed in through Cloudflare Access.
 settings: memory
 ---
 
@@ -27,7 +27,7 @@ Where the store is: `mnemopi.dbPath` if set (must be absolute; a relative path i
 ## Where it is
 
 - A page of Settings: **Settings › Conversations › Memory › Open Memory** (`#/settings/memory`; the old `#/memory` still opens it), also in the command palette's Go to. It is no longer an item of the sidebar or the rail. Buttons **Refresh** and **Add memory**.
-- On a page that is not on this computer the page shows "Memory is only shown on this computer".
+- On a page that holds only the access token (not this computer's, not signed in through Cloudflare Access) the page shows "Memory is shown on this computer, or on a page signed in through Cloudflare Access".
 
 ## Settings
 
@@ -37,14 +37,14 @@ None. (omp's own settings `memory.backend`, `mnemopi.scoping`, `mnemopi.dbPath` 
 
 | Route | Methods | Access | Purpose |
 |---|---|---|---|
-| `/api/memory` | GET | local-only | Overview: omp's backend and scoping, whether settings were readable, the shared database path, the banks with counts, how many are hidden, and whether a global memory can be added. |
-| `/api/memory/items` | GET | local-only | A page of memories, newest first. Query: `q` (first 200 chars), `scope` (`all`, `global`, `project`), `bank`, `kinds` (comma list of `note`, `conversation`, `consolidated`), `retired` (`active` default, `retired`, `all`), `limit` (default 50, max 200), `offset`. |
-| `/api/memory/item` | GET | local-only | Query `bank`, `id`: one memory in full (with its `etag`). |
-| `/api/memory/add` | POST | local-only | `{ scope: "global"\|"project", bank?, content, importance?, context?, acknowledgeSecret? }`. Returns the memory and whether a backup was made. |
-| `/api/memory/update` | POST | local-only | `{ bank, id, etag, content?, importance?, acknowledgeSecret? }`. 409 `stale` if the etag no longer matches. |
-| `/api/memory/retire` | POST | local-only | `{ bank, id, etag? }`: omp stops recalling it. |
-| `/api/memory/restore` | POST | local-only | `{ bank, id, etag? }`: recall it again. |
-| `/api/memory/delete` | POST | local-only | `{ bank, id, etag, retireConsolidated? }`: delete a working memory. |
+| `/api/memory` | GET | owner-only | Overview: omp's backend and scoping, whether settings were readable, the shared database path, the banks with counts, how many are hidden, and whether a global memory can be added. |
+| `/api/memory/items` | GET | owner-only | A page of memories, newest first. Query: `q` (first 200 chars), `scope` (`all`, `global`, `project`), `bank`, `kinds` (comma list of `note`, `conversation`, `consolidated`), `retired` (`active` default, `retired`, `all`), `limit` (default 50, max 200), `offset`. |
+| `/api/memory/item` | GET | owner-only | Query `bank`, `id`: one memory in full (with its `etag`). |
+| `/api/memory/add` | POST | owner-only | `{ scope: "global"\|"project", bank?, content, importance?, context?, acknowledgeSecret? }`. Returns the memory and whether a backup was made. |
+| `/api/memory/update` | POST | owner-only | `{ bank, id, etag, content?, importance?, acknowledgeSecret? }`. 409 `stale` if the etag no longer matches. |
+| `/api/memory/retire` | POST | owner-only | `{ bank, id, etag? }`: omp stops recalling it. |
+| `/api/memory/restore` | POST | owner-only | `{ bank, id, etag? }`: recall it again. |
+| `/api/memory/delete` | POST | owner-only | `{ bank, id, etag, retireConsolidated? }`: delete a working memory. |
 
 Errors answer `{ error, code }` (e.g. `notFound` 404, `stale` 409, `secret` 409, `noGlobal` 409, `layout` 409, `tooLong` 413, `settings` 503).
 
@@ -57,6 +57,6 @@ Errors answer `{ error, code }` (e.g. `notFound` 404, `stale` 409, `secret` 409,
 
 ## Security notes
 
-- All `/api/memory*` routes are local-only: refused (403) to any page not on this computer whatever token it holds, because memories contain project paths and conversation excerpts, and anything written there goes into the prompt of every later conversation.
+- All `/api/memory*` routes are owner-only: refused (403) to a page that holds only the token (a network address, a proxy without Access), because memories contain project paths and conversation excerpts, and anything written there goes into the prompt of every later conversation. A page signed in through Cloudflare Access may use them as this computer's page may.
 - Backups in `~/.omp-webui/memory-backups` keep the text of deleted or changed memories (and anything secret in them).
 - Agents must not add, edit, retire or delete memories through this page's API on the user's behalf unless the user asks; agents have omp's own memory tools for their own notes.

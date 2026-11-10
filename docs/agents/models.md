@@ -82,5 +82,5 @@ Logins go over the WebSocket to the accounts helper process (omp RPC), not over 
 
 ## Security notes
 
-- None of these routes is local-only: any page holding the access token (including through the tunnel) can change roles and presets and log in or out of providers. Credentials are stored by omp, never by omp-webui, and are not sent to pages.
+- None of these routes is owner-only: any page holding the access token (including through the tunnel) can change roles and presets and log in or out of providers. Credentials are stored by omp, never by omp-webui, and are not sent to pages.
 - Agents should not change the user's global model roles, presets or provider logins unless the user asks.

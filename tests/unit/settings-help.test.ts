@@ -322,12 +322,11 @@ describe("the grant", () => {
 		expect((await call("L1", { action: "get" })).isError).toBe(true);
 	});
 
-	test("a conversation a remote page has been on is refused", async () => {
+	test("a conversation a page that is not the person's own has been on is refused", async () => {
 		help.grant("L1");
 		remotelyHeld.add("L1");
 		const refused = await set("L1", [{ key: "ompw.theme", value: "dark" }]);
 		expect(refused.isError).toBe(true);
-		expect(refused.text).toContain("not on this computer");
 		expect(prefs.snapshot().values["ompw.theme"]).toBeNull();
 	});
 

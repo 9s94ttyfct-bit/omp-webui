@@ -9,7 +9,7 @@ import { FastForward, FolderKanban, RotateCw, SlidersHorizontal, Target } from "
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { type MessageKey, useT } from "../i18n/index.ts";
-import { api } from "../lib/api.ts";
+import { api, ownerPage } from "../lib/api.ts";
 import { errorText } from "../lib/error-text.ts";
 import { createGoal, startGuidedGoal, useGoalRequest } from "../lib/goal.ts";
 import { guidanceToRemember, initialGuidance } from "../lib/guidance-start.ts";
@@ -243,7 +243,7 @@ export function NewChat({ cwd: openedIn, project }: { cwd?: string; project?: st
 	const setBrowse = (open: boolean) => setBrowseFor(open ? "existing" : null);
 	const pickerOpened = useRef(false);
 	pickerOpened.current ||= browse !== null;
-	const remote = meta?.local !== true;
+	const notOwner = !ownerPage(meta);
 	const [showAdvanced, setShowAdvanced] = useState(false);
 	const [flags, setFlags] = useState<CliFlag[]>([]);
 	const [values, setValues] = useState<Record<string, string | boolean>>({});
@@ -687,7 +687,7 @@ export function NewChat({ cwd: openedIn, project }: { cwd?: string; project?: st
 										root={root}
 										home={meta?.home}
 										failure={projectFailure}
-										remote={remote}
+										notOwner={notOwner}
 										onChangeRoot={() => setBrowseFor("root")}
 										onEnter={() => composer.current?.focus()}
 									/>

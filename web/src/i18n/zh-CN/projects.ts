@@ -16,7 +16,8 @@ export const zh: Record<keyof typeof en, string> = {
 	loadFailed: "无法读取项目文件夹：{error}",
 	saveFailed: "无法更改项目文件夹：{error}",
 	missing: "这个文件夹已不存在，或者不是文件夹，所以无法在其中新建项目文件夹。请另选一个。",
-	remoteNote: "请在运行 omp-webui 的电脑上更改项目文件夹。在这里仍然可以在其中新建项目文件夹。",
+	remoteNote:
+		"请在运行 omp-webui 的电脑上，或在通过 Cloudflare Access 登录的页面上更改项目文件夹。在这里仍然可以在其中新建项目文件夹。",
 	newProject: "新建项目文件夹",
 	newIn: "将创建于 {folder}",
 	autoPlaceholder: "新项目名称（留空则为 {name}）",

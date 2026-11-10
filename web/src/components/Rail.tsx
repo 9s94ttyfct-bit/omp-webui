@@ -1,6 +1,7 @@
 import { MessageSquarePlus, PanelLeftOpen, Search } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useT } from "../i18n/index.ts";
+import { ownerPage } from "../lib/api.ts";
 import { RAIL_WIDTH } from "../lib/panel-widths.ts";
 import { useShortcutLabel } from "../lib/shortcuts.ts";
 import { useApp } from "../store/app.ts";
@@ -16,8 +17,8 @@ import { IconButton } from "./ui.tsx";
 export function Rail() {
 	const t = useT();
 	const searchHint = useShortcutLabel("search");
-	const { set, setView, remote } = useApp(
-		useShallow((s) => ({ set: s.set, setView: s.setView, remote: s.meta?.remote === true })),
+	const { set, setView, notOwner } = useApp(
+		useShallow((s) => ({ set: s.set, setView: s.setView, notOwner: s.meta !== null && !ownerPage(s.meta) })),
 	);
 	return (
 		<nav
@@ -42,12 +43,12 @@ export function Rail() {
 				>
 					<Search size={16} />
 				</IconButton>
-				<NavGroup variant="icons" surface="rail" group="top" remote={remote} />
+				<NavGroup variant="icons" surface="rail" group="top" notOwner={notOwner} />
 			</div>
 			<div className="mt-auto flex flex-col items-center gap-1">
-				<NavGroup variant="icons" surface="rail" group="hidden" remote={remote} />
+				<NavGroup variant="icons" surface="rail" group="hidden" notOwner={notOwner} />
 				<HostChip variant="rail" />
-				<NavGroup variant="icons" surface="rail" group="bottom" remote={remote} />
+				<NavGroup variant="icons" surface="rail" group="bottom" notOwner={notOwner} />
 			</div>
 		</nav>
 	);

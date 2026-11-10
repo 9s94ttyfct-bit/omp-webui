@@ -273,7 +273,7 @@ test("a server elsewhere says the setting is not available, and starts nothing",
 	expect(started(stub.log)).toEqual([]);
 });
 
-test("a page that is not on this computer cannot change keep-awake, and the other preferences still go through", async () => {
+test("a page that is not the person's own cannot change keep-awake, and the other preferences still go through", async () => {
 	const stub = writeStubCaffeinate();
 	const bin = writeFakeOmp(root, {});
 	const b = await boot("data-remote", { OMP_BIN: bin, OMP_WEBUI_CAFFEINATE: stub.bin });
@@ -300,7 +300,7 @@ test("a page that is not on this computer cannot change keep-awake, and the othe
 	// Turned off from such a page: refused, and nothing changed.
 	const refused = await remote({ "ompw.keepAwake": "off" });
 	expect(refused.status).toBe(403);
-	expect(((await refused.json()) as { error?: string }).error).toContain("changed on the computer");
+	expect(((await refused.json()) as { error?: string }).error).toContain("your own page");
 	const prefs = (await (
 		await fetch(`${b.url}/api/prefs`, { headers: { "x-omp-webui-token": b.server.token } })
 	).json()) as { values: Record<string, string | null> };

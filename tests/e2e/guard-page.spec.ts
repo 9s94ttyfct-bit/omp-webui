@@ -645,14 +645,14 @@ test.describe("the benchmark", () => {
 
 // ------------------------------------------------------------------ the remote page
 
-test("on a page that came through the tunnel the Guard page says so and asks for nothing", async ({ page }) => {
+test("on a page that holds only the token the Guard page says so and asks for nothing", async ({ page }) => {
 	const asked: string[] = [];
 	page.on("request", (r) => {
 		if (new URL(r.url()).pathname.startsWith("/api/guard")) asked.push(r.url());
 	});
 	await page.route("**/api/meta", async (route) => {
 		const real = await (await route.fetch()).json();
-		// Not signed in through Access either: one that is is shown the way to Settings (`access-owner.spec.ts`).
+		// Not signed in through Access either: one that is has the Guard page as this computer's does (`access-owner.spec.ts`).
 		return route.fulfill({ json: { ...real, remote: true, local: false, owner: false } });
 	});
 	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));

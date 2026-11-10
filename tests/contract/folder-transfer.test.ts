@@ -209,7 +209,6 @@ const proxied: Page = {
  * the network only where there is a network to be on.
  */
 const pages: Page[] = [here, tunnel, ...(LAN === undefined ? [] : [network])];
-const elsewhere = pages.filter((p) => p !== here);
 /** The pages that are not the person's own. */
 const guarded: Page[] = [proxied, ...(LAN === undefined ? [] : [network])];
 /** The person's own pages: this computer's, and one signed in through Access. */
@@ -447,7 +446,8 @@ describe("an upload", () => {
 			body: text,
 		});
 
-	for (const page of pages) {
+	for (const page of [...pages, proxied]) {
+		const mine = own.includes(page);
 		const name = `from-${page.name.replaceAll(" ", "-")}.txt`;
 		test(`${page.name}: a file is saved in the conversation's folder, never over one that is there; the log says who`, async () => {
 			const saved = (await (await up(page, name, "hello")).json()) as UploadSaved;
@@ -464,7 +464,7 @@ describe("an upload", () => {
 			expect(line).toMatchObject({ kind: "upload", root: proj, size: 5, sha256: saved.sha256 });
 		});
 
-		test(`${page.name}: into a folder that is made, in pieces that are asked after, and not to a name that is hidden or a secret's`, async () => {
+		test(`${page.name}: into a folder that is made, in pieces that are asked after, and ${mine ? "to a hidden name too" : "not to a name that is hidden or a secret's"}`, async () => {
 			const dir = `up-${page.name.replaceAll(" ", "-")}/deep`;
 			const text = "abcdefghijkl";
 			const first = await page.send(`/api/folder/upload?${query({ dir, name: "pieces.bin", size: "12" })}`, {
@@ -482,7 +482,9 @@ describe("an upload", () => {
 			);
 			expect(await rest.json()).toMatchObject({ done: true, path: `${dir}/pieces.bin`, bytes: 12 });
 			expect(readFileSync(join(proj, dir, "pieces.bin"), "utf8")).toBe(text);
-			for (const bad of [".env", ".bashrc", ".ssh"]) expect((await up(page, bad, "x")).status, bad).toBe(403);
+			// The person's own page writes a hidden name as any other; a page that is not its own is refused one, and a secret's.
+			if (mine) expect((await up(page, `.hidden-${name}`, "x")).status).toBe(200);
+			else for (const bad of [".env", ".bashrc", ".ssh"]) expect((await up(page, bad, "x")).status, bad).toBe(403);
 			expect((await up(page, "x.txt", "x", { dir: "../escape" })).status).toBe(403);
 			expect((await up(page, "x.txt", "x", { dir: "link-out" })).status).toBe(403);
 		});
@@ -550,7 +552,7 @@ describe("what this computer lets another page do", () => {
 
 	test("download only: files go out and none comes in, on every route that takes one", async () => {
 		setTransfer("download");
-		for (const page of elsewhere) {
+		for (const page of guarded) {
 			expect(await meta(page), page.name).toBe("download");
 			expect((await get(page, "README.md")).status, page.name).toBe(200);
 			expect((await plan(page)).status, page.name).toBe(200);
@@ -567,7 +569,7 @@ describe("what this computer lets another page do", () => {
 
 	test("off: nothing goes out and nothing comes in; HEAD says why in a header", async () => {
 		setTransfer("off");
-		for (const page of elsewhere) {
+		for (const page of guarded) {
 			expect(await meta(page), page.name).toBe("off");
 			expect(await failure(await get(page, "README.md")), page.name).toMatchObject({
 				status: 403,
@@ -591,13 +593,17 @@ describe("what this computer lets another page do", () => {
 		expect(() => readFileSync(join(proj, "never-3.txt"))).toThrow();
 	});
 
-	test("this computer's own page is not held by it: it moves files whatever the setting says", async () => {
-		for (const value of ["off", "download"] as const) {
-			setTransfer(value);
-			expect(await meta(here), value).toBe("full");
-			expect((await get(here, "README.md")).status, value).toBe(200);
-			expect((await upload(here, `mine-${value}.txt`)).status, value).toBe(200);
+	test("the person's own pages are not held by it: they move files whatever the setting says", async () => {
+		for (const page of own) {
+			for (const value of ["off", "download"] as const) {
+				setTransfer(value);
+				expect(await meta(page), `${page.name} ${value}`).toBe("full");
+				expect((await get(page, "README.md")).status, `${page.name} ${value}`).toBe(200);
+				const name = `mine-${page.name.replaceAll(" ", "-")}-${value}.txt`;
+				expect((await upload(page, name)).status, `${page.name} ${value}`).toBe(200);
+			}
 		}
+		setTransfer("full");
 	});
 
 	test("the setting is looked at again on every request: no restart; a file nothing can be trusted of says no, no file at all says yes", async () => {
@@ -610,15 +616,15 @@ describe("what this computer lets another page do", () => {
 		];
 		for (const [value, status] of states) {
 			setTransfer(value);
-			expect((await get(tunnel, "README.md")).status, String(value)).toBe(status);
+			expect((await get(proxied, "README.md")).status, String(value)).toBe(status);
 		}
 		setTransfer("full");
 	});
 
-	test("a page that is not on this computer cannot change the setting", async () => {
+	test("a page that is not the person's own cannot change the setting", async () => {
 		setTransfer("download");
 		const before = readFileSync(settingsFile, "utf8");
-		for (const page of elsewhere) {
+		for (const page of guarded) {
 			const r = await page.send("/api/remote/config", {
 				method: "POST",
 				body: JSON.stringify({ enabled: true, hostname: HOSTNAME, fileTransfer: "full" }),
@@ -668,8 +674,8 @@ describe("the log", () => {
 			[EMAIL, "../outside.txt", "refused:outside"],
 		]);
 		setTransfer("off");
-		await get(tunnel, "README.md");
+		await get(proxied, "README.md");
 		setTransfer("full");
-		expect(logged().at(-1)).toMatchObject({ who: EMAIL, path: "README.md", status: "refused:off" });
+		expect(logged().at(-1)).toMatchObject({ who: proxied.who, path: "README.md", status: "refused:off" });
 	});
 });

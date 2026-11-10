@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { readModeFile } from "../../server/offline/settings.ts";
 import { parseTopic, type Topic } from "../../server/omp/docs-tool/lookup.ts";
-import { isLocalOnlyRoute } from "../../server/this-computer.ts";
+import { isOwnerRoute } from "../../server/this-computer.ts";
 import { COMPACT_KEYS } from "../../shared/compact-at.ts";
 import { DEFAULT_GUARD_CONFIG } from "../../shared/guard.ts";
 import { DEFAULT_OFFLINE } from "../../shared/offline.ts";
@@ -28,7 +28,7 @@ import { SETTINGS } from "../../web/src/lib/settings-search.ts";
  * - **Settings entries**: every id of the Settings page's catalogue (`web/src/lib/settings-search.ts`) is in exactly the
  *   `settings:` front matter of the topics.
  * - **API routes** (a table whose first column is `Route`): every `/api/…` path the server spells out, and its access
- *   column says `local-only` exactly for the routes `isLocalOnlyRoute` keeps to this computer.
+ *   column says `owner-only` exactly for the routes `isOwnerRoute` keeps to the person's own page.
  */
 
 const root = join(import.meta.dir, "..", "..");
@@ -241,12 +241,12 @@ describe("API routes: the server and docs/agents name the same routes", () => {
 		expect(unreadable).toEqual([]);
 	});
 
-	test("a route's access says local-only exactly when the server keeps it to this computer", () => {
+	test("a route's access says owner-only exactly when the server keeps it to the person's own page", () => {
 		const wrong = routeRows
 			.map((r) => ({ topic: r.topic, route: routeOf(r.cells[0]) ?? "", access: r.cells[2] ?? "" }))
 			.filter(({ route, access }) => {
 				const concrete = route.replace(/[<{].*$/, "x");
-				return access.toLowerCase().startsWith("local-only") !== isLocalOnlyRoute(concrete);
+				return access.toLowerCase().startsWith("owner-only") !== isOwnerRoute(concrete);
 			})
 			.map((r) => `${r.topic}: ${r.route} (${r.access})`);
 		expect(wrong).toEqual([]);

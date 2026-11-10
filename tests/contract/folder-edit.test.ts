@@ -8,7 +8,7 @@ import { type AccessKey, AUD, EMAIL, HOSTNAME, type Jwks, makeKey, startJwks, TE
 import { writeChatSession } from "../support/chat-session.ts";
 import { expectMode } from "../support/modes.ts";
 import { pollUntil } from "../support/poll.ts";
-import { type RemoteClient, remoteClient } from "../support/remote-client.ts";
+import { proxiedClient, type RemoteClient, remoteClient } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 
 /**
@@ -119,6 +119,20 @@ const tunnel: Page = {
 			body,
 		),
 };
+/** A page behind a proxy without Access, holding the token: not the person's own, so the person's rules apply to it. */
+const proxied: Page = {
+	name: "behind a proxy",
+	who: "net:127.0.0.1",
+	send: (path, body, ask = {}) =>
+		proxiedClient(s).fetch(
+			path,
+			{
+				method: ask.method ?? (body === undefined ? "GET" : "POST"),
+				headers: ask.csrf === false ? {} : { [CSRF_HEADER]: "1" },
+			},
+			body,
+		),
+};
 
 const read = async (page: Page, path: string) => {
 	const res = await page.send(`/api/folder/file?${new URLSearchParams({ file, path })}`);
@@ -178,24 +192,25 @@ describe("who may ask", () => {
 		expect(onDisk("notes.md")).toBe("# Notes\n\nfirst\n");
 	});
 
-	test("the setting is looked at on every request: a page that may not upload is not offered the editor and is refused", async () => {
+	test("the setting is looked at on every request: a page that is not the person's own and may not upload is not offered the editor and is refused", async () => {
 		try {
-			const { etag } = await text(tunnel, "notes.md");
+			const { etag } = await text(proxied, "notes.md");
 			for (const [setting, code] of [
 				["download", "uploadOff"],
 				["off", "off"],
 			] as const) {
 				setTransfer(setting);
-				const answer = await read(tunnel, "notes.md");
+				const answer = await read(proxied, "notes.md");
 				expect(answer.body, setting).toMatchObject({ kind: "text", editable: false });
-				const refused = await save(tunnel, "notes.md", "x", etag);
+				const refused = await save(proxied, "notes.md", "x", etag);
 				expect([refused.status, refused.code], setting).toEqual([403, code]);
 				expect(onDisk("notes.md")).toBe("# Notes\n\nfirst\n");
-				// This computer's page is not the setting's.
+				// The person's own pages (this computer's, and one signed in through Access) are not the setting's.
 				expect((await read(here, "notes.md")).body).toMatchObject({ editable: true });
+				expect((await read(tunnel, "notes.md")).body).toMatchObject({ editable: true });
 			}
 			setTransfer("full");
-			expect((await read(tunnel, "notes.md")).body).toMatchObject({ editable: true });
+			expect((await read(proxied, "notes.md")).body).toMatchObject({ editable: true });
 		} finally {
 			setTransfer("full");
 		}
@@ -258,17 +273,32 @@ describe("saving what a page opened", () => {
 });
 
 describe("what no save is let into", () => {
+	test(`${proxied.name}: not outside the folder, not what CI runs, not a secret`, async () => {
+		for (const [path, code] of [
+			["../outside.txt", "outside"],
+			["link-out", "outside"],
+			[`${work}/outside.txt`, "outside"],
+			[".github/workflows/ci.yml", "protected"],
+			[".env", "secret"],
+		] as const) {
+			const refused = await save(proxied, path, "changed", "0".repeat(64));
+			expect([refused.status, refused.code, refused.body.code], path).toEqual([403, code, code]);
+		}
+		expect(readFileSync(join(work, "outside.txt"), "utf8")).toBe("outside");
+		expect(onDisk(".github/workflows/ci.yml")).toBe("on: push\n");
+		expect(onDisk(".env")).toBe("TOKEN=abc\n");
+	});
+
 	for (const page of pages) {
-		test(`${page.name}: not outside the folder, not what CI runs, not a secret`, async () => {
-			for (const [path, code] of [
-				["../outside.txt", "outside"],
-				["link-out", "outside"],
-				[`${work}/outside.txt`, "outside"],
-				[".github/workflows/ci.yml", "protected"],
-				[".env", "secret"],
-			] as const) {
+		test(`${page.name}: not outside the folder; what CI runs and a secret are the person's own page's to edit`, async () => {
+			for (const path of ["../outside.txt", "link-out", `${work}/outside.txt`]) {
 				const refused = await save(page, path, "changed", "0".repeat(64));
-				expect([refused.status, refused.code, refused.body.code], path).toEqual([403, code, code]);
+				expect([refused.status, refused.code], path).toEqual([403, "outside"]);
+			}
+			// Not refused for where they are: only for the etag, which names no text of theirs.
+			for (const path of [".github/workflows/ci.yml", ".env"]) {
+				const stale = await save(page, path, "changed", "0".repeat(64));
+				expect([stale.status, stale.code], path).toEqual([409, "conflict"]);
 			}
 			expect(readFileSync(join(work, "outside.txt"), "utf8")).toBe("outside");
 			expect(onDisk(".github/workflows/ci.yml")).toBe("on: push\n");
@@ -294,8 +324,8 @@ describe("what no save is let into", () => {
 		);
 		for (const [path, editable] of [
 			["notes.md", true],
-			[".github/workflows/ci.yml", false],
-			[".env", false],
+			[".github/workflows/ci.yml", true],
+			[".env", true],
 			["huge.txt", false],
 			["latin1.txt", false],
 		] as const) {
@@ -303,5 +333,7 @@ describe("what no save is let into", () => {
 			expect(answer.status, path).toBe(200);
 			expect(answer.body, path).toMatchObject({ kind: "text", editable });
 		}
+		// A page that is not the person's own is not offered what CI runs.
+		expect((await read(proxied, ".github/workflows/ci.yml")).body).toMatchObject({ kind: "text", editable: false });
 	});
 });

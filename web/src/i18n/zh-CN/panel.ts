@@ -72,7 +72,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	terminalClear: "清屏",
 	terminalClearTip: "清空屏幕和已滚动出去的内容",
 	terminalNoConversation: "打开一个对话，即可在它的文件夹里使用 shell。",
-	terminalRemoteOff: "不在这台电脑上的页面不能打开终端。可以在这台电脑上的 设置 › 远程访问 中打开。",
+	terminalRemoteOff:
+		"不在这台电脑上的页面不能打开终端。可以在这台电脑上，或在通过 Cloudflare Access 登录的页面上的 设置 › 远程访问 中打开。",
 
 	statusCompleted: "已完成",
 	statusDone: "已完成",

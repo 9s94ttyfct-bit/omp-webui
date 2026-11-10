@@ -151,13 +151,14 @@ test("Settings › Projects folder: the default is shown, a chosen folder is kep
 	await expect(page.getByTestId("projects-default")).toHaveCount(0);
 });
 
-test("a page that is not at this computer (on the network) sees the projects folder and cannot change it", async ({
+test("a page that is not the person's own (on the network, with only the token) sees the projects folder and cannot change it", async ({
 	page,
 }) => {
-	// What the server's own 403 asks is `meta.local`; a page of the network is a remote page and not `local` (#621).
+	// What the server's own 403 asks is whether the page is the person's own (`meta.owner`): this computer's, or one signed
+	// in through Cloudflare Access; a page of the network that holds only the token is neither (#621).
 	await page.route("**/api/meta", async (route) => {
 		const real = await (await route.fetch()).json();
-		return route.fulfill({ json: { ...real, remote: true, local: false } });
+		return route.fulfill({ json: { ...real, remote: true, local: false, owner: false } });
 	});
 	await page.goto("/#/settings/chats");
 	const card = page.getByTestId("projects-settings");

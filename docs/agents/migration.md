@@ -41,7 +41,7 @@ One export or import runs at a time; its state outlives the page and is read aga
 ## Where it is
 
 - **Settings › App & system › Move to another computer** (`#/settings/app`; "Migration" in the Settings index). Sections **Export** (category table, **Not included (N)**, **Include logins (encrypted)**, **Encrypt the whole file**, Password / Repeat the password, **Export**, progress, **Save the file**, **Done**) and **Import** (**Choose a file…**, upload progress and **Cancel the upload**, the password prompt, **What the file holds**, **When something is on both Macs**: Merge / Replace, **Import**, the summary, **Restore** after a failure).
-- A page that is not on the computer the server runs on sees only "This page is not on the Mac the server runs on, so moving data can only be done from the page on the Mac itself."
+- A page that holds only the access token (not this computer's, not signed in through Cloudflare Access) sees only "This page cannot move data: do it from the page on the Mac the server runs on, or from a page signed in through Cloudflare Access."
 
 ## Settings
 
@@ -51,20 +51,20 @@ None of its own. The guard's settings (`guard.json`), Full / Light mode, remote 
 
 | Route | Methods | Access | Purpose |
 |---|---|---|---|
-| `/api/migrate` | — | local-only | Prefix of the routes below (no route of its own). |
-| `/api/migrate/plan` | GET | local-only | What an export would hold: `{ host, home, ompVersion, serverVersion, categories: [{ id, files, bytes }], totalFiles, totalBytes, leftOut: [{ path, reason, bytes }], secretFiles: [{ path, values, category }], sessionDirs, profiles, busy }`. |
-| `/api/migrate/state` | GET | local-only | `{ export, import }`: the current export and import status (or null). |
-| `/api/migrate/export` | POST | local-only | Start an export: body `{ categories?, credentials?, wholeFile?, password? }` (no `categories`: every data category). Password required (min 8) with `credentials` or `wholeFile`. 409 when another export or import runs. Returns the export status. |
-| `/api/migrate/export/cancel` | POST | local-only | Cancel the running export (nothing is kept). |
-| `/api/migrate/export/file` | GET | local-only | Download the finished archive (`application/octet-stream`, as an attachment). 404 when there is none. |
-| `/api/migrate/export/discard` | POST | local-only | Forget the finished export and delete its archive. |
-| `/api/migrate/import/begin` | POST | local-only | Body `{ name, size }`: start an upload (any earlier import is discarded). |
-| `/api/migrate/import/chunk` | POST | local-only | Raw bytes of one piece, query `offset=<n>`; a piece must continue where the upload stopped (a piece sent again replaces what it wrote). |
-| `/api/migrate/import/verify` | POST | local-only | The upload is complete: check the archive in the background; the status becomes `locked` (needs its password), `ready` (with a preview) or `failed`. |
-| `/api/migrate/import/unlock` | POST | local-only | Body `{ password }`: open an archive encrypted as a whole. A wrong password is refused and it stays locked. |
-| `/api/migrate/import/apply` | POST | local-only | Body `{ mode: "merge"\|"replace", credentials?, password? }`: import. Refused (409) while conversations are working, or when the disk lacks room; status goes `applying`, then `done` with a summary or `failed` with the backup. |
-| `/api/migrate/import/restore` | POST | local-only | Put back what a failed import changed from its backup (refused while conversations are working). |
-| `/api/migrate/import/discard` | POST | local-only | Abandon the import and delete the uploaded file (not while it is being applied). |
+| `/api/migrate` | — | owner-only | Prefix of the routes below (no route of its own). |
+| `/api/migrate/plan` | GET | owner-only | What an export would hold: `{ host, home, ompVersion, serverVersion, categories: [{ id, files, bytes }], totalFiles, totalBytes, leftOut: [{ path, reason, bytes }], secretFiles: [{ path, values, category }], sessionDirs, profiles, busy }`. |
+| `/api/migrate/state` | GET | owner-only | `{ export, import }`: the current export and import status (or null). |
+| `/api/migrate/export` | POST | owner-only | Start an export: body `{ categories?, credentials?, wholeFile?, password? }` (no `categories`: every data category). Password required (min 8) with `credentials` or `wholeFile`. 409 when another export or import runs. Returns the export status. |
+| `/api/migrate/export/cancel` | POST | owner-only | Cancel the running export (nothing is kept). |
+| `/api/migrate/export/file` | GET | owner-only | Download the finished archive (`application/octet-stream`, as an attachment). 404 when there is none. |
+| `/api/migrate/export/discard` | POST | owner-only | Forget the finished export and delete its archive. |
+| `/api/migrate/import/begin` | POST | owner-only | Body `{ name, size }`: start an upload (any earlier import is discarded). |
+| `/api/migrate/import/chunk` | POST | owner-only | Raw bytes of one piece, query `offset=<n>`; a piece must continue where the upload stopped (a piece sent again replaces what it wrote). |
+| `/api/migrate/import/verify` | POST | owner-only | The upload is complete: check the archive in the background; the status becomes `locked` (needs its password), `ready` (with a preview) or `failed`. |
+| `/api/migrate/import/unlock` | POST | owner-only | Body `{ password }`: open an archive encrypted as a whole. A wrong password is refused and it stays locked. |
+| `/api/migrate/import/apply` | POST | owner-only | Body `{ mode: "merge"\|"replace", credentials?, password? }`: import. Refused (409) while conversations are working, or when the disk lacks room; status goes `applying`, then `done` with a summary or `failed` with the backup. |
+| `/api/migrate/import/restore` | POST | owner-only | Put back what a failed import changed from its backup (refused while conversations are working). |
+| `/api/migrate/import/discard` | POST | owner-only | Abandon the import and delete the uploaded file (not while it is being applied). |
 
 Errors are `{ error, code, params }` with codes such as `migrateBusy`, `migrateWorking`, `migrateNothingChosen`, `migratePasswordMissing`, `migratePasswordShort`, `migrateNotArchive`, `migrateUpload`, `migrateNotReady`, `migrateFilePasswordWrong`, `migrateDiskSpace`, `migrateNoBackup`.
 
@@ -80,7 +80,7 @@ Errors are `{ error, code, params }` with codes such as `migrateBusy`, `migrateW
 
 ## Security notes
 
-- Every `/api/migrate*` route is local-only: an archive holds every conversation (and, with a password, every login), and an import rewrites the user's files, so no page through the tunnel or the network may do either, whatever token it holds.
+- Every `/api/migrate*` route is owner-only: an archive holds every conversation (and, with a password, every login), and an import rewrites the user's files, so only the person's own page (this computer's, or one signed in through Cloudflare Access) may do either; a page that holds only the token (a network address, a proxy without Access) is refused (403).
 - Without **Encrypt the whole file**, anyone who gets the file can read the conversations in it; logins are always encrypted. The person should keep the file private and delete it when done.
 - The password is never stored, in the app or in the file. scrypt parameters in a file are only accepted within what this version makes, so a hostile file cannot demand an expensive key derivation.
 - The guard's settings are adopted as imported (see the guard topic).

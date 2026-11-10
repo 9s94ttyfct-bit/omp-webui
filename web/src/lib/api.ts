@@ -193,16 +193,17 @@ export interface Meta {
 	user: string;
 	/** This page is not on this machine: it came in through the public hostname of the tunnel, or over a network address the server listens on (a remote page). */
 	remote: boolean;
-	/** What this page may do with the files of a conversation's folder (see `shared/transfer.ts`): `full` for a page on this computer, the setting on it for any other. A server of an earlier version leaves it out. */
+	/** What this page may do with the files of a conversation's folder (see `shared/transfer.ts`): `full` for the person's own page (`owner`), the setting on this computer for any other. A server of an earlier version leaves it out. */
 	fileTransfer?: FileTransfer;
-	/** Whether this page may open a shell in the panel's Terminal tab: always on this computer, the Remote access setting for any other. A server of an earlier version leaves it out. */
+	/** Whether this page may open a shell in the panel's Terminal tab: always on the person's own page (`owner`), the Remote access setting for any other. A server of an earlier version leaves it out. */
 	shell?: boolean;
-	/** This page is on the computer the server runs on: the server's own test for what only that computer may change. */
+	/** This page is on the computer the server runs on (not the test for what it may change: that is `owner`). */
 	local: boolean;
 	/**
 	 * This page is the person's own: on this computer, or signed in through Cloudflare Access (the server's `isOwnerPage`).
-	 * It may change the guard's settings, a conversation's own guard and the guidance; any other page only sees them. A
-	 * server of an earlier version leaves it out (`ownerPage` then reads `local`).
+	 * It has everything the page on this computer has: the guard and the guidance, Remote access, the Macs, Memory, the
+	 * migration, the shell, Ask agent for help and the rest of the settings only the person may change; any other page only
+	 * sees them, or is refused. A server of an earlier version leaves it out (`ownerPage` then reads `local`).
 	 */
 	owner?: boolean;
 	/** The other Macs the server knows (#628): the sidebar's machine switcher is there once there is one. */
@@ -214,11 +215,11 @@ export interface Meta {
 	 * and the rest. A server of an earlier version leaves it out.
 	 */
 	capabilities?: Capabilities;
-	/** The folder Ask agent for help's conversations run in (Settings, v0.13.0): told to a page on this computer only. */
+	/** The folder Ask agent for help's conversations run in (Settings, v0.13.0): told to the person's own page only (`owner`). */
 	settingsHelpFolder?: string;
 }
 
-/** Whether this page may change the guard's settings, a conversation's own guard and the guidance (`Meta.owner`). */
+/** Whether this page is the person's own (`Meta.owner`): it may change what only the person may change. */
 export const ownerPage = (meta: Meta | null | undefined): boolean => meta?.owner ?? meta?.local === true;
 
 /** The permission mode new conversations start in: the user's choice, or null to follow omp's own setting (`omp`). */

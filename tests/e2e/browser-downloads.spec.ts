@@ -139,7 +139,7 @@ test("no button until there is a download; the list shows each, with its progres
 		.toEqual([{ t: "download_cancel", id: "run.1" }]);
 });
 
-test("a finished one is shown in Finder from a page on the Mac, and fetched to the device from any other that may download files", async ({
+test("a finished one is shown in Finder from a page on the Mac or signed in through Access, and fetched to the device from any page not on the Mac that may download files", async ({
 	page,
 }) => {
 	const tab = await socket(page, [saved], true);
@@ -161,7 +161,15 @@ test("a finished one is shown in Finder from a page on the Mac, and fetched to t
 	tab.tell({ t: "download_reveal_failed", owner: tab.owner(), id: "run.0", gone: true });
 	await expect(gone).toBeVisible();
 
+	// A page on the network that holds only the token: fetched, never shown in Finder.
 	const remote = await page.context().newPage();
+	await remote.route("**/api/meta", async (route) => {
+		const response = await route.fetch();
+		await route.fulfill({
+			response,
+			json: { ...(await response.json()), remote: true, local: false, owner: false, fileTransfer: "full" },
+		});
+	});
 	await socket(remote, [saved], false);
 	await openTab(remote);
 	await remote.getByTestId("browser-downloads").click();
@@ -170,6 +178,24 @@ test("a finished one is shown in Finder from a page on the Mac, and fetched to t
 	await expect(fetch).toHaveText("Download to this device");
 	await expect(fetch).toHaveAttribute("href", "/api/browser/downloads/run.0/file");
 	await expect(fetch).toHaveAttribute("download", "notes.txt");
+
+	// A page signed in through Access (a phone, say): the file is on the Mac, so it is fetched, and shown in Finder there too.
+	const access = await page.context().newPage();
+	await access.route("**/api/meta", async (route) => {
+		const response = await route.fetch();
+		await route.fulfill({
+			response,
+			json: { ...(await response.json()), remote: true, local: false, owner: true, fileTransfer: "full" },
+		});
+	});
+	const accessTab = await socket(access, [saved], false);
+	await openTab(access);
+	await access.getByTestId("browser-downloads").click();
+	await expect(access.getByTestId("browser-download-fetch")).toHaveAttribute("download", "notes.txt");
+	await access.getByTestId("browser-download-reveal").click();
+	await expect
+		.poll(() => accessTab.asked.filter((m) => m.t === "download_reveal"))
+		.toEqual([{ t: "download_reveal", id: "run.0" }]);
 
 	// A page File transfer gives nothing to (`off`) is offered no fetch.
 	const off = await page.context().newPage();

@@ -5,6 +5,7 @@ import { lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef
 import { useShallow } from "zustand/react/shallow";
 import "../i18n/later.ts";
 import { LANGS, type Lang, useLang, useT } from "../i18n/index.ts";
+import { ownerPage } from "../lib/api.ts";
 import { setNotifications, useNotify } from "../lib/attention.ts";
 import { resetAllWidths } from "../lib/panel-widths.ts";
 import { onPrefsChanged, setPref } from "../lib/prefs.ts";
@@ -69,7 +70,7 @@ const NavLayoutSettings = lazy(() => import("./NavLayoutSettings.tsx").then((m) 
 const QuickPromptsSettings = lazy(() =>
 	import("./QuickPromptsSettings.tsx").then((m) => ({ default: m.QuickPromptsSettings })),
 );
-// Ask agent for help (v0.13.0): a chunk of its own, with its strings; only a page on this computer has it (its routes are local-only).
+// Ask agent for help (v0.13.0): a chunk of its own, with its strings; only the person's own page has it (`ownerPage`: its routes refuse any other).
 const SettingsHelpCard = lazy(() => import("./SettingsHelp.tsx").then((m) => ({ default: m.SettingsHelpCard })));
 // The built-in browser (install, update, clear; the size of new pages): a chunk of its own, with its strings.
 const BrowserSettings = lazy(() =>
@@ -265,7 +266,7 @@ export function SettingsPage() {
 					scroller={scroller}
 				/>
 				<SettingsSearch onGo={goToSetting} />
-				{meta?.local ? (
+				{ownerPage(meta) ? (
 					<Suspense fallback={null}>
 						<SettingsHelpCard where={t(SETTINGS_PAGE_LABEL[page])} />
 					</Suspense>

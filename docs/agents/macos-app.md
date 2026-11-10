@@ -33,10 +33,10 @@ When something is at risk the question says what: conversations still working (q
 ## Where it is
 
 - **Settings › App & system › Quitting the app** (`#/settings/app`; shown only in the macOS app): **When you quit the app**: Ask / Run in background / Quit, and **Always show the menu bar icon**.
-- **Settings › App & system › Sleep**: **Keep the Mac awake while a conversation works**. Disabled on a remote page ("This is changed on the computer omp-webui runs on…") and on a server that is not on a Mac.
+- **Settings › App & system › Sleep**: **Keep the Mac awake while a conversation works**. Disabled on a page that holds only the access token ("This is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access…") and on a server that is not on a Mac.
 - The menu bar icon (see above).
 - **Macs** menu in the app's menu bar (between View and Window, macOS 14+): the saved Macs (each opens its window), **Add Mac…** (sheet "Add a Mac": Name, Address, **Check**, **Add**, **Add Anyway**), **Manage Macs…** (rename, **Sign Out** — also signs out the other Macs of the same Cloudflare team —, **Forget…**; shows Address, Cloudflare team, Last connected), and "Notify me about conversations of:" with one switch per Mac.
-- Sidebar machine switcher (a row under New chat, shown once at least one other Mac is saved, not in a window onto another Mac): **This Mac** and each saved Mac with when the app last opened it; **Add Mac…** on this computer. A saved Mac opens in the app's window for it, or in a new browser tab in a browser.
+- Sidebar machine switcher (a row under New chat, shown once at least one other Mac is saved, not in a window onto another Mac): **This Mac** and each saved Mac with when the app last opened it; **Add Mac…** on the person's own page (this computer's, or one signed in through Cloudflare Access). A saved Mac opens in the app's window for it, or in a new browser tab in a browser.
 
 ## Settings
 
@@ -44,7 +44,7 @@ When something is at risk the question says what: conversations still working (q
 |---|---|---|---|
 | `ompw.quitAction` | `ask`, `background`, `quit` | unset (`ask`) | Synced preference. What quitting the macOS app does. The app reads it from the server when asked to quit, and writes it when the person ticks **Don't ask again**. Any other value reads as `ask`. |
 | `ompw.menuIcon` | `on`, `off` | unset (on) | Synced preference. Whether the menu bar icon is shown while the app also has its window. It is always shown while the app runs in the background. The app hears changes from `/api/shell/events`. |
-| `ompw.keepAwake` | `on`, `off` | unset (on) | Synced preference. Whether the server keeps the Mac from idle sleep while a conversation works. Applied by the server as it changes. Only a page on this computer may change it (`/api/prefs` refuses it from any other page). |
+| `ompw.keepAwake` | `on`, `off` | unset (on) | Synced preference. Whether the server keeps the Mac from idle sleep while a conversation works. Applied by the server as it changes. Only the person's own page (this computer's, or one signed in through Cloudflare Access) may change it (`/api/prefs` refuses it from a page that holds only the token). |
 
 Other stored values:
 
@@ -56,19 +56,19 @@ Other stored values:
 
 | Route | Methods | Access | Purpose |
 |---|---|---|---|
-| `/api/macs` | POST | local-only | Add a Mac: body `{ name, address, team? }`. Returns `{ mac }`. 400 with `{ error, problem }` when the name or address is refused or the list is full. Every open page is told the list changed (pages read it from `/api/meta` as `macs`). |
-| `/api/macs/<id>` | DELETE | local-only | Forget a Mac (the app deletes its saved sign-in itself). Returns `{ ok: true }`; 404 if unknown. |
-| `/api/macs/<id>/rename` | POST | local-only | Body `{ name }`. Returns `{ mac }`. |
-| `/api/macs/<id>/connected` | POST | local-only | The app had a window of this Mac signed in: sets `lastConnected`. |
-| `/api/macs/<id>/team` | POST | local-only | Body `{ team }`: keep the Cloudflare team of this Mac's sign-in (only the first one seen is kept). |
-| `/api/shell` | — | local-only | Prefix of the macOS app's own routes below (no route of its own). |
-| `/api/shell/events` | GET | local-only | The app's stream: newline-delimited JSON, query `lang`, `epoch`, `since`. Lines `{ t: "state", epoch, working, asking, paused, menuIcon, questions, unseen }` (first, then on every change; `unseen`: a token per conversation whose finished run no page on this computer has shown since), `{ t: "attention", seq, id, kind, title, body, liveId, file }` (`kind` `asking` or `finished`; only while notifications are on; missed ones re-sent after `since`), `{ t: "browserRestart" }` (the built-in browser's CEF profile is to be cleared: the app restarts itself, asking first while a conversation is working; never sent to another Mac's app), and an empty heartbeat line every few seconds. |
-| `/api/shell/quota` | GET | local-only | The menu bar icon's quota lines: `{ lines: [...] }`, in the saved language else `lang`; empty when omp or a provider cannot say. |
-| `/api/shell/pause-all` | POST | local-only | Pause every conversation whose turn is open (working or waiting for an answer). Returns `{ changed, of }`. |
-| `/api/shell/resume-all` | POST | local-only | Resume every paused conversation. Returns `{ changed, of }`. |
-| `/api/shell/background` | POST, DELETE | local-only | POST: the app is about to close its window for Run in Background, so the terminals of that page are held (with the tail of their output) for the window that opens next, for 10 s. DELETE: the window came back first. Returns `{ held }`. |
-| `/api/login-start` | GET, POST | local-only | Windows and Linux launcher: `{ available, on }`; POST `{ on: boolean }` writes or removes the login entry and answers the same. 409 where it is not available (a server run from source, macOS). |
-| `/api/shutdown` | POST | local-only | `omp-webui --stop` (Windows and Linux launcher, any platform): answers `202 { stopping: true }`, then the server runs the shutdown its signal handlers run and exits (its `server.pid` is removed). Needs the token and the CSRF header like every POST. |
+| `/api/macs` | POST | owner-only | Add a Mac: body `{ name, address, team? }`. Returns `{ mac }`. 400 with `{ error, problem }` when the name or address is refused or the list is full. Every open page is told the list changed (pages read it from `/api/meta` as `macs`). |
+| `/api/macs/<id>` | DELETE | owner-only | Forget a Mac (the app deletes its saved sign-in itself). Returns `{ ok: true }`; 404 if unknown. |
+| `/api/macs/<id>/rename` | POST | owner-only | Body `{ name }`. Returns `{ mac }`. |
+| `/api/macs/<id>/connected` | POST | owner-only | The app had a window of this Mac signed in: sets `lastConnected`. |
+| `/api/macs/<id>/team` | POST | owner-only | Body `{ team }`: keep the Cloudflare team of this Mac's sign-in (only the first one seen is kept). |
+| `/api/shell` | — | owner-only | Prefix of the macOS app's own routes below (no route of its own). |
+| `/api/shell/events` | GET | owner-only | The app's stream: newline-delimited JSON, query `lang`, `epoch`, `since`. Lines `{ t: "state", epoch, working, asking, paused, menuIcon, questions, unseen }` (first, then on every change; `unseen`: a token per conversation whose finished run no page on this computer has shown since), `{ t: "attention", seq, id, kind, title, body, liveId, file }` (`kind` `asking` or `finished`; only while notifications are on; missed ones re-sent after `since`), `{ t: "browserRestart" }` (the built-in browser's CEF profile is to be cleared: the app restarts itself, asking first while a conversation is working; never sent to another Mac's app), and an empty heartbeat line every few seconds. |
+| `/api/shell/quota` | GET | owner-only | The menu bar icon's quota lines: `{ lines: [...] }`, in the saved language else `lang`; empty when omp or a provider cannot say. |
+| `/api/shell/pause-all` | POST | owner-only | Pause every conversation whose turn is open (working or waiting for an answer). Returns `{ changed, of }`. |
+| `/api/shell/resume-all` | POST | owner-only | Resume every paused conversation. Returns `{ changed, of }`. |
+| `/api/shell/background` | POST, DELETE | owner-only | POST: the app is about to close its window for Run in Background, so the terminals of that page are held (with the tail of their output) for the window that opens next, for 10 s. DELETE: the window came back first. Returns `{ held }`. |
+| `/api/login-start` | GET, POST | owner-only | Windows and Linux launcher: `{ available, on }`; POST `{ on: boolean }` writes or removes the login entry and answers the same. 409 where it is not available (a server run from source, macOS). |
+| `/api/shutdown` | POST | owner-only | `omp-webui --stop` (Windows and Linux launcher, any platform): answers `202 { stopping: true }`, then the server runs the shutdown its signal handlers run and exits (its `server.pid` is removed). Needs the token and the CSRF header like every POST. |
 | `/api/notify/events` | GET | token; only for a request that came through Cloudflare Access (another Mac's app, with that Mac's window cookies) or from this computer | The same stream as `/api/shell/events`, for the app of another Mac that has this one in its list. It does not depend on this Mac's notification setting, and ends when the Access token expires or remote access is changed or turned off. A page over a network address is refused (403). |
 
 The app also uses routes documented elsewhere: `/api/prefs` (quit choice, language), `/api/lives` and `/api/omp` (what a quit would stop), `/api/lives/end-kept` (the "Quit and End…" answers), `/api/remote` (whether remote access is on).
@@ -85,8 +85,8 @@ The app also uses routes documented elsewhere: `/api/prefs` (quit choice, langua
 
 ## Security notes
 
-- `/api/macs*` and `/api/shell*` are local-only: a page through the tunnel or the network cannot change the list of Macs or read the app's stream (which holds conversation titles), whatever token it holds. The server checks `/api/macs*` a second time itself.
-- `/api/notify/events` is deliberately not local-only: it admits a request that passed Cloudflare Access (valid token for this application, an allowed email) and holds the access token, or one from this computer; a page on a network address is refused.
+- `/api/macs*` and `/api/shell*` are owner-only: a page that holds only the token (a network address, a proxy without Access) cannot change the list of Macs or read the app's stream (which holds conversation titles). A page signed in through Cloudflare Access may, as this computer's page may. The server checks `/api/macs*` a second time itself.
+- `/api/notify/events` is deliberately not owner-only: it admits a request that passed Cloudflare Access (valid token for this application, an allowed email) and holds the access token, or one from this computer; a page on a network address is refused.
 - A window onto another Mac has its own data store and a content blocker keeping that page away from this Mac and its network; signing out deletes the saved sign-in from this computer only and changes nothing on the other Mac.
-- The keep-awake switch can be changed only on this computer, so a remote page cannot let the Mac sleep under conversations it is driving.
+- The keep-awake switch can be changed only from the person's own page, so a page that holds only the token cannot let the Mac sleep under conversations it is driving.
 - Agents should not change the quit behaviour, the menu icon, keep-awake or the list of Macs unless the user asks.

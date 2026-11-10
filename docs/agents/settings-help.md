@@ -36,7 +36,7 @@ The keys are those of the other topics' `Key` tables:
 
 Settings, at the top of every page, under the search: the **Ask agent for help** card, with the conversations that can change settings now (time left, Open, Revoke now), the cards waiting for an Allow, and *Changes made by the agent*. In the dedicated conversation, a strip under the header shows the *Settings help* badge, the time left (`Can change settings · 29:41 left`) with **Revoke now**, and its Allow / Deny cards; after the access ended it says why.
 
-Only on this computer: a page that came through the tunnel or over the network has no card and no strip (the macOS app is on this computer).
+Only on the person's own page: this computer's (the macOS app is on this computer) or one signed in through Cloudflare Access. A page that holds only the access token (over the network, or behind a proxy without Access) has no card and no strip.
 
 ## Settings
 
@@ -46,14 +46,14 @@ None of its own. What it changes is listed above; the change log is kept in `~/.
 
 | Route | Methods | Access | Purpose |
 |---|---|---|---|
-| `/api/settings-help` | GET | local-only | The state: the folder, the conversations that can change settings (`liveId`, `startedAt`, `expiresAt`), the ones whose access ended and why, the changes waiting for an answer, the change log (newest first), and which run of the server said it and in what order (`boot`, `rev`: a page keeps the newer of this answer and a `settings_help` message). |
-| `/api/settings-help/start` | POST | local-only | Start a dedicated conversation with 30 minutes of access; answers the conversation (`liveId` …). |
-| `/api/settings-help/revoke` | POST | local-only | `{ liveId }`: end that conversation's access now (404 when it has none). |
-| `/api/settings-help/answer` | POST | local-only | `{ id, allow }`: Allow (`true`) or Deny (`false`) a waiting change (404 when it no longer waits). |
-| `/api/settings-help/undo` | POST | local-only | `{ id }`: put back what one logged change replaced; 409 when the setting was changed again since. |
-| `/api/settings-help/undo-all` | POST | local-only | `{ liveId }`: undo every standing change of one conversation, newest first; says how many were undone and which could not be. |
+| `/api/settings-help` | GET | owner-only | The state: the folder, the conversations that can change settings (`liveId`, `startedAt`, `expiresAt`), the ones whose access ended and why, the changes waiting for an answer, the change log (newest first), and which run of the server said it and in what order (`boot`, `rev`: a page keeps the newer of this answer and a `settings_help` message). |
+| `/api/settings-help/start` | POST | owner-only | Start a dedicated conversation with 30 minutes of access; answers the conversation (`liveId` …). |
+| `/api/settings-help/revoke` | POST | owner-only | `{ liveId }`: end that conversation's access now (404 when it has none). |
+| `/api/settings-help/answer` | POST | owner-only | `{ id, allow }`: Allow (`true`) or Deny (`false`) a waiting change (404 when it no longer waits). |
+| `/api/settings-help/undo` | POST | owner-only | `{ id }`: put back what one logged change replaced; 409 when the setting was changed again since. |
+| `/api/settings-help/undo-all` | POST | owner-only | `{ liveId }`: undo every standing change of one conversation, newest first; says how many were undone and which could not be. |
 
-The pages on this computer are told every change of the state by the `settings_help` socket message.
+The person's own pages (this computer's, and those signed in through Cloudflare Access) are told every change of the state by the `settings_help` socket message.
 
 ## Limits and caveats
 
@@ -65,7 +65,7 @@ The pages on this computer are told every change of the state by the `settings_h
 ## Security notes
 
 - `webui_settings` is served by the server over the dedicated conversation's own omp pipe (the mechanism Settings › Remote access › *Set up with AI* uses): no other conversation is told of it, and no token is handed to omp, so nothing can reach the agent's commands, the tool's arguments or results, or the exported session file. The access is a grant the server holds for that conversation's process, checked on every call; a restarted server holds none.
-- A conversation a page that is not on this computer has been on is refused, since that page could answer omp's prompts; sending a message from this computer lifts it.
-- The person's Allow for a sensitive change is given on a page of this computer only (`/api/settings-help/answer` is local-only); the agent cannot answer its own card.
+- A conversation a page that is not the person's own (one that holds only the access token) has been on is refused, since that page could answer omp's prompts; sending a message from the person's own page (this computer's, or one signed in through Access) lifts it.
+- The person's Allow for a sensitive change is given on the person's own page only (`/api/settings-help/answer` is owner-only); the agent cannot answer its own card.
 - So that the agent cannot go around the tool by editing the settings files (`guard.json`, `remote.json`, `mode.json`, `ui-prefs.json`, `unattended.json`, …) or running a command that does, the dedicated conversation asks the person before every call of omp's `bash`, `edit`, `write`, `eval`, `python`, `notebook`, `ast_edit`, `lsp`, `debug`, `browser`, `computer` and `task` tools, in every permission mode, Auto-approve included (`tools.approval.<tool>: prompt` in its overlay). The agent has no need of them there; an attempt is in front of the person before it runs.
 - Every value goes through the validated setter of its own card (the same parsers, the same side effects); unknown keys are refused.

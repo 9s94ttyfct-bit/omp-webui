@@ -31,7 +31,7 @@ import {
 } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useT } from "../i18n/index.ts";
-import { api, sessionActions } from "../lib/api.ts";
+import { api, ownerPage, sessionActions } from "../lib/api.ts";
 import { setArchived } from "../lib/archive.ts";
 import { forgetDraft } from "../lib/drafts.ts";
 import { dateGroup } from "../lib/format.ts";
@@ -462,8 +462,8 @@ export function Sidebar() {
 	);
 	const selectRow = useStable((file: string, e: MouseEvent) => select(file, e));
 
-	/** A page through the tunnel is not offered what only this Mac may change; until `meta` says so the page is taken for this Mac's, so the Guard's row is not added later (a move of the page) for the usual page. */
-	const remotePage = meta?.remote === true;
+	/** A page that is not the person's own is not offered what only the person may change; until `meta` says so the page is taken for the person's own, so the Guard's row is not added later (a move of the page) for the usual page. */
+	const notOwner = meta !== null && !ownerPage(meta);
 	const toolButton =
 		"inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted hover:bg-hover hover:text-fg aria-pressed:bg-hover aria-pressed:text-fg";
 	const listButton =
@@ -593,7 +593,7 @@ export function Sidebar() {
 			<MachineChip />
 			{/* The pages the person put on top of the list (#654): none until they do. */}
 			<div className="px-3">
-				<NavGroup variant="rows" surface="sidebar" group="top" remote={remotePage} />
+				<NavGroup variant="rows" surface="sidebar" group="top" notOwner={notOwner} />
 			</div>
 			{/* The search bar, its strings and the scorer travel in a chunk of their own: the sidebar is the first page. Its
 			    place (`pt-2` and an `h-8` row) is kept while it comes, so the list never moves under a tap (#42). */}
@@ -793,7 +793,7 @@ export function Sidebar() {
 							// Folded: the pages as one row of icons, so a short window keeps more conversations in sight.
 							<div className="flex items-center gap-1">
 								<div className="min-w-0 flex-1">
-									<NavGroup variant="strip" surface="sidebar" group="bottom" remote={remotePage} />
+									<NavGroup variant="strip" surface="sidebar" group="bottom" notOwner={notOwner} />
 								</div>
 								<IconButton
 									label={t("shell.navUnfold")}
@@ -805,8 +805,8 @@ export function Sidebar() {
 							</div>
 						) : (
 							<>
-								<NavGroup variant="rows" surface="sidebar" group="hidden" remote={remotePage} />
-								<NavGroup variant="rows" surface="sidebar" group="bottom" remote={remotePage} />
+								<NavGroup variant="rows" surface="sidebar" group="hidden" notOwner={notOwner} />
+								<NavGroup variant="rows" surface="sidebar" group="bottom" notOwner={notOwner} />
 								<div className="flex items-center gap-1 pl-2.5">
 									<div className="min-w-0 flex-1 truncate text-xs text-faint" data-testid="app-versions">
 										{meta ? `omp ${meta.ompVersion} · webui ${meta.serverVersion}` : null}

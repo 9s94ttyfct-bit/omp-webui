@@ -3,6 +3,7 @@ import { MAC_LIMIT, type SavedMac } from "@shared/macs.ts";
 import { Check, ChevronDown, Monitor, Plus } from "lucide-react";
 import { useRef, useState } from "react";
 import { useT } from "../i18n/index.ts";
+import { ownerPage } from "../lib/api.ts";
 import { fmtRelative } from "../lib/format.ts";
 import {
 	addMacInApp,
@@ -30,7 +31,8 @@ const Room = () => (
 
 /**
  * The machine switcher row (#628), under the New chat button: `This Mac ▾`, and in its menu the Macs the server has
- * saved (the macOS app's Macs menu keeps the same list), then `Add Mac…` on this computer. This row says which computer the
+ * saved (the macOS app's Macs menu keeps the same list), then `Add Mac…` on the person's own page (`Meta.owner`: this
+ * computer's, or one signed in through Cloudflare Access). This row says which computer the
  * conversations below belong to; it is not a mode, which decides what a new omp process of this Mac loads and runs on
  * (New chat's Full / Light chip).
  *
@@ -42,7 +44,7 @@ export default function MachineSwitcher() {
 	const ready = useMacsStrings();
 	const t = useT();
 	const macs = useApp((s) => s.meta?.macs);
-	const local = useApp((s) => s.meta?.local === true);
+	const owner = useApp((s) => ownerPage(s.meta));
 	const connected = useApp((s) => s.connected);
 	const toast = useApp((s) => s.toast);
 	const states = useMacLive((s) => s.states);
@@ -136,7 +138,7 @@ export default function MachineSwitcher() {
 								</Menu.Item>
 							);
 						})}
-						{local ? (
+						{owner ? (
 							<>
 								<Menu.Separator className="my-1 h-px bg-border" />
 								<Menu.Item

@@ -119,7 +119,7 @@ function problemOf(value: unknown): MacProblem | null {
 	return null;
 }
 
-/** `POST /api/macs`: add a Mac to the list (the server rechecks everything; only this computer may). */
+/** `POST /api/macs`: add a Mac to the list (the server rechecks everything; only the person's own page may). */
 export async function addSavedMac(input: { name: string; address: string }): Promise<void> {
 	const res = await fetch("/api/macs", {
 		method: "POST",

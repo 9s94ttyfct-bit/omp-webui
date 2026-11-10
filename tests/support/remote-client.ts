@@ -64,6 +64,35 @@ export function remoteClient(s: TestServer, key: AccessKey): RemoteClient {
 	};
 }
 
+/**
+ * A page that is not the person's own: this computer's server reached through a reverse proxy that says where the request
+ * came from (`x-forwarded-for`) and has no Cloudflare Access in front, holding the server's token. It is not on this
+ * computer and not signed in through Access, so it is what a page on the network is: it uses the conversations and is
+ * refused what is the person's alone. `r.method` and `r.headers` apply as for `remoteClient`; the Access options do not.
+ */
+export function proxiedClient(s: TestServer): Pick<RemoteClient, "fetch" | "socket" | "headers"> {
+	const headers = async (r: Remote = {}): Promise<Record<string, string>> => ({
+		"x-omp-webui-token": s.accessToken,
+		cookie: `ompw_token=${s.accessToken}`,
+		"x-forwarded-for": "203.0.113.9",
+		...r.headers,
+	});
+	return {
+		headers,
+		fetch: async (path: string, r: Remote = {}, body?: string) =>
+			fetch(`${s.url}${path}`, { method: r.method ?? "GET", headers: await headers(r), body, redirect: "manual" }),
+		socket: async (r: Remote = {}) => {
+			const ws = new WebSocket(`${s.url.replace("http", "ws")}/ws`, {
+				headers: await headers(r),
+			} as unknown as string[]);
+			const opened = Promise.withResolvers<WebSocket | null>();
+			ws.onopen = () => opened.resolve(ws);
+			ws.onerror = () => opened.resolve(null);
+			return opened.promise;
+		},
+	};
+}
+
 /** The settings of the remote access, as `remote.json` holds them. */
 export function remoteSettings(over: Record<string, unknown> = {}): Record<string, unknown> {
 	return { enabled: true, hostname: HOSTNAME, team: "acme", aud: AUD, emails: [EMAIL], ...over };

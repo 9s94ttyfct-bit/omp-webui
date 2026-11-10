@@ -788,7 +788,7 @@ describe("the settings", () => {
 		expect(((await res.json()) as { config: GuardConfig }).config.mode).toBe("reviewer");
 	}, 60_000);
 
-	test("a page signed in through Access changes the guard's settings and is told them, and is refused its log and its decisions", async () => {
+	test("a page signed in through Access changes the guard's settings and is told them, and reads its log and its decisions", async () => {
 		await setGuard({
 			mode: "reviewer",
 			reviewer: "revco/stub-reviewer",
@@ -808,27 +808,19 @@ describe("the settings", () => {
 		expect(
 			((await (await fetch(`${s.url}/api/guard`, { headers: authed() })).json()) as { config: GuardConfig }).config,
 		).toMatchObject({ mode: "reviewer", askWhenDenied: false });
-		// What the guard decided is the Guard page's, this computer's alone.
+		// What the guard decided is the Guard page's, the person's too.
 		for (const path of ["/api/guard/log", "/api/guard/decisions?session=x"]) {
-			expect((await phone.fetch(path, { method: "GET" })).status, path).toBe(403);
+			expect((await phone.fetch(path, { method: "GET" })).status, path).toBe(200);
 		}
 		const remote = await phone.socket();
 		expect(remote).not.toBeNull();
-		const heard: string[] = [];
-		remote?.addEventListener("message", (ev) => {
-			if (String(ev.data).includes('"guard_')) heard.push(String(ev.data));
-		});
-		// Both pages hear of the change; the remote one is told the settings, not the reviewer's rules nor any decision.
+		// Both pages hear of the change.
 		const local = await connect(s);
 		const told = messageWhere(local, (m) => m.t === "guard_config");
 		const toldThere = remote ? messageWhere(remote, (m) => m.t === "guard_config") : Promise.resolve(null);
 		await setGuard({ mode: "reviewer", askWhenUnavailable: false, askWhenDenied: true });
 		await told;
 		expect((await toldThere)?.config).toMatchObject({ askWhenUnavailable: false });
-		for (const text of heard) {
-			expect(text).not.toContain('"guard_decision"');
-			expect(JSON.parse(text)).not.toHaveProperty("rules");
-		}
 		local.close();
 		remote?.close();
 	}, 60_000);

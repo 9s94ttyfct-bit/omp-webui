@@ -22,7 +22,7 @@ export const en = {
 	missing:
 		"This folder is no longer there, or is not a folder, so no project folder can be made in it. Choose another.",
 	remoteNote:
-		"Change the projects folder on the computer omp-webui runs on. From here you can still make a project folder in it.",
+		"Change the projects folder on the computer omp-webui runs on, or from a page signed in through Cloudflare Access. From here you can still make a project folder in it.",
 	// The picker of a new chat.
 	newProject: "New project folder",
 	newIn: "Made in {folder}",

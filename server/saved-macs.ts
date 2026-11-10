@@ -18,7 +18,6 @@ import {
 	type SavedMac,
 	savedMacOf,
 } from "../shared/macs.ts";
-import { isThisComputer } from "./this-computer.ts";
 
 /**
  * The other Macs this one knows (#628, on #614's list): `<data dir>/remote-macs.json`, the file the macOS app's Macs menu
@@ -269,15 +268,15 @@ export class SavedMacs {
 	// ------------------------------------------------------------------ the routes
 
 	/**
-	 * The answer to `req` when it is one for `/api/macs*`; null when it is not. The routes change the list, so they are for
-	 * the person at this computer (`isLocalOnlyRoute` refuses the others before the request gets here, and this asks again,
-	 * as `RemoteService.handle` does): a page that came through the tunnel or over a network address reads the list and never
-	 * writes it.
+	 * The answer to `req` when it is one for `/api/macs*`; null when it is not. The routes change the list, so they are the
+	 * person's (`owner`: this computer's page, or one signed in through Cloudflare Access; `isOwnerRoute` refuses the others
+	 * before the request gets here, and this asks again, as `RemoteService.handle` does): a page that holds only the token
+	 * reads the list and never writes it.
 	 */
-	async handle(req: Request, url: URL, peer: string | undefined): Promise<Response | null> {
+	async handle(req: Request, url: URL, owner: boolean): Promise<Response | null> {
 		const path = url.pathname;
 		if (path !== "/api/macs" && !path.startsWith("/api/macs/")) return null;
-		if (!isThisComputer(req, peer)) return fail("The list of Macs is changed on this computer only", 403);
+		if (!owner) return fail("The list of Macs is changed from your own page only", 403);
 		try {
 			return await this.answer(req, path);
 		} catch (e) {

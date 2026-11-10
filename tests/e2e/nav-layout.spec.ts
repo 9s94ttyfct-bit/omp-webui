@@ -5,9 +5,9 @@ import { expect, type Locator, type Page, test } from "./fixtures.ts";
 /**
  * The sidebar's and the rail's pages (#654, #660): one model feeds the sidebar, the rail and the palette's *Go to*; each
  * bar's items sit in a top group, a bottom group or nowhere, in an order the person sets by dragging (pointer and touch) or
- * with the controls of Settings (keyboard), kept on this device. The Guard page has its entry there (not on a page that came
- * through the tunnel), and Send feedback is in Settings (under the pages' names in its index, or at the foot of a narrow
- * page), not a button of the sidebar. No model call.
+ * with the controls of Settings (keyboard), kept on this device. The Guard page has its entry there (only on the person's
+ * own page: this computer's, or one signed in through Cloudflare Access), and Send feedback is in Settings (under the pages'
+ * names in its index, or at the foot of a narrow page), not a button of the sidebar. No model call.
  */
 
 const KEY = "ompw.navLayout";
@@ -31,12 +31,12 @@ const expectIcons = (page: Page, group: Group, expected: string[]) =>
 type Stored = Record<"sidebar" | "rail", Record<"top" | "bottom" | "hidden", string[]>> | null;
 const stored = (page: Page) => page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? "null") as Stored, KEY);
 
-/** A page that is not on this computer: `/api/meta` says so, as it does through the tunnel. */
-async function asRemote(page: Page, questions?: number) {
+/** A page that is not on this computer: `/api/meta` says so, as it does through the tunnel; signed in through Access (`owner`) or holding only the token. */
+async function asRemote(page: Page, questions?: number, owner = false) {
 	await page.route("**/api/meta", async (route) => {
 		const real = await (await route.fetch()).json();
 		const open = questions === undefined ? {} : { questions: { rev: 1, open: questions, byConversation: {} } };
-		return route.fulfill({ json: { ...real, remote: true, ...open } });
+		return route.fulfill({ json: { ...real, remote: true, local: false, owner, ...open } });
 	});
 }
 
@@ -136,7 +136,7 @@ test.describe("at 1400 px", () => {
 		expect(await boxOf(page.getByTestId("new-chat"))).toEqual(below);
 	});
 
-	test("a page that came through the tunnel is offered no Guard, in either bar or the palette, and neither bar lists Questions (#693)", async ({
+	test("a page that holds only the token is offered no Guard, in either bar or the palette, and neither bar lists Questions (#693)", async ({
 		page,
 	}) => {
 		await asRemote(page, 2);
@@ -152,6 +152,25 @@ test.describe("at 1400 px", () => {
 		await page.keyboard.press("ControlOrMeta+k");
 		await expect(page.getByTestId("palette-go-settings")).toBeVisible();
 		await expect(page.getByTestId("palette-go-guard")).toHaveCount(0);
+	});
+
+	test("a page signed in through Access is offered the Guard in both bars and the palette, as this computer's page is", async ({
+		page,
+	}) => {
+		await asRemote(page, undefined, true);
+		await page.goto("/");
+		await expect(page.getByTestId("nav-settings")).toBeVisible();
+		await expectRows(page, "bottom", ALL);
+
+		await page.getByRole("button", { name: "Hide sidebar" }).click();
+		await expect(rail(page)).toBeVisible();
+		await expectIcons(page, "bottom", ALL);
+
+		await page.keyboard.press("ControlOrMeta+k");
+		await page.getByTestId("palette-go-guard").click();
+		await expect(page.getByTestId("guard-page")).toBeVisible();
+		await expect(page.getByTestId("guard-tab-decisions")).toBeVisible();
+		await expect(page.getByTestId("guard-page-remote")).toHaveCount(0);
 	});
 
 	test("the palette's Go to lists every page, Questions and Guard included, whatever the bars show", async ({

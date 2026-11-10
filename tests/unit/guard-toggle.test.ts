@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isLocalOnlyRoute, isOwnerPage, isOwnerRoute } from "../../server/this-computer.ts";
+import { isOwnerPage, isOwnerRoute } from "../../server/this-computer.ts";
 import { DEFAULT_GUARD_CONFIG, type GuardConfig, type LiveGuard, resolveGuard } from "../../shared/guard.ts";
 import { isValidPref, MAX_PREF_LENGTH, PREF } from "../../shared/prefs.ts";
 import {
@@ -110,10 +110,7 @@ describe("the pages that may switch it", () => {
 	test("what the switch sends is refused to any other page by the server, whatever the page draws", () => {
 		// The switch changes the conversation's guard through the same route as This session; a page that is not the
 		// person's own is answered 403 there (`route` in server/main.ts), so a page that drew the switch enabled changes nothing.
-		for (const path of ["/api/guard/live", "/api/guard"]) {
-			expect(isOwnerRoute(path), path).toBe(true);
-			expect(isLocalOnlyRoute(path), path).toBe(false);
-		}
+		for (const path of ["/api/guard/live", "/api/guard"]) expect(isOwnerRoute(path), path).toBe(true);
 		expect(isOwnerPage(null, false)).toBe(false);
 		expect(isOwnerPage({ email: "someone@example.com", validUntil: Date.now() + 60_000 }, false)).toBe(true);
 		expect(isOwnerPage(null, true)).toBe(true);

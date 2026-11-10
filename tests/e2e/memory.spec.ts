@@ -542,14 +542,17 @@ test.describe
 			expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 		});
 
-		test("on a page that came through the tunnel it says so and asks the server for nothing", async ({ page }) => {
+		test("on a page that holds only the token it says so and asks the server for nothing", async ({ page }) => {
 			const asked: string[] = [];
 			page.on("request", (r) => {
 				if (new URL(r.url()).pathname.startsWith("/api/memory")) asked.push(r.url());
 			});
 			await page.route("**/api/meta", async (route) => {
 				const res = await route.fetch();
-				await route.fulfill({ response: res, json: { ...(await res.json()), remote: true } });
+				await route.fulfill({
+					response: res,
+					json: { ...(await res.json()), remote: true, local: false, owner: false },
+				});
 			});
 			await page.goto("/#/memory");
 			await expect(page.getByTestId("memory-remote")).toContainText(en.remoteTitle);

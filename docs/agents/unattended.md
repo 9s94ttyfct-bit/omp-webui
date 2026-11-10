@@ -25,7 +25,7 @@ The instruction defaults to the shipped text (*As shipped*); the person can edit
 - **Unattended** switch beside the message box of each conversation (with a *N open* chip that opens that conversation's questions). In **New chat**, new conversations start with it on when Settings says so.
 - **Questions** page: sidebar entry *Questions* with a badge of open questions (`#/questions`); tabs *Open* / *Done*, filter *Show questions from*: *All conversations* / *This conversation*.
 - A conversation's side panel › **Questions** tab: that conversation's questions.
-- **Settings › Approvals & safety › Unattended mode** (`#/settings/safety`): *Turn it on for new conversations*, *What the agent is told* (with a character count, *Save*, *Restore default*). On a page that is not on this computer the text is read-only ("The text is changed on the computer omp-webui runs on").
+- **Settings › Approvals & safety › Unattended mode** (`#/settings/safety`): *Turn it on for new conversations*, *What the agent is told* (with a character count, *Save*, *Restore default*). On a page that holds only the access token (not this computer's, not signed in through Cloudflare Access) the text is read-only ("The text is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access").
 
 ## Settings
 
@@ -44,7 +44,7 @@ Other stored data (in the data folder, `~/.omp-webui`; both move with Move to an
 
 | Route | Methods | Access | Purpose |
 |---|---|---|---|
-| `/api/unattended` | GET, POST | token; POST from this computer only | GET returns the instruction settings. POST `{ instruction }` saves it (`null`: restore the default); 403 for a page not on this computer, 422 for an empty or too long text. Reaches unattended conversations at their next turn. |
+| `/api/unattended` | GET, POST | token; POST from the person's own page (this computer's, or one signed in through Cloudflare Access) | GET returns the instruction settings. POST `{ instruction }` saves it (`null`: restore the default); 403 for a page that holds only the token, 422 for an empty or too long text. Reaches unattended conversations at their next turn. |
 | `/api/unattended/session?live=<liveId>` | GET | token | Whether one conversation is unattended: `{ on, unattended }` for a running process (`live`), or what was kept for a session file without one (`?file=`). |
 | `/api/unattended/live` | POST | token | `{ liveId, on }`: turn one running conversation unattended or back; open to every page (a phone included). 404 when not running. |
 | `/api/questions` | GET | token | The list of questions. Pages are told the open counts over the WebSocket on every change. |
@@ -59,6 +59,6 @@ Other stored data (in the data folder, `~/.omp-webui`; both move with Move to an
 
 ## Security notes
 
-- The instruction is put into the system prompt of every unattended conversation, so it can be changed only from this computer.
+- The instruction is put into the system prompt of every unattended conversation, so it can be changed only from the person's own page (this computer's, or one signed in through Cloudflare Access).
 - Answering is a turn like any message a page sends, under the same rules (a remote page's turn is subject to remote access's "Confirm risky commands" setting).
 - The extension holds no credential and files nothing itself; the server files what it reads from the conversation's own events.

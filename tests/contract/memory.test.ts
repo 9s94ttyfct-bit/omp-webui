@@ -25,7 +25,7 @@ import {
 import { type AccessKey, type Jwks, makeKey, startJwks } from "../support/access-jwt.ts";
 import { lanAddress, rawRequest } from "../support/lan-peer.ts";
 import { createDb, insertDerived, insertEpisodic, insertWorking } from "../support/mnemopi-store.ts";
-import { remoteClient, remoteSettings } from "../support/remote-client.ts";
+import { proxiedClient, remoteClient, remoteSettings } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 
 /**
@@ -316,15 +316,18 @@ describe("who may ask", () => {
 		expect(snapshot()).toBe(before);
 	});
 
-	test("a page that came in through the tunnel is refused every route, reads and changes alike, and the store is as it was", async () => {
-		const before = snapshot();
+	test("a page signed in through Access is the person's own and reads it; a page behind a proxy without Access is refused every route, and the store is as it was", async () => {
 		const phone = remoteClient(s, key);
+		for (const path of ["/api/memory", "/api/memory/items", "/api/memory/item?bank=default&id=g1"])
+			expect((await phone.fetch(path)).status, path).toBe(200);
+		const before = snapshot();
+		const proxied = proxiedClient(s);
 		const g1 = await item("default", "g1");
 		const body = JSON.stringify({
 			bank: "default",
 			id: "g1",
 			etag: g1.etag,
-			content: "Changed from the tunnel.",
+			content: "Changed through a proxy.",
 			scope: "global",
 		});
 		for (const [path, method] of [
@@ -338,7 +341,7 @@ describe("who may ask", () => {
 			["/api/memory/restore", "POST"],
 			["/api/memory/delete", "POST"],
 		] as const) {
-			const res = await phone.fetch(
+			const res = await proxied.fetch(
 				path,
 				{ method, headers: method === "POST" ? { "x-omp-webui": "1", "content-type": "application/json" } : undefined },
 				method === "POST" ? body : undefined,
@@ -348,8 +351,6 @@ describe("who may ask", () => {
 			expect(await res.text()).toBe("Forbidden");
 		}
 		expect(snapshot()).toBe(before);
-		// The same requests from this computer go through (a refusal is the tunnel's, not the route's).
-		expect((await call("/api/memory")).status).toBe(200);
 	});
 });
 

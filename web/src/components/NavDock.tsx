@@ -22,9 +22,9 @@ const GROUPS = ["top", "bottom", "hidden"];
 
 /**
  * How many rows a group shows: what the stored layout (localStorage, read at once) puts in it, less the Guard for a page
- * that is not this computer's. A page the stored copy does not name is at the bottom, as `parseNavLayout` puts it.
+ * that is not the person's own. A page the stored copy does not name is at the bottom, as `parseNavLayout` puts it.
  */
-function shown({ surface, group, remote }: NavGroupProps): number {
+function shown({ surface, group, notOwner }: NavGroupProps): number {
 	let stored: Record<string, unknown> | undefined;
 	try {
 		stored = JSON.parse(localStorage.getItem("ompw.navLayout") ?? "null")?.[surface];
@@ -32,7 +32,7 @@ function shown({ surface, group, remote }: NavGroupProps): number {
 		// A copy that is not JSON is the default layout.
 	}
 	const seen = new Set<string>();
-	const counts = (id: string) => PAGES.includes(id) && !seen.has(id) && (seen.add(id), !(remote && id === "guard"));
+	const counts = (id: string) => PAGES.includes(id) && !seen.has(id) && (seen.add(id), !(notOwner && id === "guard"));
 	let n = 0;
 	for (const g of GROUPS) {
 		const list = stored?.[g];

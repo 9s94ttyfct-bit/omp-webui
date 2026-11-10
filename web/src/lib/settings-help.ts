@@ -7,7 +7,7 @@ import "./settings-help-strings.ts";
 import { socket } from "./ws.ts";
 
 /**
- * Ask agent for help (Settings): the requests a page on this computer makes (`/api/settings-help*`, local-only), and the
+ * Ask agent for help (Settings): the requests the person's own page makes (`/api/settings-help*`, refused to any other), and the
  * start of the dedicated conversation. Loaded with Settings' card and with the strip of the dedicated conversation.
  */
 

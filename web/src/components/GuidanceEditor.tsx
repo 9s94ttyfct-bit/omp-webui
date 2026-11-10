@@ -75,14 +75,13 @@ function ReasonButton({
  * has the change kept for when it is opened next. A template changed elsewhere (another page, Settings) reaches a running
  * conversation's live frame, so the box (while not being edited) and the template menu follow it. A page that is not the
  * person's own (`Meta.owner`: neither this computer's nor one signed in through Cloudflare Access) reads only, as the server
- * allows template and guidance changes from those alone: every control says so. The conflict check is this computer's alone
- * (it reads what omp remembers there): elsewhere its button says so and a save is not checked.
+ * allows template and guidance changes and the conflict check from those alone: every control says so, and a save is not
+ * checked.
  */
 export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: string | null }) {
 	const t = useT();
 	const ready = useGuidanceStrings();
 	const owner = useApp((s) => (s.meta ? ownerPage(s.meta) : true));
-	const local = useApp((s) => s.meta?.local !== false);
 	// The running conversation's guidance as the live frames keep it; a closed one's is what the server kept.
 	const liveGuidance = useApp((s) => (liveId ? s.lives[liveId]?.info.guidance : undefined));
 	const [kept, setKept] = useState<LiveGuidance | null>(null);
@@ -177,9 +176,9 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 	const tooLong = text.length > GUIDANCE_MAX;
 	const readOnly = !owner || busy;
 
-	/** Ask the server to check `guidance`, now saved for this conversation, for conflicts (v0.13.0); a page elsewhere never does. */
+	/** Ask the server to check `guidance`, now saved for this conversation, for conflicts (v0.13.0); a page not the person's own never does. */
 	const runCheck = (guidance: string) => {
-		if (!local || !checkOn || !guidanceText(guidance)) return;
+		if (!owner || !checkOn || !guidanceText(guidance)) return;
 		checkAbort.current?.abort();
 		const abort = new AbortController();
 		checkAbort.current = abort;
@@ -356,7 +355,6 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 	// Check for conflicts: the text the conversation carries now (saved), compared again on the person's word.
 	const checkReason =
 		remote ??
-		(local ? null : t("guidance.conflictCheckLocal")) ??
 		waiting ??
 		(!checkOn
 			? t("guidance.conflictCheckOff")
@@ -576,7 +574,7 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 							{t("guidance.conflictCheck")}
 						</ReasonButton>
 					</div>
-					{templateNote && checkOn && local ? (
+					{templateNote && checkOn && owner ? (
 						<p className="text-xs text-faint" data-testid="guidance-template-note">
 							{t("guidance.conflictTemplateNote")}
 						</p>

@@ -28,7 +28,7 @@ export default function NewProjectField({
 	root,
 	home,
 	failure,
-	remote,
+	notOwner,
 	onChangeRoot,
 	onEnter,
 }: {
@@ -39,8 +39,8 @@ export default function NewProjectField({
 	home: string | undefined;
 	/** Why the last send could not make the folder (cleared by the next edit of the name). */
 	failure: unknown;
-	/** A page not on this computer cannot change the projects folder (the server refuses it). */
-	remote: boolean;
+	/** A page that is not the person's own (`ownerPage`) cannot change the projects folder (the server refuses it). */
+	notOwner: boolean;
 	onChangeRoot: () => void;
 	/** Enter in the name: on to the message box. */
 	onEnter: () => void;
@@ -88,7 +88,7 @@ export default function NewProjectField({
 				) : root ? (
 					<span className="wrap-break-word text-muted" data-testid="new-project-root">
 						{t("projects.newIn", { folder: shortPath(root.folder, home) })}
-						{remote ? null : (
+						{notOwner ? null : (
 							<>
 								{" · "}
 								<button

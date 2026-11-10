@@ -54,7 +54,7 @@ export const zh: Record<keyof typeof en, string> = {
 	dirNotFolder: "{path} 不是文件夹。",
 	dirNoAccess: "没有权限打开 {path}。",
 	dirNotWritable: "没有权限在 {path} 里创建文件夹。",
-	projectsNotHere: "项目文件夹要在运行 omp-webui 的电脑上更改。",
+	projectsNotHere: "项目文件夹要在运行 omp-webui 的电脑上，或在通过 Cloudflare Access 登录的页面上更改。",
 	projectsFolderShape: "请指定文件夹，或选择默认。",
 	// 具体的名称问题由页面根据 `problem` 说明（chatProjects 命名空间）。
 	projectNameInvalid: "这个名称不能用作项目名。",

@@ -41,8 +41,8 @@ function expectWhole(layout: NavLayout) {
 
 test("the model is one list: every id has an item, in the order the palette shows", () => {
 	expect(NAV_ITEMS.map((i) => i.id)).toEqual([...NAV_ITEM_IDS]);
-	expect(NAV_ITEMS.find((i) => i.id === "guard")?.remoteHidden).toBe(true);
-	expect(NAV_ITEMS.filter((i) => i.remoteHidden).map((i) => i.id)).toEqual(["guard"]);
+	expect(NAV_ITEMS.find((i) => i.id === "guard")?.ownerOnly).toBe(true);
+	expect(NAV_ITEMS.filter((i) => i.ownerOnly).map((i) => i.id)).toEqual(["guard"]);
 });
 
 test("the defaults offer every page once per bar, with no page in two groups, and the guard is among them", () => {
@@ -161,18 +161,18 @@ test("a surface or a group of the wrong shape falls back to its default", () => 
 	expect(layout).toEqual(defaultNavLayout());
 });
 
-test("a hidden item is not drawn, and a page that is not this computer's gets no guard", () => {
+test("a hidden item is not drawn, and a page that is not the person's own gets no guard", () => {
 	const layout = withNavItemMoved(defaultNavLayout(), "sidebar", "usage", { group: "hidden" });
-	const drawn = navItemsIn(layout, "sidebar", "bottom", { remote: false }).map((i) => i.id);
+	const drawn = navItemsIn(layout, "sidebar", "bottom", { notOwner: false }).map((i) => i.id);
 	expect(drawn).toEqual(["agents", "plugins", "settings", "guard"]);
-	expect(navItemsIn(layout, "sidebar", "hidden", { remote: false }).map((i) => i.id)).toEqual(["usage"]);
-	expect(navItemsIn(layout, "sidebar", "bottom", { remote: true }).map((i) => i.id)).toEqual([
+	expect(navItemsIn(layout, "sidebar", "hidden", { notOwner: false }).map((i) => i.id)).toEqual(["usage"]);
+	expect(navItemsIn(layout, "sidebar", "bottom", { notOwner: true }).map((i) => i.id)).toEqual([
 		"agents",
 		"plugins",
 		"settings",
 	]);
 	// The other bar is not touched by it.
-	expect(navItemsIn(layout, "rail", "bottom", { remote: false }).map((i) => i.id)).toContain("usage");
+	expect(navItemsIn(layout, "rail", "bottom", { notOwner: false }).map((i) => i.id)).toContain("usage");
 });
 
 test("moving an item puts it in the group at the place, without repeating it, and leaves the other bar alone", () => {

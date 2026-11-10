@@ -53,9 +53,11 @@ export const SETTINGS_PROMPTED_TOOLS = [
  *
  * - it ends after `SETTINGS_GRANT_MS` (30 minutes), when the person presses Revoke now, and when the conversation's process
  *   ends (closed, stopped, the server restarted: a server holds no grant it did not make);
- * - a conversation a page that is not this computer's has touched is refused (that page could answer omp's prompts);
- * - a security-sensitive setting (`classOf`) is changed only after the person allowed that one change on a page of this
- *   computer (`answer`, over a local-only route); nobody answering within `SETTINGS_CONFIRM_MS` is a Deny.
+ * - a conversation a page that is not the person's own (one that holds only the token) has touched is refused (that page
+ *   could answer omp's prompts);
+ * - a security-sensitive setting (`classOf`) is changed only after the person allowed that one change on their own page
+ *   (this computer's, or one signed in through Access: `answer`, over a route for the person's own page); nobody
+ *   answering within `SETTINGS_CONFIRM_MS` is a Deny.
  *
  * Every change is logged (`<data dir>/settings-help.json`: when, what, the value before and after, who let it through) and
  * can be undone from Settings, through the same validated setter (`SettingsCatalog`).
@@ -65,9 +67,9 @@ export const SETTINGS_PROMPTED_TOOLS = [
 export interface SettingsHelpHooks {
 	/** Start a conversation in `cwd` whose host tools `server` answers. */
 	open(server: HostToolServer, cwd: string): Promise<LiveAttached>;
-	/** Whether a page that is not this computer's has been on conversation `liveId`. */
+	/** Whether a page that is not the person's own (one that holds only the token) has been on conversation `liveId`. */
 	heldRemotely(liveId: string): boolean;
-	/** Tell the pages on this computer what the state is now. */
+	/** Tell the person's own pages what the state is now. */
 	changed(state: SettingsHelpState): void;
 }
 
@@ -278,7 +280,7 @@ export class SettingsHelp implements HostToolServer {
 			return end ? ENDED_TEXT[end.reason] : REFUSED_NOT_HELP;
 		}
 		if (this.hooks?.heldRemotely(liveId))
-			return "A page that is not on this computer has been on this conversation and could answer its prompts, so settings cannot be changed from it. Tell the person to continue at the computer omp-webui runs on (it is lifted by sending a message from there).";
+			return "A page that is not the person's own (one that holds only the access token, without a Cloudflare Access sign-in) has been on this conversation and could answer its prompts, so settings cannot be changed from it. Tell the person to continue from their own page: this computer's, or one signed in through Access (it is lifted by sending a message from there).";
 		return null;
 	}
 

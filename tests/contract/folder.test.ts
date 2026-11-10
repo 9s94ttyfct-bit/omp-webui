@@ -398,25 +398,22 @@ describe("open and reveal", () => {
 		expect(noCsrf.status).toBe(403);
 	});
 
-	test("a page that came through the tunnel is refused, with what only this computer's page may do named, and nothing is opened", async () => {
-		// The file is an executable, so that even a server that let this through would run nothing: the refusal is told
-		// from that one by what it says.
-		for (const reveal of [false, true]) {
-			const res = await remote.fetch(
-				"/api/folder/open",
-				{ method: "POST", headers: { "x-omp-webui": "1", "content-type": "application/json" } },
-				JSON.stringify({ file, path: "run.sh", reveal }),
-			);
-			expect(res.status).toBe(403);
-			expect(await res.json()).toEqual({ error: "Opening files is only for the page on this computer" });
-		}
+	test("a page signed in through Access may ask as this computer's page does, and meets the same walls: nothing is executed", async () => {
+		// The file is an executable: what an Access page is told is this computer's page's own refusal, not the gate's. A
+		// reveal is not asked here: it would show a Finder window on the machine that runs the test.
+		const res = await remote.fetch(
+			"/api/folder/open",
+			{ method: "POST", headers: { "x-omp-webui": "1", "content-type": "application/json" } },
+			JSON.stringify({ file, path: "run.sh" }),
+		);
+		await refused(res, 403, "An executable file is never opened", "run.sh");
 	});
 
-	test("a request that carries what Cloudflare adds is not this computer's, even with a loopback Host", async () => {
+	test("a request that carries what Cloudflare adds, and no Access sign-in, is not the person's own, even with a loopback Host", async () => {
 		for (const header of ["cf-ray", "cf-connecting-ip", "cdn-loop"]) {
 			const res = await open({ path: "run.sh" }, { headers: { [header]: "x" } });
 			expect(res.status, header).toBe(403);
-			expect(await res.json(), header).toEqual({ error: "Opening files is only for the page on this computer" });
+			expect(await res.json(), header).toEqual({ error: "Opening files is only for your own page" });
 		}
 	});
 
@@ -432,15 +429,15 @@ describe("open and reveal", () => {
 			for (const reveal of [false, true]) {
 				const res = await open({ path: "run.sh", reveal }, { headers: { [header]: "203.0.113.9" } });
 				expect(res.status, header).toBe(403);
-				expect(await res.json(), header).toEqual({ error: "Opening files is only for the page on this computer" });
+				expect(await res.json(), header).toEqual({ error: "Opening files is only for your own page" });
 			}
 		}
 	});
 
-	test("the tunnel's page reads what a local page does, and is told it cannot open", async () => {
+	test("the tunnel's page reads what a local page does, and is told it may open as this computer's page is", async () => {
 		const res = await remote.fetch(`/api/folder/file?file=${encodeURIComponent(file)}&path=README.md`);
 		expect(res.status).toBe(200);
-		expect(((await res.json()) as FolderFile).local).toBe(false);
+		expect(((await res.json()) as FolderFile).local).toBe(platform.capabilities.openFiles);
 		const local = (await read("README.md")).body;
 		expect(local.local).toBe(platform.capabilities.openFiles);
 		// Reading is the conversation's folder for it too, and the same walls stand.
@@ -454,20 +451,19 @@ describe("open and reveal", () => {
 	// runs the test): a page that is not this computer's is refused at the gate, and what this computer's page asks for is
 	// outside the folder or a file, so that it is refused before anything is handed over. That the folder itself is opened
 	// by the real path, with the spawn replaced, is tests/unit/folder.test.ts.
-	test("the folder action: a page that came through the tunnel is refused, for the conversation's folder and any other", async () => {
-		for (const path of ["", "src", "src/app.ts", "../secret", "/etc"]) {
+	test("the folder action: a page signed in through Access meets this computer's walls; a page that is not the person's own is refused at the gate", async () => {
+		for (const path of ["../secret", "/etc"]) {
 			const res = await remote.fetch(
 				"/api/folder/open",
 				{ method: "POST", headers: { "x-omp-webui": "1", "content-type": "application/json" } },
 				JSON.stringify({ file, path, dir: true }),
 			);
-			expect(res.status, path).toBe(403);
-			expect(await res.json(), path).toEqual({ error: "Opening files is only for the page on this computer" });
+			await refused(res, 403, "Outside the folder", path, true);
 		}
 		for (const header of ["cf-ray", "x-forwarded-for", "forwarded", "via", "x-real-ip"]) {
 			const res = await open({ path: "", dir: true }, { headers: { [header]: "203.0.113.9" } });
 			expect(res.status, header).toBe(403);
-			expect(await res.json(), header).toEqual({ error: "Opening files is only for the page on this computer" });
+			expect(await res.json(), header).toEqual({ error: "Opening files is only for your own page" });
 		}
 	});
 
@@ -488,15 +484,15 @@ describe("open and reveal", () => {
 		expect((await open({ file: "no-such-conversation.jsonl", path: "", dir: true })).status).toBe(404);
 	});
 
-	test("the listing tells this computer's page it may open folders, and the tunnel's page nothing", async () => {
+	test("the listing tells the person's own pages (this computer's and the tunnel's) they may open folders", async () => {
 		const here = await list();
 		expect(here.body.local).toBe(platform.capabilities.openFiles ? true : undefined);
 		const res = await remote.fetch(`/api/folder/list?file=${encodeURIComponent(file)}&path=`);
 		expect(res.status).toBe(200);
 		const there = (await res.json()) as FolderListing;
-		// The tunnel's page is the person's own (signed in through Access): it is shown everything, but opens nothing here.
+		// The tunnel's page is the person's own (signed in through Access): it is shown everything, and may open here.
 		expect(there.guarded).toBeUndefined();
-		expect(there.local).toBeUndefined();
+		expect(there.local).toBe(platform.capabilities.openFiles ? true : undefined);
 	});
 });
 

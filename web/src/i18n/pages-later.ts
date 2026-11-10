@@ -179,7 +179,7 @@ export const en = {
 	settingsKeepAwakeHint:
 		"While a conversation is working, the Mac is kept from going to sleep on its own, so a turn is not cut in half. The display still sleeps, and closing the lid still puts it to sleep.",
 	settingsKeepAwakeRemote:
-		"This is changed on the computer omp-webui runs on: a page that came in through the tunnel or the network cannot turn off the protection of the conversations it is driving.",
+		"This is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access: a page that holds only the access token cannot turn off the protection of the conversations it is driving.",
 	settingsKeepAwakeUnavailable:
 		"This server cannot hold sleep off: it runs on a machine that is not a Mac (macOS's caffeinate is what does it).",
 	settingsSleepAfter:

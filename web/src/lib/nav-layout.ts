@@ -27,8 +27,8 @@ export interface NavItem {
 	/** Its name; a first-page string (the sidebar and the rail are the first page, and the palette reuses them). */
 	labelKey: MessageKey;
 	icon: LucideIcon;
-	/** Not offered to a page that is not on this computer: the guard is a setting of this Mac (as its Settings card is). */
-	remoteHidden?: boolean;
+	/** Offered only to the person's own page (`ownerPage`): the guard is a setting only the person changes (as its Settings card is). */
+	ownerOnly?: boolean;
 }
 
 /** Every page a surface may offer, in the order the palette lists them. */
@@ -38,7 +38,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
 	{ id: "plugins", labelKey: "shell.sidebarNavPlugins", icon: Puzzle },
 	{ id: "settings", labelKey: "shell.sidebarNavSettings", icon: Settings },
 	// The guard's own sign is an eye (a reviewer looking at each call): the shields are the permission modes (C1).
-	{ id: "guard", labelKey: "shell.sidebarNavGuard", icon: ScanEye, remoteHidden: true },
+	{ id: "guard", labelKey: "shell.sidebarNavGuard", icon: ScanEye, ownerOnly: true },
 ];
 
 const BY_ID = new Map(NAV_ITEMS.map((item) => [item.id, item]));
@@ -200,18 +200,18 @@ export function useNavLayout(): NavLayout {
 	return useSyncExternalStore(subscribeNavLayout, navLayout, navLayout);
 }
 
-/** The items of one group of a surface, ready to draw: a page that is not this computer's gets no guard item. */
+/** The items of one group of a surface, ready to draw: a page that is not the person's own gets no guard item. */
 export function navItemsIn(
 	layout: NavLayout,
 	surface: NavSurface,
 	group: NavGroup,
-	options: { remote: boolean },
+	options: { notOwner: boolean },
 ): NavItem[] {
 	const out: NavItem[] = [];
 	for (const id of layout[surface][group]) {
 		const item = BY_ID.get(id);
 		if (!item) continue;
-		if (options.remote && item.remoteHidden) continue;
+		if (options.notOwner && item.ownerOnly) continue;
 		out.push(item);
 	}
 	return out;

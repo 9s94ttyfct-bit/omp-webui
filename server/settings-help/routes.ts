@@ -3,9 +3,10 @@ import { SettingValueError } from "./catalog.ts";
 import { type SettingsHelp, SettingsHelpError } from "./service.ts";
 
 /**
- * The routes of "Ask agent for help" (`/api/settings-help*`), every one of them for a page on this computer only
- * (`isLocalOnlyRoute`; `route` in `main.ts` refuses any other with 403 before this is reached, and `local` is checked again
- * here): starting the conversation, Revoke now, the Allow / Deny of a sensitive change, and Undo.
+ * The routes of "Ask agent for help" (`/api/settings-help*`), every one of them for the person's own page only (this
+ * computer's, or one signed in through Cloudflare Access: `isOwnerRoute`; `route` in `main.ts` refuses any other with 403
+ * before this is reached, and `owner` is checked again here): starting the conversation, Revoke now, the Allow / Deny of
+ * a sensitive change, and Undo.
  *
  * - `GET /api/settings-help`: the state (`SettingsHelpState`).
  * - `POST /api/settings-help/start`: start a dedicated conversation; answers its `LiveAttached`.
@@ -18,11 +19,11 @@ export async function handleSettingsHelp(
 	req: Request,
 	url: URL,
 	help: SettingsHelp,
-	local: boolean,
+	owner: boolean,
 	reply: { json: (data: unknown, status?: number) => Response; fail: (error: string, status?: number) => Response },
 ): Promise<Response> {
 	const { json, fail } = reply;
-	if (!local) return fail("Ask agent for help is used on the computer omp-webui runs on", 403);
+	if (!owner) return fail("Ask agent for help is used from your own page", 403);
 	const path = url.pathname;
 	if (path === "/api/settings-help") return json(help.state());
 	if (req.method !== "POST") return fail("POST required", 405);

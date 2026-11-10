@@ -44,11 +44,10 @@ export interface FolderContext {
 	changes(cwd: string, fresh: boolean): Promise<FolderChanges>;
 	/** The text change of one file of that list (see `GitProbe.diff`); null: not looked at, not a change, or git did not answer. */
 	diff(cwd: string, path: string): Promise<FileDiff | null>;
-	/** The request is from a page on this computer (see `isThisComputer` in `this-computer.ts`): the one that may open a file here. */
-	local: boolean;
 	/**
 	 * The request is from the person's own page (`isOwnerPage`: this computer's, or one signed in through Cloudflare Access):
-	 * it may ask for what is hidden by default and read what looks like a secret. Any other page is `guarded`.
+	 * it may ask for what is hidden by default, read what looks like a secret, and open or reveal a file on this computer.
+	 * Any other page is `guarded`.
 	 */
 	owner: boolean;
 	/** Opens or reveals the file (tests replace the system's `open`). */
@@ -101,9 +100,9 @@ export async function handleFolder(req: Request, url: URL, ctx: FolderContext): 
 	try {
 		if (route === "open") {
 			if (req.method !== "POST") return fail("POST required", 405);
-			// The one request that acts on this computer beyond reading: a page that came in through the tunnel (or by a
-			// network address) never asks it, whatever it carries.
-			if (!ctx.local) return fail("Opening files is only for the page on this computer", 403);
+			// The one request that acts on this computer beyond reading: the person's own page (this computer's, or one
+			// signed in through Access) may ask it; a page that holds only the token never does, whatever it carries.
+			if (!ctx.owner) return fail("Opening files is only for your own page", 403);
 			const body = await bodyOf(req);
 			const live = typeof body.live === "string" ? body.live : null;
 			const file = typeof body.file === "string" ? body.file : null;
@@ -130,7 +129,7 @@ export async function handleFolder(req: Request, url: URL, ctx: FolderContext): 
 				const marks = await ctx.marks(root, q.get("fresh") === "1");
 				const listing = await listFolder(root, path, { all, marks, guarded });
 				// Whether this page may ask for the folder to be opened in Finder (as `FolderFile.local` says of a file).
-				return json(ctx.local && desktopOf(ctx) ? { ...listing, local: true } : listing);
+				return json(ctx.owner && desktopOf(ctx) ? { ...listing, local: true } : listing);
 			}
 			case "find": {
 				const marks = await ctx.marks(root, fresh);
@@ -141,7 +140,7 @@ export async function handleFolder(req: Request, url: URL, ctx: FolderContext): 
 			case "diff":
 				return json(await diffAnswer(ctx, root, path, guarded));
 			case "file": {
-				const read = await readFolderFile(root, path, ctx.local && desktopOf(ctx) !== null, {
+				const read = await readFolderFile(root, path, ctx.owner && desktopOf(ctx) !== null, {
 					guarded,
 				});
 				// What the text allows is `readFolderFile`'s to say; whether this page and this place allow a write is the transfer's.

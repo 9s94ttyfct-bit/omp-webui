@@ -293,16 +293,14 @@ test("the indicator opens Settings, and a server without the routes shows neithe
 	await other.close();
 });
 
-test("on a page that came in through the tunnel the card is refused and never asks the tunnel anything", async ({
-	page,
-}) => {
+test("on a page that holds only the token the card is refused and never asks the tunnel anything", async ({ page }) => {
 	const asked: string[] = [];
 	page.on("request", (r) => {
 		if (/\/api\/remote(\/|$)/.test(new URL(r.url()).pathname)) asked.push(r.url());
 	});
 	await page.route("**/api/meta", async (route) => {
 		const real = await (await route.fetch()).json();
-		return route.fulfill({ json: { ...real, remote: true } });
+		return route.fulfill({ json: { ...real, remote: true, local: false, owner: false } });
 	});
 	await page.goto("/#/settings/app");
 	await expect(page.getByTestId("remote-refused")).toHaveText(en.settingsRemoteRefused);

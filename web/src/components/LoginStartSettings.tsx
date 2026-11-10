@@ -8,7 +8,7 @@ import { CardHeader } from "./ui.tsx";
 /**
  * Settings › App & system › Start at login (off unless turned on): the macOS app as its own login item, opening no window;
  * the launcher on Windows and Linux, started with `--background` (see `lib/login-start.ts`). Not shown where this page
- * cannot change it: a browser on a Mac (the app's window can), a server run from source, a page not on this computer.
+ * cannot change it: a browser on a Mac (the app's window can), a server run from source, a page that is not the person's own.
  */
 export function LoginStartSettings() {
 	const t = useT();

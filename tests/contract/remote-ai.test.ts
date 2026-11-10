@@ -188,10 +188,18 @@ async function tunnelHeaders(): Promise<Record<string, string>> {
 	};
 }
 
-async function viaTunnel(path: string, body?: unknown): Promise<Response> {
+/**
+ * A page that is not the person's own: this computer's server behind a reverse proxy that says where the request came from,
+ * with no Access sign-in, holding the token. A page signed in through Access is the person's own, as this computer's is.
+ */
+function proxyHeaders(): Record<string, string> {
+	return { cookie: `ompw_token=${s.accessToken}`, "x-forwarded-for": "203.0.113.9" };
+}
+
+async function asked(path: string, headers: Record<string, string>, body?: unknown): Promise<Response> {
 	return fetch(`${s.url}${path}`, {
 		method: body === undefined ? "GET" : "POST",
-		headers: { ...(await tunnelHeaders()), "x-omp-webui": "1", "content-type": "application/json" },
+		headers: { ...headers, "x-omp-webui": "1", "content-type": "application/json" },
 		body: body === undefined ? undefined : JSON.stringify(body),
 		redirect: "manual",
 	});
@@ -199,11 +207,11 @@ async function viaTunnel(path: string, body?: unknown): Promise<Response> {
 
 async function remotePage(): Promise<WebSocket> {
 	const ws = new WebSocket(`${s.url.replace("http", "ws")}/ws`, {
-		headers: await tunnelHeaders(),
+		headers: proxyHeaders(),
 	} as unknown as string[]);
 	const open = Promise.withResolvers<void>();
 	ws.onopen = () => open.resolve();
-	ws.onerror = () => open.reject(new Error("the remote page's socket was refused"));
+	ws.onerror = () => open.reject(new Error("the page's socket was refused"));
 	await open.promise;
 	return ws;
 }
@@ -369,7 +377,7 @@ describe('"Set up with AI"', () => {
 	});
 });
 
-describe("what comes through the tunnel", () => {
+describe("what comes from a page that is not the person's own", () => {
 	let liveId: string;
 
 	beforeAll(async () => {
@@ -379,7 +387,7 @@ describe("what comes through the tunnel", () => {
 		liveId = await setUpWithAi();
 	}, 60_000);
 
-	test("a page that came in through it can neither turn the help on or off, start a conversation, nor ask for the state", async () => {
+	test("a page behind a proxy without Access can neither turn the help on or off, start a conversation, nor ask for the state; one signed in through Access reads it", async () => {
 		const before = await snapshot();
 		for (const [path, body] of [
 			["/api/remote/ai", { enabled: false }],
@@ -388,20 +396,21 @@ describe("what comes through the tunnel", () => {
 			["/api/remote/check", {}],
 			["/api/remote", undefined],
 		] as const) {
-			expect((await viaTunnel(path, body)).status, path).toBe(403);
+			expect((await asked(path, proxyHeaders(), body)).status, path).toBe(403);
 		}
 		expect(await snapshot()).toEqual(before);
 		expect(before.ai).toEqual({ enabled: true, conversations: [liveId] });
+		expect((await asked("/api/remote", await tunnelHeaders())).status).toBe(200);
 	});
 
-	test("while a page that came through it is on the conversation, its tools are refused; once it is gone and the person writes, they work again", async () => {
+	test("while such a page is on the conversation, its tools are refused; once it is gone and the person writes, they work again", async () => {
 		const { ws } = await page();
 		const remote = await remotePage();
 		await request(remote, { t: "attach", liveId });
 
 		const refused = await agentCalls(ws, liveId, REMOTE_AI_TOOL.save, { hostname: "evil.example.com" });
 		expect(refused.isError).toBe(true);
-		expect(refused.text).toContain("tunnel");
+		expect(refused.text).toContain("Access");
 		expect((await snapshot()).config.hostname).not.toBe("evil.example.com");
 		expect((await agentCalls(ws, liveId, REMOTE_AI_TOOL.status)).isError).toBe(true);
 
@@ -413,7 +422,7 @@ describe("what comes through the tunnel", () => {
 		ws.close();
 	}, 60_000);
 
-	/** What a page that came through the tunnel does to a conversation before it leaves; each leaves it at once. */
+	/** What a page that is not the person's own does to a conversation before it leaves; each leaves it at once. */
 	const TOUCHES = {
 		attaches: async (remote: WebSocket) => void (await request(remote, { t: "attach", liveId })),
 		"sends a command": async (remote: WebSocket) =>
@@ -427,7 +436,7 @@ describe("what comes through the tunnel", () => {
 	};
 
 	for (const [what, touch] of Object.entries(TOUCHES)) {
-		test(`a page that came through it ${what} and leaves at once cannot have the agent change anything afterwards, until the person writes`, async () => {
+		test(`a page that is not the person's own ${what} and leaves at once cannot have the agent change anything afterwards, until the person writes`, async () => {
 			const { ws } = await page();
 			const before = (await snapshot()).config.hostname;
 			const remote = await remotePage();
@@ -437,7 +446,7 @@ describe("what comes through the tunnel", () => {
 			// The call comes after the page has gone: refused, and nothing is changed or run.
 			const saved = await agentCallsUnprompted(ws, liveId, REMOTE_AI_TOOL.save, { hostname: "leaves.example.com" });
 			expect(saved.isError).toBe(true);
-			expect(saved.text).toContain("tunnel");
+			expect(saved.text).toContain("Access");
 			expect((await snapshot()).config.hostname).toBe(before);
 			for (const name of REMOTE_AI_TOOL_NAMES) {
 				expect((await agentCallsUnprompted(ws, liveId, name, {})).isError, name).toBe(true);
@@ -451,7 +460,7 @@ describe("what comes through the tunnel", () => {
 		}, 60_000);
 	}
 
-	test("a page that came through it cannot lift it: a message of its own does not", async () => {
+	test("such a page cannot lift it: a message of its own does not", async () => {
 		const { ws } = await page();
 		const remote = await remotePage();
 		await request(remote, { t: "attach", liveId });

@@ -48,17 +48,17 @@ export function isThisComputer(req: Request, peer: string | undefined): boolean 
 
 /**
  * Whether a page is the person's own: on this computer, or signed in as the person through Cloudflare Access (`remote`, the
- * identity `RemoteAuth.verify` checked; null for any other request). Such a page may install, update and clear the built-in
- * browser, use the owner's routes (`isOwnerRoute`: the guard's settings, a conversation's own guard, the app's own
- * updates), and change the guidance (its templates and a conversation's). A page holding only the server's token (one on
- * the network, or any page with auth off) may use the conversations and look at these, not change them. Decided from the
- * request's or socket's own authentication, never from what the page says.
+ * identity `RemoteAuth.verify` checked; null for any other request). Such a page may do everything this computer's page
+ * may: the owner's routes (`isOwnerRoute`), the built-in browser's management, the guidance, the Files tab's whole reach
+ * and file transfer whatever Settings › Remote access says. A page holding only the server's token (one on the network, or
+ * any page with auth off) may use the conversations and look at these, not change them. Decided from the request's or
+ * socket's own authentication, never from what the page says.
  */
 export function isOwnerPage(remote: RemoteIdentity | null, local: boolean): boolean {
 	return remote !== null || local;
 }
 
-const LOCAL_ONLY = [
+const OWNER_ONLY = [
 	"/api/remote",
 	"/api/macs",
 	"/api/guard",
@@ -72,52 +72,17 @@ const LOCAL_ONLY = [
 ];
 
 /**
- * The routes a page signed in through Access may use as well as this computer's (`isOwnerPage`), each by its exact path:
- * the settings of Settings › Safety (`/api/guard`: mode, reviewer, ask when unavailable, ask when denied), one
- * conversation's own guard (`/api/guard/live`), and Settings › Updates (`/api/update`, `/check`, `/install`, `/cancel`,
- * `/dismiss`: the person updates the app from their phone too; what is installed is still only a release signed as the
- * running app is). The rest of `/api/guard*` stays this computer's (`LOCAL_ONLY`): the decisions log (`log`, `decisions`:
- * every risky call of every conversation, with its folder, and the reviewer's reasons), the reviewer's rules and the
- * threshold of each kind (`rules`) and the benchmark (`bench*`), which are the Guard page's, and a route added under
- * `/api/guard` or `/api/update` later is this computer's until it is named here.
+ * The routes that are the person's, and nobody else's (`isOwnerPage`: this computer's page, and one signed in through
+ * Access): the tunnel's settings (`/api/remote*`), the list of saved Macs (`/api/macs*`), the guard's settings, what it
+ * decided and how strict it is (`/api/guard*`), the app's own updates (`/api/update*`), moving to another computer
+ * (`/api/migrate/*`), what omp remembers (`/api/memory*`: what is written to it is put into the prompt of every later
+ * conversation), what the macOS app is told (`/api/shell/*`), Ask agent for help (`/api/settings-help*`), what starts at
+ * this user's login (`/api/login-start`) and stopping the server (`/api/shutdown`). A page that holds only the token (one on
+ * the network, or behind a proxy without Access) is refused them by `route` in `main.ts`: the token lets a page use the
+ * conversations, not reconfigure, replace or carry away the computer they run on. A route under one of these prefixes
+ * added later is the owner's too. The stream the app of another Mac reads (`/api/notify/events`, #656) is not listed:
+ * `route` lets it in only for a request that came through Access (or from this computer).
  */
-const OWNER_ROUTES = [
-	"/api/guard",
-	"/api/guard/live",
-	"/api/update",
-	"/api/update/check",
-	"/api/update/install",
-	"/api/update/cancel",
-	"/api/update/dismiss",
-];
-
-/** Whether `pathname` is one of the routes this computer's page and a page signed in through Access may use (`OWNER_ROUTES`). */
 export function isOwnerRoute(pathname: string): boolean {
-	return OWNER_ROUTES.includes(pathname);
-}
-
-/**
- * The routes that are the person's at this computer, and nobody else's: the tunnel's settings (`/api/remote*`), the list of
- * saved Macs (`/api/macs*`: every route of it changes the list, which pages read in `/api/meta`), what the guard decided
- * and how strict it is (`/api/guard/*` but the routes `isOwnerRoute` names), the app's own updates (`/api/update*` but the
- * routes `isOwnerRoute` names), moving to another
- * computer (`/api/migrate/*`), what omp remembers (`/api/memory*`: the folders of the projects and excerpts of
- * conversations, and what is written to it is put into the prompt of every later conversation, which a page that is not
- * on this computer must not be able to do), what the macOS app is told on its own (`/api/shell/*`: which
- * conversations work and wait, and the titles of the ones that need somebody, for the app's notifications), Ask agent
- * for help (`/api/settings-help*`: starting a conversation that changes settings, the Allow / Deny of a security-sensitive
- * change, Revoke now and Undo), what starts at this user's login (`/api/login-start`) and stopping the server
- * (`/api/shutdown`, what `omp-webui --stop` asks). A page that
- * is not on this computer (see `isThisComputer`) is refused them, whether it
- * came through the tunnel or over the network, and whatever token it holds: the token lets a page use the conversations,
- * not reconfigure, replace or carry away the computer they run on. A route added here is refused to such a page by
- * `route` in `main.ts`; one that is for this computer and is not listed is open to every page that has the token. The stream
- * the app of another Mac reads (`/api/notify/events`, #656) is deliberately not listed: it is how a window onto this Mac is
- * told what needs the person, and `route` lets it in only for a request that came through Access (or from this computer).
- * Nor are the owner's routes (`isOwnerRoute`: the guard's settings, a conversation's own guard, the app's updates): `route`
- * lets them in for this computer's page and one signed in through Access (`isOwnerPage`), and refuses them to any other.
- */
-export function isLocalOnlyRoute(pathname: string): boolean {
-	if (isOwnerRoute(pathname)) return false;
-	return LOCAL_ONLY.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+	return OWNER_ONLY.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }

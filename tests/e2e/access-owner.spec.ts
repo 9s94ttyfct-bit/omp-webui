@@ -1,26 +1,36 @@
 import type { GuardConfig } from "../../shared/guard.ts";
+import type { SavedMac } from "../../shared/macs.ts";
 import { en as guardEn } from "../../web/src/i18n/guard.ts";
 import { en as guidanceEn } from "../../web/src/i18n/guidance.ts";
 import { newChatIn } from "../support/new-chat.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /**
- * A page signed in through Cloudflare Access is the person's own (`Meta.owner`): it changes the guard's settings (Settings ›
- * Safety), a conversation's own guard and the guidance exactly as the page on this computer does, and is told the Guard page
- * is on that computer. A page on the network that holds only the token is shown these and told why it cannot change them,
- * never left with a control that does nothing. The page is made one or the other by what `/api/meta` tells it; the server's
- * own decision, by the request's authentication, is `tests/contract/remote-auth.test.ts` and `lan-local.test.ts`.
+ * A page signed in through Cloudflare Access is the person's own (`Meta.owner`): it has everything the page on this
+ * computer has: the guard's settings and the Guard page, a conversation's own guard and the guidance, Remote access, the
+ * projects folder, Keep the Mac awake, the unattended instruction, Move to another computer, Ask agent for help, Add Mac
+ * and Memory. A page on the network that holds only the token is shown what it may see and told why it cannot change it,
+ * never left with a control that does nothing. The page is made one or the other by what `/api/meta` tells it; the
+ * server's own decision, by the request's authentication, is `tests/contract/remote-auth.test.ts` and `lan-local.test.ts`.
  */
 
 const POST = { "x-omp-webui": "1" };
 const WORK = () => process.env.OMPW_E2E_WORK as string;
 
 /** Make the page one that came through the tunnel: signed in through Access (`owner`), or holding only the token. */
-const asRemotePage = (page: Page, owner: boolean) =>
+const asRemotePage = (page: Page, owner: boolean, extra: Record<string, unknown> = {}) =>
 	page.route("**/api/meta", async (route) => {
 		const real = await (await route.fetch()).json();
-		return route.fulfill({ json: { ...real, remote: true, local: false, owner } });
+		return route.fulfill({ json: { ...real, remote: true, local: false, owner, ...extra } });
 	});
+
+/** A saved Mac, so that the machine switcher (and its Add Mac) is drawn. */
+const STUDIO: SavedMac = {
+	id: "11111111-1111-4111-8111-111111111111",
+	name: "Studio Mac",
+	host: "studio.example.com",
+	lastConnected: null,
+};
 
 const served = async (page: Page): Promise<GuardConfig> =>
 	((await (await page.request.get("/api/guard")).json()) as { config: GuardConfig }).config;
@@ -50,7 +60,7 @@ test.afterEach(async ({ page }) => {
 	expect((await page.request.post("/api/model-guidance/restore", { headers: POST })).status()).toBe(200);
 });
 
-test("an Access page changes the guard in Settings › Safety, and is told the Guard page is on the computer", async ({
+test("an Access page changes the guard in Settings › Safety, and opens the Guard page as this computer's page does", async ({
 	page,
 }) => {
 	const guardPage = asked(page, "/api/guard/");
@@ -61,19 +71,87 @@ test("an Access page changes the guard in Settings › Safety, and is told the G
 	await card.getByTestId("guard-mode-ask").check();
 	await expect(page.getByTestId("guard-status")).toHaveAttribute("data-state", "saved");
 	await expect.poll(async () => (await served(page)).mode).toBe("ask");
-	// The Guard page's summary and link are this computer's: said instead, and nothing of it is asked for.
-	await expect(page.getByTestId("guard-page-local")).toHaveText(guardEn.settingsPageLocal);
-	await expect(page.getByTestId("guard-open-page")).toHaveCount(0);
-	expect(guardPage).toEqual([]);
+	// The Guard page's summary is read for it (the log and the rules), and its link leads there.
+	await expect(page.getByTestId("guard-summary-line")).toBeVisible();
+	await expect.poll(() => guardPage.some((r) => r.startsWith("GET /api/guard/log"))).toBe(true);
+	await page.getByTestId("guard-open-page").click();
+	await expect(page.getByTestId("guard-page")).toBeVisible();
+	await expect(page.getByTestId("guard-tab-decisions")).toBeVisible();
+	await expect(page.getByTestId("guard-page-remote")).toHaveCount(0);
+});
 
-	// The Guard page itself says where it is, and leads back to the card it may change.
+test("an Access page has the settings only the person may change, Ask agent for help, Add Mac and Memory", async ({
+	page,
+}) => {
+	const memory = asked(page, "/api/memory");
+	await asRemotePage(page, true, { macs: [STUDIO] });
+	await page.goto("/#/settings/app");
+	await expect(page.getByTestId("settings-help")).toBeVisible({ timeout: 30_000 });
+	await expect(page.getByTestId("remote-settings")).toBeVisible();
+	await expect(page.getByTestId("remote-refused")).toHaveCount(0);
+	await expect(page.getByTestId("migrate-settings")).toBeVisible();
+	await expect(page.getByTestId("migrate-refused")).toHaveCount(0);
+	await expect(page.getByTestId("keep-awake-hint")).not.toHaveText(/access token/);
+
 	await page.evaluate(() => {
-		location.hash = "#/guard";
+		location.hash = "#/settings/chats";
 	});
-	await expect(page.getByTestId("guard-page-remote")).toContainText(guardEn.pageAccessTitle);
-	await page.getByTestId("guard-page-settings").click();
-	await expect(page.getByTestId("guard-settings")).toBeVisible();
-	expect(guardPage).toEqual([]);
+	const projects = page.getByTestId("projects-settings");
+	await expect(projects.getByTestId("projects-choose")).toBeVisible();
+	await expect(projects.getByTestId("projects-folder")).toHaveJSProperty("readOnly", false);
+
+	await page.evaluate(() => {
+		location.hash = "#/settings/safety";
+	});
+	await expect(page.getByTestId("unattended-save")).toBeVisible({ timeout: 30_000 });
+	await expect(page.getByTestId("unattended-instruction")).toHaveJSProperty("readOnly", false);
+
+	await page.getByTestId("machine-switcher").click();
+	await expect(page.getByTestId("machine-add")).toBeVisible();
+	await page.keyboard.press("Escape");
+
+	await page.evaluate(() => {
+		location.hash = "#/memory";
+	});
+	await expect(page.getByTestId("memory-page")).toBeVisible();
+	await expect(page.getByTestId("memory-remote")).toHaveCount(0);
+	await expect.poll(() => memory.length).toBeGreaterThan(0);
+});
+
+test("a page holding only the token is refused those, and asks the server for none of them", async ({ page }) => {
+	const memory = asked(page, "/api/memory");
+	const remote = asked(page, "/api/remote");
+	const migrate = asked(page, "/api/migrate");
+	await asRemotePage(page, false, { macs: [STUDIO] });
+	await page.goto("/#/settings/app");
+	await expect(page.getByTestId("remote-refused")).toBeVisible({ timeout: 30_000 });
+	await expect(page.getByTestId("migrate-refused")).toBeVisible();
+	await expect(page.getByTestId("keep-awake")).toBeDisabled();
+	await expect(page.getByTestId("settings-help")).toHaveCount(0);
+
+	await page.evaluate(() => {
+		location.hash = "#/settings/chats";
+	});
+	const projects = page.getByTestId("projects-settings");
+	await expect(projects.getByTestId("projects-folder")).toHaveJSProperty("readOnly", true);
+	await expect(projects.getByTestId("projects-choose")).toHaveCount(0);
+
+	await page.evaluate(() => {
+		location.hash = "#/settings/safety";
+	});
+	await expect(page.getByTestId("unattended-instruction")).toHaveJSProperty("readOnly", true, { timeout: 30_000 });
+	await expect(page.getByTestId("unattended-save")).toHaveCount(0);
+
+	await page.getByTestId("machine-switcher").click();
+	await expect(page.getByTestId("machine-menu")).toBeVisible();
+	await expect(page.getByTestId("machine-add")).toHaveCount(0);
+	await page.keyboard.press("Escape");
+
+	await page.evaluate(() => {
+		location.hash = "#/memory";
+	});
+	await expect(page.getByTestId("memory-remote")).toBeVisible();
+	expect([...memory, ...remote, ...migrate]).toEqual([]);
 });
 
 test("an Access page picks New chat's guard and guidance, and the warm-up process is given them", async ({ page }) => {

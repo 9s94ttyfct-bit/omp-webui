@@ -8,10 +8,10 @@ const asked = new Set<string>();
  * Ask the server for what the guard decided about the agent whose transcript is `file` (a conversation's own file, or a
  * subagent's), so that the cards of a conversation that was decided before this page opened it show their verdict. The
  * server answers from its log: no transcript is read. A decision that arrived live is newer and stays. Nothing is asked of a
- * page that came through the tunnel: it is refused.
+ * page that is not the person's own (`refused`: neither this computer's nor one signed in through Cloudflare Access).
  */
-export function loadGuardDecisions(file: string | undefined | null, remote: boolean): void {
-	if (!file || remote || asked.has(file)) return;
+export function loadGuardDecisions(file: string | undefined | null, refused: boolean): void {
+	if (!file || refused || asked.has(file)) return;
 	asked.add(file);
 	void fetch(`/api/guard/decisions?file=${encodeURIComponent(file)}`)
 		.then((res) => (res.ok ? (res.json() as Promise<{ decisions: GuardDecision[] }>) : Promise.reject(new Error())))

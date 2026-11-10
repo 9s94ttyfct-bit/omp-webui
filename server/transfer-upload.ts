@@ -233,8 +233,8 @@ export class Uploads {
 		}
 	}
 
-	/** The folder `parts` below `root`, made as far as it is not there, by the rules above. */
-	async #folder(root: string, parts: readonly string[]): Promise<{ abs: string; rel: string }> {
+	/** The folder `parts` below `root`, made as far as it is not there, by the rules above (`guarded`: a page that is not the person's own). */
+	async #folder(root: string, parts: readonly string[], guarded: boolean): Promise<{ abs: string; rel: string }> {
 		let abs = root;
 		const rels: string[] = [];
 		for (const raw of parts) {
@@ -243,12 +243,12 @@ export class Uploads {
 			let info = await lstat(literal).catch(() => null);
 			// A folder that is there is used as it is named; one that is not is made under the name a file system takes.
 			const use = info === null ? safeName(raw) : raw;
-			if (isHiddenName(raw, true) || isHiddenName(use, true))
+			if (guarded && (isHiddenName(raw, true) || isHiddenName(use, true)))
 				throw new TransferError("A hidden folder is not written into", 403, "hidden");
 			rels.push(use);
-			if (startsPrograms(rels))
+			if (guarded && startsPrograms(rels))
 				throw new TransferError("That is a place nothing is written into unasked", 403, "protected");
-			if (isSecretLooking(rels.join("/")))
+			if (guarded && isSecretLooking(rels.join("/")))
 				throw new TransferError("This looks like a secret: nothing is sent into it", 403, "secret");
 			const next = join(abs, use);
 			if (use !== raw) info = await lstat(next).catch(() => null);
@@ -296,7 +296,10 @@ export class Uploads {
 		const root = await conversationRoot(ctx, q.get("live"), q.get("file"));
 		trace.root = root;
 		trace.path = `${q.get("dir") ?? ""}/${given}`.slice(0, 4096);
-		if (holdsHome(root, env))
+		// The person's own page (`owner`) writes where it likes inside the folder, but for the app's own data; any other page
+		// is kept out of the home folder, protected places, what CI runs and hidden or secret names.
+		const guarded = !env.owner;
+		if (guarded && holdsHome(root, env))
 			throw new TransferError(
 				"Files are not received into the home folder: choose a folder inside it",
 				403,
@@ -304,7 +307,7 @@ export class Uploads {
 			);
 		const parts = await viaFolder(async () => partsOf(q.get("dir") ?? ""));
 		if (parts.length > 32) throw new TransferError("That folder is too deep", 400, "badRequest");
-		if (startsPrograms(parts))
+		if (guarded && startsPrograms(parts))
 			throw new TransferError("That is a place nothing is written into unasked", 403, "protected");
 		// Before a folder is made: not in a folder an omp-webui keeps its data in, nor a protected place.
 		const planned = join(root, ...parts);
@@ -313,10 +316,10 @@ export class Uploads {
 			if (inside(await realAsFarAsItGoes(dir), real))
 				throw new TransferError("That is a folder the app keeps its own data in", 403, "ownData");
 		}
-		if (isProtected(real, env))
+		if (guarded && isProtected(real, env))
 			throw new TransferError("That is a place nothing is written into unasked", 403, "protected");
 		const name = safeName(given);
-		if (isHiddenName(name, false) || given.startsWith("."))
+		if (guarded && (isHiddenName(name, false) || given.startsWith(".")))
 			throw new TransferError("A hidden file is not received", 403, "hidden");
 		const releaseSlot = this.deps.gate.take(env.who);
 		if (!releaseSlot) throw busy();
@@ -339,10 +342,10 @@ export class Uploads {
 		};
 		let kept = false;
 		try {
-			const dir = await this.#folder(root, parts);
-			if (isProtected(dir.abs, env) || isProtected(join(dir.abs, name), env))
+			const dir = await this.#folder(root, parts, guarded);
+			if (guarded && (isProtected(dir.abs, env) || isProtected(join(dir.abs, name), env)))
 				throw new TransferError("That is a place nothing is written into unasked", 403, "protected");
-			if (isSecretLooking(dir.rel ? `${dir.rel}/${name}` : name))
+			if (guarded && isSecretLooking(dir.rel ? `${dir.rel}/${name}` : name))
 				throw new TransferError("This looks like a secret: nothing is sent into it", 403, "secret");
 			const free = await (this.deps.statfs ?? fsFree)(dir.abs);
 			const reserve = Math.max(this.deps.limits.reserveBytes, (free.total * this.deps.limits.reservePercent) / 100);

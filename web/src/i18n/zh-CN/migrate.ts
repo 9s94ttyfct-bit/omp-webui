@@ -6,7 +6,7 @@ export const zh: Record<keyof typeof en, string> = {
 	intro: "把你的对话、历史记录、记忆、设置、插件和这个应用自己的数据打包成一个文件，再导入到另一台 Mac 上的 omp。",
 	notEncrypted:
 		"只有在你要求时，文件才会加密（见下方）。否则任何拿到它的人都能读到里面的对话（如果包含登录信息，它们一定是加密的）。请妥善保管，用完后删除。",
-	refused: "这个页面不在运行服务器的这台 Mac 上，所以只能在这台 Mac 本机的页面上迁移数据。",
+	refused: "这个页面不能迁移数据：请在运行服务器的这台 Mac 本机的页面上，或在通过 Cloudflare Access 登录的页面上迁移。",
 	networkError: "与应用的连接中断了，请重试。",
 	cancel: "取消",
 	refresh: "刷新",

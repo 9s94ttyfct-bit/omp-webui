@@ -47,16 +47,16 @@ Synced preferences are stored on the server in `ui-prefs.json` in the data folde
 
 | Route | Methods | Access | Purpose |
 |---|---|---|---|
-| `/api/prefs` | GET, POST | token (POST changing `ompw.keepAwake`: this computer only; changing `ompw.browser` or `ompw.browserAutoUpdate`: this computer or a verified Access sign-in) | GET returns the snapshot `{ id, rev, values }` of every synced preference (null where unset). POST `{ changes: { <key>: string \| null } }` sets or forgets keys; the whole request is refused (400) on an unknown key, a non-string value, a value over 16 KiB or a value the app never writes. A change is broadcast to every open page. |
+| `/api/prefs` | GET, POST | token (POST changing `ompw.keepAwake`, `ompw.browser`, `ompw.browserAutoUpdate`, `ompw.appUpdateCheck` or `ompw.appAutoUpdate`: the person's own page, this computer's or one signed in through Cloudflare Access) | GET returns the snapshot `{ id, rev, values }` of every synced preference (null where unset). POST `{ changes: { <key>: string \| null } }` sets or forgets keys; the whole request is refused (400) on an unknown key, a non-string value, a value over 16 KiB or a value the app never writes. A change is broadcast to every open page. |
 
 ## Limits and caveats
 
 - Synced preferences follow the person across browser origins and ports; the nav layout and keyboard shortcuts stay on one device/browser.
 - A stored value that is not valid (hand-edited, from another version) is ignored and the default is shown.
 - Widths are not applied in phone layouts; the panel width also limits how many pane tabs show their labels.
-- The Guard page item is never shown to a page that is not on this computer (a tunnel or network page), whatever the nav layout says.
+- The Guard page item is shown only on the person's own page (this computer's, or one signed in through Cloudflare Access), never to a page that holds only the access token, whatever the nav layout says.
 
 ## Security notes
 
-- `/api/prefs` is open to any page holding the access token (including through the tunnel); only the keep-awake key is refused to pages not on this computer.
+- `/api/prefs` is open to any page holding the access token (including through the tunnel); the keep-awake, built-in browser and app update keys are refused (403) to a page that holds only the token, and device preferences sent by a page not on this computer stay on that page while each device keeps its own look.
 - Preferences hold no secrets. Agents should change appearance settings only when the user asks.

@@ -12,6 +12,7 @@ import {
 import { Brain, Check, Copy, Lock, Plus, RefreshCw, Search } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../i18n/index.ts";
+import { ownerPage } from "../lib/api.ts";
 import { useCopy } from "../lib/clipboard.ts";
 import { fmtRelative } from "../lib/format.ts";
 import { useNarrowerThan } from "../lib/media.ts";
@@ -140,17 +141,18 @@ function Notice({
 
 /**
  * The Memory page: omp's long-term memory (Mnemopi), listed, searched, read in full, rewritten, added to,
- * retired and deleted. It is the page of this computer: what omp remembers is private, so a page that came through the
- * tunnel is told so and asks for nothing (the routes refuse it too). The server does the changes (`server/memory/`), with
- * a copy of the store made first; this page asks for each one, and deleting asks the person first.
+ * retired and deleted. It is for the person's own page (`ownerPage`: this computer's, or one signed in through Cloudflare
+ * Access): what omp remembers is private, so any other page is told so and asks for nothing (the routes refuse it too).
+ * The server does the changes (`server/memory/`), with a copy of the store made first; this page asks for each one, and
+ * deleting asks the person first.
  */
 export function MemoryPage() {
 	const t = useT();
 	const ready = useMemoryStrings();
 	const meta = useApp((s) => s.meta);
 	const home = meta?.home;
-	const remote = meta?.remote === true;
-	const live = meta !== null && !remote;
+	const refused = meta !== null && !ownerPage(meta);
+	const live = meta !== null && !refused;
 
 	const [frame, setFrame] = useState<HTMLElement | null>(null);
 	const narrow = useNarrowerThan(frame, NARROW_PX);
@@ -242,7 +244,7 @@ export function MemoryPage() {
 		</h1>
 	);
 
-	if (remote) {
+	if (refused) {
 		return shell(
 			<div className="mx-auto w-full max-w-xl space-y-6 px-6 py-8">
 				{title}

@@ -88,6 +88,7 @@ export const en = {
 	saved: "Saved",
 	restore: "Restore default",
 	restored: "Default restored",
-	remoteNote: "The text is changed on the computer omp-webui runs on.",
+	remoteNote:
+		"The text is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access.",
 	settingsFailed: "Could not save: {error}",
 };

@@ -7,7 +7,6 @@ import { type Subprocess, spawn } from "bun";
 import { platform } from "../../server/platform/index.ts";
 import { RemoteService } from "../../server/remote-routes.ts";
 import type { TunnelTimings } from "../../server/remote-tunnel.ts";
-import { isThisComputer } from "../../server/this-computer.ts";
 import type { ServerMessage } from "../../shared/protocol.ts";
 import type { RemoteLogin, RemoteSnapshot } from "../../shared/remote.ts";
 import { FAKE_TUNNEL_ID, makeFakeCloudflared } from "../support/fake-cloudflared.ts";
@@ -53,26 +52,18 @@ function world(o: { installed?: boolean; host?: string } = {}) {
 	return { dir, fake, service, pushed, signIn };
 }
 
-/** A request the way the page makes it: to the loopback address, from the loopback, with no Cloudflare header. */
-function ask(
-	w: { service: RemoteService },
-	method: string,
-	path: string,
-	body?: unknown,
-	headers: Record<string, string> = {},
-	peer: string | null = "127.0.0.1",
-) {
+/** A request the way the page makes it; `owner`: from the person's own page (this computer's, or one signed in through Access). */
+function ask(w: { service: RemoteService }, method: string, path: string, body?: unknown, owner = true) {
 	const url = new URL(`http://127.0.0.1:4242${path}`);
 	const req = new Request(url, {
 		method,
 		headers: {
 			host: "127.0.0.1:4242",
 			...(body === undefined ? {} : { "content-type": "application/json" }),
-			...headers,
 		},
 		body: body === undefined ? undefined : JSON.stringify(body),
 	});
-	return w.service.handle(req, url, peer ?? undefined);
+	return w.service.handle(req, url, owner);
 }
 
 async function answer<T = RemoteSnapshot>(
@@ -89,26 +80,16 @@ async function answer<T = RemoteSnapshot>(
 describe("who may use it", () => {
 	const POSTS = ["config", "install", "login", "setup", "start", "stop"];
 
-	test("a request that came through the tunnel is refused before anything runs, on every route", async () => {
+	test("a request that is not from the person's own page is refused before anything runs, on every route", async () => {
+		// Which page is the person's (this computer's, or one signed in through Access) is `route`'s say in main.ts, from the
+		// request's own authentication: a page that holds only the token (one on the network, or behind a proxy without
+		// Access) is not.
 		const w = world();
 		w.signIn();
-		const remoteHeaders: Record<string, string>[] = [
-			// What reaches this server from the tunnel: the public Host, and what Cloudflare adds.
-			{ host: HOST, "cf-connecting-ip": "203.0.113.9", "cf-ray": "8a1b2c3d4e5f-SJC" },
-			// A request that the tunnel made look local is still one: Cloudflare's own headers.
-			{ host: "127.0.0.1:4242", "cf-connecting-ip": "203.0.113.9" },
-			{ host: "localhost:4242", "cf-access-jwt-assertion": "a.b.c" },
-			{ host: "127.0.0.1:4242", "cdn-loop": "cloudflare; loops=1" },
-			// The Host alone.
-			{ host: HOST },
-			{ host: "" },
-		];
-		for (const headers of remoteHeaders) {
-			for (const path of ["/api/remote", ...POSTS.map((p) => `/api/remote/${p}`)]) {
-				const method = path === "/api/remote" ? "GET" : "POST";
-				const res = await ask(w, method, path, method === "POST" ? { enabled: true } : undefined, headers);
-				expect(res?.status, `${method} ${path} ${JSON.stringify(headers)}`).toBe(403);
-			}
+		for (const path of ["/api/remote", ...POSTS.map((p) => `/api/remote/${p}`)]) {
+			const method = path === "/api/remote" ? "GET" : "POST";
+			const res = await ask(w, method, path, method === "POST" ? { enabled: true } : undefined, false);
+			expect(res?.status, `${method} ${path}`).toBe(403);
 		}
 		// Nothing was changed, started or run on the way.
 		expect(w.fake.calls()).toEqual([]);
@@ -117,54 +98,12 @@ describe("who may use it", () => {
 		expect(w.service.tunnel.status()).toEqual({ state: "off" });
 	});
 
-	test("a request over a network address the server listens on is refused before anything runs, on every route", async () => {
-		// The server is bound to its network address (`OMP_WEBUI_HOST`), which is the Host its clients use. The Host and the
-		// headers are those of a page on this computer; the socket is not.
-		const w = world({ host: "10.0.0.5" });
-		w.signIn();
-		const asked: [Record<string, string>, string | null][] = [
-			[{ host: "10.0.0.5:4242" }, "10.0.0.7"],
-			[{ host: "10.0.0.5:4242" }, "10.0.0.5"],
-			[{ host: "127.0.0.1:4242" }, "10.0.0.7"],
-			[{ host: "localhost:4242" }, "192.168.1.20"],
-			[{ host: "127.0.0.1:4242" }, "::ffff:10.0.0.7"],
-			[{ host: "127.0.0.1:4242" }, "fe80::1"],
-			[{ host: "127.0.0.1:4242" }, null],
-			// A proxy on this computer that carries the network's requests to it.
-			[{ host: "127.0.0.1:4242", "x-forwarded-for": "10.0.0.7" }, "127.0.0.1"],
-			[{ host: "127.0.0.1:4242", forwarded: "for=10.0.0.7" }, "::1"],
-		];
-		for (const [headers, peer] of asked) {
-			for (const path of ["/api/remote", ...POSTS.map((p) => `/api/remote/${p}`)]) {
-				const method = path === "/api/remote" ? "GET" : "POST";
-				const res = await ask(w, method, path, method === "POST" ? { enabled: true } : undefined, headers, peer);
-				expect(res?.status, `${method} ${path} ${JSON.stringify(headers)} from ${peer}`).toBe(403);
-			}
-		}
-		expect(w.fake.calls()).toEqual([]);
-		expect(w.fake.brewCalls()).toEqual([]);
-		expect(w.service.store.read().enabled).toBe(false);
-		expect(w.service.tunnel.status()).toEqual({ state: "off" });
-	});
-
-	test("the person at this computer is let in by any of the names the loopback answers to, from any form of it", () => {
-		const ask = (host: string, peer: string | undefined) =>
-			isThisComputer(new Request("http://x/", { headers: { host } }), peer);
-		for (const host of ["127.0.0.1:7878", "localhost:7878", "[::1]:7878", "127.0.0.1"]) {
-			for (const peer of ["127.0.0.1", "::1", "::ffff:127.0.0.1", "127.0.0.2"])
-				expect(ask(host, peer), `${host} from ${peer}`).toBe(true);
-		}
-		// The server's own network address is not a name for this computer, from wherever it is asked.
-		for (const peer of ["127.0.0.1", "::1", "10.0.0.5", undefined])
-			expect(ask("mac.local:7878", peer), `mac.local from ${peer}`).toBe(false);
-	});
-
 	test("what is not for remote access is not answered here", async () => {
 		const w = world();
 		for (const path of ["/api/meta", "/api/remotely", "/api/remote-x", "/"]) {
 			const url = new URL(`http://127.0.0.1:4242${path}`);
 			expect(
-				await w.service.handle(new Request(url, { headers: { host: "127.0.0.1:4242" } }), url, "127.0.0.1"),
+				await w.service.handle(new Request(url, { headers: { host: "127.0.0.1:4242" } }), url, true),
 				path,
 			).toBeNull();
 		}
@@ -242,7 +181,7 @@ describe("the routes", () => {
 		const res = await w.service.handle(
 			new Request(url, { method: "POST", headers: { host: "127.0.0.1:4242" }, body: "{not json" }),
 			url,
-			"127.0.0.1",
+			true,
 		);
 		expect(res?.status).toBe(400);
 	});
@@ -421,11 +360,11 @@ describe("the server's own", () => {
 		services.push(service);
 
 		// A request that is not for the remote API is not ours to answer.
-		expect(await service.handle(new Request(other), other, "127.0.0.1")).toBeNull();
+		expect(await service.handle(new Request(other), other, true)).toBeNull();
 
-		const snapshot = (await (await service.handle(req(), url, "127.0.0.1"))?.json()) as RemoteSnapshot;
+		const snapshot = (await (await service.handle(req(), url, true))?.json()) as RemoteSnapshot;
 		expect(snapshot.installed).toBe(true);
-		expect(await service.handle(new Request(other), other, "127.0.0.1")).toBeNull();
+		expect(await service.handle(new Request(other), other, true)).toBeNull();
 
 		mkdirSync(join(fake.home, ".cloudflared"), { recursive: true });
 		writeFileSync(join(fake.home, ".cloudflared", "cert.pem"), "cert");
@@ -540,22 +479,15 @@ describe("Confirm risky commands from remote pages", () => {
 		});
 	});
 
-	test("a request that came through the tunnel cannot change it, whatever it says", async () => {
+	test("a page that is not the person's own cannot change it, whatever it says", async () => {
 		const w = world();
 		for (const confirmRisky of [true, false]) {
-			const viaTunnel: Record<string, string>[] = [
-				{ host: HOST, "cf-connecting-ip": "203.0.113.9" },
-				{ host: HOST },
-				{ host: "127.0.0.1:4242", "cdn-loop": "cloudflare" },
-			];
-			for (const headers of viaTunnel) {
-				const res = await ask(w, "POST", "/api/remote/config", { confirmRisky }, headers);
-				expect(res?.status, JSON.stringify(headers)).toBe(403);
-			}
+			const res = await ask(w, "POST", "/api/remote/config", { confirmRisky }, false);
+			expect(res?.status, String(confirmRisky)).toBe(403);
 		}
 		expect(w.service.store.read().confirmRisky).toBe(false);
 		await answer(w, "POST", "/api/remote/config", { confirmRisky: true });
-		const refused = await ask(w, "POST", "/api/remote/config", { confirmRisky: false }, { host: HOST });
+		const refused = await ask(w, "POST", "/api/remote/config", { confirmRisky: false }, false);
 		expect(refused?.status).toBe(403);
 		expect(w.service.store.read().confirmRisky).toBe(true);
 	});

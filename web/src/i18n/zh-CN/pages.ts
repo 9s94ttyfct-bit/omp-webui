@@ -193,7 +193,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	settingsKeepAwakeHint:
 		"只要有对话在工作，就不让 Mac 自行休眠，免得一轮工作被中途截断。显示器仍会休眠；合上盖子也仍会让它休眠。",
 	settingsKeepAwakeRemote:
-		"这项设置要在运行 omp-webui 的电脑上更改：从隧道或网络进来的页面不能关掉它正在驱动的对话的保护。",
+		"这项设置要在运行 omp-webui 的电脑上，或在通过 Cloudflare Access 登录的页面上更改：只持有访问令牌的页面不能关掉它正在驱动的对话的保护。",
 	settingsKeepAwakeUnavailable: "这个服务器无法阻止休眠：它运行在非 Mac 的机器上（靠的是 macOS 的 caffeinate）。",
 	settingsSleepAfter:
 		"Mac 真的休眠时（合上盖子，或关掉了上面的开关），正在工作的对话会在记录里加一行，说明它被中断了，以及唤醒后接着发生了什么。不会替你重发任何内容。",

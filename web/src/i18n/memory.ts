@@ -11,9 +11,9 @@ export const en = {
 	refresh: "Refresh",
 	add: "Add memory",
 
-	remoteTitle: "Memory is only shown on this computer",
+	remoteTitle: "Memory is shown on this computer, or on a page signed in through Cloudflare Access",
 	remoteHint:
-		"What omp remembers is private: the folders of your projects and excerpts of what was said in your conversations. And what it is made to remember goes into the prompt of every conversation. Open this page on the computer omp runs on.",
+		"What omp remembers is private: the folders of your projects and excerpts of what was said in your conversations. And what it is made to remember goes into the prompt of every conversation. This page holds only the access token: open it on the computer omp runs on, or through Cloudflare Access.",
 	notUsed:
 		"omp's memory is set to “{backend}”, so it is not using this store now. It is shown as it is, and can be changed here.",
 	unsupportedPath:

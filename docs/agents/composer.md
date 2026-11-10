@@ -67,7 +67,7 @@ In a conversation, when the controls do not fit in one row, the preset, model, p
 | Route | Methods | Access | Purpose |
 |---|---|---|---|
 | `/api/files` | GET | token | `@file` completion: `?cwd=<folder>&q=<text>`; paths under that folder (bounded walk: skips hidden, dependency and build folders). A page not on this computer and not signed in through Cloudflare Access is offered no dotfile and no name that looks like a secret, the Files tab's rule (see file-transfer). |
-| `/api/upload` | POST | token (refused to a page not on this computer unless Settings › Remote access › File transfer is full) | `?live=&file=&name=`, body = file bytes: saves into `<conversation folder>/.omp-webui/uploads/<date>/<name>` and returns the path. Only creates new files. |
+| `/api/upload` | POST | token (refused to a page that holds only the access token, neither this computer's nor signed in through Cloudflare Access, unless Settings › Remote access › File transfer is full) | `?live=&file=&name=`, body = file bytes: saves into `<conversation folder>/.omp-webui/uploads/<date>/<name>` and returns the path. Only creates new files. |
 
 ## Limits and caveats
 

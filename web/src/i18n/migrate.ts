@@ -12,7 +12,7 @@ export const en = {
 	notEncrypted:
 		"A file is encrypted only if you ask for it below. Otherwise anyone who gets it can read the conversations in it (logins, if you include them, are always encrypted). Keep it private and delete it when you are done.",
 	refused:
-		"This page is not on the Mac the server runs on, so moving data can only be done from the page on the Mac itself.",
+		"This page cannot move data: do it from the page on the Mac the server runs on, or from a page signed in through Cloudflare Access.",
 	networkError: "The connection to the app was lost. Try again.",
 	cancel: "Cancel",
 	refresh: "Refresh",

@@ -6,9 +6,9 @@ export const zh: Record<keyof typeof en, string> = {
 	refresh: "刷新",
 	add: "添加记忆",
 
-	remoteTitle: "记忆只在这台电脑上显示",
+	remoteTitle: "记忆只在这台电脑上，或在通过 Cloudflare Access 登录的页面上显示",
 	remoteHint:
-		"omp 记住的内容是私人的：你的项目文件夹，以及对话里说过的话的摘录。而且让它记住什么，会进入每一个对话的提示词。请在运行 omp 的那台电脑上打开这个页面。",
+		"omp 记住的内容是私人的：你的项目文件夹，以及对话里说过的话的摘录。而且让它记住什么，会进入每一个对话的提示词。这个页面只持有访问令牌：请在运行 omp 的那台电脑上，或通过 Cloudflare Access 打开这个页面。",
 	notUsed: "omp 的记忆设置为“{backend}”，所以它现在没有使用这个存储。这里照原样显示，也可以在这里修改。",
 	unsupportedPath:
 		"omp 的 `mnemopi.dbPath` 是相对路径，omp 会从它运行时所在的文件夹解析。请把它设为绝对路径，才能在这里看到存储。",

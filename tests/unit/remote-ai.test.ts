@@ -98,19 +98,18 @@ function world(check?: string): World {
 	return { dir, fake, service, hooks, pushed, file: join(dir, "data", "remote-ai.json") };
 }
 
-/** A request the way the page makes it: to the loopback address, with no Cloudflare header. */
-async function ask(w: World, method: string, path: string, body?: unknown, headers: Record<string, string> = {}) {
+/** A request the way the page makes it; `owner`: from the person's own page (this computer's, or one signed in through Access). */
+async function ask(w: World, method: string, path: string, body?: unknown, owner = true) {
 	const url = new URL(`http://127.0.0.1:4242${path}`);
 	const req = new Request(url, {
 		method,
 		headers: {
 			host: "127.0.0.1:4242",
 			...(body === undefined ? {} : { "content-type": "application/json" }),
-			...headers,
 		},
 		body: body === undefined ? undefined : JSON.stringify(body),
 	});
-	const res = await w.service.handle(req, url, "127.0.0.1");
+	const res = await w.service.handle(req, url, owner);
 	if (!res) throw new Error(`${path} was not answered`);
 	return { status: res.status, body: (await res.json()) as Record<string, unknown> & { error?: string } };
 }
@@ -256,7 +255,7 @@ describe("the opt-in", () => {
 		const res = await service.handle(
 			new Request(url, { method: "POST", headers: { host: "127.0.0.1:4242" } }),
 			url,
-			"127.0.0.1",
+			true,
 		);
 		expect(res?.status).toBe(501);
 		expect(service.ai.enabled()).toBe(false);
@@ -264,37 +263,27 @@ describe("the opt-in", () => {
 });
 
 describe("who may use it", () => {
-	const REMOTE_HEADERS: Record<string, string>[] = [
-		{ host: HOST, "cf-connecting-ip": "203.0.113.9", "cf-ray": "8a1b2c3d4e5f-SJC" },
-		{ host: "127.0.0.1:4242", "cf-connecting-ip": "203.0.113.9" },
-		{ host: "localhost:4242", "cf-access-jwt-assertion": "a.b.c" },
-		{ host: HOST },
-	];
-
-	test("a request that came through the tunnel can neither turn the help on or off, start a conversation, nor check", async () => {
+	test("a page that is not the person's own can neither turn the help on or off, start a conversation, nor check", async () => {
 		const w = world();
-		for (const headers of REMOTE_HEADERS) {
-			for (const [path, body] of [
-				["/api/remote/ai", { enabled: true }],
-				["/api/remote/ai", { enabled: false }],
-				["/api/remote/ai/start", {}],
-				["/api/remote/check", {}],
-			] as const) {
-				expect((await ask(w, "POST", path, body, headers)).status, `${path} ${JSON.stringify(headers)}`).toBe(403);
-			}
+		for (const [path, body] of [
+			["/api/remote/ai", { enabled: true }],
+			["/api/remote/ai", { enabled: false }],
+			["/api/remote/ai/start", {}],
+			["/api/remote/check", {}],
+		] as const) {
+			expect((await ask(w, "POST", path, body, false)).status, path).toBe(403);
 		}
 		expect(w.hooks.opened).toEqual([]);
 		expect(w.service.ai.enabled()).toBe(false);
 	});
 
-	test("while a page that came through the tunnel is on the conversation its tools are refused, and work again once it has gone", async () => {
+	test("while a page that is not the person's own is on the conversation its tools are refused, and work again once it has gone", async () => {
 		const w = world();
 		const liveId = await startConversation(w);
 		w.hooks.remote.add(liveId);
 		for (const name of REMOTE_AI_TOOL_NAMES) {
 			const answer = await call(w, name, { hostname: HOST }, liveId);
 			expect(answer, name).toMatchObject({ isError: true });
-			expect(answer.text, name).toContain("tunnel");
 		}
 		expect(w.fake.calls()).toEqual([]);
 		expect(w.service.store.read().hostname).toBe("");

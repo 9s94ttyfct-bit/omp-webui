@@ -8,7 +8,7 @@ import { type AccessKey, type Jwks, makeKey, startJwks } from "../support/access
 import { type Frame, messageWhere, watchFrames } from "../support/frames.ts";
 import { expectMode } from "../support/modes.ts";
 import { pollUntil } from "../support/poll.ts";
-import { type RemoteClient, remoteClient, remoteSettings } from "../support/remote-client.ts";
+import { proxiedClient, type RemoteClient, remoteClient, remoteSettings } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import {
 	askArgs,
@@ -304,11 +304,18 @@ test("a remote page reads the list and answers under the rules of every remote m
 	expect(((await (await asRemote("/api/questions")).json()) as QuestionList).questions.some((x) => x.id === q.id)).toBe(
 		true,
 	);
-	// The instruction is read by any page and changed on this computer only.
+	// The instruction is read by any page and changed from the person's own page only: this computer's, or one signed in
+	// through Access (the phone here); a page behind a proxy without Access is refused.
 	expect((await asRemote("/api/unattended")).status).toBe(200);
-	const phoneEdit = await asRemote("/api/unattended", { instruction: "from a phone" });
-	expect(phoneEdit.status).toBe(403);
-	expect(((await phoneEdit.json()) as { error: string }).error).toContain("changed on the computer omp-webui runs on");
+	const proxiedEdit = await proxiedClient(s).fetch(
+		"/api/unattended",
+		{ method: "POST", headers: { "content-type": "application/json", "x-omp-webui": "1" } },
+		JSON.stringify({ instruction: "through a proxy" }),
+	);
+	expect(proxiedEdit.status).toBe(403);
+	expect(((await proxiedEdit.json()) as { error: string }).error).toContain("your own page");
+	expect((await asRemote("/api/unattended", { instruction: "from a phone" })).status).toBe(200);
+	expect((await asRemote("/api/unattended", { instruction: null })).status).toBe(200);
 	const answered = await asRemote("/api/questions/answer", { id: q.id, options: ["nats"] });
 	expect(answered.status, await answered.clone().text()).toBe(200);
 	const delivered = await requestWith('Answer to your question \\"Which queue?\\"');

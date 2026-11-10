@@ -76,6 +76,6 @@ export const zh: Record<keyof typeof en, string> = {
 	saved: "已保存",
 	restore: "恢复默认",
 	restored: "已恢复默认",
-	remoteNote: "这段文字只能在运行 omp-webui 的电脑上修改。",
+	remoteNote: "这段文字只能在运行 omp-webui 的电脑上，或在通过 Cloudflare Access 登录的页面上修改。",
 	settingsFailed: "无法保存：{error}",
 };

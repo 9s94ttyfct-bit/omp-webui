@@ -34,10 +34,9 @@ const POLICY_TEXT: Record<PolicyStatus, MessageKey> = {
  * or refused by a reviewer model, or by the person ("Ask me"), or not looked at (Off). A change is sent at once and the
  * answer is what the card shows; a change made in another tab arrives as `guard_config`. What the guard decided, how strict
  * it is for each kind of call, the reviewer's rules and the benchmark are on the Guard page; this card keeps a link to it and
- * a line that says where they stand. The settings are for the person's own page: this computer's, or one signed in through
- * Cloudflare Access (`Meta.owner`). The Guard page (the decisions, the rules by kind, the benchmark) is this computer's
- * alone, so a page signed in through Access is told so in place of the summary. Any other page (one on the network, which
- * holds only the token) is told where the guard is changed, and asks the server for nothing.
+ * a line that says where they stand. The settings and the Guard page are for the person's own page: this computer's, or one
+ * signed in through Cloudflare Access (`Meta.owner`). Any other page (one on the network, which holds only the token) is
+ * told where the guard is changed, and asks the server for nothing.
  */
 export function GuardSettings() {
 	const t = useT();
@@ -47,7 +46,6 @@ export function GuardSettings() {
 	const lastId = useGuard((s) => s.last?.id);
 	const setView = useApp((s) => s.setView);
 	const owner = useApp((s) => ownerPage(s.meta));
-	const local = useApp((s) => s.meta?.local === true);
 	// What was chosen shows at once, and stays until the server has answered: kept, or refused (it goes back).
 	const [draft, setDraft] = useState<Partial<GuardConfig>>({});
 	const config = stored && { ...stored, ...draft };
@@ -62,16 +60,16 @@ export function GuardSettings() {
 		guardApi
 			.config()
 			.catch((e) => alive && setOutcome({ state: "error", why: "guard.loadFailed", error: messageOf(e) }));
-		if (local) guardApi.rules().catch(() => {});
+		guardApi.rules().catch(() => {});
 		return () => {
 			alive = false;
 		};
-	}, [owner, local]);
+	}, [owner]);
 
-	// The count is read again when a decision is made while this card is open (on this computer: the log is its own).
+	// The count is read again when a decision is made while this card is open.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: `lastId` is what says a decision arrived.
 	useEffect(() => {
-		if (!local) return;
+		if (!owner) return;
 		let alive = true;
 		guardApi.log({ limit: 1 }).then(
 			(res) => alive && setRecorded(res.total),
@@ -80,7 +78,7 @@ export function GuardSettings() {
 		return () => {
 			alive = false;
 		};
-	}, [lastId, local]);
+	}, [lastId, owner]);
 
 	if (!ready) return null;
 	if (!owner)
@@ -211,36 +209,30 @@ export function GuardSettings() {
 				{t("guard.perConversation")}
 			</p>
 
-			{local ? (
-				<div className="mt-3 flex flex-wrap items-center gap-3" data-testid="guard-summary">
-					<dl
-						className="grid min-w-0 flex-1 basis-56 grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs"
-						data-testid="guard-summary-line"
-					>
-						{recorded === null ? null : (
-							<>
-								<dt className="text-muted">{t("guard.settingsSummaryDecisions")}</dt>
-								<dd>
-									{recorded === 0
-										? t("guard.settingsSummaryDecisionsNone")
-										: t("guard.settingsSummaryDecisionsCount", { count: recorded })}
-								</dd>
-								<dt className="text-muted">{t("guard.settingsSummaryRules")}</dt>
-								<dd>{summary.policy}</dd>
-								<dt className="text-muted">{t("guard.settingsSummaryChanged")}</dt>
-								<dd className="tabular-nums">{summary.changed}</dd>
-							</>
-						)}
-					</dl>
-					<Button size="sm" data-testid="guard-open-page" onClick={() => setView({ kind: "guard" })}>
-						{t("guard.settingsOpenPage")}
-					</Button>
-				</div>
-			) : (
-				<p className="mt-3 text-xs text-muted" data-testid="guard-page-local">
-					{t("guard.settingsPageLocal")}
-				</p>
-			)}
+			<div className="mt-3 flex flex-wrap items-center gap-3" data-testid="guard-summary">
+				<dl
+					className="grid min-w-0 flex-1 basis-56 grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs"
+					data-testid="guard-summary-line"
+				>
+					{recorded === null ? null : (
+						<>
+							<dt className="text-muted">{t("guard.settingsSummaryDecisions")}</dt>
+							<dd>
+								{recorded === 0
+									? t("guard.settingsSummaryDecisionsNone")
+									: t("guard.settingsSummaryDecisionsCount", { count: recorded })}
+							</dd>
+							<dt className="text-muted">{t("guard.settingsSummaryRules")}</dt>
+							<dd>{summary.policy}</dd>
+							<dt className="text-muted">{t("guard.settingsSummaryChanged")}</dt>
+							<dd className="tabular-nums">{summary.changed}</dd>
+						</>
+					)}
+				</dl>
+				<Button size="sm" data-testid="guard-open-page" onClick={() => setView({ kind: "guard" })}>
+					{t("guard.settingsOpenPage")}
+				</Button>
+			</div>
 		</section>
 	);
 }

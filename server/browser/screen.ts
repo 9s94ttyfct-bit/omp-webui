@@ -30,8 +30,10 @@ export interface ScreenSocket {
 	/** Bytes the socket has not sent yet. */
 	buffered(): number;
 	close(code?: number, reason?: string): void;
-	/** The page is on this computer: it may have a download shown in Finder. */
+	/** The page is on this computer: the file of a download is where it is (any other page fetches it instead). */
 	local?: boolean;
+	/** The page is the person's own (`isOwnerPage`: this computer's, or one signed in through Access): it may have a download shown in Finder. */
+	owner?: boolean;
 }
 
 /** What the Browser tab can have done with a download: the app's CEF stops it, Finder shows it (and says how that went). */
@@ -543,7 +545,7 @@ export class ScreenClient {
 	}
 
 	/**
-	 * A download of the conversation this tab watches is stopped, or shown in Finder from a page on this computer (not
+	 * A download of the conversation this tab watches is stopped, or shown in Finder from the person's own page (not
 	 * waited for: Finder's `open` holds no other message of the tab). A file Finder could not show is told to the tab.
 	 */
 	private download(msg: Extract<ScreenClientMessage, { t: "download_cancel" | "download_reveal" }>): void {
@@ -554,7 +556,7 @@ export class ScreenClient {
 			return;
 		}
 		const control = this.hub.control;
-		if (this.socket.local !== true || d.item.state !== "done" || !control) return;
+		if (this.socket.owner !== true || d.item.state !== "done" || !control) return;
 		// The conversation it was asked in: the tab may watch another one by the time Finder answers.
 		const owner = this.owner;
 		void control

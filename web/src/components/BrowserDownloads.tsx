@@ -3,6 +3,7 @@ import type { BrowserDownload, DownloadState } from "@shared/browser-protocol.ts
 import { Download } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useT } from "../i18n/index.ts";
+import { ownerPage } from "../lib/api.ts";
 import { formatBytes } from "../lib/app-update.ts";
 import { useApp } from "../store/app.ts";
 import { sendScreen, useScreen } from "../store/browser-screen.ts";
@@ -15,8 +16,9 @@ const sizeOf = (bytes: number) => (bytes < 1024 ? `${bytes} B` : formatBytes(byt
 /**
  * The downloads of a conversation's pages (docs/agents/browser.md, "Downloads"): a button in the Browser tab's toolbar,
  * once there is one, with how many are running, and a list of them. A running one can be cancelled; a finished one is
- * shown in Finder from a page on the Mac it was saved on, and fetched to the device from any other page. A download that
- * starts, finishes or fails while the tab is shown says so in a toast.
+ * shown in Finder from a page on the Mac it was saved on or from the person's own page elsewhere (`ownerPage`: one signed
+ * in through Cloudflare Access), and fetched to the device from any page not on that Mac (an Access page has both). A
+ * download that starts, finishes or fails while the tab is shown says so in a toast.
  */
 export function BrowserDownloads({ owner }: { owner: string }) {
 	const t = useT();
@@ -82,6 +84,8 @@ export function BrowserDownloads({ owner }: { owner: string }) {
 
 function Row({ d, local }: { d: BrowserDownload; local: boolean }) {
 	const t = useT();
+	// Show in Finder: on this Mac, or from the person's own page (it opens Finder on the Mac).
+	const revealable = useApp((s) => local || ownerPage(s.meta));
 	// A page that is not on this Mac fetches a file only when File transfer lets it, as the Files tab's downloads.
 	const fetchable = useApp((s) => s.meta?.fileTransfer !== undefined && s.meta.fileTransfer !== "off");
 	const percent = d.total ? Math.min(100, Math.floor((d.received / d.total) * 100)) : null;
@@ -112,7 +116,7 @@ function Row({ d, local }: { d: BrowserDownload; local: boolean }) {
 						{t("browser.downloadCancel")}
 					</Button>
 				) : null}
-				{d.state === "done" && local ? (
+				{d.state === "done" && revealable ? (
 					<Button
 						size="sm"
 						variant="ghost"

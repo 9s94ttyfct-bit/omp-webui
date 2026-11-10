@@ -419,7 +419,7 @@ networkOnly("a page on the network that holds the token", () => {
 			for (const reveal of [false, true]) {
 				const res = await page().send("/api/folder/open", { method: "POST", body: { file, path: "run.sh", reveal } });
 				expect(res.status).toBe(403);
-				expect(await res.json()).toEqual({ error: "Opening files is only for the page on this computer" });
+				expect(await res.json()).toEqual({ error: "Opening files is only for your own page" });
 				// This computer's page passes that gate. What it asks for is a conversation nobody has, so that nothing is
 				// ever handed to macOS from a test (a reveal of a real file would open a Finder window).
 				const here = await onThisComputer().send("/api/folder/open", {
@@ -435,7 +435,7 @@ networkOnly("a page on the network that holds the token", () => {
 					body: { file, path: "run.sh" },
 					headers: { [header]: "127.0.0.1" },
 				});
-				expect(await res.json(), header).toEqual({ error: "Opening files is only for the page on this computer" });
+				expect(await res.json(), header).toEqual({ error: "Opening files is only for your own page" });
 			}
 		});
 
@@ -443,7 +443,7 @@ networkOnly("a page on the network that holds the token", () => {
 			for (const path of ["", "src"]) {
 				const res = await page().send("/api/folder/open", { method: "POST", body: { file, path, dir: true } });
 				expect(res.status, path).toBe(403);
-				expect(await res.json(), path).toEqual({ error: "Opening files is only for the page on this computer" });
+				expect(await res.json(), path).toEqual({ error: "Opening files is only for your own page" });
 				// This computer's page passes that gate; the conversation is one nobody has, so nothing is ever handed to macOS.
 				const here = await onThisComputer().send("/api/folder/open", {
 					method: "POST",

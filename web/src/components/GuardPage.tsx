@@ -26,9 +26,9 @@ const TABS: readonly { value: Tab; label: "guard.tabDecisions" | "guard.tabPolic
 /**
  * The Guard page ("Guard dangerous commands" at full size): what the guard decided, in a list of its own (Decisions); how
  * strict it is for each kind of call and the rules the reviewer follows (Policy); and a benchmark that shows what it would
- * stop and what it would let through (Benchmark). It is the page of this computer: a page that came through the tunnel is
- * told so and asks for nothing (the routes refuse it too); one signed in through Access is shown the way to Settings ›
- * Safety, whose settings it may change.
+ * stop and what it would let through (Benchmark). It is for the person's own page (`Meta.owner`: this computer's, or
+ * one signed in through Cloudflare Access); any other page is told where the guard is changed and asks for nothing (the
+ * routes refuse it too).
  *
  * The tabs are written out here, not taken from Radix: its tab list shares two packages with the panel's, which a bundler then
  * moves into the first page load for the sake of one more page that uses them.
@@ -37,8 +37,8 @@ export default function GuardPage() {
 	const t = useT();
 	const ready = useGuardStrings();
 	const meta = useApp((s) => s.meta);
-	const remote = meta?.remote === true;
-	const live = meta !== null && !remote;
+	const owner = ownerPage(meta);
+	const live = meta !== null && owner;
 	const config = useGuard((s) => s.config);
 	const [tab, setTab] = useState<Tab>("decisions");
 	const ids = useId();
@@ -61,31 +61,14 @@ export default function GuardPage() {
 		</div>
 	);
 
-	if (remote) {
-		// The Guard page is this computer's alone; a page signed in through Access may still change the guard's settings in
-		// Settings › Safety, and is shown the way there.
-		const owner = ownerPage(meta);
+	if (meta !== null && !owner) {
 		return shell(
 			<div className="mx-auto w-full max-w-xl space-y-6 px-6 py-8">
 				{title}
 				<div data-testid="guard-page-remote">
-					<Empty
-						icon={<Lock size={28} className="text-accent" />}
-						title={owner ? t("guard.pageAccessTitle") : t("guard.pageRemoteTitle")}
-					>
-						{owner ? t("guard.pageAccessHint") : t("guard.pageRemoteHint")}
+					<Empty icon={<Lock size={28} className="text-accent" />} title={t("guard.pageRemoteTitle")}>
+						{t("guard.pageRemoteHint")}
 					</Empty>
-					{owner ? (
-						<div className="mt-4 flex justify-center">
-							<Button
-								size="sm"
-								data-testid="guard-page-settings"
-								onClick={() => showSettingsCard('[data-testid="guard-settings"]')}
-							>
-								{t("guard.pageOpenSettings")}
-							</Button>
-						</div>
-					) : null}
 				</div>
 			</div>,
 		);

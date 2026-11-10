@@ -2,6 +2,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { registerStrings, useT } from "../i18n/index.ts";
 import { en } from "../i18n/nav-layout.ts";
+import { ownerPage } from "../lib/api.ts";
 import {
 	NAV_GROUPS,
 	NAV_SURFACES,
@@ -34,7 +35,7 @@ const GROUP_KEYS = {
 export function NavLayoutSettings() {
 	const t = useT();
 	const layout = useNavLayout();
-	const remote = useApp((s) => s.meta?.remote === true);
+	const notOwner = useApp((s) => s.meta !== null && !ownerPage(s.meta));
 	// A move to another group re-creates the item's controls; the one that was used takes the focus back.
 	const refocus = useRef<string | null>(null);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: `layout` is the trigger: a move has just been drawn.
@@ -58,7 +59,7 @@ export function NavLayoutSettings() {
 									key={group}
 									surface={surface}
 									group={group}
-									remote={remote}
+									notOwner={notOwner}
 									onMoved={(testid) => {
 										refocus.current = testid;
 									}}
@@ -74,7 +75,7 @@ export function NavLayoutSettings() {
 				</Button>
 				<span className="text-xs text-muted">{t("navLayout.resetHint")}</span>
 			</div>
-			{remote ? <p className="mt-2 text-xs text-muted">{t("navLayout.guardNote")}</p> : null}
+			{notOwner ? <p className="mt-2 text-xs text-muted">{t("navLayout.guardNote")}</p> : null}
 		</section>
 	);
 }
@@ -82,18 +83,18 @@ export function NavLayoutSettings() {
 function Group({
 	surface,
 	group,
-	remote,
+	notOwner,
 	onMoved,
 }: {
 	surface: NavSurface;
 	group: NavGroup;
-	remote: boolean;
+	notOwner: boolean;
 	/** The test id of the control to give the focus back to once the move has been drawn. */
 	onMoved: (testid: string) => void;
 }) {
 	const t = useT();
 	const layout = useNavLayout();
-	const items = navItemsIn(layout, surface, group, { remote });
+	const items = navItemsIn(layout, surface, group, { notOwner });
 	const name = t(GROUP_KEYS[group]);
 	return (
 		<div

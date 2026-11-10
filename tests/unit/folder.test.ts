@@ -943,14 +943,13 @@ describe("the page on this computer", () => {
 			expect(isThisComputer(request({ host: "127.0.0.1:7878", [name]: "x" }), "127.0.0.1"), name).toBe(false);
 	});
 
-	/** The folder routes as the server mounts them, for a conversation that works in `proj`. */
-	const mounted = (local: boolean, opened: string[][] = []) => ({
+	/** The folder routes as the server mounts them, for a conversation that works in `proj`; `owner`: the person's own page. */
+	const mounted = (owner: boolean, opened: string[][] = []) => ({
 		cwdOf: async (_live: string | null, file: string | null) => (file === "conversation" ? proj : null),
 		marks: async () => null,
 		changes: async () => ({ root: proj, state: "none" as const, branch: "", files: [], truncated: false, omitted: 0 }),
 		diff: async () => null,
-		local,
-		owner: local,
+		owner,
 		desktop: mac,
 		// LaunchServices answers on a Mac only; what it says is "the system's own answer" above. Here nothing is a package.
 		isPackage: async () => false,
@@ -961,20 +960,20 @@ describe("the page on this computer", () => {
 	});
 	const post = (body: unknown) =>
 		new Request("http://127.0.0.1/api/folder/open", { method: "POST", body: JSON.stringify(body) });
-	const asked = (req: Request, local: boolean, opened: string[][] = []) =>
-		handleFolder(req, new URL(req.url), mounted(local, opened));
+	const asked = (req: Request, owner: boolean, opened: string[][] = []) =>
+		handleFolder(req, new URL(req.url), mounted(owner, opened));
 
-	test("a page that is not this computer's gets nothing opened or revealed, whatever file it names", async () => {
+	test("a page that is not the person's own gets nothing opened or revealed, whatever file it names", async () => {
 		const opened: string[][] = [];
 		for (const reveal of [false, true]) {
 			for (const path of ["src/app.ts", "README.md", "src", ""]) {
 				const res = await asked(post({ file: "conversation", path, reveal }), false, opened);
 				expect(res.status, `${path} ${reveal}`).toBe(403);
-				expect(await res.json()).toEqual({ error: "Opening files is only for the page on this computer" });
+				expect(await res.json()).toEqual({ error: "Opening files is only for your own page" });
 			}
 		}
 		expect(opened).toEqual([]);
-		// This computer's page asking the same is let through.
+		// The person's own page (this computer's, or one signed in through Access) asking the same is let through.
 		const res = await asked(post({ file: "conversation", path: "src/app.ts", reveal: true }), true, opened);
 		expect(res.status).toBe(200);
 		expect(opened).toEqual([["/usr/bin/open", "-R", join(proj, "src/app.ts")]]);
@@ -992,12 +991,12 @@ describe("the page on this computer", () => {
 		]);
 	});
 
-	test("a page that is not this computer's gets no folder opened, whatever it names, and is told why", async () => {
+	test("a page that is not the person's own gets no folder opened, whatever it names, and is told why", async () => {
 		const opened: string[][] = [];
 		for (const path of ["", "src", "src/app.ts", "../secret", "/etc"]) {
 			const res = await asked(post({ file: "conversation", path, dir: true }), false, opened);
 			expect(res.status, path).toBe(403);
-			expect(await res.json()).toEqual({ error: "Opening files is only for the page on this computer" });
+			expect(await res.json()).toEqual({ error: "Opening files is only for your own page" });
 		}
 		expect(opened).toEqual([]);
 	});
@@ -1019,10 +1018,10 @@ describe("the page on this computer", () => {
 		expect(opened).toEqual([]);
 	});
 
-	test("the listing says whether this page may open folders: this computer's page on macOS, no other", async () => {
-		const listed = async (local: boolean, desktop: DesktopOps | null = mac) => {
+	test("the listing says whether this page may open folders: the person's own page on macOS, no other", async () => {
+		const listed = async (owner: boolean, desktop: DesktopOps | null = mac) => {
 			const req = new Request("http://127.0.0.1/api/folder/list?file=conversation&path=");
-			const res = await handleFolder(req, new URL(req.url), { ...mounted(local), desktop });
+			const res = await handleFolder(req, new URL(req.url), { ...mounted(owner), desktop });
 			return (await res.json()) as { local?: true };
 		};
 		expect((await listed(true)).local).toBe(true);

@@ -6,7 +6,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	settingsTitle: "远程访问",
 	settingsIntro:
 		"从任何地方打开这个应用：Cloudflare 隧道把 https://{hostname} 连到这台电脑，Cloudflare Access 在放你进来之前先问你是谁。",
-	settingsRemoteRefused: "这个页面不在运行服务器的这台电脑上，所以这里不能改动隧道。",
+	settingsRemoteRefused:
+		"这个页面不能改动隧道：请在运行服务器的那台电脑上改动，或从通过 Cloudflare Access 登录的页面改动。",
 
 	// The state of the tunnel
 	stateOff: "已关闭",
@@ -50,10 +51,10 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	fileTransferDownload: "仅下载",
 	fileTransferFull: "下载和上传",
 	fileTransferHint:
-		"不在这台电脑上的页面（经隧道进来的，或经网络地址进来的）可以对对话所在文件夹里的文件做什么：下载文件、把文件夹下载为 ZIP，以及向其中上传文件和文件夹。默认允许上传。机密文件（.env、密钥、凭据）、指向文件夹之外的链接，以及 ~/.ssh 这样的位置永远不会被传输，每一次传输都会记录在本应用的数据文件夹里。这台电脑上的页面不受影响。",
+		"不在这台电脑上的页面（经隧道进来的，或经网络地址进来的）可以对对话所在文件夹里的文件做什么：下载文件、把文件夹下载为 ZIP，以及向其中上传文件和文件夹。默认允许上传。机密文件（.env、密钥、凭据）、指向文件夹之外的链接，以及 ~/.ssh 这样的位置永远不会被传输，每一次传输都会记录在本应用的数据文件夹里。这台电脑上的页面，以及通过 Cloudflare Access 登录的页面，不受影响。",
 	shell: "允许远程页面打开终端",
 	shellHint:
-		"面板的“终端”标签是这台电脑上的登录 shell，位于对话所在的文件夹。打开此项后，不在这台电脑上的页面（经隧道或经网络地址进来的）也能打开它：任何能进来的人都能在这里使用 shell，而且防护看不到其中输入的内容。关闭后，这些页面不能再打开新的 shell，已打开的也会被结束。这台电脑上的页面不受影响。",
+		"面板的“终端”标签是这台电脑上的登录 shell，位于对话所在的文件夹。打开此项后，不在这台电脑上的页面（经隧道或经网络地址进来的）也能打开它：任何能进来的人都能在这里使用 shell，而且防护看不到其中输入的内容。关闭后，这些页面不能再打开新的 shell，已打开的也会被结束。这台电脑上的页面，以及通过 Cloudflare Access 登录的页面，不受影响。",
 
 	// Let the AI help
 	aiSwitch: "让 AI 协助设置远程访问",

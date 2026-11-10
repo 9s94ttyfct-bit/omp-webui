@@ -28,7 +28,7 @@ import {
 } from "react";
 import "../i18n/later.ts";
 import { t as translate, useT } from "../i18n/index.ts";
-import { blobBase64, controls, downloadExport, sessionActions } from "../lib/api.ts";
+import { blobBase64, controls, downloadExport, ownerPage, sessionActions } from "../lib/api.ts";
 import { unarchiveOnSend } from "../lib/archive.ts";
 import { useShownRepo } from "../lib/attention.ts";
 import { conversationBusy } from "../lib/busy.ts";
@@ -673,11 +673,11 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 	// What "Guard dangerous commands" decided about this conversation's calls (and its branches'), so that the cards of calls
 	// decided before this page opened it show their verdict; the decisions that come while it is open arrive on the socket.
 	// They are asked for by transcript file, which is all a decision names: no transcript is read for it.
-	const remotePage = useApp((s) => s.meta?.remote === true);
+	const guardRefused = useApp((s) => s.meta !== null && !ownerPage(s.meta));
 	useEffect(() => {
-		loadGuardDecisions(currentFile, remotePage);
-		for (const member of family ?? []) loadGuardDecisions(member.file, remotePage);
-	}, [family, currentFile, remotePage]);
+		loadGuardDecisions(currentFile, guardRefused);
+		for (const member of family ?? []) loadGuardDecisions(member.file, guardRefused);
+	}, [family, currentFile, guardRefused]);
 	// No reviewer could be reached in this conversation: the strip that says so is drawn here, and in none that it is not about.
 	const guardHomes = useMemo(
 		() => [

@@ -77,7 +77,7 @@ export const en = {
 	terminalClearTip: "Clear the screen and its scrollback",
 	terminalNoConversation: "Open a conversation to have a shell in its folder.",
 	terminalRemoteOff:
-		"Shells are off for pages that are not on this computer. They can be turned on in Settings › Remote access, on the computer itself.",
+		"Shells are off for pages that are not on this computer. They can be turned on in Settings › Remote access, on the computer itself or from a page signed in through Cloudflare Access.",
 
 	// Subagent status words
 	statusCompleted: "completed",

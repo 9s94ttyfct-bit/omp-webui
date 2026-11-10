@@ -10,7 +10,7 @@ import { messageWhere } from "../support/frames.ts";
 import { expectMode } from "../support/modes.ts";
 import { has } from "../support/needs.ts";
 import { pollUntil } from "../support/poll.ts";
-import { remoteClient, remoteSettings } from "../support/remote-client.ts";
+import { proxiedClient, remoteClient, remoteSettings } from "../support/remote-client.ts";
 import { removeScratch } from "../support/scratch.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect } from "../support/ws.ts";
@@ -169,8 +169,11 @@ describe("what the person tuned", () => {
 		expectMode(guardFile(), 0o600);
 	}, 60_000);
 
-	test("a page that came through the tunnel is refused the rules and the benchmark, and nothing is changed or started", async () => {
+	test("a page behind a proxy without Access is refused the rules and the benchmark, and nothing is changed or started; one signed in through Access reads them", async () => {
 		const phone = remoteClient(s, key);
+		for (const path of ["/api/guard/rules", "/api/guard/bench", "/api/guard/log?q=rm"])
+			expect((await phone.fetch(path)).status, path).toBe(200);
+		const proxied = proxiedClient(s);
 		const before = await rulesNow();
 		for (const [path, method, body] of [
 			["/api/guard/rules", "GET", undefined],
@@ -181,7 +184,7 @@ describe("what the person tuned", () => {
 			["/api/guard/bench/preview", "POST", JSON.stringify({ thresholds: { delete_outside: "allow" } })],
 			["/api/guard/log?q=rm", "GET", undefined],
 		] as const) {
-			const res = await phone.fetch(
+			const res = await proxied.fetch(
 				path,
 				{ method, headers: method === "POST" ? { "x-omp-webui": "1", "content-type": "application/json" } : undefined },
 				body,

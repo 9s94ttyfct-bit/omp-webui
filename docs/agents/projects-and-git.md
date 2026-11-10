@@ -37,7 +37,7 @@ settings: projects-folder
 ## Where it is
 
 - **New chat** › the folder button's menu › *Choose an existing folder…* (the folder picker), with **New project folder** (*Made in <projects folder>*).
-- **Settings › Conversations & files › Projects folder** (`#/settings/chats`): the path, *Choose…*, *Save*, *Use default*. On a page that is not on this computer it is read-only ("Change the projects folder on the computer omp-webui runs on. From here you can still make a project folder in it.").
+- **Settings › Conversations & files › Projects folder** (`#/settings/chats`): the path, *Choose…*, *Save*, *Use default*. On a page that holds only the access token (not this computer's, not signed in through Cloudflare Access) it is read-only ("Change the projects folder on the computer omp-webui runs on, or from a page signed in through Cloudflare Access. From here you can still make a project folder in it.").
 - Sidebar: the **Projects** section above the list by date; a conversation's ⋯ menu › *Move to project*; *Select* › *Move to project*; a project's page `#/project/<id>`. The search bar's funnel is the **Folder** filter: a flat list of folders with their counts (it keeps the conversations of one working folder).
 - A conversation: the status line (git), side panel tabs **Worktrees**, **Issues** and **CI** (bottom pane by default).
 
@@ -60,7 +60,7 @@ Other stored data (in the data folder, `~/.omp-webui`):
 | Route | Methods | Access | Purpose |
 |---|---|---|---|
 | `/api/dirs?path=<path>` | GET | token | The folders in `path` (default: the home folder; `~` and `~/…` allowed, otherwise absolute), without hidden ones: `{ path, parent, dirs, omitted }`, at most 500 names. 404 not found, 400 not a folder or relative, 403 no permission. |
-| `/api/projects` | GET, POST | token; POST from this computer only | GET the projects folder and whether it is the default. POST `{ folder }` (a path, or `null` for the default) changes it; 403 `projectsNotHere` for a page not on this computer. |
+| `/api/projects` | GET, POST | token; POST from the person's own page (this computer's, or one signed in through Cloudflare Access) | GET the projects folder and whether it is the default. POST `{ folder }` (a path, or `null` for the default) changes it; 403 `projectsNotHere` for a page that holds only the token. |
 | `/api/projects/new` | POST | token | `{ name }`: make one empty folder of that name directly in the projects folder and answer its path. Open to remote pages (it can make only a new folder inside the projects folder). Name problems are answered with a `problem` code. |
 | `/api/chat-projects` | GET | token | The projects: `{ projects, excluded, problem }`. |
 | `/api/chat-projects/create` | POST | token | `{ name, sessions? }`: a new project, with these conversations (session ids) put in it. Every change answers the whole list and the project it made or changed (`project`). |
@@ -90,6 +90,6 @@ Every page is told of a change to the projects over the WebSocket (`chat_project
 ## Security notes
 
 - A page that holds the token can list any folder's subfolders (`/api/dirs`) and start a conversation there, which gives the agent its reach in that folder; that is why the token matters (see `server-and-security`).
-- Only a page on this computer can change the projects folder; a remote page can make a new folder only inside it.
+- Only the person's own page (this computer's, or one signed in through Cloudflare Access) can change the projects folder; a page that holds only the token can make a new folder only inside it.
 - git is not run in a repository whose own configuration names a command (protection against a cloned repository running code when merely looked at).
 - The Issues and CI tabs never write to GitHub. Remote pages may use them as they may the Issues tab (the token is the gate); `gh`'s token never leaves the server, and anything that looks like a GitHub token in what `gh` prints is replaced before a page is told.

@@ -157,19 +157,16 @@ test("this computer's page is `local` in meta, and the tunnel's and a proxied re
 	expect(await proxied.json()).toMatchObject({ local: false, remote: true });
 });
 
-test("a page that came through the tunnel sees the folder and makes project folders in it, and cannot move it", async () => {
+test("a page signed in through Access sees the folder, makes project folders in it, and may move it as the person's own page", async () => {
 	const seen = await remote.fetch("/api/projects");
 	expect(seen.status).toBe(200);
 	expect(((await seen.json()) as ProjectsInfo).folder).toBe(join(s.home, "work"));
 
-	const moved = await remote.fetch(
-		"/api/projects",
-		{ method: "POST", headers: JSON_POST },
-		JSON.stringify({ folder: s.home }),
-	);
-	expect(moved.status).toBe(403);
-	// Coded, so that a page in Chinese words it.
-	expect(await moved.json()).toMatchObject({ code: "projectsNotHere" });
+	const move = (folder: string) =>
+		remote.fetch("/api/projects", { method: "POST", headers: JSON_POST }, JSON.stringify({ folder }));
+	expect((await move(s.home)).status).toBe(200);
+	expect((await info()).folder).toBe(s.home);
+	expect((await move(join(s.home, "work"))).status).toBe(200);
 	expect((await info()).folder).toBe(join(s.home, "work"));
 
 	const made = await remote.fetch(

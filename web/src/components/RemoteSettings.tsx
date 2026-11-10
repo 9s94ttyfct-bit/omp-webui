@@ -14,6 +14,7 @@ import {
 import { type ReactNode, useEffect, useId, useState } from "react";
 import "../i18n/later.ts";
 import { type MessageKey, useT } from "../i18n/index.ts";
+import { ownerPage } from "../lib/api.ts";
 import { useCopy } from "../lib/clipboard.ts";
 import { remoteApi, useRemote } from "../lib/remote.ts";
 import { setUpWithAi } from "../lib/remote-ai.ts";
@@ -170,12 +171,13 @@ function Step({
  * Settings › Remote access: reach this app through a Cloudflare tunnel with Cloudflare Access in front. The card walks
  * through what has to be in place, in order (cloudflared, a Cloudflare login, the Access application made in the
  * dashboard, the tunnel itself), says what the tunnel is doing and offers its address. The server owns everything
- * (`server/remote-*.ts`); a page that came in through the tunnel is refused it, so it says that instead.
+ * (`server/remote-*.ts`); a page that is not the person's own (`ownerPage`: neither this computer's nor one signed in
+ * through Cloudflare Access) is refused it, so it says that instead.
  */
 export function RemoteSettings() {
 	const t = useT();
 	const toast = useApp((s) => s.toast);
-	const remotePage = useApp((s) => s.meta?.remote === true);
+	const refused = useApp((s) => s.meta !== null && !ownerPage(s.meta));
 	const { snapshot, loaded, loginUrl, busy, error, check } = useRemote();
 	const [draft, setDraft] = useState<Draft | null>(null);
 	/** The switches as they were left by the last click, until the server has them (the box follows the click at once). */
@@ -189,8 +191,8 @@ export function RemoteSettings() {
 
 	// Look again whenever the page opens: the tunnel may have changed, and a login made meanwhile is noticed.
 	useEffect(() => {
-		if (!remotePage) void remoteApi.load();
-	}, [remotePage]);
+		if (!refused) void remoteApi.load();
+	}, [refused]);
 
 	const signedIn = snapshot?.loggedIn === true;
 	// While a sign-in is under way, ask again until the server sees the certificate.
@@ -204,7 +206,7 @@ export function RemoteSettings() {
 		if (signedIn && loginUrl !== null) useRemote.setState({ loginUrl: null });
 	}, [signedIn, loginUrl]);
 
-	if (remotePage) {
+	if (refused) {
 		return (
 			<section className="rounded-2xl border border-border bg-surface p-4" data-testid="remote-settings">
 				<CardHeader title={t("remote.settingsTitle")} />

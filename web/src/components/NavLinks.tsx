@@ -24,17 +24,17 @@ export interface NavGroupProps {
 	variant: "rows" | "icons" | "strip";
 	surface: NavSurface;
 	group: Group;
-	/** This page is not on this computer: the items that are a setting of this Mac are left out (the guard). */
-	remote: boolean;
+	/** This page is not the person's own (`ownerPage`): the items only the person may use are left out (the guard). */
+	notOwner: boolean;
 }
 
 /** A group of the sidebar: one labelled row per item, as the pages' entries always were. */
-function Rows({ surface, group, remote }: Omit<NavGroupProps, "variant">) {
+function Rows({ surface, group, notOwner }: Omit<NavGroupProps, "variant">) {
 	const t = useT();
 	// Commands & terminal and Memory are pages of Settings: the bar marks Settings while one is shown.
 	const current = useApp((s) => (s.view.kind === "cli" || s.view.kind === "memory" ? "settings" : s.view.kind));
 	const setView = useApp((s) => s.setView);
-	const items = navItemsIn(useNavLayout(), surface, group, { remote });
+	const items = navItemsIn(useNavLayout(), surface, group, { notOwner });
 	return (
 		<div
 			className="space-y-0.5"
@@ -68,11 +68,11 @@ function Rows({ surface, group, remote }: Omit<NavGroupProps, "variant">) {
 }
 
 /** A group of the rail: one icon button per item, its name a tooltip and its `aria-label`. */
-function Icons({ surface, group, remote }: Omit<NavGroupProps, "variant">) {
+function Icons({ surface, group, notOwner }: Omit<NavGroupProps, "variant">) {
 	const t = useT();
 	const current = useApp((s) => (s.view.kind === "cli" || s.view.kind === "memory" ? "settings" : s.view.kind));
 	const setView = useApp((s) => s.setView);
-	const items = navItemsIn(useNavLayout(), surface, group, { remote });
+	const items = navItemsIn(useNavLayout(), surface, group, { notOwner });
 	return (
 		<div
 			className="flex flex-col items-center gap-1"
@@ -106,11 +106,11 @@ function Icons({ surface, group, remote }: Omit<NavGroupProps, "variant">) {
 }
 
 /** A group of the folded sidebar footer: one icon button per item, in a row, its name a tooltip and its `aria-label`. */
-function Strip({ surface, group, remote }: Omit<NavGroupProps, "variant">) {
+function Strip({ surface, group, notOwner }: Omit<NavGroupProps, "variant">) {
 	const t = useT();
 	const current = useApp((s) => (s.view.kind === "cli" || s.view.kind === "memory" ? "settings" : s.view.kind));
 	const setView = useApp((s) => s.setView);
-	const items = navItemsIn(useNavLayout(), surface, group, { remote });
+	const items = navItemsIn(useNavLayout(), surface, group, { notOwner });
 	return (
 		<div className="flex flex-wrap items-center gap-1 px-1" data-testid={`nav-strip-${surface}-${group}`}>
 			{items.map((item) => (

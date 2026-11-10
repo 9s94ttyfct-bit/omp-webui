@@ -25,6 +25,7 @@ import { Check, CircleAlert, Copy, Download, Loader2, RefreshCw, Upload } from "
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { lazyStrings, type MessageKey, useLang, useT, type Vars } from "../i18n/index.ts";
 import { en } from "../i18n/migrate.ts";
+import { ownerPage } from "../lib/api.ts";
 import { useCopy } from "../lib/clipboard.ts";
 import { codedText } from "../lib/error-text.ts";
 import { formatBytes, isNetworkError, migrateApi } from "../lib/migrate-api.ts";
@@ -1060,15 +1061,15 @@ function FilePicker({ disabled, onPick }: { disabled: boolean; onPick: (file: Fi
 /**
  * Settings › Move to another computer: put everything the user has made in omp and in this app into one `.ompw` file and
  * bring such a file into another Mac. The server owns the work (`server/migrate/`); the card shows what an export would
- * hold, follows an export or an import as it runs and says what an import did. Only the page on this Mac may do it (an
- * archive holds every conversation, and an import rewrites the user's own files), so a page that came in through the tunnel
- * is told so. No timer runs while nothing is under way.
+ * hold, follows an export or an import as it runs and says what an import did. Only the person's own page may do it
+ * (`ownerPage`: this computer's, or one signed in through Cloudflare Access; an archive holds every conversation, and an
+ * import rewrites the user's own files), so any other page is told so. No timer runs while nothing is under way.
  */
 export function MigrationSettings() {
 	const ready = useStringsReady();
 	const t = useT();
 	const problemText = useProblemText();
-	const remotePage = useApp((s) => s.meta?.remote === true);
+	const refused = useApp((s) => s.meta !== null && !ownerPage(s.meta));
 	const [plan, setPlan] = useState<MigratePlan | null>(null);
 	const [planProblem, setPlanProblem] = useState<Problem | null>(null);
 	const [planLoading, setPlanLoading] = useState(false);
@@ -1096,7 +1097,7 @@ export function MigrationSettings() {
 
 	// The plan, and what is under way (a reload in the middle of an export or an import finds it again).
 	useEffect(() => {
-		if (remotePage) return;
+		if (refused) return;
 		void loadPlan();
 		void migrateApi.state().then(
 			(s) => {
@@ -1105,12 +1106,12 @@ export function MigrationSettings() {
 			},
 			() => {},
 		);
-	}, [remotePage, loadPlan]);
+	}, [refused, loadPlan]);
 
 	// Ask again only while the server is working: nothing runs otherwise.
 	const working = ex?.state === "running" || im?.state === "verifying" || im?.state === "applying";
 	useEffect(() => {
-		if (!working || remotePage) return;
+		if (!working || refused) return;
 		let stopped = false;
 		let timer = 0;
 		const poll = async () => {
@@ -1129,9 +1130,9 @@ export function MigrationSettings() {
 			stopped = true;
 			clearTimeout(timer);
 		};
-	}, [working, remotePage]);
+	}, [working, refused]);
 
-	if (remotePage) {
+	if (refused) {
 		if (!ready) return null;
 		return (
 			<section

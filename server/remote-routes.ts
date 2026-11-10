@@ -15,7 +15,6 @@ import { RemoteAi, type RemoteAiHooks } from "./remote-ai.ts";
 import { checkAddress } from "./remote-check.ts";
 import { RemoteStore, remoteConfigPath } from "./remote-config.ts";
 import { Tunnel, TunnelError, type TunnelTimings } from "./remote-tunnel.ts";
-import { isThisComputer } from "./this-computer.ts";
 
 /**
  * The HTTP API of remote access (`/api/remote*`) and the one `Tunnel` the server runs. The API is for the person at this
@@ -180,13 +179,14 @@ export class RemoteService {
 	// ------------------------------------------------------------------ the routes
 
 	/**
-	 * The answer to `req` when it is one for `/api/remote*`; null when it is not. `peer` is the address its connection is
-	 * from: the API is for the person at this computer (see `isThisComputer`), whatever address the server listens on.
+	 * The answer to `req` when it is one for `/api/remote*`; null when it is not. `owner`: the request is from the person's
+	 * own page (`isOwnerPage`: this computer's, or one signed in through Cloudflare Access), the only one that manages remote
+	 * access, whatever address the server listens on.
 	 */
-	async handle(req: Request, url: URL, peer: string | undefined): Promise<Response | null> {
+	async handle(req: Request, url: URL, owner: boolean): Promise<Response | null> {
 		const path = url.pathname;
 		if (path !== "/api/remote" && !path.startsWith("/api/remote/")) return null;
-		if (!isThisComputer(req, peer)) return fail("Remote access is managed from this computer only", 403);
+		if (!owner) return fail("Remote access is managed from your own page only", 403);
 		try {
 			return await this.answer(req, path);
 		} catch (e) {

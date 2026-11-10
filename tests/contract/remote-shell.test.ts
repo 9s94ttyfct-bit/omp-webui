@@ -6,7 +6,7 @@ import { REMOTE_SHELL_OFF } from "../../shared/remote.ts";
 import { type AccessKey, type Jwks, makeKey, startJwks } from "../support/access-jwt.ts";
 import { pollUntil } from "../support/poll.ts";
 import { rejectionOf } from "../support/rejection.ts";
-import { type RemoteClient, remoteClient, remoteSettings } from "../support/remote-client.ts";
+import { proxiedClient, type RemoteClient, remoteClient, remoteSettings } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -22,7 +22,10 @@ const dist = join(root, "dist");
 let key: AccessKey;
 let jwks: Jwks;
 let s: TestServer;
-let phone: RemoteClient;
+/** A page that is not the person's own (behind a proxy without Access): the switch is about such a page's shells. */
+let phone: ReturnType<typeof proxiedClient>;
+/** A page signed in through Access: the person's own, whose shells the switch does not touch. */
+let signedIn: RemoteClient;
 
 beforeAll(async () => {
 	key = await makeKey("kid-1");
@@ -38,7 +41,8 @@ beforeAll(async () => {
 		{ OMP_WEBUI_REMOTE_CONFIG: settingsFile, OMP_WEBUI_ACCESS_CERTS_URL: jwks.url, OMP_WEBUI_DIST: dist },
 		{ login: false },
 	);
-	phone = remoteClient(s, key);
+	phone = proxiedClient(s);
+	signedIn = remoteClient(s, key);
 }, 120_000);
 
 afterAll(async () => {
@@ -72,7 +76,7 @@ async function setRemoteShell(on: boolean) {
 	expect(res.status).toBe(200);
 }
 
-test("a remote page has a shell by default; off refuses new ones and ends its open one; this computer's stays", async () => {
+test("a page that is not the person's own has a shell by default; off refuses new ones and ends its open one; the person's own pages keep theirs", async () => {
 	let remote = await phone.socket();
 	if (!remote) throw new Error("the tunnel refused the page");
 	const local = await connect(s);
@@ -101,7 +105,12 @@ test("a remote page has a shell by default; off refuses new ones and ends its op
 		expect(await rejectionOf(openShell(remote))).toThrow(REMOTE_SHELL_OFF);
 		expect((await (await phone.fetch("/api/meta")).json()).shell).toBe(false);
 
-		// This computer's shell goes on, and this computer may still open one.
+		// This computer's shell goes on, and this computer may still open one; so may a page signed in through Access.
+		const access = await signedIn.socket();
+		if (!access) throw new Error("the tunnel refused the page");
+		await openShell(access);
+		expect((await (await signedIn.fetch("/api/meta")).json()).shell).toBe(true);
+		access.close();
 		local.send(JSON.stringify({ t: "pty_input", ptyId: localId, data: "echo LOCAL-$((6*7))\r" }));
 		await pollUntil(() => localSeen.text.includes("LOCAL-42"), "this computer's shell to answer", 30_000);
 		expect(localSeen.exited).toBe(false);

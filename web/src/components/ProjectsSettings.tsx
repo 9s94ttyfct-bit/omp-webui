@@ -2,6 +2,7 @@ import type { ProjectsInfo } from "@shared/projects.ts";
 import { Check, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useT } from "../i18n/index.ts";
+import { ownerPage } from "../lib/api.ts";
 import { shortPath } from "../lib/format.ts";
 import { useImeGuard } from "../lib/ime.ts";
 import { projectsApi, projectsErrorText } from "../lib/projects-api.ts";
@@ -18,16 +19,17 @@ type Outcome =
 
 /**
  * Settings › Projects folder: where "New project folder" in a new chat's folder picker makes a project. Nothing chosen is
- * `~/omp`, made when the first project folder is. It is changed at the computer the server runs on only (`meta.local`,
- * the server's own test for its 403): a page that came through the tunnel, or from the network, shows it, and can still
- * make a project folder in it (see `/api/projects` in `server/main.ts`). A card of its own chunk, with its own strings.
+ * `~/omp`, made when the first project folder is. It is changed from the person's own page only (`ownerPage`: this
+ * computer's, or one signed in through Cloudflare Access; the server's own test for its 403): a page from the network
+ * that holds only the token shows it, and can still make a project folder in it (see `/api/projects` in
+ * `server/main.ts`). A card of its own chunk, with its own strings.
  */
 export function ProjectsSettings() {
 	const t = useT();
 	const ready = useProjectsStrings();
 	const home = useApp((s) => s.meta?.home);
-	// Until the server has said, a page is taken to be elsewhere: nothing is offered that its 403 would refuse.
-	const remote = useApp((s) => s.meta?.local !== true);
+	// Until the server has said, a page is taken to be another's: nothing is offered that its 403 would refuse.
+	const notOwner = useApp((s) => !ownerPage(s.meta));
 	const [info, setInfo] = useState<ProjectsInfo | null>(null);
 	/** What is typed and not saved yet; null: the field shows the folder the server has. */
 	const [draft, setDraft] = useState<string | null>(null);
@@ -68,14 +70,14 @@ export function ProjectsSettings() {
 				className="flex flex-wrap items-center gap-2"
 				onSubmit={(e) => {
 					e.preventDefault();
-					if (!remote && dirty && draft !== null) void save(draft);
+					if (!notOwner && dirty && draft !== null) void save(draft);
 				}}
 			>
 				<input
 					aria-label={t("projects.pathAria")}
 					data-testid="projects-folder"
 					value={shown}
-					readOnly={remote}
+					readOnly={notOwner}
 					spellCheck={false}
 					onChange={(e) => {
 						setDraft(e.target.value);
@@ -92,7 +94,7 @@ export function ProjectsSettings() {
 						<Badge>{t("projects.isDefault")}</Badge>
 					</span>
 				) : null}
-				{remote ? null : (
+				{notOwner ? null : (
 					<>
 						<Button size="sm" data-testid="projects-choose" onClick={() => setBrowsing(true)}>
 							{t("projects.choose")}
@@ -108,7 +110,7 @@ export function ProjectsSettings() {
 					</>
 				)}
 			</form>
-			<p className="mt-2 text-xs text-muted">{remote ? t("projects.remoteNote") : t("projects.defaultNote")}</p>
+			<p className="mt-2 text-xs text-muted">{notOwner ? t("projects.remoteNote") : t("projects.defaultNote")}</p>
 			{info && !info.exists ? (
 				<p className="mt-2 flex items-start gap-1.5 text-xs text-warning" data-testid="projects-missing">
 					<TriangleAlert size={12} className="mt-0.5 shrink-0" aria-hidden /> {t("projects.missing")}
@@ -129,7 +131,7 @@ export function ProjectsSettings() {
 					</span>
 				) : null}
 			</div>
-			{remote ? null : (
+			{notOwner ? null : (
 				<DirBrowser
 					open={browsing}
 					onOpenChange={setBrowsing}

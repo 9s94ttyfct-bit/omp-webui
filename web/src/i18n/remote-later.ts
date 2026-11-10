@@ -10,7 +10,7 @@ export const en = {
 	settingsIntro:
 		"Reach this app from anywhere: a Cloudflare tunnel carries https://{hostname} to this computer, and Cloudflare Access asks who you are before it lets you in.",
 	settingsRemoteRefused:
-		"This page is not on the computer the server runs on, so the tunnel cannot be changed from here.",
+		"This page cannot change the tunnel: change it on the computer the server runs on, or from a page signed in through Cloudflare Access.",
 
 	// The state of the tunnel
 	stateOff: "Off",
@@ -55,10 +55,10 @@ export const en = {
 	fileTransferDownload: "Download only",
 	fileTransferFull: "Download and upload",
 	fileTransferHint:
-		"What a page that is not on this computer (it came in through the tunnel, or over a network address) may do with the files of a conversation's folder: download files and folders as a ZIP, and upload files and folders into it. Uploads are on by default. Secrets (.env, keys, credentials), links that lead out of the folder, and places like ~/.ssh are never moved, and every transfer is logged in the app's data folder. A page on this computer is not affected.",
+		"What a page that is not on this computer (it came in through the tunnel, or over a network address) may do with the files of a conversation's folder: download files and folders as a ZIP, and upload files and folders into it. Uploads are on by default. Secrets (.env, keys, credentials), links that lead out of the folder, and places like ~/.ssh are never moved, and every transfer is logged in the app's data folder. A page on this computer, or one signed in through Cloudflare Access, is not affected.",
 	shell: "Let remote pages open a shell",
 	shellHint:
-		"The panel's Terminal tab is a login shell on this computer, in the conversation's folder. With this on, a page that is not on this computer (through the tunnel, or over a network address) can open one too: whoever gets through has a shell here, and the guard does not see what is typed in it. Turning it off refuses new shells to those pages and ends the ones they have open. A page on this computer is not affected.",
+		"The panel's Terminal tab is a login shell on this computer, in the conversation's folder. With this on, a page that is not on this computer (through the tunnel, or over a network address) can open one too: whoever gets through has a shell here, and the guard does not see what is typed in it. Turning it off refuses new shells to those pages and ends the ones they have open. A page on this computer, or one signed in through Cloudflare Access, is not affected.",
 
 	// Let the AI help
 	aiSwitch: "Let the AI help with remote access",

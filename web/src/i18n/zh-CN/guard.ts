@@ -106,7 +106,6 @@ export const zh: Record<keyof typeof en, string> = {
 	settingsPolicyDefault: "默认",
 	settingsPolicyCustom: "你自己的",
 	settingsPolicyOutdated: "你自己的（默认规则已更新）",
-	settingsPageLocal: "“防护”页面（防护做过的决定、各类调用有多严格、审查规则和基准测试）在运行 omp-webui 的电脑上。",
 	settingsNotHere:
 		"防护要在运行 omp-webui 的电脑上，或在通过 Cloudflare Access 登录的页面上更改。这个页面只持有访问令牌，所以看不到防护的设置。",
 
@@ -117,11 +116,8 @@ export const zh: Record<keyof typeof en, string> = {
 	pageMode: "防护危险命令：{mode}。",
 	pageOpenSettings: "在设置中更改",
 	pageTabs: "防护的各部分",
-	pageRemoteTitle: "请在运行 omp-webui 的电脑上更改防护",
-	pageRemoteHint: "防护做过的决定和它的设置只属于那台电脑。请在那台电脑上打开 omp-webui 查看。",
-	pageAccessTitle: "“防护”页面在运行 omp-webui 的电脑上",
-	pageAccessHint:
-		"防护做过的决定、各类调用有多严格和基准测试只属于那台电脑。防护的设置可以在这个页面的“设置 › 安全”里更改。",
+	pageRemoteTitle: "请在运行 omp-webui 的电脑上，或通过 Cloudflare Access 打开“防护”页面",
+	pageRemoteHint: "防护做过的决定和它的设置只属于你。这个页面只持有访问令牌，所以看不到它们。",
 	tabDecisions: "决定记录",
 	tabPolicy: "策略",
 	tabBench: "基准测试",
@@ -205,7 +201,7 @@ export const zh: Record<keyof typeof en, string> = {
 	polRestoreYes: "恢复",
 	polRestoreNo: "保留我的规则",
 	polLocal:
-		"规则、各类别的设置和你自己的基准测试用例都保存在这台电脑上防护的设置文件里，并会随“迁移到另一台电脑”一起带走。只能在这里更改：经隧道访问的页面看不到它们。",
+		"规则、各类别的设置和你自己的基准测试用例都保存在这台电脑上防护的设置文件里，并会随“迁移到另一台电脑”一起带走。只能在这里，或在通过 Cloudflare Access 登录的页面上更改：只持有访问令牌的页面看不到它们。",
 
 	// ---- 基准测试
 	benchTitle: "基准测试",

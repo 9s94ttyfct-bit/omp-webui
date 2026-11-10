@@ -47,7 +47,6 @@ export function serverConflictCheck(deps: ConflictServerDeps): GuidanceConflictC
 	const home = homedir();
 	const env: TransferEnv = {
 		setting: "full",
-		local: true,
 		owner: true,
 		who: "local",
 		dataDirs: deps.dataDirs,

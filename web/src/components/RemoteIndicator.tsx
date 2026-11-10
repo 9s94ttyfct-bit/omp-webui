@@ -21,7 +21,7 @@ const DOTS: Record<RemoteState, string> = {
 /**
  * The sidebar footer's line for remote access, under the versions: whether the tunnel is off, starting, connected or
  * failing. A click opens Settings, where it is set up. It is not there before the server has answered, nor on a page
- * that came in through the tunnel (which is refused the answer, and is plainly remote).
+ * that is not the person's own (`ownerPage`: one holding only the token, which is refused the answer).
  */
 export function RemoteIndicator() {
 	const t = useT();

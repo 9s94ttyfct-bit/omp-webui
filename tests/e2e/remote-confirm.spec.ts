@@ -109,16 +109,14 @@ test("a change the server refuses puts the switch back where it was", async ({ p
 	await expect(toggle(page)).toHaveAttribute("aria-checked", "false");
 });
 
-test("on a page that came in through the tunnel there is no switch, and nothing is asked of the tunnel", async ({
-	page,
-}) => {
+test("on a page that holds only the token there is no switch, and nothing is asked of the tunnel", async ({ page }) => {
 	const asked: string[] = [];
 	page.on("request", (r) => {
 		if (/\/api\/remote(\/|$)/.test(new URL(r.url()).pathname)) asked.push(r.url());
 	});
 	await page.route("**/api/meta", async (route) => {
 		const real = await (await route.fetch()).json();
-		return route.fulfill({ json: { ...real, remote: true } });
+		return route.fulfill({ json: { ...real, remote: true, local: false, owner: false } });
 	});
 	await page.goto("/#/settings/app");
 	await expect(page.getByTestId("remote-refused")).toBeVisible();

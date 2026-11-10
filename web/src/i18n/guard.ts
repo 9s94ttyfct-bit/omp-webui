@@ -118,8 +118,6 @@ export const en = {
 	settingsPolicyDefault: "default",
 	settingsPolicyCustom: "yours",
 	settingsPolicyOutdated: "yours (the default has changed)",
-	settingsPageLocal:
-		"The Guard page (what the guard decided, how strict it is by kind of call, the reviewer's rules and the benchmark) is on the computer omp-webui runs on.",
 	settingsNotHere:
 		"The guard is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access. This page holds only the access token, so it is not shown the guard's settings.",
 
@@ -130,12 +128,9 @@ export const en = {
 	pageMode: "Guard dangerous commands: {mode}.",
 	pageOpenSettings: "Change it in Settings",
 	pageTabs: "Guard sections",
-	pageRemoteTitle: "Change the guard on the computer that runs omp-webui",
+	pageRemoteTitle: "Open the Guard page on the computer that runs omp-webui, or through Cloudflare Access",
 	pageRemoteHint:
-		"What the guard decided and how it is set are private to that computer. Open omp-webui there to see them.",
-	pageAccessTitle: "The Guard page is on the computer that runs omp-webui",
-	pageAccessHint:
-		"What the guard decided, how strict it is by kind of call and the benchmark are private to that computer. The guard's settings can be changed from this page, in Settings › Safety.",
+		"What the guard decided and how it is set are private to you. This page holds only the access token, so it is not shown them.",
 	tabDecisions: "Decisions",
 	tabPolicy: "Policy",
 	tabBench: "Benchmark",
@@ -220,7 +215,7 @@ export const en = {
 	polRestoreYes: "Restore",
 	polRestoreNo: "Keep my rules",
 	polLocal:
-		"The rules, the kinds and your own benchmark cases are kept on this computer, in the guard's settings file, and move with Move to another computer. They are changed here only: a page that came through the tunnel does not see them.",
+		"The rules, the kinds and your own benchmark cases are kept on this computer, in the guard's settings file, and move with Move to another computer. They are changed here, or from a page signed in through Cloudflare Access: a page that holds only the access token does not see them.",
 
 	// ---- benchmark
 	benchTitle: "Benchmark",

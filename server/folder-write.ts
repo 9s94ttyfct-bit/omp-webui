@@ -39,12 +39,13 @@ import { realAsFarAsItGoes, serialized } from "./upload.ts";
  * Files tab's editor. What it promises, for every page (one on this computer too):
  *
  *  - It changes a file that is there and makes none: a regular file, found as the Files tab finds it (`resolveFor`: for a page
- *    that is not this computer's, what the tab does not show it is not written either), and inside the conversation's folder
+ *    that is not the person's own, what the tab does not show it is not written either), and inside the conversation's folder
  *    whatever way leads to it (a link that leads out is refused, one that leads to a file inside is the file it leads to).
- *    Not what looks like a secret (by its name, or by a private key in it), not what CI runs on a push (`.github/workflows`,
- *    `.github/actions`), not a protected place, not a folder an omp-webui keeps its data in, and, for a page that is not on this
- *    computer, not in a conversation whose folder is the home folder or holds it (as an upload).
- *  - It is for a page that may upload (`requireUpload`): the person's setting for a page that is not on this computer.
+ *    Never a folder an omp-webui keeps its data in. For a page that is not the person's own (`owner`: this computer's, or
+ *    one signed in through Cloudflare Access), not what looks like a secret either (by its name, or by a private key in it),
+ *    nor what CI runs on a push (`.github/workflows`, `.github/actions`), a protected place, or a file of a conversation
+ *    whose folder is the home folder or holds it (as an upload).
+ *  - It is for a page that may upload (`requireUpload`): the person's setting for a page that is not the person's own.
  *  - What is written is the text the page was shown, changed: the file must be whole UTF-8 text of at most
  *    `FOLDER_LIMITS.editBytes`, so that what the page did not touch comes back byte for byte (a byte order mark is kept; a
  *    file in another encoding is refused, never rewritten as UTF-8).
@@ -72,7 +73,9 @@ export async function placeRefusal(
 	file: Resolved,
 	env: TransferEnv,
 ): Promise<TransferError | null> {
-	if (!env.local && holdsHome(root, env))
+	// The person's own page writes where it likes inside the folder, but for the app's own data.
+	const guarded = !env.owner;
+	if (guarded && holdsHome(root, env))
 		return new TransferError(
 			"Files are not edited from a page that is not on this computer in the home folder",
 			403,
@@ -80,15 +83,15 @@ export async function placeRefusal(
 		);
 	const named = await viaFolder(async () => partsOf(rel));
 	const real = relative(root, file.abs).split(sep);
-	if (startsPrograms(named) || startsPrograms(real))
+	if (guarded && (startsPrograms(named) || startsPrograms(real)))
 		return new TransferError("That is a place nothing is written into unasked", 403, "protected");
-	if (isSecretLooking(named.join("/")) || isSecretLooking(real.join("/")))
+	if (guarded && (isSecretLooking(named.join("/")) || isSecretLooking(real.join("/"))))
 		return new TransferError("This looks like a secret: nothing is written into it", 403, "secret");
 	for (const dir of env.dataDirs) {
 		if (inside(await realAsFarAsItGoes(dir), file.abs))
 			return new TransferError("That is a folder the app keeps its own data in", 403, "ownData");
 	}
-	if (isProtected(file.abs, env))
+	if (guarded && isProtected(file.abs, env))
 		return new TransferError("That is a place nothing is written into unasked", 403, "protected");
 	return null;
 }
@@ -98,9 +101,9 @@ export async function placeRefusal(
  * `readFolderFile`'s to judge): what the save would not refuse for them. Never throws: a file that cannot be judged is not editable.
  */
 export async function mayEdit(root: string, rel: unknown, env: TransferEnv): Promise<boolean> {
-	if (!env.local && env.setting !== "full") return false;
+	if (!env.owner && env.setting !== "full") return false;
 	try {
-		const file = await resolveFor(root, rel, !env.local);
+		const file = await resolveFor(root, rel, !env.owner);
 		return (await placeRefusal(root, rel, file, env)) === null;
 	} catch {
 		return false;
@@ -215,13 +218,13 @@ export async function editFile(
 	const root = await conversationRoot(ctx, save.live, save.file);
 	trace.root = root;
 	trace.path = save.path.slice(0, 4096);
-	const target = await viaFolder(() => resolveFor(root, save.path, !env.local));
+	const target = await viaFolder(() => resolveFor(root, save.path, !env.owner));
 	const refused = await placeRefusal(root, save.path, target, env);
 	if (refused) throw refused;
 	const text = Buffer.from(save.text, "utf8");
 	if (text.length > FOLDER_LIMITS.editBytes) throw tooLarge();
 	const dir = dirname(target.abs);
-	const saved = await serialized(dir, () => publish(root, target.abs, dir, text, save, deps));
+	const saved = await serialized(dir, () => publish(root, target.abs, dir, text, save, deps, !env.owner));
 	record(deps.log, env, trace, "ok", { size: saved.size, sha256: saved.etag });
 	return json(saved);
 }
@@ -234,11 +237,12 @@ async function publish(
 	text: Buffer,
 	save: Save,
 	deps: EditDeps,
+	guarded: boolean,
 ): Promise<FolderSaved> {
 	const { bytes: before, info } = await holding(abs, deps.hooks);
 	// A secret's content is not told by its etag, nor its place by what it says: the checks that depend on what is in the file
-	// come before the one that names it.
-	if (holdsPrivateKey(before.toString("utf8")))
+	// come before the one that names it. The person's own page may rewrite a key as any other file.
+	if (guarded && holdsPrivateKey(before.toString("utf8")))
 		throw new TransferError("This looks like a secret: nothing is written into it", 403, "secret");
 	if (looksBinary(before.subarray(0, SNIFF_BYTES)) || !isUtf8(before))
 		throw new TransferError("That file is not UTF-8 text: it is not rewritten here", 415, "notText");

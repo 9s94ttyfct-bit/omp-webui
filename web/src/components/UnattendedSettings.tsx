@@ -3,6 +3,7 @@ import { INSTRUCTION_MAX, type UnattendedSettings as Settings } from "@shared/un
 import { RotateCcw } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { useT } from "../i18n/index.ts";
+import { ownerPage } from "../lib/api.ts";
 import { setPref } from "../lib/prefs.ts";
 import { questionsApi } from "../lib/questions-api.ts";
 import { useQuestionsStrings } from "../lib/questions-strings.ts";
@@ -15,13 +16,13 @@ const messageOf = (e: unknown): string => (e instanceof Error ? e.message : Stri
  * Settings › Unattended mode (#646): whether a conversation started from New chat is unattended from the start (each
  * conversation has its own switch beside the message box), and what the main agent is told while the mode is on. The text is
  * kept in the app's data folder (`unattended.json`) and reaches a running conversation at its next turn. Changing it is for the
- * page on this computer (see `isLocalOnlyRoute`): what it says is put into the instructions of every conversation that is
- * unattended. A chunk of its own, with its strings.
+ * person's own page (`ownerPage`: this computer's, or one signed in through Cloudflare Access): what it says is put into the
+ * instructions of every conversation that is unattended. A chunk of its own, with its strings.
  */
 export function UnattendedSettings() {
 	const t = useT();
 	const ready = useQuestionsStrings();
-	const local = useApp((s) => s.meta?.local !== false);
+	const owner = useApp((s) => (s.meta ? ownerPage(s.meta) : true));
 	const [stored, setStored] = useState<Settings | null>(null);
 	const [text, setText] = useState("");
 	const [error, setError] = useState<string | null>(null);
@@ -102,7 +103,7 @@ export function UnattendedSettings() {
 						id={field}
 						rows={9}
 						value={text}
-						readOnly={!local}
+						readOnly={!owner}
 						maxLength={INSTRUCTION_MAX}
 						data-testid="unattended-instruction"
 						className="mt-2 w-full resize-y rounded-xl border border-border bg-bg-soft px-3 py-2 font-mono text-xs outline-none focus:border-faint"
@@ -116,9 +117,9 @@ export function UnattendedSettings() {
 					<span className="text-xs text-muted tabular-nums">
 						{t("questions.instructionCount", { n: text.length, max: INSTRUCTION_MAX })}
 					</span>
-					{!local ? <span className="text-xs text-muted">{t("questions.remoteNote")}</span> : null}
+					{!owner ? <span className="text-xs text-muted">{t("questions.remoteNote")}</span> : null}
 					<span className="flex-1" />
-					{local ? (
+					{owner ? (
 						<>
 							<Button
 								size="sm"

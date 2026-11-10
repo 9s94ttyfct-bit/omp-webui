@@ -45,10 +45,10 @@ None. The tool does not talk to the server.
 - A process this server did not start (one taken over from an earlier server that started it without the extension) has it only from its next start.
 - The main agent has it. Whether a subagent has it is omp's choice of which extension tools a subagent is offered.
 - The docs are English only, by choice: one language keeps them exact and searchable, and agents answer the person in their language anyway.
-- The docs describe the app; they are not a substitute for reading the person's actual settings. To know what *this* installation has set, look at the UI or ask the person; the server's settings routes are listed per topic, and many of them are local-only.
+- The docs describe the app; they are not a substitute for reading the person's actual settings. To know what *this* installation has set, look at the UI or ask the person; the server's settings routes are listed per topic, and many of them are owner-only.
 
 ## Security notes
 
 - Read-only by construction: the extension imports nothing but its lookup and its docs module. It opens no file, starts no process, makes no network request, writes nothing and holds no credential. A topic is looked up by name in that module; a name that is not a topic's (a path, `..`, `/etc/passwd`) is refused before any lookup.
 - Its approval tier is `read`, so no permission mode stops the agent to ask about it, and the guard has nothing to review.
-- Documentation tells an agent where a setting is and what it does; it does not entitle the agent to change it. An agent must not change guard, remote-access, memory or update settings for the person unless the person asks, and the local-only routes refuse any page that is not on the computer omp-webui runs on whatever token it holds.
+- Documentation tells an agent where a setting is and what it does; it does not entitle the agent to change it. An agent must not change guard, remote-access, memory or update settings for the person unless the person asks, and the owner-only routes refuse any page that is neither on the computer omp-webui runs on nor signed in through Cloudflare Access, whatever token it holds.

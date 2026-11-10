@@ -14,5 +14,5 @@ export const zh: Record<keyof typeof en, string> = {
 	moveDown: "在{surface}中下移{item}",
 	reset: "恢复默认",
 	resetHint: "两个栏的所有页面都放在底部，顺序与原来一致。",
-	guardNote: "不在本机上的页面不会提供“防护”页面入口。",
+	guardNote: "只有在运行 omp-webui 的电脑上，或在通过 Cloudflare Access 登录的页面上，才会提供“防护”页面入口。",
 };

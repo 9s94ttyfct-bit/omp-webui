@@ -18,7 +18,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import "../i18n/later.ts";
 import { type MessageKey, useT } from "../i18n/index.ts";
-import { api } from "../lib/api.ts";
+import { api, ownerPage } from "../lib/api.ts";
 import { errorText } from "../lib/error-text.ts";
 import { fmtRelative } from "../lib/format.ts";
 import { NAV_ITEMS } from "../lib/nav-layout.ts";
@@ -52,7 +52,7 @@ const FILE_INDEXING_RETRIES = 10;
 
 export function Palette() {
 	const t = useT();
-	const { paletteOpen, set, sessions, setView, view, toast, remotePage } = useApp(
+	const { paletteOpen, set, sessions, setView, view, toast, notOwner } = useApp(
 		useShallow((s) => ({
 			paletteOpen: s.paletteOpen,
 			set: s.set,
@@ -60,11 +60,11 @@ export function Palette() {
 			setView: s.setView,
 			view: s.view,
 			toast: s.toast,
-			remotePage: s.meta?.remote === true,
+			notOwner: s.meta !== null && !ownerPage(s.meta),
 		})),
 	);
 	// Every page the bars can offer, wherever the person has put them (or hidden them): the palette is the way back to one.
-	const navItems = NAV_ITEMS.filter((n) => !(remotePage && n.remoteHidden));
+	const navItems = NAV_ITEMS.filter((n) => !(notOwner && n.ownerOnly));
 	const focus = useReturnFocus();
 	const [q, setQ] = useState("");
 	const [hits, setHits] = useState<SearchHit[]>([]);

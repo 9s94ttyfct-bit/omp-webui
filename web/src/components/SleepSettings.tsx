@@ -2,6 +2,7 @@ import { PREF } from "@shared/prefs.ts";
 import { useEffect, useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
+import { ownerPage } from "../lib/api.ts";
 import { onPrefsChanged, setPref } from "../lib/prefs.ts";
 import { useApp } from "../store/app.ts";
 import { CardHeader } from "./ui.tsx";
@@ -15,8 +16,9 @@ import { CardHeader } from "./ui.tsx";
  * at all is on a system without the `keepAwake` capability (anything but macOS): `/api/meta` says so (`capabilities`), and
  * the card says the setting is not available there rather than showing a switch that would do nothing.
  *
- * A page that is not on this computer reads it and cannot change it, as it cannot change the guard's settings: the server
- * refuses `ompw.keepAwake` from such a page (`/api/prefs`), and the switch says why rather than failing on a click.
+ * A page that is not the person's own (`ownerPage`: neither this computer's nor one signed in through Cloudflare Access)
+ * reads it and cannot change it, as it cannot change the guard's settings: the server refuses `ompw.keepAwake` from such a
+ * page (`/api/prefs`), and the switch says why rather than failing on a click.
  *
  * The switch's value is the preference, read here as everything reads it (`localStorage`, kept in step with the server by
  * `lib/prefs.ts`): the server applies it as it changes, because the page is not the only way it changes (the app's other
@@ -27,7 +29,7 @@ export function SleepSettings() {
 	const [on, setOn] = useState(() => localStorage.getItem(PREF.keepAwake) !== "off");
 	// Whether this machine can be held awake at all: a server of an earlier version does not say, and had no such setting.
 	const available = useApp((s) => s.meta?.capabilities?.keepAwake) === true;
-	const remote = useApp((s) => s.meta?.remote === true);
+	const notOwner = useApp((s) => s.meta !== null && !ownerPage(s.meta));
 	useEffect(
 		() =>
 			onPrefsChanged((keys) => keys.includes(PREF.keepAwake) && setOn(localStorage.getItem(PREF.keepAwake) !== "off")),
@@ -42,7 +44,7 @@ export function SleepSettings() {
 					className="mt-1 accent-[var(--accent)]"
 					data-testid="keep-awake"
 					checked={available && on}
-					disabled={!available || remote}
+					disabled={!available || notOwner}
 					onChange={(e) => {
 						setPref(PREF.keepAwake, e.target.checked ? "on" : "off");
 						setOn(e.target.checked);
@@ -52,7 +54,7 @@ export function SleepSettings() {
 					{t("pages.settingsKeepAwake")}
 					<span className="block text-xs text-muted" data-testid="keep-awake-hint">
 						{t(
-							remote
+							notOwner
 								? "pages.settingsKeepAwakeRemote"
 								: available
 									? "pages.settingsKeepAwakeHint"

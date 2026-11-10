@@ -18,7 +18,7 @@ import type {
 } from "@shared/protocol.ts";
 import { create } from "zustand";
 import { t } from "../i18n/index.ts";
-import { api, type Meta, sessionActions } from "../lib/api.ts";
+import { api, type Meta, ownerPage, sessionActions } from "../lib/api.ts";
 import { loadCommandNotes, rememberCommandNotes } from "../lib/command-notes.ts";
 import { moveDraft } from "../lib/drafts.ts";
 import { whenFree } from "../lib/leave-guard.ts";
@@ -1701,9 +1701,10 @@ export function viewOfStep(now: View, next: View): View {
 	return next.browser ? { ...conversation, browser: true } : conversation;
 }
 
-/** Whether this page may ask for `/api/remote*`: it is not a remote page. */
+/** Whether this page may ask for `/api/remote*`: it is the person's own (`ownerPage`), or the server has not said yet. */
 function hasRemoteRoutes(): boolean {
-	return !useApp.getState().meta?.remote;
+	const { meta } = useApp.getState();
+	return !meta || ownerPage(meta);
 }
 
 let started = false;
@@ -1782,7 +1783,7 @@ export async function startApp(): Promise<void> {
 	if (res?.ok) useApp.setState({ meta: await res.json() });
 	// Before the page connects: whether omp is installed decides what it shows.
 	await ompApi.load().catch(() => {});
-	// The sidebar's indicator shows the tunnel; a page that came in through it is refused the routes and has no use for them.
+	// The sidebar's indicator shows the tunnel; a page that is not the person's own is refused the routes.
 	if (hasRemoteRoutes()) void remoteApi.load();
 	socket.connect();
 }

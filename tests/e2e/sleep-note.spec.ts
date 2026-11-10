@@ -105,16 +105,17 @@ test("Settings finds the Sleep card by its name, its sentence and the words peop
 	await expect.poll(() => page.evaluate(() => localStorage.getItem("ompw.keepAwake"))).toBe("off");
 });
 
-test("a page that is not on this computer reads the Sleep card and cannot change it", async ({ page }) => {
-	// What the server says of a page through the tunnel: `remote` (`/api/meta`), and `/api/prefs` refuses the one key.
+test("a page that is not the person's own reads the Sleep card and cannot change it", async ({ page }) => {
+	// What the server says of a page on the network that holds only the token: not `owner` (`/api/meta`), and `/api/prefs`
+	// refuses the one key.
 	await page.route("**/api/meta", async (route) => {
 		const real = await (await route.fetch()).json();
-		return route.fulfill({ json: { ...real, remote: true, local: false } });
+		return route.fulfill({ json: { ...real, remote: true, local: false, owner: false } });
 	});
 	await page.goto("/#/settings/app");
 	await expect(page.getByTestId("sleep-settings")).toBeVisible();
 	await expect(page.getByTestId("keep-awake")).toBeDisabled();
 	await expect(page.getByTestId("keep-awake-hint")).toHaveText(
-		"This is changed on the computer omp-webui runs on: a page that came in through the tunnel or the network cannot turn off the protection of the conversations it is driving.",
+		"This is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access: a page that holds only the access token cannot turn off the protection of the conversations it is driving.",
 	);
 });
