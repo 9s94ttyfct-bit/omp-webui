@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { isRecord } from "../../shared/guards.ts";
-import { parseRemoteRun, remoteRunLine, tailOutput } from "../../shared/remote-run.ts";
+import { parseRemoteRun, REMOTE_RUN_HISTORY_OFF, remoteRunLine, tailOutput } from "../../shared/remote-run.ts";
 
 /**
  * Run one command on a remote computer through its own page (see `shared/remote-run.ts`): what this server does for a call of
@@ -198,7 +198,9 @@ function shell(o: RemoteRunOptions, origin: string, cookie: string, started: num
 	const type = (): void => {
 		if (typed || settled || ptyId === null) return;
 		typed = true;
-		ws.send(JSON.stringify({ t: "pty_input", ptyId, data: remoteRunLine(o.command, o.cwd, nonce) }));
+		// History off first, then the command: the shell reads the second line only once the first has run.
+		const data = REMOTE_RUN_HISTORY_OFF + remoteRunLine(o.command, o.cwd, nonce);
+		ws.send(JSON.stringify({ t: "pty_input", ptyId, data }));
 	};
 	function onAbort(): void {
 		finish("abort");

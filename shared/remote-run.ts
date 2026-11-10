@@ -25,8 +25,19 @@ export const REMOTE_RUN_OUTPUT_TAIL = 65536;
 const quoted = (text: string): string => `'${text.replaceAll("'", `'\\''`)}'`;
 
 /**
- * The line typed into the remote login shell, ending in a carriage return (the Enter key). It starts with a space, which keeps
- * it out of the history of a shell that ignores such lines (bash's `ignorespace`, zsh's `HIST_IGNORE_SPACE`), and:
+ * Typed first, on a line of its own: the shell stops keeping a history file before the line that carries the command is
+ * entered (`unset HISTFILE`; bash also stops recording, `set +o history`; zsh switches to a fresh history list that is never
+ * saved, `fc -p`; each shell's error at the other's word is thrown away). A leading space is no guarantee (only shells set
+ * to ignore such lines skip them), and a shell that writes each line as it is entered (bash's `history -a` in
+ * `PROMPT_COMMAND`, zsh's INC_APPEND_HISTORY or SHARE_HISTORY) would keep the command (in base64) before the kill. This line
+ * itself may be kept: it holds nothing of the call.
+ */
+export const REMOTE_RUN_HISTORY_OFF = " unset HISTFILE; set +o history 2>/dev/null; fc -p 2>/dev/null\r";
+
+/**
+ * The line that runs the command, typed into the remote login shell after `REMOTE_RUN_HISTORY_OFF`, ending in a carriage
+ * return (the Enter key). It starts with a space too (kept out of the history of a shell that ignores such lines, even where
+ * that first line could not turn it off), and:
  *
  *   - prints `B<nonce>X` on a line of its own: where the command's output begins;
  *   - in a subshell whose input is `/dev/null` (the command gets no input, and an `exit` in it ends the command, not the

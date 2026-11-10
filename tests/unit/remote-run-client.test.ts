@@ -1,6 +1,6 @@
 // needs: posixShell
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -55,7 +55,7 @@ const cookiesOf = (req: Request): Record<string, string> =>
 			.filter((kv) => kv.length === 2),
 	);
 
-function fakeRemote(o: { jwt?: string; os?: string } = {}): Fake {
+function fakeRemote(o: { jwt?: string; os?: string; shell?: string[]; env?: Record<string, string> } = {}): Fake {
 	const jwt = o.jwt ?? JWT;
 	const fake: Fake = { origin: "", frames: [], shells: [], token: "tok-1", printed: "", stop: () => {} };
 	type Data = { terminals: Map<string, { terminal: Bun.Terminal; proc: Bun.Subprocess }> };
@@ -107,14 +107,18 @@ function fakeRemote(o: { jwt?: string; os?: string } = {}): Fake {
 							ws.send(JSON.stringify({ t: "pty_data", ptyId, data: text }));
 						},
 					});
-					const proc = Bun.spawn(["/bin/bash", "--noprofile", "--norc", "-i"], {
+					const proc = Bun.spawn(o.shell ?? ["/bin/bash", "--noprofile", "--norc", "-i"], {
 						cwd: scratch,
 						terminal,
+						// A session of its own, as the remote server's shells are: an interactive shell that is hung up passes the
+						// hangup on to its jobs' group, which without this can be this test process's own (it then dies of SIGHUP).
+						detached: true,
 						env: {
 							PATH: process.env.PATH ?? "/usr/bin:/bin",
 							HOME: scratch,
 							TERM: "xterm-256color",
 							PS1: "\\[\\e[1m\\]$ \\[\\e[0m\\]",
+							...o.env,
 						},
 					});
 					const shell = { proc, ended: false };
@@ -196,6 +200,28 @@ describe("runRemote", () => {
 		expect(missing.output).not.toContain("ran");
 		expect(missing.output).not.toContain(scratch);
 	});
+
+	// The line typed carries the command (in base64): a shell that keeps a history file must not keep it. Both shells write
+	// each line as it is entered here (bash's `history -a` before every prompt, zsh's INC_APPEND_HISTORY), which is the
+	// hardest case: nothing waits for the shell's exit, where the kill would also have kept it out.
+	for (const [name, shell, env] of [
+		["bash", ["/bin/bash", "--noprofile", "--norc", "-i"], { PROMPT_COMMAND: "history -a" }],
+		["zsh", ["/bin/zsh", "-f", "-i", "-o", "incappendhistory"], { SAVEHIST: "100", HISTSIZE: "100", PS1: "$ " }],
+	] as const) {
+		test.skipIf(!existsSync(shell[0]))(`the command never reaches the ${name} history file`, async () => {
+			const history = join(scratch, `${name}-history`);
+			writeFileSync(history, "");
+			const fake = fakeRemote({ shell: [...shell], env: { ...env, HISTFILE: history } });
+			const r = await run(fake, { command: "echo secret-word-4711" });
+			expect(r).toMatchObject({ exitCode: 0, output: "secret-word-4711\n" });
+			await killSent(fake);
+			await shellsEnded(fake);
+			const kept = readFileSync(history, "utf8");
+			expect(kept).not.toContain("secret-word-4711");
+			expect(kept).not.toContain(btoa("echo secret-word-4711"));
+			expect(kept).not.toContain("base64 -d");
+		});
+	}
 
 	test("a command that never ends returns at its time limit with what it printed, and the remote shell is killed", async () => {
 		const fake = fakeRemote();
