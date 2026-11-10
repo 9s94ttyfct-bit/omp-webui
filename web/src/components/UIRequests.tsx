@@ -1,5 +1,5 @@
 import { parseRiskTitle, RISK_ALLOW, RISK_DENY, riskCommand } from "@shared/risk-confirm.ts";
-import { MessageCircleQuestion, ShieldQuestion, Target } from "lucide-react";
+import { Check, MessageCircleQuestion, ShieldQuestion, Target } from "lucide-react";
 import {
 	type KeyboardEvent,
 	lazy,
@@ -13,6 +13,7 @@ import {
 	useState,
 } from "react";
 import { useT } from "../i18n/index.ts";
+import { type CheckboxDialog, checkboxDialog, picked, tickedIn } from "../lib/ask-checks.ts";
 import { type FormBlock, formContext, runningAskForm } from "../lib/ask-form.ts";
 import { useImeGuard } from "../lib/ime.ts";
 import { revealed } from "../lib/invisible.ts";
@@ -183,6 +184,11 @@ export function UIRequests({ live }: { live: LiveState }) {
 			? runningAskForm(live)
 			: null;
 	const formBlocks = useMemo(() => (askHtml ? formContext(askHtml) : null), [askHtml]);
+	// One question of checkboxes, asked over and over by omp until "Done selecting": the page shows what is ticked.
+	const boxes = req?.method === "select" && askHtml ? checkboxDialog(req.title, req.options) : null;
+	const scope = `${live.info.liveId}\u0000${askHtml ?? ""}`;
+	const checks: Checks | null =
+		req && boxes ? { dialog: boxes, scope, ticked: tickedIn(scope, boxes, req.options ?? [], askHtml) } : null;
 	// An approval's title is several lines: the tool first, then the command or path it is about.
 	const [head, ...rest] = (req?.title ?? "").split("\n");
 	// A shell command's labels are the gate's English: the page says them in its own words (#785); a command for another
@@ -310,7 +316,7 @@ export function UIRequests({ live }: { live: LiveState }) {
 				) : null}
 				{/* No key of its own: `Body` below has one, and two siblings with the same key make React render one of them twice. */}
 				<Countdown req={req} approval={approval} />
-				<Body key={req.id} req={req} liveId={liveId} />
+				<Body key={req.id} req={req} liveId={liveId} checks={checks} />
 			</div>
 		</>
 	);
@@ -334,7 +340,14 @@ function Countdown({ req, approval }: { req: UIRequest; approval: boolean }) {
 	);
 }
 
-function Body({ req, liveId }: { req: UIRequest; liveId: string }) {
+/** A checkbox question of omp's `ask` form (see `lib/ask-checks.ts`): which options are ticked (null: the page cannot tell). */
+interface Checks {
+	dialog: CheckboxDialog;
+	scope: string;
+	ticked: Set<string> | null;
+}
+
+function Body({ req, liveId, checks = null }: { req: UIRequest; liveId: string; checks?: Checks | null }) {
 	const t = useT();
 	const cancel = () => respond(liveId, { id: req.id, cancelled: true });
 	// The gate's confirmation has two answers that are values of the dialog: they are shown in the page's language.
@@ -361,25 +374,49 @@ function Body({ req, liveId }: { req: UIRequest; liveId: string }) {
 			return (
 				// Side by side where the window is short and wide enough (a phone or a tablet on its side): one row, two at most.
 				<div className="flex flex-col gap-1.5 [[data-short]_&]:grid [[data-short]_&]:grid-cols-[repeat(auto-fit,minmax(12rem,1fr))]">
-					{(req.options ?? []).map((o, i) => (
-						<button
-							type="button"
-							key={o}
-							className={cx(
-								"rounded-xl border border-border px-3 py-2 text-left text-sm",
-								TOUCH,
-								isApproval(req) && /^deny/i.test(o)
-									? "text-danger hover:border-danger hover:bg-danger/10"
-									: "hover:border-accent hover:bg-accent-soft",
-							)}
-							onClick={() => respond(liveId, { id: req.id, value: o })}
-						>
-							<div className="font-medium break-words">{labelOf(o)}</div>
-							{req.optionDetails?.[i]?.description ? (
-								<div className="text-xs text-muted break-words">{req.optionDetails[i].description}</div>
-							) : null}
-						</button>
-					))}
+					{(req.options ?? []).map((o, i) => {
+						const closing = checks !== null && o === checks.dialog.done;
+						const ticked = checks !== null && !closing ? (checks.ticked?.has(o) ?? null) : null;
+						return (
+							<button
+								type="button"
+								key={o}
+								className={cx(
+									"rounded-xl border px-3 py-2 text-left text-sm",
+									TOUCH,
+									ticked ? "border-accent bg-accent-soft" : "border-border",
+									closing ? "font-semibold" : "",
+									isApproval(req) && /^deny/i.test(o)
+										? "text-danger hover:border-danger hover:bg-danger/10"
+										: "hover:border-accent hover:bg-accent-soft",
+								)}
+								aria-pressed={ticked === null ? undefined : ticked}
+								data-ticked={ticked ?? undefined}
+								onClick={() => {
+									if (checks) picked(checks.scope, checks.dialog, o);
+									respond(liveId, { id: req.id, value: o });
+								}}
+							>
+								<div className="flex items-start gap-2 font-medium break-words">
+									{checks !== null && !closing ? (
+										<span
+											aria-hidden
+											className={cx(
+												"mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border",
+												ticked ? "border-accent bg-accent text-bg" : "border-border",
+											)}
+										>
+											{ticked ? <Check size={12} strokeWidth={3} /> : null}
+										</span>
+									) : null}
+									<span className="min-w-0">{labelOf(o)}</span>
+								</div>
+								{req.optionDetails?.[i]?.description ? (
+									<div className="text-xs text-muted break-words">{req.optionDetails[i].description}</div>
+								) : null}
+							</button>
+						);
+					})}
 					{/* An approval with a Deny choice has no Cancel: omp takes a dismissal of it as a no, the same as Deny, and two
 					    buttons that do one thing read as two different answers. */}
 					{isApproval(req) && req.options?.some((o) => /^deny/i.test(o)) ? null : (
