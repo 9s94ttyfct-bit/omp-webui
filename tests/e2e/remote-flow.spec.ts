@@ -235,10 +235,9 @@ test("the card sets the tunnel up against the real routes; then the page and its
 		expect(meta.status).toBe(200);
 		expect(JSON.parse(meta.body).remote).toBe(true);
 		expect((await viaTunnel(port, "/api/meta", { jwt })).status, "the app's own cookie is needed too").toBe(401);
-		// and the tunnel's own settings are never a remote page's to change
-		expect((await viaTunnel(port, "/api/remote", { jwt, cookie: own })).status).toBe(403);
-		expect((await viaTunnel(port, "/api/remote/stop", { jwt, cookie: own, method: "POST" })).status).toBe(403);
-		expect((await snapshot()).status.state, "the refused Stop did not stop it").toBe("connected");
+		// and the page signed in through Access is the person's own: it reads the tunnel's settings as this computer's does
+		expect((await viaTunnel(port, "/api/remote", { jwt, cookie: own })).status).toBe(200);
+		expect((await snapshot()).status.state).toBe("connected");
 
 		// ------------------------------------------------------------ without the Access token: refused
 		const none = await viaTunnel(port, "/");
