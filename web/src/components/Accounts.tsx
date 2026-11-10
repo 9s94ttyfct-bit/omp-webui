@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
-import { webUrl } from "../lib/web-url.ts";
+import { signInLink } from "../lib/web-url.ts";
 import { socket } from "../lib/ws.ts";
 import { closeLive, openLive, useApp } from "../store/app.ts";
 import { UIRequests } from "./UIRequests.tsx";
@@ -267,7 +267,10 @@ export function Accounts({
 	const live = useApp((s) => (liveId ? s.lives[liveId] : undefined));
 	const pendingUrl = live?.loginUrl;
 	// What omp (or an extension) names as the sign-in page is a link only if it is a web address: `javascript:` would run here.
-	const loginHref = webUrl(pendingUrl?.launchUrl) ?? webUrl(pendingUrl?.url);
+	// From a page not on the computer omp runs on, omp's loopback addresses are this device's own (`signInLink`).
+	const { href: loginHref, pasteBack } = pendingUrl
+		? signInLink(pendingUrl, window.location.hostname)
+		: { href: null, pasteBack: false };
 	// The helper was closed from outside (Settings › Running sessions) or died: fold the list; "Show accounts" starts a new one.
 	const helperGone = live?.info.exited === true;
 	useEffect(() => {
@@ -318,6 +321,11 @@ export function Accounts({
 									</p>
 								)}
 								{pendingUrl.instructions ? <p className="mt-1 text-xs text-muted">{pendingUrl.instructions}</p> : null}
+								{pasteBack ? (
+									<p className="mt-1 text-xs text-muted" data-testid="login-paste-back">
+										{t("pages.accPasteBack")}
+									</p>
+								) : null}
 							</>
 						) : (
 							<Spinner size={14} />

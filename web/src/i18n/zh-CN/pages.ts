@@ -382,6 +382,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	accSigningIn: "正在登录 {name}…",
 	accOpenPage: "打开登录页面",
 	accNotAWebAddress: "omp 给出的登录地址不是网页地址，所以没有可以打开的链接。",
+	accPasteBack:
+		"这个页面不在运行 omp 的那台电脑上，浏览器没法自己把登录结果交回去：登录完成后它会打开一个 localhost 页面，那个页面打不开。请从地址栏复制那个页面的完整地址，粘贴到下面。",
 	accCancelSignIn: "取消登录",
 	accSignedIn: "已登录",
 	accLogInTo: "登录 {name}",

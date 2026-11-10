@@ -372,6 +372,8 @@ export const en = {
 	accSigningIn: "Signing in to {name}…",
 	accOpenPage: "Open the sign-in page",
 	accNotAWebAddress: "The sign-in address omp sent is not a web page address, so there is no link to open.",
+	accPasteBack:
+		"This page is not on the computer omp runs on, so the browser cannot hand the sign-in back by itself: once you have signed in, it shows a localhost page that does not load. Copy that page's whole address from the address bar and paste it below.",
 	accCancelSignIn: "Cancel sign-in",
 	accSignedIn: "Signed in",
 	accLogInTo: "Log in to {name}",

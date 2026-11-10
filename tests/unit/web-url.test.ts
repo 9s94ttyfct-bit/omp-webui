@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { webUrl } from "../../web/src/lib/web-url.ts";
+import { signInLink, webUrl } from "../../web/src/lib/web-url.ts";
 
 /** An address omp or an extension sends (the sign-in page) is a link only when it is a web address. */
 
@@ -44,14 +44,47 @@ describe("webUrl", () => {
 		expect(webUrl(undefined)).toBeNull();
 		expect(webUrl(null)).toBeNull();
 	});
+});
 
-	test("the first of several addresses that passes is the one to use", () => {
-		// What Accounts does: the launch address when it is a web address, else the plain one.
-		const pick = (launch: string | undefined, plain: string | undefined) => webUrl(launch) ?? webUrl(plain);
-		expect(pick("https://a.example/launch", "https://b.example/plain")).toBe("https://a.example/launch");
-		expect(pick("javascript:alert(1)", "https://b.example/plain")).toBe("https://b.example/plain");
-		expect(pick(undefined, "https://b.example/plain")).toBe("https://b.example/plain");
-		expect(pick("javascript:alert(1)", "data:text/html,x")).toBeNull();
-		expect(pick(undefined, undefined)).toBeNull();
+/** The sign-in link of Accounts, from omp's `open_url` (the authorization address, and a short loopback one that leads to it). */
+describe("signInLink", () => {
+	const codex = {
+		url: "https://auth.openai.com/oauth/authorize?client_id=x&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&state=s",
+		launchUrl: "http://localhost:1455/launch",
+	};
+
+	test("on the computer omp runs on, the short launch address, and the browser's callback reaches omp by itself", () => {
+		for (const host of ["localhost", "127.0.0.1", "[::1]"]) {
+			expect(signInLink(codex, host)).toEqual({ href: "http://localhost:1455/launch", pasteBack: false });
+		}
+	});
+
+	test("from another device or a window onto another Mac, the authorization address, and the callback is pasted back", () => {
+		// The launch address is the loopback of the computer omp runs on: from here it is this device's own, where nothing
+		// listens (and a window onto another Mac refuses it), and so is the callback the provider sends the browser to.
+		for (const host of ["omp.example.com", "192.168.1.5", "studio.local"]) {
+			expect(signInLink(codex, host)).toEqual({ href: codex.url, pasteBack: true });
+		}
+	});
+
+	test("a provider whose callback is a web page of its own needs nothing pasted back from anywhere", () => {
+		const own = {
+			url: "https://claude.ai/oauth/authorize?redirect_uri=https%3A%2F%2Fconsole.anthropic.com%2Foauth%2Fcode%2Fcallback",
+			launchUrl: "http://localhost:54545/launch",
+		};
+		expect(signInLink(own, "omp.example.com")).toEqual({ href: own.url, pasteBack: false });
+		expect(signInLink(own, "localhost")).toEqual({ href: own.launchUrl, pasteBack: false });
+	});
+
+	test("an address that is not a web address is never the link", () => {
+		expect(signInLink({ url: "https://b.example/plain", launchUrl: "javascript:alert(1)" }, "localhost").href).toBe(
+			"https://b.example/plain",
+		);
+		expect(signInLink({ url: "https://b.example/plain" }, "omp.example.com").href).toBe("https://b.example/plain");
+		expect(signInLink({ url: "data:text/html,x", launchUrl: "javascript:alert(1)" }, "localhost").href).toBeNull();
+		// A launch address that is a web page of its own works from anywhere.
+		expect(
+			signInLink({ url: "https://b.example/plain", launchUrl: "https://a.example/launch" }, "omp.example.com"),
+		).toEqual({ href: "https://a.example/launch", pasteBack: false });
 	});
 });
