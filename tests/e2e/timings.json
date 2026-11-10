@@ -176,6 +176,7 @@
 		"archived-chat.spec.ts › archiving says how many conversations went and Undo brings them back": 2.6,
 		"archived-chat.spec.ts › phone › the mark fits the header and its Unarchive is easy to hit": 1.9,
 		"archived-chat.spec.ts › sending to an archived conversation unarchives it, so its running dot shows in the list": 9.1,
+		"ask-checkboxes.spec.ts › a checkbox question shows which options are ticked, and each pick changes it": 6.8,
 		"ask-form-context.spec.ts › a field of an ask form is shown with what the form says around it, as text, and nothing of it runs": 7.7,
 		"ask-stepper.spec.ts › Safari zoomed › in a window this short (Safari zoomed in) the app's frame never scrolls, asking or answered": 8.9,
 		"ask-stepper.spec.ts › desktop 1400×900 › a page that was scrolled anyway is back at the top when the request ends": 5.9,

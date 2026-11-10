@@ -388,7 +388,11 @@ function Body({ req, liveId, checks = null }: { req: UIRequest; liveId: string; 
 									closing ? "font-semibold" : "",
 									isApproval(req) && /^deny/i.test(o)
 										? "text-danger hover:border-danger hover:bg-danger/10"
-										: "hover:border-accent hover:bg-accent-soft",
+										: checks !== null
+											? // A box of a checkbox question: the pointer over it (or a phone's last tap, which stays) must not
+												// look like a tick, so it only outlines it.
+												"hover:border-accent"
+											: "hover:border-accent hover:bg-accent-soft",
 								)}
 								aria-pressed={ticked === null ? undefined : ticked}
 								data-ticked={ticked ?? undefined}
