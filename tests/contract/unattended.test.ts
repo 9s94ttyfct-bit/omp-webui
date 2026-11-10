@@ -9,6 +9,7 @@ import { type Frame, messageWhere, watchFrames } from "../support/frames.ts";
 import { pollUntil } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import {
+	askArgs,
 	type ScriptedRequest,
 	type ScriptedTurn,
 	type StubScripted,
@@ -31,7 +32,9 @@ const HEADING = "## Unattended mode";
 
 interface Call {
 	name: string;
+	/** The call's arguments, or what makes them of the request (an `ask` takes what this omp's `ask` takes). */
 	args: unknown;
+	argsFor?: (req: ScriptedRequest) => unknown;
 }
 
 let s: TestServer;
@@ -56,7 +59,9 @@ const script = (req: ScriptedRequest): ScriptedTurn => {
 	}
 	const next = plan.main;
 	plan.main = null;
-	return next ? { call: next } : { text: "Nothing to do." };
+	return next
+		? { call: { name: next.name, args: next.argsFor ? next.argsFor(req) : next.args } }
+		: { text: "Nothing to do." };
 };
 
 const authed = (extra: Record<string, string> = {}) => ({
@@ -254,23 +259,24 @@ test("a question the list cannot keep is said in the conversation, and the model
 	c.ws.close();
 }, 180_000);
 
-test("an ask dialog of an unattended conversation is answered by the server and filed; the turn goes on", async () => {
+/** A dialog of an `ask`: the one `ask` dialog of omp before 18.18.3, or one of the dialogs a form's fields are asked with. */
+const isAskDialog = (f: Frame) =>
+	f.type === "extension_ui_request" && ["ask", "select", "input", "editor"].includes(String(f.method));
+
+test("an ask of an unattended conversation is answered for the person and filed; the turn goes on", async () => {
 	const c = await conversation(true);
 	plan.main = {
 		name: "ask",
-		args: {
-			questions: [
-				{ id: "db", question: "Which cache?", options: [{ label: "Redis" }, { label: "None" }], recommended: 1 },
-			],
-		},
+		args: null,
+		argsFor: (req) =>
+			askArgs(req, [{ id: "db", question: "Which cache?", options: ["Redis", "None"], recommended: 1 }]),
 	};
 	told.length = 0;
 	// No page is shown a dialog.
 	await turn(c, mark("ask"));
-	expect(c.frames.seen.some((f) => f.type === "extension_ui_request" && f.method === "ask")).toBe(false);
+	expect(c.frames.seen.some(isAskDialog)).toBe(false);
 	// The model read the fixed reply as the answer, and the turn went on.
-	expect(told.at(-1)).toContain("Recorded for the person");
-	expect(told.at(-1)).toContain(ASK_RECORDED_REPLY.slice(0, 30));
+	expect(told.at(-1)).toContain(ASK_RECORDED_REPLY);
 	const q = (await questions()).questions.find((x) => x.question === "Which cache?");
 	expect(q).toMatchObject({
 		source: "ask",
@@ -281,27 +287,25 @@ test("an ask dialog of an unattended conversation is answered by the server and 
 	c.ws.close();
 }, 120_000);
 
-test("an ask dialog of a conversation that is not unattended is still a dialog for the page", async () => {
+test("an ask of a conversation that is not unattended is still a dialog for the page", async () => {
 	const c = await conversation(undefined);
 	plan.main = {
 		name: "ask",
-		args: {
-			questions: [{ id: "q", question: "Which cache, really?", options: [{ label: "Redis" }, { label: "None" }] }],
-		},
+		args: null,
+		argsFor: (req) => askArgs(req, [{ id: "q", question: "Which cache, really?", options: ["Redis", "None"] }]),
 	};
-	const dialog = fresh(c, (f) => f.type === "extension_ui_request" && f.method === "ask");
+	const dialog = fresh(c, isAskDialog);
 	const ended = fresh(c, (f) => f.type === "agent_end");
 	await prompt(c, mark("ask-off"));
 	const frame = await dialog;
 	// Nothing answered it, so the turn is still waiting; the page answers.
 	expect((await questions()).questions.some((x) => x.question === "Which cache, really?")).toBe(false);
-	c.ws.send(
-		JSON.stringify({
-			t: "ui_response",
-			liveId: c.live.liveId,
-			response: { id: frame.id, answers: [{ id: "q", selectedOptions: ["Redis"] }] },
-		}),
-	);
+	const response =
+		frame.method === "ask"
+			? { id: frame.id, answers: [{ id: "q", selectedOptions: ["Redis"] }] }
+			: { id: frame.id, value: "Redis" };
+	expect(frame.method === "ask" || frame.title === "Which cache, really?").toBe(true);
+	c.ws.send(JSON.stringify({ t: "ui_response", liveId: c.live.liveId, response }));
 	await ended;
 	c.ws.close();
 }, 120_000);

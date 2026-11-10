@@ -16,8 +16,44 @@ export interface ScriptedRequest {
 	tools: string[];
 	/** How many tool results the conversation holds so far. */
 	toolResults: number;
+	/** Whether the request's `ask` takes one HTML form (`{ html }`, omp 18.18.3 and later) rather than `questions`. */
+	askForm: boolean;
 	/** The model the request names (`model` of the chat request). */
 	model: string;
+}
+
+/** One question of an `ask` call, in either omp's shape. */
+export interface AskQuestion {
+	id: string;
+	question: string;
+	options: string[];
+	recommended?: number;
+}
+
+/**
+ * The arguments of an `ask` call of `questions` for the omp that sent `request`: an HTML form of radios (the recommended
+ * one checked) where its `ask` takes one, `questions` where it takes those (omp before 18.18.3).
+ */
+export function askArgs(request: Pick<ScriptedRequest, "askForm">, questions: AskQuestion[]): unknown {
+	if (!request.askForm)
+		return {
+			questions: questions.map((q) => ({
+				id: q.id,
+				question: q.question,
+				options: q.options.map((label) => ({ label })),
+				...(q.recommended === undefined ? {} : { recommended: q.recommended }),
+			})),
+		};
+	const fieldset = (q: AskQuestion) =>
+		[
+			`<fieldset><legend>${q.question}</legend>`,
+			...q.options.map(
+				(label, i) =>
+					`<label><input type="radio" name="${q.id}" value="${label}"${i === q.recommended ? " checked" : ""}> ${label}</label>`,
+			),
+			"</fieldset>",
+		].join("");
+	return { html: `<form>${questions.map(fieldset).join("")}</form>` };
 }
 
 /**
@@ -87,12 +123,15 @@ export async function startScriptedStub(
 		}
 		const body = JSON.parse(await readBody(req));
 		const messages: { role?: string }[] = Array.isArray(body.messages) ? body.messages : [];
+		const tools: { function?: { name?: string; parameters?: { properties?: object } } }[] = Array.isArray(body.tools)
+			? body.tools
+			: [];
+		const ask = tools.find((t) => t.function?.name === "ask")?.function;
 		const request: ScriptedRequest = {
 			text: JSON.stringify(messages),
-			tools: Array.isArray(body.tools)
-				? body.tools.flatMap((t: { function?: { name?: string } }) => t.function?.name ?? [])
-				: [],
+			tools: tools.flatMap((t) => t.function?.name ?? []),
 			toolResults: messages.filter((m) => m.role === "tool").length,
+			askForm: Object.hasOwn(ask?.parameters?.properties ?? {}, "html"),
 			model: typeof body.model === "string" ? body.model : "",
 		};
 		requests.push(request);

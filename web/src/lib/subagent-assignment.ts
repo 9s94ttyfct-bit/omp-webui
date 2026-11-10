@@ -5,7 +5,7 @@ import type { AgentRow } from "./subagents.ts";
 /**
  * What a subagent was told, in omp's own words. omp hands a subagent two texts: its task, as the first user message
  * (`Complete assignment thoroughly:` and the task), and the context its parent gave every subagent of the call, in the
- * `§ Context` section that omp's subagent template appends to the system prompt. Both are recorded at the head of the
+ * `Context` section that omp's subagent template appends to the system prompt. Both are recorded at the head of the
  * subagent's transcript, in its `session_init` record, so a subagent that is over, or from an earlier run, still has
  * them. The task call's own arguments carry the same two texts (`context`, and `task` of each item), so the call's card
  * has them before the subagent exists. The progress frames of a running omp carry the task alone.
@@ -34,21 +34,24 @@ export function taskOfPrompt(prompt: string): string {
 }
 
 /**
- * The sections of omp's subagent template that bound the context (`subagent-system-prompt.md`): `§ Context`, then the
- * plan the subagent executes (only for one that does, and it always begins with this sentence), then `§ Coop`. The
- * context is text of the parent's own and may contain a line that looks like a section, so it ends at the last `§ Coop`
- * (nothing after the context contains one) or at the plan that precedes it.
+ * The sections of omp's subagent template that bound the context (`subagent-system-prompt.md`): `Context`, then the
+ * plan the subagent executes (only for one that does, and it always begins with this sentence), then `Coop`. The
+ * context is text of the parent's own and may contain a line that looks like a section, so it ends at the last `Coop`
+ * (nothing after the context contains one) or at the plan that precedes it. A section's heading is `⁂ Name` (omp 18.18.2
+ * and later) or `§ Name` (before).
  */
-const CONTEXT_HEAD = "\n§ Context\n";
-const PLAN_HEAD = "\n§ Plan\nThis session is executing an approved plan";
-const COOP_HEAD = "\n§ Coop\n";
+const SECTION_MARKS = ["⁂", "§"] as const;
 
 function contextIn(block: string): string | undefined {
-	const coop = block.lastIndexOf(COOP_HEAD);
-	const head = block.indexOf(CONTEXT_HEAD);
-	if (coop < 0 || head < 0 || head > coop) return undefined;
-	const plan = block.lastIndexOf(PLAN_HEAD, coop);
-	return block.slice(head + CONTEXT_HEAD.length, plan > head ? plan : coop).trimEnd();
+	for (const mark of SECTION_MARKS) {
+		const coop = block.lastIndexOf(`\n${mark} Coop\n`);
+		const contextHead = `\n${mark} Context\n`;
+		const head = block.indexOf(contextHead);
+		if (coop < 0 || head < 0 || head > coop) continue;
+		const plan = block.lastIndexOf(`\n${mark} Plan\nThis session is executing an approved plan`, coop);
+		return block.slice(head + contextHead.length, plan > head ? plan : coop).trimEnd();
+	}
+	return undefined;
 }
 
 /** The shared context of a subagent's system prompt (the blocks omp sent, or one string in files from before blocks were kept). */

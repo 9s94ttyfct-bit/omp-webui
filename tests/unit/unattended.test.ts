@@ -602,6 +602,8 @@ describe("the extension's own side of the file", () => {
 		tools: Record<string, unknown>[];
 		active: string[];
 		result(kind: string | undefined): Promise<{ systemPrompt?: string[] } | undefined>;
+		/** What the `tool_call` handler answers for a call. */
+		toolCall(event: { toolName: string; input: unknown }): unknown;
 	}
 	/** Run the extension as omp would on `file`; `kind` is the agent whose turn it is. */
 	function load(file: string | undefined): Loaded {
@@ -611,10 +613,10 @@ describe("the extension's own side of the file", () => {
 		try {
 			const tools: Record<string, unknown>[] = [];
 			const active = ["read", "write"];
-			let handler: ((e: unknown, ctx: unknown) => Promise<unknown>) | undefined;
+			const handlers = new Map<string, (e: unknown, ctx?: unknown) => unknown>();
 			unattended({
-				on: (_event, h) => {
-					handler = h as typeof handler;
+				on: (event: string, h: (e: never, ctx: never) => unknown) => {
+					handlers.set(event, h as (e: unknown, ctx?: unknown) => unknown);
 				},
 				registerTool: (t) => {
 					tools.push(t);
@@ -628,15 +630,32 @@ describe("the extension's own side of the file", () => {
 				tools,
 				active,
 				result: async (kind) =>
-					(await handler?.({ systemPrompt: ["omp's own"] }, kind ? { agent: { kind } } : {})) as
-						| { systemPrompt?: string[] }
-						| undefined,
+					(await handlers.get("before_agent_start")?.(
+						{ systemPrompt: ["omp's own"] },
+						kind ? { agent: { kind } } : {},
+					)) as { systemPrompt?: string[] } | undefined,
+				toolCall: (event) => handlers.get("tool_call")?.(event),
 			};
 		} finally {
 			if (before === undefined) delete process.env[UNATTENDED_FILE_ENV];
 			else process.env[UNATTENDED_FILE_ENV] = before;
 		}
 	}
+
+	test("while the mode is on, an `ask` of a form is stopped with the tool's result; nothing else is", () => {
+		const data = dir();
+		const file = join(data, "L1.yml.unattended.md");
+		writeFileSync(file, "away");
+		const ext = load(file);
+		const form = { toolName: "ask", input: { html: "<form><input name='a'></form>" } };
+		expect(ext.toolCall(form)).toEqual({ block: true, reason: TOOL_RECORDED_RESULT });
+		// An `ask` of `questions` (omp before 18.18.3) is one dialog the server answers itself; other tools run.
+		expect(ext.toolCall({ toolName: "ask", input: { questions: [] } })).toBeUndefined();
+		expect(ext.toolCall({ toolName: "write", input: { html: "<form></form>" } })).toBeUndefined();
+		// Switched off (the file goes): the next form is the person's again, at once.
+		new UnattendedService(data).write(file, null);
+		expect(ext.toolCall(form)).toBeUndefined();
+	});
 
 	test("the tool is registered inactive and returns at once with the fixed result", async () => {
 		const { tools } = load(undefined);
@@ -701,8 +720,8 @@ describe("the extension's own side of the file", () => {
 		process.env[UNATTENDED_FILE_ENV] = file;
 		try {
 			unattended({
-				on: (_e, h) => {
-					handler = h as typeof handler;
+				on: (e: string, h: (e: never, ctx: never) => unknown) => {
+					if (e === "before_agent_start") handler = h as typeof handler;
 				},
 				registerTool: () => {},
 				getActiveTools: () => {

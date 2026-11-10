@@ -11,6 +11,7 @@ import { pollUntil } from "../support/poll.ts";
 import { type RemoteClient, remoteClient, remoteSettings } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import {
+	askArgs,
 	type ScriptedRequest,
 	type ScriptedTurn,
 	type StubScripted,
@@ -320,12 +321,26 @@ test("a remote page reads the list and answers under the rules of every remote m
 	const own = join(root, "trusted.ts");
 	writeFileSync(own, "export default function () {}\n");
 	const t = await conversation(["--trusted-extension", own]);
-	// Its mode is on and it says what its omp does not carry; its own `ask` dialogs are still the server's to file.
+	// Its mode is on and it says what its omp does not carry.
 	expect(t.live.unattended).toEqual({ live: false, skipped: "trustedExtension" });
-	plan.call = {
-		name: "ask",
-		args: { questions: [{ id: "a", question: "Which topic?", options: [{ label: "x" }, { label: "y" }] }] },
-	};
+	const question = { id: "a", question: "Which topic?", options: ["x", "y"] };
+	if (agent.requests.at(-1)?.askForm) {
+		// omp 18.18.3 and later asks a form field by field, in dialogs the server cannot tell from an approval's; only the
+		// extension stops such an `ask`, so without it the person is shown the dialog and nothing is filed.
+		plan.call = { name: "ask", args: askArgs({ askForm: true }, [question]) };
+		const dialog = fresh(t, (f) => f.type === "extension_ui_request" && f.title === "Which topic?");
+		const ended = fresh(t, (f) => f.type === "agent_end");
+		await request(t.ws, { t: "rpc", liveId: t.live.liveId, command: { type: "prompt", message: "ASK-TRUSTED-646" } });
+		const shown = await dialog;
+		expect((await list()).questions.some((x) => x.question === "Which topic?")).toBe(false);
+		t.ws.send(JSON.stringify({ t: "ui_response", liveId: t.live.liveId, response: { id: shown.id, value: "y" } }));
+		await ended;
+		setRemote();
+		t.ws.close();
+		return;
+	}
+	// omp before 18.18.3: its own `ask` dialogs are still the server's to file.
+	plan.call = { name: "ask", args: askArgs({ askForm: false }, [question]) };
 	await turn(t, "ASK-TRUSTED-646");
 	const asked = (await list()).questions.find((x) => x.question === "Which topic?");
 	expect(asked?.source).toBe("ask");

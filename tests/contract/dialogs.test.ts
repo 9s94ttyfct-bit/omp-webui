@@ -4,13 +4,20 @@ import { join } from "node:path";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { type Frame, watchFrames } from "../support/frames.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
-import { type ScriptedTurn, type StubScripted, startScriptedStub } from "../support/stub-scripted.ts";
+import {
+	askArgs,
+	type ScriptedRequest,
+	type ScriptedTurn,
+	type StubScripted,
+	startScriptedStub,
+} from "../support/stub-scripted.ts";
 import { connect, request } from "../support/ws.ts";
 
 /**
  * What omp does with the dialogs it waits on, against the real omp and the real server, the model a scripted provider (no
  * model call): an `ask` whose timeout (`ask.timeout`) runs out is answered by omp itself and the server says so in the
  * frame that closes it; a message sent while a tool approval waits is delivered once the approval is denied, and not before.
+ * omp before 18.18.3 asks an `ask` as one `ask` dialog; a later one asks its form's one field as a `select`.
  */
 
 const ASK_TIMEOUT_S = 2;
@@ -21,7 +28,7 @@ let backend: StubScripted;
 /** What the scripted model does for the prompt that has it: `ask` a question, or run a command (which asks approval). */
 const ASK = "Ask me which colour";
 const RUN = "Run echo hi";
-const script = (req: { text: string; tools: string[]; toolResults: number }): ScriptedTurn => {
+const script = (req: ScriptedRequest): ScriptedTurn => {
 	if (!req.tools.includes("ask") || !req.tools.includes("bash")) return { text: "A title" };
 	// The denied call has its result too: the message that follows it gets an answer, not the same call again.
 	if (req.toolResults > 0) return { text: "Done." };
@@ -29,16 +36,9 @@ const script = (req: { text: string; tools: string[]; toolResults: number }): Sc
 		return {
 			call: {
 				name: "ask",
-				args: {
-					questions: [
-						{
-							id: "colour",
-							question: "Which colour?",
-							options: [{ label: "Red" }, { label: "Blue" }, { label: "Green" }],
-							recommended: 1,
-						},
-					],
-				},
+				args: askArgs(req, [
+					{ id: "colour", question: "Which colour?", options: ["Red", "Blue", "Green"], recommended: 1 },
+				]),
 			},
 		};
 	if (req.text.includes(RUN)) return { call: { name: "bash", args: { command: "echo hi" } } };
@@ -73,6 +73,8 @@ afterAll(async () => {
 });
 
 const isRequest = (f: Frame, method: string) => f.type === "extension_ui_request" && f.method === method;
+/** The dialog an `ask` is: its own (`ask`), or its one field's (`select`). */
+const isAsk = (f: Frame) => isRequest(f, "ask") || (isRequest(f, "select") && f.title === "Which colour?");
 const isCancel = (f: Frame, target: unknown) =>
 	f.type === "extension_ui_request" && f.method === "cancel" && f.targetId === target;
 
@@ -80,11 +82,10 @@ test("an ask that omp times out carries its deadline, and the frame that closes 
 	const ws = await connect(server);
 	const live = await request<LiveInfo>(ws, { t: "open", target: { kind: "new", cwd: server.work } });
 	const frames = watchFrames(ws, live.liveId);
-	const asked = frames.after("extension_ui_request");
+	const asked = frames.next(isAsk);
 	const before = Date.now();
 	await request(ws, { t: "rpc", liveId: live.liveId, command: { type: "prompt", message: ASK } });
 	const ask = await asked;
-	expect(ask.method).toBe("ask");
 	// omp's own deadline, and the server's reading of it on its clock: what a page counts down to, also after a reload.
 	expect(ask.timeout).toBe(ASK_TIMEOUT_S * 1000);
 	expect(typeof ask.expiresAt).toBe("number");
@@ -94,7 +95,7 @@ test("an ask that omp times out carries its deadline, and the frame that closes 
 	const late = await connect(server);
 	const lateFrames = watchFrames(late, live.liveId);
 	await request(late, { t: "attach", liveId: live.liveId });
-	const replayed = await lateFrames.next((f) => isRequest(f, "ask"));
+	const replayed = await lateFrames.next((f) => isAsk(f) && f.id === ask.id);
 	expect(replayed.expiresAt).toBe(ask.expiresAt);
 
 	// Nobody answers: omp does, and tells the tabs which dialog it closed and why.
@@ -113,16 +114,14 @@ test("an ask answered in time is closed without the timeout mark", async () => {
 	const ws = await connect(server);
 	const live = await request<LiveInfo>(ws, { t: "open", target: { kind: "new", cwd: server.work } });
 	const frames = watchFrames(ws, live.liveId);
-	const asked = frames.after("extension_ui_request");
+	const asked = frames.next(isAsk);
 	await request(ws, { t: "rpc", liveId: live.liveId, command: { type: "prompt", message: ASK } });
 	const ask = await asked;
-	ws.send(
-		JSON.stringify({
-			t: "ui_response",
-			liveId: live.liveId,
-			response: { id: ask.id, answers: [{ id: "colour", selectedOptions: ["Red"] }] },
-		}),
-	);
+	const response =
+		ask.method === "ask"
+			? { id: ask.id, answers: [{ id: "colour", selectedOptions: ["Red"] }] }
+			: { id: ask.id, value: "Red" };
+	ws.send(JSON.stringify({ t: "ui_response", liveId: live.liveId, response }));
 	const closed = await frames.next((f) => isCancel(f, ask.id));
 	expect(closed.timedOut).toBeUndefined();
 	await frames.next((f) => f.type === "agent_end");

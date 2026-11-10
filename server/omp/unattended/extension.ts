@@ -23,6 +23,9 @@ import { dirname } from "node:path";
  * - `file_question` returns at once. It files nothing itself: the server watches the conversation's event stream and files
  *   the call's arguments (`server/live.ts`), so there is no credential in the process, and nothing here can reach the
  *   server's data.
+ * - omp 18.18.3 and later asks an `ask` of one HTML form field by field, in dialogs the server cannot tell from a tool
+ *   approval's: while the mode is on, the `tool_call` handler stops such a call with the tool's own result as its reason,
+ *   and the server files the form (`recordFormAsk`, `server/live.ts`).
  * - The note `<file>.loaded` says the extension is in: omp carries on without an extension it could not load, so the
  *   server does not take a command line that names it for one that runs it.
  */
@@ -59,12 +62,35 @@ interface Context {
 	agent?: { kind?: string };
 }
 
+/** What omp passes a `tool_call` handler, as far as this reads it. */
+interface ToolCall {
+	toolName?: unknown;
+	input?: unknown;
+}
+
 /** What this uses of omp's extension API. */
 interface Pi {
 	on(event: "before_agent_start", handler: (event: BeforeAgentStart, ctx: Context) => unknown): void;
+	on(event: "tool_call", handler: (event: ToolCall) => unknown): void;
 	registerTool(tool: Record<string, unknown>): void;
 	getActiveTools(): string[] | Promise<string[]>;
 	setActiveTools(names: string[]): void | Promise<void>;
+}
+
+/**
+ * Whether a `tool_call` is omp's `ask` of one HTML form (omp 18.18.3 and later). Over RPC omp asks such a form field by
+ * field as plain `select`, `input` and `editor` dialogs, which are no different from a tool approval's: the server cannot
+ * answer them for the person, so the call is stopped here, before omp shows any of them. An `ask` of `questions` (older omp)
+ * is one `ask` dialog that the server answers itself.
+ */
+export function isFormAsk(event: ToolCall | undefined): boolean {
+	const input = event?.input;
+	return (
+		event?.toolName === "ask" &&
+		typeof input === "object" &&
+		input !== null &&
+		typeof (input as { html?: unknown }).html === "string"
+	);
 }
 
 /** The tool's arguments, as the model sees them (the server holds what it files to its own limits). */
@@ -144,23 +170,25 @@ export default function unattended(pi: Pi): void {
 		if (on && !has) await pi.setActiveTools([...active, FILE_QUESTION_TOOL]);
 		else if (!on && has) await pi.setActiveTools(active.filter((n) => n !== FILE_QUESTION_TOOL));
 	};
+	/** The instruction, trimmed: empty when the mode is off (no file, or one that cannot be read). */
+	const instructionNow = (): string => {
+		if (!file) return "";
+		try {
+			return readCapped(file).replace(/^\s+|\s+$/g, "");
+		} catch {
+			// No file: the mode is off for this conversation.
+			return "";
+		}
+	};
 	pi.on("before_agent_start", async (event, ctx) => {
 		// A subagent has its own prompt (and omp offers it no extension tools): the instruction is about how the main agent
 		// reaches the person. A title's request has no agent (`ctx.agent` absent) and is left alone too.
 		if (ctx?.agent?.kind !== "main") return undefined;
-		let text = "";
-		if (file) {
-			try {
-				text = readCapped(file);
-			} catch {
-				// No file: the mode is off for this conversation.
-			}
-		}
-		const instruction = text.replace(/^\s+|\s+$/g, "");
+		const instruction = instructionNow();
 		try {
 			await syncTool(instruction !== "");
 		} catch {
-			// The tool stays as it was: the instruction still reaches the model, and the server files its `ask` dialogs itself.
+			// The tool stays as it was: the instruction still reaches the model, and the server files its `ask` calls itself.
 		}
 		if (!instruction) return undefined;
 		const blocks = Array.isArray(event?.systemPrompt)
@@ -170,6 +198,13 @@ export default function unattended(pi: Pi): void {
 		// extension's to decide.
 		const block = instruction.startsWith("#") ? instruction : `${HEADING}\n${instruction}`;
 		return { systemPrompt: [...blocks, block] };
+	});
+	// While the mode is on, an `ask` of a form is not shown to anybody: it returns what `file_question` does, and the server
+	// files the form as questions for the person (`server/live.ts`). Read at the call, so a switch counts at once. omp says
+	// a stopped call to the model as a failed one, with these words.
+	pi.on("tool_call", (event) => {
+		if (!isFormAsk(event) || instructionNow() === "") return undefined;
+		return { block: true, reason: FILE_QUESTION_RESULT };
 	});
 	// Said last, once the handler is in: the server calls the mode live on the strength of this note, and not of the command line.
 	if (!file) return;

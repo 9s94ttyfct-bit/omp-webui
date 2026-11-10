@@ -599,6 +599,8 @@
     "tests/unit/csp.test.ts": 4,
     "tests/unit/ghost.test.ts": 4,
     "tests/unit/host-ring.test.ts": 4,
+    "tests/unit/ask-form.test.ts": 4,
+    "tests/unit/host-disks.test.ts": 4,
     "tests/unit/image-src.test.ts": 4,
     "tests/unit/ime.test.ts": 4,
     "tests/unit/models.test.ts": 4,

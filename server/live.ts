@@ -63,8 +63,10 @@ import {
 	type QuestionDraft,
 	type QuestionDropWhy,
 	recordedAskAnswers,
+	TOOL_RECORDED_RESULT,
 	UNATTENDED_TOOL,
 } from "../shared/unattended.ts";
+import { formQuestions } from "./ask-form.ts";
 import { AutoTitle } from "./auto-title.ts";
 import { SubagentCoalescer } from "./coalesce.ts";
 import type { Config } from "./config.ts";
@@ -1365,6 +1367,8 @@ export class Live {
 	private readonly unattendedFile: string | null;
 	/** The extension's note that it started in this process was seen (once seen it stays so). */
 	private unattendedLoaded = false;
+	/** The forms of the main agent's `ask` calls that run now, by call id: the extension stops one while unattended (#646). */
+	private readonly formAsks = new Map<string, string>();
 	/**
 	 * The quota floor (#652): the tracker that holds this conversation between two model requests while its provider is at the
 	 * floor, the file the extension reads (`OMPW_QUOTA_FILE`), and the extension's note that it started in this process (once
@@ -2266,9 +2270,14 @@ export class Live {
 		)
 			this.quota?.onWork();
 		for (const waiter of [...this.frameWaiters]) if (waiter.type === frame.type) waiter.resolve();
-		// Unattended mode (#646): an `ask` dialog is answered here and filed, and the agent's `file_question` call is filed.
+		// Unattended mode (#646): an `ask` dialog is answered here and filed, the agent's `file_question` call is filed, and so
+		// is the form of an `ask` the extension stopped.
 		if (frame.type === "extension_ui_request" && frame.method === "ask" && this.recordAsk(frame)) return;
-		if (frame.type === "tool_execution_start") this.noteToolCall(frame);
+		if (frame.type === "tool_execution_start") {
+			this.noteToolCall(frame);
+			this.noteFormAsk(frame);
+		}
+		if (frame.type === "tool_execution_end") this.recordFormAsk(frame);
 		// `restart_session`: a call of the main agent's (a subagent's frames come wrapped) becomes a request when it ends.
 		if (this.restartCarried && frame.type === "tool_execution_start") this.pool.restarts?.toolStarted(this, frame);
 		if (this.restartCarried && frame.type === "tool_execution_end") this.pool.restarts?.toolEnded(this, frame);
@@ -3043,6 +3052,37 @@ export class Live {
 		// The instruction asks for a title; a call without one has no question to show, and the person is told so (#650).
 		const draft = draftOfToolArgs(frame.args) ?? EMPTY_DRAFT;
 		this.fileQuestions("tool", [draft], String(frame.toolCallId ?? ""));
+	}
+
+	/** Keep the form of the main agent's `ask` call that starts, until it ends (`recordFormAsk`). */
+	private noteFormAsk(frame: OmpFrame): void {
+		const html = (frame.args as { html?: unknown } | undefined)?.html;
+		if (frame.toolName === "ask" && typeof html === "string" && this.unattendedCarried)
+			this.formAsks.set(String(frame.toolCallId ?? ""), html);
+	}
+
+	/**
+	 * An `ask` of one HTML form (omp 18.18.3 and later) that the unattended extension stopped (`isFormAsk`,
+	 * `server/omp/unattended/extension.ts`): omp asks a form over RPC as plain field dialogs, which the server cannot tell
+	 * from a tool approval's, so the extension stops the call while the mode is on, with `file_question`'s words as its
+	 * reason. Its form is filed here, a question per named field (`formQuestions`). Only a call that ended with those words
+	 * is filed: one the mode let run was the person's to answer.
+	 */
+	private recordFormAsk(frame: OmpFrame): void {
+		const id = String(frame.toolCallId ?? "");
+		const html = this.formAsks.get(id);
+		if (html === undefined) return;
+		this.formAsks.delete(id);
+		const content = (frame.result as { content?: unknown } | undefined)?.content;
+		const said = Array.isArray(content)
+			? content.some((c) => typeof c?.text === "string" && c.text.includes(TOOL_RECORDED_RESULT))
+			: false;
+		if (frame.isError !== true || !said) return;
+		const questions = formQuestions(html);
+		const drafts = draftsOfAsk(questions);
+		// A form with no question that has words is said as one empty question (#650).
+		if (drafts.length < Math.max(1, questions.length)) drafts.push(EMPTY_DRAFT);
+		this.fileQuestions("ask", drafts, id);
 	}
 
 	/**
