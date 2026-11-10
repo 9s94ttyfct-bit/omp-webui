@@ -913,7 +913,7 @@
 		"host-load.spec.ts › with figures the spec chose › a server of an older version (another Mac's) tells no network or disk: no tile and no graph of them": 1.2,
 		"host-load.spec.ts › with figures the spec chose › memory pressure above normal is shaded on the memory graph, amber for a warning and red for critical": 2,
 		"host-load.spec.ts › with figures the spec chose › the day is a graph of its own, a point a minute": 2.6,
-		"host-load.spec.ts › with figures the spec chose › the disks chosen in Settings are the ones the pane shows": 1.2,
+		"host-load.spec.ts › with figures the spec chose › the disks chosen in Settings are the ones the pane and the line show": 2.4,
 		"host-load.spec.ts › with figures the spec chose › the history is read again when the page is shown after being away": 1.1,
 		"host-load.spec.ts › with figures the spec chose › the line says CPU, GPU, memory and power as the history's last look had them, and each look that comes after it": 1.6,
 		"host-load.spec.ts › with figures the spec chose › the network has a tile and a graph, and every disk a tile and a graph of its free space": 1.3,

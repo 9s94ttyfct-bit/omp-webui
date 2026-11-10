@@ -305,6 +305,7 @@
     "tests/unit/overlay-keep.test.ts": 166,
     "tests/unit/transcript-cost.test.ts": 165,
     "tests/unit/turn-fold.test.ts": 165,
+    "tests/unit/remote-copy-files.test.ts": 163,
     "tests/unit/session-prune.test.ts": 161,
     "tests/unit/push-hub.test.ts": 156,
     "tests/unit/panel-config.test.ts": 153,
@@ -350,6 +351,7 @@
     "tests/unit/i18n-unused.test.ts": 68,
     "tests/unit/search.test.ts": 68,
     "tests/unit/btw-fork.test.ts": 63,
+    "tests/unit/pty-hangup.test.ts": 63,
     "tests/unit/agent-docs-tool.test.ts": 61,
     "tests/unit/password-generate.test.ts": 59,
     "tests/unit/saved-macs.test.ts": 55,
@@ -388,6 +390,7 @@
     "tests/unit/browser-cef.test.ts": 29,
     "tests/unit/palettes.test.ts": 29,
     "tests/unit/kbd.test.ts": 28,
+    "tests/unit/remote-copy.test.ts": 28,
     "tests/unit/model-config.test.ts": 27,
     "tests/unit/socket-liveness.test.ts": 27,
     "tests/unit/panel-widths.test.ts": 26,
@@ -619,6 +622,7 @@
     "tests/unit/todos.test.ts": 5,
     "tests/unit/user-message.test.ts": 5,
     "tests/unit/web-url.test.ts": 5,
-    "tests/unit/issue-prompt.test.ts": 4
+    "tests/unit/issue-prompt.test.ts": 4,
+    "tests/unit/ask-checks.test.ts": 1
   }
 }
