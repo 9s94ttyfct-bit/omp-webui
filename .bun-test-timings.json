@@ -338,6 +338,7 @@
     "tests/unit/usage-numbers.test.ts": 84,
     "tests/unit/subagent-concurrency.test.ts": 83,
     "tests/unit/update-release.test.ts": 78,
+    "tests/unit/select.test.tsx": 76,
     "tests/unit/transfer-api.test.ts": 76,
     "tests/unit/cpu-profile.test.ts": 75,
     "tests/unit/store-held.test.ts": 74,

@@ -36,7 +36,7 @@ if (import.meta.main) {
 	const dirs = args.filter((_, i) => i !== at && i !== at + 1);
 	const files: string[] = [];
 	for (const dir of dirs.length ? dirs : ["tests/unit", "tests/contract"])
-		for (const file of new Bun.Glob("**/*.test.ts").scanSync({ cwd: join(root, dir), absolute: true })) {
+		for (const file of new Bun.Glob("**/*.test.{ts,tsx}").scanSync({ cwd: join(root, dir), absolute: true })) {
 			const name = relative(root, file).split("\\").join("/");
 			const missing = fileNeeds(readFileSync(file, "utf8")).filter((need) => !has[need]);
 			if (missing.length)
