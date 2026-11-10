@@ -79,13 +79,23 @@ export const RISK_COMMAND = "Command:";
 export const RISK_IN = "In:";
 /**
  * A command for another computer (`remote_run`, `shared/remote-run.ts`) is shown with this first, on a line of its own:
- * `Run on <computer>:`, then the command as above. `riskCommand` does not read it, so a page shows the whole detail as it is.
+ * `Run on <computer>:`, then the command as above. `riskCommand` reads it apart too, so the page names the computer.
  */
 export const RISK_ON = "Run on";
 
-/** What a shell command's detail says (see `RISK_COMMAND`), or null when it is some other call's. */
-export function riskCommand(detail: string): { command: string; cwd?: string } | null {
+/**
+ * What a shell command's detail says (see `RISK_COMMAND`), or null when it is some other call's. `computer`: the other
+ * computer a `remote_run` command is for (`RISK_ON`), absent for this one's.
+ */
+export function riskCommand(detail: string): { command: string; cwd?: string; computer?: string } | null {
 	let rest = detail;
+	let computer: string | undefined;
+	if (rest.startsWith(`${RISK_ON} `)) {
+		const end = rest.indexOf("\n");
+		if (end < 0 || rest[end - 1] !== ":") return null;
+		computer = rest.slice(RISK_ON.length + 1, end - 1);
+		rest = rest.slice(end + 1);
+	}
 	let cwd: string | undefined;
 	if (rest.startsWith(`${RISK_IN} `)) {
 		const end = rest.indexOf("\n");
@@ -95,7 +105,7 @@ export function riskCommand(detail: string): { command: string; cwd?: string } |
 	}
 	if (!rest.startsWith(`${RISK_COMMAND} `)) return null;
 	const command = rest.slice(RISK_COMMAND.length + 1);
-	return cwd === undefined ? { command } : { command, cwd };
+	return { command, ...(cwd === undefined ? {} : { cwd }), ...(computer === undefined ? {} : { computer }) };
 }
 
 /** A reviewer's denial the person is asked to overrule: who denied it, and why (blank: it gave no reason). */

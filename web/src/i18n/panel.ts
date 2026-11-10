@@ -74,6 +74,7 @@ export const en = {
 		"A remote page is driving this turn, and Settings › Remote access asks before a risky call runs. Allow only what you expect; Deny tells the agent it was refused.",
 	reqRiskNoteGuard:
 		"Guard dangerous commands asks before a risky call runs (Settings › Safety, or this conversation's own choice). Allow only what you expect; Deny tells the agent it was refused.",
+	reqRiskOn: "Computer: {computer}",
 	reqRiskCommand: "Command: {command}",
 	reqRiskIn: "In: {cwd}",
 	reqRiskWhy: "Why it asks: {why}",

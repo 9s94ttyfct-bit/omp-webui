@@ -385,6 +385,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 		"这一轮由远程页面驱动，设置 › 远程访问 会在高风险调用运行前先询问。只允许你预期的操作；拒绝会告诉 agent 此调用被拒绝。",
 	reqRiskNoteGuard:
 		"“防护危险命令”会在高风险调用运行前先询问（设置 › 安全，或这个对话自己的选择）。只允许你预期的操作；拒绝会告诉 agent 此调用被拒绝。",
+	reqRiskOn: "电脑：{computer}",
 	reqRiskCommand: "命令：{command}",
 	reqRiskIn: "运行目录：{cwd}",
 	reqRiskWhy: "询问原因：{why}",

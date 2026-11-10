@@ -185,10 +185,12 @@ export function UIRequests({ live }: { live: LiveState }) {
 	const formBlocks = useMemo(() => (askHtml ? formContext(askHtml) : null), [askHtml]);
 	// An approval's title is several lines: the tool first, then the command or path it is about.
 	const [head, ...rest] = (req?.title ?? "").split("\n");
-	// A shell command's labels are the gate's English: the page says them in its own words (#785).
+	// A shell command's labels are the gate's English: the page says them in its own words (#785); a command for another
+	// computer (`remote_run`) names that computer first.
 	const shell = risk ? riskCommand(risk.detail.trim()) : null;
 	const details = shell
-		? t("panel.reqRiskCommand", { command: shell.command }) +
+		? (shell.computer === undefined ? "" : `${t("panel.reqRiskOn", { computer: shell.computer })}\n`) +
+			t("panel.reqRiskCommand", { command: shell.command }) +
 			(shell.cwd === undefined ? "" : `\n${t("panel.reqRiskIn", { cwd: shell.cwd })}`)
 		: risk
 			? risk.detail.trim()

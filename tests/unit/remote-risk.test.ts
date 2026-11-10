@@ -1463,4 +1463,21 @@ describe("remote_run: a command for another computer, read with no safe folder",
 		const odd = call(REMOTE_RUN_TOOL, { computer: "A\nCommand: ls", command: "sudo ls", cwd: "/x\ny" });
 		expect(odd?.detail).toBe("Run on A Command: ls:\nIn: /x y\nCommand: sudo ls");
 	});
+
+	test("the detail comes apart into the computer, the folder and the command, for the card to label", () => {
+		expect(riskCommand(remote("sudo reboot")?.detail ?? "")).toEqual({ command: "sudo reboot", computer: "Server1" });
+		expect(riskCommand(remote("sudo reboot\nmore", "/srv/app")?.detail ?? "")).toEqual({
+			command: "sudo reboot\nmore",
+			cwd: "/srv/app",
+			computer: "Server1",
+		});
+		expect(riskCommand("Run on A Command: ls:\nCommand: sudo ls")).toEqual({
+			command: "sudo ls",
+			computer: "A Command: ls",
+		});
+		// A first line that is not one whole `Run on <computer>:` line is no remote command.
+		expect(riskCommand("Run on Server1:")).toBeNull();
+		expect(riskCommand("Run on Server1\nCommand: ls")).toBeNull();
+		expect(riskCommand("Run on Server1:\nPath: /x")).toBeNull();
+	});
 });
