@@ -8,10 +8,12 @@ import {
 	useEffect,
 	useId,
 	useLayoutEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
 import { useT } from "../i18n/index.ts";
+import { type FormBlock, formContext, runningAskForm } from "../lib/ask-form.ts";
 import { useImeGuard } from "../lib/ime.ts";
 import { revealed } from "../lib/invisible.ts";
 import { useNow } from "../lib/now.ts";
@@ -105,6 +107,28 @@ function ApprovalDetails({ text }: { text: string }) {
 	);
 }
 
+/** What the `ask` form says around its fields (see `lib/ask-form.ts`), as plain text. */
+function FormContext({ blocks }: { blocks: FormBlock[] }) {
+	return (
+		<div className="mb-3 space-y-2 text-sm text-muted break-words" data-testid="ask-form-context">
+			{blocks.map((b) =>
+				b.kind === "code" ? (
+					<pre
+						key={b.id}
+						className="overflow-x-auto rounded-lg bg-bg-soft px-3 py-2 font-mono text-xs text-fg select-text"
+					>
+						{b.text}
+					</pre>
+				) : (
+					<p key={b.id} className={b.kind === "item" ? "pl-3" : undefined}>
+						{b.kind === "item" ? `• ${b.text}` : b.text}
+					</p>
+				),
+			)}
+		</div>
+	);
+}
+
 /** Pending extension/tool dialogs (omp rpc.md "Extension UI Sub-Protocol"), rendered inline. */
 export function UIRequests({ live }: { live: LiveState }) {
 	const t = useT();
@@ -149,6 +173,10 @@ export function UIRequests({ live }: { live: LiveState }) {
 		el.focus({ preventScroll: true });
 	}, [id]);
 	const liveId = live.info.liveId;
+	// A field of omp's `ask` form, asked on its own: the form's words around it are shown with it.
+	const askHtml =
+		req && (req.method === "input" || req.method === "editor" || req.method === "select") ? runningAskForm(live) : null;
+	const formBlocks = useMemo(() => (askHtml ? formContext(askHtml) : null), [askHtml]);
 	const approval = req ? isApproval(req) : false;
 	// The gate's confirmation of a risky call has its own words (see `shared/risk-confirm.ts`).
 	const risk = req ? parseRiskTitle(req.title) : null;
@@ -267,6 +295,7 @@ export function UIRequests({ live }: { live: LiveState }) {
 						{t("panel.reqDenyOnSend")}
 					</p>
 				) : null}
+				{formBlocks ? <FormContext blocks={formBlocks} /> : null}
 				{req.message ? (
 					<div className="mb-3 text-sm text-muted">
 						<Suspense fallback={<p className="whitespace-pre-wrap">{req.message}</p>}>
