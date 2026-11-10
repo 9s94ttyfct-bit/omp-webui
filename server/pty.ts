@@ -20,11 +20,10 @@ export function runsOmpShell(args: readonly string[]): boolean {
 
 /**
  * End a terminal's process. An interactive shell ignores SIGTERM (zsh, bash): it is hung up, as closing a terminal window
- * does (`Platform.shell.hangup`; Windows terminates it). The whole process group it leads is hung up, not the shell alone:
- * a zsh in this terminal has no controlling terminal, so a command it runs (a subshell, what that started) stays in the
- * shell's group and outlived a hangup of the shell by itself (a `remote_run` command that timed out went on running). What
- * the shell put in the background in a group of its own (a job under job control, `setsid`) is left, as a terminal window
- * closing leaves it.
+ * does (`Platform.shell.hangup`; Windows terminates it). The terminal's process runs in a session of its own, which it
+ * leads (`open`), and the whole process group it leads is hung up, not the shell alone: a command it runs in the
+ * foreground ends with it, as when a terminal window closes. What the shell put in a group of its own and did not hang up
+ * (`setsid`, a `nohup` job) is left, as a terminal window closing leaves it.
  */
 function end(s: { proc: Bun.Subprocess; shell: boolean }): void {
 	const hangup = s.shell ? platform.shell.hangup : undefined;
@@ -153,6 +152,10 @@ export class PtyManager {
 				cwd: dir,
 				terminal,
 				env: childEnv({ TERM: "xterm-256color", COLORTERM: "truecolor" }),
+				// A session of its own, with this terminal as its controlling terminal: without it the process stays in the
+				// server's process group, with no terminal of its own, so a shell has no job control and hangs up its group
+				// when it is hung up (bash): the server itself. Windows has no sessions (and `detached` means something else).
+				detached: platform.id !== "win32",
 			});
 		} catch (e) {
 			// No process will ever end to close it: its descriptors would stay open for as long as the server runs.

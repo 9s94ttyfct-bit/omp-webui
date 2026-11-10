@@ -4,10 +4,11 @@ import { PtyManager } from "../../server/pty.ts";
 import { pollUntil } from "../support/poll.ts";
 
 /**
- * Ending a terminal (`pty_kill`, a page that leaves) ends what its shell runs, not the shell alone. A zsh in this terminal
- * has no controlling terminal: a subshell it runs is in the shell's own process group and outlived a hangup of the shell
- * by itself (a `remote_run` command that timed out on another computer went on running). Where the login shell is bash
- * (Linux CI), bash hangs up its jobs itself; on macOS it is zsh, the case that broke.
+ * Ending a terminal (`pty_kill`, a page that leaves) ends what its shell runs, not the shell alone, and nothing beyond its
+ * terminal. Before 0.23.1 the shell had no session of its own: it was in the server's process group, with no controlling
+ * terminal. A zsh's command then outlived a hangup of the shell (a `remote_run` command that timed out on another computer
+ * went on running), and a bash hung up its whole group when it was hung up: this process too (it ended with SIGHUP, on
+ * Linux CI). Run here, this test ends with SIGHUP if a terminal's hangup reaches the server.
  */
 
 const alive = (pid: number): boolean => {
