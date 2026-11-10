@@ -223,10 +223,10 @@ export const en = {
 	controlsModeFailed: "Could not switch to {mode}: {error}. The conversation went on in the mode it had.",
 	controlsModeDismiss: "Dismiss",
 	controlsModePaused: "A paused conversation cannot switch mode. Resume it first.",
-	// The computers this conversation may run commands on (remote_run), from the Macs list
+	// The computers this conversation may run commands on and copy files to and from (remote_run, remote_copy), from the Macs list
 	controlsRemoteTitle: "Remote computers",
 	controlsRemoteHelp:
-		"The agent can run commands on the computers ticked here with the tool remote_run, asked about as this conversation's permission mode says.",
+		"The agent can run commands on the computers ticked here with the tool remote_run, and copy files and folders to and from them with remote_copy, asked about as this conversation's permission mode says.",
 	controlsRemoteSignedIn: "Signed in until {when}",
 	controlsRemoteNotSignedIn: "Not signed in — open its window from the Macs list to sign in",
 	controlsRemoteNotOwner:

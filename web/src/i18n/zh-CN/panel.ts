@@ -210,7 +210,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	controlsModeDismiss: "知道了",
 	controlsModePaused: "已暂停的对话不能切换模式。请先继续它。",
 	controlsRemoteTitle: "远程电脑",
-	controlsRemoteHelp: "代理可以用工具 remote_run 在这里勾选的电脑上运行命令，是否先询问按这个对话的权限模式决定。",
+	controlsRemoteHelp:
+		"代理可以用工具 remote_run 在这里勾选的电脑上运行命令，用 remote_copy 在这台电脑和它们之间复制文件和文件夹，是否先询问按这个对话的权限模式决定。",
 	controlsRemoteSignedIn: "登录有效至 {when}",
 	controlsRemoteNotSignedIn: "未登录——从 Mac 列表打开它的窗口来登录",
 	controlsRemoteNotOwner:
