@@ -84,6 +84,15 @@ export function memoryUsedMac(v: ReadonlyMap<string, number>): number | null {
 	return (Math.max(0, internal - purgeable) + wired) * page + compressed;
 }
 
+/**
+ * `vm_stat`'s `Pages wired down:` (pages of `hw.pagesize`), for a macOS whose `sysctl` has no `vm.page_wired_count`
+ * (macOS 26.6 says "unknown oid"; 27 has it). Null when the line is not there.
+ */
+export function wiredPagesOfVmStat(text: string): number | null {
+	const m = /^Pages wired down:\s+(\d+)\.?\s*$/m.exec(text);
+	return m ? Number(m[1]) : null;
+}
+
 /** `kern.memorystatus_vm_pressure_level`: 1 is normal, 2 warning and 4 critical, the levels Activity Monitor's pressure graph is coloured by. */
 export function pressureOf(v: ReadonlyMap<string, number>): Pressure | null {
 	switch (v.get("kern.memorystatus_vm_pressure_level")) {

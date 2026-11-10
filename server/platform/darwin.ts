@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { arch, release, totalmem } from "node:os";
 import { join } from "node:path";
-import { MAC_SYSCTL, memoryUsedMac, parseSysctl, pressureOf } from "../host-parse.ts";
+import { MAC_SYSCTL, memoryUsedMac, parseSysctl, pressureOf, wiredPagesOfVmStat } from "../host-parse.ts";
 import { capabilitiesFor } from "./capabilities.ts";
 import { HOST_READ_MS, posixCommands, posixHostProcesses, posixProcesses, posixShell, psIdentity } from "./posix.ts";
 import type { DesktopOps, LockOps, Platform, SystemDeps } from "./types.ts";
@@ -99,6 +99,12 @@ export function createDarwin(deps: SystemDeps): Platform {
 				const out = await deps.run(["/usr/sbin/sysctl", ...MAC_SYSCTL], { timeoutMs: HOST_READ_MS });
 				if (out.code !== 0 && out.stdout === "") throw new Error(out.stderr.trim() || `exit ${out.code}`);
 				const values = parseSysctl(out.stdout);
+				// macOS 26 has no `vm.page_wired_count`: without wired pages the sum has no figure, so `vm_stat` is asked for them.
+				if (!values.has("vm.page_wired_count")) {
+					const stat = await deps.run(["/usr/bin/vm_stat"], { timeoutMs: HOST_READ_MS });
+					const wired = stat.code === 0 ? wiredPagesOfVmStat(stat.stdout) : null;
+					if (wired !== null) values.set("vm.page_wired_count", wired);
+				}
 				return { used: memoryUsedMac(values), total: totalmem(), pressure: pressureOf(values) };
 			},
 		},

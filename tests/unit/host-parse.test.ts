@@ -11,6 +11,7 @@ import {
 	pressureOf,
 	sumCpuTimes,
 } from "../../server/host-parse.ts";
+import { createDarwin } from "../../server/platform/darwin.ts";
 
 // `sysctl hw.pagesize vm.page_pageable_internal_count vm.page_purgeable_count vm.page_wired_count vm.compressor_bytes_used
 // kern.memorystatus_vm_pressure_level` on an Apple M4 Pro (macOS 27), as printed.
@@ -62,6 +63,63 @@ describe("macOS memory from sysctl", () => {
 			"sysctl: unknown oid 'vm.nope'\nhw.pagesize: 16384\nkern.osversion: 25A5316i\nhw.cpufrequency: 3.5\n",
 		);
 		expect([...v.entries()]).toEqual([["hw.pagesize", 16384]]);
+	});
+});
+
+describe("macOS 26, whose sysctl has no vm.page_wired_count", () => {
+	// An Apple M4 Mac mini on macOS 26.6.2 (25G83), as printed: sysctl exits 1, names the unknown oid on stderr, prints the rest.
+	const SYSCTL_26 = `hw.pagesize: 16384
+vm.page_pageable_internal_count: 348020
+vm.page_purgeable_count: 1308
+vm.compressor_bytes_used: 4927438848
+kern.memorystatus_vm_pressure_level: 1
+`;
+	const VM_STAT = `Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                                     9421.
+Pages wired down:                             247511.
+Pages purgeable:                               56359.
+`;
+	const darwin = (vmStat: { code: number; stdout: string }, asked: string[][] = []) =>
+		createDarwin({
+			run: async (argv) => {
+				asked.push(argv);
+				if (argv[0] === "/usr/sbin/sysctl")
+					return { code: 1, stdout: SYSCTL_26, stderr: "sysctl: unknown oid 'vm.page_wired_count'\n" };
+				if (argv[0] === "/usr/bin/vm_stat") return { ...vmStat, stderr: "" };
+				throw new Error(`unexpected ${argv.join(" ")}`);
+			},
+			runSync: () => ({ code: 1, stdout: "" }),
+			readFile: () => null,
+			kill: () => {},
+			env: {},
+		});
+
+	test("the wired pages come from vm_stat, and memory in use has its figure", async () => {
+		const memory = await darwin({ code: 0, stdout: VM_STAT }).host.memory();
+		expect(memory.used).toBe((348020 - 1308 + 247511) * 16384 + 4927438848);
+		expect(memory.pressure).toBe(0);
+	});
+
+	test("vm_stat failing leaves memory in use without a figure, and the pressure still read", async () => {
+		const memory = await darwin({ code: 1, stdout: "" }).host.memory();
+		expect(memory.used).toBeNull();
+		expect(memory.pressure).toBe(0);
+	});
+
+	test("a macOS whose sysctl has the wired count never runs vm_stat", async () => {
+		const asked: string[][] = [];
+		const withWired = createDarwin({
+			run: async (argv) => {
+				asked.push(argv);
+				return { code: 0, stdout: SYSCTL_M4, stderr: "" };
+			},
+			runSync: () => ({ code: 1, stdout: "" }),
+			readFile: () => null,
+			kill: () => {},
+			env: {},
+		});
+		expect((await withWired.host.memory()).used).toBe(19032784896);
+		expect(asked.map((a) => a[0])).toEqual(["/usr/sbin/sysctl"]);
 	});
 });
 
