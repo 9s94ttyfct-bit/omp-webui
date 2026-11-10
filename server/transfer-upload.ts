@@ -1,6 +1,6 @@
 import { createHash, type Hash, randomBytes } from "node:crypto";
 import { constants } from "node:fs";
-import { chmod, copyFile, link, lstat, mkdir, open, readdir, realpath, rename, statfs, unlink } from "node:fs/promises";
+import { chmod, copyFile, link, lstat, mkdir, open, readdir, realpath, rename, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { isRecord } from "../shared/guards.ts";
 import { type ExistsFailure, isHiddenName, type UploadProgress, type UploadSaved } from "../shared/transfer.ts";
@@ -9,12 +9,14 @@ import { inside, partsOf } from "./folder.ts";
 import {
 	busy,
 	conversationRoot,
+	diskSpace,
 	etagOf,
 	type Gate,
 	holdsHome,
 	isProtected,
 	json,
 	type Limits,
+	leavesRoom,
 	requireUpload,
 	startsPrograms,
 	type Trace,
@@ -105,11 +107,6 @@ function declaredLength(req: Request): number | null {
 	const header = req.headers.get("content-length");
 	return header !== null && /^\d+$/.test(header) ? Number(header) : null;
 }
-
-const fsFree = async (path: string) => {
-	const s = await statfs(path);
-	return { free: s.bavail * s.bsize, total: s.blocks * s.bsize };
-};
 
 export class Uploads {
 	readonly #byId = new Map<string, Upload>();
@@ -347,10 +344,9 @@ export class Uploads {
 				throw new TransferError("That is a place nothing is written into unasked", 403, "protected");
 			if (guarded && isSecretLooking(dir.rel ? `${dir.rel}/${name}` : name))
 				throw new TransferError("This looks like a secret: nothing is sent into it", 403, "secret");
-			const free = await (this.deps.statfs ?? fsFree)(dir.abs);
-			const reserve = Math.max(this.deps.limits.reserveBytes, (free.total * this.deps.limits.reservePercent) / 100);
+			const free = await (this.deps.statfs ?? diskSpace)(dir.abs);
 			// The free space does not show what the uploads that are going on will still write.
-			if (free.free - owed - size < reserve)
+			if (!leavesRoom(free, owed + size, this.deps.limits))
 				throw new TransferError("There is not enough room on the disk", 507, "diskFull");
 			await this.#taken(dir.abs, name, exists === "keep", replace);
 			this.#sweep(dir.abs);

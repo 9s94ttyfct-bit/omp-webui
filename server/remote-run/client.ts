@@ -41,6 +41,9 @@ export class RemoteNotSignedIn extends Error {}
 /** The computer runs a system the command line typed here is not written for (Windows). */
 export class RemoteUnsupported extends Error {}
 
+/** The computer's omp-webui has no route for this (`remote_copy` needs 0.23.1 there). */
+export class RemoteTooOld extends Error {}
+
 /** What `runRemote` needs. */
 export interface RemoteRunOptions {
 	/** The computer's host, as the Macs list holds it (`omp.example.com`). */
@@ -118,6 +121,24 @@ async function systemOf(origin: string, cookie: string, signal: AbortSignal): Pr
 
 const cookieOf = (jwt: string, token: string) => `CF_Authorization=${jwt}; ompw_token=${token}`;
 
+/**
+ * The `Cookie` header that lets this server in on the computer at `origin` as the page signed in with `jwt` would be (steps 1
+ * and 2 above), for `remote_run` and `remote_copy` alike; throws `RemoteNotSignedIn`, `RemoteUnsupported` (Windows), or an
+ * error the connection met.
+ */
+export async function signIn(origin: string, jwt: string, signal: AbortSignal): Promise<string> {
+	let token = await appToken(origin, jwt, false, signal);
+	let system = await systemOf(origin, cookieOf(jwt, token), signal);
+	// The cookie held may be one the remote server no longer takes (it restarted with a new one): asked for again, once.
+	if (system === REFUSED) {
+		token = await appToken(origin, jwt, true, signal);
+		system = await systemOf(origin, cookieOf(jwt, token), signal);
+	}
+	if (system === REFUSED) throw new RemoteNotSignedIn(`${origin} refused the sign-in`);
+	if (/^win32\b|windows/i.test(system)) throw new RemoteUnsupported(`${origin} runs ${system}`);
+	return cookieOf(jwt, token);
+}
+
 /** Run `o.command` on the computer; throws `RemoteNotSignedIn`, `RemoteUnsupported`, or an error the connection met. */
 export async function runRemote(o: RemoteRunOptions): Promise<RemoteRunResult> {
 	const started = Date.now();
@@ -131,23 +152,14 @@ export async function runRemote(o: RemoteRunOptions): Promise<RemoteRunResult> {
 		ms: Date.now() - started,
 	});
 	if (o.signal.aborted) return cancelled();
-	let token: string;
-	let system: string | typeof REFUSED;
+	let cookie: string;
 	try {
-		token = await appToken(origin, o.jwt, false, o.signal);
-		system = await systemOf(origin, cookieOf(o.jwt, token), o.signal);
-		// The cookie held may be one the remote server no longer takes (it restarted with a new one): asked for again, once.
-		if (system === REFUSED) {
-			token = await appToken(origin, o.jwt, true, o.signal);
-			system = await systemOf(origin, cookieOf(o.jwt, token), o.signal);
-		}
+		cookie = await signIn(origin, o.jwt, o.signal);
 	} catch (e) {
 		if (o.signal.aborted) return cancelled();
 		throw e;
 	}
-	if (system === REFUSED) throw new RemoteNotSignedIn(`${origin} refused the sign-in`);
-	if (/^win32\b|windows/i.test(system)) throw new RemoteUnsupported(`${origin} runs ${system}`);
-	return shell(o, origin, cookieOf(o.jwt, token), started);
+	return shell(o, origin, cookie, started);
 }
 
 /** The shell part of a call: one login shell, the line typed, the output read, the shell killed. */

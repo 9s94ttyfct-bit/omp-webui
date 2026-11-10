@@ -212,8 +212,12 @@ export interface UploadSaved {
 	replaced: boolean;
 }
 
-/** What `GET /api/folder/download`, the ZIP, an upload and a save into a file (`POST /api/folder/file`) are logged as, in `<data dir>/transfers.jsonl`. */
-export type TransferKind = "download" | "zip" | "upload" | "edit";
+/**
+ * What `GET /api/folder/download`, the ZIP, an upload and a save into a file (`POST /api/folder/file`) are logged as, in
+ * `<data dir>/transfers.jsonl`; and what another computer's `remote_copy` took from this one (`copy-send`) or put on it
+ * (`copy-receive`, see `shared/remote-copy.ts`).
+ */
+export type TransferKind = "download" | "zip" | "upload" | "edit" | "copy-send" | "copy-receive";
 
 /** A line of the audit log. No query string, no token: who, what, how it ended. */
 export interface TransferRecord {
@@ -224,7 +228,8 @@ export interface TransferRecord {
 	who: string;
 	/**
 	 * The conversation's folder (its real path) and the path of the file or folder in it. For an upload, the file as it was
-	 * saved: one kept beside a file by the same name is logged under the name it was kept as.
+	 * saved: one kept beside a file by the same name is logged under the name it was kept as. For a copy by another computer,
+	 * `root` is empty and `path` is absolute.
 	 */
 	root: string;
 	path: string;

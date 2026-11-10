@@ -62,6 +62,8 @@ Every request names the conversation with `live` (process id) and/or `file` (ses
 
 Composer attachments use `/api/upload` (see the composer topic); it is refused to a page that is not the person's own unless File transfer is `full`.
 
+Another computer of the person's copying files from or to this one (its agent's `remote_copy`, see remote-access, *Running commands on another computer*) uses `/api/remote-run/file` and `/api/remote-run/file/<id>`: owner-only (a page signed in through Cloudflare Access, which that computer's server comes as; a page that holds only the token is answered 403 whatever **File transfer** says), with paths of this computer's own (absolute or `~/…`) rather than a conversation's folder. They write into no folder an omp-webui keeps its data in, never replace the home folder or what holds it, keep the same free disk space as uploads, and are logged in the same log (`copy-send`, `copy-receive`).
+
 ## Limits and caveats
 
 - One uploaded file: at most 2 GB; one upload request: 16 MB (the page sends 8 MB pieces); one upload: at most 5,000 files (checked by the page).

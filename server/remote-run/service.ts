@@ -1,13 +1,26 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname } from "node:path";
 import { isRecord } from "../../shared/guards.ts";
 import type { HostToolDefinition } from "../../shared/guided-goal.ts";
 import { MAC_LIMIT, type MacRecord } from "../../shared/macs.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
-import { parseRemoteRunArgs, REMOTE_RUN_TOOL, remoteRunTool } from "../../shared/remote-run.ts";
+import {
+	describeCopy,
+	parseRemoteCopyArgs,
+	REMOTE_COPY_TOOL,
+	type RemoteCopyArgs,
+	RemoteCopyError,
+	type RemoteCopyResult,
+	remoteCopyTool,
+} from "../../shared/remote-copy.ts";
+import { parseRemoteRunArgs, REMOTE_RUN_TOOL, type RemoteRunArgs, remoteRunTool } from "../../shared/remote-run.ts";
+import { knownDataDirs } from "../instance.ts";
 import type { HostToolCall, HostToolResult, HostToolServer } from "../omp/host-tools.ts";
-import { RemoteNotSignedIn, type RemoteRunResult, RemoteUnsupported, runRemote } from "./client.ts";
+import { RemoteNotSignedIn, type RemoteRunResult, RemoteTooOld, RemoteUnsupported, runRemote } from "./client.ts";
+import type { RemoteCopyOptions } from "./copy-client.ts";
+import type { Places, Reserve } from "./copy-place.ts";
 import type { RemoteSignIns } from "./sign-ins.ts";
 
 /**
@@ -21,9 +34,11 @@ import type { RemoteSignIns } from "./sign-ins.ts";
  * until the person turns it on; an id that is no longer on the Macs list counts for nothing, and is forgotten when the Mac is
  * removed (`forget`).
  *
- * A conversation that has computers is served one tool (`Live.serveHostTools`), whose `computer` is one of their names (an
- * enum): it runs over that conversation's own omp pipe, follows its approval mode like `bash` (a host tool with no policy of
- * its own is tier `exec` in omp), and is given again with the new names whenever the choice or the list changes. A conversation
+ * A conversation that has computers is served two tools (`Live.serveHostTools`), whose `computer` is one of their names (an
+ * enum): `remote_run` (a shell command there) and `remote_copy` (a file or a folder copied to or from there, through that
+ * computer's own routes: `copy-client.ts`, `files.ts`). They run over that conversation's own omp pipe, follow its approval
+ * mode like `bash` (a host tool with no policy of its own is tier `exec` in omp), and are given again with the new names
+ * whenever the choice or the list changes. A conversation
  * whose one set of server tools is held for something else ("Set up with AI", "Ask agent for help") is given none.
  *
  * A call is refused in a conversation a page that is not the person's own has been on (it could have answered omp's approval
@@ -67,6 +82,12 @@ export interface RemoteRunNeeds<C extends RemoteRunConversation> {
 	signedOut(): void;
 	/** How a command is run (tests stand in for the remote computer here). */
 	run?: typeof runRemote;
+	/** How a copy is made (tests stand in here too); the real one is loaded by the first copy. */
+	copy?: (o: RemoteCopyOptions) => Promise<RemoteCopyResult>;
+	/** This computer's home and the folders omp-webui keeps its data in: a copy is never put in or around them. */
+	places?: Places;
+	/** What a copy written here leaves free on the disk, when not 1 GiB / 5 % (`OMP_WEBUI_TRANSFER_RESERVE_BYTES`, tests). */
+	reserve?: Partial<Reserve>;
 }
 
 /** The tool for one conversation, with the names of its computers: what `Live.serveHostTools` is given. */
@@ -78,7 +99,7 @@ export class RemoteRunTools implements HostToolServer {
 		private readonly service: Pick<HostToolServer, "call">,
 		readonly computers: readonly string[],
 	) {
-		this.tools = [remoteRunTool(computers)];
+		this.tools = [remoteRunTool(computers), remoteCopyTool(computers)];
 	}
 
 	call(call: HostToolCall): Promise<HostToolResult> {
@@ -95,8 +116,10 @@ const NOT_ON_HERE =
 const NONE_GIVEN =
 	"This conversation was given no remote computers (or they were taken away). Only the person can give it some, in the conversation's session controls. Tell them, and do not try another way.";
 export const WINDOWS_REFUSED = "Running commands on Windows computers is not supported yet.";
+export const WINDOWS_COPY_REFUSED = "Copying files to or from Windows computers is not supported yet.";
 export const notSignedIn = (name: string): string =>
 	`${name}: not signed in (or the sign-in has lapsed). Open its window from the Macs list and sign in, then try again.`;
+export const tooOld = (name: string): string => `${name} runs an older omp-webui: update it to 0.23.1 to copy files.`;
 
 /** What the agent is told of a run: one line of what came of it, then the output. */
 export function describeRun(name: string, r: RemoteRunResult): string {
@@ -264,17 +287,18 @@ export class RemoteRun<C extends RemoteRunConversation = RemoteRunConversation> 
 
 	// ------------------------------------------------------------------ the tool
 
-	/** Answer a call of `remote_run`. */
+	/** Answer a call of `remote_run` or `remote_copy`. */
 	async call(call: HostToolCall): Promise<HostToolResult> {
-		if (call.name !== REMOTE_RUN_TOOL) return { text: `There is no tool named ${call.name} here.`, isError: true };
+		const copying = call.name === REMOTE_COPY_TOOL;
+		if (!copying && call.name !== REMOTE_RUN_TOOL)
+			return { text: `There is no tool named ${call.name} here.`, isError: true };
 		if (this.hooks.heldRemotely(call.liveId)) return { text: NOT_ON_HERE, isError: true };
 		// What the conversation has now, not what it had when the tool was given: the person may have changed it since.
-		const macs = this.computersOf(this.hooks.live(call.liveId)?.info.sessionFile ?? null);
-		if (macs.length === 0) return { text: NONE_GIVEN, isError: true };
-		const args = parseRemoteRunArgs(
-			call.args,
-			macs.map((m) => m.name),
-		);
+		const live = this.hooks.live(call.liveId);
+		const macs = this.computersOf(live?.info.sessionFile ?? null);
+		if (!live || macs.length === 0) return { text: NONE_GIVEN, isError: true };
+		const names = macs.map((m) => m.name);
+		const args = copying ? parseRemoteCopyArgs(call.args, names) : parseRemoteRunArgs(call.args, names);
 		if ("error" in args) return { text: args.error, isError: true };
 		const mac = macs.find((m) => m.name === args.computer);
 		if (!mac) return { text: NONE_GIVEN, isError: true };
@@ -282,12 +306,14 @@ export class RemoteRun<C extends RemoteRunConversation = RemoteRunConversation> 
 		if (!signIn) return { text: notSignedIn(mac.name), isError: true };
 		if (call.signal.aborted) return { text: "The call was cancelled.", isError: true };
 		try {
+			if (copying) return await this.copy(live, mac, signIn.jwt, args as RemoteCopyArgs, call.signal);
+			const run = args as RemoteRunArgs;
 			const result = await (this.hooks.run ?? runRemote)({
 				host: mac.host,
 				jwt: signIn.jwt,
-				command: args.command,
-				cwd: args.cwd,
-				timeoutMs: args.timeoutS * 1000,
+				command: run.command,
+				cwd: run.cwd,
+				timeoutMs: run.timeoutS * 1000,
 				signal: call.signal,
 			});
 			return { text: describeRun(mac.name, result), ...(result.exitCode === 0 ? {} : { isError: true }) };
@@ -298,8 +324,40 @@ export class RemoteRun<C extends RemoteRunConversation = RemoteRunConversation> 
 				this.hooks.signedOut();
 				return { text: notSignedIn(mac.name), isError: true };
 			}
-			if (e instanceof RemoteUnsupported) return { text: WINDOWS_REFUSED, isError: true };
+			if (e instanceof RemoteUnsupported)
+				return { text: copying ? WINDOWS_COPY_REFUSED : WINDOWS_REFUSED, isError: true };
+			if (e instanceof RemoteTooOld) return { text: tooOld(mac.name), isError: true };
+			if (e instanceof RemoteCopyError)
+				return { text: `${e.there ? mac.name : "This computer"}: ${e.message}`, isError: true };
+			if (call.signal.aborted)
+				return { text: "The call was cancelled: nothing was left at the target.", isError: true };
 			return { text: `${mac.name}: ${(e as Error).message}`, isError: true };
 		}
+	}
+
+	/** A `remote_copy` call: the local path is the conversation's (relative: to its folder; `~`: this computer's home). */
+	private async copy(
+		live: C,
+		mac: MacRecord,
+		jwt: string,
+		args: RemoteCopyArgs,
+		signal: AbortSignal,
+	): Promise<HostToolResult> {
+		const places = this.hooks.places ?? { home: homedir(), dataDirs: knownDataDirs() };
+		// Loaded by the first copy (a static import would hold them in every server, which most never copy: #585).
+		const [client, { placeOf }] = await Promise.all([import("./copy-client.ts"), import("./copy-place.ts")]);
+		const copy = this.hooks.copy ?? client.copyRemote;
+		const result = await copy({
+			host: mac.host,
+			jwt,
+			direction: args.direction,
+			local: placeOf(args.local, places.home, live.info.cwd),
+			remote: args.remote,
+			overwrite: args.overwrite,
+			places,
+			signal,
+			...(this.hooks.reserve ? { reserve: this.hooks.reserve } : {}),
+		});
+		return { text: describeCopy(mac.name, args.direction, result) };
 	}
 }

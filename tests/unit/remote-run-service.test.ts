@@ -3,7 +3,8 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { HostToolServer } from "../../server/omp/host-tools.ts";
 import type { RemoteRunOptions, RemoteRunResult } from "../../server/remote-run/client.ts";
-import { RemoteNotSignedIn, RemoteUnsupported } from "../../server/remote-run/client.ts";
+import { RemoteNotSignedIn, RemoteTooOld, RemoteUnsupported } from "../../server/remote-run/client.ts";
+import type { RemoteCopyOptions } from "../../server/remote-run/copy-client.ts";
 import {
 	describeRun,
 	notSignedIn,
@@ -11,11 +12,14 @@ import {
 	type RemoteRunConversation,
 	RemoteRunError,
 	RemoteRunTools,
+	tooOld,
+	WINDOWS_COPY_REFUSED,
 	WINDOWS_REFUSED,
 } from "../../server/remote-run/service.ts";
 import { RemoteSignIns } from "../../server/remote-run/sign-ins.ts";
 import type { MacRecord } from "../../shared/macs.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
+import { REMOTE_COPY_TOOL, RemoteCopyError, type RemoteCopyResult } from "../../shared/remote-copy.ts";
 import { REMOTE_RUN_TOOL } from "../../shared/remote-run.ts";
 import { expectMode } from "../support/modes.ts";
 import { tempDir } from "../support/temp-dirs.ts";
@@ -82,7 +86,13 @@ function conversation(liveId: string, sessionFile: string | null): FakeConversat
 	return c;
 }
 
-function setup(o: { run?: (o: RemoteRunOptions) => Promise<RemoteRunResult>; remote?: Set<string> } = {}) {
+function setup(
+	o: {
+		run?: (o: RemoteRunOptions) => Promise<RemoteRunResult>;
+		copy?: (o: RemoteCopyOptions) => Promise<RemoteCopyResult>;
+		remote?: Set<string>;
+	} = {},
+) {
 	const file = join(mkdtempSync(join(dir, `s${n++}-`)), "remote-run.json");
 	let macs: MacRecord[] = [SERVER1, BUILD];
 	const lives: FakeConversation[] = [];
@@ -90,6 +100,7 @@ function setup(o: { run?: (o: RemoteRunOptions) => Promise<RemoteRunResult>; rem
 	const announced: string[] = [];
 	let signedOut = 0;
 	const runs: RemoteRunOptions[] = [];
+	const copies: RemoteCopyOptions[] = [];
 	const make = () =>
 		new RemoteRun({
 			file,
@@ -107,6 +118,23 @@ function setup(o: { run?: (o: RemoteRunOptions) => Promise<RemoteRunResult>; rem
 					Promise.resolve({ exitCode: 0, output: "ok\n", cut: false, timedOut: false, cancelled: false, ms: 1234 })
 				);
 			},
+			copy: async (opts) => {
+				copies.push(opts);
+				return (
+					o.copy?.(opts) ??
+					Promise.resolve({
+						kind: "file",
+						files: 1,
+						bytes: 2048,
+						leftOut: 0,
+						replaced: false,
+						from: opts.local,
+						to: "/home/me/notes.txt",
+						ms: 500,
+					})
+				);
+			},
+			places: { home: "/Users/me", dataDirs: ["/Users/me/.omp-webui"] },
 		});
 	const service = make();
 	const add = (liveId: string, sessionFile: string | null) => {
@@ -122,6 +150,7 @@ function setup(o: { run?: (o: RemoteRunOptions) => Promise<RemoteRunResult>; rem
 		signIns,
 		announced,
 		runs,
+		copies,
 		signedOut: () => signedOut,
 		setMacs: (next: MacRecord[]) => {
 			macs = next;
@@ -199,7 +228,7 @@ describe("the tool", () => {
 		const s = setup();
 		const c = s.add("L1", "/s/a.jsonl");
 		await s.service.choose(c, [SERVER1.id]);
-		expect(c.hostToolServer?.tools.map((t) => t.name)).toEqual([REMOTE_RUN_TOOL]);
+		expect(c.hostToolServer?.tools.map((t) => t.name)).toEqual([REMOTE_RUN_TOOL, REMOTE_COPY_TOOL]);
 		expect(enumOf(c.hostToolServer)).toMatchObject({ enum: ["Server1"] });
 		expect(c.info.remoteComputers).toEqual([SERVER1.id]);
 		expect(c.hostToolServer?.readOnly).toEqual([]);
@@ -361,5 +390,80 @@ describe("a call", () => {
 		expect(describeRun("A", { ...base, exitCode: null, cancelled: false })).toBe(
 			"A · no exit code · 0.0s · the shell ended before the command did\nx",
 		);
+	});
+});
+
+describe("a copy", () => {
+	async function given(o: Parameters<typeof setup>[0] = {}) {
+		const s = setup(o);
+		const c = s.add("L1", "/s/a.jsonl");
+		await s.service.choose(c, [SERVER1.id]);
+		s.signIns.set(SERVER1.id, JWT);
+		const call = (args: unknown, sig = signal()) =>
+			s.service.call({ liveId: "L1", name: REMOTE_COPY_TOOL, args, signal: sig });
+		return { ...s, c, call };
+	}
+
+	test("copies with the computer's sign-in, the local path in the conversation's folder or this home, and says what came of it", async () => {
+		const s = await given();
+		const sig = signal();
+		const r = await s.call({ computer: "Server1", direction: "to", local: "notes.txt", remote: "~/notes.txt" }, sig);
+		expect(r).toEqual({
+			text: "Server1 · copied 1 file, 2.0 KB · 0.5s\nFrom: /work/notes.txt (this computer)\nTo: /home/me/notes.txt (Server1)",
+		});
+		expect(s.copies).toEqual([
+			{
+				host: "server1.example.com",
+				jwt: JWT,
+				direction: "to",
+				local: "/work/notes.txt",
+				remote: "~/notes.txt",
+				overwrite: false,
+				places: { home: "/Users/me", dataDirs: ["/Users/me/.omp-webui"] },
+				signal: sig,
+			},
+		]);
+		await s.call({ computer: "Server1", direction: "from", local: "~/Downloads/x", remote: "/x", overwrite: true });
+		expect(s.copies[1]).toMatchObject({ direction: "from", local: "/Users/me/Downloads/x", overwrite: true });
+		expect(JSON.stringify(r)).not.toContain(JWT);
+	});
+
+	test("a refusal names the computer that said it; too old, Windows and a lapsed sign-in are said in words", async () => {
+		const errors: Error[] = [
+			new RemoteCopyError("/srv/x exists: pass overwrite: true to replace it", "exists", true),
+			new RemoteCopyError("/work/x exists: pass overwrite: true to replace it", "exists"),
+			new RemoteTooOld("404"),
+			new RemoteUnsupported("win32"),
+			new RemoteNotSignedIn("refused"),
+		];
+		const s = await given({
+			copy: async () => {
+				throw errors.shift();
+			},
+		});
+		const args = { computer: "Server1", direction: "to", local: "x", remote: "/srv/x" };
+		const texts = [];
+		for (let i = 0; i < 5; i++) texts.push(await s.call(args));
+		expect(texts).toEqual([
+			{ text: "Server1: /srv/x exists: pass overwrite: true to replace it", isError: true },
+			{ text: "This computer: /work/x exists: pass overwrite: true to replace it", isError: true },
+			{ text: tooOld("Server1"), isError: true },
+			{ text: WINDOWS_COPY_REFUSED, isError: true },
+			{ text: notSignedIn("Server1"), isError: true },
+		]);
+		expect(tooOld("Server1")).toBe("Server1 runs an older omp-webui: update it to 0.23.1 to copy files.");
+		expect(s.signIns.get(SERVER1.id)).toBeNull();
+	});
+
+	test("its arguments are checked, and it is refused where a page that is not the person's own has been", async () => {
+		const s = await given();
+		const bad = await s.call({ computer: "Server1", direction: "sideways", local: "x", remote: "/x" });
+		expect(bad).toMatchObject({ isError: true });
+		expect(bad.text).toContain("direction");
+		const held = await given({ remote: new Set(["L1"]) });
+		expect((await held.call({ computer: "Server1", direction: "to", local: "x", remote: "/x" })).text).toContain(
+			"not the person's own",
+		);
+		expect([...s.copies, ...held.copies]).toEqual([]);
 	});
 });

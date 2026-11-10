@@ -34,6 +34,7 @@ import { isDevicePref, PREF, pageSnapshot, perDevice, type StoreSnapshot } from 
 import { type ClientMessage, type LiveAttached, MAX_WS_MESSAGE_BYTES, type ServerMessage } from "../shared/protocol.ts";
 import { PUSH_API } from "../shared/push.ts";
 import { REMOTE_SHELL_OFF } from "../shared/remote.ts";
+import { REMOTE_COPY_ROUTE } from "../shared/remote-copy.ts";
 import { replyMessages } from "../shared/reply-parts.ts";
 import { slimAnswer } from "../shared/slim.ts";
 import { concurrencyOf } from "../shared/subagent-concurrency.ts";
@@ -121,6 +122,7 @@ import type { PushHub } from "./push/hub.ts";
 import type { RemoteIdentity } from "./remote-auth.ts";
 import { remotePingMs } from "./remote-keepalive.ts";
 import { LazyRemote } from "./remote-lazy.ts";
+import type { RemoteFiles } from "./remote-run/files.ts";
 import { RemoteRun, RemoteRunError } from "./remote-run/service.ts";
 import { RemoteSignIns } from "./remote-run/sign-ins.ts";
 import { SavedMacs, savedMacsPath } from "./saved-macs.ts";
@@ -510,6 +512,9 @@ const remoteRun = new RemoteRun<Live>({
 	heldRemotely,
 	announce: (live) => pool.announce(live),
 	signedOut: () => broadcastAll({ t: "macs_changed" }),
+	// A copy from another computer is never put in or around an omp-webui's data, and leaves what an upload leaves free.
+	places: { home: homedir(), dataDirs: [cfg.dataDir, ...knownDataDirs()] },
+	reserve: reserveFromEnv(process.env.OMP_WEBUI_TRANSFER_RESERVE_BYTES),
 });
 pool.remoteRun = remoteRun;
 // Side questions (the Ask tab) on the model the person chose for them (`ompw.btwModel`): the server answers those in a process of its own.
@@ -548,6 +553,29 @@ const folder = new LazyFolder(() => ({
 	logFile: join(cfg.dataDir, "transfers.jsonl"),
 	limits: reserveFromEnv(process.env.OMP_WEBUI_TRANSFER_RESERVE_BYTES),
 }));
+/**
+ * The other side of another computer's `remote_copy` (`/api/remote-run/file*`, `server/remote-run/files.ts`), made on the first
+ * copy: a server that no computer copies to or from holds none of it. Its copies are logged with the file transfer's.
+ */
+let remoteFilesLoading: Promise<RemoteFiles> | null = null;
+function remoteFiles(): Promise<RemoteFiles> {
+	remoteFilesLoading ??= (async () => {
+		const [{ RemoteFiles }, { TransferLog }, { DEFAULT_LIMITS }] = await Promise.all([
+			import("./remote-run/files.ts"),
+			import("./transfer-log.ts"),
+			import("./transfer-core.ts"),
+		]);
+		return new RemoteFiles({
+			log: new TransferLog(join(cfg.dataDir, "transfers.jsonl")),
+			places: { home: homedir(), dataDirs: [cfg.dataDir, ...knownDataDirs()] },
+			reserve: { ...DEFAULT_LIMITS, ...reserveFromEnv(process.env.OMP_WEBUI_TRANSFER_RESERVE_BYTES) },
+		});
+	})().catch((e: unknown) => {
+		remoteFilesLoading = null;
+		throw e;
+	});
+	return remoteFilesLoading;
+}
 /** The requests of a page on this computer that no tunnel carried (see `isThisComputer`), noted as they come in. */
 const onThisComputer = new WeakSet<Request>();
 const repoVisibility = new RepoVisibility(process.env.OMP_WEBUI_GITHUB_API);
@@ -2471,6 +2499,12 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 	// A Mac's sign-in is taken from this computer's own requests only (`onThisComputer`: never one through the tunnel).
 	const macsAnswer = await savedMacs.handle(req, url, fromOwner(req), onThisComputer.has(req));
 	if (macsAnswer) return macsAnswer;
+	// Another computer of the person's copying a file or a folder from or to this one (`remote_copy`): the person's own pages only
+	// (`/api/remote-run*` is an owner route; asked again here), which is what that computer's server comes as, through Access.
+	if (p === REMOTE_COPY_ROUTE || p.startsWith(`${REMOTE_COPY_ROUTE}/`)) {
+		if (!fromOwner(req)) return fail(REMOTE_RUN_NOT_HERE, 403);
+		return (await remoteFiles()).handle(req, url, transferEnv(req, peer).who);
+	}
 	if (p.startsWith("/api/folder/")) {
 		return folder.handle(req, url, {
 			cwdOf: conversationCwd,
@@ -3392,6 +3426,7 @@ function shutdown(): Promise<never> {
 			loopback?.server.stop(true);
 			// What was being sent here is stopped, and the files that were not finished are removed.
 			await folder.close();
+			if (remoteFilesLoading) await (await remoteFilesLoading.catch(() => null))?.close();
 			server.stop(true);
 			// The databases are closed, and say so: the next start does not look at every page of them.
 			store.close();

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { apiPorts } from "../../server/instance.ts";
+import { REMOTE_COPY_TOOL } from "../../shared/remote-copy.ts";
 import {
 	classifyCode,
 	classifyShell,
@@ -1479,5 +1480,67 @@ describe("remote_run: a command for another computer, read with no safe folder",
 		expect(riskCommand("Run on Server1:")).toBeNull();
 		expect(riskCommand("Run on Server1\nCommand: ls")).toBeNull();
 		expect(riskCommand("Run on Server1:\nPath: /x")).toBeNull();
+	});
+});
+
+describe("remote_copy: what a copy does on each computer", () => {
+	const copy = (direction: "to" | "from", local: string, remote: string, overwrite?: boolean) =>
+		call(REMOTE_COPY_TOOL, {
+			computer: "Server1",
+			direction,
+			local,
+			remote,
+			...(overwrite === undefined ? {} : { overwrite }),
+		});
+
+	test("from: the local target is written as write would write it", () => {
+		expect(copy("from", "dist", "/srv/app/dist")).toBeNull();
+		expect(copy("from", "/tmp/x", "/srv/x")).toBeNull();
+		expect(copy("from", "~/Downloads/app", "/srv/app")?.kinds).toEqual(["write_outside"]);
+		expect(copy("from", "~/.ssh/config", "/srv/ssh_config")?.kinds).toContain("protected");
+		expect(copy("from", "/Users/me/Library/Application Support/omp-webui/x", "/srv/x")?.kinds).toContain("protected");
+	});
+
+	test("from: reading a credential or the home folder there is asked about as remote_run's cat is", () => {
+		expect(copy("from", "keys", "~/.ssh/id_ed25519")?.kinds).toContain("secret_read");
+		expect(copy("from", "home", "~")?.kinds).toContain("secret_read");
+		expect(copy("from", "logs", "/var/log/nginx")).toBeNull();
+	});
+
+	test("to: carrying a credential, a protected place, or a folder that holds one off this computer is asked about", () => {
+		expect(copy("to", "dist", "/srv/app/dist")).toBeNull();
+		expect(copy("to", "~/.ssh/id_ed25519", "/tmp/k")?.kinds).toContain("secret_read");
+		expect(copy("to", "~/.aws/credentials", "/tmp/k")?.kinds).toContain("secret_read");
+		expect(copy("to", "~", "/srv/backup")?.kinds).toContain("secret_read");
+		expect(copy("to", "/Users", "/srv/backup")?.kinds).toContain("secret_read");
+		expect(copy("to", "~/Library/Application Support/omp-webui", "/srv/x")?.kinds).toContain("protected");
+		expect(copy("to", "~/Library/Application Support", "/srv/x")?.kinds).toContain("protected");
+	});
+
+	test("to: the remote write asks when it replaces what is there, or goes into a protected place there", () => {
+		expect(copy("to", "dist", "/srv/app", false)).toBeNull();
+		expect(copy("to", "dist", "/srv/app", true)?.kinds).toEqual(["write_outside"]);
+		expect(copy("to", "key.pub", "~/.ssh/authorized_keys")?.kinds).toContain("protected");
+		expect(copy("to", "rc", ".bashrc", true)?.kinds).toContain("protected");
+	});
+
+	test("the detail names the computer first, which way, then the path on each side", () => {
+		expect(copy("to", "dist", "/srv/app", true)?.detail).toBe(
+			"Run on Server1:\nCopy: this computer → Server1, replacing what is there\nThis computer: dist\n  → /work/proj/dist\nServer1: /srv/app",
+		);
+		expect(copy("from", "/tmp/k", "~/.ssh/id_rsa")?.detail).toBe(
+			"Run on Server1:\nCopy: Server1 → this computer\nThis computer: /tmp/k\nServer1: ~/.ssh/id_rsa",
+		);
+		// Not a command: the card shows it as it is.
+		expect(riskCommand(copy("to", "~", "/x")?.detail ?? "")).toBeNull();
+		const odd = call(REMOTE_COPY_TOOL, { computer: "A\nB", direction: "to", local: "~", remote: "/r\nServer1: /s" });
+		expect(odd?.detail).toBe(
+			"Run on A B:\nCopy: this computer → A B\nThis computer: ~\n  → /Users/me\nA B: /r Server1: /s",
+		);
+	});
+
+	test("a call it cannot make sense of is the tool's to refuse", () => {
+		expect(call(REMOTE_COPY_TOOL, { computer: "Server1", direction: "up", local: "~", remote: "/x" })).toBeNull();
+		expect(call(REMOTE_COPY_TOOL, { computer: "Server1", direction: "to", local: 1, remote: "/x" })).toBeNull();
 	});
 });

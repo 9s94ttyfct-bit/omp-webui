@@ -103,6 +103,8 @@ const REMOTE_HOME = "/~remote-home";
  * start-up files) are protected there as here. No port or address of this server's is there.
  */
 const REMOTE_CONTEXT: RiskContext = { roots: [], home: REMOTE_HOME, temp: [], protect: [] };
+/** The tool that copies a file or a folder between this computer and another (`REMOTE_COPY_TOOL`, `shared/remote-copy.ts`). */
+const REMOTE_COPY = "remote_copy";
 
 /** One line of what a call names, for a detail whose lines the page reads apart. */
 const oneLine = (text: string): string => text.replace(/[\r\n]+/g, " ");
@@ -3190,6 +3192,47 @@ function fromPaths(paths: readonly string[], ctx: RiskContext, root: string | nu
 }
 
 /**
+ * What carrying `abs` off its computer reads: a credential (`secret_read`), a protected place (`protected`), or a folder that
+ * holds either: the home folder, or what holds it (its `.ssh`), and a folder that holds one of the app's protected places.
+ */
+function carried(abs: string, c: RiskContext, found: Set<RiskKind>): void {
+	if (isSecret(abs, c) || within(folded(normalize(c.home), c), folded(abs, c))) found.add("secret_read");
+	if (isProtected(abs, c) || c.protect.some((d) => d !== "" && within(folded(d, c), folded(abs, c))))
+		found.add("protected");
+}
+
+/**
+ * A `remote_copy` call, for what it does on each computer. `from` writes `local` here as `write` would (outside the project, a
+ * protected place), and reads `remote` there as `remote_run`'s `cat` would (`carried`, with nothing of this computer's known
+ * there: `REMOTE_CONTEXT`). `to` carries `local` off this computer (`carried`, against this computer's places), and writes
+ * `remote` there: a protected place is one there as here, and anywhere else is outside any project only when it replaces what
+ * is there (`overwrite`); a new file or folder replaces nothing. The detail names the computer first (`RISK_ON`).
+ */
+function copyRisk(input: Record<string, unknown>, ctx: RiskContext, root: string | null): Risk | null {
+	const { local, remote, direction } = input;
+	if (!isString(local) || !isString(remote) || (direction !== "to" && direction !== "from")) return null;
+	const found = new Set<RiskKind>();
+	const here = filePathOf(local, ctx, root);
+	const there = filePathOf(remote, REMOTE_CONTEXT, REMOTE_HOME);
+	if (direction === "from") {
+		classifyPath(local, ctx, root, found);
+		if (there !== null) carried(there, REMOTE_CONTEXT, found);
+	} else {
+		if (here !== null) carried(here, ctx, found);
+		if (there !== null && isProtected(there, REMOTE_CONTEXT)) found.add("protected");
+		else if (there !== null && input.overwrite === true) found.add("write_outside");
+	}
+	if (found.size === 0) return null;
+	const computer = oneLine(isString(input.computer) ? input.computer : "another computer");
+	const how = `Copy: ${direction === "to" ? `this computer → ${computer}` : `${computer} → this computer`}${input.overwrite === true ? ", replacing what is there" : ""}`;
+	const shown = here !== null && here !== local ? `\n  → ${here}` : "";
+	return {
+		kinds: ordered(found),
+		detail: `${RISK_ON} ${computer}:\n${how}\nThis computer: ${oneLine(local)}${shown}\n${computer}: ${oneLine(remote)}`,
+	};
+}
+
+/**
  * Whether a tool call is high-risk, and what to show the person: null when it is not one that is known. `tool` is the
  * name omp gives the call and `input` its arguments, as an extension's `tool_call` handler sees them. It never throws:
  * a call it cannot make sense of is `unreadable`, which asks.
@@ -3283,6 +3326,8 @@ function classify(tool: string, input: Record<string, unknown>, ctx: RiskContext
 		const where = isString(input.cwd) ? `${RISK_IN} ${oneLine(input.cwd)}\n` : "";
 		return { kinds, detail: `${on}${where}${RISK_COMMAND} ${input.command}` };
 	}
+	// `remote_copy`: a file or a folder carried between this computer and another (see `copyRisk`).
+	if (name === REMOTE_COPY) return copyRisk(input, ctx, root);
 	// `bash`, and any other tool that is handed a shell command (an MCP server's `execute_shell_command`).
 	if (isString(input.command) && name !== "write") {
 		const start = isString(input.cwd) && root !== null ? (filePathOf(input.cwd, ctx, root) ?? root) : root;

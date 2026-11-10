@@ -329,7 +329,7 @@ test("a conversation whose tools are held for something else says it cannot be g
 	expect(live.info.remoteComputersUnavailable).toBeUndefined();
 });
 
-test("remote_run: given computers, a conversation is served the tool without a restart and with no policy of its own, answers a call, and a new process of it is served at its start", async () => {
+test("remote_run and remote_copy: given computers, a conversation is served the tools without a restart and with no policy of their own, answers a call, and a new process of it is served at its start", async () => {
 	const { pool, dir, received, toolSets, overlays } = setup();
 	const mac: MacRecord = {
 		id: "6F1C1B7E-7B7A-4E0B-9E27-0C7E0A6C1D11",
@@ -364,12 +364,13 @@ test("remote_run: given computers, a conversation is served the tool without a r
 	const started = live.info.startedAt;
 
 	expect(await service.choose(live, [mac.id])).toEqual([mac.id]);
-	expect(toolSets()).toEqual([["remote_run"]]);
+	expect(toolSets()).toEqual([["remote_run", "remote_copy"]]);
 	expect(live.info.remoteComputers).toEqual([mac.id]);
 	expect(live.info.remoteComputersUnavailable).toBeUndefined();
 	// The same process: nothing was restarted, and its overlay has no policy for the tool (it follows the approval mode).
 	expect(live.info.startedAt).toBe(started);
 	expect(JSON.stringify(overlays())).not.toContain("remote_run");
+	expect(JSON.stringify(overlays())).not.toContain("remote_copy");
 
 	await live.rpc({ type: "prompt", message: 'tool remote_run {"computer":"Server1","command":"uname"}' });
 	await until(() => resultOf(received, "ht1") !== undefined);
@@ -382,7 +383,7 @@ test("remote_run: given computers, a conversation is served the tool without a r
 	const again = await pool.open({ kind: "new", cwd: dir }, async () => dir);
 	expect(again.info.liveId).not.toBe(live.info.liveId);
 	expect(again.info.remoteComputers).toEqual([mac.id]);
-	expect(toolSets().at(-1)).toEqual(["remote_run"]);
+	expect(toolSets().at(-1)).toEqual(["remote_run", "remote_copy"]);
 
 	// Taken away: omp is told it has no tools.
 	await service.choose(live, []);

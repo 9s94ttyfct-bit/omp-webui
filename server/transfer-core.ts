@@ -1,4 +1,5 @@
 import { realpathSync } from "node:fs";
+import { statfs } from "node:fs/promises";
 import { relative } from "node:path";
 import { isProtectedPath } from "../shared/remote-risk.ts";
 import {
@@ -88,6 +89,24 @@ export const DEFAULT_LIMITS: Limits = {
 	archiveWalk: 200_000,
 	chunkBytes: 512 * 1024,
 };
+
+/** What the disk holds free (for a user who is not root, as `df` says) and in all at `path`, in bytes. */
+export async function diskSpace(path: string): Promise<{ free: number; total: number }> {
+	const s = await statfs(path);
+	return { free: s.bavail * s.bsize, total: s.blocks * s.bsize };
+}
+
+/**
+ * Whether writing `size` more bytes onto a disk that has `space` leaves it what every write that a page or another computer
+ * sends must leave: the larger of `reserveBytes` and `reservePercent` of the disk (1 GiB / 5 % unless told otherwise).
+ */
+export function leavesRoom(
+	space: { free: number; total: number },
+	size: number,
+	limits: Pick<Limits, "reserveBytes" | "reservePercent">,
+): boolean {
+	return space.free - size >= Math.max(limits.reserveBytes, (space.total * limits.reservePercent) / 100);
+}
 
 /** The codes that are the person's rule saying no (not a mistake of the request): refusals the log keeps. */
 export const POLICY_CODES: readonly TransferCode[] = [

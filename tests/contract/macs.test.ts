@@ -283,6 +283,75 @@ describe("a conversation's remote computers", () => {
 	});
 });
 
+describe("another computer copying files from and to this one (remote_copy)", () => {
+	const ask = (path: string, method = "GET", body?: Uint8Array<ArrayBuffer>, through = false) =>
+		fetch(`${s.url}${path}`, {
+			method,
+			headers: headers(
+				method !== "GET",
+				through ? { "cf-ray": "8c1f2d3e4a5b6c7d-FRA", "cf-connecting-ip": "203.0.113.9" } : {},
+			),
+			body,
+		});
+	const logged = () =>
+		readFileSync(join(s.root, "data", "transfers.jsonl"), "utf8")
+			.split("\n")
+			.filter(Boolean)
+			.map((l) => JSON.parse(l) as { kind: string; who: string; path: string; status: string });
+
+	test("a page that holds only the token is refused every copy route, and nothing is read or written", async () => {
+		writeFileSync(join(s.home, "secret.txt"), "mine");
+		for (const [method, path] of [
+			["GET", "/api/remote-run/file?path=~/secret.txt"],
+			["POST", "/api/remote-run/file?path=~/dropped.txt&kind=file&size=1&bytes=1"],
+			["PUT", "/api/remote-run/file/0123456789abcdef0123456789abcdef?offset=0"],
+			["DELETE", "/api/remote-run/file/0123456789abcdef0123456789abcdef"],
+		]) {
+			const res = await ask(path, method, undefined, true);
+			expect(res.status, `${method} ${path}`).toBe(403);
+			expect(((await res.json()) as { error: string }).error).toContain("Remote computers");
+		}
+		expect(existsSync(join(s.home, "dropped.txt"))).toBe(false);
+	});
+
+	test("the person's own page reads a file and puts one in place, in pieces; both are logged", async () => {
+		writeFileSync(join(s.home, "hello.txt"), "hello\n");
+		const got = await ask("/api/remote-run/file?path=~/hello.txt");
+		expect(got.status).toBe(200);
+		expect(got.headers.get("x-omp-webui-kind")).toBe("file");
+		expect(await got.text()).toBe("hello\n");
+
+		const body = new TextEncoder().encode("copied\n");
+		const begun = await ask(
+			`/api/remote-run/file?path=~/in/copied.txt&kind=file&size=${body.length}&bytes=${body.length}`,
+			"POST",
+		);
+		expect(begun.status).toBe(200);
+		const { id } = (await begun.json()) as { id: string };
+		expect((await ask(`/api/remote-run/file/${id}?offset=0`, "PUT", body)).status).toBe(200);
+		const done = await ask(`/api/remote-run/file/${id}`, "POST");
+		expect(await done.json()).toMatchObject({ kind: "file", files: 1, bytes: body.length, replaced: false });
+		expect(readFileSync(join(s.home, "in", "copied.txt"), "utf8")).toBe("copied\n");
+		// Not again, unless asked.
+		const again = await ask(`/api/remote-run/file?path=~/in/copied.txt&kind=file&size=1&bytes=1`, "POST");
+		expect(again.status).toBe(409);
+		expect(await again.json()).toMatchObject({ code: "exists" });
+		// Nor into the app's own data.
+		const data = await ask(
+			`/api/remote-run/file?path=${encodeURIComponent(join(s.root, "data", "x"))}&kind=file&size=1&bytes=1`,
+			"POST",
+		);
+		expect(data.status).toBe(403);
+		const lines = logged().filter((l) => l.kind.startsWith("copy-"));
+		expect(lines.map((l) => [l.kind, l.who, l.status])).toEqual([
+			["copy-send", "local", "ok"],
+			["copy-receive", "local", "ok"],
+			["copy-receive", "local", "refused:exists"],
+			["copy-receive", "local", "refused:ownData"],
+		]);
+	});
+});
+
 describe("a page that is not this computer's", () => {
 	test("reads the list in meta and is refused every route that changes it, whatever it holds", async () => {
 		const [studio] = (await meta()).macs as [MacListing];
