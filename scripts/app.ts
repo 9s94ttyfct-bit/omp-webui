@@ -181,6 +181,7 @@ try {
 		"macos/remotemenu.swift",
 		"macos/remotenotify.swift",
 		"macos/remotepolicy.swift",
+		"macos/remotesignin.swift",
 		"macos/remotewindow.swift",
 		"macos/server.swift",
 		"macos/serveroutput.swift",

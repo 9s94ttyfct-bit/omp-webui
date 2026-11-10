@@ -503,6 +503,8 @@ func pure(directory: URL) -> [String: Any] {
 		"remove": shaped(.remove(id: idA)),
 		"connected": shaped(.connected(id: idA)),
 		"pin": shaped(.pin(id: idA, team: "myteam")),
+		"handOver": shaped(.handOver(id: idA, jwt: "header.payload.signature")),
+		"takeBack": shaped(.takeBack(id: idA)),
 		"shortTimeout": macsRequest(.connected(id: idA), origin: origin, token: "t", timeout: 0.5).timeoutInterval,
 		"defaultTimeout": macsRequestTimeout,
 	] as [String: Any]
@@ -515,6 +517,7 @@ func pure(directory: URL) -> [String: Any] {
 		served(macsReplyMac(status: status, data: Data(body.utf8))) { "\($0.name)@\($0.host)#\($0.team ?? "nil")" }
 	}
 	func removed(_ status: Int, _ body: String) -> String { served(macsReplyRemoved(status: status, data: Data(body.utf8))) { "removed" } }
+	func signIn(_ status: Int, _ body: String) -> String { served(macsReplySignIn(status: status, data: Data(body.utf8))) { "signedIn" } }
 	let taken = "{\"error\":\"Another Mac is already called “Mac A”\",\"problem\":{\"kind\":\"name\",\"code\":\"taken\",\"taken\":\"Mac A\"}}"
 	report["replies"] = [
 		"mac": mac(200, answerText("Mac A")), "macWithTeam": mac(200, answerText("Mac A", team: "myteam")),
@@ -525,6 +528,11 @@ func pure(directory: URL) -> [String: Any] {
 		"okButNoMac": mac(200, "{\"ok\":true}"), "okButBadRecord": mac(200, "{\"mac\":{\"id\":\"nope\"}}"),
 		"removed": removed(200, "{\"ok\":true}"), "removedNotOk": removed(200, "{\"ok\":false}"),
 		"removedNotFound": removed(404, "{\"error\":\"No such Mac\"}"), "removedEmptyBody": removed(500, ""),
+		"signedIn": signIn(200, "{\"signedInUntil\":\"2026-11-11T09:00:00.000Z\"}"), "signedOut": signIn(204, ""),
+		"signInLapsed": signIn(400, "{\"error\":\"The sign-in has run out\"}"), "signInOkButNoUntil": signIn(200, "{\"ok\":true}"),
+		"signInUnknownMac": signIn(404, "{\"error\":\"No such Mac\"}"),
+		// A 204 is no answer for a route that says what it did.
+		"removedNoContent": removed(204, ""), "macNoContent": mac(204, ""),
 	]
 	// With no server (it is not up yet, or no more) every change is `unreachable`, and answered later, on the main queue.
 	var noServer: [String: String] = [:]
@@ -1669,12 +1677,37 @@ func notifyRun() -> [String: Any] {
 		"otherPath": names(remoteSignInHeader(host: host, cookies: [cookie("CF_Authorization", domain: host, path: "/elsewhere"), token], now: now)),
 		"noCookies": names(remoteSignInHeader(host: host, cookies: [], now: now)),
 	]
+	// The token handed to the local server (`accessToken`): the Mac's own Access cookie, never the team's sign-in or another site's.
+	func picked(_ cookies: [HTTPCookie]) -> String { accessToken(host: host, cookies: cookies, now: now) ?? "nil" }
+	func cf(_ value: String, domain: String, expires: Date? = nil) -> HTTPCookie {
+		var properties: [HTTPCookiePropertyKey: Any] = [.name: "CF_Authorization", .value: value, .domain: domain, .path: "/", .secure: "TRUE"]
+		if let expires { properties[.expires] = expires }
+		return HTTPCookie(properties: properties)!
+	}
+	let team = cf("team", domain: "myteam.cloudflareaccess.com", expires: now.addingTimeInterval(3600))
+	let handed: [String: Any] = [
+		"host": picked([cf("mac", domain: host, expires: now.addingTimeInterval(60)), token]),
+		"dotHost": picked([cf("dot", domain: "." + host.uppercased())]),
+		"teamOnly": picked([team]),
+		"teamAndHost": picked([team, cf("mac", domain: host, expires: now.addingTimeInterval(60))]),
+		"parentDomain": picked([cf("parent", domain: ".example.com")]),
+		"otherHost": picked([cf("other", domain: "other.example.com"), cf("child", domain: "x." + host)]),
+		"expired": picked([cf("old", domain: host, expires: now.addingTimeInterval(-1))]),
+		"endsNow": picked([cf("now", domain: host, expires: now)]),
+		"longest": picked([
+			cf("short", domain: host, expires: now.addingTimeInterval(60)), cf("long", domain: host, expires: now.addingTimeInterval(600)),
+			cf("old", domain: host, expires: now.addingTimeInterval(-5)),
+		]),
+		"otherName": picked([cookie("ompw_token", domain: host)]),
+		"none": picked([]),
+	]
 	let delays = [1, 2, 3, 8, 9, 20].map { remoteNotifyRetryDelay($0) }
 	let request = eventsRequest(
 		origin: URL(string: "https://\(host)")!, path: remoteNotifyPath, headers: ["Cookie": "CF_Authorization=x; ompw_token=y"],
 		language: .en, epoch: "e1", since: 7)
 	return [
 		"signIn": signIn,
+		"handed": handed,
 		"delays": delays,
 		"request": [
 			"url": request.url!.absoluteString, "cookie": request.value(forHTTPHeaderField: "Cookie") ?? "nil",

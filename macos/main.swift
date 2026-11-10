@@ -589,6 +589,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 				self.refreshLanguage()
 				self.shellEvents.connect(to: self.origin)
 				self.browserLink.connect(to: self.origin)
+				// The other Macs' sign-ins, for running commands there: a server that was just started holds none.
+				if #available(macOS 14.0, *) { self.remote.signIns.serverStarted() }
 				// The token link stores the access cookie and redirects to the UI. After a restart of the server too: the
 				// page loads again and signs in with the same token, on whatever port the new server took. (No window: the
 				// next one opens on it, with the view the last page was on, which is only taken for a page that loads.)

@@ -37,6 +37,8 @@ final class RemoteMacsController: NSObject, NSMenuDelegate, NSMenuItemValidation
 	private let choices: RemoteNotifyChoices
 	/// Reads the notices of the Macs that are turned on (`remotenotify.swift`), for as long as the app runs.
 	private var notifier: RemoteNotifier?
+	/// Hands each Mac's Access sign-in to the app's own server (`remotesignin.swift`), for running commands there.
+	let signIns: RemoteSignIns
 
 	/// `server`: where the app's own server is and the token that signs in (nil while it is not up). `notifications`: what shows the
 	/// notifications of other Macs' conversations; none, no Mac is read and the menu has no such choice.
@@ -47,6 +49,7 @@ final class RemoteMacsController: NSObject, NSMenuDelegate, NSMenuItemValidation
 	) {
 		store = RemoteMacStore(directory: directory)
 		client = RemoteMacsClient(server: server)
+		signIns = RemoteSignIns(list: store, client: client, server: server)
 		self.language = language
 		self.refreshLanguage = refreshLanguage
 		self.notifications = notifications
@@ -155,6 +158,8 @@ final class RemoteMacsController: NSObject, NSMenuDelegate, NSMenuItemValidation
 		client.connected(id: id)
 		// What the notifications of this Mac were read with may be a sign-in that has run out: this one is read at once.
 		notifier?.reconnect(id)
+		// The server is handed the new sign-in (the store may be one that did not exist until now, so not yet watched).
+		signIns.listChanged()
 	}
 
 	/// The team of the sign-in of a window was seen. The server keeps the first one it is told; a failure is not said (the next
@@ -259,8 +264,10 @@ final class RemoteMacsController: NSObject, NSMenuDelegate, NSMenuItemValidation
 		let names = sharing.map(\.name)
 		WKWebsiteDataStore(forIdentifier: mac.storeIdentifier).removeData(
 			ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast
-		) {
+		) { [weak self] in
 			DispatchQueue.main.async {
+				// The server lets go of the sign-in that was deleted (the cookie store says so too, while it is watched).
+				self?.signIns.listChanged()
 				// A window that was open when the team became known still has the Mac's own store, which holds its sign-in.
 				guard mac.storeId != mac.storeIdentifier else { return done(names) }
 				WKWebsiteDataStore.fetchAllDataStoreIdentifiers { stores in
@@ -294,6 +301,8 @@ final class RemoteMacsController: NSObject, NSMenuDelegate, NSMenuItemValidation
 			self.choices.set(mac.id, on: false)
 			self.notifier?.sync()
 			let remaining = self.store.list.macs.filter { $0.id != mac.id }
+			// The server's copy of its sign-in went with it; its store is let go of here, so that it can be deleted.
+			self.signIns.listChanged()
 			let removing = storesToRemove(forgetting: mac, remaining: remaining)
 			self.removeStores(removing) { error in
 				if let error { return done(.failure(.store(error))) }

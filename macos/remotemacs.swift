@@ -190,6 +190,17 @@ func cookieIsOwn(domain: String, host: String) -> Bool {
 	return domain == host || domain == "." + host
 }
 
+/// The Cloudflare Access token of the Mac at `host` that the app hands to its own server (`RemoteSignIns`), so that the server
+/// can run commands there: the `CF_Authorization` cookie the Mac's own host set (`cookieIsOwn`: never the one of the team's
+/// sign-in, `<team>.cloudflareaccess.com`, nor one of a parent domain), not past its end at `now`. The one that lasts longest
+/// when there are several; nil when there is none.
+func accessToken(host: String, cookies: [HTTPCookie], now: Date = Date()) -> String? {
+	let own = cookies.filter {
+		$0.name == "CF_Authorization" && cookieIsOwn(domain: $0.domain, host: host) && ($0.expiresDate.map { $0 > now } ?? true)
+	}
+	return own.max { ($0.expiresDate ?? .distantFuture) < ($1.expiresDate ?? .distantFuture) }?.value
+}
+
 /// What a data store keeps besides its cookies is in records named for a registrable domain (`WKWebsiteDataRecord.displayName`),
 /// not for a host: the page storage of `a.example.com` and of `b.example.com` is in the one record `example.com`. Whether the
 /// record of `name` holds the Mac at `host`'s page storage.
@@ -374,6 +385,10 @@ enum MacsCall: Equatable {
 	case remove(id: UUID)
 	case connected(id: UUID)
 	case pin(id: UUID, team: String)
+	/// Hand the Mac's Access token (`accessToken`) to the server, which keeps it in memory to run commands there.
+	case handOver(id: UUID, jwt: String)
+	/// The app holds no token for the Mac any more: the server lets go of its copy.
+	case takeBack(id: UUID)
 }
 
 /// How long a change waits for the server (it is on this computer: it answers at once or not at all).
@@ -405,6 +420,13 @@ func macsRequest(_ call: MacsCall, origin: URL, token: String, timeout: TimeInte
 		method = "POST"
 		path = "api/macs/\(id.uuidString)/team"
 		body = ["team": team]
+	case .handOver(let id, let jwt):
+		method = "POST"
+		path = "api/macs/\(id.uuidString)/sign-in"
+		body = ["jwt": jwt]
+	case .takeBack(let id):
+		method = "DELETE"
+		path = "api/macs/\(id.uuidString)/sign-in"
 	}
 	var request = URLRequest(url: origin.appendingPathComponent(path))
 	request.httpMethod = method
@@ -416,7 +438,9 @@ func macsRequest(_ call: MacsCall, origin: URL, token: String, timeout: TimeInte
 	return request
 }
 
+/// The answer's object: a 200's JSON, or nothing for a 204 (an answer with no body, as taking a sign-in back gets).
 private func macsReply(status: Int, data: Data) -> Result<[String: Any], MacsServerError> {
+	if status == 204 { return .success([:]) }
 	let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
 	guard status == 200 else {
 		let message = (object?["error"] as? String).flatMap { $0.isEmpty ? nil : $0 }
@@ -444,6 +468,18 @@ func macsReplyRemoved(status: Int, data: Data) -> Result<Void, MacsServerError> 
 	case .failure(let error): return .failure(error)
 	case .success(let object):
 		guard object["ok"] as? Bool == true else {
+			return .failure(.refused(status: status, message: "The answer could not be read"))
+		}
+		return .success(())
+	}
+}
+
+/// The answer to handing a Mac's sign-in over, `{ "signedInUntil": "<ISO 8601>" }`, or to taking it back (204).
+func macsReplySignIn(status: Int, data: Data) -> Result<Void, MacsServerError> {
+	switch macsReply(status: status, data: data) {
+	case .failure(let error): return .failure(error)
+	case .success(let object):
+		guard status == 204 || object["signedInUntil"] is String else {
 			return .failure(.refused(status: status, message: "The answer could not be read"))
 		}
 		return .success(())
@@ -490,6 +526,16 @@ final class RemoteMacsClient {
 
 	/// The team of this Mac's sign-in was seen (the server keeps the first one). Best effort, as `connected`.
 	func pin(id: UUID, team: String) { send(.pin(id: id, team: team), decode: macsReplyMac) { _ in } }
+
+	/// Hand the Mac's Access token to the server (`RemoteSignIns`). The token is in the request's body and nowhere else.
+	func handOver(id: UUID, jwt: String, completion: @escaping (Result<Void, MacsServerError>) -> Void) {
+		send(.handOver(id: id, jwt: jwt), decode: macsReplySignIn, completion: completion)
+	}
+
+	/// The app holds no token for the Mac any more: the server lets go of the one it was handed.
+	func takeBack(id: UUID, completion: @escaping (Result<Void, MacsServerError>) -> Void) {
+		send(.takeBack(id: id), decode: macsReplySignIn, completion: completion)
+	}
 
 	private func send<T>(
 		_ call: MacsCall, decode: @escaping (Int, Data) -> Result<T, MacsServerError>,

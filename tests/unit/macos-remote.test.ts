@@ -201,6 +201,7 @@ beforeAll(async () => {
 			join(here, "../../macos/remotenotify.swift"),
 			join(here, "../../macos/remotemenu.swift"),
 			join(here, "../../macos/remotepolicy.swift"),
+			join(here, "../../macos/remotesignin.swift"),
 			join(here, "../../macos/shellevents.swift"),
 			join(here, "../../macos/remotewindow.swift"),
 			join(here, "../../macos/webview.swift"),
@@ -460,6 +461,9 @@ test.skipIf(!mac)("the app asks the server for a change by the routes, headers a
 	route("remove", "DELETE", `/api/macs/${id}`, undefined);
 	route("connected", "POST", `/api/macs/${id}/connected`, undefined);
 	route("pin", "POST", `/api/macs/${id}/team`, { team: "myteam" });
+	// A Mac's Access sign-in, handed to this computer's server, and taken back.
+	route("handOver", "POST", `/api/macs/${id}/sign-in`, { jwt: "header.payload.signature" });
+	route("takeBack", "DELETE", `/api/macs/${id}/sign-in`, undefined);
 	expect(r.defaultTimeout).toBe(5);
 	expect(r.shortTimeout).toBe(0.5);
 });
@@ -485,6 +489,15 @@ test.skipIf(!mac)(
 			expect(a[name], name).toBe(unreadable);
 		expect(a.removed).toBe("ok:removed");
 		expect(a.removedNotFound).toBe("refused:404:No such Mac");
+		// A sign-in handed over answers until when it is kept; taking it back answers 204 with no body. A lapsed token is refused (400).
+		expect(a.signedIn).toBe("ok:signedIn");
+		expect(a.signedOut).toBe("ok:signedIn");
+		expect(a.signInLapsed).toBe("refused:400:The sign-in has run out");
+		expect(a.signInOkButNoUntil).toBe(unreadable);
+		expect(a.signInUnknownMac).toBe("refused:404:No such Mac");
+		// A 204 is no answer for the routes that say what they did.
+		expect(a.removedNoContent).toBe("refused:204:The answer could not be read");
+		expect(a.macNoContent).toBe("refused:204:The answer could not be read");
 		// No server (the app has not started it yet, or it stopped): every change is `unreachable`, answered after the call returned.
 		expect(report.noServer).toEqual({
 			add: "unreachable",
@@ -1470,5 +1483,30 @@ test.skipIf(!mac)(
 		expect(out.request.token).toBe("nil");
 		expect(out.request.handlesCookies).toBe(false);
 		expect(out.request.timeout).toBe(45);
+	},
+);
+
+// ------------------------------------------------------------------ sign-ins handed to this Mac's server (remote_run)
+
+test.skipIf(!mac)(
+	"the token handed to this Mac's server is the Mac's own Access cookie that has not run out: never the team's sign-in, a parent domain's or another host's",
+	async () => {
+		const out = JSON.parse(await run(["notify"])) as { handed: Record<string, string> };
+		expect(out.handed).toEqual({
+			host: "mac",
+			// A cookie's domain as written with a leading dot, in any case.
+			dotHost: "dot",
+			// `<team>.cloudflareaccess.com` holds the team's sign-in, not the Mac's: it is never handed over.
+			teamOnly: "nil",
+			teamAndHost: "mac",
+			parentDomain: "nil",
+			otherHost: "nil",
+			expired: "nil",
+			endsNow: "nil",
+			// Of several, the one that lasts longest.
+			longest: "long",
+			otherName: "nil",
+			none: "nil",
+		});
 	},
 );
