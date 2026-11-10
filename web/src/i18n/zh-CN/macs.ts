@@ -14,6 +14,8 @@ export const zh: Record<keyof typeof en, string> = {
 	stateAttention: "需要处理",
 	stateUnreachable: "连不上",
 	stateUnknown: "状态未知",
+	signedInUntil: "登录有效至 {when}",
+	notSignedIn: "未登录",
 
 	openTitle: "打开 {name}（{host}）",
 	openRefused: "应用没有打开那台 Mac",

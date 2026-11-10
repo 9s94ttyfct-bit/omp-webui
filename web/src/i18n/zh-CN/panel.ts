@@ -209,6 +209,15 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	controlsModeFailed: "无法切换为{mode}：{error}。对话仍以原来的模式继续。",
 	controlsModeDismiss: "知道了",
 	controlsModePaused: "已暂停的对话不能切换模式。请先继续它。",
+	controlsRemoteTitle: "远程电脑",
+	controlsRemoteHelp: "代理可以用工具 remote_run 在这里勾选的电脑上运行命令，是否先询问按这个对话的权限模式决定。",
+	controlsRemoteSignedIn: "登录有效至 {when}",
+	controlsRemoteNotSignedIn: "未登录——从 Mac 列表打开它的窗口来登录",
+	controlsRemoteNotOwner:
+		"只有你自己的页面能更改这一项：运行 omp-webui 的这台电脑上的页面，或者通过 Cloudflare Access 登录的页面。",
+	controlsRemoteServerTools:
+		"这个对话的服务器工具正被别的功能占用（“用 AI 设置”“请智能体帮忙”），所以不能给它远程电脑。",
+	controlsRemoteFailed: "无法更改远程电脑：{error}",
 	controlsRestartTitle: "重启进程",
 	controlsRestartHint:
 		"结束这个对话的 omp 以及它启动的一切（正在进行的这一轮、后台任务、开发服务器、MCP 服务器），然后在新的进程中继续同一个对话。用于卡住的对话。",

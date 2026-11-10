@@ -1,5 +1,12 @@
 import { isRecord } from "@shared/guards.ts";
-import { type AddressProblem, type MacProblem, macUrl, type NameProblem, type SavedMac } from "@shared/macs.ts";
+import {
+	type AddressProblem,
+	type MacListing,
+	type MacProblem,
+	macUrl,
+	type NameProblem,
+	type SavedMac,
+} from "@shared/macs.ts";
 import { create } from "zustand";
 import type { MessageKey } from "../i18n/index.ts";
 
@@ -94,6 +101,19 @@ export const MACS_STATE: Record<MacLive, MessageKey> = {
 	unreachable: "macs.stateUnreachable",
 	unknown: "macs.stateUnknown",
 };
+
+// ------------------------------------------------------------------ signed in
+
+/**
+ * Until when this server holds the Mac's Cloudflare Access sign-in (`MacListing.signedInUntil`, which the macOS app hands
+ * over), as a time; null when it holds none or the one it holds has lapsed by `now` (the server says so too, a moment later).
+ * A conversation's `remote_run` reaches the Mac only while it is signed in.
+ */
+export function signedInUntil(mac: MacListing, now: number = Date.now()): number | null {
+	if (!mac.signedInUntil) return null;
+	const until = Date.parse(mac.signedInUntil);
+	return Number.isFinite(until) && until > now ? until : null;
+}
 
 // ------------------------------------------------------------------ adding one
 

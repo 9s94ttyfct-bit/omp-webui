@@ -4,7 +4,7 @@ import { Check, ChevronDown, Monitor, Plus } from "lucide-react";
 import { useRef, useState } from "react";
 import { useT } from "../i18n/index.ts";
 import { ownerPage } from "../lib/api.ts";
-import { fmtRelative } from "../lib/format.ts";
+import { fmtClock, fmtRelative } from "../lib/format.ts";
 import {
 	addMacInApp,
 	MACS_DOT,
@@ -12,6 +12,7 @@ import {
 	type MacLive,
 	openMacInApp,
 	openMacInTab,
+	signedInUntil,
 	useMacLive,
 } from "../lib/macs.ts";
 import { useMacsStrings } from "../lib/macs-strings.ts";
@@ -37,8 +38,8 @@ const Room = () => (
  * (New chat's Full / Light chip).
  *
  * A saved Mac opens as `openMacInApp` and `openMacInTab` say (the app's labelled window, or a new tab). What the row knows of
- * each Mac is only the last time the app opened it: its live state is the seam in `lib/macs.ts`, which a stream from that Mac
- * will fill in.
+ * each Mac is the last time the app opened it and until when this server holds its Cloudflare Access sign-in (which a
+ * conversation's `remote_run` needs): its live state is the seam in `lib/macs.ts`, which a stream from that Mac will fill in.
  */
 export default function MachineSwitcher() {
 	const ready = useMacsStrings();
@@ -111,6 +112,7 @@ export default function MachineSwitcher() {
 						</Menu.Item>
 						{list.map((mac) => {
 							const state: MacLive = states[mac.id] ?? "unknown";
+							const until = signedInUntil(mac);
 							return (
 								<Menu.Item
 									key={mac.id}
@@ -133,6 +135,10 @@ export default function MachineSwitcher() {
 											{mac.lastConnected
 												? t("macs.lastConnected", { when: fmtRelative(mac.lastConnected) })
 												: t("macs.neverConnected")}
+										</span>
+										{/* Whether this server holds the Mac's Access sign-in: what a conversation's `remote_run` needs. */}
+										<span className="block truncate text-xs text-muted" data-testid="machine-signed-in">
+											{until === null ? t("macs.notSignedIn") : t("macs.signedInUntil", { when: fmtClock(until) })}
 										</span>
 									</span>
 								</Menu.Item>

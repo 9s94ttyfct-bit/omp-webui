@@ -86,6 +86,7 @@ test("the New chat pickers and request cards are not part of the first page load
 		"ModelSearch",
 		"ApprovalPicker",
 		"SessionGuard",
+		"SessionRemote",
 	]) {
 		const file = join(WEB, "components", `${lazy}.tsx`);
 		expect(existsSync(file)).toBe(true);

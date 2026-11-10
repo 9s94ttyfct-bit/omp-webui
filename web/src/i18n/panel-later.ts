@@ -223,6 +223,17 @@ export const en = {
 	controlsModeFailed: "Could not switch to {mode}: {error}. The conversation went on in the mode it had.",
 	controlsModeDismiss: "Dismiss",
 	controlsModePaused: "A paused conversation cannot switch mode. Resume it first.",
+	// The computers this conversation may run commands on (remote_run), from the Macs list
+	controlsRemoteTitle: "Remote computers",
+	controlsRemoteHelp:
+		"The agent can run commands on the computers ticked here with the tool remote_run, asked about as this conversation's permission mode says.",
+	controlsRemoteSignedIn: "Signed in until {when}",
+	controlsRemoteNotSignedIn: "Not signed in — open its window from the Macs list to sign in",
+	controlsRemoteNotOwner:
+		"Only your own page can change this: one on the computer omp-webui runs on, or one signed in through Cloudflare Access.",
+	controlsRemoteServerTools:
+		"This conversation's server tools are in use for something else (Set up with AI, Ask agent for help), so it cannot be given remote computers.",
+	controlsRemoteFailed: "Could not change the remote computers: {error}",
 	// Force restart: the conversation's omp is ended with everything it started, and the conversation goes on in a fresh one
 	controlsRestartTitle: "Restart the process",
 	controlsRestartHint:

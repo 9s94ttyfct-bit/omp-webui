@@ -3,7 +3,7 @@ import type { ChatProjects } from "@shared/chat-projects.ts";
 import type { CompactAt, CompactSettings } from "@shared/compact-at.ts";
 import type { DirListing } from "@shared/dirs.ts";
 import type { ErrorParams } from "@shared/error-info.ts";
-import type { SavedMac } from "@shared/macs.ts";
+import type { MacListing } from "@shared/macs.ts";
 import type { ConversationModels } from "@shared/model-config.ts";
 import type { Capabilities } from "@shared/platform.ts";
 import type {
@@ -206,8 +206,11 @@ export interface Meta {
 	 * sees them, or is refused. A server of an earlier version leaves it out (`ownerPage` then reads `local`).
 	 */
 	owner?: boolean;
-	/** The other Macs the server knows (#628): the sidebar's machine switcher is there once there is one. */
-	macs: SavedMac[];
+	/**
+	 * The other Macs the server knows (#628): the sidebar's machine switcher is there once there is one. Each says until when
+	 * the server holds its Cloudflare Access sign-in, which a conversation's `remote_run` needs (`macs_changed` when that changes).
+	 */
+	macs: MacListing[];
 	/** How many questions of unattended mode wait for the person (#646), and in which conversations; kept current by the `questions` message. A server of an earlier version leaves it out. */
 	questions?: QuestionCounts;
 	/**
@@ -445,6 +448,12 @@ export const sessionActions = {
 	advisor: () => get<{ omp: boolean | null }>("/api/advisor"),
 	/** Whether the advisor reviews a running conversation from its next turn; kept with the conversation. */
 	setAdvisor: (liveId: string, on: boolean) => post<{ on: boolean }>("/api/advisor/live", { liveId, on }),
+	/**
+	 * The saved computers (Mac ids) a running conversation may run commands on with `remote_run`: the whole new list, what it
+	 * has now as the answer. The person's own page only (the server refuses any other, with its reason).
+	 */
+	setRemoteComputers: (liveId: string, macIds: string[]) =>
+		post<{ macIds: string[] }>("/api/remote-run/live", { liveId, macIds }),
 	rename: (file: string, title: string) => post<{ ok: true }>("/api/session/rename", { file, title }),
 	remove: (file: string) => post<{ ok: true }>("/api/session/delete", { file }),
 	/** omp's `/move` of a conversation (by its file, or its process when it has none yet) to `folder`; where it is now. */

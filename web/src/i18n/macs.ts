@@ -18,6 +18,9 @@ export const en = {
 	stateAttention: "Needs attention",
 	stateUnreachable: "Unreachable",
 	stateUnknown: "State not known",
+	// Whether this server holds the Mac's Cloudflare Access sign-in, which a conversation's remote_run needs
+	signedInUntil: "Signed in until {when}",
+	notSignedIn: "Not signed in",
 
 	openTitle: "Open {name} ({host})",
 	openRefused: "The app did not open that Mac",
