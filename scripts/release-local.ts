@@ -326,7 +326,15 @@ async function release(): Promise<void> {
 	mkdirSync(downloaded);
 	const packages: string[] = [];
 	for (const { name, system, ext } of PACKAGES) {
-		await run(["gh", "run", "download", String(ci.id), "-n", name, "-D", downloaded, "-R", REPO]);
+		// The artifact store resets a connection now and then mid-download (2026-11-10, twice in a row): try again a few times.
+		for (let attempt = 1; ; attempt++) {
+			const r = await exec(["gh", "run", "download", String(ci.id), "-n", name, "-D", downloaded, "-R", REPO]);
+			if (r.code === 0) break;
+			rmSync(join(downloaded, `${name}.${ext}`), { force: true });
+			if (attempt === 4) throw new Error(`gh exited with ${r.code}`);
+			console.log(`Downloading ${name} failed (attempt ${attempt} of 4); trying again in ${attempt * 5} s`);
+			await Bun.sleep(attempt * 5000);
+		}
 		const file = join(work, `omp-webui-${tag}-${system}.${ext}`);
 		renameSync(join(downloaded, `${name}.${ext}`), file);
 		packages.push(file);
