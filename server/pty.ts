@@ -20,10 +20,16 @@ export function runsOmpShell(args: readonly string[]): boolean {
 
 /**
  * End a terminal's process. An interactive shell ignores SIGTERM (zsh, bash): it is hung up, as closing a terminal window
- * does, and it hangs up its own jobs in turn (`Platform.shell.hangup`; Windows terminates it).
+ * does (`Platform.shell.hangup`; Windows terminates it). The whole process group it leads is hung up, not the shell alone:
+ * a zsh in this terminal has no controlling terminal, so a command it runs (a subshell, what that started) stays in the
+ * shell's group and outlived a hangup of the shell by itself (a `remote_run` command that timed out went on running). What
+ * the shell put in the background in a group of its own (a job under job control, `setsid`) is left, as a terminal window
+ * closing leaves it.
  */
 function end(s: { proc: Bun.Subprocess; shell: boolean }): void {
-	s.proc.kill(s.shell ? platform.shell.hangup : undefined);
+	const hangup = s.shell ? platform.shell.hangup : undefined;
+	if (hangup === undefined) s.proc.kill();
+	else platform.proc.signalChild(s.proc, hangup);
 }
 
 /** How long a terminal that its page left on purpose (Run in Background) is kept for the page that comes back. */

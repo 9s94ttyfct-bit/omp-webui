@@ -55,6 +55,19 @@ const cookiesOf = (req: Request): Record<string, string> =>
 			.filter((kv) => kv.length === 2),
 	);
 
+/**
+ * End a terminal as the remote server does (`server/pty.ts`, 0.23.1): its shell's whole process group is hung up, so that
+ * a command a zsh runs in a subshell (in the shell's group: no controlling terminal) ends with it.
+ */
+function hangUp(proc: Bun.Subprocess | undefined): void {
+	if (!proc) return;
+	try {
+		process.kill(-proc.pid, "SIGHUP");
+	} catch {
+		proc.kill("SIGHUP");
+	}
+}
+
 function fakeRemote(o: { jwt?: string; os?: string; shell?: string[]; env?: Record<string, string> } = {}): Fake {
 	const jwt = o.jwt ?? JWT;
 	const fake: Fake = { origin: "", frames: [], shells: [], token: "tok-1", printed: "", stop: () => {} };
@@ -130,11 +143,11 @@ function fakeRemote(o: { jwt?: string; os?: string; shell?: string[]; env?: Reco
 					ws.data.terminals.set(ptyId, { terminal, proc });
 					ws.send(JSON.stringify({ t: "reply", req: msg.req, ok: true, data: { ptyId } }));
 				} else if (msg.t === "pty_input") ws.data.terminals.get(msg.ptyId)?.terminal.write(msg.data);
-				else if (msg.t === "pty_kill") ws.data.terminals.get(msg.ptyId)?.proc.kill("SIGHUP");
+				else if (msg.t === "pty_kill") hangUp(ws.data.terminals.get(msg.ptyId)?.proc);
 			},
 			close(ws) {
 				// A page that leaves takes its terminals with it, as the remote server's do.
-				for (const { proc } of ws.data.terminals.values()) proc.kill("SIGHUP");
+				for (const { proc } of ws.data.terminals.values()) hangUp(proc);
 			},
 		},
 	});
@@ -248,6 +261,41 @@ describe("runRemote", () => {
 		await killSent(fake);
 		await shellsEnded(fake);
 	});
+
+	// Killing the remote shell is not enough: the command runs in a subshell, which outlives its login shell (seen on a real
+	// computer: `sleep` went on after the call had timed out). The command itself must be stopped, in both shells.
+	const alive = (pid: number): boolean => {
+		try {
+			process.kill(pid, 0);
+			return true;
+		} catch {
+			return false;
+		}
+	};
+	for (const [name, shell, env] of [
+		["bash", ["/bin/bash", "--noprofile", "--norc", "-i"], {}],
+		["zsh", ["/bin/zsh", "-f", "-i"], { PS1: "$ " }],
+	] as const) {
+		for (const how of ["timeout", "abort"] as const)
+			test.skipIf(!existsSync(shell[0]))(
+				`${name}: the command of a call that ${how === "timeout" ? "times out" : "is given up"} is stopped`,
+				async () => {
+					const fake = fakeRemote({ shell: [...shell], env: { ...env } });
+					const abort = new AbortController();
+					const call = run(fake, {
+						command: "sh -c 'echo pid=$$; exec sleep 9999'",
+						timeoutMs: how === "timeout" ? 2500 : 15_000,
+						signal: abort.signal,
+					});
+					await pollUntil(() => /pid=\d+/.test(fake.printed), "the command to start", 5000);
+					const pid = Number(/pid=(\d+)/.exec(fake.printed)?.[1]);
+					if (how === "abort") abort.abort();
+					await call;
+					await killSent(fake);
+					await pollUntil(() => !alive(pid), `the command (${pid}) to end`, 5000);
+				},
+			);
+	}
 
 	test("a call given up before it starts runs nothing", async () => {
 		const fake = fakeRemote();
