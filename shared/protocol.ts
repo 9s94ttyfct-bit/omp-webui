@@ -208,6 +208,18 @@ export interface LiveInfo {
 	 */
 	advisor?: boolean;
 	/**
+	 * The saved computers (the Macs list, `SavedMac.id`) this conversation may run shell commands on, with the `remote_run` tool
+	 * this server serves it (see `shared/remote-run.ts`): the person's choice, kept with the conversation (so a resumed one has it
+	 * again) and changed with `POST /api/remote-run/live` from the person's own page only. Absent: none, and the conversation
+	 * has no such tool.
+	 */
+	remoteComputers?: string[];
+	/**
+	 * Why this conversation cannot be given remote computers: `serverTools`, its one set of server tools is held for something
+	 * else ("Set up with AI" in Settings › Remote access, "Ask agent for help"). Absent: it can.
+	 */
+	remoteComputersUnavailable?: "serverTools";
+	/**
 	 * How many subagents this conversation runs at once (omp's `task.maxConcurrency`, `0`: no limit; see
 	 * `shared/subagent-concurrency.ts`), where that is its own limit, held by this process's overlay. Absent while omp's own
 	 * configuration decides (Default).

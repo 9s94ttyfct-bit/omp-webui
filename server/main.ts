@@ -121,6 +121,8 @@ import type { PushHub } from "./push/hub.ts";
 import type { RemoteIdentity } from "./remote-auth.ts";
 import { remotePingMs } from "./remote-keepalive.ts";
 import { LazyRemote } from "./remote-lazy.ts";
+import { RemoteRun, RemoteRunError } from "./remote-run/service.ts";
+import { RemoteSignIns } from "./remote-run/sign-ins.ts";
 import { SavedMacs, savedMacsPath } from "./saved-macs.ts";
 import {
 	ListPref,
@@ -487,7 +489,29 @@ const chatProjects = new ChatProjectStore(
 const projectOfNewChat = new Map<string, string>();
 const uiPrefs = new UiPrefs(cfg.dataDir);
 // The other Macs this one knows (#628): pages read the list in `/api/meta`, only a page on this computer changes it.
-const savedMacs = new SavedMacs(savedMacsPath(cfg.dataDir), () => broadcastAll({ t: "macs_changed" }));
+// Run commands on another computer (`server/remote-run/`): the Macs' Cloudflare Access sign-ins, which the macOS app hands over
+// (`/api/macs/<id>/sign-in`, kept in memory only), and the conversations the person gave some of them (`remote_run`).
+const remoteSignIns = new RemoteSignIns();
+const savedMacs = new SavedMacs(
+	savedMacsPath(cfg.dataDir),
+	() => {
+		broadcastAll({ t: "macs_changed" });
+		// A Mac renamed: the conversations that have it are told its new name.
+		void remoteRun.macsChanged();
+	},
+	{ signIns: remoteSignIns, removed: (id) => void remoteRun.forget(id) },
+);
+const remoteRun = new RemoteRun<Live>({
+	file: join(cfg.dataDir, "remote-run.json"),
+	macs: () => savedMacs.records(),
+	signIns: remoteSignIns,
+	live: (liveId) => pool.get(liveId),
+	lives: () => pool.list().flatMap((l) => pool.get(l.liveId) ?? []),
+	heldRemotely,
+	announce: (live) => pool.announce(live),
+	signedOut: () => broadcastAll({ t: "macs_changed" }),
+});
+pool.remoteRun = remoteRun;
 // Side questions (the Ask tab) on the model the person chose for them (`ompw.btwModel`): the server answers those in a process of its own.
 const sideQuestions = new BtwForks({
 	bin: () => cfg.ompBin,
@@ -535,11 +559,19 @@ let loopbackPort = 0;
 /**
  * The conversations a page that is not the person's own (one that holds only the token: on the network, or behind a proxy
  * without Access) has touched (attached to, or sent anything to, answers of omp's approval prompts included), by live id.
- * The AI help's tools are refused on them (see `RemoteAi.refusal`) even after that page has gone: a page could answer omp's
- * approval prompt of a tool call and leave, and the call arrives afterwards. It is lifted by the person's own page (this
- * Mac's, or one signed in through Access) sending the conversation a message, and ends with the process.
+ * The tools this server serves a conversation are refused on them (see `RemoteAi.refusal`, `RemoteRun.call`) even after that
+ * page has gone: a page could answer omp's approval prompt of a tool call and leave, and the call arrives afterwards. It is
+ * lifted by the person's own page (this Mac's, or one signed in through Access) sending the conversation a message, and ends
+ * with the process.
  */
 const remoteTouched = new Set<string>();
+/** Whether a page that is not the person's own is on conversation `liveId`, or has been (`remoteTouched`): its server tools are refused. */
+function heldRemotely(liveId: string): boolean {
+	return (
+		remoteTouched.has(liveId) ||
+		[...sockets].some((ws) => !isOwnerPage(ws.data.remote, ws.data.local) && ws.data.attached.has(liveId))
+	);
+}
 const remoteAuth = new LazyRemote(
 	cfg.dataDir,
 	broadcastAll,
@@ -550,9 +582,7 @@ const remoteAuth = new LazyRemote(
 		open: async (server, cwd) => (await pool.openServing(cwd, server)).attached(),
 		withdraw: (liveId) => pool.get(liveId)?.serveHostTools(null) ?? Promise.resolve(),
 		// A page that is not the person's own could answer omp's approval prompts on the conversation: its tools are refused while one is.
-		heldRemotely: (liveId) =>
-			remoteTouched.has(liveId) ||
-			[...sockets].some((ws) => !isOwnerPage(ws.data.remote, ws.data.local) && ws.data.attached.has(liveId)),
+		heldRemotely,
 	},
 	// Shells for remote pages turned off: the ones they have open end now, not when their pages next close.
 	(config) => {
@@ -932,9 +962,7 @@ const settingsHelp = new SettingsHelp(
 	{ dataDir: cfg.dataDir, folder: join(cfg.dataDir, "settings-help") },
 	{
 		open: async (server, cwd) => (await pool.openServing(cwd, server)).attached(),
-		heldRemotely: (liveId) =>
-			remoteTouched.has(liveId) ||
-			[...sockets].some((ws) => !isOwnerPage(ws.data.remote, ws.data.local) && ws.data.attached.has(liveId)),
+		heldRemotely,
 		changed: (state) => broadcastOwner({ t: "settings_help", state }),
 	},
 	undefined,
@@ -1142,6 +1170,8 @@ const GUIDANCE_NOT_HERE =
 	"Guidance is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access";
 const UPDATE_NOT_HERE =
 	"The app is updated on the computer omp-webui runs on, or from a page signed in through Cloudflare Access";
+const REMOTE_RUN_NOT_HERE =
+	"Remote computers are given to a conversation on the computer omp-webui runs on, or from a page signed in through Cloudflare Access";
 /** What the file transfer asks of a request: who it is from, what this computer lets that page do, and what must not be touched. */
 function transferEnv(req: Request, peer: string | undefined): TransferEnv {
 	const local = onThisComputer.has(req);
@@ -1310,8 +1340,9 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				fileTransfer: fromOwner(req) ? "full" : remoteAuth.fileTransfer(),
 				// Whether this page may open a shell in the panel's Terminal tab: always for the person's own page, as the person set it for any other.
 				shell: fromOwner(req) || remoteAuth.remoteShell(),
-				// The other Macs this one knows, for the sidebar's machine switcher: what a page needs to open one and nothing of the app's own.
-				macs: savedMacs.saved(),
+				// The other Macs this one knows, for the sidebar's machine switcher: what a page needs to open one and nothing of the app's own,
+				// and until when this server holds each one's sign-in (for `remote_run`; never the sign-in itself).
+				macs: savedMacs.listed(),
 				// How many questions wait for the person (#646): the sidebar's badge is there from the first look.
 				questions: unattendedMode.questions.counts(),
 				// What the system the server runs on lets it do (`shared/platform.ts`): the page shows what a flag turns off (the
@@ -1952,6 +1983,22 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			}
 			return json({ on: body.on });
 		}
+		case "/api/remote-run/live": {
+			// The saved computers one running conversation may run commands on (`remote_run`, see `server/remote-run/`): the
+			// person's choice, kept with the conversation for when it is opened again, and given to its omp without a restart.
+			// The person's own pages only (`/api/remote-run*` is an owner route; asked again here): no tool can reach this.
+			if (req.method !== "POST") return fail("POST required", 405);
+			if (!fromOwner(req)) return fail(REMOTE_RUN_NOT_HERE, 403);
+			const body: unknown = await req.json().catch(() => null);
+			const live = isRecord(body) && typeof body.liveId === "string" ? pool.get(body.liveId) : undefined;
+			if (!live || live.info.exited) return fail("Live session not found", 404);
+			try {
+				return json({ macIds: await remoteRun.choose(live, isRecord(body) ? body.macIds : undefined) });
+			} catch (e) {
+				if (e instanceof RemoteRunError) return fail(e.message, e.status);
+				throw e;
+			}
+		}
 		case "/api/usage-reset-wait": {
 			// Whether a failed turn waits out its provider's usage limit is omp's own retry (`retry.waitForUsageReset`):
 			// POST changes it as `omp config set` does, and the answer is what `omp config get` says now, with the
@@ -2421,7 +2468,8 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		return browser.handle(req, url, { remote: remoteOf.get(req) ?? null, local: onThisComputer.has(req) });
 	const remoteAnswer = await remoteAuth.handle(req, url, fromOwner(req));
 	if (remoteAnswer) return remoteAnswer;
-	const macsAnswer = await savedMacs.handle(req, url, fromOwner(req));
+	// A Mac's sign-in is taken from this computer's own requests only (`onThisComputer`: never one through the tunnel).
+	const macsAnswer = await savedMacs.handle(req, url, fromOwner(req), onThisComputer.has(req));
 	if (macsAnswer) return macsAnswer;
 	if (p.startsWith("/api/folder/")) {
 		return folder.handle(req, url, {
@@ -2896,6 +2944,8 @@ async function route(req: Request, srv: Bun.Server<SocketData>): Promise<Respons
 	if (isOwnerRoute(url.pathname) && !isOwnerPage(remote, local)) {
 		if (url.pathname === "/api/update" || url.pathname.startsWith("/api/update/")) return fail(UPDATE_NOT_HERE, 403);
 		if (url.pathname === "/api/guard" || url.pathname.startsWith("/api/guard/")) return fail(GUARD_NOT_HERE, 403);
+		if (url.pathname === "/api/remote-run" || url.pathname.startsWith("/api/remote-run/"))
+			return fail(REMOTE_RUN_NOT_HERE, 403);
 		return new Response("Forbidden", { status: 403 });
 	}
 	// The token link and the token itself are not for a page that came in through the tunnel: it has its Access login and

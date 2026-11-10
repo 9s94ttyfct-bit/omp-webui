@@ -43,6 +43,15 @@ export function savedMacOf(record: MacRecord): SavedMac {
 	return { id: record.id, name: record.name, host: record.host, lastConnected: record.lastConnected };
 }
 
+/**
+ * A saved Mac as `/api/meta` lists it: what a page sees, and until when this server holds the Mac's Cloudflare Access sign-in,
+ * which the macOS app hands over (`POST /api/macs/<id>/sign-in`) and which a conversation's `remote_run` uses to reach it
+ * (ISO 8601; null: none, or it has lapsed: "Open its window to sign in"). Never the sign-in itself.
+ */
+export interface MacListing extends SavedMac {
+	signedInUntil: string | null;
+}
+
 /** Why a typed address cannot be a Mac's. */
 export type AddressProblem =
 	| "empty"

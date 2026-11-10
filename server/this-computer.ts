@@ -61,6 +61,7 @@ export function isOwnerPage(remote: RemoteIdentity | null, local: boolean): bool
 const OWNER_ONLY = [
 	"/api/remote",
 	"/api/macs",
+	"/api/remote-run",
 	"/api/guard",
 	"/api/update",
 	"/api/migrate",
@@ -73,10 +74,11 @@ const OWNER_ONLY = [
 
 /**
  * The routes that are the person's, and nobody else's (`isOwnerPage`: this computer's page, and one signed in through
- * Access): the tunnel's settings (`/api/remote*`), the list of saved Macs (`/api/macs*`), the guard's settings, what it
- * decided and how strict it is (`/api/guard*`), the app's own updates (`/api/update*`), moving to another computer
- * (`/api/migrate/*`), what omp remembers (`/api/memory*`: what is written to it is put into the prompt of every later
- * conversation), what the macOS app is told (`/api/shell/*`), Ask agent for help (`/api/settings-help*`), what starts at
+ * Access): the tunnel's settings (`/api/remote*`), the list of saved Macs (`/api/macs*`), which of them a conversation may
+ * run commands on (`/api/remote-run*`), the guard's settings, what it decided and how strict it is (`/api/guard*`), the
+ * app's own updates (`/api/update*`), moving to another computer (`/api/migrate/*`), what omp remembers (`/api/memory*`:
+ * what is written to it is put into the prompt of every later conversation), what the macOS app is told (`/api/shell/*`),
+ * Ask agent for help (`/api/settings-help*`), what starts at
  * this user's login (`/api/login-start`) and stopping the server (`/api/shutdown`). A page that holds only the token (one on
  * the network, or behind a proxy without Access) is refused them by `route` in `main.ts`: the token lets a page use the
  * conversations, not reconfigure, replace or carry away the computer they run on. A route under one of these prefixes

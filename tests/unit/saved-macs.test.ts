@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { RemoteSignIns } from "../../server/remote-run/sign-ins.ts";
 import { decodeMacs, MacError, SavedMacs } from "../../server/saved-macs.ts";
 import { MAC_LIMIT } from "../../shared/macs.ts";
 import { expectMode } from "../support/modes.ts";
@@ -271,5 +272,92 @@ describe("SavedMacs", () => {
 		expect(list.saved()).toEqual([
 			{ id: mac.id, name: "Studio", host: "studio.example.com", lastConnected: "2026-10-25T10:00:00Z" },
 		]);
+	});
+});
+
+describe("a Mac's sign-in", () => {
+	const b64url = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+	const exp = Math.floor(Date.now() / 1000) + 3600;
+	const JWT = `${b64url({ alg: "RS256" })}.${b64url({ exp })}.c2ln`;
+
+	/** A list with the sign-ins of the server, and the Macs removed from it. */
+	const withSignIns = () => {
+		const folder = mkdtempSync(join(dir, `s${n++}-`));
+		const changes: number[] = [];
+		const removed: string[] = [];
+		const signIns = new RemoteSignIns();
+		const list = new SavedMacs(join(folder, "remote-macs.json"), () => changes.push(Date.now()), {
+			signIns,
+			removed: (id) => removed.push(id),
+		});
+		const mac = list.add({ name: "Server1", address: "server1.example.com" });
+		changes.length = 0;
+		/** A request as `main.ts` hands it over: `owner` and `local` as the request's own authentication says. */
+		const send = (method: string, id: string, body: unknown, who: { owner: boolean; local: boolean }) => {
+			const url = new URL(`http://127.0.0.1/api/macs/${id}/sign-in`);
+			const req = new Request(url, {
+				method,
+				headers: { "content-type": "application/json" },
+				...(body === undefined ? {} : { body: JSON.stringify(body) }),
+			});
+			return list.handle(req, url, who.owner, who.local) as Promise<Response>;
+		};
+		return { list, signIns, mac, changes, removed, send };
+	};
+	const HERE = { owner: true, local: true };
+
+	test("is handed over by this computer's app, kept until it lapses, and listed as a date, never as the token", async () => {
+		const { list, mac, changes, send } = withSignIns();
+		expect(list.listed()).toEqual([{ ...list.saved()[0], signedInUntil: null }]);
+		const res = await send("POST", mac.id.toUpperCase(), { jwt: JWT }, HERE);
+		expect(res.status).toBe(200);
+		const until = new Date(exp * 1000).toISOString();
+		expect(await res.json()).toEqual({ signedInUntil: until });
+		expect(list.listed()[0]?.signedInUntil).toBe(until);
+		expect(JSON.stringify(list.listed())).not.toContain(JWT);
+		expect(readFileSync(list.file, "utf8")).not.toContain(JWT);
+		// Every page is told, and reads the list again.
+		expect(changes.length).toBe(1);
+		const gone = await send("DELETE", mac.id, undefined, HERE);
+		expect(gone.status).toBe(204);
+		expect(list.listed()[0]?.signedInUntil).toBeNull();
+		expect(changes.length).toBe(2);
+	});
+
+	test("is refused to every request that is not this computer's own, a page signed in through Access included", async () => {
+		const { list, mac, send } = withSignIns();
+		// Signed in through Access: the person's own page, but not this computer's app.
+		const access = await send("POST", mac.id, { jwt: JWT }, { owner: true, local: false });
+		expect(access.status).toBe(403);
+		const token = await send("POST", mac.id, { jwt: JWT }, { owner: false, local: false });
+		expect(token.status).toBe(403);
+		expect((await send("DELETE", mac.id, undefined, { owner: true, local: false })).status).toBe(403);
+		expect(list.listed()[0]?.signedInUntil).toBeNull();
+	});
+
+	test("a token that is not one, or has lapsed, is refused with 400 and nothing is kept", async () => {
+		const { list, mac, changes, send } = withSignIns();
+		for (const jwt of ["garbage-value", `${b64url({})}.${b64url({ exp: exp - 7200 })}.c2ln`, 42]) {
+			const res = await send("POST", mac.id, { jwt }, HERE);
+			expect(res.status).toBe(400);
+			expect(((await res.json()) as { error: string }).error).not.toContain(String(jwt));
+		}
+		expect((await send("POST", mac.id, "nope", HERE)).status).toBe(400);
+		expect(list.listed()[0]?.signedInUntil).toBeNull();
+		expect(changes).toEqual([]);
+	});
+
+	test("an id not on the list is 404, a method it does not take 405", async () => {
+		const { send, mac } = withSignIns();
+		expect((await send("POST", "0f8fad5b-d9cb-469f-a165-70867728950e", { jwt: JWT }, HERE)).status).toBe(404);
+		expect((await send("PUT", mac.id, { jwt: JWT }, HERE)).status).toBe(405);
+	});
+
+	test("a Mac taken out of the list takes its sign-in with it, and says so", async () => {
+		const { list, signIns, mac, removed, send } = withSignIns();
+		await send("POST", mac.id, { jwt: JWT }, HERE);
+		list.remove(mac.id);
+		expect(signIns.get(mac.id)).toBeNull();
+		expect(removed).toEqual([mac.id]);
 	});
 });

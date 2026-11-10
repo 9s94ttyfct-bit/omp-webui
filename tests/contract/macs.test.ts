@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isRecord } from "../../shared/guards.ts";
-import { MAC_LIMIT, type MacProblem, type MacRecord, type SavedMac } from "../../shared/macs.ts";
+import { MAC_LIMIT, type MacListing, type MacProblem, type MacRecord, type SavedMac } from "../../shared/macs.ts";
 import { lanAddress, rawRequest } from "../support/lan-peer.ts";
 import { expectMode } from "../support/modes.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
@@ -51,7 +51,7 @@ const tunnel = (path: string, method = "GET", body?: unknown) =>
 		body: body === undefined ? undefined : JSON.stringify(body),
 	});
 
-const meta = async () => (await (await here("/api/meta")).json()) as { macs: SavedMac[]; local: boolean };
+const meta = async () => (await (await here("/api/meta")).json()) as { macs: MacListing[]; local: boolean };
 const stored = () => JSON.parse(readFileSync(file(), "utf8")) as { version: number; macs: MacRecord[] };
 
 async function add(name: string, address: string): Promise<MacRecord> {
@@ -62,6 +62,11 @@ async function add(name: string, address: string): Promise<MacRecord> {
 
 /** The list as a page that is not this computer's sees it, and as it is on disk: both must be as they were. */
 const snapshot = async () => ({ page: await meta(), disk: existsSync(file()) ? readFileSync(file(), "utf8") : null });
+
+const b64url = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+/** A token of Access's shape for a Mac's sign-in (its signature is not one: the remote computer checks it, not this server). */
+const SIGN_IN_EXP = Math.floor(Date.now() / 1000) + 6 * 3600;
+const SIGN_IN = `${b64url({ alg: "RS256", typ: "JWT" })}.${b64url({ exp: SIGN_IN_EXP, email: "me@example.com" })}.c2ln`;
 
 describe("the list", () => {
 	test("is empty at first: meta lists no Mac and there is no file", async () => {
@@ -75,10 +80,13 @@ describe("the list", () => {
 		expect(mac.id).toMatch(/^[0-9a-f-]{36}$/);
 		expect(mac.storeId).not.toBe(mac.id);
 
-		// A page is told what it needs to open the Mac, and no more: not the team, not the app's data store.
+		// A page is told what it needs to open the Mac, and no more: not the team, not the app's data store; and until when this
+		// server holds its sign-in (none yet).
 		const listed = (await meta()).macs;
-		expect(listed).toEqual([{ id: mac.id, name: "Studio", host: "studio.example.com", lastConnected: null }]);
-		expect(Object.keys(listed[0] as object).sort()).toEqual(["host", "id", "lastConnected", "name"]);
+		expect(listed).toEqual([
+			{ id: mac.id, name: "Studio", host: "studio.example.com", lastConnected: null, signedInUntil: null },
+		]);
+		expect(Object.keys(listed[0] as object).sort()).toEqual(["host", "id", "lastConnected", "name", "signedInUntil"]);
 
 		expectMode(file(), 0o600);
 		expectMode(join(s.root, "data"), 0o700);
@@ -233,9 +241,51 @@ describe("the list", () => {
 	});
 });
 
+describe("a Mac's sign-in, handed over by the app on this computer", () => {
+	test("is kept in memory, listed in meta as a date and never as the token, and taken back", async () => {
+		const [studio] = (await meta()).macs as [MacListing];
+		const res = await here(`/api/macs/${studio.id.toUpperCase()}/sign-in`, "POST", { jwt: SIGN_IN });
+		expect(res.status).toBe(200);
+		const until = new Date(SIGN_IN_EXP * 1000).toISOString();
+		expect(await res.json()).toEqual({ signedInUntil: until });
+		const listed = (await meta()).macs.find((m) => m.id === studio.id);
+		expect(listed?.signedInUntil).toBe(until);
+		expect(JSON.stringify(await meta())).not.toContain(SIGN_IN);
+		// Nothing of it is written: not in the list's file, nor in any other file of the data dir.
+		for (const name of readdirSync(join(s.root, "data"), { recursive: true }).map(String)) {
+			const path = join(s.root, "data", name);
+			if (!existsSync(path) || !statSync(path).isFile()) continue;
+			expect(readFileSync(path, "utf8").includes(SIGN_IN), name).toBe(false);
+		}
+		expect((await here(`/api/macs/${studio.id}/sign-in`, "DELETE")).status).toBe(204);
+		expect((await meta()).macs.find((m) => m.id === studio.id)?.signedInUntil).toBeNull();
+	});
+
+	test("a token that is not one, or has lapsed, is refused with 400; an id not on the list with 404", async () => {
+		const [studio] = (await meta()).macs as [MacListing];
+		expect((await here(`/api/macs/${studio.id}/sign-in`, "POST", { jwt: "garbage-value" })).status).toBe(400);
+		const lapsed = `${b64url({ alg: "RS256" })}.${b64url({ exp: SIGN_IN_EXP - 7 * 3600 })}.c2ln`;
+		expect((await here(`/api/macs/${studio.id}/sign-in`, "POST", { jwt: lapsed })).status).toBe(400);
+		expect((await here(`/api/macs/${studio.id}/sign-in`, "POST", {})).status).toBe(400);
+		expect((await meta()).macs.find((m) => m.id === studio.id)?.signedInUntil).toBeNull();
+		const ghost = "0f8fad5b-d9cb-469f-a165-70867728950e";
+		expect((await here(`/api/macs/${ghost}/sign-in`, "POST", { jwt: SIGN_IN })).status).toBe(404);
+	});
+});
+
+describe("a conversation's remote computers", () => {
+	test("are changed from the person's own page only, and only for a conversation that runs", async () => {
+		const tunnelled = await tunnel("/api/remote-run/live", "POST", { liveId: "L0", macIds: [] });
+		expect(tunnelled.status).toBe(403);
+		expect(((await tunnelled.json()) as { error: string }).error).toContain("Remote computers");
+		expect((await here("/api/remote-run/live", "POST", { liveId: "L0", macIds: [] })).status).toBe(404);
+		expect((await here("/api/remote-run/live")).status).toBe(405);
+	});
+});
+
 describe("a page that is not this computer's", () => {
 	test("reads the list in meta and is refused every route that changes it, whatever it holds", async () => {
-		const [studio] = (await meta()).macs as [SavedMac];
+		const [studio] = (await meta()).macs as [MacListing];
 		const before = await snapshot();
 		const attempts: [string, string, unknown][] = [
 			["POST", "/api/macs", { name: "Intruder", address: "evil.example.com" }],
@@ -243,6 +293,8 @@ describe("a page that is not this computer's", () => {
 			["POST", `/api/macs/${studio.id}/connected`, {}],
 			["POST", `/api/macs/${studio.id}/team`, { team: "evil" }],
 			["DELETE", `/api/macs/${studio.id}`, undefined],
+			["POST", `/api/macs/${studio.id}/sign-in`, { jwt: SIGN_IN }],
+			["DELETE", `/api/macs/${studio.id}/sign-in`, undefined],
 			["GET", "/api/macs", undefined],
 		];
 		// Through the tunnel: a loopback connection that carries what Cloudflare adds.
@@ -268,7 +320,7 @@ describe("a page that is not this computer's", () => {
 	test.skipIf(LAN === undefined)(
 		"a peer on the network is refused them too, and a request that says it is the loopback does not make it one",
 		async () => {
-			const [studio] = (await meta()).macs as [SavedMac];
+			const [studio] = (await meta()).macs as [MacListing];
 			const before = await snapshot();
 			const port = Number(new URL(s.url).port);
 			const from = (method: string, path: string, body: unknown, extra: Record<string, string> = {}) =>
@@ -288,6 +340,7 @@ describe("a page that is not this computer's", () => {
 				);
 				expect((await from("POST", `/api/macs/${studio.id}/rename`, { name: "Renamed" }, extra)).status).toBe(403);
 				expect((await from("DELETE", `/api/macs/${studio.id}`, undefined, extra)).status).toBe(403);
+				expect((await from("POST", `/api/macs/${studio.id}/sign-in`, { jwt: SIGN_IN }, extra)).status).toBe(403);
 			}
 			expect(await snapshot()).toEqual(before);
 		},
@@ -347,13 +400,14 @@ describe("what the macOS app saved before the server kept the list", () => {
 	test("is the list from the first request: the entries that fit are listed, as they are, and the file is kept as it was until a change", async () => {
 		const text = readFileSync(join(old.root, "data", "remote-macs.json"), "utf8");
 		const res = await fetch(`${old.url}/api/meta`, { headers: { "x-omp-webui-token": old.accessToken } });
-		const listed = ((await res.json()) as { macs: SavedMac[] }).macs;
+		const listed = ((await res.json()) as { macs: MacListing[] }).macs;
 		expect(listed).toEqual([
 			{
 				id: "6F1C1B7E-7B7A-4E0B-9E27-0C7E0A6C1D11",
 				name: "Mac A",
 				host: "omp.example.com",
 				lastConnected: "2026-10-24T18:30:00Z",
+				signedInUntil: null,
 			},
 		]);
 		expect(readFileSync(join(old.root, "data", "remote-macs.json"), "utf8")).toBe(text);

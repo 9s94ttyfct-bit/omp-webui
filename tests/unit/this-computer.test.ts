@@ -118,6 +118,9 @@ describe("isOwnerRoute", () => {
 			"/api/macs",
 			"/api/macs/0f8fad5b-d9cb-469f-a165-70867728950e",
 			"/api/macs/0f8fad5b-d9cb-469f-a165-70867728950e/rename",
+			// Which of them a conversation may run commands on (`remote_run`).
+			"/api/remote-run",
+			"/api/remote-run/live",
 			// What the macOS app is told on its own: the titles of the conversations that need somebody.
 			"/api/shell",
 			"/api/shell/events",

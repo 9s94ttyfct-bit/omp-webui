@@ -51,6 +51,7 @@ import type {
 } from "../shared/protocol.ts";
 import type { QuotaHoldReason } from "../shared/quota-floor.ts";
 import { QUOTA_DIALOG_CONTINUE, QUOTA_FILE_ENV, QUOTA_LOADED_SUFFIX } from "../shared/quota-hold.ts";
+import { REMOTE_RUN_TOOL } from "../shared/remote-run.ts";
 import { isUsageLimitError } from "../shared/retry.ts";
 import { type ConfigValue, isChoice, type Unreported } from "../shared/session-defaults.ts";
 import { STOP_GRACE_MS } from "../shared/stop.ts";
@@ -123,6 +124,20 @@ export interface BrowserHooks {
 	cdpUrlFor(owner: string | null): Promise<string | false | null>;
 	/** The conversation in `from` moved to `to`: its pages and endpoint are the new file's. */
 	moved(from: string, to: string): Promise<void>;
+}
+
+/**
+ * What the pool tells "Run commands on another computer" of the conversations (see `LivePool.remoteRun`;
+ * `server/remote-run/service.ts` in the server).
+ */
+export interface RemoteRunHooks {
+	/**
+	 * A process started for a conversation (new, resumed, restarted, taken over): it is given `remote_run` if it was given
+	 * computers. Never rejects: a conversation that could not be served goes on without the tool, and the log says why.
+	 */
+	started(live: Live): Promise<void>;
+	/** The conversation in `from` moved to `to`: the computers it was given go along. */
+	moved(from: string, to: string): void;
 }
 
 /** The commands after which the conversation is the same one in another file, so that its guard goes along (see `Live.followGuard`). */
@@ -1687,6 +1702,7 @@ export class Live {
 			if (from && to) this.pool.carryCompact(from, to);
 			if (from && to) this.pool.carryConcurrency(from, to);
 			if (from && to) this.pool.carryAdvisor(from, to);
+			if (from && to) this.pool.remoteRun?.moved(from, to);
 			if (from && to) this.pool.carryGuidance(from, to);
 			if (from && to) this.pool.carryUnattended(from, to);
 			if (from && to) this.pool.carryLaunchMode(from, to);
@@ -2331,6 +2347,19 @@ export class Live {
 			this.hostServer = before;
 			throw new Error(set.error ?? "omp did not accept the tools");
 		}
+		// One set of server tools per conversation: one held for something else ("Set up with AI", "Ask agent for help") leaves
+		// no room for `remote_run`, and every page is told so (`LiveInfo.remoteComputersUnavailable`).
+		const held = server !== null && !server.tools.some((t) => t.name === REMOTE_RUN_TOOL);
+		if (held !== (this.info.remoteComputersUnavailable !== undefined)) {
+			if (held) this.info.remoteComputersUnavailable = "serverTools";
+			else delete this.info.remoteComputersUnavailable;
+			this.pool.announce(this);
+		}
+	}
+
+	/** What serves this process's host tools now (see `serveHostTools`); null while none does. */
+	get hostToolServer(): HostToolServer | null {
+		return this.hostServer;
 	}
 
 	/**
@@ -3916,6 +3945,13 @@ export class LivePool {
 	 */
 	browser: BrowserHooks | null = null;
 
+	/**
+	 * Run commands on another computer (`server/remote-run/`): a conversation the person gave some of their saved computers
+	 * is served `remote_run` whenever a process starts for it, and its choice follows it to another session file. Null: no
+	 * conversation has the tool.
+	 */
+	remoteRun: RemoteRunHooks | null = null;
+
 	/** The server learned its address, or the browser was installed: every conversation's overlay names its endpoint again. */
 	async syncBrowser(): Promise<void> {
 		await Promise.all(
@@ -4872,6 +4908,8 @@ export class LivePool {
 		await live.untilGuidanceSaid();
 		await live.untilUnattendedSaid();
 		this.announce(live);
+		// Given computers to run commands on, it is served the tool before anything is sent to it.
+		await this.remoteRun?.started(live);
 		// It started on the copy of its preset it was remembered with: an edit of the preset made since is followed (#4).
 		if (models)
 			void live
@@ -5028,6 +5066,8 @@ export class LivePool {
 		}
 		this.lives.set(live.info.liveId, live);
 		this.announce(live);
+		// A server that restarts serves no tool: a conversation taken over that was given computers is served them again.
+		await this.remoteRun?.started(live);
 		// The roles of the config may have changed while the server was away: the record's are worked out again.
 		if (overlay?.models) void live.refreshModelRoles().catch(() => {});
 	}

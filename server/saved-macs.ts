@@ -11,6 +11,7 @@ import {
 	MAC_LIMIT,
 	type MacAdd,
 	type MacAnswer,
+	type MacListing,
 	type MacProblem,
 	type MacRecord,
 	parseMacAddress,
@@ -18,6 +19,7 @@ import {
 	type SavedMac,
 	savedMacOf,
 } from "../shared/macs.ts";
+import { RemoteSignInError } from "./remote-run/sign-ins.ts";
 
 /**
  * The other Macs this one knows (#628, on #614's list): `<data dir>/remote-macs.json`, the file the macOS app's Macs menu
@@ -133,19 +135,49 @@ function encodeMacs(macs: MacRecord[]): string {
 	return `${JSON.stringify({ macs: entries, version: 1 }, null, 2)}\n`;
 }
 
+/**
+ * The sign-ins of the saved Macs, as the macOS app hands them over (`server/remote-run/sign-ins.ts`): kept in memory by the
+ * server, never in the list's file.
+ */
+export interface MacSignIns {
+	set(macId: string, jwt: string): { expires: string };
+	clear(macId: string): void;
+	signedInUntil(macId: string): string | null;
+}
+
+/** What else the list tells, or is told of, beyond the file. */
+export interface SavedMacsHooks {
+	/** Where the sign-ins are (`/api/macs/<id>/sign-in`); without them, the route is not there and no Mac is signed in. */
+	signIns?: MacSignIns;
+	/** A Mac was taken out of the list (after `onChange`): what was kept for it elsewhere goes too. */
+	removed?: (id: string) => void;
+}
+
 /** The list, in `remote-macs.json`. */
 export class SavedMacs {
 	private known: { stamp: string; loaded: Loaded } | null = null;
 
-	/** `onChange` runs after every change that was written (every open page is told, and asks again). */
+	/**
+	 * `onChange` runs after every change that was written, and after a Mac's sign-in was handed over or taken back (every open
+	 * page is told, and asks again).
+	 */
 	constructor(
 		readonly file: string,
 		private readonly onChange: () => void = () => {},
+		private readonly hooks: SavedMacsHooks = {},
 	) {}
 
 	/** The Macs as a page sees them. */
 	saved(): SavedMac[] {
 		return this.load().macs.map(savedMacOf);
+	}
+
+	/** The Macs as a page sees them, each with until when this server holds its sign-in (`/api/meta`). */
+	listed(): MacListing[] {
+		return this.load().macs.map((m) => ({
+			...savedMacOf(m),
+			signedInUntil: this.hooks.signIns?.signedInUntil(m.id) ?? null,
+		}));
 	}
 
 	/** The Macs as the file holds them, in the order they were added. */
@@ -174,12 +206,15 @@ export class SavedMacs {
 		return this.update(id, (mac, macs) => ({ ...mac, name: this.nameFor(macs, mac.id, name) }));
 	}
 
-	/** Take the Mac out of the list. The app removes its sign-in itself (its data store is its own). */
+	/** Take the Mac out of the list. The app removes its sign-in itself (its data store is its own); the server forgets its own copy. */
 	remove(id: string): void {
 		const loaded = this.load();
 		const at = loaded.macs.findIndex((m) => m.id.toLowerCase() === id.toLowerCase());
-		if (at < 0) throw new MacError("No such Mac", 404);
+		const mac = loaded.macs[at];
+		if (!mac) throw new MacError("No such Mac", 404);
 		this.write(loaded, loaded.macs.toSpliced(at, 1));
+		this.hooks.signIns?.clear(mac.id);
+		this.hooks.removed?.(mac.id);
 	}
 
 	/** The app had a window of this Mac signed in. */
@@ -272,21 +307,28 @@ export class SavedMacs {
 	 * person's (`owner`: this computer's page, or one signed in through Cloudflare Access; `isOwnerRoute` refuses the others
 	 * before the request gets here, and this asks again, as `RemoteService.handle` does): a page that holds only the token
 	 * reads the list and never writes it.
+	 *
+	 * A Mac's sign-in (`/api/macs/<id>/sign-in`) is handed over by this computer's own app only (`local`: a request from this
+	 * computer that did not come through the tunnel, see `isThisComputer`): a page signed in through Access is the person's,
+	 * but it is not the app that holds the Mac's sign-in, and a credential is never taken from the network.
 	 */
-	async handle(req: Request, url: URL, owner: boolean): Promise<Response | null> {
+	async handle(req: Request, url: URL, owner: boolean, local = false): Promise<Response | null> {
 		const path = url.pathname;
 		if (path !== "/api/macs" && !path.startsWith("/api/macs/")) return null;
 		if (!owner) return fail("The list of Macs is changed from your own page only", 403);
 		try {
-			return await this.answer(req, path);
+			return await this.answer(req, path, local);
 		} catch (e) {
-			if (e instanceof MacError)
-				return json({ error: e.message, ...(e.problem ? { problem: e.problem } : {}) }, e.status);
+			if (e instanceof MacError || e instanceof RemoteSignInError)
+				return json(
+					{ error: e.message, ...(e instanceof MacError && e.problem ? { problem: e.problem } : {}) },
+					e.status,
+				);
 			throw e;
 		}
 	}
 
-	private async answer(req: Request, path: string): Promise<Response> {
+	private async answer(req: Request, path: string, local: boolean): Promise<Response> {
 		if (path === "/api/macs") {
 			if (req.method !== "POST") return fail("POST required", 405);
 			const body = await bodyOf(req);
@@ -300,6 +342,7 @@ export class SavedMacs {
 		}
 		const [, , , id, action, ...extra] = path.split("/");
 		if (!id || !isMacId(id) || extra.length > 0) return fail("Not found", 404);
+		if (action === "sign-in" && this.hooks.signIns) return this.signIn(req, id, local, this.hooks.signIns);
 		if (action === undefined) {
 			if (req.method !== "DELETE") return fail("DELETE required", 405);
 			this.remove(id);
@@ -317,6 +360,27 @@ export class SavedMacs {
 			default:
 				return fail("Not found", 404);
 		}
+	}
+
+	/**
+	 * `POST /api/macs/<id>/sign-in` `{ jwt }`: the app hands over the Mac's Cloudflare Access token (`CF_Authorization`), which
+	 * is kept in memory until it lapses; answers `{ signedInUntil }`. `DELETE`: the app holds none any more; answers 204.
+	 */
+	private async signIn(req: Request, id: string, local: boolean, signIns: MacSignIns): Promise<Response> {
+		if (!local) return fail("A Mac's sign-in is handed over by the app on this computer only", 403);
+		if (req.method !== "POST" && req.method !== "DELETE") return fail("POST or DELETE required", 405);
+		const mac = this.load().macs.find((m) => m.id.toLowerCase() === id.toLowerCase());
+		if (!mac) return fail("No such Mac", 404);
+		if (req.method === "DELETE") {
+			signIns.clear(mac.id);
+			this.onChange();
+			return new Response(null, { status: 204 });
+		}
+		const body = await bodyOf(req);
+		if (typeof body.jwt !== "string") return fail("jwt must be the Mac's Access token", 400);
+		const { expires } = signIns.set(mac.id, body.jwt);
+		this.onChange();
+		return json({ signedInUntil: expires });
 	}
 }
 

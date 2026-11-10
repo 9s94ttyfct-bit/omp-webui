@@ -2,9 +2,13 @@ import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { LivePool } from "../../server/live.ts";
+import { type Live, LivePool } from "../../server/live.ts";
 import { ApprovalStore } from "../../server/omp/approval.ts";
 import type { HostToolCall, HostToolResult, HostToolServer } from "../../server/omp/host-tools.ts";
+import type { RemoteRunOptions } from "../../server/remote-run/client.ts";
+import { RemoteRun } from "../../server/remote-run/service.ts";
+import { RemoteSignIns } from "../../server/remote-run/sign-ins.ts";
+import type { MacRecord } from "../../shared/macs.ts";
 import { writeFakeHostOmp } from "../support/fake-host-omp.ts";
 import { fakeConfig } from "../support/fake-omp.ts";
 import { removeScratch } from "../support/scratch.ts";
@@ -312,4 +316,93 @@ test("a conversation started with tools is never a spare that another new chat t
 	expect(live.pristine).toBe(false);
 	const next = await pool.open({ kind: "new", cwd: dir }, async () => dir);
 	expect(next.info.liveId).not.toBe(live.info.liveId);
+});
+
+test("a conversation whose tools are held for something else says it cannot be given remote computers, until they are taken away", async () => {
+	const { pool, dir } = setup();
+	const { server } = fakeServer(() => ({ text: "ok" }));
+	const live = await pool.openServing(dir, server);
+	expect(live.hostToolServer).toBe(server);
+	expect(live.info.remoteComputersUnavailable).toBe("serverTools");
+	await live.serveHostTools(null);
+	expect(live.hostToolServer).toBeNull();
+	expect(live.info.remoteComputersUnavailable).toBeUndefined();
+});
+
+test("remote_run: given computers, a conversation is served the tool without a restart and with no policy of its own, answers a call, and a new process of it is served at its start", async () => {
+	const { pool, dir, received, toolSets, overlays } = setup();
+	const mac: MacRecord = {
+		id: "6F1C1B7E-7B7A-4E0B-9E27-0C7E0A6C1D11",
+		name: "Server1",
+		host: "server1.example.com",
+		lastConnected: null,
+		team: null,
+		storeId: "A4B2C3D4-0000-4000-8000-0123456789AB",
+		added: "2026-11-10T09:00:00Z",
+	};
+	const signIns = new RemoteSignIns();
+	const b64url = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+	signIns.set(mac.id, `${b64url({ alg: "RS256" })}.${b64url({ exp: Math.floor(Date.now() / 1000) + 600 })}.c2ln`);
+	const runs: RemoteRunOptions[] = [];
+	const service = new RemoteRun<Live>({
+		file: join(dir, "remote-run.json"),
+		macs: () => [mac],
+		signIns,
+		live: (id) => pool.get(id),
+		lives: () => pool.list().flatMap((l) => pool.get(l.liveId) ?? []),
+		heldRemotely: () => false,
+		announce: (l) => pool.announce(l),
+		signedOut: () => {},
+		run: async (o) => {
+			runs.push(o);
+			return { exitCode: 0, output: "Linux\n", cut: false, timedOut: false, cancelled: false, ms: 0 };
+		},
+	});
+	pool.remoteRun = service;
+	const live = await pool.open({ kind: "new", cwd: dir }, async () => dir);
+	expect(toolSets()).toEqual([]);
+	const started = live.info.startedAt;
+
+	expect(await service.choose(live, [mac.id])).toEqual([mac.id]);
+	expect(toolSets()).toEqual([["remote_run"]]);
+	expect(live.info.remoteComputers).toEqual([mac.id]);
+	expect(live.info.remoteComputersUnavailable).toBeUndefined();
+	// The same process: nothing was restarted, and its overlay has no policy for the tool (it follows the approval mode).
+	expect(live.info.startedAt).toBe(started);
+	expect(JSON.stringify(overlays())).not.toContain("remote_run");
+
+	await live.rpc({ type: "prompt", message: 'tool remote_run {"computer":"Server1","command":"uname"}' });
+	await until(() => resultOf(received, "ht1") !== undefined);
+	expect(resultOf(received, "ht1")).toMatchObject({
+		result: { content: [{ text: "Server1 · exit 0 · 0.0s\nLinux\n" }] },
+	});
+	expect(runs).toMatchObject([{ host: "server1.example.com", command: "uname", cwd: null, timeoutMs: 120_000 }]);
+
+	// Another process for the same session file (the fake names every new one alike) is served when it starts.
+	const again = await pool.open({ kind: "new", cwd: dir }, async () => dir);
+	expect(again.info.liveId).not.toBe(live.info.liveId);
+	expect(again.info.remoteComputers).toEqual([mac.id]);
+	expect(toolSets().at(-1)).toEqual(["remote_run"]);
+
+	// Taken away: omp is told it has no tools.
+	await service.choose(live, []);
+	expect(toolSets().at(-1)).toEqual([]);
+	expect(live.info.remoteComputers).toBeUndefined();
+});
+
+test("the pool tells remote_run of each process that starts and of a conversation that moves to another file", async () => {
+	const { pool, dir } = setup();
+	const seen: string[] = [];
+	const moves: [string, string][] = [];
+	pool.remoteRun = {
+		started: async (live) => {
+			seen.push(live.info.liveId);
+		},
+		moved: (from, to) => moves.push([from, to]),
+	};
+	const live = await pool.open({ kind: "new", cwd: dir }, async () => dir);
+	expect(seen).toEqual([live.info.liveId]);
+	await live.rpc({ type: "new_session" });
+	await until(() => moves.length > 0);
+	expect(moves).toEqual([["/nonexistent/fake.jsonl", "/nonexistent/fake-1.jsonl"]]);
 });
