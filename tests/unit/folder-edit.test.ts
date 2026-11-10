@@ -64,6 +64,8 @@ function world(opts: Partial<TransferOptions> = {}, root: "proj" | "home" = "pro
 	const env = (over: Partial<TransferEnv> = {}): TransferEnv => ({
 		setting: "full",
 		local: false,
+		// A page that is not the person's own (one on the network with the token) unless a test says otherwise.
+		owner: over.local ?? false,
 		who: "me@example.test",
 		dataDirs: [data],
 		protect: [data, join(proj, "protected")],

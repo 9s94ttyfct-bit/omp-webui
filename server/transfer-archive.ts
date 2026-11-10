@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { Dirent } from "node:fs";
-import { lstat, readdir, realpath, stat } from "node:fs/promises";
+import { lstat, open, readdir, realpath, stat } from "node:fs/promises";
 import { basename, join, relative, sep } from "node:path";
 import { isRecord } from "../shared/guards.ts";
 import type { ArchivePlan, ArchiveSkipped } from "../shared/transfer.ts";
@@ -38,10 +38,12 @@ import { attachmentHeaders } from "./transfer-download.ts";
  * the plan (a link put in the way since is refused, a file that is gone is skipped, one that cannot be read through is an
  * abort of the whole answer, never a ZIP that says it is whole and is not).
  *
- * What is left out always: what looks like a secret (by name, or a private key in its text) and what is in a protected place,
- * links to folders, links that lead out of the folder, sockets and pipes, and names a ZIP cannot hold. What is left out unless
- * the page asks for it (and the conversation's folder is not the home folder): dotfiles and dependency and build folders
- * *below* the folder asked for (the folder itself may be `dist` or `node_modules`).
+ * What is left out always: links to folders, links that lead out of the folder, sockets and pipes, and names a ZIP cannot
+ * hold. What is left out of the ZIP of a page that is not the person's own (`TransferEnv.owner`: this computer's, or one
+ * signed in through Cloudflare Access): what looks like a secret (by name, or a private key in its text: the walk reads the
+ * start of each file, so that the plan counts what the ZIP will hold) and what is in a protected place. What is left out
+ * unless the page asks for it (and the conversation's folder is not the home folder): dotfiles and dependency and build
+ * folders *below* the folder asked for (the folder itself may be `dist` or `node_modules`).
  */
 
 /** A file of the plan. */
@@ -63,6 +65,8 @@ interface Ticket {
 	top: string;
 	name: string;
 	hidden: boolean;
+	/** The page is not the person's own: what looks like a secret and what is in a protected place are left out. */
+	guarded: boolean;
 	home: boolean;
 	entries: PlanEntry[];
 	files: number;
@@ -160,8 +164,22 @@ interface Walked {
 	bytes: number;
 }
 
+/** Whether the first MiB of the regular file `abs` holds a private key (as `archiveStream` and a single download look at it). */
+async function startsWithKey(abs: string, size: number): Promise<boolean> {
+	if (size === 0) return false;
+	const handle = await open(abs, "r").catch(() => null);
+	if (handle === null) return false;
+	try {
+		const head = Buffer.alloc(Math.min(size, WHOLE_BYTES));
+		const { bytesRead } = await handle.read(head, 0, head.length, 0);
+		return holdsPrivateKey(head.toString("utf8", 0, bytesRead));
+	} finally {
+		await handle.close().catch(() => {});
+	}
+}
+
 async function walk(
-	t: Pick<Ticket, "root" | "folderAbs" | "hidden">,
+	t: Pick<Ticket, "root" | "folderAbs" | "hidden" | "guarded">,
 	env: TransferEnv,
 	limits: Limits,
 ): Promise<Walked> {
@@ -195,7 +213,7 @@ async function walk(
 				skipped.name++;
 				continue;
 			}
-			if (isSecretLooking(slashed(relative(t.root, abs))) || isProtected(abs, env)) {
+			if (t.guarded && (isSecretLooking(slashed(relative(t.root, abs))) || isProtected(abs, env))) {
 				skipped.secret++;
 				continue;
 			}
@@ -219,7 +237,7 @@ async function walk(
 					skipped.special++;
 					continue;
 				}
-				if (isSecretLooking(slashed(relative(t.root, real))) || isProtected(real, env)) {
+				if (t.guarded && (isSecretLooking(slashed(relative(t.root, real))) || isProtected(real, env))) {
 					skipped.secret++;
 					continue;
 				}
@@ -236,6 +254,11 @@ async function walk(
 			} else if (isFile) {
 				const info = await lstat(source).catch(() => null);
 				if (info === null) continue;
+				// The stream leaves out a file whose text holds a private key: the plan does as well, so that it counts what is sent.
+				if (t.guarded && (await startsWithKey(source, info.size))) {
+					skipped.secret++;
+					continue;
+				}
 				entries.push({ rel, size: info.size });
 				files++;
 				bytes += info.size;
@@ -299,6 +322,7 @@ export async function planArchive(
 		folderRel: folder.rel,
 		...zipNamed(folder.abs, root),
 		hidden,
+		guarded: !env.owner,
 		home,
 		entries: [],
 		files: 0,
@@ -340,7 +364,7 @@ async function reopen(t: Ticket, e: PlanEntry, env: TransferEnv, hooks?: OpenHoo
 	const below = t.folderRel ? `${t.folderRel}/${e.rel}` : e.rel;
 	try {
 		const real = (await resolveInside(t.root, below)).abs;
-		if (isSecretLooking(slashed(relative(t.root, real))) || isProtected(real, env))
+		if (t.guarded && (isSecretLooking(slashed(relative(t.root, real))) || isProtected(real, env)))
 			throw new TransferError("This looks like a secret", 403, "secret");
 		if (!t.hidden && hiddenBelow(t.root, t.folderAbs, real)) throw new TransferError("This is hidden", 403, "hidden");
 		return await openRegular(real, hooks);
@@ -419,8 +443,8 @@ function archiveStream(
 						const whole = Buffer.alloc(info.size);
 						const { bytesRead } = await handle.read(whole, 0, info.size, 0);
 						const body = whole.subarray(0, bytesRead);
-						// A key is a key whatever the file is called: a ZIP carries none.
-						if (holdsPrivateKey(body.toString("utf8"))) continue;
+						// A key is a key whatever the file is called: the ZIP of a page that is not the person's own carries none.
+						if (t.guarded && holdsPrivateKey(body.toString("utf8"))) continue;
 						await writer.add(name, body, options);
 						bytes += body.length;
 					} else {
@@ -428,7 +452,7 @@ function archiveStream(
 						// MiB is looked at, as a single download looks at it.
 						const head = Buffer.alloc(WHOLE_BYTES);
 						const { bytesRead } = await handle.read(head, 0, WHOLE_BYTES, 0);
-						if (holdsPrivateKey(head.toString("utf8", 0, bytesRead))) continue;
+						if (t.guarded && holdsPrivateKey(head.toString("utf8", 0, bytesRead))) continue;
 						const chunk = deps.limits.chunkBytes;
 						const limit = deps.limits.archiveBytes - bytes;
 						async function* chunks(): AsyncGenerator<Uint8Array> {

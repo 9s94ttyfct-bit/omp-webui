@@ -232,8 +232,8 @@ async function send(
 		const info = await handle.stat({ bigint: true });
 		const size = Number(info.size);
 		const mtimeMs = Number(info.mtimeMs);
-		// A page that is not this computer's is not sent a private key, whatever the file is called (as the Files tab shows none).
-		if (!env.local && size > 0) {
+		// A page that is not the person's own is not sent a private key, whatever the file is called (as the Files tab shows it none).
+		if (!env.owner && size > 0) {
 			const sample = Buffer.alloc(Math.min(size, 1024 * 1024));
 			const { bytesRead } = await handle.read(sample, 0, sample.length, 0);
 			if (holdsPrivateKey(sample.subarray(0, bytesRead).toString("utf8")))

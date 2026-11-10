@@ -39,6 +39,12 @@ export interface TransferEnv {
 	setting: FileTransfer;
 	/** The page is on this computer (see `isThisComputer`). */
 	local: boolean;
+	/**
+	 * The page is the person's own (`isOwnerPage`): this computer's, or one signed in through Cloudflare Access. It is sent
+	 * every file it asks for, secrets and protected places included; a page that is neither (one on the network with the
+	 * token) is not.
+	 */
+	owner: boolean;
 	/** Who asked, for the log and for what belongs to one asker: the Access email, `local`, or `net:<address>`. */
 	who: string;
 	/** When the Access session of a remote page ends (ms since the epoch): a transfer does not outlive it. */
@@ -203,15 +209,16 @@ export const isProtected = (abs: string, env: TransferEnv): boolean =>
 	isProtectedPath(abs, { home: realHome(env.home), protect: env.protect, windows: platformId === "win32" });
 
 /**
- * What a page that is not this computer's may read by its path: what the Files tab shows it, with one difference, the person's
- * decision (#614): dependency and build folders and dotfiles are for download (`dist/`, `node_modules`, `.github`), except in
- * a conversation whose folder is the home folder, where the Files tab's own rule holds as it is. What looks like a secret
- * (by its name, whatever a link calls it) and what is in a protected place is refused to such a page whatever its name.
- * A page on this computer is shown what the Files tab shows it.
+ * What a page may read by its path. The person's own page (`owner`: this computer's, or one signed in through Cloudflare
+ * Access) is sent what the Files tab shows it, secrets and protected places included. Any other page is sent what the Files
+ * tab shows it, with one difference, the person's decision (#614): dependency and build folders and dotfiles are for
+ * download (`dist/`, `node_modules`, `.github`), except in a conversation whose folder is the home folder, where the Files
+ * tab's own rule holds as it is; what looks like a secret (by its name, whatever a link calls it) and what is in a protected
+ * place is refused to it whatever its name.
  */
 export async function resolveDownload(root: string, rel: unknown, env: TransferEnv, home: boolean): Promise<Resolved> {
-	const file = await viaFolder(() => resolveFor(root, rel, !env.local && home));
-	if (env.local) return file;
+	const file = await viaFolder(() => resolveFor(root, rel, !env.owner && home));
+	if (env.owner) return file;
 	if (isSecretLooking(relative(root, file.abs)) || isSecretLooking(viaFolderSync(() => partsOf(rel)).join("/")))
 		throw new TransferError(
 			"This looks like a secret: it is not sent to a page that is not on this computer",

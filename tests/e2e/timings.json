@@ -683,7 +683,7 @@
 		"files-tab.spec.ts › what omp writes › when the server's watch says nothing, the tree is read again when the turn ends": 5.6,
 		"files-transfer.spec.ts › dark theme › the panel, a plan, the progress list and the conflict dialog pass axe": 4.3,
 		"files-transfer.spec.ts › downloading › a file from its preview is saved with its own bytes, a binary one too": 1.8,
-		"files-transfer.spec.ts › downloading › a folder is a ZIP: what it holds is said first, secrets and hidden things are left out, and the ZIP has the rest": 2.4,
+		"files-transfer.spec.ts › downloading › a folder is a ZIP: what it holds is said first, hidden things are left out unless asked, and the ZIP has the rest": 2.4,
 		"files-transfer.spec.ts › downloading › a refusal is said in words before anything is saved, and a path that leaves the folder is not even sent": 2.6,
 		"files-transfer.spec.ts › downloading › by path: a folder the tree hides is a ZIP, and a file is a file": 2.4,
 		"files-transfer.spec.ts › downloading › the checkbox asks for the hidden files too, and the plan is made again": 2.5,

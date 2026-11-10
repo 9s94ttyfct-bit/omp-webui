@@ -32,6 +32,7 @@ const context = (cwd: string | null) => ({
 	}),
 	diff: async () => null,
 	local: true,
+	owner: true,
 });
 const cwd = async () => root;
 let written = 0;

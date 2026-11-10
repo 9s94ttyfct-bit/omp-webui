@@ -210,7 +210,7 @@ test.describe("downloading", () => {
 		}
 	});
 
-	test("a folder is a ZIP: what it holds is said first, secrets and hidden things are left out, and the ZIP has the rest", async ({
+	test("a folder is a ZIP: what it holds is said first, hidden things are left out unless asked, and the ZIP has the rest", async ({
 		page,
 	}) => {
 		await openFiles(page);
@@ -220,8 +220,9 @@ test.describe("downloading", () => {
 		await expect(plan).toBeVisible();
 		await expect(page.getByTestId("transfer-plan-summary")).toContainText("proj.zip");
 		await expect(page.getByTestId("transfer-plan-summary")).toContainText(/\d+ files/);
-		// .env looks like a secret, node_modules and the dotfiles are hidden.
-		await expect(page.getByTestId("transfer-plan-left-out")).toContainText("secret");
+		// node_modules and the dotfiles (.env among them) are hidden; this computer's page is the person's own, so nothing is
+		// left out as a secret.
+		await expect(page.getByTestId("transfer-plan-left-out")).not.toContainText("secret");
 		await expect(page.getByTestId("transfer-plan-left-out")).toContainText("hidden");
 		const [download] = await Promise.all([
 			page.waitForEvent("download"),
@@ -255,6 +256,8 @@ test.describe("downloading", () => {
 		]);
 		const names = execFileSync("unzip", ["-Z1", (await download.path()) as string], { encoding: "utf8" });
 		expect(names).toContain("proj/node_modules/dep/index.js");
+		// A secret goes in too: the page is the person's own.
+		expect(names).toContain("proj/.env");
 	});
 
 	test("by path: a folder the tree hides is a ZIP, and a file is a file", async ({ page }) => {

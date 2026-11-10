@@ -48,6 +48,7 @@ export function serverConflictCheck(deps: ConflictServerDeps): GuidanceConflictC
 	const env: TransferEnv = {
 		setting: "full",
 		local: true,
+		owner: true,
 		who: "local",
 		dataDirs: deps.dataDirs,
 		protect: deps.protect,

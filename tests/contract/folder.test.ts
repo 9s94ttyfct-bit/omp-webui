@@ -494,7 +494,8 @@ describe("open and reveal", () => {
 		const res = await remote.fetch(`/api/folder/list?file=${encodeURIComponent(file)}&path=`);
 		expect(res.status).toBe(200);
 		const there = (await res.json()) as FolderListing;
-		expect(there.guarded).toBe(true);
+		// The tunnel's page is the person's own (signed in through Access): it is shown everything, but opens nothing here.
+		expect(there.guarded).toBeUndefined();
 		expect(there.local).toBeUndefined();
 	});
 });
@@ -531,13 +532,12 @@ describe("a page that is not this computer's", () => {
 	const q = (route: string, query: Record<string, string>) =>
 		`/api/folder/${route}?${new URLSearchParams({ file, ...query })}`;
 	/**
-	 * The page through the tunnel (where remote access is: not on Windows), and the page on this computer behind a proxy
-	 * that says where the request came from.
+	 * A page that is not the person's own: the page on this computer behind a proxy that says where the request came from
+	 * (as a page on the network is). The page through the tunnel is signed in through Access: the person's own (below).
 	 */
 	type GuardedPage = [string, (path: string) => Promise<Response>];
 	const tunnelPage: GuardedPage = ["through the tunnel", (path) => remote.fetch(path)];
 	const guardedPages: GuardedPage[] = [
-		tunnelPage,
 		[
 			"behind a proxy",
 			(path) => fetch(`${s.url}${path}`, { headers: { ...headers(), "x-forwarded-for": "203.0.113.9" } }),
@@ -622,27 +622,31 @@ describe("a page that is not this computer's", () => {
 		);
 	}
 
-	test("the page on this computer is given all of it", async () => {
-		const listing = (await (await ask("list", { path: "probe", all: "1" })).json()) as FolderListing;
-		expect(listing.guarded).toBeUndefined();
-		const names = listing.entries.map((e) => e.name);
-		for (const name of [...SECRETS, ...KEYS, ".ssh", ".hidden-note", ".config", "node_modules", "innocent.txt"])
-			expect(names, name).toContain(name);
-		for (const name of SECRETS)
-			expect((await read(`probe/${name}`)).body).toMatchObject({ kind: "text", text: "SECRET" });
-		for (const name of KEYS) expect((await read(`probe/${name}`)).body).toMatchObject({ kind: "text", text: PEM });
-		for (const name of HIDDEN)
-			expect((await read(`probe/${name}`)).body).toMatchObject({ kind: "text", text: "HIDDEN-ONLY" });
-		expect((await read(".git/config")).status).toBe(200);
-		expect((await read("probe/innocent.txt")).body).toMatchObject({ text: "SECRET" });
-		expect((await ask("raw", { path: "probe/id_rsa.png" })).status).toBe(200);
-		const completion = await fetch(`${s.url}/api/files?${new URLSearchParams({ cwd: proj, q: "probe/" })}`, {
-			headers: headers(),
+	const ownPages: GuardedPage[] = [
+		["on this computer", (path) => fetch(`${s.url}${path}`, { headers: headers() })],
+		...(has.notWindowsYet ? [tunnelPage] : []),
+	];
+	for (const [who, get] of ownPages) {
+		test(`the person's own page (${who}) is given all of it`, async () => {
+			const listing = (await (await get(q("list", { path: "probe", all: "1" }))).json()) as FolderListing;
+			expect(listing.guarded).toBeUndefined();
+			const names = listing.entries.map((e) => e.name);
+			for (const name of [...SECRETS, ...KEYS, ".ssh", ".hidden-note", ".config", "node_modules", "innocent.txt"])
+				expect(names, name).toContain(name);
+			const text = async (path: string) => ((await (await get(q("file", { path }))).json()) as { text?: string }).text;
+			for (const name of SECRETS) expect(await text(`probe/${name}`), name).toBe("SECRET");
+			for (const name of KEYS) expect(await text(`probe/${name}`), name).toBe(PEM);
+			for (const name of HIDDEN) expect(await text(`probe/${name}`), name).toBe("HIDDEN-ONLY");
+			expect((await get(q("file", { path: ".git/config" }))).status).toBe(200);
+			expect(await text("probe/innocent.txt")).toBe("SECRET");
+			expect((await get(q("raw", { path: "probe/id_rsa.png" }))).status).toBe(200);
+			const offered = (await (
+				await get(`/api/files?${new URLSearchParams({ cwd: proj, q: "probe/" })}`)
+			).json()) as string[];
+			for (const name of ["id_rsa", "credentials.json", ".env", ".npmrc", ".hidden-note"])
+				expect(offered, name).toContain(`probe/${name}`);
 		});
-		const offered = (await completion.json()) as string[];
-		for (const name of ["id_rsa", "credentials.json", ".env", ".npmrc", ".hidden-note"])
-			expect(offered, name).toContain(`probe/${name}`);
-	});
+	}
 });
 
 describe("hostile files run nothing", () => {

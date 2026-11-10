@@ -1154,6 +1154,7 @@ function transferEnv(req: Request, peer: string | undefined): TransferEnv {
 	return {
 		setting: local ? "full" : remoteAuth.fileTransfer(),
 		local,
+		owner: isOwnerPage(remote ?? null, local),
 		// The Access email of a page that came through the tunnel; `net:` and the address for one on the network.
 		who: remote ? remote.email : local ? "local" : `net:${peer ?? "unknown"}`,
 		validUntil: remote?.validUntil,
@@ -1437,8 +1438,8 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		case "/api/files": {
 			// Loaded on the first request (see `folder-lazy.ts`): nobody completes a file name until they type an `@`.
 			const { suggestFiles } = await import("./files.ts");
-			// A page that is not this computer's is offered what its Files tab shows (see `ListOptions.guarded`).
-			return json(await suggestFiles(q.get("cwd") ?? "", q.get("q") ?? "", { guarded: !onThisComputer.has(req) }));
+			// A page that is not the person's own is offered what its Files tab shows (see `ListOptions.guarded`).
+			return json(await suggestFiles(q.get("cwd") ?? "", q.get("q") ?? "", { guarded: !fromOwner(req) }));
 		}
 		case "/api/dirs": {
 			// Loaded on the first request: the folder picker is used a few times in a person's life.
@@ -2437,6 +2438,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			changes: (cwd, fresh) => git.changes(cwd, { fresh }),
 			diff: (cwd, path) => git.diff(cwd, path),
 			local: onThisComputer.has(req),
+			owner: fromOwner(req),
 			transfer: (r, u) => folder.transfer(r, u, { cwdOf: conversationCwd }, transferEnv(req, peer)),
 			env: () => transferEnv(req, peer),
 		});

@@ -950,6 +950,7 @@ describe("the page on this computer", () => {
 		changes: async () => ({ root: proj, state: "none" as const, branch: "", files: [], truncated: false, omitted: 0 }),
 		diff: async () => null,
 		local,
+		owner: local,
 		desktop: mac,
 		// LaunchServices answers on a Mac only; what it says is "the system's own answer" above. Here nothing is a package.
 		isPackage: async () => false,

@@ -44,11 +44,13 @@ export interface FolderContext {
 	changes(cwd: string, fresh: boolean): Promise<FolderChanges>;
 	/** The text change of one file of that list (see `GitProbe.diff`); null: not looked at, not a change, or git did not answer. */
 	diff(cwd: string, path: string): Promise<FileDiff | null>;
-	/**
-	 * The request is from a page on this computer (see `isThisComputer` in `this-computer.ts`): the one that may open a file here, ask for what
-	 * is hidden by default, and read what looks like a secret. Any other page is `guarded`.
-	 */
+	/** The request is from a page on this computer (see `isThisComputer` in `this-computer.ts`): the one that may open a file here. */
 	local: boolean;
+	/**
+	 * The request is from the person's own page (`isOwnerPage`: this computer's, or one signed in through Cloudflare Access):
+	 * it may ask for what is hidden by default and read what looks like a secret. Any other page is `guarded`.
+	 */
+	owner: boolean;
 	/** Opens or reveals the file (tests replace the system's `open`). */
 	runner?: Runner;
 	/** What hands a file to the desktop (`Platform.desktop`; null where the system has none: `capabilities.openFiles`). */
@@ -121,8 +123,8 @@ export async function handleFolder(req: Request, url: URL, ctx: FolderContext): 
 		const cwd = await ctx.cwdOf(live, file);
 		if (!cwd) return fail("Unknown conversation", 404);
 		const root = await rootOf(cwd);
-		// A page that is not this computer's is shown no more than the conversation shows it (see `ListOptions.guarded`).
-		const guarded = !ctx.local;
+		// A page that is not the person's own is shown no more than the conversation shows it (see `ListOptions.guarded`).
+		const guarded = !ctx.owner;
 		switch (route) {
 			case "list": {
 				const marks = await ctx.marks(root, q.get("fresh") === "1");

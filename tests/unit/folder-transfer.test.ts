@@ -88,6 +88,8 @@ function world(opts: Partial<TransferOptions> = {}, root: "proj" | "home" = "pro
 	const env = (over: Partial<TransferEnv> = {}): TransferEnv => ({
 		setting: "full",
 		local: false,
+		// A page that is not the person's own (one on the network with the token) unless a test says otherwise.
+		owner: over.local ?? false,
 		who: "me@example.test",
 		dataDirs: [data],
 		protect: [data],
@@ -285,7 +287,7 @@ describe("downloading a file", () => {
 		}
 	});
 
-	test("a page that is not on this computer is sent no secret: by name, by a link's target, by a key in its text", async () => {
+	test("a page that is not the person's own is sent no secret: by name, by a link's target, by a key in its text", async () => {
 		const w = world();
 		write(join(w.proj, ".env"), "KEY=1");
 		write(join(w.proj, ".env.local"), "KEY=1");
@@ -309,9 +311,10 @@ describe("downloading a file", () => {
 			expect(await failed(await dl(w, path)), path).toMatchObject({ status: 403, code: "secret", header: "secret" });
 		}
 		expect((await dl(w, "plain.txt")).status).toBe(200);
-		// The person at this computer sees what the Files tab shows them.
-		expect((await dl(w, ".env", w.env({ local: true }))).status).toBe(200);
-		expect((await dl(w, "notes.txt", w.env({ local: true }))).status).toBe(200);
+		// The person's own page (this computer's, or one signed in through Access) is sent them: by name and by a key in its text.
+		for (const owner of [w.env({ local: true, who: "local" }), w.env({ owner: true, who: "owner@example.test" })]) {
+			for (const path of [".env", "notes.txt"]) expect((await dl(w, path, owner)).status, path).toBe(200);
+		}
 	});
 
 	test("what is hidden by default is for download: dist, node_modules, dotfiles; not in a conversation whose folder is the home folder", async () => {
@@ -462,10 +465,11 @@ describe("a folder as a ZIP", () => {
 		const w = tree();
 		const { plan: p } = await plan(w, "app");
 		expect(p).toMatchObject({ name: "app.zip", hiddenAllowed: true, hidden: false });
-		// a.txt, src/b.ts, key.txt (a key in its text is found when it is sent), the file link inside
-		expect(p?.files).toBe(4);
-		expect(p?.bytes).toBe(3 + 4 + 34 + 3);
-		expect(p?.skipped).toEqual({ secret: 1, links: 2, special: 1, name: 0, hidden: 2 });
+		// a.txt, src/b.ts and the file link inside; key.txt (a private key in its text) is left out and counted as a secret,
+		// so the plan says what the ZIP will hold.
+		expect(p?.files).toBe(3);
+		expect(p?.bytes).toBe(3 + 4 + 3);
+		expect(p?.skipped).toEqual({ secret: 2, links: 2, special: 1, name: 0, hidden: 2 });
 		expect(p?.ticket).toMatch(/^[0-9a-f]{32}$/);
 		expect(p?.url).toBe(`/api/folder/archive/${p?.ticket}`);
 	});
@@ -483,6 +487,20 @@ describe("a folder as a ZIP", () => {
 		expect(await z.text("app/inlink.txt")).toBe("aaa");
 		expect(await z.text("app/src/b.ts")).toBe("bbbb");
 		expect(w.log().at(-1)).toMatchObject({ kind: "zip", status: "ok", files: 3, path: "app" });
+	});
+
+	test("the person's own page (this computer's, or one signed in through Access) is sent secrets too, as many as the plan said", async () => {
+		const w = tree();
+		write(join(w.proj, "app", "id_ed25519"), "-----BEGIN OPENSSH PRIVATE KEY-----\nx\n");
+		for (const owner of [w.env({ local: true }), w.env({ owner: true })]) {
+			const { plan: p } = await plan(w, "app", { hidden: true }, owner);
+			expect(p?.skipped.secret).toBe(0);
+			const z = await unzip(await w.call(`archive/${p?.ticket}`, {}, owner), w.top);
+			expect(z.names).toContain("app/key.txt");
+			expect(z.names).toContain("app/id_ed25519");
+			expect(z.names).toContain("app/.env");
+			expect(z.names).toHaveLength(p?.files ?? -1);
+		}
 	});
 
 	test("a private key in a file larger than what is read whole is left out of the ZIP too (#56)", async () => {

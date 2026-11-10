@@ -21,12 +21,10 @@ The **Files** tab of a conversation's side panel shows the folder the conversati
 
 ### Pages that are not on this computer
 
-A page reached through the tunnel or over a network address is "guarded":
-
-- What a remote page may transfer is set on this computer by **File transfer** (`remote.json:fileTransfer`): `off` (no download, no upload, no ZIP), `download` (download only), `full` (download and upload, the default). A page on this computer is not affected and may always download and upload.
-- Hidden files are never listed to it, and names that look like secrets (`.env`, keys, credentials) are neither listed, readable, downloadable nor editable. The composer's `@` completion (`/api/files`) follows the same rule: it offers such a page no dotfile and no name that looks like a secret.
-- Downloads and ZIPs refuse protected places (`.ssh`, `.aws`, `.omp`, the app's data, launch agents, shell start-up files). Dotfiles and build folders can be downloaded by path except when the conversation's folder is the home folder (or holds it), where only what the Files tab shows can be downloaded.
-- Uploads and saves are refused into the home folder (or a folder that holds it), into protected places, into what CI runs on push (`.github/workflows`, `.github/actions`), into folders where an omp-webui keeps its own data, and for hidden names; an executable file or a link is never replaced.
+- What such a page may transfer is set on this computer by **File transfer** (`remote.json:fileTransfer`): `off` (no download, no upload, no ZIP), `download` (download only), `full` (download and upload, the default). A page on this computer is not affected and may always download and upload.
+- A page signed in through Cloudflare Access is the person's own, like the page on this computer: within File transfer it sees, reads, downloads and zips everything in the folder, hidden files, secrets (`.env`, private keys, credentials) and protected places included.
+- Any other page (a reverse proxy without Access, a network address) is "guarded": hidden files are never listed to it, and names that look like secrets (`.env`, keys, credentials) are neither listed, readable, downloadable nor editable. The composer's `@` completion (`/api/files`) follows the same rule: it offers such a page no dotfile and no name that looks like a secret. Its downloads and ZIPs refuse protected places (`.ssh`, `.aws`, `.omp`, the app's data, launch agents, shell start-up files). Dotfiles and build folders can be downloaded by path except when the conversation's folder is the home folder (or holds it), where only what the Files tab shows can be downloaded.
+- Uploads and saves from any page that is not on this computer, an Access page included, are refused into the home folder (or a folder that holds it), into protected places, into what CI runs on push (`.github/workflows`, `.github/actions`), into folders where an omp-webui keeps its own data, and for hidden names; an executable file or a link is never replaced. No page, this computer's included, saves an edit into a file that looks like a secret.
 - Opening files in Finder or the default app is refused.
 
 Every download, ZIP, upload and save that ended or was refused by a rule is logged (who asked: the Access email, `local`, or `net:<address>`).
@@ -78,6 +76,6 @@ Composer attachments use `/api/upload` (see the composer topic); it is refused t
 ## Security notes
 
 - The folder is always the conversation's own; nothing outside it can be listed, read or written through these routes.
-- Remote pages never see secret-looking files and cannot carry anything out of, or into, protected places; their uploads into the home folder are refused.
+- A page signed in through Cloudflare Access reads and downloads like the page on this computer, secrets and protected places included. Other remote pages (no Access sign-in) never see secret-looking files and cannot carry anything out of protected places. No remote page writes into protected places, and uploads from a remote page into the home folder are refused.
 - Only a page on this computer can change `fileTransfer` (it is part of the local-only `/api/remote/config`) and open files on this computer.
 - Agents must not change the File transfer setting for the user unless asked; uploading files to the user's folders on their behalf is subject to the same rules as the page.

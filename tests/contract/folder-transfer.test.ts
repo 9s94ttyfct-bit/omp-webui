@@ -184,11 +184,36 @@ const network: Page = {
 		}),
 };
 /**
+ * The page on this computer behind a proxy that says where the request came from, with no Access sign-in: not on this
+ * computer and not the person's own, so it is guarded (no secret, no protected place). The tunnel's page is signed in
+ * through Access: the person's own, given what this computer's page is given.
+ */
+const proxied: Page = {
+	name: "behind a proxy",
+	who: "net:127.0.0.1",
+	send: (path, ask = {}) =>
+		fetch(`${s.url}${path}`, {
+			method: ask.method ?? "GET",
+			headers: {
+				...(ask.token === false ? {} : { "x-omp-webui-token": s.accessToken }),
+				"x-forwarded-for": "203.0.113.9",
+				...writes(ask),
+				...ask.headers,
+			},
+			body: ask.body,
+			redirect: "manual",
+		}),
+};
+/**
  * Every kind of page: the tunnel's only where remote access is there (not on Windows: the server refuses it), the one on
  * the network only where there is a network to be on.
  */
 const pages: Page[] = [here, tunnel, ...(LAN === undefined ? [] : [network])];
 const elsewhere = pages.filter((p) => p !== here);
+/** The pages that are not the person's own. */
+const guarded: Page[] = [proxied, ...(LAN === undefined ? [] : [network])];
+/** The person's own pages: this computer's, and one signed in through Access. */
+const own: Page[] = [here, tunnel];
 
 const query = (over: Record<string, string> = {}) => new URLSearchParams({ file, ...over }).toString();
 const get = (page: Page, path: string, ask: Ask = {}) => page.send(`/api/folder/download?${query({ path })}`, ask);
@@ -354,7 +379,7 @@ describe("what no page is given", () => {
 		});
 	}
 
-	for (const page of elsewhere) {
+	for (const page of guarded) {
 		test(`${page.name}: a secret, a private key and a protected place are not sent`, async () => {
 			for (const path of [".env", "src/.env"])
 				expect(await failure(await get(page, path)), path).toMatchObject({ status: 403, code: "secret" });
@@ -367,16 +392,19 @@ describe("what no page is given", () => {
 		});
 	}
 
-	test("this computer's own page is given its own files, a key included; the outside it is never given", async () => {
-		expect(await (await get(here, ".env")).text()).toBe("TOKEN=abc\n");
-		expect((await get(here, "key.txt")).status).toBe(200);
-		expect((await get(here, "../outside.txt")).status).toBe(403);
-	});
+	for (const page of own) {
+		test(`${page.name}: the person's own page is given its own files, a key included; the outside it is never given`, async () => {
+			expect(await (await get(page, ".env")).text()).toBe("TOKEN=abc\n");
+			expect((await get(page, "key.txt")).status).toBe(200);
+			expect((await get(page, "../outside.txt")).status).toBe(403);
+		});
+	}
 });
 
 describe("a folder as a ZIP", () => {
-	for (const page of pages) {
-		test(`${page.name}: the plan first, then the ZIP once, by the ticket, for who asked; a secret is left out`, async () => {
+	for (const page of [...pages, proxied]) {
+		const mine = own.includes(page);
+		test(`${page.name}: the plan first, then the ZIP once, by the ticket, for who asked; ${mine ? "a secret is in it" : "a secret is left out"}`, async () => {
 			const asked = await page.send("/api/folder/archive", {
 				method: "POST",
 				body: JSON.stringify({ file, path: "src" }),
@@ -385,7 +413,8 @@ describe("a folder as a ZIP", () => {
 			const plan = (await asked.json()) as ArchivePlan;
 			expect(plan).toMatchObject({ name: "src.zip", hidden: false, hiddenAllowed: true });
 			expect(plan.files).toBeGreaterThanOrEqual(2);
-			if (page !== here) expect(plan.skipped.secret).toBeGreaterThanOrEqual(2);
+			if (mine) expect(plan.skipped.secret ?? 0).toBe(0);
+			else expect(plan.skipped.secret).toBeGreaterThanOrEqual(2);
 			const zip = await page.send(plan.url);
 			expect(zip.status).toBe(200);
 			expect(zip.headers.get("content-type")).toBe("application/zip");
@@ -393,12 +422,9 @@ describe("a folder as a ZIP", () => {
 			expect(zip.headers.get("x-content-type-options")).toBe("nosniff");
 			const bytes = Buffer.from(await zip.arrayBuffer());
 			expect(bytes.subarray(0, 2).toString()).toBe("PK");
-			if (page !== here) {
-				// The names are in the ZIP as the files they are; a secret's name is in none of it.
-				expect(bytes.includes("src/app.ts")).toBe(true);
-				expect(bytes.includes("TOKEN=abc")).toBe(false);
-				expect(bytes.includes("OPENSSH PRIVATE KEY")).toBe(false);
-			}
+			// The names are in the ZIP as the files they are; a secret's name is in none of a guarded page's.
+			expect(bytes.includes("src/app.ts")).toBe(true);
+			expect(bytes.includes("src/id_rsa.txt")).toBe(mine);
 			expect(await failure(await page.send(plan.url))).toMatchObject({ status: 404, code: "gone" });
 			const line = await lastLine((l) => l.kind === "zip" && l.who === page.who, "the log line of the ZIP");
 			expect(line).toMatchObject({ kind: "zip", path: "src", status: "ok" });
@@ -632,13 +658,13 @@ describe("the log", () => {
 	test("a request the person's rule said no to is in it, with who asked; one that only named nothing is not", async () => {
 		setTransfer("full");
 		const before = logged().length;
-		await get(tunnel, ".env");
+		await get(proxied, ".env");
 		await get(tunnel, "../outside.txt");
 		await get(tunnel, "nothing.txt");
 		await get(tunnel, "src");
 		const added = logged().slice(before);
 		expect(added.map((l) => [l.who, l.path, l.status])).toEqual([
-			[EMAIL, ".env", "refused:secret"],
+			[proxied.who, ".env", "refused:secret"],
 			[EMAIL, "../outside.txt", "refused:outside"],
 		]);
 		setTransfer("off");
