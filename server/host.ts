@@ -1,7 +1,16 @@
 import { cpus, totalmem } from "node:os";
 import type { HostHistory, HostInfo, HostPoint, HostProc } from "../shared/host.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
-import { type CpuTimes, cpuShare, groupRows, groupUse, type PsRow, tenth } from "./host-parse.ts";
+import {
+	type CpuTimes,
+	cpuShare,
+	groupRows,
+	groupUse,
+	type NetCounters,
+	netRate,
+	type PsRow,
+	tenth,
+} from "./host-parse.ts";
 import { type HostReader, systemReader } from "./host-read.ts";
 import { HostRing, MinuteBuckets } from "./host-ring.ts";
 
@@ -10,7 +19,7 @@ import { HostRing, MinuteBuckets } from "./host-ring.ts";
  *
  * Two paces: every `liveMs` while some page shows the graphs of the load (the sidebar's popover, the Host tab), and every
  * `backgroundMs` for a page that shows only the line of figures (the sidebar's indicator) or nobody at all, so that the history reaches back to when nobody was looking: a look is a `sysctl` and an
- * IOKit read of the GPU (about a millisecond of CPU in all, measured), which at the slow pace is not worth a switch to turn it off. The
+ * IOKit read of the GPU, the network's counters and a `statfs` of each disk (about a millisecond of CPU in all, measured), which at the slow pace is not worth a switch to turn it off. The
  * fine series is the last hour of looks (a ring of fixed size, whatever the pace), the coarse one the last day, a point
  * per finished minute. Both live in memory only: a server that restarts starts the history again.
  */
@@ -93,6 +102,11 @@ export class HostSampler {
 	#gpu: HostInfo["gpu"] = null;
 	#hasPressure = false;
 	#hasPower = false;
+	#hasNet = false;
+	#disks: HostInfo["disks"] = [];
+	#dataDisk: string | null = null;
+	/** The network's counters at the last look, and when: what the next look's rate is measured from. */
+	#netPrev: { at: number; counters: NetCounters } | null = null;
 	#cancel: (() => void) | undefined;
 	#busy = false;
 	#stopped = true;
@@ -162,6 +176,9 @@ export class HostSampler {
 			gpu: this.#gpu,
 			pressure: this.#hasPressure,
 			power: this.#hasPower,
+			net: this.#hasNet,
+			disks: this.#disks,
+			dataDisk: this.#dataDisk,
 			liveMs: this.#liveMs,
 			backgroundMs: this.#backgroundMs,
 			fineSpanMs: HOUR_MS,
@@ -232,14 +249,22 @@ export class HostSampler {
 	}
 
 	/**
-	 * Read the computer once and record it. The very first look has nothing to measure CPU time against and records nothing.
-	 * Returns what was recorded.
+	 * Read the computer once and record it. The very first look has nothing to measure CPU time (nor the network's bytes)
+	 * against and records nothing. Returns what was recorded.
 	 */
 	async sample(): Promise<HostPoint | null> {
 		const reading = await this.#reader.read();
 		const t = this.#now();
 		const prev = this.#prev;
 		this.#prev = reading.cpu;
+		const netPrev = this.#netPrev;
+		// A read of the network that failed starts over: the next one only measures from.
+		this.#netPrev = reading.net ? { at: t, counters: reading.net } : null;
+		const net = reading.net && netPrev ? netRate(netPrev.counters, reading.net, (t - netPrev.at) / 1000) : null;
+		if (reading.disks) {
+			this.#disks = reading.disks.map(({ id, name, total }) => ({ id, name, total }));
+			this.#dataDisk = reading.dataDisk;
+		}
 		const cpu = prev ? cpuShare(prev, reading.cpu) : null;
 		if (cpu === null) return null;
 		const gpus = reading.gpus;
@@ -247,6 +272,7 @@ export class HostSampler {
 		if (gpus && busiest) this.#gpu = { name: busiest.name, cores: busiest.cores };
 		if (reading.pressure !== null) this.#hasPressure = true;
 		if (reading.power !== null) this.#hasPower = true;
+		if (net) this.#hasNet = true;
 		const point: HostPoint = {
 			t,
 			cpu,
@@ -254,6 +280,9 @@ export class HostSampler {
 			mem: reading.memUsed !== null && reading.memTotal > 0 ? tenth((reading.memUsed / reading.memTotal) * 100) : null,
 			pressure: reading.pressure,
 			power: reading.power,
+			rx: net?.rx ?? null,
+			tx: net?.tx ?? null,
+			disks: Object.fromEntries((reading.disks ?? []).map((d) => [d.id, d.free])),
 		};
 		this.#fine.push(point);
 		const minute = this.#minute.add(point);

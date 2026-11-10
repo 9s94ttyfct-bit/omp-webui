@@ -18,6 +18,12 @@ export const INFO: HostInfo = {
 	gpu: { name: "Apple M4 Pro", cores: 16 },
 	pressure: true,
 	power: true,
+	net: true,
+	disks: [
+		{ id: "/", name: "Macintosh HD", total: 494_000_000_000 },
+		{ id: "/Volumes/Backup", name: "Backup", total: 2_000_000_000_000 },
+	],
+	dataDisk: "/",
 	liveMs: 2000,
 	backgroundMs: 10_000,
 	fineSpanMs: HOUR,
@@ -35,6 +41,13 @@ export function lookAt(t: number, over: Partial<HostPoint> = {}): HostPoint {
 		mem: Math.round((61 + 3 * Math.sin(x / 9)) * 10) / 10,
 		pressure: 0,
 		power: Math.round((18 + 6 * Math.sin(x / 4)) * 10) / 10,
+		// 0.4–2 MB/s down and 20–60 KB/s up; about 132 GB free of the 494 GB disk and 1.2 TB of the 2 TB one.
+		rx: Math.round(1_200_000 + 800_000 * Math.sin(x / 2)),
+		tx: Math.round(40_000 + 20_000 * Math.cos(x / 3)),
+		disks: {
+			"/": Math.round(132_000_000_000 + 2_000_000_000 * Math.sin(x / 60)),
+			"/Volumes/Backup": 1_200_000_000_000,
+		},
 		...over,
 	};
 }
@@ -46,6 +59,9 @@ const columns = (points: HostPoint[]): HostSeries => ({
 	mem: points.map((p) => p.mem),
 	pressure: points.map((p) => p.pressure),
 	power: points.map((p) => p.power),
+	rx: points.map((p) => p.rx),
+	tx: points.map((p) => p.tx),
+	disks: Object.fromEntries(INFO.disks.map((d) => [d.id, points.map((p) => p.disks[d.id] ?? null)])),
 });
 
 export interface HistoryOptions {

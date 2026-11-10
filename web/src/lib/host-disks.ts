@@ -1,0 +1,51 @@
+import type { HostDisk } from "@shared/host.ts";
+import { PREF } from "@shared/prefs.ts";
+import { useSyncExternalStore } from "react";
+import { onPrefsChanged, setPref } from "./prefs.ts";
+
+/**
+ * Which disks the host load pane shows (#613): the preference `ompw.hostDisks`, a JSON list of disk ids (mount points), read
+ * as everything reads a preference (`localStorage`, kept in step with the server by `lib/prefs.ts`). None chosen (unset, an
+ * empty list, or a value from another version) is every disk. Imported only by the lazy chunks of the pane and of its
+ * card in Settings.
+ */
+
+const changed = new Set<() => void>();
+
+/** The ids a stored value names; anything that is not a list of strings is none (every disk). */
+export function hostDisksOf(v: string | null): string[] {
+	try {
+		const parsed: unknown = JSON.parse(v ?? "[]");
+		return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+	} catch {
+		return [];
+	}
+}
+
+/** The stored value, as it is (`useSyncExternalStore` compares it: a string, not a new list each time). */
+const stored = (): string => localStorage.getItem(PREF.hostDisks) ?? "";
+
+/** Choose the disks (none: every disk); remembered here and on the server (`setPref`), and every reader told. */
+export function setHostDisks(ids: readonly string[]): void {
+	setPref(PREF.hostDisks, ids.length ? JSON.stringify(ids) : null);
+	for (const fn of changed) fn();
+}
+
+function subscribe(fn: () => void): () => void {
+	changed.add(fn);
+	const stop = onPrefsChanged((keys) => keys.includes(PREF.hostDisks) && fn());
+	return () => {
+		changed.delete(fn);
+		stop();
+	};
+}
+
+/** The chosen ids now (empty: every disk); the component draws again only when the choice changes. */
+export function useHostDisks(): string[] {
+	return hostDisksOf(useSyncExternalStore(subscribe, stored, () => "") || null);
+}
+
+/** The disks a pane shows of `disks`: the chosen ones, or every one when none is chosen. */
+export function shownDisks<D extends Pick<HostDisk, "id">>(disks: readonly D[], chosen: readonly string[]): D[] {
+	return chosen.length === 0 ? [...disks] : disks.filter((d) => chosen.includes(d.id));
+}

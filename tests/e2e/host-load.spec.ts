@@ -1,5 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
+import { platformId } from "../../server/platform/capabilities.ts";
 import type { HostHistory } from "../../shared/host.ts";
+import { PREF } from "../../shared/prefs.ts";
+import { fmtMem, fmtRate } from "../../web/src/lib/host-rows.ts";
 import { FIXTURE } from "../support/fixtures.ts";
 import { boxOf } from "../support/geometry.ts";
 import { HOUR, historyAt, lookAt, PROCS, stubHost } from "../support/host-fixtures.ts";
@@ -79,6 +82,81 @@ test.describe("with figures the spec chose", () => {
 		await expect(page.getByTestId("host-chart-cpu")).toBeVisible();
 		await expect(page.getByTestId("host-tile-power")).toHaveCount(0);
 		await expect(page.getByTestId("host-chart-power")).toHaveCount(0);
+	});
+
+	test("the network has a tile and a graph, and every disk a tile and a graph of its free space", async ({ page }) => {
+		const now = Date.now();
+		await open(page, historyAt(now));
+		// The sidebar's line stays as it was: CPU, GPU, memory and power only.
+		await expect(page.getByTestId("host-figures")).toHaveText(/^CPU \d+% · GPU \d+% · MEM \d+% · \d+\.\d W$/);
+		await chip(page).click();
+		await expect(popover(page)).toBeVisible();
+		const last = lookAt(now - 30_000);
+		const net = page.getByTestId("host-tile-net");
+		await expect(net).toContainText("Network");
+		// The arrows are what is seen; a screen reader hears "Received" and "Sent".
+		await expect(page.getByTestId("host-tile-net-value")).toHaveText(
+			`↓ Received ${fmtRate(last.rx)} · ↑ , Sent ${fmtRate(last.tx)}`,
+		);
+		await expect(page.getByTestId("host-tile-net-value").locator(".sr-only")).toHaveText(["Received", ", Sent"]);
+		const free = last.disks["/"] as number;
+		const main = page.locator('[data-testid="host-tile-disk"][data-disk="/"]');
+		await expect(main).toContainText("Macintosh HD");
+		await expect(main).toContainText(`${fmtMem(free)} free`);
+		await expect(main).toContainText(
+			`of 494 GB · ${Math.round(100 - (free / 494e9) * 100)}% used · holds omp-webui's data`,
+		);
+		const backup = page.locator('[data-testid="host-tile-disk"][data-disk="/Volumes/Backup"]');
+		await expect(backup).toContainText("Backup");
+		await expect(backup).toContainText(`${fmtMem(1.2e12)} free`);
+		await expect(backup).not.toContainText("omp-webui's data");
+		// Two lines on one graph, against a round number of bytes a second (the fixture's highest is under 2 MB/s).
+		const netGraph = page.getByTestId("host-chart-net");
+		await expect(netGraph).toHaveAttribute(
+			"aria-label",
+			/^Network, last 1 h: now Received \d+(\.\d)? (KB|MB)\/s, Sent \d+(\.\d)? KB\/s, highest Received \d\.\d MB\/s, Sent \d+ KB\/s$/,
+		);
+		await expect(netGraph.locator("path.recharts-area-area")).toHaveCount(2);
+		// The scale's marks are round, written without a tenth: 0 B/s, 1 MB/s, 2 MB/s.
+		await expect(netGraph).toContainText("2 MB/s");
+		await expect(netGraph).toContainText("1 MB/s");
+		await expect(netGraph).toContainText(/peak ↓ \d\.\d MB\/s · ↑ \d+ KB\/s/);
+		const diskGraph = page.locator('[data-testid="host-chart-disk"][data-disk="/"]');
+		await expect(diskGraph).toHaveAttribute(
+			"aria-label",
+			/^Free on Macintosh HD, last 1 h: now \d+ GB, highest \d+ GB$/,
+		);
+		await expect(diskGraph).toContainText("200 GB");
+		await expect(page.getByTestId("host-chart-disk")).toHaveCount(2);
+		// Seven tiles: two to a row.
+		const cpu = await boxOf(page.getByTestId("host-tile-cpu"));
+		const disk = await boxOf(main);
+		expect(disk.y).toBeGreaterThan(cpu.y + cpu.height);
+	});
+
+	test("the disks chosen in Settings are the ones the pane shows", async ({ page }) => {
+		await page.addInitScript((key) => localStorage.setItem(key, JSON.stringify(["/Volumes/Backup"])), PREF.hostDisks);
+		await open(page, historyAt(Date.now()));
+		await chip(page).click();
+		await expect(page.getByTestId("host-tile-disk")).toHaveCount(1);
+		await expect(page.getByTestId("host-tile-disk")).toHaveAttribute("data-disk", "/Volumes/Backup");
+		await expect(page.getByTestId("host-chart-disk")).toHaveAttribute("data-disk", "/Volumes/Backup");
+	});
+
+	test("a server of an older version (another Mac's) tells no network or disk: no tile and no graph of them", async ({
+		page,
+	}) => {
+		const h = historyAt(Date.now());
+		const { net: _net, disks: _disks, dataDisk: _dataDisk, ...info } = h.info;
+		const { rx: _rx, tx: _tx, disks: _free, ...fine } = h.fine;
+		const { rx: _crx, tx: _ctx, disks: _cfree, ...coarse } = h.coarse;
+		await open(page, { ...h, info, fine, coarse } as unknown as HostHistory);
+		await chip(page).click();
+		await expect(page.getByTestId("host-chart-power")).toBeVisible();
+		await expect(page.getByTestId("host-tile-net")).toHaveCount(0);
+		await expect(page.getByTestId("host-tile-disk")).toHaveCount(0);
+		await expect(page.getByTestId("host-chart-net")).toHaveCount(0);
+		await expect(page.getByTestId("host-chart-disk")).toHaveCount(0);
 	});
 
 	test("a computer that tells no memory pressure has a neutral dot and says nothing of pressure", async ({ page }) => {
@@ -498,6 +576,20 @@ test.describe("the real sampler", () => {
 		await expect(page.getByTestId("host-tile-cpu-value")).toHaveText(/^\d+%$/);
 		await expect(page.getByTestId("host-tile-mem-value")).toHaveText(/^\d+%$/);
 		await expect(page.getByTestId("host-tile-mem")).toContainText(/of \d+(\.\d)? GB/);
+		// Every disk of this computer, one of them holding the server's data; the network's bytes a second where the system counts them (not Windows).
+		const disks = page.getByTestId("host-tile-disk");
+		await expect(disks.first()).toBeVisible();
+		for (const value of await page.getByTestId("host-tile-disk-value").all())
+			await expect(value).toHaveText(/^\d+(\.\d)? (MB|GB|TB) free$/);
+		await expect(disks.filter({ hasText: "holds omp-webui's data" })).toHaveCount(1);
+		await expect(disks.filter({ hasText: "holds omp-webui's data" })).toContainText(
+			/of \d+(\.\d)? (GB|TB) · \d+% used/,
+		);
+		if (platformId !== "win32")
+			await expect(page.getByTestId("host-tile-net-value")).toHaveText(
+				/^↓ Received \d+(\.\d)? (B|KB|MB|GB)\/s · ↑ , Sent \d+(\.\d)? (B|KB|MB|GB)\/s$/,
+			);
+		else await expect(page.getByTestId("host-tile-net")).toHaveCount(0);
 		await expect(page.getByTestId("host-footer")).toContainText(
 			"every 0.3 s while a page shows these graphs, and every 1 s while only the sidebar's line does",
 		);

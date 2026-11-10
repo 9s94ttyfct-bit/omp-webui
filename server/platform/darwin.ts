@@ -1,8 +1,17 @@
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readlinkSync } from "node:fs";
 import { arch, release, totalmem } from "node:os";
 import { join } from "node:path";
-import { MAC_SYSCTL, memoryUsedMac, parseSysctl, pressureOf, wiredPagesOfVmStat } from "../host-parse.ts";
+import {
+	type DiskMount,
+	MAC_SYSCTL,
+	memoryUsedMac,
+	parseMacMounts,
+	parseSysctl,
+	pressureOf,
+	wiredPagesOfVmStat,
+} from "../host-parse.ts";
 import { capabilitiesFor } from "./capabilities.ts";
+import { macNetBytes } from "./darwin-net.ts";
 import { HOST_READ_MS, posixCommands, posixHostProcesses, posixProcesses, posixShell, psIdentity } from "./posix.ts";
 import type { DesktopOps, LockOps, Platform, SystemDeps } from "./types.ts";
 
@@ -10,6 +19,31 @@ import type { DesktopOps, LockOps, Platform, SystemDeps } from "./types.ts";
 const OPEN_MS = 15_000;
 /** How long asking who has a lock open may take: `lsof` answers in a fraction of a second. */
 const LSOF_MS = 10_000;
+
+/** What Finder calls `/`: the link to it in /Volumes (`Macintosh HD -> /`); null when there is none. */
+function rootName(volumes: string): string | null {
+	try {
+		for (const name of readdirSync(volumes)) {
+			const path = join(volumes, name);
+			if (lstatSync(path).isSymbolicLink() && readlinkSync(path) === "/") return name;
+		}
+	} catch {
+		// No /Volumes to read: `/` keeps its mount point for a name.
+	}
+	return null;
+}
+
+/**
+ * The volumes a person has, from the system's `mount` (`parseMacMounts`: `/` and the local ones under /Volumes), `/` named
+ * as Finder names it. A process, but asked at most once a minute (`host-read.ts`). `volumes`: a test's own folder.
+ */
+export function macDisks(deps: SystemDeps, volumes = "/Volumes"): () => Promise<DiskMount[]> {
+	return async () => {
+		const out = await deps.run(["/sbin/mount"], { timeoutMs: HOST_READ_MS });
+		if (out.code !== 0) throw new Error(out.stderr.trim() || `mount exit ${out.code}`);
+		return parseMacMounts(out.stdout).map((d) => (d.mount === "/" ? { ...d, name: rootName(volumes) ?? "/" } : d));
+	};
+}
 
 /** The system's own `open`, by its full name: the page's `PATH` does not decide what runs. */
 const OPEN = "/usr/bin/open";
@@ -107,6 +141,8 @@ export function createDarwin(deps: SystemDeps): Platform {
 				}
 				return { used: memoryUsedMac(values), total: totalmem(), pressure: pressureOf(values) };
 			},
+			netBytes: macNetBytes(),
+			disks: macDisks(deps),
 		},
 		locks: locks(deps),
 		socketTemp: "/tmp",

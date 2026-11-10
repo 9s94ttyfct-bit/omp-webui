@@ -403,6 +403,14 @@ export const SETTINGS: readonly SettingEntry[] = [
 		target: '[data-testid="sleep-settings"]',
 	},
 	{
+		id: "host-disks",
+		group: "pages.settingsHostDisks",
+		label: "pages.settingsHostDisks",
+		hint: "pages.settingsHostDisksHint",
+		aliases: ["disk", "disks", "drive", "volume", "free space", "host load", "磁盘", "硬盘", "可用空间", "本机负载"],
+		target: '[data-testid="host-disks-settings"]',
+	},
+	{
 		id: "drop",
 		group: "drop.settingsTitle",
 		label: "drop.settingsTitle",

@@ -575,6 +575,8 @@ const host = new HostSampler({
 			retry: process.env.OMP_WEBUI_HOST_GPU === "1",
 			markerDir: cfg.dataDir,
 		},
+		// Every disk's free space is told; the one omp-webui's data is on (`OMP_WEBUI_DATA_DIR`, ~/.omp-webui) is marked.
+		disks: { dataPath: cfg.dataDir },
 	}),
 });
 let version = omp.ompVersion ?? "unknown";

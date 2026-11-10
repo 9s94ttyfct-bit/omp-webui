@@ -1,17 +1,27 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
 	cpuShare,
 	groupRows,
 	groupUse,
+	IFMIB,
+	isMacPhysical,
 	memoryUsedMac,
+	netRate,
 	parseCpuTime,
+	parseIfmib,
 	parseMeminfo,
+	parseProcNetDev,
 	parsePs,
 	parseSysctl,
 	pressureOf,
 	sumCpuTimes,
 } from "../../server/host-parse.ts";
 import { createDarwin } from "../../server/platform/darwin.ts";
+import { platformFor, type SystemDeps } from "../../server/platform/index.ts";
+import { linuxNetBytes } from "../../server/platform/linux.ts";
 
 // `sysctl hw.pagesize vm.page_pageable_internal_count vm.page_purgeable_count vm.page_wired_count vm.compressor_bytes_used
 // kern.memorystatus_vm_pressure_level` on an Apple M4 Pro (macOS 27), as printed.
@@ -136,6 +146,125 @@ Cached:         12345678 kB
 	test("a kernel without MemAvailable has no figure", () => {
 		expect(parseMeminfo("MemTotal: 100 kB\nMemFree: 50 kB\n")).toBeNull();
 		expect(parseMeminfo("")).toBeNull();
+	});
+});
+
+describe("macOS network counters from sysctl's ifmibdata", () => {
+	// `net.link.generic.ifdata.<n>.general` of en0 (Wi-Fi) and lo0 on an Apple M4 Pro (macOS 27.2), as sysctl(3) answered
+	// them (180 bytes each), with `netstat -ibn`'s Link rows printed right after: en0 Ibytes 448862319, Obytes 586433432;
+	// lo0 Ibytes and Obytes 4651164241 (over 2^32: the counters are 64-bit).
+	const EN0 =
+		"656e3000000000000000000000000000000000006388ffff00000000800000001b00000000000000000000000000000000000000060000060e000000dc050000000000000069eb0a000000009d0a0f000000000000000000000000008363100000000000000000000000000000000000000000006f18c11a000000009843f42200000000000000000000000000000000000000000000000000000000000000000000000000000000000000002901f26a00000000";
+	const LO0 =
+		"6c6f3000000000000000000000000000000000004980ffff000000000001000000000000000000000000000000000000000000001800000004000000004000000000000000000000000000007206270000000000000000000000000072062700000000000000000000000000000000000000000051223b150100000051223b15010000003a3700000000000000000000000000000000000000000000000000000000000000000000000000001a2bf26a00000000";
+	const bytes = (hex: string) => new Uint8Array(Buffer.from(hex, "hex"));
+
+	test("the name and the bytes received and sent are netstat's, to the byte", () => {
+		expect(parseIfmib(bytes(EN0))).toEqual({ name: "en0", rx: 448862319, tx: 586433432 });
+		expect(parseIfmib(bytes(LO0))).toEqual({ name: "lo0", rx: 4651164241, tx: 4651164241 });
+	});
+
+	test("a buffer shorter than the figures, or with no name in its first 16 bytes, is no reading (not a guess)", () => {
+		expect(parseIfmib(bytes(EN0).subarray(0, IFMIB.size - 1))).toBeNull();
+		expect(parseIfmib(bytes(EN0).subarray(0, IFMIB.size))).toMatchObject({ name: "en0" });
+		expect(parseIfmib(new Uint8Array(180))).toBeNull();
+		expect(parseIfmib(new Uint8Array(180).fill(0x61))).toBeNull();
+	});
+
+	test("a buffer that is a window into a larger one is read from its own start", () => {
+		const big = new Uint8Array(512);
+		big.set(bytes(EN0), 7);
+		expect(parseIfmib(big.subarray(7, 7 + 180))).toEqual({ name: "en0", rx: 448862319, tx: 586433432 });
+	});
+
+	test("only the en interfaces count: not the loopback, a VPN's utun (its traffic is an en's already), AirDrop's, a bridge", () => {
+		expect(["en0", "en8", "en12"].every(isMacPhysical)).toBe(true);
+		const others = ["lo0", "utun3", "awdl0", "llw0", "bridge0", "ap1", "anpi0", "gif0", "stf0", "en", "pktap0"];
+		expect(others.some(isMacPhysical)).toBe(false);
+	});
+});
+
+describe("Linux network counters from /proc/net/dev", () => {
+	// In the kernel's format (net/core/net-procfs.c, `%6s:%8llu …`): two header lines, then `name:` and 16 figures, bytes
+	// first and ninth; a figure wider than its column runs into the colon.
+	const NET_DEV = `Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo: 81239876  712345    0    0    0     0          0         0 81239876  712345    0    0    0     0       0          0
+  eth0:9123456789 8123456    0   12    0     0          0      1234 712345678 3123456    0    0    0     0       0          0
+wlp2s0:   500000    4000    0    0    0     0          0         0    20000     300    0    0    0     0       0          0
+docker0:  1000000    9000    0    0    0     0          0         0  2000000    9100    0    0    0     0       0          0
+`;
+	const deps = (text: string | null): SystemDeps => ({
+		run: async () => {
+			throw new Error("no command is run");
+		},
+		runSync: () => ({ code: 1, stdout: "" }),
+		readFile: (path) => (path === "/proc/net/dev" ? text : null),
+		kill: () => {},
+		env: {},
+	});
+
+	test("each interface's bytes received and sent; the header lines are skipped", () => {
+		expect([...parseProcNetDev(NET_DEV)]).toEqual([
+			["lo", { rx: 81239876, tx: 81239876 }],
+			["eth0", { rx: 9123456789, tx: 712345678 }],
+			["wlp2s0", { rx: 500000, tx: 20000 }],
+			["docker0", { rx: 1000000, tx: 2000000 }],
+		]);
+		expect(parseProcNetDev("").size).toBe(0);
+		expect(parseProcNetDev("eth0: 1 2 3\n").size).toBe(0);
+	});
+
+	test("only the interfaces that are a device count, and which are is asked again after a minute", async () => {
+		const sys = mkdtempSync(join(tmpdir(), "omp-webui-sysnet-"));
+		try {
+			for (const name of ["eth0", "wlp2s0"]) mkdirSync(join(sys, name, "device"), { recursive: true });
+			mkdirSync(join(sys, "lo"), { recursive: true });
+			mkdirSync(join(sys, "docker0"), { recursive: true });
+			let now = 0;
+			const read = linuxNetBytes(deps(NET_DEV), sys, () => now);
+			expect([...(await read()).keys()]).toEqual(["eth0", "wlp2s0"]);
+			expect((await read()).get("eth0")).toEqual({ rx: 9123456789, tx: 712345678 });
+			// A name that has become a device is not asked about again within the minute…
+			mkdirSync(join(sys, "docker0", "device"));
+			now = 30_000;
+			expect([...(await read()).keys()]).toEqual(["eth0", "wlp2s0"]);
+			// …and is after it.
+			now = 61_000;
+			expect([...(await read()).keys()]).toEqual(["eth0", "wlp2s0", "docker0"]);
+		} finally {
+			rmSync(sys, { recursive: true, force: true });
+		}
+	});
+
+	test("a /proc/net/dev that cannot be read is a failed read", async () => {
+		await expect(linuxNetBytes(deps(null))()).rejects.toThrow("/proc/net/dev");
+	});
+
+	test("Windows has no network figure", () => {
+		expect(platformFor("win32").host.netBytes).toBeNull();
+	});
+});
+
+describe("network rate from two readings", () => {
+	const counters = (...ifs: [string, number, number][]) => new Map(ifs.map(([name, rx, tx]) => [name, { rx, tx }]));
+
+	test("bytes a second, added up over the interfaces, whole", () => {
+		const a = counters(["en0", 1_000, 2_000], ["en8", 0, 0]);
+		const b = counters(["en0", 4_000, 2_500], ["en8", 1_001, 0]);
+		expect(netRate(a, b, 2)).toEqual({ rx: 2_001, tx: 250 });
+	});
+
+	test("none on the first reading, when no time went by, when a counter ran back, when an interface came or went", () => {
+		const a = counters(["en0", 1_000, 1_000]);
+		expect(netRate(null, a, 1)).toBeNull();
+		expect(netRate(a, a, 0)).toBeNull();
+		expect(netRate(a, counters(["en0", 999, 2_000]), 1)).toBeNull();
+		expect(netRate(a, counters(["en0", 2_000, 999]), 1)).toBeNull();
+		expect(netRate(a, counters(["en0", 2_000, 2_000], ["en9", 0, 0]), 1)).toBeNull();
+		expect(netRate(a, counters(["en9", 2_000, 2_000]), 1)).toBeNull();
+		expect(netRate(a, counters(), 1)).toBeNull();
+		expect(netRate(a, a, 1)).toEqual({ rx: 0, tx: 0 });
 	});
 });
 

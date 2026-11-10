@@ -70,6 +70,7 @@ export const PREF_CLASS: Readonly<Record<PrefKey, SettingClass>> = {
 	// The server refuses it to a page that is not this computer's: off, the Mac may sleep in the middle of a turn.
 	[PREF.keepAwake]: "sensitive",
 	[PREF.toolTimer]: "normal",
+	[PREF.hostDisks]: "normal",
 	[PREF.compactWhere]: "normal",
 	[PREF.quickPrompts]: "normal",
 	[PREF.quickPromptsSeen]: "unavailable",

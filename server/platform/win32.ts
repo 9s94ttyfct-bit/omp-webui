@@ -1,7 +1,7 @@
-import { statSync } from "node:fs";
+import { statfsSync, statSync } from "node:fs";
 import { arch, freemem, release, totalmem } from "node:os";
 import { delimiter, extname, join, win32 as windowsPath } from "node:path";
-import type { PsRow } from "../host-parse.ts";
+import type { DiskMount, PsRow } from "../host-parse.ts";
 import { capabilitiesFor } from "./capabilities.ts";
 import { probe, treesOf } from "./system.ts";
 import type { CommandOps, LoginItemOps, Platform, ProcessEntry, ProcessOps, ShellOps, SystemDeps } from "./types.ts";
@@ -297,6 +297,22 @@ export function createWin32(deps: SystemDeps): Platform {
 			},
 			memorySource: "os",
 			memory: async () => ({ used: totalmem() - freemem(), total: totalmem(), pressure: null }),
+			// No network figure yet: the interfaces' counters are a native call (GetIfTable2) or a PowerShell a look away.
+			netBytes: null,
+			// The drive letters `statfs` answers for: a letter with no drive, or an empty card reader, does not.
+			disks: async () => {
+				const out: DiskMount[] = [];
+				for (let c = 65; c <= 90; c++) {
+					const drive = `${String.fromCharCode(c)}:`;
+					try {
+						statfsSync(`${drive}\\`);
+						out.push({ mount: `${drive}\\`, name: drive });
+					} catch {
+						// Not a drive now.
+					}
+				}
+				return out;
+			},
 		},
 		locks: null,
 		socketTemp: deps.env.TEMP ?? deps.env.TMP ?? ".",

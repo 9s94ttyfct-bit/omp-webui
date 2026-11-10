@@ -7,6 +7,7 @@ import {
 	downsample,
 	fmtCore,
 	fmtMem,
+	fmtRate,
 	fmtShare,
 	fmtWatts,
 	type HostRow,
@@ -14,6 +15,7 @@ import {
 	mergeRows,
 	peakOf,
 	pressureRuns,
+	roundTop,
 	rowsOf,
 	tickStep,
 	trimRows,
@@ -29,6 +31,9 @@ const row = (t: number, over: Partial<HostRow> = {}): HostRow => ({
 	mem: 50,
 	pressure: 0,
 	power: null,
+	rx: null,
+	tx: null,
+	disks: {},
 	...over,
 });
 const SEC = 1000;
@@ -44,20 +49,47 @@ describe("rows from the server's columns", () => {
 			mem: [61.2, 61.4],
 			pressure: [0, null],
 			power: [18.2, null],
+			rx: [1_200_000, null],
+			tx: [40_000, null],
+			disks: { "/": [132_000_000_000, 131_000_000_000], "/Volumes/Backup": [null, 5_000_000_000] },
 		};
 		expect(rowsOf(s)).toEqual([
-			{ t: 1000, cpu: 12.5, gpu: null, mem: 61.2, pressure: 0, power: 18.2 },
-			{ t: 3000, cpu: 40, gpu: 7, mem: 61.4, pressure: null, power: null },
+			{
+				t: 1000,
+				cpu: 12.5,
+				gpu: null,
+				mem: 61.2,
+				pressure: 0,
+				power: 18.2,
+				rx: 1_200_000,
+				tx: 40_000,
+				disks: { "/": 132_000_000_000 },
+			},
+			{
+				t: 3000,
+				cpu: 40,
+				gpu: 7,
+				mem: 61.4,
+				pressure: null,
+				power: null,
+				rx: null,
+				tx: null,
+				disks: { "/": 131_000_000_000, "/Volumes/Backup": 5_000_000_000 },
+			},
 		]);
 	});
 
-	test("a server of an older version sends no power column: its rows have no power", () => {
+	test("a server of an older version sends no power, network or disk column: its rows have none of them", () => {
 		const old = { t: [1000], cpu: [1], gpu: [null], mem: [2], pressure: [0] } as unknown as HostSeries;
-		expect(rowsOf(old)).toEqual([{ t: 1000, cpu: 1, gpu: null, mem: 2, pressure: 0, power: null }]);
+		expect(rowsOf(old)).toEqual([
+			{ t: 1000, cpu: 1, gpu: null, mem: 2, pressure: 0, power: null, rx: null, tx: null, disks: {} },
+		]);
 	});
 
 	test("empty columns are no rows", () => {
-		expect(rowsOf({ t: [], cpu: [], gpu: [], mem: [], pressure: [], power: [] })).toEqual([]);
+		expect(rowsOf({ t: [], cpu: [], gpu: [], mem: [], pressure: [], power: [], rx: [], tx: [], disks: {} })).toEqual(
+			[],
+		);
 	});
 });
 
@@ -114,7 +146,17 @@ describe("a graph's gaps", () => {
 	test("a stretch with no looks (asleep, or no server) breaks the line: a row of nothing is put in it", () => {
 		const out = chartRows([row(0), row(10 * SEC), row(10 * MIN)], 30 * SEC);
 		expect(out.map((r) => r.t)).toEqual([0, 10 * SEC, 10 * SEC + 1, 10 * MIN]);
-		expect(out[2]).toEqual({ t: 10 * SEC + 1, cpu: null, gpu: null, mem: null, pressure: null, power: null });
+		expect(out[2]).toEqual({
+			t: 10 * SEC + 1,
+			cpu: null,
+			gpu: null,
+			mem: null,
+			pressure: null,
+			power: null,
+			rx: null,
+			tx: null,
+			disks: {},
+		});
 	});
 
 	test("looks that keep their pace are one line", () => {
@@ -149,6 +191,18 @@ describe("fewer rows for a graph that is a few hundred pixels wide", () => {
 		const [one] = downsample(rows, 3000, 1);
 		expect(one?.pressure).toBe(2);
 		expect(one?.gpu).toBeNull();
+	});
+
+	test("a stretch's free space is each disk's mean; a disk with no figure in it is not in it", () => {
+		const rows = [
+			row(0, { disks: { "/": 10e9, "/b": 3e9 } }),
+			row(1000, { disks: { "/": 20e9 } }),
+			row(2000, { disks: { "/": 30e9, "/b": null } }),
+		];
+		const [one] = downsample(rows, 3000, 1);
+		expect(one?.disks).toEqual({ "/": 20e9, "/b": 3e9 });
+		const [none] = downsample([row(0), row(1000)], 2000, 1);
+		expect(none?.disks).toEqual({});
 	});
 
 	test("the stretches are cut from the clock, so a new look does not move the older ones between stretches", () => {
@@ -276,6 +330,26 @@ describe("figures", () => {
 		expect(wattsScale(21)).toBe(50);
 		expect(wattsScale(60)).toBe(100);
 		expect(wattsScale(240)).toBe(500);
+	});
+
+	test("bytes a second have a tenth below 10 of their unit and are whole above, in decimal units", () => {
+		expect(fmtRate(0)).toBe("0 B/s");
+		expect(fmtRate(512.4)).toBe("512 B/s");
+		expect(fmtRate(40_000)).toBe("40 KB/s");
+		expect(fmtRate(1_234)).toBe("1.2 KB/s");
+		expect(fmtRate(1_200_000)).toBe("1.2 MB/s");
+		expect(fmtRate(118_400_000)).toBe("118 MB/s");
+		expect(fmtRate(2_500_000_000)).toBe("2.5 GB/s");
+		expect(fmtRate(null)).toBe("—");
+		expect(fmtRate(undefined)).toBe("—");
+	});
+
+	test("a graph in bytes tops at the round step above its highest: 1, 2, 5 times a power of ten from its floor", () => {
+		expect(roundTop(null, 1000)).toBe(1000);
+		expect(roundTop(40_000, 1000)).toBe(50_000);
+		expect(roundTop(1_200_000, 1000)).toBe(2_000_000);
+		expect(roundTop(132_000_000_000, 1e9)).toBe(200_000_000_000);
+		expect(roundTop(600_000_000_000, 1e9)).toBe(1_000_000_000_000);
 	});
 
 	test("the series colours are the palette's own, one each", () => {

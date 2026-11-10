@@ -1,7 +1,7 @@
 ---
 title: The server and its security
 summary: The local omp-webui server: its data folder, the access token, the address it listens on, which routes are for this computer only, the environment variables it reads, the request checks and Content Security Policy, the Commands & terminal page, the Host tab, and the running omp processes.
-settings: cli, config, running
+settings: cli, config, running, host-disks
 ---
 
 # The server and its security
@@ -26,7 +26,7 @@ settings: cli, config, running
 
 **Commands & terminal page** (a page of Settings: Settings › App & system › **Commands & terminal** › **Open Commands & terminal**, `#/settings/cli`; the older addresses `#/cli` and `#/cli/<command>` open it too and are rewritten to the new ones). It lists omp's CLI commands and flags, discovered at run time from `omp --help` and `omp <command> --help` (so new omp commands appear by themselves), with a filter, each command's help, an **Arguments & flags** form and **Run any command line**. Commands run in a real pseudo-terminal on this computer (interactive ones too), streamed over the WebSocket. A row over the page says where it is (Settings › Commands & terminal) and goes back to Settings. Settings › App & system › **omp configuration** opens `omp config`, `omp models`, `omp login` or `omp update` there, and its **Plugins** button opens the Plugins page (see [plugins.md](plugins.md)); changes apply to new sessions. A conversation's menu **Open in terminal** opens it on `omp --resume <file>`.
 
-**Host load.** The server samples the computer's CPU, GPU (macOS, through IOKit) and memory (with memory pressure where the system reports it): every 2 s while a page shows the graphs, every 10 s otherwise. It keeps the last hour (one point per sample) and the last day (one point per minute), in memory only. The sidebar shows a line of figures; its popover and the side panel's **Host** tab show tiles and graphs (1 h / 24 h) and per-process figures.
+**Host load.** The server samples the computer's CPU, GPU (macOS, through IOKit), memory (with memory pressure where the system reports it), network speed (bytes a second received and sent by the physical interfaces: macOS's `en` ones, Linux's that are a device; none on Windows) and the free space of every disk (macOS: `/` and the volumes under /Volumes that Finder shows; Linux: each block device's mount; Windows: each drive letter; two volumes of one APFS container count once; the one that holds omp-webui's data folder is marked): every 2 s while a page shows the graphs, every 10 s otherwise. It keeps the last hour (one point per sample) and the last day (one point per minute), in memory only. The sidebar shows a line of figures (CPU, GPU, memory, power); its popover and the side panel's **Host** tab show tiles and graphs (1 h / 24 h), including **Network** (`↓ 1.2 MB/s · ↑ 40 KB/s`) and a tile and graph per disk (`132 GB free`), and per-process figures. Settings › App & system › **Disks in Host load** chooses which disks are shown (`ompw.hostDisks`; none chosen is every disk, one plugged in later included). A disk's free space is what `statfs` counts as available, which is less than Finder's "Available" (Finder adds purgeable space).
 
 **Running sessions.** Settings › App & system › **Running sessions** lists the omp processes the server has open: each conversation's name (or "new session"), its state (working, open in a tab, idle · closes after 15 min, paused · stays when you quit, waiting for the quota to reset; the Accounts helper is marked as not a conversation), its pid and a **Close** button that ends that process. Under it: omp version, web UI version, agent dir and sessions dir.
 
@@ -41,7 +41,11 @@ settings: cli, config, running
 
 ## Settings
 
-None stored by the app for these cards. Environment variables the server reads:
+| Key | Values | Default | Effect |
+|---|---|---|---|
+| `ompw.hostDisks` | a JSON list of up to 16 mount points (`["/","/Volumes/Backup"]`) | unset (every disk) | Synced preference. The disks the Host load pane shows a free-space tile and graph for (Settings › App & system › *Disks in Host load*, card `host-disks`); unset or an empty list is every disk, one plugged in later included. |
+
+Environment variables the server reads:
 
 | Variable | Default | Effect |
 |---|---|---|

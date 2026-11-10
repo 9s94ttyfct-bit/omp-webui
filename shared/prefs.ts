@@ -80,6 +80,11 @@ export const PREF = {
 	keepAwake: "ompw.keepAwake",
 	/** Which tool calls show how long they ran (#657): `all` (the default), `shell` (`bash` and the user's own `!commands`) or `off`; see `TOOL_TIMERS` in `web/src/lib/tool-timer.ts`. */
 	toolTimer: "ompw.toolTimer",
+	/**
+	 * Which disks the host load pane shows (#613): a JSON list of their ids (mount points: `/`, `/Volumes/Backup`), at most
+	 * `MAX_DISKS`; unset or empty is every disk the server tells. See `web/src/lib/host-disks.ts`.
+	 */
+	hostDisks: "ompw.hostDisks",
 	/** Where a compact queued while the agent works runs (#651): `turn` (the default: when the turn ends) or `step` (between two steps of it); see `CompactWhere` in `shared/compact-queue.ts`. A conversation's own choice, in This session, starts from it. */
 	compactWhere: "ompw.compactWhere",
 	/** The quick prompts of the message box (#659): a JSON list (`shared/quick-prompts.ts`); unset is the defaults. */
@@ -250,6 +255,13 @@ const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 	[PREF.appAutoUpdate]: switchValue,
 	[PREF.keepAwake]: switchValue,
 	[PREF.toolTimer]: oneOf(["all", "shell", "off"]),
+	// At most `MAX_DISKS` (shared/host.ts) mount points: a list of short strings.
+	[PREF.hostDisks]: json(
+		(v) =>
+			Array.isArray(v) &&
+			v.length <= 16 &&
+			v.every((id) => typeof id === "string" && id.length > 0 && id.length <= 1024),
+	),
 	[PREF.compactWhere]: oneOf(["turn", "step"]),
 	// What a list holds is read by `parseQuickPrompts`, which leaves out what it does not know: here only the shape.
 	[PREF.quickPrompts]: json(Array.isArray),

@@ -1,9 +1,11 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import { tmpdir } from "node:os";
 import { HostSampler } from "../../server/host.ts";
 import { openGpuProbe } from "../../server/host-gpu.ts";
-import type { PsRow } from "../../server/host-parse.ts";
+import type { NetCounters, PsRow } from "../../server/host-parse.ts";
 import { type HostReader, type Reading, systemReader } from "../../server/host-read.ts";
 import { capabilities } from "../../server/platform/capabilities.ts";
+import { platform } from "../../server/platform/index.ts";
 import type { ServerMessage } from "../../shared/protocol.ts";
 import { has } from "../support/needs.ts";
 
@@ -21,6 +23,10 @@ class Fake implements HostReader {
 	memUsed: number | null = 8_000;
 	pressure: Reading["pressure"] = 0;
 	power: Reading["power"] = 21.5;
+	/** Bytes so far, per interface: a test sets them before each look. */
+	net: NetCounters | null = new Map([["en0", { rx: 0, tx: 0 }]]);
+	disks: Reading["disks"] = [{ id: "/", name: "Macintosh HD", total: 500_000_000_000, free: 50_000_000_000 }];
+	dataDisk: Reading["dataDisk"] = "/";
 	rows: PsRow[] = [];
 	listingFails = false;
 	reads = 0;
@@ -38,6 +44,9 @@ class Fake implements HostReader {
 			pressure: this.pressure,
 			gpus: this.gpus,
 			power: this.power,
+			net: this.net,
+			disks: this.disks,
+			dataDisk: this.dataDisk,
 		};
 	}
 	async processes(): Promise<PsRow[]> {
@@ -72,7 +81,17 @@ describe("one look", () => {
 		const s = sampler(fake);
 		await s.sample();
 		fake.look(300, 700, 2000);
-		expect(await s.sample()).toEqual({ t: fake.now, cpu: 30, gpu: 70, mem: 50, pressure: 1, power: 21.5 });
+		expect(await s.sample()).toEqual({
+			t: fake.now,
+			cpu: 30,
+			gpu: 70,
+			mem: 50,
+			pressure: 1,
+			power: 21.5,
+			rx: 0,
+			tx: 0,
+			disks: { "/": 50_000_000_000 },
+		});
 		const h = s.history();
 		expect(h.fine.cpu).toEqual([30]);
 		expect(h.info.gpu).toEqual({ name: "Discrete", cores: 30 });
@@ -104,6 +123,91 @@ describe("one look", () => {
 		await s.sample();
 		fake.look(10, 90, 2000);
 		expect((await s.sample())?.mem).toBeNull();
+	});
+});
+
+describe("the network and the disk", () => {
+	const counters = (...ifs: [string, number, number][]): NetCounters =>
+		new Map(ifs.map(([name, rx, tx]) => [name, { rx, tx }]));
+
+	test("bytes a second between two looks, added up over the interfaces; none on the first look", async () => {
+		const fake = new Fake();
+		fake.net = counters(["en0", 1_000, 500], ["en8", 10_000, 0]);
+		const s = sampler(fake);
+		await s.sample();
+		expect(s.info().net).toBe(false);
+		fake.look(10, 90, 2000);
+		fake.net = counters(["en0", 5_000, 1_500], ["en8", 30_000, 1_000]);
+		expect(await s.sample()).toMatchObject({ rx: (4_000 + 20_000) / 2, tx: (1_000 + 1_000) / 2 });
+		expect(s.info().net).toBe(true);
+		expect(s.history().fine.rx).toEqual([12_000]);
+	});
+
+	test("a counter that ran backwards, or an interface that came or went, is no figure for that look, never a negative one", async () => {
+		const fake = new Fake();
+		fake.net = counters(["en0", 9_000, 9_000]);
+		const s = sampler(fake);
+		await s.sample();
+		const next = async (net: NetCounters) => {
+			fake.look(10, 90, 1000);
+			fake.net = net;
+			return s.sample();
+		};
+		// The interface was reset: its counter starts again from nothing.
+		expect(await next(counters(["en0", 100, 9_500]))).toMatchObject({ rx: null, tx: null });
+		// Measured from the reset on, the next look has a figure again.
+		expect(await next(counters(["en0", 1_100, 9_600]))).toMatchObject({ rx: 1_000, tx: 100 });
+		// A USB Ethernet plugged in: its counter is all of its life, not a second's.
+		expect(await next(counters(["en0", 1_200, 9_700], ["en9", 5e9, 5e9]))).toMatchObject({ rx: null, tx: null });
+		// And taken out again.
+		expect(await next(counters(["en0", 1_300, 9_800]))).toMatchObject({ rx: null, tx: null });
+		expect(await next(counters(["en0", 1_400, 9_900]))).toMatchObject({ rx: 100, tx: 100 });
+	});
+
+	test("a read of the network that failed (or a system with none) is no figure, and the next look only measures from", async () => {
+		const fake = new Fake();
+		fake.net = counters(["en0", 0, 0]);
+		const s = sampler(fake);
+		await s.sample();
+		fake.look(10, 90, 1000);
+		fake.net = null;
+		expect(await s.sample()).toMatchObject({ rx: null, tx: null });
+		fake.look(10, 90, 1000);
+		fake.net = counters(["en0", 7_000, 7_000]);
+		expect(await s.sample()).toMatchObject({ rx: null, tx: null });
+		fake.look(10, 90, 1000);
+		fake.net = counters(["en0", 8_000, 7_000]);
+		expect(await s.sample()).toMatchObject({ rx: 1_000, tx: 0 });
+		expect(s.info().net).toBe(true);
+	});
+
+	test("each disk's free bytes are each look's, the disks and the data's in the info; one plugged in later joins", async () => {
+		const fake = new Fake();
+		const s = sampler(fake);
+		expect(s.info().disks).toEqual([]);
+		expect(s.info().dataDisk).toBeNull();
+		await s.sample();
+		expect(s.info().disks).toEqual([{ id: "/", name: "Macintosh HD", total: 500_000_000_000 }]);
+		expect(s.info().dataDisk).toBe("/");
+		fake.look(10, 90, 1000);
+		fake.disks = [{ id: "/", name: "Macintosh HD", total: 500_000_000_000, free: null }];
+		expect((await s.sample())?.disks).toEqual({ "/": null });
+		fake.look(10, 90, 1000);
+		fake.disks = [
+			{ id: "/", name: "Macintosh HD", total: 500_000_000_000, free: 49_000_000_000 },
+			{ id: "/Volumes/Backup", name: "Backup", total: 2_000_000_000_000, free: 1_000_000_000_000 },
+		];
+		expect((await s.sample())?.disks).toEqual({ "/": 49_000_000_000, "/Volumes/Backup": 1_000_000_000_000 });
+		expect(s.history().fine.disks).toEqual({
+			"/": [null, 49_000_000_000],
+			"/Volumes/Backup": [null, 1_000_000_000_000],
+		});
+		expect(s.info().disks.map((d) => d.id)).toEqual(["/", "/Volumes/Backup"]);
+		// A listing that failed (null) leaves the disks the info had.
+		fake.look(10, 90, 1000);
+		fake.disks = null;
+		expect((await s.sample())?.disks).toEqual({});
+		expect(s.info().disks).toHaveLength(2);
 	});
 });
 
@@ -472,6 +576,45 @@ describe("the computer's own reader", () => {
 		const rows = await systemReader().processes();
 		expect(rows.find((r) => r.pid === process.pid)?.rss).toBeGreaterThan(0);
 	});
+
+	test("lists this computer's disks with their free bytes and size, as statfs counts them, and marks the data folder's", async () => {
+		const r = await systemReader({ gpu: { enabled: false }, disks: { dataPath: tmpdir() } }).read();
+		expect(r.disks?.length).toBeGreaterThan(0);
+		for (const d of r.disks ?? []) {
+			expect(d.total).toBeGreaterThan(0);
+			expect(d.free).toBeGreaterThanOrEqual(0);
+			expect(d.free).toBeLessThanOrEqual(d.total);
+		}
+		// The temporary folder is on one of them (macOS, Linux: `/` or the disk mounted where it is).
+		if (platform.id !== "win32") expect(r.disks?.some((d) => d.id === r.dataDisk)).toBe(true);
+		expect((await systemReader({ gpu: { enabled: false } }).read()).dataDisk).toBeNull();
+	});
+
+	// The layout of `ifmibdata` that `parseIfmib` reads, held to the system's own count of the same bytes.
+	test.skipIf(platform.id !== "darwin")(
+		"macOS: the en interfaces' byte counters, read with no process, are what netstat -ibn counts",
+		async () => {
+			const read = platform.host.netBytes as () => Promise<NetCounters>;
+			const before = await read();
+			const listing = Bun.spawnSync(["/usr/sbin/netstat", "-ibn"]).stdout.toString();
+			const after = await read();
+			const counted = new Map<string, { rx: number; tx: number }>();
+			for (const line of listing.split("\n")) {
+				const f = line.trim().split(/\s+/);
+				// `Name Mtu <Link#n> [Address] Ipkts Ierrs Ibytes Opkts Oerrs Obytes Coll`: the bytes are counted from the end.
+				if (/^en\d+$/.test(f[0] as string) && f[2]?.startsWith("<Link#"))
+					counted.set(f[0] as string, { rx: Number(f.at(-5)), tx: Number(f.at(-2)) });
+			}
+			expect([...after.keys()].sort()).toEqual([...counted.keys()].sort());
+			expect(counted.size).toBeGreaterThan(0);
+			for (const [name, c] of counted) {
+				expect(c.rx).toBeGreaterThanOrEqual(before.get(name)?.rx as number);
+				expect(c.rx).toBeLessThanOrEqual(after.get(name)?.rx as number);
+				expect(c.tx).toBeGreaterThanOrEqual(before.get(name)?.tx as number);
+				expect(c.tx).toBeLessThanOrEqual(after.get(name)?.tx as number);
+			}
+		},
+	);
 });
 
 describe("the IOKit GPU probe", () => {

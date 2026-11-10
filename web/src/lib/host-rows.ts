@@ -18,15 +18,24 @@ export type HostRow = HostPoint;
 /** The rows of a series the server sent as columns, oldest first. */
 export function rowsOf(s: HostSeries): HostRow[] {
 	const rows: HostRow[] = [];
+	// A server of an older version (another Mac's) sends no power column, nor the network's and the disks'.
+	const disks = Object.entries(s.disks ?? {});
 	for (let i = 0; i < s.t.length; i++) {
+		const free: Record<string, number | null> = {};
+		for (const [id, col] of disks) {
+			const v = col[i];
+			if (v !== null && v !== undefined) free[id] = v;
+		}
 		rows.push({
 			t: s.t[i] as number,
 			cpu: s.cpu[i] ?? 0,
 			gpu: s.gpu[i] ?? null,
 			mem: s.mem[i] ?? null,
 			pressure: s.pressure[i] ?? null,
-			// A server of an older version (another Mac's) sends no power column.
 			power: s.power?.[i] ?? null,
+			rx: s.rx?.[i] ?? null,
+			tx: s.tx?.[i] ?? null,
+			disks: free,
 		});
 	}
 	return rows;
@@ -56,7 +65,7 @@ export function mergeRows(base: HostRow[], extra: HostRow[]): HostRow[] {
 	return newer.length ? [...base, ...newer] : base;
 }
 
-/** A row of a graph: a figure that is not there is null, and the line breaks at it. */
+/** A row of a graph: a figure that is not there is null (or, for a disk, absent), and the line breaks at it. */
 export interface ChartRow {
 	t: number;
 	cpu: number | null;
@@ -64,6 +73,9 @@ export interface ChartRow {
 	mem: number | null;
 	pressure: Pressure | null;
 	power: number | null;
+	rx: number | null;
+	tx: number | null;
+	disks: Record<string, number | null>;
 }
 
 /**
@@ -75,7 +87,17 @@ export function chartRows(rows: HostRow[], gapMs: number): ChartRow[] {
 	let prev: HostRow | undefined;
 	for (const r of rows) {
 		if (prev && r.t - prev.t > gapMs)
-			out.push({ t: prev.t + 1, cpu: null, gpu: null, mem: null, pressure: null, power: null });
+			out.push({
+				t: prev.t + 1,
+				cpu: null,
+				gpu: null,
+				mem: null,
+				pressure: null,
+				power: null,
+				rx: null,
+				tx: null,
+				disks: {},
+			});
 		out.push(r);
 		prev = r;
 	}
@@ -125,6 +147,11 @@ function meanOf(group: HostRow[]): HostRow {
 	};
 	let pressure: Pressure | null = null;
 	for (const r of group) if (r.pressure !== null) pressure = Math.max(pressure ?? 0, r.pressure) as Pressure;
+	const disks: Record<string, number | null> = {};
+	for (const id of new Set(group.flatMap((r) => Object.keys(r.disks ?? {})))) {
+		const free = mean((r) => r.disks?.[id] ?? null);
+		if (free !== null) disks[id] = free;
+	}
 	return {
 		t: (group.at(-1) as HostRow).t,
 		cpu: mean((r) => r.cpu) ?? 0,
@@ -132,6 +159,9 @@ function meanOf(group: HostRow[]): HostRow {
 		mem: mean((r) => r.mem),
 		pressure,
 		power: mean((r) => r.power ?? null),
+		rx: mean((r) => r.rx ?? null),
+		tx: mean((r) => r.tx ?? null),
+		disks,
 	};
 }
 
@@ -180,7 +210,7 @@ export function tickStep(extentMs: number): number {
 }
 
 /** The largest of a column of a graph, or null when it has no figure. */
-export function peakOf(rows: HostRow[], pick: (r: HostRow) => number | null): number | null {
+export function peakOf<R>(rows: readonly R[], pick: (r: R) => number | null): number | null {
 	let peak: number | null = null;
 	for (const r of rows) {
 		const v = pick(r);
@@ -207,12 +237,32 @@ export function fmtWatts(v: number | null | undefined): string {
 }
 
 /**
- * The top of a power graph whose highest figure is `peak` watts: the next round step above it (10, 20, 50, 100… W, and their
- * doubles and fives), so that the graph is mostly filled and its marks are round. 10 W when there is no figure.
+ * The top of a graph whose highest figure is `peak`: the next round step above it (1, 2 and 5 times a power of ten, from
+ * `floor` up), so that the graph is mostly filled and its marks are round. `floor` when there is no figure.
  */
-export function wattsScale(peak: number | null): number {
-	const need = Math.max(10, peak ?? 0);
-	for (let decade = 10; ; decade *= 10) for (const step of [1, 2, 5]) if (step * decade >= need) return step * decade;
+export function roundTop(peak: number | null, floor: number): number {
+	const need = Math.max(floor, peak ?? 0);
+	for (let decade = floor; ; decade *= 10)
+		for (const step of [1, 2, 5]) if (step * decade >= need) return step * decade;
+}
+
+/** The top of a power graph: 10, 20, 50, 100… W; 10 W when there is no figure. */
+export const wattsScale = (peak: number | null): number => roundTop(peak, 10);
+
+/**
+ * Bytes a second as a network meter writes them (decimal units, as macOS's Activity Monitor): a tenth below 10
+ * (`1.2 MB/s`), whole above (`40 KB/s`); a dash for a figure the host does not have.
+ */
+export function fmtRate(v: number | null | undefined): string {
+	if (v === null || v === undefined) return "—";
+	const units = ["B/s", "KB/s", "MB/s", "GB/s"];
+	let value = v;
+	let i = 0;
+	while (value >= 1000 && i < units.length - 1) {
+		value /= 1000;
+		i++;
+	}
+	return `${i > 0 && value < 10 ? value.toFixed(1) : Math.round(value)} ${units[i]}`;
 }
 
 /** Bytes of memory as Activity Monitor writes them (decimal units): 412 MB, 9.8 GB, 24 GB. */

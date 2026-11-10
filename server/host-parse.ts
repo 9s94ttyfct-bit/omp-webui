@@ -123,6 +123,169 @@ export function parseMeminfo(text: string): Meminfo | null {
 	return total === null || available === null || total <= 0 ? null : { total, used: Math.max(0, total - available) };
 }
 
+// ------------------------------------------------------------------ network
+
+/** Bytes received and sent so far by each interface that is counted, by its name. */
+export type NetCounters = ReadonlyMap<string, { rx: number; tx: number }>;
+
+/**
+ * Where macOS keeps an interface's figures in the `struct ifmibdata` that `sysctl` answers for
+ * `net.link.generic.ifdata.<index>.general` (`{CTL_NET, PF_LINK, NETLINK_GENERIC, IFMIB_IFDATA, index, IFDATA_GENERAL}`):
+ * the name (16 bytes, NUL-ended), then five 32-bit fields and four of filler, then `struct if_data64`, packed to 4 bytes,
+ * from byte 52, with `ifi_ibytes` and `ifi_obytes` 64 and 72 bytes into it. Measured on macOS 27.2 (Apple Silicon) against
+ * `netstat -ibn`, to the byte. Not the `if_msghdr2` of `NET_RT_IFLIST2`: macOS hands a process without Apple's entitlement
+ * its byte counters there rounded down to a KiB and cut to 32 bits (a 4.5 GB loopback says 236 MB).
+ */
+export const IFMIB = { name: 0, nameBytes: 16, ibytes: 116, obytes: 124, size: 132 } as const;
+
+/** One interface's name and byte counters from its `ifmibdata`; null when the buffer is shorter than the figures, or holds no name. */
+export function parseIfmib(buf: Uint8Array): { name: string; rx: number; tx: number } | null {
+	if (buf.length < IFMIB.size) return null;
+	const end = buf.subarray(IFMIB.name, IFMIB.name + IFMIB.nameBytes).indexOf(0);
+	if (end <= 0) return null;
+	const name = new TextDecoder().decode(buf.subarray(IFMIB.name, IFMIB.name + end));
+	const view = new DataView(buf.buffer, buf.byteOffset, buf.length);
+	return {
+		name,
+		rx: Number(view.getBigUint64(IFMIB.ibytes, true)),
+		tx: Number(view.getBigUint64(IFMIB.obytes, true)),
+	};
+}
+
+/**
+ * The interfaces macOS counts: `en` (Ethernet, Wi-Fi, USB and Thunderbolt Ethernet). Not the loopback, nor what carries
+ * traffic that is already counted on an `en` (`utun`: a VPN; `bridge`, `ap`) or that is the system's own (`awdl`, `llw`:
+ * AirDrop; `anpi`, `gif`, `stf`).
+ */
+export const isMacPhysical = (name: string): boolean => /^en\d+$/.test(name);
+
+/**
+ * `/proc/net/dev` (Linux): a line per interface, `name: ` and sixteen figures, the bytes received first and the bytes sent
+ * ninth. The two header lines, and a line that is not that, are skipped.
+ */
+export function parseProcNetDev(text: string): Map<string, { rx: number; tx: number }> {
+	const out = new Map<string, { rx: number; tx: number }>();
+	for (const line of text.split("\n")) {
+		const m = /^\s*([^\s:]+):\s*(.*)$/.exec(line);
+		if (!m) continue;
+		const fields = (m[2] as string).trim().split(/\s+/).map(Number);
+		if (fields.length < 16 || fields.some((n) => !Number.isFinite(n) || n < 0)) continue;
+		out.set(m[1] as string, { rx: fields[0] as number, tx: fields[8] as number });
+	}
+	return out;
+}
+
+/**
+ * Bytes a second received and sent between two readings `seconds` apart, added up over the interfaces. Null when there is no
+ * earlier reading, no time went by, an interface came or went (its counter would be all of its life, or none of it), or a
+ * counter ran backwards (an interface that was reset): never a figure below zero.
+ */
+export function netRate(
+	prev: NetCounters | null,
+	cur: NetCounters,
+	seconds: number,
+): { rx: number; tx: number } | null {
+	if (!prev || !(seconds > 0) || prev.size !== cur.size) return null;
+	let rx = 0;
+	let tx = 0;
+	for (const [name, c] of cur) {
+		const p = prev.get(name);
+		if (!p || c.rx < p.rx || c.tx < p.tx) return null;
+		rx += c.rx - p.rx;
+		tx += c.tx - p.tx;
+	}
+	return { rx: Math.round(rx / seconds), tx: Math.round(tx / seconds) };
+}
+
+// ------------------------------------------------------------------ disks
+
+/** A mounted volume as the system lists it: where it is mounted, and what it is called. */
+export interface DiskMount {
+	mount: string;
+	name: string;
+}
+
+const lastPart = (mount: string): string => mount.replace(/\/+$/, "").split("/").pop() || mount;
+
+/**
+ * macOS's `mount` (a line a volume: `<device> on <mount point> (<type>, <flag>, …)`): the volumes a person has, `/` and the
+ * ones under /Volumes that Finder shows. Not the system's own (`/System/Volumes/*`, and what is `nobrowse`: Recovery, the
+ * VM swap), not one on the network or a virtual one (no `local`, or no `/dev/` device: an SMB share, devfs, autofs), and not a
+ * read-only one but `/` (the sealed system snapshot is read-only; the others are disk images and discs, whose free space
+ * is nothing to watch). A volume under /Volumes is named by its folder there; `/` is named by the adapter.
+ */
+export function parseMacMounts(text: string): DiskMount[] {
+	const out: DiskMount[] = [];
+	for (const line of text.split("\n")) {
+		const m = /^(\S.*?) on (\/.*) \(([^()]*)\)$/.exec(line);
+		if (!m) continue;
+		const [, device, mount, opts] = m as unknown as [string, string, string, string];
+		const flags = opts.split(",").map((f) => f.trim());
+		if (!device.startsWith("/dev/") || !flags.includes("local") || flags.includes("nobrowse")) continue;
+		if (mount !== "/" && (!mount.startsWith("/Volumes/") || flags.includes("read-only"))) continue;
+		out.push({ mount, name: mount === "/" ? "/" : lastPart(mount) });
+	}
+	return out;
+}
+
+/** A field of `/proc/mounts`, whose space, tab, newline and backslash are written in octal (`\040`). */
+const unescapeMount = (s: string): string =>
+	s.replace(/\\([0-7]{3})/g, (_, o: string) => String.fromCharCode(Number.parseInt(o, 8)));
+
+/**
+ * Linux's `/proc/mounts` (a line a mount: `<source> <mount point> <type> <options> 0 0`): the mounts of a block device
+ * (`/dev/…`), once per device (a device mounted in several places, a bind mount, is the first of them). Not a loop device
+ * (a snap, a disk image), a RAM disk or compressed swap (`ram`, `zram`), a `squashfs` image or what is under /snap, nor a
+ * read-only mount but `/`.
+ */
+export function parseProcMounts(text: string): DiskMount[] {
+	const out: DiskMount[] = [];
+	const seen = new Set<string>();
+	for (const line of text.split("\n")) {
+		const f = line.trim().split(/\s+/);
+		if (f.length < 4) continue;
+		const [source, rawMount, type, opts] = f.map(unescapeMount) as [string, string, string, string];
+		if (!source.startsWith("/dev/") || /^\/dev\/(loop|ram|zram)/.test(source)) continue;
+		if (type === "squashfs" || rawMount === "/snap" || rawMount.startsWith("/snap/")) continue;
+		if (rawMount !== "/" && opts.split(",").includes("ro")) continue;
+		if (seen.has(source)) continue;
+		seen.add(source);
+		out.push({ mount: rawMount, name: rawMount === "/" ? "/" : lastPart(rawMount) });
+	}
+	return out;
+}
+
+/** A listed disk as `statSync` and `statfsSync` saw it. */
+export interface DiskLook extends DiskMount {
+	/** The device the mount point is on (`stat`'s `dev`). */
+	dev: number;
+	blocks: number;
+	bsize: number;
+	bfree: number;
+}
+
+/**
+ * Whether two looks are one disk: the same device (`dev`), or the same size to the block with free blocks within a
+ * ten-thousandth of it (two volumes of one APFS container share its space: `Storage` and `TimeMachine` are one disk's free
+ * space, read a moment apart).
+ */
+export const sameDisk = (a: DiskLook, b: DiskLook): boolean =>
+	a.dev === b.dev || (a.blocks === b.blocks && a.bsize === b.bsize && Math.abs(a.bfree - b.bfree) <= a.blocks / 10_000);
+
+/** The listed disks once each (`sameDisk`), at most `max`, in the order listed; a disk listed again adds its name. */
+export function distinctDisks(looks: readonly DiskLook[], max: number): (DiskLook & { names: string[] })[] {
+	const out: (DiskLook & { names: string[] })[] = [];
+	for (const d of looks) {
+		const same = out.find((o) => sameDisk(o, d));
+		if (same) {
+			if (!same.names.includes(d.name)) same.names.push(d.name);
+			continue;
+		}
+		if (out.length < max) out.push({ ...d, names: [d.name] });
+	}
+	return out;
+}
+
 // ------------------------------------------------------------------ processes
 
 /**

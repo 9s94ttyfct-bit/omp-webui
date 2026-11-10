@@ -31,6 +31,17 @@ export const en = {
 	memSub: "{used} of {total}",
 	tilePower: "Power",
 	powerSub: "The whole Mac, as its SMC measures it",
+	// The network: bytes a second received (↓) and sent (↑); the arrows are read aloud as these names.
+	tileNet: "Network",
+	netDown: "Received",
+	netUp: "Sent",
+	netSub: "Ethernet and Wi-Fi, received and sent each second",
+	// A disk: `{free}` and `{total}` are sizes (`132 GB`), `{used}` a share (`73%`), `{name}` the volume's name.
+	tileDisk: "Disk",
+	diskValue: "{free} free",
+	diskSub: "of {total} · {used} used",
+	diskData: "holds omp-webui's data",
+	diskChart: "Free on {name}",
 	// The graphs
 	rangeLabel: "History",
 	range1h: "1 h",

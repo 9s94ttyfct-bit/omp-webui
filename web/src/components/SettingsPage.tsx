@@ -57,6 +57,8 @@ const UnattendedSettings = lazy(() =>
 );
 // Sleep (#647): keeping the Mac awake while something works, and what a sleep interrupted; a chunk of its own.
 const SleepSettings = lazy(() => import("./SleepSettings.tsx").then((m) => ({ default: m.SleepSettings })));
+// Which disks the Host load pane shows (#613); a chunk of its own, with the code that reads the host's history.
+const HostDisksSettings = lazy(() => import("./HostDisksSettings.tsx").then((m) => ({ default: m.HostDisksSettings })));
 // The quota floor (#652): holding a working conversation at a provider's quota floor; a chunk of its own, with the code that reads the figures.
 const QuotaFloorSettings = lazy(() =>
 	import("./QuotaFloorSettings.tsx").then((m) => ({ default: m.QuotaFloorSettings })),
@@ -479,6 +481,9 @@ export function SettingsPage() {
 						<LoginStartSettings />
 						<Suspense fallback={null}>
 							<SleepSettings />
+						</Suspense>
+						<Suspense fallback={null}>
+							<HostDisksSettings />
 						</Suspense>
 						<RemoteSettings />
 						<Suspense fallback={null}>

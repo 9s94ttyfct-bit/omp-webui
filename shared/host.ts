@@ -19,6 +19,18 @@ export interface HostPoint {
 	pressure: Pressure | null;
 	/** The whole computer's power draw, watts, to a tenth (macOS: the SMC's system power; null where the computer tells none). */
 	power: number | null;
+	/**
+	 * Bytes a second received and sent by the computer's physical network interfaces since the look before (macOS: the
+	 * `en` ones, Ethernet and Wi-Fi; Linux: those with a device). Null on the first look, where a counter went backwards or an
+	 * interface came or went, and where the system has no figure (Windows). A server of an older version sends neither.
+	 */
+	rx: number | null;
+	tx: number | null;
+	/**
+	 * Bytes free (to a user who is not root) on each disk, by its id (`HostDisk.id`); null for one that could not be read this
+	 * time. A disk that was not mounted then is not in it. A server of an older version sends none.
+	 */
+	disks: Record<string, number | null>;
 }
 
 /** A run of points, as columns (a day of them is a few hundred KB as objects and a fifth of that as columns), oldest first. */
@@ -29,7 +41,25 @@ export interface HostSeries {
 	mem: (number | null)[];
 	pressure: (Pressure | null)[];
 	power: (number | null)[];
+	/** Absent from a server of an older version. */
+	rx: (number | null)[];
+	tx: (number | null)[];
+	/** Bytes free, a column per disk (by id) that was mounted in the span; null where it was not, or was not read. */
+	disks: Record<string, (number | null)[]>;
 }
+
+/** A mounted volume whose free space is told: one per device, at most `MAX_DISKS`. */
+export interface HostDisk {
+	/** Where it is mounted (`/`, `/Volumes/Backup`, `/home`, `D:\`): what the series and the preference name it by. */
+	id: string;
+	/** What it is called: the volume's name (`Macintosh HD`, `Backup`), the mount point's last part, or the drive (`D:`). */
+	name: string;
+	/** Bytes of it. */
+	total: number;
+}
+
+/** The most disks told: a computer with more lists them in mount order and leaves the rest out. */
+export const MAX_DISKS = 16;
 
 /** What does not change while the server runs, and how the series are taken. */
 export interface HostInfo {
@@ -44,6 +74,12 @@ export interface HostInfo {
 	pressure: boolean;
 	/** Whether the computer's power draw has been read (a computer that tells none shows no power). */
 	power: boolean;
+	/** Whether a network rate has been read (a system that has none, Windows, shows no network). */
+	net: boolean;
+	/** The disks mounted at the last listing (every minute at most: one plugged in or taken out shows within one). */
+	disks: HostDisk[];
+	/** The id of the disk that holds omp-webui's data folder; null when it is none of `disks` (or was not read). */
+	dataDisk: string | null;
 	/** Milliseconds between two looks while a page watches, and while none does. */
 	liveMs: number;
 	backgroundMs: number;

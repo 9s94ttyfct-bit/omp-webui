@@ -1,8 +1,8 @@
-import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { readdir, readFile, readlink } from "node:fs/promises";
 import { arch, release, totalmem } from "node:os";
 import { dirname, join } from "node:path";
-import { parseMeminfo } from "../host-parse.ts";
+import { type NetCounters, parseMeminfo, parseProcMounts, parseProcNetDev } from "../host-parse.ts";
 import { capabilitiesFor } from "./capabilities.ts";
 import { posixCommands, posixHostProcesses, posixProcesses, posixShell } from "./posix.ts";
 import type { LockOps, LoginItemOps, Platform, ProcessOps, SystemDeps } from "./types.ts";
@@ -134,6 +134,41 @@ const locks: LockOps = {
 	holders: (lock, proc) => socketHolders(`@${abstractLockName(lock)}`, proc),
 };
 
+/** How long which interfaces are a device is kept: they come and go seldom, and a new name is asked about at once. */
+const PHYSICAL_MS = 60_000;
+
+/**
+ * Linux's network counters: `/proc/net/dev`, of the interfaces that are a device (`<sys>/<name>/device` is there: Ethernet,
+ * Wi-Fi; not the loopback, a bridge, a VPN's `tun`, a container's `veth`, whose traffic is a device's already). Which ones
+ * are is asked again after a minute. `sys` and `now` are a test's own.
+ */
+export function linuxNetBytes(
+	deps: SystemDeps,
+	sys = "/sys/class/net",
+	now: () => number = Date.now,
+): () => Promise<NetCounters> {
+	let physical = new Map<string, boolean>();
+	let since = Number.NEGATIVE_INFINITY;
+	return async () => {
+		const text = deps.readFile("/proc/net/dev");
+		if (text === null) throw new Error("/proc/net/dev could not be read");
+		if (now() - since > PHYSICAL_MS) {
+			physical = new Map();
+			since = now();
+		}
+		const out = new Map<string, { rx: number; tx: number }>();
+		for (const [name, counters] of parseProcNetDev(text)) {
+			let device = physical.get(name);
+			if (device === undefined) {
+				device = existsSync(join(sys, name, "device"));
+				physical.set(name, device);
+			}
+			if (device) out.set(name, counters);
+		}
+		return out;
+	};
+}
+
 export function createLinux(deps: SystemDeps): Platform {
 	return {
 		id: "linux",
@@ -152,6 +187,12 @@ export function createLinux(deps: SystemDeps): Platform {
 				if (text === null) throw new Error("/proc/meminfo could not be read");
 				const meminfo = parseMeminfo(text);
 				return { used: meminfo?.used ?? null, total: meminfo?.total ?? totalmem(), pressure: null };
+			},
+			netBytes: linuxNetBytes(deps),
+			async disks() {
+				const text = deps.readFile("/proc/mounts");
+				if (text === null) throw new Error("/proc/mounts could not be read");
+				return parseProcMounts(text);
 			},
 		},
 		locks,

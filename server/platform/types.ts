@@ -1,6 +1,6 @@
 import type { Pressure } from "../../shared/host.ts";
 import type { Capabilities, PlatformId } from "../../shared/platform.ts";
-import type { PsRow } from "../host-parse.ts";
+import type { DiskMount, NetCounters, PsRow } from "../host-parse.ts";
 import type { Ran, RunOptions } from "../omp/run.ts";
 
 /**
@@ -146,6 +146,18 @@ export interface HostOps {
 	memory(): Promise<HostMemory>;
 	/** What failed in `memory`, for the log ("sysctl", "meminfo"). */
 	readonly memorySource: string;
+	/**
+	 * Bytes received and sent so far by each physical network interface (macOS: `sysctl` through libSystem, no process;
+	 * Linux: `/proc/net/dev`, the interfaces with a device); rejects when they could not be read this time. Null where the
+	 * system has no figure (Windows).
+	 */
+	readonly netBytes: (() => Promise<NetCounters>) | null;
+	/**
+	 * The mounted volumes a person has, in mount order (macOS: `/` and /Volumes' local ones, from `mount`; Linux: the block
+	 * devices of `/proc/mounts`; Windows: the drive letters that answer); rejects when they could not be listed. Asked at most
+	 * once a minute (`host-read.ts`); their free space is `statfs`'s.
+	 */
+	disks(): Promise<DiskMount[]>;
 }
 
 export interface LockOps {

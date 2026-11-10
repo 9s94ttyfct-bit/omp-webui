@@ -11,6 +11,9 @@ const INFO: HostInfo = {
 	gpu: { name: "Apple M4 Pro", cores: 16 },
 	pressure: true,
 	power: true,
+	net: true,
+	disks: [{ id: "/", name: "Macintosh HD", total: 494_000_000_000 }],
+	dataDisk: "/",
 	liveMs: 2000,
 	backgroundMs: 10_000,
 	fineSpanMs: 3_600_000,
@@ -25,6 +28,9 @@ const point = (t: number, over: Partial<HostPoint> = {}): HostPoint => ({
 	mem: 50,
 	pressure: 0,
 	power: 20,
+	rx: 1_000,
+	tx: 500,
+	disks: { "/": 132_000_000_000 },
 	...over,
 });
 const series = (points: HostPoint[]) => ({
@@ -34,6 +40,9 @@ const series = (points: HostPoint[]) => ({
 	mem: points.map((p) => p.mem),
 	pressure: points.map((p) => p.pressure),
 	power: points.map((p) => p.power),
+	rx: points.map((p) => p.rx),
+	tx: points.map((p) => p.tx),
+	disks: { "/": points.map((p) => p.disks["/"] ?? null) },
 });
 const history = (
 	now: number,

@@ -104,7 +104,17 @@ async function rate(ms: number): Promise<number> {
 
 function expectSeries(series: HostSeries): void {
 	const n = series.t.length;
-	for (const column of [series.cpu, series.gpu, series.mem, series.pressure, series.power])
+	const disks = Object.values(series.disks);
+	for (const column of [
+		series.cpu,
+		series.gpu,
+		series.mem,
+		series.pressure,
+		series.power,
+		series.rx,
+		series.tx,
+		...disks,
+	])
 		expect(column).toHaveLength(n);
 	for (let i = 0; i < n; i++) {
 		if (i > 0) expect(series.t[i] as number).toBeGreaterThan(series.t[i - 1] as number);
@@ -124,11 +134,26 @@ function expectSeries(series: HostSeries): void {
 			expect(w as number).toBeGreaterThan(0);
 			expect(w as number).toBeLessThan(5000);
 		}
+		// Bytes a second and free bytes: never below zero, or none.
+		for (const column of [series.rx, series.tx, ...disks]) {
+			const v = column[i];
+			if (v !== null) expect(v as number).toBeGreaterThanOrEqual(0);
+		}
 	}
 }
 
 function expectPoint(p: HostPoint): void {
-	expectSeries({ t: [p.t], cpu: [p.cpu], gpu: [p.gpu], mem: [p.mem], pressure: [p.pressure], power: [p.power] });
+	expectSeries({
+		t: [p.t],
+		cpu: [p.cpu],
+		gpu: [p.gpu],
+		mem: [p.mem],
+		pressure: [p.pressure],
+		power: [p.power],
+		rx: [p.rx],
+		tx: [p.tx],
+		disks: Object.fromEntries(Object.entries(p.disks).map(([id, free]) => [id, [free]])),
+	});
 }
 
 describe("GET /api/host at this computer", () => {
@@ -145,6 +170,11 @@ describe("GET /api/host at this computer", () => {
 		expect(h.info.coarseMs).toBe(60_000);
 		expect(h.info.coarseSpanMs).toBe(86_400_000);
 		expect(typeof h.info.pressure).toBe("boolean");
+		// The disks are listed on every system, the data folder's among them; the network where the system has counters to read.
+		expect(h.info.disks.length).toBeGreaterThan(0);
+		expect(h.info.disks.some((d) => d.id === h.info.dataDisk && d.total > 0)).toBe(true);
+		expect(h.fine.disks[h.info.dataDisk as string]?.at(-1)).toBeGreaterThan(0);
+		expect(h.info.net).toBe(platform.host.netBytes !== null);
 		// The clock is the server's own, and what it holds is not from the future.
 		expect(Math.abs(h.now - Date.now())).toBeLessThan(5000);
 		expectSeries(h.fine);
