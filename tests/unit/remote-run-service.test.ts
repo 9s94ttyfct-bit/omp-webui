@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { HostToolServer } from "../../server/omp/host-tools.ts";
 import type { RemoteRunOptions, RemoteRunResult } from "../../server/remote-run/client.ts";
 import { RemoteNotSignedIn, RemoteTooOld, RemoteUnsupported } from "../../server/remote-run/client.ts";
@@ -408,15 +408,17 @@ describe("a copy", () => {
 		const s = await given();
 		const sig = signal();
 		const r = await s.call({ computer: "Server1", direction: "to", local: "notes.txt", remote: "~/notes.txt" }, sig);
+		// This computer's paths are resolved as this system does (`D:\work\notes.txt` on Windows).
+		const local = resolve("/work/notes.txt");
 		expect(r).toEqual({
-			text: "Server1 · copied 1 file, 2.0 KB · 0.5s\nFrom: /work/notes.txt (this computer)\nTo: /home/me/notes.txt (Server1)",
+			text: `Server1 · copied 1 file, 2.0 KB · 0.5s\nFrom: ${local} (this computer)\nTo: /home/me/notes.txt (Server1)`,
 		});
 		expect(s.copies).toEqual([
 			{
 				host: "server1.example.com",
 				jwt: JWT,
 				direction: "to",
-				local: "/work/notes.txt",
+				local,
 				remote: "~/notes.txt",
 				overwrite: false,
 				places: { home: "/Users/me", dataDirs: ["/Users/me/.omp-webui"] },
@@ -424,7 +426,11 @@ describe("a copy", () => {
 			},
 		]);
 		await s.call({ computer: "Server1", direction: "from", local: "~/Downloads/x", remote: "/x", overwrite: true });
-		expect(s.copies[1]).toMatchObject({ direction: "from", local: "/Users/me/Downloads/x", overwrite: true });
+		expect(s.copies[1]).toMatchObject({
+			direction: "from",
+			local: resolve("/Users/me/Downloads/x"),
+			overwrite: true,
+		});
 		expect(JSON.stringify(r)).not.toContain(JWT);
 	});
 

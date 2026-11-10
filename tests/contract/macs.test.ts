@@ -315,15 +315,17 @@ describe("another computer copying files from and to this one (remote_copy)", ()
 	});
 
 	test("the person's own page reads a file and puts one in place, in pieces; both are logged", async () => {
+		// Absolute paths: on Windows `~` is the user profile, which the test server's own HOME does not move.
+		const at = (...parts: string[]) => encodeURIComponent(join(s.home, ...parts));
 		writeFileSync(join(s.home, "hello.txt"), "hello\n");
-		const got = await ask("/api/remote-run/file?path=~/hello.txt");
+		const got = await ask(`/api/remote-run/file?path=${at("hello.txt")}`);
 		expect(got.status).toBe(200);
 		expect(got.headers.get("x-omp-webui-kind")).toBe("file");
 		expect(await got.text()).toBe("hello\n");
 
 		const body = new TextEncoder().encode("copied\n");
 		const begun = await ask(
-			`/api/remote-run/file?path=~/in/copied.txt&kind=file&size=${body.length}&bytes=${body.length}`,
+			`/api/remote-run/file?path=${at("in", "copied.txt")}&kind=file&size=${body.length}&bytes=${body.length}`,
 			"POST",
 		);
 		expect(begun.status).toBe(200);
@@ -333,7 +335,7 @@ describe("another computer copying files from and to this one (remote_copy)", ()
 		expect(await done.json()).toMatchObject({ kind: "file", files: 1, bytes: body.length, replaced: false });
 		expect(readFileSync(join(s.home, "in", "copied.txt"), "utf8")).toBe("copied\n");
 		// Not again, unless asked.
-		const again = await ask(`/api/remote-run/file?path=~/in/copied.txt&kind=file&size=1&bytes=1`, "POST");
+		const again = await ask(`/api/remote-run/file?path=${at("in", "copied.txt")}&kind=file&size=1&bytes=1`, "POST");
 		expect(again.status).toBe(409);
 		expect(await again.json()).toMatchObject({ code: "exists" });
 		// Nor into the app's own data.
