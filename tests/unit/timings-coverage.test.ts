@@ -32,7 +32,8 @@ test.skipIf(process.platform === "win32")(
 test("every unit and contract test file has a time in .bun-test-timings.json, and every time there names a file", () => {
 	const files: string[] = [];
 	for (const dir of ["tests/unit", "tests/contract"])
-		for (const file of new Bun.Glob("**/*.test.{ts,tsx}").scanSync({ cwd: join(root, dir) })) files.push(`${dir}/${file}`);
+		for (const file of new Bun.Glob("**/*.test.{ts,tsx}").scanSync({ cwd: join(root, dir) }))
+			files.push(`${dir}/${file}`);
 	const timings = readBunTimings(readFileSync(join(root, ".bun-test-timings.json"), "utf8"));
 	const present = new Set(files);
 	// Time a file with `bun test --timings=.bun-test-timings.json --update-timings <file>`.

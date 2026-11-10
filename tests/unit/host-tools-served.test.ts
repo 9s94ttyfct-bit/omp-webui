@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Live, LivePool } from "../../server/live.ts";
-import { ApprovalStore } from "../../server/omp/approval.ts";
+import { ApprovalStore, sessionKey } from "../../server/omp/approval.ts";
 import type { HostToolCall, HostToolResult, HostToolServer } from "../../server/omp/host-tools.ts";
 import type { RemoteRunOptions } from "../../server/remote-run/client.ts";
 import { RemoteRun } from "../../server/remote-run/service.ts";
@@ -404,5 +404,6 @@ test("the pool tells remote_run of each process that starts and of a conversatio
 	expect(seen).toEqual([live.info.liveId]);
 	await live.rpc({ type: "new_session" });
 	await until(() => moves.length > 0);
-	expect(moves).toEqual([["/nonexistent/fake.jsonl", "/nonexistent/fake-1.jsonl"]]);
+	// As the server keys a session file: on Windows the fake's POSIX path is a path on the drive (`D:\nonexistent\…`).
+	expect(moves).toEqual([[sessionKey("/nonexistent/fake.jsonl"), sessionKey("/nonexistent/fake-1.jsonl")]]);
 });
