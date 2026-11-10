@@ -68,8 +68,9 @@ describe("signInLink", () => {
 	});
 
 	test("a provider whose callback is a web page of its own needs nothing pasted back from anywhere", () => {
+		// Hypothetical: omp 18.18.6's Codex and Anthropic logins both call back to omp's loopback listener.
 		const own = {
-			url: "https://claude.ai/oauth/authorize?redirect_uri=https%3A%2F%2Fconsole.anthropic.com%2Foauth%2Fcode%2Fcallback",
+			url: "https://auth.example.com/authorize?redirect_uri=https%3A%2F%2Fauth.example.com%2Fcode%2Fcallback",
 			launchUrl: "http://localhost:54545/launch",
 		};
 		expect(signInLink(own, "omp.example.com")).toEqual({ href: own.url, pasteBack: false });
