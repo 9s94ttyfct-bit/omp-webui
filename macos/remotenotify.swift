@@ -18,6 +18,31 @@ import WebKit
 /// Where another Mac's notices are read, under its own address.
 let remoteNotifyPath = "api/notify/events"
 
+/// The bridge of a Mac's window by which its Settings page reads and changes whether notifications of that Mac's conversations are on
+/// (the same choice as the Macs menu's tick), and the event every window of the Mac is told the new state with: `{ on, permission }`.
+let remoteNotifyHandlerName = "ompwRemoteNotify"
+let remoteNotifyEvent = "ompw-remote-notify"
+
+/// What the page of a Mac's window asks of `ompwRemoteNotify`.
+enum RemoteNotifyRequest: Equatable {
+	/// Whether they are on, and what macOS allows the app.
+	case status
+	/// Turn them on (macOS is asked to allow them) or off.
+	case set(Bool)
+}
+
+/// The request in `body` (`{ type: "status" }`, `{ type: "set", on: Bool }`); nil for anything else.
+func parseRemoteNotifyRequest(_ body: Any) -> RemoteNotifyRequest? {
+	guard let message = body as? [String: Any], let type = message["type"] as? String else { return nil }
+	switch type {
+	case "status": return .status
+	case "set":
+		guard let on = message["on"] as? Bool else { return nil }
+		return .set(on)
+	default: return nil
+	}
+}
+
 /// The two cookies a window onto a Mac is signed in with: Cloudflare Access's, and the Mac's own access token.
 let remoteSignInCookies: Set<String> = ["CF_Authorization", "ompw_token"]
 

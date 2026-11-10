@@ -23,7 +23,9 @@ import type { PageMode } from "@shared/browser-protocol.ts";
  * conversation on screen (null and null when another page is). The shell is the one that knows whether its window is the one in
  * use, so the two together are what decides that nobody is looking at a conversation (`isLookingAt`) and a notification is shown.
  * A window onto another Mac (`macos/remotewindow.swift`) has no notifications to ask for: it has `ompwView`, the same
- * `viewing` message and the same `ompw-notification` click event, and nothing else.
+ * `viewing` message and the same `ompw-notification` click event. Since 0.23.2 it also has `ompwRemoteNotify`: whether the app
+ * shows that Mac's notifications (the Macs menu's tick for it), `{ type: "status" }` and `{ type: "set", on }`, each answered
+ * with `{ on, permission }`; the app says a change made either way as an `ompw-remote-notify` event with the same detail.
  *
  * Everything here is inert in a browser: there is no handler, `inShell()` is false, and the page uses `Notification`.
  */
@@ -53,6 +55,8 @@ declare global {
 				ompwBrowser?: Handler;
 				/** The Mac app's login item (Settings › Start at login, `web/src/lib/login-start.ts`). */
 				ompwLogin?: Handler;
+				/** A window onto another Mac: whether the app shows that Mac's notifications (see `remoteNotify`). */
+				ompwRemoteNotify?: Handler;
 			};
 		};
 	}
@@ -116,6 +120,40 @@ export function reportShown(shown: Shown | null): void {
 		void Promise.resolve((handler() ?? window.webkit?.messageHandlers?.ompwView)?.postMessage(message)).catch(() => {});
 	} catch {
 		// A shell that refuses knows nothing of what is on screen, and shows a notification for whatever needs the person.
+	}
+}
+
+/** Whether the app shows notifications of the conversations of the Mac this window is onto, and what macOS allows the app. */
+export interface RemoteNotifyState {
+	on: boolean;
+	permission: ShellPermission;
+}
+
+/** The event the app sends every window of the Mac when that choice changed (here or in its Macs menu). */
+export const REMOTE_NOTIFY_EVENT = "ompw-remote-notify";
+
+const remoteNotifyHandler = (): Handler | undefined =>
+	typeof window === "undefined" ? undefined : window.webkit?.messageHandlers?.ompwRemoteNotify;
+
+/** The window onto another Mac can read and change that choice (an app of 0.23.2 or later). */
+export const hasRemoteNotify = (): boolean => typeof remoteNotifyHandler()?.postMessage === "function";
+
+/** The app's answer as the page uses it; null for anything else. */
+export function remoteNotifyState(v: unknown): RemoteNotifyState | null {
+	if (typeof v !== "object" || v === null) return null;
+	const { on, permission } = v as { on?: unknown; permission?: unknown };
+	if (typeof on !== "boolean" || typeof permission !== "string" || !PERMISSIONS.includes(permission)) return null;
+	return { on, permission: permission as ShellPermission };
+}
+
+/** Ask the app (`status`) or change the choice (`set`); null when there is no such bridge or it refused. */
+export async function remoteNotify(
+	request: { type: "status" } | { type: "set"; on: boolean },
+): Promise<RemoteNotifyState | null> {
+	try {
+		return remoteNotifyState(await remoteNotifyHandler()?.postMessage(request));
+	} catch {
+		return null;
 	}
 }
 

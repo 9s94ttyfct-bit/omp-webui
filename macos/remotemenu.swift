@@ -172,20 +172,49 @@ final class RemoteMacsController: NSObject, NSMenuDelegate, NSMenuItemValidation
 	/// first time) and says where to look when it does not; a Mac whose window was never signed in is opened for the sign-in, which is
 	/// what its notices are read with.
 	@objc private func toggleNotify(_ sender: NSMenuItem) {
-		guard let id = sender.representedObject as? UUID, let mac = store.list.mac(id: id), let notifications else { return }
-		if choices.isOn(id) {
+		guard let id = sender.representedObject as? UUID, let mac = store.list.mac(id: id), notifications != nil else { return }
+		let turningOn = !choices.isOn(id)
+		setNotify(id, on: turningOn) { [weak self] state in
+			guard let self, turningOn else { return }
+			if state["on"] as? Bool == true {
+				if mac.lastConnected == nil { self.open(id) }
+				return
+			}
+			let allowed = state["permission"] as? String
+			self.alert(self.words.notifyTitle, allowed == "unsupported" ? self.words.notifyUnsupported : self.words.notifyBlocked)
+		}
+	}
+
+	/// Whether notifications of the Mac's conversations are on, and what macOS allows the app: `{ on, permission }`, as the
+	/// Settings page of that Mac's own window shows them (`RemoteMacSession`, `ompwRemoteNotify`).
+	func notifyState(_ id: UUID, done: @escaping ([String: Any]) -> Void) {
+		guard let notifications else { return done(["on": false, "permission": "unsupported"]) }
+		notifications.currentPermission { [weak self] allowed in
+			done(["on": self?.choices.isOn(id) ?? false, "permission": allowed])
+		}
+	}
+
+	/// Turn notifications of the Mac's conversations on or off, from the menu or from the Settings page of its window. On asks macOS
+	/// to allow them (a prompt the first time) and stays off when it does not. Every window of the Mac is told the new state.
+	func setNotify(_ id: UUID, on: Bool, done: @escaping ([String: Any]) -> Void) {
+		guard let notifications else { return done(["on": false, "permission": "unsupported"]) }
+		let finish = { [weak self] (allowed: String) in
+			guard let self else { return }
+			let state: [String: Any] = ["on": self.choices.isOn(id), "permission": allowed]
+			self.sessions[id]?.notifyChanged(state)
+			done(state)
+		}
+		guard on else {
 			choices.set(id, on: false)
 			notifier?.sync()
-			return
+			return notifications.currentPermission(finish)
 		}
 		notifications.requestPermission { [weak self] allowed in
-			guard let self else { return }
-			guard allowed == "granted" else {
-				return self.alert(self.words.notifyTitle, allowed == "unsupported" ? self.words.notifyUnsupported : self.words.notifyBlocked)
+			if allowed == "granted" {
+				self?.choices.set(id, on: true)
+				self?.notifier?.sync()
 			}
-			self.choices.set(id, on: true)
-			self.notifier?.sync()
-			if mac.lastConnected == nil { self.open(id) }
+			finish(allowed)
 		}
 	}
 

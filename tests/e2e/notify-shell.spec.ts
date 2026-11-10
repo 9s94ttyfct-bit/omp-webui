@@ -169,10 +169,10 @@ test("a shell that cannot show notifications says so", async ({ page }) => {
 	);
 });
 
-test("in a window onto another Mac the toggle is off and says where that Mac's notifications are turned on", async ({
+test("in a window onto an older app's Mac the toggle is off and says where that Mac's notifications are turned on", async ({
 	page,
 }) => {
-	// The window onto another Mac has `ompwView` only, and the WKWebView's `Notification`, which is denied.
+	// The window onto another Mac of an app before 0.23.2 has `ompwView` only, and the WKWebView's `Notification`, which is denied.
 	await page.addInitScript(() => {
 		Object.assign(window, { webkit: { messageHandlers: { ompwView: { postMessage: async () => ({}) } } } });
 		const denied = { permission: "denied", requestPermission: async () => "denied" };
@@ -184,6 +184,62 @@ test("in a window onto another Mac the toggle is off and says where that Mac's n
 	await expect(page.getByTestId("notifications-hint")).toHaveText(
 		"This is a window onto another Mac. Its notifications are shown by the omp-webui app on the Mac you are using: in its menu bar, Macs › Notify me about conversations of:, tick this Mac.",
 	);
+});
+
+test("in a window onto another Mac the toggle shows the app's tick for that Mac, turns it, and follows the Macs menu", async ({
+	page,
+}) => {
+	// The app's `ompwRemoteNotify` stub: on already (the Macs menu ticked it); a turn asks macOS (granted) and the app says the new
+	// state to every window of the Mac, this one too.
+	await page.addInitScript(() => {
+		const state = { on: true, permission: "granted" };
+		const sent: unknown[] = [];
+		const tell = () => window.dispatchEvent(new CustomEvent("ompw-remote-notify", { detail: { ...state } }));
+		Object.assign(window, {
+			__remoteNotifySent: sent,
+			__remoteNotifyMenu: (on: boolean) => {
+				state.on = on;
+				tell();
+			},
+			webkit: {
+				messageHandlers: {
+					ompwView: { postMessage: async () => ({}) },
+					ompwRemoteNotify: {
+						postMessage: async (m: { type: string; on?: boolean }) => {
+							sent.push(m);
+							if (m.type === "set") {
+								state.on = m.on === true;
+								tell();
+							}
+							return { ...state };
+						},
+					},
+				},
+			},
+		});
+		const denied = { permission: "denied", requestPermission: async () => "denied" };
+		Object.defineProperty(window, "Notification", { value: denied, configurable: true });
+	});
+	await page.goto("/#/settings/chats");
+	const toggle = page.getByTestId("notifications");
+	await expect(toggle).toBeEnabled();
+	await expect(toggle).toBeChecked();
+	await expect(page.getByTestId("notifications-hint")).toHaveText(
+		"This is a window onto another Mac. Its notifications are shown by the omp-webui app on the Mac you are using; this is the same tick as Macs › Notify me about conversations of: in its menu bar.",
+	);
+	await toggle.uncheck();
+	await expect(toggle).not.toBeChecked();
+	expect(
+		await page.evaluate(() => (window as unknown as { __remoteNotifySent: unknown[] }).__remoteNotifySent),
+	).toContainEqual({
+		type: "set",
+		on: false,
+	});
+	// Ticked again in the app's Macs menu: the page follows.
+	await page.evaluate(() =>
+		(window as unknown as { __remoteNotifyMenu: (on: boolean) => void }).__remoteNotifyMenu(true),
+	);
+	await expect(toggle).toBeChecked();
 });
 
 test("in the app the page posts no notification when a conversation needs the person or finishes; a click on one the app showed opens the conversation", async ({

@@ -145,6 +145,8 @@ export const en = {
 		"macOS blocks notifications for omp-webui. Open System Settings › Notifications › omp-webui and allow them, then come back and turn this on.",
 	settingsNotifyRemoteWindow:
 		"This is a window onto another Mac. Its notifications are shown by the omp-webui app on the Mac you are using: in its menu bar, Macs › Notify me about conversations of:, tick this Mac.",
+	settingsNotifyRemoteWindowApp:
+		"This is a window onto another Mac. Its notifications are shown by the omp-webui app on the Mac you are using; this is the same tick as Macs › Notify me about conversations of: in its menu bar.",
 	settingsQuit: "Quitting the app",
 	settingsQuitWhen: "When you quit the app",
 	settingsQuitAsk: "Ask",

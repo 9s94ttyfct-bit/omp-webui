@@ -160,6 +160,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 		"macOS 已屏蔽 omp-webui 的通知。请打开「系统设置 › 通知 › omp-webui」并允许通知，然后回到这里再开启此项。",
 	settingsNotifyRemoteWindow:
 		"这是连到另一台 Mac 的窗口。它的通知由你正在用的这台 Mac 上的 omp-webui 应用显示：在菜单栏的「Macs › 通知我这些 Mac 的对话：」里勾选这台 Mac。",
+	settingsNotifyRemoteWindowApp:
+		"这是连到另一台 Mac 的窗口。它的通知由你正在用的这台 Mac 上的 omp-webui 应用显示；这里的勾选与菜单栏「Macs › 通知我这些 Mac 的对话：」里这台 Mac 的勾选是同一个。",
 	settingsQuit: "退出应用",
 	settingsQuitWhen: "退出应用时",
 	settingsQuitAsk: "询问",

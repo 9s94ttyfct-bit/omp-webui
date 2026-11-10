@@ -13,7 +13,15 @@ import { useSectionIndex } from "../lib/section-index.ts";
 import { SETTINGS_PAGE_LABEL } from "../lib/settings-page-labels.ts";
 import { lastSettingsPage, pageOfElement, rememberSettingsPage, type SettingsPageId } from "../lib/settings-pages.ts";
 import { SETTINGS, type SettingEntry } from "../lib/settings-search.ts";
-import { inRemoteShell, inShell } from "../lib/shell-notify.ts";
+import {
+	hasRemoteNotify,
+	inRemoteShell,
+	inShell,
+	REMOTE_NOTIFY_EVENT,
+	type RemoteNotifyState,
+	remoteNotify,
+	remoteNotifyState,
+} from "../lib/shell-notify.ts";
 import { applyTheme } from "../lib/theme.ts";
 import { autoTitleEnabled, closeLive, useApp } from "../store/app.ts";
 import { Accounts, isAccountsHelper } from "./Accounts.tsx";
@@ -78,6 +86,44 @@ const BrowserSettings = lazy(() =>
 );
 
 const devicePrefsNow = () => localStorage.getItem(PREF.devicePrefs) !== "off";
+
+/**
+ * In a window onto another Mac whose app answers `ompwRemoteNotify`: whether that app shows this Mac's notifications, as the tick
+ * of its Macs menu says, kept current from the app's change event and asked again when the window comes back (macOS's own
+ * setting may have changed meanwhile). Null anywhere else, and until the app has answered: the page then says what it always did.
+ */
+function useRemoteNotify(remoteWindow: boolean): RemoteNotifyState | null {
+	const [state, setState] = useState<RemoteNotifyState | null>(null);
+	useEffect(() => {
+		if (!remoteWindow || !hasRemoteNotify()) return;
+		let live = true;
+		const ask = () =>
+			void remoteNotify({ type: "status" }).then((next) => {
+				if (live && next) setState(next);
+			});
+		const changed = (e: Event) => {
+			const next = remoteNotifyState((e as CustomEvent).detail);
+			if (next) setState(next);
+		};
+		const visible = () => {
+			if (document.visibilityState === "visible") ask();
+		};
+		ask();
+		window.addEventListener(REMOTE_NOTIFY_EVENT, changed);
+		window.addEventListener("focus", ask);
+		document.addEventListener("visibilitychange", visible);
+		return () => {
+			live = false;
+			window.removeEventListener(REMOTE_NOTIFY_EVENT, changed);
+			window.removeEventListener("focus", ask);
+			document.removeEventListener("visibilitychange", visible);
+		};
+	}, [remoteWindow]);
+	return state;
+}
+
+/** Turn this Mac's notifications on or off in the app the window is in; the app's change event brings the new state to the page. */
+const setRemoteNotify = (on: boolean) => remoteNotify({ type: "set", on });
 
 /** Whether the look and layout are kept per device (`ompw.devicePrefs`, on by default): the same on every page. */
 function DevicePrefsSetting() {
@@ -157,8 +203,10 @@ export function SettingsPage() {
 	const notify = useNotify();
 	// The macOS app shows notifications through the shell, and macOS (System Settings) is where they are allowed.
 	const app = inShell();
-	// A window onto another Mac: the app showing it notifies about that Mac's conversations (its Macs menu), never this page.
+	// A window onto another Mac: the app showing it notifies about that Mac's conversations (its Macs menu), never this page. An app
+	// of 0.23.2 or later lets this page read and change that tick (`ompwRemoteNotify`); an older one is pointed to its menu.
 	const remoteWindow = !app && inRemoteShell();
+	const remote = useRemoteNotify(remoteWindow);
 	const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
 	const [column, setColumn] = useState<HTMLDivElement | null>(null);
 	// Settings' pages (v0.11.18 §10): the one in the address, else the one last shown (and the address says so).
@@ -391,20 +439,32 @@ export function SettingsPage() {
 										type="checkbox"
 										className="mt-1 accent-[var(--accent)]"
 										data-testid="notifications"
-										checked={!remoteWindow && notify.enabled && notify.permission === "granted"}
-										disabled={remoteWindow || notify.permission === "unsupported" || notify.permission === "denied"}
-										onChange={(e) => void setNotifications(e.target.checked)}
+										checked={remote ? remote.on : !remoteWindow && notify.enabled && notify.permission === "granted"}
+										disabled={
+											remote
+												? remote.permission === "unsupported"
+												: remoteWindow || notify.permission === "unsupported" || notify.permission === "denied"
+										}
+										onChange={(e) =>
+											void (remote ? setRemoteNotify(e.target.checked) : setNotifications(e.target.checked))
+										}
 									/>
 									<span>
 										{t("pages.settingsNotify")}
 										<span className="block text-xs text-muted" data-testid="notifications-hint">
-											{remoteWindow
-												? t("pages.settingsNotifyRemoteWindow")
-												: notify.permission === "unsupported"
-													? t(app ? "pages.settingsNotifyUnsupportedApp" : "pages.settingsNotifyUnsupported")
-													: notify.permission === "denied"
-														? t(app ? "pages.settingsNotifyBlockedApp" : "pages.settingsNotifyBlocked")
-														: t(app ? "pages.settingsNotifyHintApp" : "pages.settingsNotifyHint")}
+											{remote
+												? remote.permission === "unsupported"
+													? t("pages.settingsNotifyUnsupportedApp")
+													: remote.permission === "denied"
+														? t("pages.settingsNotifyBlockedApp")
+														: t("pages.settingsNotifyRemoteWindowApp")
+												: remoteWindow
+													? t("pages.settingsNotifyRemoteWindow")
+													: notify.permission === "unsupported"
+														? t(app ? "pages.settingsNotifyUnsupportedApp" : "pages.settingsNotifyUnsupported")
+														: notify.permission === "denied"
+															? t(app ? "pages.settingsNotifyBlockedApp" : "pages.settingsNotifyBlocked")
+															: t(app ? "pages.settingsNotifyHintApp" : "pages.settingsNotifyHint")}
 										</span>
 									</span>
 								</label>

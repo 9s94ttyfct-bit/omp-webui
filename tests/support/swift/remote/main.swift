@@ -1572,6 +1572,20 @@ func windows(directory: URL, portsA: [String], portsB: [String]) -> [String: Any
 	window.web.evaluateJavaScript("window.webkit.messageHandlers.ompwTheme.postMessage('#ff0000')", completionHandler: nil)
 	spin(0.8)
 	out["themeRefused"] = before == colour(window.window.backgroundColor)
+	// Nor from the bridge that answers (whether this Mac's notifications are on): it refuses, it does not hang.
+	var notifyAnswer: String?
+	window.web.callAsyncJavaScript(
+		"try { return JSON.stringify(await window.webkit.messageHandlers.\(remoteNotifyHandlerName).postMessage({ type: 'status' })) } catch (e) { return 'refused: ' + e.message }",
+		arguments: [:], in: nil, in: .page
+	) { result in notifyAnswer = (try? result.get()) as? String ?? "no answer" }
+	runLoop(until: { notifyAnswer != nil }, seconds: 10)
+	out["remoteNotifyRefused"] = notifyAnswer ?? "timed out"
+	out["remoteNotifyParse"] = [
+		parseRemoteNotifyRequest(["type": "status"]) == .status,
+		parseRemoteNotifyRequest(["type": "set", "on": true]) == .set(true),
+		parseRemoteNotifyRequest(["type": "set", "on": "yes"]) == nil,
+		parseRemoteNotifyRequest(["type": "show"]) == nil,
+	]
 
 	// The blocker is in the configuration the window really has: what this page tries never connects (the test counts connections).
 	out["pageTried"] = runVectors(on: window.web, ports: portsA)

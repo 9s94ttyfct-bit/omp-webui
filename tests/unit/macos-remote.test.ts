@@ -1345,6 +1345,9 @@ test.skipIf(!windowServer)(
 			expect(w.stripRenamed).toContain("Remote Mac Mac Z, omp.invalid");
 			// A page that is not the Mac's own signed-in page is not answered by the bridges.
 			expect(w.themeRefused).toBe(true);
+			// Nor by the one that answers: the Settings page of another site cannot read or turn the Mac's notifications.
+			expect(w.remoteNotifyRefused).toBe("refused: Not available to this page.");
+			expect(w.remoteNotifyParse).toEqual([true, true, true, true]);
 
 			// No window is narrower than the bar needs, the pop-out included.
 			expect(w.minWidth).toBe(640);

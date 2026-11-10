@@ -576,6 +576,20 @@ private final class WeakHandler: NSObject, WKScriptMessageHandler {
 	}
 }
 
+/// The bridge that answers (`ompwRemoteNotify`), wired to the session for the same reason.
+@available(macOS 14.0, *)
+private final class WeakReplyHandler: NSObject, WKScriptMessageHandlerWithReply {
+	weak var target: RemoteMacSession?
+	init(_ target: RemoteMacSession) { self.target = target }
+	func userContentController(
+		_ controller: WKUserContentController, didReceive message: WKScriptMessage,
+		replyHandler: @escaping (Any?, String?) -> Void
+	) {
+		guard let target else { return replyHandler(nil, "Not available to this page.") }
+		target.received(message) { replyHandler($0, $0 == nil ? "Not available to this page." : nil) }
+	}
+}
+
 /// Everything open on one remote Mac: its window, and the pop-outs the page asked for. They share one configuration, so one
 /// data store, one content blocker and the same bridges.
 @available(macOS 14.0, *)
@@ -681,6 +695,8 @@ final class RemoteMacSession: NSObject {
 		configuration.userContentController.add(handler, name: "ompwTheme")
 		configuration.userContentController.add(handler, name: "ompwWindow")
 		configuration.userContentController.add(handler, name: "ompwView")
+		configuration.userContentController.addScriptMessageHandler(
+			WeakReplyHandler(self), contentWorld: .page, name: remoteNotifyHandlerName)
 		configuration.userContentController.addUserScript(
 			WKUserScript(source: AppDelegate.themeScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
 		configuration.mediaTypesRequiringUserActionForPlayback = .all
@@ -716,6 +732,32 @@ final class RemoteMacSession: NSObject {
 			deliverPending(to: window)
 		default:
 			break
+		}
+	}
+
+	/// A message that is answered, from the same pages only: the Settings page of the Mac's window asks whether notifications of this
+	/// Mac's conversations are on, and turns them on or off, as the Macs menu does (`RemoteMacsController.setNotify`). Nil: refused.
+	func received(_ message: WKScriptMessage, reply: @escaping ([String: Any]?) -> Void) {
+		guard let web = message.webView, let window = windows.first(where: { $0.web === web }) else { return reply(nil) }
+		let origin = message.frameInfo.securityOrigin
+		guard
+			isRemotePage(
+				isMainFrame: message.frameInfo.isMainFrame, scheme: origin.protocol, host: origin.host, port: origin.port,
+				site: site, phase: window.phase),
+			let owner, let request = parseRemoteNotifyRequest(message.body)
+		else { return reply(nil) }
+		switch request {
+		case .status: owner.notifyState(mac.id, done: reply)
+		case .set(let on): owner.setNotify(mac.id, on: on, done: reply)
+		}
+	}
+
+	/// Notifications of this Mac's conversations were turned on or off (here, or in the Macs menu): every window's page shows it.
+	func notifyChanged(_ state: [String: Any]) {
+		for window in windows {
+			window.web.callAsyncJavaScript(
+				"window.dispatchEvent(new CustomEvent('\(remoteNotifyEvent)', { detail }))",
+				arguments: ["detail": state], in: nil, in: .page, completionHandler: nil)
 		}
 	}
 

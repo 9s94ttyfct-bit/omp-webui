@@ -239,6 +239,8 @@ final class NotificationBridge: NSObject, WKScriptMessageHandlerWithReply, UNUse
 	}
 
 	/// What macOS allows this app now, in the page's words; `unsupported` without an app bundle.
+	func currentPermission(_ done: @escaping (String) -> Void) { permission(done) }
+
 	private func permission(_ done: @escaping (String) -> Void) {
 		guard let center else { return done("unsupported") }
 		center.getNotificationSettings { settings in
