@@ -13,6 +13,11 @@ export const en = {
 	chipMem: "MEM {v}",
 	// The sidebar's line shows the power draw as its figure alone (`6.2 W`); a screen reader hears its name too.
 	chipPower: "power {v}",
+	// The network on the line: received and sent each second, as arrows; a screen reader hears the words.
+	chipNet: "↓{down} ↑{up}",
+	chipNetAria: "received {down}, sent {up}",
+	// A disk's free space on the line when there are several (alone, it is `diskValue`); and as a screen reader hears it.
+	chipDisk: "{name} {v} free",
 	chipAria: "Host load: {figures}. Memory pressure: {pressure}.",
 	chipAriaNoPressure: "Host load: {figures}.",
 	chipOffline: "Not connected: these are the last figures received.",

@@ -12,7 +12,7 @@ import {
 } from "../../server/host-parse.ts";
 import { PrefsError, UiPrefs } from "../../server/prefs.ts";
 import { PREF } from "../../shared/prefs.ts";
-import { hostDisksOf, shownDisks } from "../../web/src/lib/host-disks.ts";
+import { hostDisksOf, lineDisks, shownDisks } from "../../web/src/lib/host-disks.ts";
 
 /**
  * Every disk's free space (#613): which volumes the system's listing counts, a disk listed twice counted once, the watcher
@@ -214,5 +214,16 @@ describe("the disks chosen", () => {
 		const disks = [{ id: "/" }, { id: "/Volumes/Backup" }];
 		expect(shownDisks(disks, [])).toEqual(disks);
 		expect(shownDisks(disks, ["/Volumes/Backup", "/Volumes/Gone"])).toEqual([{ id: "/Volumes/Backup" }]);
+	});
+
+	test("the sidebar's line tells the chosen disks, or the system's alone", () => {
+		const mac = [{ id: "/Volumes/Backup" }, { id: "/" }];
+		expect(lineDisks(mac, [], "/Volumes/Backup")).toEqual([{ id: "/" }]);
+		expect(lineDisks(mac, ["/Volumes/Backup"], "/")).toEqual([{ id: "/Volumes/Backup" }]);
+		expect(lineDisks([{ id: "D:\\" }, { id: "C:\\" }], [], "D:\\")).toEqual([{ id: "C:\\" }]);
+		// No `/` or `C:\` listed (a Linux that lists only `/home`): the one with the data, else the first.
+		expect(lineDisks([{ id: "/home" }, { id: "/data" }], [], "/data")).toEqual([{ id: "/data" }]);
+		expect(lineDisks([{ id: "/home" }, { id: "/data" }], [], null)).toEqual([{ id: "/home" }]);
+		expect(lineDisks([], [], null)).toEqual([]);
 	});
 });
