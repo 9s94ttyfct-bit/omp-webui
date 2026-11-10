@@ -1835,6 +1835,7 @@
 		"settings-nav.spec.ts › a tall window (1920 × 1080), zh-CN › a card scrolled mostly out of the top is no longer the current one: the card below it is what is read (S10)": 2.5,
 		"settings-nav.spec.ts › beside the column (1400 px), en › the margin lists the pages and the shown page's cards, takes you to one, and follows the scroll": 7.2,
 		"settings-nav.spec.ts › beside the column (1400 px), zh-CN › the margin lists the pages and the shown page's cards, takes you to one, and follows the scroll": 4.5,
+		"settings-nav.spec.ts › in WebKit, opened around the width where the index moves into the margin, it is one layout and covers nothing": 9,
 		"settings-nav.spec.ts › links into Settings (1400 px) › a card that loads after the query was typed joins the results, and Enter takes the first result then (#679)": 2.5,
 		"settings-nav.spec.ts › links into Settings (1400 px) › a mouse pointer resting where the results open does not take Enter from the top result (#679)": 2.5,
 		"settings-nav.spec.ts › links into Settings (1400 px) › the keyboard shortcuts key opens the page that has its card, at the card": 3,

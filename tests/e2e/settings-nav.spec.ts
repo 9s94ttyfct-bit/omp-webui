@@ -1,6 +1,6 @@
 import { boxOf } from "../support/geometry.ts";
 import { appReady } from "../support/live.ts";
-import { expect, type Locator, type Page, test } from "./fixtures.ts";
+import { expect, type Locator, type Page, test, webkit } from "./fixtures.ts";
 
 /**
  * Settings is five pages of cards (v0.11.18 §10), each its own address; its index (no model call). Where the page leaves
@@ -328,4 +328,71 @@ test.describe("under the title (390 px)", () => {
 		expect(chipBox.x).toBeGreaterThanOrEqual(visible.x - 1);
 		expect(chipBox.x + chipBox.width).toBeLessThanOrEqual(visible.x + visible.width + 1);
 	});
+});
+
+/**
+ * In WebKit, within a scroll bar's width of the width where the index moves into the margin (the macOS app's window, a
+ * window of about 1340 px beside the sidebar), a page opened at that width had its index half one layout and half the
+ * other: its box was the margin's (no height), its rows were the narrow page's, drawn over the title and the search.
+ * Opened at every width across the threshold, the index is one layout or the other, and lies over neither.
+ */
+test("in WebKit, opened around the width where the index moves into the margin, it is one layout and covers nothing", async ({
+	e2eServer,
+	workerStorageState,
+}) => {
+	// The config's `channel: "chrome"` belongs to Chromium; WebKit launches without one.
+	const browser = await webkit.launch({ channel: undefined });
+	try {
+		const context = await browser.newContext({
+			baseURL: e2eServer.url,
+			storageState: workerStorageState,
+			locale: "en-US",
+		});
+		let sawMargin = false;
+		let sawRows = false;
+		for (let width = 1316; width <= 1364; width += 4) {
+			// A page opened at the width: one resized into it was laid out right.
+			const page = await context.newPage();
+			await page.setViewportSize({ width, height: 800 });
+			await page.goto("/#/settings/app");
+			await appReady(page);
+			await expect(settings(page)).toBeVisible();
+			await expect(page.getByTestId("settings-page-tab").first()).toBeAttached();
+			const at = await page.evaluate(() => {
+				const scroller = document.querySelector('[data-testid="settings-page"]') as HTMLElement;
+				const nav = document.querySelector('[data-testid="settings-index"]') as HTMLElement;
+				const rows = nav.querySelector("ul") as HTMLElement;
+				const box = (el: Element | null) => el?.getBoundingClientRect() ?? null;
+				const over = (a: DOMRect | null, b: DOMRect | null) =>
+					!!a &&
+					!!b &&
+					a.width > 0 &&
+					b.width > 0 &&
+					a.left < b.right &&
+					b.left < a.right &&
+					a.top < b.bottom &&
+					b.top < a.bottom;
+				const title = box(scroller.querySelector("h1"));
+				const search = box(scroller.querySelector('input[type="search"]'));
+				const parts = [box(rows), box(document.querySelector('[data-testid="settings-index-chip"]'))];
+				return {
+					margin: getComputedStyle(rows).position === "absolute",
+					navHeight: nav.getBoundingClientRect().height,
+					covers: parts.some((p) => over(p, title) || over(p, search)),
+				};
+			});
+			expect(at.covers, `${width} px: the index lies over the title or the search`).toBe(false);
+			if (at.margin) {
+				sawMargin = true;
+				expect(at.navHeight, `${width} px: in the margin, the index takes no room above the column`).toBe(0);
+			} else {
+				sawRows = true;
+				expect(at.navHeight, `${width} px: as rows, the index has their height`).toBeGreaterThan(40);
+			}
+			await page.close();
+		}
+		expect(sawRows && sawMargin, "the widths cross the threshold").toBe(true);
+	} finally {
+		await browser.close();
+	}
 });

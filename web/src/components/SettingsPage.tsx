@@ -249,342 +249,347 @@ export function SettingsPage() {
 		</div>
 	);
 	return (
-		// `relative`: the page's visually hidden radios and checkboxes (`sr-only` is `position:absolute`) are placed against
-		// this box; without it they sit against the app shell, beyond the window, and focusing one scrolls the shell.
-		// `@container`: the index below lays itself out by this box's width, not the window's.
-		<div ref={setScroller} className="@container relative h-full flex-1 overflow-y-auto" data-testid="settings-page">
-			<div ref={setColumn} className="mx-auto flex max-w-2xl flex-col gap-6 px-6 pt-4 pb-8 sm:pt-8">
-				<h1 className="flex items-center gap-2 text-xl font-semibold">
-					<Settings className="text-accent" /> {t("pages.settingsTitle")}
-				</h1>
-				<SettingsIndex
-					page={page}
-					onPage={choosePage}
-					entries={index.entries}
-					current={index.current}
-					onGo={index.go}
-					scroller={scroller}
-				/>
-				<SettingsSearch onGo={goToSetting} />
-				{ownerPage(meta) ? (
-					<Suspense fallback={null}>
-						<SettingsHelpCard where={t(SETTINGS_PAGE_LABEL[page])} />
-					</Suspense>
-				) : null}
-				{part(
-					"look",
-					<>
-						<section className="rounded-2xl border border-border bg-surface p-4">
-							<CardHeader title={t("pages.settingsAppearance")} />
-							<fieldset className="flex gap-2">
-								<legend className="sr-only">{t("pages.settingsTheme")}</legend>
-								{(
-									[
-										["light", Sun, t("pages.settingsThemeLight")],
-										["dark", Moon, t("pages.settingsThemeDark")],
-										["system", Monitor, t("pages.settingsThemeSystem")],
-									] as const
-								).map(([v, Icon, label]) => (
-									<label
-										key={v}
-										className={cx(
-											"flex flex-1 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-xl border px-2 py-3 text-sm sm:px-3 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent",
-											theme === v ? "border-accent bg-accent-soft" : "border-border hover:bg-hover",
-										)}
-									>
-										<input
-											type="radio"
-											name="theme"
-											value={v}
-											className="sr-only"
-											checked={theme === v}
-											onChange={() => {
-												applyTheme(v);
-												set({ theme: v });
-											}}
-										/>
-										<Icon size={16} /> {label}
-									</label>
-								))}
-							</fieldset>
-							<PalettePicker />
-							<AnimationSettings />
-							<div className="mt-3 flex flex-wrap items-center gap-3">
-								<Button data-testid="reset-layout" className="shrink-0 whitespace-nowrap" onClick={resetAllWidths}>
-									{t("pages.settingsResetLayout")}
-								</Button>
-								<span className="text-xs text-muted">{t("pages.settingsResetLayoutHint")}</span>
-							</div>
-							<DevicePrefsSetting />
-						</section>
-						{/* Which pages the sidebar and the rail offer, and where (#654): a chunk of its own, for the keyboard's way to what a drag does. */}
+		// `@container`: the index lays itself out by the room the page has, not the window's (the sidebar takes room too). The
+		// container is a box around the scroller, not the scroller: WebKit measured a scroller that is a container by its
+		// width with the scroll bar for some of its descendants and without it for others, so within a scroll bar's width
+		// of the threshold the index was half one layout and half the other, its rows drawn over the title and the search.
+		<div className="@container flex h-full min-w-0 flex-1">
+			{/* `relative`: the page's visually hidden radios and checkboxes (`sr-only` is `position:absolute`) are placed against
+			    this box; without it they sit against the app shell, beyond the window, and focusing one scrolls the shell. */}
+			<div ref={setScroller} className="relative h-full flex-1 overflow-y-auto" data-testid="settings-page">
+				<div ref={setColumn} className="mx-auto flex max-w-2xl flex-col gap-6 px-6 pt-4 pb-8 sm:pt-8">
+					<h1 className="flex items-center gap-2 text-xl font-semibold">
+						<Settings className="text-accent" /> {t("pages.settingsTitle")}
+					</h1>
+					<SettingsIndex
+						page={page}
+						onPage={choosePage}
+						entries={index.entries}
+						current={index.current}
+						onGo={index.go}
+						scroller={scroller}
+					/>
+					<SettingsSearch onGo={goToSetting} />
+					{ownerPage(meta) ? (
 						<Suspense fallback={null}>
-							<NavLayoutSettings />
+							<SettingsHelpCard where={t(SETTINGS_PAGE_LABEL[page])} />
 						</Suspense>
-						<section className="rounded-2xl border border-border bg-surface p-4">
-							<CardHeader title={t("common.language")} />
-							<Select
-								data-testid="language"
-								aria-label={t("common.language")}
-								value={lang}
-								onValueChange={(v) =>
-									setLang(v as Lang).catch((e) => useApp.getState().toast("error", (e as Error).message))
-								}
-							>
-								{LANGS.map((l) => (
-									<option key={l.value} value={l.value}>
-										{l.label}
-									</option>
-								))}
-							</Select>
-						</section>
-						{/* Every keyboard binding (#639): its own chunk, and the card `?` opens Settings at. */}
-						<Suspense fallback={null}>
-							<ShortcutsSettings />
-						</Suspense>
-					</>,
-				)}
-				{part(
-					"chats",
-					<>
-						<section className="rounded-2xl border border-border bg-surface p-4">
-							<CardHeader title={t("pages.settingsConversations")} />
-							<label className="flex cursor-pointer items-start gap-3 text-sm">
-								<input
-									type="checkbox"
-									className="mt-1 accent-[var(--accent)]"
-									data-testid="auto-title"
-									checked={autoTitle}
-									onChange={(e) => {
-										setPref(PREF.autoTitle, e.target.checked ? "on" : "off");
-										setAutoTitle(e.target.checked);
-									}}
-								/>
-								<span>
-									{t("pages.settingsAutoTitle")}
-									<span className="block text-xs text-muted">{t("pages.settingsAutoTitleHint")}</span>
-								</span>
-							</label>
-							<label className="mt-3 flex cursor-pointer items-start gap-3 text-sm">
-								<input
-									type="checkbox"
-									className="mt-1 accent-[var(--accent)]"
-									data-testid="keep-thinking"
-									checked={keepThinkingOpen}
-									onChange={(e) => {
-										setPref(PREF.keepThinking, e.target.checked ? "on" : "off");
-										set({ keepThinkingOpen: e.target.checked });
-									}}
-								/>
-								<span>
-									{t("pages.settingsKeepThinking")}
-									<span className="block text-xs text-muted">{t("pages.settingsKeepThinkingHint")}</span>
-								</span>
-							</label>
-							<ToolTimerSetting />
-							<label className="mt-3 flex cursor-pointer items-start gap-3 text-sm">
-								<input
-									type="checkbox"
-									className="mt-1 accent-[var(--accent)]"
-									data-testid="notifications"
-									checked={!remoteWindow && notify.enabled && notify.permission === "granted"}
-									disabled={remoteWindow || notify.permission === "unsupported" || notify.permission === "denied"}
-									onChange={(e) => void setNotifications(e.target.checked)}
-								/>
-								<span>
-									{t("pages.settingsNotify")}
-									<span className="block text-xs text-muted" data-testid="notifications-hint">
-										{remoteWindow
-											? t("pages.settingsNotifyRemoteWindow")
-											: notify.permission === "unsupported"
-												? t(app ? "pages.settingsNotifyUnsupportedApp" : "pages.settingsNotifyUnsupported")
-												: notify.permission === "denied"
-													? t(app ? "pages.settingsNotifyBlockedApp" : "pages.settingsNotifyBlocked")
-													: t(app ? "pages.settingsNotifyHintApp" : "pages.settingsNotifyHint")}
-									</span>
-								</span>
-							</label>
-							<UsageWaitSetting />
-							{predictionUnavailable ? (
-								<p className="mt-3 text-xs text-warning" data-testid="prediction-unavailable">
-									<WithCode text={t("pages.settingsPredictionUnavailable")} />
-								</p>
-							) : null}
-						</section>
-						<Suspense fallback={null}>
-							<QuickPromptsSettings />
-						</Suspense>
-						{/* Where omp compacts by itself: omp's own two settings, as `omp config` shows them in the terminal. */}
-						<CompactAtSettings />
-						{/* Where a compact queued while the agent works runs: when the turn ends, or between two steps (#651). */}
-						<CompactWhereSettings />
-						<DropSettings />
-						{/* A page through the tunnel sees it and cannot change it: the setting is the person's at this computer. */}
-						<Suspense fallback={null}>
-							<ProjectsSettings />
-						</Suspense>
-						{/* Notifications when no page is open (Web Push): for a browser or a Home Screen app, not for the macOS app. */}
-						<Suspense fallback={null}>
-							<PushSettings />
-						</Suspense>
-						{/* omp's long-term memory is a page of Settings: this card opens it. */}
-						<section className="rounded-2xl border border-border bg-surface p-4" data-setting="memory">
-							<CardHeader title={t("shell.sidebarNavMemory")} hint={t("pages.settingsMemoryHint")} />
-							<Button data-testid="settings-open-memory" onClick={() => setView({ kind: "memory" })}>
-								<Brain size={14} /> {t("pages.settingsMemoryOpen")}
-							</Button>
-						</section>
-					</>,
-				)}
-				{part(
-					"models",
-					<>
-						<ModeSettings />
-						<Accounts />
-						<ModelConfigSettings />
-						{/* What the main agent is told of how to use models for subagents (#641): templates picked in New chat. */}
-						<Suspense fallback={null}>
-							<GuidanceSettings />
-						</Suspense>
-						{/* How many subagents a conversation runs at once: omp's own `task.maxConcurrency`, as `omp config` shows it. */}
-						<SubagentConcurrencySettings />
-						{/* The share of a provider's usage window that may be left before a working conversation is held (#652). */}
-						<Suspense fallback={null}>
-							<QuotaFloorSettings />
-						</Suspense>
-					</>,
-				)}
-				{part(
-					"safety",
-					<>
-						<ApprovalSettings />
-						{/* Changed from the person's own page (this computer's, or one signed in through Access); any other is told where. */}
-						{meta ? (
-							<Suspense fallback={null}>
-								<GuardSettings />
-							</Suspense>
-						) : null}
-						{/* What the agent is told while a conversation is unattended, and whether new ones start so (#646). */}
-						<Suspense fallback={null}>
-							<UnattendedSettings />
-						</Suspense>
-					</>,
-				)}
-				{part(
-					"app",
-					<>
-						<OmpSettings />
-						<UpdateSettings />
-						<Suspense fallback={null}>
-							<BrowserSettings />
-						</Suspense>
-						<QuitSettings />
-						<LoginStartSettings />
-						<Suspense fallback={null}>
-							<SleepSettings />
-						</Suspense>
-						<Suspense fallback={null}>
-							<HostDisksSettings />
-						</Suspense>
-						<RemoteSettings />
-						<Suspense fallback={null}>
-							<MigrationSettings />
-						</Suspense>
-						<StarPromptSetting />
-						<section className="rounded-2xl border border-border bg-surface p-4" data-setting="cli">
-							<CardHeader title={t("shell.sidebarNavCli")} hint={t("pages.settingsCliHint")} />
-							<Button data-testid="settings-open-cli" onClick={() => setView({ kind: "cli" })}>
-								<SquareTerminal size={14} /> {t("pages.settingsCliOpen")}
-							</Button>
-						</section>
-						<section className="rounded-2xl border border-border bg-surface p-4" data-setting="config">
-							<CardHeader title={t("pages.settingsConfig")} hint={t("pages.settingsConfigHint")} />
-							<div className="flex flex-wrap gap-2">
-								<Button onClick={() => setView({ kind: "cli", command: "config" })}>omp config</Button>
-								<Button onClick={() => setView({ kind: "cli", command: "models" })}>omp models</Button>
-								<Button data-testid="settings-open-plugins" onClick={() => setView({ kind: "plugins" })}>
-									<Puzzle size={14} /> {t("shell.sidebarNavPlugins")}
-								</Button>
-								<Button onClick={() => setView({ kind: "cli", command: "login" })}>omp login</Button>
-								<Button onClick={() => setView({ kind: "cli", command: "update" })}>omp update</Button>
-							</div>
-						</section>
-						<section className="rounded-2xl border border-border bg-surface p-4" data-setting="running">
-							<CardHeader title={t("pages.settingsRunning")} />
-							{open.length ? (
-								<ul className="divide-y divide-border text-sm">
-									{open.map((l) => {
-										const helper = isAccountsHelper(l.info, meta?.home);
-										const name = helper
-											? t("pages.settingsAccountsHelper")
-											: ((l.info.sessionFile ? titles[l.info.sessionFile] : undefined) ??
-												l.info.sessionFile?.split("/").pop() ??
-												t("pages.settingsNewSession"));
-										return (
-											<li
-												key={l.info.liveId}
-												className="flex flex-wrap items-center gap-x-2 gap-y-0.5 py-1.5"
-												data-testid="running-session"
-												data-helper={helper ? "accounts" : undefined}
-											>
-												<span
-													className={cx(
-														"h-2 w-2 shrink-0 rounded-full",
-														l.info.pausedAt || l.info.quotaHold?.state === "held"
-															? "bg-warning"
-															: l.streaming
-																? "animate-pulse bg-accent"
-																: "bg-success",
-													)}
-												/>
-												{/* The name keeps the row; on a phone the status and pid drop to a line of their own under it. */}
-												<span className="min-w-0 flex-1 basis-40 truncate">{name}</span>
-												<span className="order-last flex basis-full gap-2 pl-4 text-xs sm:order-none sm:basis-auto sm:pl-0">
-													<span className="text-muted" data-testid="running-status">
-														{helper
-															? t("pages.settingsAccountsHelperStatus")
-															: l.info.pausedAt
-																? t("pages.settingsPaused")
-																: l.info.quotaHold?.state === "held"
-																	? t("pages.settingsQuotaHeld")
-																	: l.streaming
-																		? t("pages.settingsWorking")
-																		: l.info.subscribers > 0
-																			? t("pages.settingsWatched")
-																			: t("pages.settingsIdle")}
-													</span>
-													<span className="text-faint">pid {l.info.pid}</span>
-												</span>
-												{/* A button that looks like one: as plain text, Close read as part of the row's status. */}
-												<Button size="sm" onClick={() => closeLive(l.info.liveId)}>
-													<span className="sr-only">{t("pages.settingsCloseProcess", { name })}</span>
-													<span aria-hidden>{t("common.close")}</span>
-												</Button>
-											</li>
-										);
-									})}
-								</ul>
-							) : (
-								<p className="text-sm text-muted">{t("pages.settingsNoProcesses")}</p>
-							)}
-							{open.some((l) => l.info.pausedAt) ? (
-								<p className="mt-2 text-xs text-muted" data-testid="running-paused-note">
-									{t("pages.settingsPausedNote")}
-								</p>
-							) : null}
-						</section>
-						{meta ? (
-							<section className="space-y-1 rounded-2xl border border-border bg-surface p-4 text-xs text-muted">
-								<div>{t("pages.settingsOmpVersion", { v: meta.ompVersion })}</div>
-								<div>{t("pages.settingsWebVersion", { v: meta.serverVersion })}</div>
-								<div className="break-all">{t("pages.settingsAgentDir", { v: meta.agentDir })}</div>
-								<div className="break-all">{t("pages.settingsSessionsDir", { v: meta.sessionsDir })}</div>
+					) : null}
+					{part(
+						"look",
+						<>
+							<section className="rounded-2xl border border-border bg-surface p-4">
+								<CardHeader title={t("pages.settingsAppearance")} />
+								<fieldset className="flex gap-2">
+									<legend className="sr-only">{t("pages.settingsTheme")}</legend>
+									{(
+										[
+											["light", Sun, t("pages.settingsThemeLight")],
+											["dark", Moon, t("pages.settingsThemeDark")],
+											["system", Monitor, t("pages.settingsThemeSystem")],
+										] as const
+									).map(([v, Icon, label]) => (
+										<label
+											key={v}
+											className={cx(
+												"flex flex-1 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-xl border px-2 py-3 text-sm sm:px-3 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent",
+												theme === v ? "border-accent bg-accent-soft" : "border-border hover:bg-hover",
+											)}
+										>
+											<input
+												type="radio"
+												name="theme"
+												value={v}
+												className="sr-only"
+												checked={theme === v}
+												onChange={() => {
+													applyTheme(v);
+													set({ theme: v });
+												}}
+											/>
+											<Icon size={16} /> {label}
+										</label>
+									))}
+								</fieldset>
+								<PalettePicker />
+								<AnimationSettings />
+								<div className="mt-3 flex flex-wrap items-center gap-3">
+									<Button data-testid="reset-layout" className="shrink-0 whitespace-nowrap" onClick={resetAllWidths}>
+										{t("pages.settingsResetLayout")}
+									</Button>
+									<span className="text-xs text-muted">{t("pages.settingsResetLayoutHint")}</span>
+								</div>
+								<DevicePrefsSetting />
 							</section>
-						) : null}
-					</>,
-				)}
-				{/* Under every page's cards where the index has no margin to hang Send feedback in. */}
-				<SettingsFeedbackFoot />
+							{/* Which pages the sidebar and the rail offer, and where (#654): a chunk of its own, for the keyboard's way to what a drag does. */}
+							<Suspense fallback={null}>
+								<NavLayoutSettings />
+							</Suspense>
+							<section className="rounded-2xl border border-border bg-surface p-4">
+								<CardHeader title={t("common.language")} />
+								<Select
+									data-testid="language"
+									aria-label={t("common.language")}
+									value={lang}
+									onValueChange={(v) =>
+										setLang(v as Lang).catch((e) => useApp.getState().toast("error", (e as Error).message))
+									}
+								>
+									{LANGS.map((l) => (
+										<option key={l.value} value={l.value}>
+											{l.label}
+										</option>
+									))}
+								</Select>
+							</section>
+							{/* Every keyboard binding (#639): its own chunk, and the card `?` opens Settings at. */}
+							<Suspense fallback={null}>
+								<ShortcutsSettings />
+							</Suspense>
+						</>,
+					)}
+					{part(
+						"chats",
+						<>
+							<section className="rounded-2xl border border-border bg-surface p-4">
+								<CardHeader title={t("pages.settingsConversations")} />
+								<label className="flex cursor-pointer items-start gap-3 text-sm">
+									<input
+										type="checkbox"
+										className="mt-1 accent-[var(--accent)]"
+										data-testid="auto-title"
+										checked={autoTitle}
+										onChange={(e) => {
+											setPref(PREF.autoTitle, e.target.checked ? "on" : "off");
+											setAutoTitle(e.target.checked);
+										}}
+									/>
+									<span>
+										{t("pages.settingsAutoTitle")}
+										<span className="block text-xs text-muted">{t("pages.settingsAutoTitleHint")}</span>
+									</span>
+								</label>
+								<label className="mt-3 flex cursor-pointer items-start gap-3 text-sm">
+									<input
+										type="checkbox"
+										className="mt-1 accent-[var(--accent)]"
+										data-testid="keep-thinking"
+										checked={keepThinkingOpen}
+										onChange={(e) => {
+											setPref(PREF.keepThinking, e.target.checked ? "on" : "off");
+											set({ keepThinkingOpen: e.target.checked });
+										}}
+									/>
+									<span>
+										{t("pages.settingsKeepThinking")}
+										<span className="block text-xs text-muted">{t("pages.settingsKeepThinkingHint")}</span>
+									</span>
+								</label>
+								<ToolTimerSetting />
+								<label className="mt-3 flex cursor-pointer items-start gap-3 text-sm">
+									<input
+										type="checkbox"
+										className="mt-1 accent-[var(--accent)]"
+										data-testid="notifications"
+										checked={!remoteWindow && notify.enabled && notify.permission === "granted"}
+										disabled={remoteWindow || notify.permission === "unsupported" || notify.permission === "denied"}
+										onChange={(e) => void setNotifications(e.target.checked)}
+									/>
+									<span>
+										{t("pages.settingsNotify")}
+										<span className="block text-xs text-muted" data-testid="notifications-hint">
+											{remoteWindow
+												? t("pages.settingsNotifyRemoteWindow")
+												: notify.permission === "unsupported"
+													? t(app ? "pages.settingsNotifyUnsupportedApp" : "pages.settingsNotifyUnsupported")
+													: notify.permission === "denied"
+														? t(app ? "pages.settingsNotifyBlockedApp" : "pages.settingsNotifyBlocked")
+														: t(app ? "pages.settingsNotifyHintApp" : "pages.settingsNotifyHint")}
+										</span>
+									</span>
+								</label>
+								<UsageWaitSetting />
+								{predictionUnavailable ? (
+									<p className="mt-3 text-xs text-warning" data-testid="prediction-unavailable">
+										<WithCode text={t("pages.settingsPredictionUnavailable")} />
+									</p>
+								) : null}
+							</section>
+							<Suspense fallback={null}>
+								<QuickPromptsSettings />
+							</Suspense>
+							{/* Where omp compacts by itself: omp's own two settings, as `omp config` shows them in the terminal. */}
+							<CompactAtSettings />
+							{/* Where a compact queued while the agent works runs: when the turn ends, or between two steps (#651). */}
+							<CompactWhereSettings />
+							<DropSettings />
+							{/* A page through the tunnel sees it and cannot change it: the setting is the person's at this computer. */}
+							<Suspense fallback={null}>
+								<ProjectsSettings />
+							</Suspense>
+							{/* Notifications when no page is open (Web Push): for a browser or a Home Screen app, not for the macOS app. */}
+							<Suspense fallback={null}>
+								<PushSettings />
+							</Suspense>
+							{/* omp's long-term memory is a page of Settings: this card opens it. */}
+							<section className="rounded-2xl border border-border bg-surface p-4" data-setting="memory">
+								<CardHeader title={t("shell.sidebarNavMemory")} hint={t("pages.settingsMemoryHint")} />
+								<Button data-testid="settings-open-memory" onClick={() => setView({ kind: "memory" })}>
+									<Brain size={14} /> {t("pages.settingsMemoryOpen")}
+								</Button>
+							</section>
+						</>,
+					)}
+					{part(
+						"models",
+						<>
+							<ModeSettings />
+							<Accounts />
+							<ModelConfigSettings />
+							{/* What the main agent is told of how to use models for subagents (#641): templates picked in New chat. */}
+							<Suspense fallback={null}>
+								<GuidanceSettings />
+							</Suspense>
+							{/* How many subagents a conversation runs at once: omp's own `task.maxConcurrency`, as `omp config` shows it. */}
+							<SubagentConcurrencySettings />
+							{/* The share of a provider's usage window that may be left before a working conversation is held (#652). */}
+							<Suspense fallback={null}>
+								<QuotaFloorSettings />
+							</Suspense>
+						</>,
+					)}
+					{part(
+						"safety",
+						<>
+							<ApprovalSettings />
+							{/* Changed from the person's own page (this computer's, or one signed in through Access); any other is told where. */}
+							{meta ? (
+								<Suspense fallback={null}>
+									<GuardSettings />
+								</Suspense>
+							) : null}
+							{/* What the agent is told while a conversation is unattended, and whether new ones start so (#646). */}
+							<Suspense fallback={null}>
+								<UnattendedSettings />
+							</Suspense>
+						</>,
+					)}
+					{part(
+						"app",
+						<>
+							<OmpSettings />
+							<UpdateSettings />
+							<Suspense fallback={null}>
+								<BrowserSettings />
+							</Suspense>
+							<QuitSettings />
+							<LoginStartSettings />
+							<Suspense fallback={null}>
+								<SleepSettings />
+							</Suspense>
+							<Suspense fallback={null}>
+								<HostDisksSettings />
+							</Suspense>
+							<RemoteSettings />
+							<Suspense fallback={null}>
+								<MigrationSettings />
+							</Suspense>
+							<StarPromptSetting />
+							<section className="rounded-2xl border border-border bg-surface p-4" data-setting="cli">
+								<CardHeader title={t("shell.sidebarNavCli")} hint={t("pages.settingsCliHint")} />
+								<Button data-testid="settings-open-cli" onClick={() => setView({ kind: "cli" })}>
+									<SquareTerminal size={14} /> {t("pages.settingsCliOpen")}
+								</Button>
+							</section>
+							<section className="rounded-2xl border border-border bg-surface p-4" data-setting="config">
+								<CardHeader title={t("pages.settingsConfig")} hint={t("pages.settingsConfigHint")} />
+								<div className="flex flex-wrap gap-2">
+									<Button onClick={() => setView({ kind: "cli", command: "config" })}>omp config</Button>
+									<Button onClick={() => setView({ kind: "cli", command: "models" })}>omp models</Button>
+									<Button data-testid="settings-open-plugins" onClick={() => setView({ kind: "plugins" })}>
+										<Puzzle size={14} /> {t("shell.sidebarNavPlugins")}
+									</Button>
+									<Button onClick={() => setView({ kind: "cli", command: "login" })}>omp login</Button>
+									<Button onClick={() => setView({ kind: "cli", command: "update" })}>omp update</Button>
+								</div>
+							</section>
+							<section className="rounded-2xl border border-border bg-surface p-4" data-setting="running">
+								<CardHeader title={t("pages.settingsRunning")} />
+								{open.length ? (
+									<ul className="divide-y divide-border text-sm">
+										{open.map((l) => {
+											const helper = isAccountsHelper(l.info, meta?.home);
+											const name = helper
+												? t("pages.settingsAccountsHelper")
+												: ((l.info.sessionFile ? titles[l.info.sessionFile] : undefined) ??
+													l.info.sessionFile?.split("/").pop() ??
+													t("pages.settingsNewSession"));
+											return (
+												<li
+													key={l.info.liveId}
+													className="flex flex-wrap items-center gap-x-2 gap-y-0.5 py-1.5"
+													data-testid="running-session"
+													data-helper={helper ? "accounts" : undefined}
+												>
+													<span
+														className={cx(
+															"h-2 w-2 shrink-0 rounded-full",
+															l.info.pausedAt || l.info.quotaHold?.state === "held"
+																? "bg-warning"
+																: l.streaming
+																	? "animate-pulse bg-accent"
+																	: "bg-success",
+														)}
+													/>
+													{/* The name keeps the row; on a phone the status and pid drop to a line of their own under it. */}
+													<span className="min-w-0 flex-1 basis-40 truncate">{name}</span>
+													<span className="order-last flex basis-full gap-2 pl-4 text-xs sm:order-none sm:basis-auto sm:pl-0">
+														<span className="text-muted" data-testid="running-status">
+															{helper
+																? t("pages.settingsAccountsHelperStatus")
+																: l.info.pausedAt
+																	? t("pages.settingsPaused")
+																	: l.info.quotaHold?.state === "held"
+																		? t("pages.settingsQuotaHeld")
+																		: l.streaming
+																			? t("pages.settingsWorking")
+																			: l.info.subscribers > 0
+																				? t("pages.settingsWatched")
+																				: t("pages.settingsIdle")}
+														</span>
+														<span className="text-faint">pid {l.info.pid}</span>
+													</span>
+													{/* A button that looks like one: as plain text, Close read as part of the row's status. */}
+													<Button size="sm" onClick={() => closeLive(l.info.liveId)}>
+														<span className="sr-only">{t("pages.settingsCloseProcess", { name })}</span>
+														<span aria-hidden>{t("common.close")}</span>
+													</Button>
+												</li>
+											);
+										})}
+									</ul>
+								) : (
+									<p className="text-sm text-muted">{t("pages.settingsNoProcesses")}</p>
+								)}
+								{open.some((l) => l.info.pausedAt) ? (
+									<p className="mt-2 text-xs text-muted" data-testid="running-paused-note">
+										{t("pages.settingsPausedNote")}
+									</p>
+								) : null}
+							</section>
+							{meta ? (
+								<section className="space-y-1 rounded-2xl border border-border bg-surface p-4 text-xs text-muted">
+									<div>{t("pages.settingsOmpVersion", { v: meta.ompVersion })}</div>
+									<div>{t("pages.settingsWebVersion", { v: meta.serverVersion })}</div>
+									<div className="break-all">{t("pages.settingsAgentDir", { v: meta.agentDir })}</div>
+									<div className="break-all">{t("pages.settingsSessionsDir", { v: meta.sessionsDir })}</div>
+								</section>
+							) : null}
+						</>,
+					)}
+					{/* Under every page's cards where the index has no margin to hang Send feedback in. */}
+					<SettingsFeedbackFoot />
+				</div>
 			</div>
 		</div>
 	);
