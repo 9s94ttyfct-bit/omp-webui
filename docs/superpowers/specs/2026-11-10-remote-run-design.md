@@ -128,14 +128,14 @@ are left out; Windows remote computers refused for now.
 
 ### Tools (served by this Mac's server)
 
-- `remote_computers`: the computers this conversation may use, each with name, host and sign-in state. Read-only, always
-  allowed.
-- `remote_run` `{ computer, command, cwd?, timeout? }`: the above; returns exit code, output, computer, and how long it ran.
-  Refused for a computer the conversation was not given.
+- One tool, `remote_run` `{ computer, command, cwd?, timeout? }`: `computer` is an enum of the names of the computers this
+  conversation was given (its description lists them); returns exit code, output, computer, and how long it ran. A host
+  tool with no policy of its own is tier `exec` in omp, the same as `bash`, so it follows the conversation's mode with no
+  policy written at start (`server/omp/approval.ts` 148–166).
 - Turned on in a conversation from its session controls: "Remote computers" with a checkbox per saved computer. Saved with
   the conversation (so it survives a restart of the server and a resume); only the person's own pages may change it, no
-  tool can. Giving a running conversation the tools for the first time restarts its omp process (tool policies are fixed
-  at start) and the conversation continues; changing the chosen computers later does not.
+  tool can. The tools are given to a running conversation (`set_host_tools`) without restarting it, and re-given with the
+  new list when the choice changes.
 - Not offered in conversations whose tool slot is already held ("Set up with AI", "Ask agent for help"): one set per
   conversation (`hostServer`).
 - Refused in a conversation that a page which is not the person's own has been on (the same rule as `remote-ai.ts`
