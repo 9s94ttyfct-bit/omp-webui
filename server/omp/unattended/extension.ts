@@ -71,7 +71,7 @@ interface ToolCall {
 /** What this uses of omp's extension API. */
 interface Pi {
 	on(event: "before_agent_start", handler: (event: BeforeAgentStart, ctx: Context) => unknown): void;
-	on(event: "tool_call", handler: (event: ToolCall) => unknown): void;
+	on(event: "tool_call", handler: (event: ToolCall, ctx: Context) => unknown): void;
 	registerTool(tool: Record<string, unknown>): void;
 	getActiveTools(): string[] | Promise<string[]>;
 	setActiveTools(names: string[]): void | Promise<void>;
@@ -199,11 +199,13 @@ export default function unattended(pi: Pi): void {
 		const block = instruction.startsWith("#") ? instruction : `${HEADING}\n${instruction}`;
 		return { systemPrompt: [...blocks, block] };
 	});
-	// While the mode is on, an `ask` of a form is not shown to anybody: it returns what `file_question` does, and the server
-	// files the form as questions for the person (`server/live.ts`). Read at the call, so a switch counts at once. omp says
-	// a stopped call to the model as a failed one, with these words.
-	pi.on("tool_call", (event) => {
-		if (!isFormAsk(event) || instructionNow() === "") return undefined;
+	// While the mode is on, the main agent's `ask` of a form is not shown to anybody: it returns what `file_question` does,
+	// and the server files the form as questions for the person (`server/live.ts`, which reads the main agent's frames).
+	// Read at the call, so a switch counts at once. omp says a stopped call to the model as a failed one, with these words.
+	// Another agent's call (a headless fork that keeps `ask` only for its prompt cache) is left to omp, which refuses it.
+	pi.on("tool_call", (event, ctx) => {
+		const kind = ctx?.agent?.kind;
+		if ((kind !== undefined && kind !== "main") || !isFormAsk(event) || instructionNow() === "") return undefined;
 		return { block: true, reason: FILE_QUESTION_RESULT };
 	});
 	// Said last, once the handler is in: the server calls the mode live on the strength of this note, and not of the command line.

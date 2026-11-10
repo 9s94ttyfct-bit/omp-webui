@@ -602,8 +602,8 @@ describe("the extension's own side of the file", () => {
 		tools: Record<string, unknown>[];
 		active: string[];
 		result(kind: string | undefined): Promise<{ systemPrompt?: string[] } | undefined>;
-		/** What the `tool_call` handler answers for a call. */
-		toolCall(event: { toolName: string; input: unknown }): unknown;
+		/** What the `tool_call` handler answers for a call of the agent of `kind` (the main agent's by default). */
+		toolCall(event: { toolName: string; input: unknown }, kind?: string): unknown;
 	}
 	/** Run the extension as omp would on `file`; `kind` is the agent whose turn it is. */
 	function load(file: string | undefined): Loaded {
@@ -634,7 +634,7 @@ describe("the extension's own side of the file", () => {
 						{ systemPrompt: ["omp's own"] },
 						kind ? { agent: { kind } } : {},
 					)) as { systemPrompt?: string[] } | undefined,
-				toolCall: (event) => handlers.get("tool_call")?.(event),
+				toolCall: (event, kind = "main") => handlers.get("tool_call")?.(event, { agent: { kind } }),
 			};
 		} finally {
 			if (before === undefined) delete process.env[UNATTENDED_FILE_ENV];
@@ -652,6 +652,8 @@ describe("the extension's own side of the file", () => {
 		// An `ask` of `questions` (omp before 18.18.3) is one dialog the server answers itself; other tools run.
 		expect(ext.toolCall({ toolName: "ask", input: { questions: [] } })).toBeUndefined();
 		expect(ext.toolCall({ toolName: "write", input: { html: "<form></form>" } })).toBeUndefined();
+		// Another agent's call is not stopped: the server reads only the main agent's frames, so it could not file it.
+		expect(ext.toolCall(form, "sub")).toBeUndefined();
 		// Switched off (the file goes): the next form is the person's again, at once.
 		new UnattendedService(data).write(file, null);
 		expect(ext.toolCall(form)).toBeUndefined();

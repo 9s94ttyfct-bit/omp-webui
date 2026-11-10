@@ -3064,15 +3064,16 @@ export class Live {
 	/**
 	 * An `ask` of one HTML form (omp 18.18.3 and later) that the unattended extension stopped (`isFormAsk`,
 	 * `server/omp/unattended/extension.ts`): omp asks a form over RPC as plain field dialogs, which the server cannot tell
-	 * from a tool approval's, so the extension stops the call while the mode is on, with `file_question`'s words as its
-	 * reason. Its form is filed here, a question per named field (`formQuestions`). Only a call that ended with those words
-	 * is filed: one the mode let run was the person's to answer.
+	 * from a tool approval's, so the extension stops the main agent's call while the mode is on (a subagent has no `ask`:
+	 * omp gives it no way to prompt), with `file_question`'s words as its reason. Its form is filed here, a question per
+	 * named field (`formQuestions`). Only a call that ended with those words is filed: one the mode let run was the
+	 * person's to answer.
 	 */
 	private recordFormAsk(frame: OmpFrame): void {
-		const id = String(frame.toolCallId ?? "");
-		const html = this.formAsks.get(id);
+		const key = String(frame.toolCallId ?? "");
+		const html = this.formAsks.get(key);
 		if (html === undefined) return;
-		this.formAsks.delete(id);
+		this.formAsks.delete(key);
 		const content = (frame.result as { content?: unknown } | undefined)?.content;
 		const said = Array.isArray(content)
 			? content.some((c) => typeof c?.text === "string" && c.text.includes(TOOL_RECORDED_RESULT))
@@ -3082,7 +3083,7 @@ export class Live {
 		const drafts = draftsOfAsk(questions);
 		// A form with no question that has words is said as one empty question (#650).
 		if (drafts.length < Math.max(1, questions.length)) drafts.push(EMPTY_DRAFT);
-		this.fileQuestions("ask", drafts, id);
+		this.fileQuestions("ask", drafts, key);
 	}
 
 	/**
