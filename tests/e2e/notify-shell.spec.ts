@@ -169,6 +169,23 @@ test("a shell that cannot show notifications says so", async ({ page }) => {
 	);
 });
 
+test("in a window onto another Mac the toggle is off and says where that Mac's notifications are turned on", async ({
+	page,
+}) => {
+	// The window onto another Mac has `ompwView` only, and the WKWebView's `Notification`, which is denied.
+	await page.addInitScript(() => {
+		Object.assign(window, { webkit: { messageHandlers: { ompwView: { postMessage: async () => ({}) } } } });
+		const denied = { permission: "denied", requestPermission: async () => "denied" };
+		Object.defineProperty(window, "Notification", { value: denied, configurable: true });
+	});
+	await page.goto("/#/settings/chats");
+	await expect(page.getByTestId("notifications")).toBeDisabled();
+	await expect(page.getByTestId("notifications")).not.toBeChecked();
+	await expect(page.getByTestId("notifications-hint")).toHaveText(
+		"This is a window onto another Mac. Its notifications are shown by the omp-webui app on the Mac you are using: in its menu bar, Macs › Notify me about conversations of:, tick this Mac.",
+	);
+});
+
 test("in the app the page posts no notification when a conversation needs the person or finishes; a click on one the app showed opens the conversation", async ({
 	page,
 }) => {

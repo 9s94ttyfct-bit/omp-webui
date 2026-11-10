@@ -78,6 +78,7 @@ The app also uses routes documented elsewhere: `/api/prefs` (quit choice, langua
 - Quitting the app, Run in Background and the menu bar icon exist only in the macOS app; a browser has none of them.
 - The built-in browser's CEF is loaded once per run of the app: a cleared profile restarts the app, and pages are not restored after it.
 - Windows onto other Macs, the Macs menu and other Macs' notifications need macOS 14 or later, and remote access set up on the other Mac.
+- Another Mac's notifications are turned on only in this Mac's **Macs** menu (*Notify me about conversations of:*). In the window onto that Mac, Settings › Conversations & files › Notifications is off and says so: the page there never shows a notification, and the web view could not.
 - At most 10 other Macs; a name at most 60 characters.
 - Keep awake holds off idle sleep only; the display and a closed lid still sleep. It needs macOS's `caffeinate`.
 - A conversation waiting out a usage limit counts as working on the menu bar icon but does not keep the Mac awake.

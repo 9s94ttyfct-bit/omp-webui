@@ -1331,6 +1331,7 @@
 		"notify-shell.spec.ts › a person who refuses the system prompt keeps notifications off, and is told where to allow them": 2.1,
 		"notify-shell.spec.ts › a shell that cannot show notifications says so": 1.8,
 		"notify-shell.spec.ts › denied in System Settings: the toggle says where to allow them, and works again once the app is told it changed": 1.8,
+		"notify-shell.spec.ts › in a window onto another Mac the toggle is off and says where that Mac's notifications are turned on": 1.8,
 		"notify-shell.spec.ts › in the app the page posts no notification when a conversation needs the person or finishes; a click on one the app showed opens the conversation": 7.8,
 		"notify-shell.spec.ts › the page tells the app which conversation it shows, and what changes it": 7.4,
 		"offline.spec.ts › New chat does not offer model-selecting flags in Light on a local server, and does not send ones typed in Full": 24,

@@ -12,7 +12,7 @@ import { useSectionIndex } from "../lib/section-index.ts";
 import { SETTINGS_PAGE_LABEL } from "../lib/settings-page-labels.ts";
 import { lastSettingsPage, pageOfElement, rememberSettingsPage, type SettingsPageId } from "../lib/settings-pages.ts";
 import { SETTINGS, type SettingEntry } from "../lib/settings-search.ts";
-import { inShell } from "../lib/shell-notify.ts";
+import { inRemoteShell, inShell } from "../lib/shell-notify.ts";
 import { applyTheme } from "../lib/theme.ts";
 import { autoTitleEnabled, closeLive, useApp } from "../store/app.ts";
 import { Accounts, isAccountsHelper } from "./Accounts.tsx";
@@ -154,6 +154,8 @@ export function SettingsPage() {
 	const notify = useNotify();
 	// The macOS app shows notifications through the shell, and macOS (System Settings) is where they are allowed.
 	const app = inShell();
+	// A window onto another Mac: the app showing it notifies about that Mac's conversations (its Macs menu), never this page.
+	const remoteWindow = !app && inRemoteShell();
 	const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
 	const [column, setColumn] = useState<HTMLDivElement | null>(null);
 	// Settings' pages (v0.11.18 §10): the one in the address, else the one last shown (and the address says so).
@@ -382,18 +384,20 @@ export function SettingsPage() {
 									type="checkbox"
 									className="mt-1 accent-[var(--accent)]"
 									data-testid="notifications"
-									checked={notify.enabled && notify.permission === "granted"}
-									disabled={notify.permission === "unsupported" || notify.permission === "denied"}
+									checked={!remoteWindow && notify.enabled && notify.permission === "granted"}
+									disabled={remoteWindow || notify.permission === "unsupported" || notify.permission === "denied"}
 									onChange={(e) => void setNotifications(e.target.checked)}
 								/>
 								<span>
 									{t("pages.settingsNotify")}
 									<span className="block text-xs text-muted" data-testid="notifications-hint">
-										{notify.permission === "unsupported"
-											? t(app ? "pages.settingsNotifyUnsupportedApp" : "pages.settingsNotifyUnsupported")
-											: notify.permission === "denied"
-												? t(app ? "pages.settingsNotifyBlockedApp" : "pages.settingsNotifyBlocked")
-												: t(app ? "pages.settingsNotifyHintApp" : "pages.settingsNotifyHint")}
+										{remoteWindow
+											? t("pages.settingsNotifyRemoteWindow")
+											: notify.permission === "unsupported"
+												? t(app ? "pages.settingsNotifyUnsupportedApp" : "pages.settingsNotifyUnsupported")
+												: notify.permission === "denied"
+													? t(app ? "pages.settingsNotifyBlockedApp" : "pages.settingsNotifyBlocked")
+													: t(app ? "pages.settingsNotifyHintApp" : "pages.settingsNotifyHint")}
 									</span>
 								</span>
 							</label>
