@@ -173,13 +173,16 @@ export function UIRequests({ live }: { live: LiveState }) {
 		el.focus({ preventScroll: true });
 	}, [id]);
 	const liveId = live.info.liveId;
-	// A field of omp's `ask` form, asked on its own: the form's words around it are shown with it.
-	const askHtml =
-		req && (req.method === "input" || req.method === "editor" || req.method === "select") ? runningAskForm(live) : null;
-	const formBlocks = useMemo(() => (askHtml ? formContext(askHtml) : null), [askHtml]);
 	const approval = req ? isApproval(req) : false;
 	// The gate's confirmation of a risky call has its own words (see `shared/risk-confirm.ts`).
 	const risk = req ? parseRiskTitle(req.title) : null;
+	// A field of omp's `ask` form, asked on its own: the form's words around it are shown with it. A tool approval or the
+	// gate's question that comes meanwhile (a subagent's call) is not one of its fields.
+	const askHtml =
+		req && !approval && !risk && (req.method === "input" || req.method === "editor" || req.method === "select")
+			? runningAskForm(live)
+			: null;
+	const formBlocks = useMemo(() => (askHtml ? formContext(askHtml) : null), [askHtml]);
 	// An approval's title is several lines: the tool first, then the command or path it is about.
 	const [head, ...rest] = (req?.title ?? "").split("\n");
 	// A shell command's labels are the gate's English: the page says them in its own words (#785).

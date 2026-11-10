@@ -52,11 +52,31 @@ test("a field of an ask form is shown with what the form says around it, as text
 	await expect(context.locator("img, script, b")).toHaveCount(0);
 	expect(await page.evaluate(() => (window as unknown as { __ran?: boolean }).__ran)).toBeUndefined();
 
-	// Once the ask call is over, a dialog of something else has no such words.
+	// A tool approval that comes meanwhile (a subagent's call) is not a field of the form.
 	tap.push({
 		t: "frame",
 		liveId,
 		frame: { type: "extension_ui_request", id: "field-1-cancel", method: "cancel", targetId: "field-1" },
+	});
+	tap.push({
+		t: "frame",
+		liveId,
+		frame: {
+			type: "extension_ui_request",
+			id: "approve-1",
+			method: "select",
+			title: "Allow tool: bash\nCommand: ls",
+			options: ["Approve", "Deny"],
+		},
+	});
+	await expect(request).toContainText("Allow tool: bash");
+	await expect(request.getByTestId("ask-form-context")).toHaveCount(0);
+
+	// Once the ask call is over, a dialog of something else has no such words.
+	tap.push({
+		t: "frame",
+		liveId,
+		frame: { type: "extension_ui_request", id: "approve-1-cancel", method: "cancel", targetId: "approve-1" },
 	});
 	tap.push({
 		t: "frame",
