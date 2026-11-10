@@ -71,12 +71,20 @@ test("a checkbox question shows which options are ticked, and each pick changes 
 	await expect(option("Disk")).toBeEnabled();
 	await expect(ticked()).toHaveText(["Network"]);
 
+	// omp slow to ask again (a remote page through the tunnel, a busy computer): the card still waits for it, unmoved.
+	await option("Disk").click();
+	await page.waitForTimeout(2500);
+	await expect(ticked()).toHaveText(["Network", "Disk"]);
+	expect((await request.boundingBox())?.y).toBe(before?.y);
+	ask("q-4", 2);
+	await expect(option("Disk")).toBeEnabled();
+
 	// Done ends the question: the card goes at once, nothing held.
 	await option("✔ Done selecting").click();
 	await expect(request).toHaveCount(0);
 });
 
-test("a checkbox question omp does not ask again is not held on the screen for long", async ({ page }) => {
+test("a held checkbox question goes when the ask call ends", async ({ page }) => {
 	ownSession(0x5f11, "Ask checkboxes held");
 	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
 	const tap = await tapSocket(page);
@@ -100,7 +108,13 @@ test("a checkbox question omp does not ask again is not held on the screen for l
 	});
 	const request = page.getByTestId("ui-request");
 	await request.getByRole("button", { name: "Disk" }).click();
+	await page.waitForTimeout(500);
 	await expect(request).toHaveCount(1);
-	// omp went on to something else (the call was cancelled): the held card goes by itself.
-	await expect(request).toHaveCount(0, { timeout: 5000 });
+	// omp ended the call instead of asking again (cancelled, or stopped): the held card goes with it.
+	tap.push({
+		t: "frame",
+		liveId,
+		frame: { type: "tool_execution_end", toolCallId: "ask-2", toolName: "ask", result: {} },
+	});
+	await expect(request).toHaveCount(0);
 });

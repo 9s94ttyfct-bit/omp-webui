@@ -131,17 +131,18 @@ function FormContext({ blocks }: { blocks: FormBlock[] }) {
 }
 
 /**
- * How long a checkbox question stays on the screen after a pick while omp asks it again: the answer goes to omp and the
- * same question comes back, usually well within this. Without it the card went at each pick and came back a moment
- * later, and the conversation and the message box moved under it each time.
+ * After a pick in a checkbox question, the card stays on the screen until omp asks the question again: without it the card
+ * went at each pick and came back a moment later, and the conversation and the message box moved under it each time. It
+ * is held while the `ask` call runs (it ends when the form is answered or cancelled), and at most this long: an omp that
+ * neither asks again nor ends the call does not keep a card that can no longer be answered.
  */
-const CHECKBOX_HOLD_MS = 1500;
+const CHECKBOX_HOLD_MS = 15_000;
 
 /** Pending extension/tool dialogs (omp rpc.md "Extension UI Sub-Protocol"), rendered inline. */
 export function UIRequests({ live }: { live: LiveState }) {
 	const t = useT();
 	const pending = live.uiRequests[0];
-	/** The checkbox question just picked from, kept on the screen until omp asks it again (`CHECKBOX_HOLD_MS`). */
+	/** The checkbox question just picked from, kept on the screen until omp asks it again (see `CHECKBOX_HOLD_MS`). */
 	const [held, setHeld] = useState<{ liveId: string; req: UIRequest } | null>(null);
 	const pendingId = pending?.id;
 	useEffect(() => {
@@ -152,7 +153,8 @@ export function UIRequests({ live }: { live: LiveState }) {
 		const timer = setTimeout(() => setHeld(null), CHECKBOX_HOLD_MS);
 		return () => clearTimeout(timer);
 	}, [held]);
-	const holding = !pending && held?.liveId === live.info.liveId;
+	const asking = runningAskForm(live) !== null;
+	const holding = !pending && asking && held?.liveId === live.info.liveId;
 	const req = pending ?? (holding ? held?.req : undefined);
 	const card = useRef<HTMLDivElement>(null);
 	/**
