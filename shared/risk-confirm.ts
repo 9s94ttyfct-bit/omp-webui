@@ -77,6 +77,11 @@ export const RISK_DETAIL_MAX = 24_000;
  */
 export const RISK_COMMAND = "Command:";
 export const RISK_IN = "In:";
+/**
+ * A command for another computer (`remote_run`, `shared/remote-run.ts`) is shown with this first, on a line of its own:
+ * `Run on <computer>:`, then the command as above. `riskCommand` does not read it, so a page shows the whole detail as it is.
+ */
+export const RISK_ON = "Run on";
 
 /** What a shell command's detail says (see `RISK_COMMAND`), or null when it is some other call's. */
 export function riskCommand(detail: string): { command: string; cwd?: string } | null {

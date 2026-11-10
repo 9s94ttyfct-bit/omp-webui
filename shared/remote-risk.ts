@@ -1,4 +1,4 @@
-import { RISK_COMMAND, RISK_IN, type RiskKind } from "./risk-confirm.ts";
+import { RISK_COMMAND, RISK_IN, RISK_ON, type RiskKind } from "./risk-confirm.ts";
 
 /**
  * Which tool calls are "high-risk", for the opt-in confirmation of risky calls that a remote page drives (Settings ›
@@ -89,6 +89,23 @@ const READ_ONLY_TOOLS = table(
 
 /** `remote_access_*` tools that read (see `shared/remote-ai.ts`): the others change the tunnel or its settings. */
 const REMOTE_TOOLS_READING = table("remote_access_guide", "remote_access_status", "remote_access_check");
+
+/**
+ * The tool that runs a shell command on another of the person's computers (`REMOTE_RUN_TOOL` in `shared/remote-run.ts`, which
+ * this module cannot import: it is copied into omp's process with `risk-confirm.ts` alone).
+ */
+const REMOTE_RUN = "remote_run";
+/** The home folder of that computer, as the scan writes `~` out: no folder of this one, so nothing of this computer's applies. */
+const REMOTE_HOME = "/~remote-home";
+/**
+ * Where a `remote_run` command runs, for the scan: nothing there is the project or scratch space (its paths are that computer's,
+ * and no folder there is known to be safe), so a delete or a write anywhere is outside; protected names (`.ssh`, a shell's
+ * start-up files) are protected there as here. No port or address of this server's is there.
+ */
+const REMOTE_CONTEXT: RiskContext = { roots: [], home: REMOTE_HOME, temp: [], protect: [] };
+
+/** One line of what a call names, for a detail whose lines the page reads apart. */
+const oneLine = (text: string): string => text.replace(/[\r\n]+/g, " ");
 
 /** Folders that hold credentials or the configuration of omp, wherever they are. */
 const PROTECTED_SEGMENTS = table(".ssh", ".gnupg", ".aws", ".omp");
@@ -3255,13 +3272,24 @@ function classify(tool: string, input: Record<string, unknown>, ctx: RiskContext
 			? null
 			: { kinds, detail: `Code${isString(input.language) ? ` (${input.language})` : ""}:\n${code}` };
 	}
+	// `remote_run`: a shell command for another computer, read there, not here (see `REMOTE_CONTEXT`).
+	if (name === REMOTE_RUN && isString(input.command)) {
+		const start = isString(input.cwd)
+			? (filePathOf(input.cwd, REMOTE_CONTEXT, REMOTE_HOME) ?? REMOTE_HOME)
+			: REMOTE_HOME;
+		const kinds = classifyShell(input.command, REMOTE_CONTEXT, start);
+		if (kinds.length === 0) return null;
+		const on = `${RISK_ON} ${oneLine(isString(input.computer) ? input.computer : "another computer")}:\n`;
+		const where = isString(input.cwd) ? `${RISK_IN} ${oneLine(input.cwd)}\n` : "";
+		return { kinds, detail: `${on}${where}${RISK_COMMAND} ${input.command}` };
+	}
 	// `bash`, and any other tool that is handed a shell command (an MCP server's `execute_shell_command`).
 	if (isString(input.command) && name !== "write") {
 		const start = isString(input.cwd) && root !== null ? (filePathOf(input.cwd, ctx, root) ?? root) : root;
 		const kinds = classifyShell(input.command, ctx, start);
 		if (kinds.length === 0) return null;
 		// The folder first, on one line: the command may hold any line, and the page reads the two apart (`riskCommand`).
-		const where = isString(input.cwd) ? `${RISK_IN} ${input.cwd.replace(/[\r\n]+/g, " ")}\n` : "";
+		const where = isString(input.cwd) ? `${RISK_IN} ${oneLine(input.cwd)}\n` : "";
 		return { kinds, detail: `${where}${RISK_COMMAND} ${input.command}` };
 	}
 	return null;
