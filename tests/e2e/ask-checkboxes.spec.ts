@@ -50,13 +50,57 @@ test("a checkbox question shows which options are ticked, and each pick changes 
 	await expect(option("Network")).toHaveAttribute("aria-pressed", "false");
 	await expect(option("✔ Done selecting")).not.toHaveAttribute("aria-pressed");
 
+	// Between a pick and omp asking again the card stays where it is, the pick already shown: the page does not jump.
+	// (Measured once the card's own fade-in, which rises 4 px, has ended.)
+	await request.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+	const before = await request.boundingBox();
 	await option("Network").click();
 	await expect.poll(() => tap.sent.some((m) => JSON.stringify(m).includes('"value":"Network"'))).toBe(true);
-	ask("q-2", 2);
 	await expect(ticked()).toHaveText(["CPU", "Network"]);
+	await expect(option("Disk"), "answered: not to be answered twice").toBeDisabled();
+	expect((await request.boundingBox())?.y, "the card has not moved").toBe(before?.y);
+	ask("q-2", 2);
+	await expect(option("Disk")).toBeEnabled();
+	await expect(ticked()).toHaveText(["CPU", "Network"]);
+	expect((await request.boundingBox())?.y).toBe(before?.y);
 
 	// A second pick of a ticked option unticks it, as omp does.
 	await option("CPU").click();
-	ask("q-3", 1);
 	await expect(ticked()).toHaveText(["Network"]);
+	ask("q-3", 1);
+	await expect(option("Disk")).toBeEnabled();
+	await expect(ticked()).toHaveText(["Network"]);
+
+	// Done ends the question: the card goes at once, nothing held.
+	await option("✔ Done selecting").click();
+	await expect(request).toHaveCount(0);
+});
+
+test("a checkbox question omp does not ask again is not held on the screen for long", async ({ page }) => {
+	ownSession(0x5f11, "Ask checkboxes held");
+	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
+	const tap = await tapSocket(page);
+	await page.goto("/");
+	const liveId = await startLive(page, tap, "Ask checkboxes held", "ask-checkboxes-2");
+	tap.push({
+		t: "frame",
+		liveId,
+		frame: { type: "tool_execution_start", toolCallId: "ask-2", toolName: "ask", args: { html: FORM } },
+	});
+	tap.push({
+		t: "frame",
+		liveId,
+		frame: {
+			type: "extension_ui_request",
+			id: "h-1",
+			method: "select",
+			title: "(1 selected) Show what",
+			options: OPTIONS,
+		},
+	});
+	const request = page.getByTestId("ui-request");
+	await request.getByRole("button", { name: "Disk" }).click();
+	await expect(request).toHaveCount(1);
+	// omp went on to something else (the call was cancelled): the held card goes by itself.
+	await expect(request).toHaveCount(0, { timeout: 5000 });
 });

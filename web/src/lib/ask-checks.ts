@@ -100,3 +100,11 @@ export function picked(scope: string, dialog: CheckboxDialog, option: string): v
 	else set.add(option);
 	ticks.set(key, set);
 }
+
+/**
+ * The ticks the page holds for `dialog` now, without omp's count to check them by: for the moment between a pick and omp
+ * asking again (the page shows the pick at once), when the count in the title is still the one before it.
+ */
+export function knownTicks(scope: string, dialog: CheckboxDialog): Set<string> {
+	return new Set(ticks.get(keyOf(scope, dialog.question)));
+}

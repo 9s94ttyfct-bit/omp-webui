@@ -13,7 +13,7 @@ import {
 	useState,
 } from "react";
 import { useT } from "../i18n/index.ts";
-import { type CheckboxDialog, checkboxDialog, picked, tickedIn } from "../lib/ask-checks.ts";
+import { type CheckboxDialog, checkboxDialog, knownTicks, picked, tickedIn } from "../lib/ask-checks.ts";
 import { type FormBlock, formContext, runningAskForm } from "../lib/ask-form.ts";
 import { useImeGuard } from "../lib/ime.ts";
 import { revealed } from "../lib/invisible.ts";
@@ -130,10 +130,30 @@ function FormContext({ blocks }: { blocks: FormBlock[] }) {
 	);
 }
 
+/**
+ * How long a checkbox question stays on the screen after a pick while omp asks it again: the answer goes to omp and the
+ * same question comes back, usually well within this. Without it the card went at each pick and came back a moment
+ * later, and the conversation and the message box moved under it each time.
+ */
+const CHECKBOX_HOLD_MS = 1500;
+
 /** Pending extension/tool dialogs (omp rpc.md "Extension UI Sub-Protocol"), rendered inline. */
 export function UIRequests({ live }: { live: LiveState }) {
 	const t = useT();
-	const req = live.uiRequests[0];
+	const pending = live.uiRequests[0];
+	/** The checkbox question just picked from, kept on the screen until omp asks it again (`CHECKBOX_HOLD_MS`). */
+	const [held, setHeld] = useState<{ liveId: string; req: UIRequest } | null>(null);
+	const pendingId = pending?.id;
+	useEffect(() => {
+		if (pendingId !== undefined) setHeld(null);
+	}, [pendingId]);
+	useEffect(() => {
+		if (!held) return;
+		const timer = setTimeout(() => setHeld(null), CHECKBOX_HOLD_MS);
+		return () => clearTimeout(timer);
+	}, [held]);
+	const holding = !pending && held?.liveId === live.info.liveId;
+	const req = pending ?? (holding ? held?.req : undefined);
 	const card = useRef<HTMLDivElement>(null);
 	/**
 	 * A field of the request has had the keyboard: a short window gives it the room (`data-typing`, see index.css), until
@@ -188,7 +208,14 @@ export function UIRequests({ live }: { live: LiveState }) {
 	const boxes = req?.method === "select" && askHtml ? checkboxDialog(req.title, req.options) : null;
 	const scope = `${live.info.liveId}\u0000${askHtml ?? ""}`;
 	const checks: Checks | null =
-		req && boxes ? { dialog: boxes, scope, ticked: tickedIn(scope, boxes, req.options ?? [], askHtml) } : null;
+		req && boxes
+			? {
+					dialog: boxes,
+					scope,
+					// Held after a pick: omp's count is the one before it, so the page's own ticks are shown.
+					ticked: holding ? knownTicks(scope, boxes) : tickedIn(scope, boxes, req.options ?? [], askHtml),
+				}
+			: null;
 	// An approval's title is several lines: the tool first, then the command or path it is about.
 	const [head, ...rest] = (req?.title ?? "").split("\n");
 	// A shell command's labels are the gate's English: the page says them in its own words (#785); a command for another
@@ -316,7 +343,16 @@ export function UIRequests({ live }: { live: LiveState }) {
 				) : null}
 				{/* No key of its own: `Body` below has one, and two siblings with the same key make React render one of them twice. */}
 				<Countdown req={req} approval={approval} />
-				<Body key={req.id} req={req} liveId={liveId} checks={checks} />
+				<Body
+					key={req.id}
+					req={req}
+					liveId={liveId}
+					checks={checks}
+					held={holding}
+					onPick={(option) => {
+						if (checks && option !== checks.dialog.done) setHeld({ liveId, req });
+					}}
+				/>
 			</div>
 		</>
 	);
@@ -347,7 +383,20 @@ interface Checks {
 	ticked: Set<string> | null;
 }
 
-function Body({ req, liveId, checks = null }: { req: UIRequest; liveId: string; checks?: Checks | null }) {
+function Body({
+	req,
+	liveId,
+	checks = null,
+	held = false,
+	onPick,
+}: {
+	req: UIRequest;
+	liveId: string;
+	checks?: Checks | null;
+	/** Answered: on the screen until omp asks again, and not to be answered twice. */
+	held?: boolean;
+	onPick?: (option: string) => void;
+}) {
 	const t = useT();
 	const cancel = () => respond(liveId, { id: req.id, cancelled: true });
 	// The gate's confirmation has two answers that are values of the dialog: they are shown in the page's language.
@@ -396,8 +445,10 @@ function Body({ req, liveId, checks = null }: { req: UIRequest; liveId: string; 
 								)}
 								aria-pressed={ticked === null ? undefined : ticked}
 								data-ticked={ticked ?? undefined}
+								disabled={held}
 								onClick={() => {
 									if (checks) picked(checks.scope, checks.dialog, o);
+									onPick?.(o);
 									respond(liveId, { id: req.id, value: o });
 								}}
 							>
