@@ -14,6 +14,7 @@ import {
 import { join } from "node:path";
 import { RemoteNotSignedIn, RemoteTooOld, RemoteUnsupported } from "../../server/remote-run/client.ts";
 import { copyRemote, type RemoteCopyOptions } from "../../server/remote-run/copy-client.ts";
+import { checkTarget, placeNew } from "../../server/remote-run/copy-place.ts";
 import { RemoteFiles } from "../../server/remote-run/files.ts";
 import { TransferLog } from "../../server/transfer-log.ts";
 import { REMOTE_COPY_MAX_BYTES, REMOTE_COPY_ROUTE, RemoteCopyError } from "../../shared/remote-copy.ts";
@@ -69,12 +70,17 @@ afterEach(async () => {
 	for (const f of fakes.splice(0)) await f.stop();
 });
 
-function fakeRemote(o: { os?: string; old?: boolean } = {}): Fake {
+function fakeRemote(o: { os?: string; old?: boolean; full?: boolean; headers?: Record<string, string> } = {}): Fake {
 	const home = fresh("remote-home");
 	const data = join(home, ".omp-webui");
 	mkdirSync(data);
 	const logFile = join(data, "transfers.jsonl");
-	const files = new RemoteFiles({ log: new TransferLog(logFile), places: { home, dataDirs: [data] }, reserve: NONE });
+	const files = new RemoteFiles({
+		log: new TransferLog(logFile),
+		places: { home, dataDirs: [data] },
+		reserve: NONE,
+		...(o.full ? { spaceOf: async () => ({ free: 0, total: 1e9 }) } : {}),
+	});
 	let gate: { opened: () => void; held: Promise<void>; release: Promise<void> } | null = null;
 	const fake: Fake = {
 		origin: "",
@@ -121,6 +127,8 @@ function fakeRemote(o: { os?: string; old?: boolean } = {}): Fake {
 				await g.release;
 			}
 			const res = await files.handle(req, url, WHO);
+			// A computer that says something else of what it sends than what it sends.
+			if (o.headers && req.method === "GET") for (const [k, v] of Object.entries(o.headers)) res.headers.set(k, v);
 			if (!g || req.method !== "GET" || !res.body) return res;
 			// The first chunk, then nothing until the test lets the rest go.
 			const reader = res.body.getReader();
@@ -438,5 +446,172 @@ describe("a copy cut off half way", () => {
 		await pollUntil(() => fake.log().some((r) => r.status === "aborted"), "the copy to be given up there");
 		expect(existsSync(join(fake.home, "big.bin"))).toBe(false);
 		expect(staged(fake.home)).toEqual([]);
+	});
+});
+
+describe("the home folder and the app's data are told by what they are, not by how their path is spelt", () => {
+	test("on a volume without case, another spelling of either is refused, here and there, and nothing is moved", async () => {
+		const top = fresh("case");
+		const home = join(top, "Home");
+		const data = join(top, "data", ".omp-webui");
+		mkdirSync(join(home, "proj"), { recursive: true });
+		mkdirSync(data, { recursive: true });
+		writeFileSync(join(home, "keep"), "mine");
+		const places = { home, dataDirs: [data] };
+		// Where the volume tells case apart these are other folders, and may be written.
+		const caseless = existsSync(join(top, "HOME"));
+		for (const abs of [
+			join(top, "HOME"),
+			`${join(top, "home")}/`,
+			join(top, "data", ".OMP-WEBUI"),
+			join(top, "DATA"),
+		]) {
+			const e = await thrown(checkTarget(abs, true, places)).catch((x: unknown) => x);
+			if (caseless) expect(["broad", "ownData"], abs).toContain((e as RemoteCopyError).code);
+		}
+		// Inside the home folder, however it is spelt, is where a copy goes.
+		expect(await checkTarget(join(home, "proj", "x"), true, places)).toBeNull();
+
+		const fake = fakeRemote();
+		const local = here();
+		writeFileSync(join(local.proj, "f"), "x");
+		writeFileSync(join(fake.home, "keep"), "theirs");
+		const upper = join(fake.home, "..", fake.home.split("/").at(-1)?.toUpperCase() ?? "");
+		if (existsSync(upper)) {
+			const e = await thrown(
+				copy(fake, local, { direction: "to", local: join(local.proj, "f"), remote: upper, overwrite: true }),
+			);
+			expect(e).toMatchObject({ code: "broad", there: true });
+			const mine = join(local.home, "..", local.home.split("/").at(-1)?.toUpperCase() ?? "");
+			const back = await thrown(
+				copy(fake, local, { direction: "from", local: mine, remote: "~/keep", overwrite: true }),
+			);
+			expect(back).toMatchObject({ code: "broad", there: false });
+		}
+		expect(readFileSync(join(fake.home, "keep"), "utf8")).toBe("theirs");
+		expect(existsSync(join(local.proj, "f"))).toBe(true);
+	});
+});
+
+describe("a computer that says it sends less than it sends", () => {
+	test("is held to what it said: a folder's files, or a file, past it are refused, and nothing is left here", async () => {
+		const lying = fakeRemote({ headers: { "x-omp-webui-bytes": "1" } });
+		const local = here();
+		folder(join(lying.home, "site"));
+		writeFileSync(join(lying.home, "f.txt"), "six b\n");
+		const site = await thrown(
+			copy(lying, local, { direction: "from", local: join(local.proj, "new/site"), remote: "~/site" }),
+		);
+		expect(site).toMatchObject({ code: "tooLarge", there: true });
+		expect((site as Error).message).toContain("said it holds");
+		const file = await thrown(
+			copy(lying, local, { direction: "from", local: join(local.proj, "f.txt"), remote: "~/f.txt" }),
+		);
+		expect(file).toMatchObject({ code: "changed" });
+		expect(readdirSync(local.proj)).toEqual([]);
+	});
+});
+
+describe("putting a copy in place", () => {
+	test("never replaces what came at the target after it was looked at: a file, an empty folder, a full one", async () => {
+		const dir = fresh("place");
+		writeFileSync(join(dir, "staged"), "new");
+		writeFileSync(join(dir, "theirs"), "theirs");
+		expect(await thrown(placeNew(join(dir, "staged"), join(dir, "theirs")))).toMatchObject({ code: "exists" });
+		expect(readFileSync(join(dir, "theirs"), "utf8")).toBe("theirs");
+		expect(readFileSync(join(dir, "staged"), "utf8")).toBe("new");
+
+		mkdirSync(join(dir, "sd"));
+		writeFileSync(join(dir, "sd", "a"), "a");
+		mkdirSync(join(dir, "empty"));
+		mkdirSync(join(dir, "full"));
+		writeFileSync(join(dir, "full", "b"), "b");
+		for (const target of ["empty", "full", "theirs"])
+			expect(await thrown(placeNew(join(dir, "sd"), join(dir, target))), target).toMatchObject({ code: "exists" });
+		expect(readdirSync(join(dir, "empty"))).toEqual([]);
+		expect(readdirSync(join(dir, "full"))).toEqual(["b"]);
+		expect(readFileSync(join(dir, "theirs"), "utf8")).toBe("theirs");
+		expect(readdirSync(join(dir, "sd"))).toEqual(["a"]);
+
+		// Where nothing is, it is put, and the staged name is gone.
+		await placeNew(join(dir, "sd"), join(dir, "new-dir"));
+		await placeNew(join(dir, "staged"), join(dir, "new-file"));
+		expect(readFileSync(join(dir, "new-dir", "a"), "utf8")).toBe("a");
+		expect(readFileSync(join(dir, "new-file"), "utf8")).toBe("new");
+		expect(existsSync(join(dir, "sd")) || existsSync(join(dir, "staged"))).toBe(false);
+	});
+
+	test("a disk without room is found before any folder is made, on either side", async () => {
+		const fake = fakeRemote();
+		const local = here();
+		writeFileSync(join(fake.home, "f"), "x");
+		const here_ = await thrown(
+			copy(fake, local, {
+				direction: "from",
+				local: join(local.proj, "a/b/c"),
+				remote: "~/f",
+				spaceOf: async () => ({ free: 0, total: 1e9 }),
+			}),
+		);
+		expect(here_).toMatchObject({ code: "diskFull", there: false });
+		expect(existsSync(join(local.proj, "a"))).toBe(false);
+		const full = fakeRemote({ full: true });
+		writeFileSync(join(local.proj, "f"), "x");
+		const there = await thrown(copy(full, local, { direction: "to", local: join(local.proj, "f"), remote: "~/a/b/c" }));
+		expect(there).toMatchObject({ code: "diskFull", there: true });
+		expect(existsSync(join(full.home, "a"))).toBe(false);
+	});
+});
+
+describe("an upload whose piece stalls", () => {
+	test("is given up once no byte has come for the idle time, the stalled request included, and leaves nothing", async () => {
+		let now = 1_000;
+		const home = fresh("stall-home");
+		const data = join(home, ".omp-webui");
+		mkdirSync(data);
+		const files = new RemoteFiles({
+			log: new TransferLog(join(data, "transfers.jsonl")),
+			places: { home, dataDirs: [data] },
+			reserve: NONE,
+			now: () => now,
+			idleMs: 1_000,
+		});
+		try {
+			const ask = (path: string, init: RequestInit = {}) => {
+				const req = new Request(`http://omp.example.com${path}`, init);
+				return files.handle(req, new URL(req.url), WHO);
+			};
+			const begun = (await (
+				await ask(`${REMOTE_COPY_ROUTE}?path=~/big&kind=file&size=10&bytes=10`, { method: "POST" })
+			).json()) as {
+				id: string;
+			};
+			// Four bytes, then nothing, and the request never ends.
+			const body = new ReadableStream<Uint8Array>({ start: (c) => c.enqueue(new Uint8Array(4)) });
+			const put = ask(`${REMOTE_COPY_ROUTE}/${begun.id}?offset=0`, {
+				method: "PUT",
+				body,
+				duplex: "half",
+			} as RequestInit);
+			await pollUntil(
+				() => staged(home).length === 1 && lstatSync(join(home, staged(home)[0] ?? "")).size === 4,
+				"the piece to arrive",
+			);
+			now += 500;
+			await files.expire();
+			expect(staged(home)).toHaveLength(1);
+			now += 2_000;
+			await files.expire();
+			const res = await put;
+			expect(res.status).toBe(404);
+			expect(staged(home)).toEqual([]);
+			expect(existsSync(join(home, "big"))).toBe(false);
+			const finish = await ask(`${REMOTE_COPY_ROUTE}/${begun.id}`, { method: "POST" });
+			expect(finish.status).toBe(404);
+			const log = readFileSync(join(data, "transfers.jsonl"), "utf8").trim().split("\n");
+			expect(JSON.parse(log.at(-1) ?? "{}")).toMatchObject({ kind: "copy-receive", status: "expired" });
+		} finally {
+			await files.close();
+		}
 	});
 });

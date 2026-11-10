@@ -266,4 +266,18 @@ describe("an unpacker refuses, before writing it", () => {
 		const whole = craft([{ name: "f", body: "123" }]);
 		await refused(whole.subarray(0, 1024), "cut short");
 	});
+
+	test("folders no entry names count as entries: a few deep names cannot make millions of folders", async () => {
+		const deep = Array.from({ length: 40 }, (_, i) => `d${i}`).join("/");
+		const limits = { maxBytes: 1024, maxEntries: 10 };
+		const { dest, error } = await attempt(craft([{ name: `${deep}/f`, body: "x" }]), 512, limits);
+		expect(error).toMatchObject({ code: "tooLarge" });
+		// It stopped at the limit: no more folders than that were made.
+		let made = 0;
+		for (let d = dest; existsSync(join(d, `d${made}`)); d = join(d, `d${made++}`));
+		expect(made).toBeLessThanOrEqual(10);
+		// Ten entries in all, named or not, are taken.
+		const shallow = Array.from({ length: 9 }, (_, i) => `d${i}`).join("/");
+		expect((await attempt(craft([{ name: `${shallow}/f`, body: "x" }]), 512, limits)).error).toBeNull();
+	});
 });

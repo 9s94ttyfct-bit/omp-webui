@@ -483,7 +483,13 @@ export class TarUnpacker {
 			at = at === "" ? part : `${at}/${part}`;
 			if (this.#links.has(at) || (this.#taken.has(at) && !this.#dirs.has(at)))
 				throw bad(`has an entry that leads through a link or a file (${JSON.stringify(e.path)})`);
-			if (!this.#dirs.has(at)) await this.#mkdir(at);
+			if (!this.#dirs.has(at)) {
+				// A folder no entry named is one more made all the same: it counts, or a few entries with deep names would make
+				// millions of them.
+				if (++this.#entries > this.limits.maxEntries)
+					throw new RemoteCopyError(`More than ${this.limits.maxEntries} files and folders to copy`, "tooLarge");
+				await this.#mkdir(at);
+			}
 		}
 		if (this.#dirs.has(e.path) && e.type === "dir") return;
 		if (this.#taken.has(e.path) || this.#dirs.has(e.path)) throw bad(`names ${JSON.stringify(e.path)} twice`);

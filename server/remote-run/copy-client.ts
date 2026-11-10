@@ -28,6 +28,7 @@ import {
 	type Reserve,
 	type SpaceOf,
 	stagedBeside,
+	unmake,
 } from "./copy-place.ts";
 import { fsFailure, packTar, TarUnpacker, tarSize, walkFolder } from "./tar.ts";
 
@@ -128,9 +129,12 @@ async function download(o: RemoteCopyOptions, ask: Ask): Promise<Omit<RemoteCopy
 	const staged = stagedBeside(target);
 	let handle: FileHandle | null = null;
 	let unpacker: TarUnpacker | null = null;
+	let made: string | undefined;
 	try {
-		await makeParent(target);
+		// Room for what the other computer says it sends, before a folder is made; what it sends is then held to what it said
+		// (a file to its bytes, a folder's files to theirs), so a computer that says less cannot write past the room kept free.
 		await ensureRoom(dirname(target), bytes, { ...DEFAULT_LIMITS, ...o.reserve }, o.spaceOf);
+		made = await makeParent(target);
 		let got = 0;
 		if (kind === "file") {
 			const h = await open(
@@ -150,7 +154,7 @@ async function download(o: RemoteCopyOptions, ask: Ask): Promise<Omit<RemoteCopy
 			if (got !== bytes) throw new RemoteCopyError(`${from} changed while it was copied: try again`, "changed");
 		} else {
 			await mkdir(staged);
-			const u = new TarUnpacker(staged, LIMITS);
+			const u = new TarUnpacker(staged, { ...LIMITS, maxBytes: bytes });
 			unpacker = u;
 			for await (const chunk of res.body ?? []) await u.write(chunk);
 			await u.end();
@@ -165,9 +169,22 @@ async function download(o: RemoteCopyOptions, ask: Ask): Promise<Omit<RemoteCopy
 		const replaced = await publish(staged, target, o.overwrite);
 		return { kind, files, bytes, leftOut, replaced, from, to: target };
 	} catch (e) {
+		await res.body?.cancel().catch(() => {});
 		await handle?.close().catch(() => {});
 		await unpacker?.close();
 		await discard(staged);
+		await unmake(target, made);
+		if (
+			e instanceof RemoteCopyError &&
+			e.code === "tooLarge" &&
+			unpacker &&
+			e.message.endsWith("bytes of files to copy")
+		)
+			throw new RemoteCopyError(
+				`${from} sent more than the ${bytes} bytes of files it said it holds`,
+				"tooLarge",
+				true,
+			);
 		throw fsFailure(e, target);
 	}
 }

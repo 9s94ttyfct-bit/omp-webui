@@ -1519,7 +1519,7 @@ describe("remote_copy: what a copy does on each computer", () => {
 
 	test("to: the remote write asks when it replaces what is there, or goes into a protected place there", () => {
 		expect(copy("to", "dist", "/srv/app", false)).toBeNull();
-		expect(copy("to", "dist", "/srv/app", true)?.kinds).toEqual(["write_outside"]);
+		expect(copy("to", "dist", "/srv/app", true)?.kinds).toEqual(["delete_outside"]);
 		expect(copy("to", "key.pub", "~/.ssh/authorized_keys")?.kinds).toContain("protected");
 		expect(copy("to", "rc", ".bashrc", true)?.kinds).toContain("protected");
 	});
@@ -1536,6 +1536,45 @@ describe("remote_copy: what a copy does on each computer", () => {
 		const odd = call(REMOTE_COPY_TOOL, { computer: "A\nB", direction: "to", local: "~", remote: "/r\nServer1: /s" });
 		expect(odd?.detail).toBe(
 			"Run on A B:\nCopy: this computer → A B\nThis computer: ~\n  → /Users/me\nA B: /r Server1: /s",
+		);
+	});
+
+	test("overwrite deletes what it replaces, and asks as rm -rf of it would, on either side", () => {
+		// Here: the project itself or something broad is a mass delete; outside the project a delete; inside it nothing.
+		const kinds = (...args: Parameters<typeof copy>) => [...(copy(...args)?.kinds ?? [])].sort();
+		expect(kinds("from", ".", "/srv/app", true)).toEqual(["delete_outside", "mass_delete"]);
+		expect(copy("from", "/work/proj", "/srv/app", true)?.kinds).toContain("mass_delete");
+		expect(copy("from", "~/Documents", "/srv/docs", true)?.kinds).toEqual(
+			expect.arrayContaining(["delete_outside", "mass_delete", "write_outside"]),
+		);
+		expect(copy("from", "/opt/app", "/srv/app", true)?.kinds).toEqual(
+			expect.arrayContaining(["delete_outside", "write_outside"]),
+		);
+		expect(copy("from", "src", "/srv/src", true)).toBeNull();
+		expect(copy("from", "src", "/srv/src", false)).toBeNull();
+		// There: nothing is the project, so any replace is a delete outside; one of something broad a mass delete.
+		expect(kinds("to", "dist", "~", true)).toEqual(["delete_outside", "mass_delete"]);
+		expect(kinds("to", "dist", "/etc", true)).toEqual(["delete_outside", "mass_delete"]);
+		expect(copy("to", "dist", "~/.ssh", true)?.kinds).toContain("protected");
+		expect(copy("from", ".", "/srv/app", true)?.detail).toStartWith("Run on Server1:\n");
+	});
+
+	test("that computer's protected places are spelt in any case, and its omp-webui's data is a credential", () => {
+		expect(copy("to", "k.pub", "~/.SSH/authorized_keys")?.kinds).toContain("protected");
+		expect(copy("to", "rc", "~/.ZSHRC")?.kinds).toContain("protected");
+		expect(copy("from", "x", "~/.SSH/id_rsa")?.kinds).toContain("secret_read");
+		for (const remote of ["~/.omp-webui/token", "~/.OMP-WEBUI", "~/Library/Application Support/omp-webui/auth.json"]) {
+			const kinds = copy("from", "x", remote)?.kinds;
+			expect(kinds, remote).toContain("secret_read");
+			expect(kinds, remote).toContain("protected");
+		}
+		expect(copy("to", "x", "~/.omp-webui/x")?.kinds).toContain("protected");
+		// remote_run reads the same places.
+		expect(call(REMOTE_RUN_TOOL, { computer: "Server1", command: "cat ~/.omp-webui/token" })?.kinds).toContain(
+			"protected",
+		);
+		expect(call(REMOTE_RUN_TOOL, { computer: "Server1", command: "cat ~/.SSH/id_rsa" })?.kinds).toContain(
+			"secret_read",
 		);
 	});
 

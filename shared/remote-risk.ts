@@ -100,9 +100,17 @@ const REMOTE_HOME = "/~remote-home";
 /**
  * Where a `remote_run` command runs, for the scan: nothing there is the project or scratch space (its paths are that computer's,
  * and no folder there is known to be safe), so a delete or a write anywhere is outside; protected names (`.ssh`, a shell's
- * start-up files) are protected there as here. No port or address of this server's is there.
+ * start-up files) are protected there as here, and so are the places an omp-webui there keeps its data (its sign-in token
+ * among them), the web version's and the macOS app's. Without case: which file system that computer has is not known, and
+ * folding where a volume does tell case apart only asks more. No port or address of this server's is there.
  */
-const REMOTE_CONTEXT: RiskContext = { roots: [], home: REMOTE_HOME, temp: [], protect: [] };
+const REMOTE_CONTEXT: RiskContext = {
+	roots: [],
+	home: REMOTE_HOME,
+	temp: [],
+	protect: [`${REMOTE_HOME}/.omp-webui`, `${REMOTE_HOME}/Library/Application Support/omp-webui`],
+	caseless: true,
+};
 /** The tool that copies a file or a folder between this computer and another (`REMOTE_COPY_TOOL`, `shared/remote-copy.ts`). */
 const REMOTE_COPY = "remote_copy";
 
@@ -3193,38 +3201,54 @@ function fromPaths(paths: readonly string[], ctx: RiskContext, root: string | nu
 
 /**
  * What carrying `abs` off its computer reads: a credential (`secret_read`), a protected place (`protected`), or a folder that
- * holds either: the home folder, or what holds it (its `.ssh`), and a folder that holds one of the app's protected places.
+ * holds either: the home folder, or what holds it (its `.ssh`), and a folder that holds one of the app's protected places. What
+ * is in the app's own places (its sign-in token) is a credential too.
  */
 function carried(abs: string, c: RiskContext, found: Set<RiskKind>): void {
-	if (isSecret(abs, c) || within(folded(normalize(c.home), c), folded(abs, c))) found.add("secret_read");
+	const inApp = c.protect.some((d) => d !== "" && within(folded(abs, c), folded(d, c)));
+	if (inApp || isSecret(abs, c) || within(folded(normalize(c.home), c), folded(abs, c))) found.add("secret_read");
 	if (isProtected(abs, c) || c.protect.some((d) => d !== "" && within(folded(d, c), folded(abs, c))))
 		found.add("protected");
+}
+
+/**
+ * What `overwrite` replaces at `abs`: what was there is deleted whole, so it asks as `rm -rf` of it would (`delete`): a
+ * protected place, the project itself or something broad (`mass_delete`), or anything outside the project.
+ */
+function replaced(abs: string, c: RiskContext, found: Set<RiskKind>): void {
+	if (isProtected(abs, c)) found.add("protected");
+	else if (c.roots.includes(abs) || isBroad(abs, c)) {
+		found.add("delete_outside");
+		found.add("mass_delete");
+	} else if (!inProject(abs, c) && !inTemp(abs, c)) found.add("delete_outside");
 }
 
 /**
  * A `remote_copy` call, for what it does on each computer. `from` writes `local` here as `write` would (outside the project, a
  * protected place), and reads `remote` there as `remote_run`'s `cat` would (`carried`, with nothing of this computer's known
  * there: `REMOTE_CONTEXT`). `to` carries `local` off this computer (`carried`, against this computer's places), and writes
- * `remote` there: a protected place is one there as here, and anywhere else is outside any project only when it replaces what
- * is there (`overwrite`); a new file or folder replaces nothing. The detail names the computer first (`RISK_ON`).
+ * `remote` there, where a protected place is one as here. With `overwrite`, the target on its side is also deleted whole
+ * (`replaced`); a new file or folder replaces nothing. The detail names the computer first (`RISK_ON`).
  */
 function copyRisk(input: Record<string, unknown>, ctx: RiskContext, root: string | null): Risk | null {
 	const { local, remote, direction } = input;
 	if (!isString(local) || !isString(remote) || (direction !== "to" && direction !== "from")) return null;
+	const overwrite = input.overwrite === true;
 	const found = new Set<RiskKind>();
 	const here = filePathOf(local, ctx, root);
 	const there = filePathOf(remote, REMOTE_CONTEXT, REMOTE_HOME);
 	if (direction === "from") {
 		classifyPath(local, ctx, root, found);
+		if (overwrite && here !== null) replaced(here, ctx, found);
 		if (there !== null) carried(there, REMOTE_CONTEXT, found);
 	} else {
 		if (here !== null) carried(here, ctx, found);
-		if (there !== null && isProtected(there, REMOTE_CONTEXT)) found.add("protected");
-		else if (there !== null && input.overwrite === true) found.add("write_outside");
+		if (there !== null && overwrite) replaced(there, REMOTE_CONTEXT, found);
+		else if (there !== null && isProtected(there, REMOTE_CONTEXT)) found.add("protected");
 	}
 	if (found.size === 0) return null;
 	const computer = oneLine(isString(input.computer) ? input.computer : "another computer");
-	const how = `Copy: ${direction === "to" ? `this computer → ${computer}` : `${computer} → this computer`}${input.overwrite === true ? ", replacing what is there" : ""}`;
+	const how = `Copy: ${direction === "to" ? `this computer → ${computer}` : `${computer} → this computer`}${overwrite ? ", replacing what is there" : ""}`;
 	const shown = here !== null && here !== local ? `\n  → ${here}` : "";
 	return {
 		kinds: ordered(found),

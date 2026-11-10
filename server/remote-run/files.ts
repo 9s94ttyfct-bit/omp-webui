@@ -28,6 +28,7 @@ import {
 	type Reserve,
 	type SpaceOf,
 	stagedBeside,
+	unmake,
 } from "./copy-place.ts";
 import { fsFailure, packTar, TarUnpacker, walkFolder } from "./tar.ts";
 
@@ -52,6 +53,8 @@ export interface RemoteFilesOptions {
 	reserve: Reserve;
 	spaceOf?: SpaceOf;
 	now?: () => number;
+	/** How long an upload may go without a byte arriving (`REMOTE_COPY_IDLE_MS`; tests: less). */
+	idleMs?: number;
 }
 
 interface Upload {
@@ -68,10 +71,15 @@ interface Upload {
 	mode: number | null;
 	mtime: number | null;
 	staged: string;
+	/** The first folder above the target this upload made (removed again when it is given up). */
+	made: string | undefined;
 	handle: FileHandle | null;
 	unpacker: TarUnpacker | null;
-	/** A piece is being written. */
+	/** A piece or the finish is under way. */
 	busy: boolean;
+	/** Stops the piece under way from being read (null: none is). */
+	stop: (() => void) | null;
+	/** When a byte last arrived (or the upload began). */
 	touched: number;
 	started: number;
 }
@@ -126,11 +134,19 @@ export class RemoteFiles {
 		await Promise.all([...this.#uploads.values()].map((u) => this.#drop(u, "aborted")));
 	}
 
-	/** Uploads that got no piece for `REMOTE_COPY_IDLE_MS` are given up. */
+	/**
+	 * Uploads that got no byte for `idleMs` are given up, a piece that is under way and stalled included: its request is no
+	 * longer read, and what it holds of the disk is given back.
+	 */
 	async expire(): Promise<void> {
 		const now = this.#now();
-		for (const u of [...this.#uploads.values()])
-			if (!u.busy && now - u.touched > REMOTE_COPY_IDLE_MS) await this.#drop(u, "expired");
+		const idle = this.o.idleMs ?? REMOTE_COPY_IDLE_MS;
+		for (const u of [...this.#uploads.values()]) {
+			// The finish is under way (`busy` with no piece): it is quick and ends the upload itself.
+			if (now - u.touched <= idle || (u.busy && !u.stop)) continue;
+			u.stop?.();
+			await this.#drop(u, "expired");
+		}
 	}
 
 	#record(kind: TransferKind, who: string, path: string, started: number, status: string, more = {}): void {
@@ -255,20 +271,26 @@ export class RemoteFiles {
 				throw new RemoteCopyError("size does not fit bytes", "badRequest");
 			const overwrite = q.get("overwrite") === "1";
 			await checkTarget(abs, overwrite, this.o.places);
-			await makeParent(abs);
+			// Room first: a copy that is refused for it makes no folder.
 			await ensureRoom(dirname(abs), this.#owed() + size, this.o.reserve, this.o.spaceOf);
+			const made = await makeParent(abs);
 			const staged = stagedBeside(abs);
 			let handle: FileHandle | null = null;
 			let unpacker: TarUnpacker | null = null;
-			if (kind === "file")
-				handle = await open(
-					staged,
-					constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
-					0o600,
-				).catch((e) => Promise.reject(fsFailure(e, dirname(abs))));
-			else {
-				await mkdir(staged).catch((e) => Promise.reject(fsFailure(e, dirname(abs))));
-				unpacker = new TarUnpacker(staged, { maxBytes: REMOTE_COPY_MAX_BYTES, maxEntries: REMOTE_COPY_MAX_ENTRIES });
+			try {
+				if (kind === "file")
+					handle = await open(
+						staged,
+						constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+						0o600,
+					);
+				else {
+					await mkdir(staged);
+					unpacker = new TarUnpacker(staged, { maxBytes: bytes, maxEntries: REMOTE_COPY_MAX_ENTRIES });
+				}
+			} catch (e) {
+				await unmake(abs, made);
+				throw fsFailure(e, dirname(abs));
 			}
 			const u: Upload = {
 				id: randomBytes(16).toString("hex"),
@@ -282,9 +304,11 @@ export class RemoteFiles {
 				mode: wholeOf(q, "mode", 8),
 				mtime: wholeOf(q, "mtime"),
 				staged,
+				made,
 				handle,
 				unpacker,
 				busy: false,
+				stop: null,
 				touched: this.#now(),
 				started,
 			};
@@ -310,9 +334,16 @@ export class RemoteFiles {
 		if (offset !== u.received)
 			return failure(new RemoteCopyError(`The copy stands at ${u.received} bytes`, "offset"), { received: u.received });
 		u.busy = true;
+		const reader = req.body?.getReader();
+		u.stop = () => void reader?.cancel().catch(() => {});
 		try {
 			let piece = 0;
-			for await (const chunk of req.body ?? []) {
+			for (;;) {
+				const next = await reader?.read();
+				if (!next || next.done) break;
+				const chunk = next.value;
+				if (!this.#uploads.has(u.id)) break;
+				u.touched = this.#now();
 				piece += chunk.length;
 				if (piece > REMOTE_COPY_PIECE.max)
 					throw new RemoteCopyError(`A piece is at most ${REMOTE_COPY_PIECE.max} bytes`, "tooLarge");
@@ -327,6 +358,9 @@ export class RemoteFiles {
 				} else await u.unpacker?.write(chunk);
 				u.received += chunk.length;
 			}
+			// Given up while the piece was read (it stalled past `idleMs`, or the copy was cancelled): nothing of it stands.
+			if (!this.#uploads.has(u.id))
+				throw new RemoteCopyError("The copy was given up while this piece arrived", "unknownUpload");
 			u.touched = this.#now();
 			return Response.json({ received: u.received });
 		} catch (e) {
@@ -335,6 +369,8 @@ export class RemoteFiles {
 			throw e;
 		} finally {
 			u.busy = false;
+			u.stop = null;
+			reader?.releaseLock();
 		}
 	}
 
@@ -379,6 +415,7 @@ export class RemoteFiles {
 		await u.handle?.close().catch(() => {});
 		await u.unpacker?.close();
 		await discard(u.staged);
+		await unmake(u.abs, u.made);
 		this.#record("copy-receive", u.who, u.abs, u.started, status, { size: u.bytes });
 	}
 }
