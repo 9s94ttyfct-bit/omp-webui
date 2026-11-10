@@ -72,20 +72,19 @@ describe("which volumes are disks to watch", () => {
 			bsize: 4096,
 			bfree,
 		});
-		const out = distinctDisks(
-			[
-				look("Storage", 10, 1_000_000_000, 400_000_000),
-				look("TimeMachine", 11, 1_000_000_000, 400_000_050),
-				look("Other", 12, 1_000_000_000, 300_000_000),
-				look("Again", 12, 5, 1),
-			],
-			16,
-		);
+		const out = distinctDisks([
+			look("Storage", 10, 1_000_000_000, 400_000_000),
+			look("TimeMachine", 11, 1_000_000_000, 400_000_050),
+			look("Other", 12, 1_000_000_000, 300_000_000),
+			look("Again", 12, 5, 1),
+		]);
 		expect(out.map((d) => [d.mount, d.names])).toEqual([
 			["/Volumes/Storage", ["Storage", "TimeMachine"]],
 			["/Volumes/Other", ["Other", "Again"]],
 		]);
-		expect(distinctDisks([look("A", 1, 10, 1), look("B", 2, 20, 1), look("C", 3, 30, 1)], 2)).toHaveLength(2);
+		// Every distinct disk is kept, however many there are.
+		const many = Array.from({ length: 40 }, (_, i) => look(`D${i}`, 100 + i, 1000 + i, 1));
+		expect(distinctDisks(many)).toHaveLength(40);
 	});
 });
 
@@ -200,7 +199,10 @@ describe("the disks chosen", () => {
 		expect(prefs.apply({ [PREF.hostDisks]: '["/","/Volumes/Backup"]' }).values[PREF.hostDisks]).toBe(
 			'["/","/Volumes/Backup"]',
 		);
-		for (const v of ['"/"', "[1]", '[""]', "not json", JSON.stringify(Array.from({ length: 17 }, (_, i) => `/d${i}`))])
+		// Any number of disks a computer may have can be chosen.
+		const forty = JSON.stringify(Array.from({ length: 40 }, (_, i) => `/d${i}`));
+		expect(prefs.apply({ [PREF.hostDisks]: forty }).values[PREF.hostDisks]).toBe(forty);
+		for (const v of ['"/"', "[1]", '[""]', "not json"])
 			expect(() => prefs.apply({ [PREF.hostDisks]: v }), v).toThrow(PrefsError);
 	});
 

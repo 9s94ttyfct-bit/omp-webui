@@ -1,4 +1,4 @@
-import { type HostPoint, type HostSeries, MAX_DISKS, type Pressure } from "../shared/host.ts";
+import type { HostPoint, HostSeries, Pressure } from "../shared/host.ts";
 import { tenth } from "./host-parse.ts";
 
 /** A figure that is not there, in a column of tenths (of a percent: 0–1000; of a watt: 0–60000). */
@@ -12,10 +12,11 @@ const MB = 1e6;
 
 /**
  * A fixed number of looks at the host, in columns of typed arrays (25 bytes a look, and 4 more for each disk: a day of
- * minutes and an hour of looks are 87 KB together, and 14 KB a disk), with a column for a disk made when the disk is first
- * seen and at most `MAX_DISKS` of them. Writing past the end overwrites the oldest, so the bound holds however long the
- * server runs. Percentages and watts are kept in tenths, which is all the pages draw; the network's bytes a second and a
- * disk's free megabytes as 32-bit floats (NaN: none), which keep them to a few parts in ten million.
+ * minutes and an hour of looks are 87 KB together, and 14 KB a disk). A disk's column is made when the disk is first seen
+ * and dropped once the ring has no figure of it left (it was taken out longer ago than the ring reaches), so it holds the
+ * disks there are, and were within its reach. Writing past the end overwrites the oldest, so the bound holds however long
+ * the server runs. Percentages and watts are kept in tenths, which is all the pages draw; the network's bytes a second
+ * and a disk's free megabytes as 32-bit floats (NaN: none), which keep them to a few parts in ten million.
  */
 export class HostRing {
 	readonly capacity: number;
@@ -29,9 +30,13 @@ export class HostRing {
 	private readonly tx: Float32Array;
 	/** A column of free megabytes per disk, by its id, in the order the disks were first seen. */
 	private readonly disks = new Map<string, Float32Array>();
+	/** For each disk, the count of looks written when its latest figure was (`written`). */
+	private readonly diskSeen = new Map<string, number>();
 	/** Where the next look is written. */
 	private next = 0;
 	private size = 0;
+	/** Looks written since the ring was made. */
+	private written = 0;
 
 	constructor(capacity: number) {
 		if (!Number.isInteger(capacity) || capacity < 1) throw new RangeError("A ring holds at least one look");
@@ -50,25 +55,6 @@ export class HostRing {
 		return this.size;
 	}
 
-	/**
-	 * The column of disk `id`, made (all none) the first time it is seen. At `MAX_DISKS` the column of a disk that is not
-	 * in this look (taken out) makes room, one with nothing left in it first: a disk plugged in always has a column, as the
-	 * server lists at most `MAX_DISKS` at a time.
-	 */
-	private diskColumn(id: string, present: Record<string, unknown>): Float32Array | null {
-		const had = this.disks.get(id);
-		if (had) return had;
-		if (this.disks.size >= MAX_DISKS) {
-			const gone = [...this.disks].filter(([d]) => !Object.hasOwn(present, d));
-			const drop = (gone.find(([, col]) => col.every(Number.isNaN)) ?? gone[0])?.[0];
-			if (drop === undefined) return null;
-			this.disks.delete(drop);
-		}
-		const col = new Float32Array(this.capacity).fill(Number.NaN);
-		this.disks.set(id, col);
-		return col;
-	}
-
 	push(p: HostPoint): void {
 		const i = this.next;
 		this.t[i] = p.t;
@@ -81,8 +67,19 @@ export class HostRing {
 		this.rx[i] = p.rx ?? Number.NaN;
 		this.tx[i] = p.tx ?? Number.NaN;
 		const disks = p.disks ?? {};
-		for (const id of Object.keys(disks)) this.diskColumn(id, disks);
+		this.written++;
+		for (const [id, free] of Object.entries(disks)) {
+			if (free === null || free === undefined) continue;
+			if (!this.disks.has(id)) this.disks.set(id, new Float32Array(this.capacity).fill(Number.NaN));
+			this.diskSeen.set(id, this.written);
+		}
 		for (const [id, col] of this.disks) {
+			// Its last figure was overwritten: nothing of the disk is left to draw.
+			if (this.written - (this.diskSeen.get(id) ?? 0) >= this.capacity) {
+				this.disks.delete(id);
+				this.diskSeen.delete(id);
+				continue;
+			}
 			const free = disks[id];
 			col[i] = free === null || free === undefined ? Number.NaN : Math.round(free / MB);
 		}

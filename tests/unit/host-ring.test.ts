@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { HostRing, MinuteBuckets } from "../../server/host-ring.ts";
-import { type HostPoint, MAX_DISKS } from "../../shared/host.ts";
+import type { HostPoint } from "../../shared/host.ts";
 
 const point = (t: number, over: Partial<HostPoint> = {}): HostPoint => ({
 	t,
@@ -95,20 +95,19 @@ describe("the ring of looks", () => {
 		expect(ring.last()?.disks).toEqual({ "/": 2e9 });
 	});
 
-	test("at most MAX_DISKS columns: a disk taken out makes room for one plugged in, the emptiest first", () => {
-		const ring = new HostRing(4);
-		const many = (n: number, from = 0) =>
-			Object.fromEntries(Array.from({ length: n }, (_, i) => [`/Volumes/D${from + i}`, 1e9]));
-		ring.push(point(1, { disks: many(MAX_DISKS) }));
-		// Every column's disk is still there: one more has no room.
-		ring.push(point(2, { disks: { ...many(MAX_DISKS), "/Volumes/Extra": 1e9 } }));
-		expect(Object.keys(ring.series().disks)).toHaveLength(MAX_DISKS);
-		expect(ring.series().disks["/Volumes/Extra"]).toBeUndefined();
-		// D0 is taken out and another plugged in at once: D0's column makes room, though it still has figures in it.
-		ring.push(point(3, { disks: { ...many(MAX_DISKS - 1, 1), "/Volumes/Extra": 7e9 } }));
-		expect(ring.series().disks["/Volumes/Extra"]).toEqual([null, null, 7e9]);
+	test("every disk has a column, however many; one taken out keeps it until the ring holds no figure of it", () => {
+		const ring = new HostRing(3);
+		const many = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`/Volumes/D${i}`, 1e9]));
+		ring.push(point(1, { disks: many(40) }));
+		expect(Object.keys(ring.series().disks)).toHaveLength(40);
+		// D0 is taken out: its figure is drawn while the ring reaches back to it, and its column goes when it no longer does.
+		const rest = Object.fromEntries(Object.entries(many(40)).filter(([id]) => id !== "/Volumes/D0"));
+		ring.push(point(2, { disks: rest }));
+		ring.push(point(3, { disks: rest }));
+		expect(ring.series().disks["/Volumes/D0"]).toEqual([1e9, null, null]);
+		ring.push(point(4, { disks: rest }));
 		expect(ring.series().disks["/Volumes/D0"]).toBeUndefined();
-		expect(Object.keys(ring.series().disks)).toHaveLength(MAX_DISKS);
+		expect(Object.keys(ring.series().disks)).toHaveLength(39);
 	});
 
 	test("past its size the oldest are overwritten: the ring never holds more than it was made for", () => {

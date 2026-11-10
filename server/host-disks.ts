@@ -1,5 +1,5 @@
 import { statfsSync, statSync } from "node:fs";
-import { type HostDisk, MAX_DISKS } from "../shared/host.ts";
+import type { HostDisk } from "../shared/host.ts";
 import { type DiskLook, type DiskMount, distinctDisks, sameDisk } from "./host-parse.ts";
 
 /** How often the disks are listed again: one plugged in or taken out shows within this. */
@@ -61,7 +61,7 @@ export function diskWatcher(list: () => Promise<DiskMount[]>, options: DiskWatch
 	async function relist(): Promise<void> {
 		listedAt = now();
 		const looks = (await list()).map(look).filter((l): l is DiskLook => l !== null);
-		const kept = distinctDisks(looks, MAX_DISKS);
+		const kept = distinctDisks(looks);
 		listed = kept.map((d) => ({ id: d.mount, name: d.names.join(", "), total: d.blocks * d.bsize, dev: d.dev }));
 		const data = options.dataPath === undefined ? null : look({ mount: options.dataPath, name: "" });
 		dataDisk = data ? (kept.find((d) => sameDisk(d, data))?.mount ?? null) : null;

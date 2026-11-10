@@ -43,7 +43,7 @@ settings: cli, config, running, host-disks
 
 | Key | Values | Default | Effect |
 |---|---|---|---|
-| `ompw.hostDisks` | a JSON list of up to 16 mount points (`["/","/Volumes/Backup"]`) | unset (every disk) | Synced preference. The disks the Host load pane shows a free-space tile and graph for (Settings › App & system › *Disks in Host load*, card `host-disks`); unset or an empty list is every disk, one plugged in later included. |
+| `ompw.hostDisks` | a JSON list of mount points (`["/","/Volumes/Backup"]`) | unset (every disk) | Synced preference. The disks the Host load pane shows a free-space tile and graph for (Settings › App & system › *Disks in Host load*, card `host-disks`); unset or an empty list is every disk, one plugged in later included. |
 
 Environment variables the server reads:
 

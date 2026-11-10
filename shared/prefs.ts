@@ -81,8 +81,8 @@ export const PREF = {
 	/** Which tool calls show how long they ran (#657): `all` (the default), `shell` (`bash` and the user's own `!commands`) or `off`; see `TOOL_TIMERS` in `web/src/lib/tool-timer.ts`. */
 	toolTimer: "ompw.toolTimer",
 	/**
-	 * Which disks the host load pane shows (#613): a JSON list of their ids (mount points: `/`, `/Volumes/Backup`), at most
-	 * `MAX_DISKS`; unset or empty is every disk the server tells. See `web/src/lib/host-disks.ts`.
+	 * Which disks the host load pane shows (#613): a JSON list of their ids (mount points: `/`, `/Volumes/Backup`); unset or
+	 * empty is every disk the server tells. See `web/src/lib/host-disks.ts`.
 	 */
 	hostDisks: "ompw.hostDisks",
 	/** Where a compact queued while the agent works runs (#651): `turn` (the default: when the turn ends) or `step` (between two steps of it); see `CompactWhere` in `shared/compact-queue.ts`. A conversation's own choice, in This session, starts from it. */
@@ -255,11 +255,11 @@ const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 	[PREF.appAutoUpdate]: switchValue,
 	[PREF.keepAwake]: switchValue,
 	[PREF.toolTimer]: oneOf(["all", "shell", "off"]),
-	// At most `MAX_DISKS` (shared/host.ts) mount points: a list of short strings.
+	// Mount points: a list of short strings (the bound only keeps a stored value small; a computer has far fewer disks).
 	[PREF.hostDisks]: json(
 		(v) =>
 			Array.isArray(v) &&
-			v.length <= 16 &&
+			v.length <= 1024 &&
 			v.every((id) => typeof id === "string" && id.length > 0 && id.length <= 1024),
 	),
 	[PREF.compactWhere]: oneOf(["turn", "step"]),

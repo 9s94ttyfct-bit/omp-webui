@@ -272,8 +272,8 @@ export interface DiskLook extends DiskMount {
 export const sameDisk = (a: DiskLook, b: DiskLook): boolean =>
 	a.dev === b.dev || (a.blocks === b.blocks && a.bsize === b.bsize && Math.abs(a.bfree - b.bfree) <= a.blocks / 10_000);
 
-/** The listed disks once each (`sameDisk`), at most `max`, in the order listed; a disk listed again adds its name. */
-export function distinctDisks(looks: readonly DiskLook[], max: number): (DiskLook & { names: string[] })[] {
+/** The listed disks once each (`sameDisk`), in the order listed; a disk listed again adds its name. */
+export function distinctDisks(looks: readonly DiskLook[]): (DiskLook & { names: string[] })[] {
 	const out: (DiskLook & { names: string[] })[] = [];
 	for (const d of looks) {
 		const same = out.find((o) => sameDisk(o, d));
@@ -281,7 +281,7 @@ export function distinctDisks(looks: readonly DiskLook[], max: number): (DiskLoo
 			if (!same.names.includes(d.name)) same.names.push(d.name);
 			continue;
 		}
-		if (out.length < max) out.push({ ...d, names: [d.name] });
+		out.push({ ...d, names: [d.name] });
 	}
 	return out;
 }

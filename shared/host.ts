@@ -48,7 +48,7 @@ export interface HostSeries {
 	disks: Record<string, (number | null)[]>;
 }
 
-/** A mounted volume whose free space is told: one per device, at most `MAX_DISKS`. */
+/** A mounted volume whose free space is told: one per device. */
 export interface HostDisk {
 	/** Where it is mounted (`/`, `/Volumes/Backup`, `/home`, `D:\`): what the series and the preference name it by. */
 	id: string;
@@ -57,9 +57,6 @@ export interface HostDisk {
 	/** Bytes of it. */
 	total: number;
 }
-
-/** The most disks told: a computer with more lists them in mount order and leaves the rest out. */
-export const MAX_DISKS = 16;
 
 /** What does not change while the server runs, and how the series are taken. */
 export interface HostInfo {
