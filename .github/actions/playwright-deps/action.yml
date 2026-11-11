@@ -27,6 +27,21 @@ runs:
         path: ~/.cache/playwright-debs
         key: playwright-debs-${{ steps.image.outputs.browsers }}-${{ steps.image.outputs.os }}-${{ steps.image.outputs.version }}-${{ hashFiles('bun.lock') }}
         restore-keys: playwright-debs-${{ steps.image.outputs.browsers }}-${{ steps.image.outputs.os }}-
+    # Canonical's DNS was down for hours on 2026-11-11 (actions/runner-images#15296): no runner could resolve the three
+    # ubuntu.com hosts in the image's mirror list, and apt failed every e2e job. When none of them resolves, apt is pointed
+    # at kernel.org's Ubuntu mirror instead; it still checks every index against the archive key on the runner, so a mirror
+    # can be slow or stale but cannot change what is installed.
+    - shell: bash
+      run: |
+        echo 'Acquire::Retries "3";' | sudo tee /etc/apt/apt.conf.d/80-retries > /dev/null
+        list=/etc/apt/apt-mirrors.txt
+        hosts=$(grep -oE '^[a-z]+://[^/[:space:]]+' "$list" 2>/dev/null | cut -d/ -f3 | sort -u)
+        if [ -z "$hosts" ]; then echo "No mirror list at $list: apt uses its own sources"; exit 0; fi
+        for host in $hosts; do
+          if getent hosts "$host" > /dev/null; then exit 0; fi
+        done
+        echo "::warning::None of $(echo $hosts) resolves: apt uses mirrors.edge.kernel.org/ubuntu"
+        echo "https://mirrors.edge.kernel.org/ubuntu/" | sudo tee "$list" > /dev/null
     - shell: bash
       run: |
         debs=~/.cache/playwright-debs
