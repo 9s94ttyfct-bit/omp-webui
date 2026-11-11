@@ -28,6 +28,8 @@ const TRASH_MS = 120_000;
 export interface CleanupTarget {
 	file: string;
 	cwd: string;
+	/** The session omp went on with after deleting this one (`SessionActions.delete`): not someone else working there. */
+	startedInstead?: string | null;
 }
 
 /** What the cleanup asks of the server. */
@@ -35,10 +37,7 @@ export interface CleanupWorld {
 	/** The real home folder, and the data folders never offered (omp-webui's, omp's home). */
 	protect: Protected;
 	trash: TrashOps | null;
-	/**
-	 * Every recorded conversation with a message (those the sidebar lists): its file, folder and title. One with none is
-	 * left out: omp 18.18.9's `/session delete` starts an empty one in the deleted conversation's folder.
-	 */
+	/** Every recorded conversation: its file, folder and title. */
 	conversations(): Promise<{ file: string; cwd: string; title: string }[]>;
 	/** The conversations' processes the server holds that have not ended (a new chat has no file yet). */
 	lives(): { file: string | null; cwd: string; pid: number | null }[];
@@ -188,7 +187,9 @@ export class DeleteCleanup {
 		const todo = deleted.filter((t) => (picks.get(t.file) ?? []).length > 0);
 		if (todo.length === 0) return out;
 		const command = this.world.trash?.command() ?? null;
-		const users = await this.users(gone);
+		// The empty sessions omp went on with after the deletes are the deleted conversations', not someone else's.
+		const started = deleted.flatMap((t) => (t.startedInstead ? [t.startedInstead] : []));
+		const users = await this.users(new Set([...gone, ...started]));
 		for (const t of todo) out[t.file] = await this.moveOne(t, picks.get(t.file) ?? [], users, command);
 		return out;
 	}

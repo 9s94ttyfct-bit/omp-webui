@@ -12,7 +12,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { DeletePreviewAnswer, TrashPick, TrashResult } from "../../shared/delete-cleanup.ts";
 import { writeSimpleSession } from "../support/fixtures.ts";
 import { pollUntil } from "../support/poll.ts";
@@ -123,6 +123,30 @@ test("a folder another conversation works in is not offered nor moved, but its d
 	expect(existsSync(file)).toBe(false);
 	expect(existsSync(join(folder, "index.js"))).toBe(true);
 	expect(existsSync(join(folder, "node_modules"))).toBe(false);
+}, 60_000);
+
+// omp 18.18.9 and later start an empty session in the folder as they delete one: that one does not hold the folder, an
+// empty conversation that was there before does.
+test("an empty conversation in the folder holds it, unlike the one omp starts as it deletes", async () => {
+	const { file, folder } = conversationInFolder("empty-neighbour");
+	const id = "01a00000-0000-7000-8000-0000000088ee";
+	const empty = join(dirname(file), `2026-01-08T00-00-00-000Z_${id}.jsonl`);
+	writeFileSync(
+		empty,
+		`${JSON.stringify({ type: "session", version: 3, id, timestamp: "2026-01-08T00:00:00.000Z", cwd: folder })}\n`,
+	);
+	written.push(realpathSync(empty));
+	try {
+		const [p] = (await preview([file])).body.previews;
+		expect(p.folder).toMatchObject({ refused: "inUse", usedBy: [{ kind: "conversation" }] });
+		const done = await remove(file, [pickOf(p.folder as TrashPick)]);
+		expect(done.status).toBe(200);
+		expect(done.body.trashed?.notMoved).toMatchObject([{ path: folder, error: expect.stringContaining("in use") }]);
+		expect(existsSync(file)).toBe(false);
+		expect(existsSync(folder)).toBe(true);
+	} finally {
+		rmSync(empty, { force: true });
+	}
 }, 60_000);
 
 test("two conversations deleted together in one folder: it is offered once, and moves", async () => {

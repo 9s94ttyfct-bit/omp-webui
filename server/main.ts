@@ -633,9 +633,7 @@ const deleteCleanup = new DeleteCleanup({
 	},
 	trash: platform.trash,
 	conversations: async () =>
-		(await store.list())
-			.filter((s) => s.messageCount > 0)
-			.map((s) => ({ file: s.file, cwd: s.cwd, title: s.title ?? (s.preview.slice(0, 60) || s.id) })),
+		(await store.list()).map((s) => ({ file: s.file, cwd: s.cwd, title: s.title ?? (s.preview.slice(0, 60) || s.id) })),
 	lives: () =>
 		pool
 			.list()
@@ -2373,6 +2371,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			const picks = trashPicksOf(body.trash);
 			if (picks === null) return fail("trash must be a list of the paths the preview gave");
 			const target = await sessionTarget(file);
+			let startedInstead: string | null = null;
 			try {
 				if (p === "/api/session/rename") {
 					const title = typeof body.title === "string" ? body.title.trim() : "";
@@ -2380,7 +2379,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 					await actions.rename(target, title);
 				} else {
 					const key = sessionKey(file);
-					await actions.delete(target);
+					startedInstead = await actions.delete(target);
 					archived.set([file], false);
 					await closeBrowserOf(key);
 				}
@@ -2391,7 +2390,10 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			}
 			await store.refresh(true);
 			if (p === "/api/session/delete" && picks.length) {
-				const trashed = await deleteCleanup.moveAfter([{ file, cwd: target.cwd }], new Map([[file, picks]]));
+				const trashed = await deleteCleanup.moveAfter(
+					[{ file, cwd: target.cwd, startedInstead }],
+					new Map([[file, picks]]),
+				);
 				return json({ ok: true, trashed: trashed[file] });
 			}
 			return json({ ok: true });
@@ -2475,9 +2477,9 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				try {
 					const key = sessionKey(file);
 					const target = await sessionTarget(file);
-					await actions.delete(target);
+					const startedInstead = await actions.delete(target);
 					deleted.push(file);
-					gone.push({ file, cwd: target.cwd });
+					gone.push({ file, cwd: target.cwd, startedInstead });
 					await closeBrowserOf(key);
 				} catch (e) {
 					failed.push({ file, error: (e as Error).message });

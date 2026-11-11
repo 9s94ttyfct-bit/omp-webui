@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { Config } from "../config.ts";
 import { type Live, type LivePool, refusal } from "../live.ts";
+import { sessionKey } from "../omp/approval.ts";
 import { hasCommand } from "../omp/loaded.ts";
 import { availableModels } from "../omp/models.ts";
 import { RpcClient } from "../omp/rpc-client.ts";
@@ -189,8 +190,11 @@ export class SessionActions {
 	 * graceful shutdown afterwards would record a `session_exit` and recreate the file, so the process that performed
 	 * the delete is killed outright (it has no other work) — but only once the file is gone: a delete omp did not
 	 * carry out leaves a conversation that runs running.
+	 *
+	 * Answers the session file omp went on with, if it is another: omp 18.18.9 and later start a new, empty session in
+	 * the conversation's folder before deleting it (the delete's Trash move does not count it as working there).
 	 */
-	async delete(target: SessionTarget): Promise<void> {
+	async delete(target: SessionTarget): Promise<string | null> {
 		const { file, cwd } = target;
 		const holding = this.pool.list().find((l) => !l.exited && l.sessionFile === file)?.holding;
 		if (holding) throw new SessionBusyError(refusal(holding));
@@ -198,7 +202,7 @@ export class SessionActions {
 			target,
 			"deleting it here would remove the file under that process. Close that omp first.",
 		);
-		await this.withSession(
+		return this.withSession(
 			file,
 			cwd,
 			async (c) => {
@@ -208,6 +212,9 @@ export class SessionActions {
 					if (waited >= DELETE_SETTLE_MS) throw new Error("omp did not delete the session");
 					await Bun.sleep(50);
 				}
+				const state = await c.call<{ sessionFile?: string | null }>({ type: "get_state" }, 5_000).catch(() => null);
+				const next = state?.sessionFile ? sessionKey(resolve(cwd, state.sessionFile)) : null;
+				return next && next !== sessionKey(file) ? next : null;
 			},
 			"kill",
 		);
