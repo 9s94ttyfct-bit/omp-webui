@@ -11,6 +11,7 @@ import { en as chatProjects } from "../../web/src/i18n/chat-projects.ts";
 import { en as ci } from "../../web/src/i18n/ci.ts";
 import { en as common } from "../../web/src/i18n/common.ts";
 import { en as controlsHelp } from "../../web/src/i18n/controls-help.ts";
+import { en as deleteDialog } from "../../web/src/i18n/delete-dialog.ts";
 import { en as drop } from "../../web/src/i18n/drop.ts";
 import { en as errors } from "../../web/src/i18n/errors.ts";
 import { en as feedback } from "../../web/src/i18n/feedback.ts";
@@ -70,6 +71,7 @@ export const NAMESPACES: Record<string, object[]> = {
 	browser: [browser],
 	quickPrompts: [quickPrompts],
 	controlsHelp: [controlsHelp],
+	deleteDialog: [deleteDialog],
 	migrate: [migrate],
 	guard: [guard],
 	guidance: [guidance],

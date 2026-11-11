@@ -207,6 +207,11 @@ describe("docs/TECHNICAL.md › How it stays compatible with omp updates names",
 		"--quiet",
 		"--short",
 		"--count",
+		// git's, for what a delete would take away (server/sessions/cleanup-scan.ts): `rev-list --not --remotes`,
+		// `rev-parse --git-common-dir`.
+		"--not",
+		"--remotes",
+		"--git-common-dir",
 		// The launcher's own (server/launcher.ts: Start at login, and stopping it).
 		"--background",
 		"--stop",

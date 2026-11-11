@@ -1,10 +1,9 @@
 import { type Dirent, existsSync, readdirSync, realpathSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { GitRisk } from "../../shared/delete-cleanup.ts";
 import { childEnv } from "../env.ts";
 import type { Run } from "../git.ts";
 import { safeGit } from "../git-changes.ts";
-import { vetRepository } from "../git-vet.ts";
 import { run } from "../omp/run.ts";
 import { dependencyCandidate } from "./cleanup-rules.ts";
 
@@ -51,19 +50,25 @@ const runGit: Run = async (cmd, cwd, timeoutMs, env) => {
 
 const gitEnv = (): Record<string, string | undefined> => childEnv({ GIT_TERMINAL_PROMPT: "0" });
 
+/**
+ * The check that a repository's own configuration cannot run anything, loaded on first use with the rest of git's
+ * (`git-lazy.ts`): an idle server holds none of it.
+ */
+const vetted = async (path: string, env: Record<string, string | undefined>) =>
+	(await import("../git-vet.ts")).vetRepository(runGit, path, GIT_MS, env);
+
 /** Which of `paths` (inside `folder`) git ignores; none where `folder` is not in a repository git may look at. */
 export async function gitIgnored(folder: string, paths: string[]): Promise<Set<string>> {
 	if (paths.length === 0) return new Set();
 	const env = gitEnv();
-	const vetted = await vetRepository(runGit, folder, GIT_MS, env);
-	if (!vetted.ok) return new Set();
+	if (!(await vetted(folder, env)).ok) return new Set();
 	// Exit 0: some are ignored, 1: none; anything else (not a repository) says nothing.
 	const r = await runGit(safeGit("check-ignore", "--", ...paths), folder, GIT_MS, env);
 	if (r === null || (r.code !== 0 && r.code !== 1)) return new Set();
 	const ignored = new Set<string>();
 	for (const line of r.stdout.split("\n")) {
 		const p = line.trim();
-		if (p) ignored.add(p.startsWith("/") ? p : join(folder, p));
+		if (p) ignored.add(resolve(folder, p));
 	}
 	return ignored;
 }
@@ -125,8 +130,8 @@ export async function sizeOf(path: string, budgetMs: number): Promise<number | n
  */
 export async function gitRisk(path: string): Promise<GitRisk | null> {
 	const env = gitEnv();
-	const vetted = await vetRepository(runGit, path, GIT_MS, env);
-	if (!vetted.ok) return vetted.slow || vetted.refused ? { uncommitted: null, unpushed: null } : null;
+	const vet = await vetted(path, env);
+	if (!vet.ok) return vet.slow || vet.refused ? { uncommitted: null, unpushed: null } : null;
 	const status = await runGit(
 		safeGit("status", "--porcelain=v2", "--ignore-submodules=all", "--untracked-files=all", "--", "."),
 		path,
@@ -156,11 +161,13 @@ export async function gitRisk(path: string): Promise<GitRisk | null> {
 
 /** Whether `path` is the top of a linked git worktree (its git folder is not the repository's own). */
 export async function isWorktreeTop(path: string): Promise<boolean> {
+	const env = gitEnv();
+	if (!(await vetted(path, env)).ok) return false;
 	const r = await runGit(
 		safeGit("rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir"),
 		path,
 		GIT_MS,
-		gitEnv(),
+		env,
 	);
 	if (r === null || r.code !== 0) return false;
 	const [top, gitDir, common] = r.stdout.trim().split("\n");

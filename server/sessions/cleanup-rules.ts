@@ -1,4 +1,4 @@
-import { sep } from "node:path";
+import { posix } from "node:path";
 import type { UsedBy } from "../../shared/delete-cleanup.ts";
 
 /**
@@ -7,10 +7,10 @@ import type { UsedBy } from "../../shared/delete-cleanup.ts";
  * it are dependency folders. Pure: the looks at the disk and the processes are `cleanup-scan.ts`'s.
  */
 
-/** `child` is `parent` or inside it. */
+/** `child` is `parent` or inside it. POSIX paths: the Trash is only offered on macOS (and Linux in tests). */
 export function isWithin(child: string, parent: string): boolean {
 	if (child === parent) return true;
-	const base = parent.endsWith(sep) ? parent : parent + sep;
+	const base = parent.endsWith(posix.sep) ? parent : parent + posix.sep;
 	return child.startsWith(base);
 }
 
@@ -52,7 +52,7 @@ export function protectedReason(real: string, p: Protected): "home" | "system" |
 	if (SYSTEM_TREES.some((tree) => isWithin(real, tree))) return "system";
 	if (isWithin(p.home, real)) return "home";
 	// The home's own system folders (its Library, its Trash) and what is in them.
-	if (["Library", ".Trash"].some((name) => isWithin(real, p.home + sep + name))) return "system";
+	if (["Library", ".Trash"].some((name) => isWithin(real, posix.join(p.home, name)))) return "system";
 	if (p.data.some((d) => isWithin(real, d) || isWithin(d, real))) return "data";
 	return null;
 }
