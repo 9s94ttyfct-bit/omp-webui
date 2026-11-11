@@ -1,11 +1,11 @@
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { readdir, readFile, readlink } from "node:fs/promises";
+import { readdir, readFile, readlink, stat } from "node:fs/promises";
 import { arch, release, totalmem } from "node:os";
 import { dirname, join } from "node:path";
 import { type NetCounters, parseMeminfo, parseProcMounts, parseProcNetDev } from "../host-parse.ts";
 import { capabilitiesFor } from "./capabilities.ts";
 import { posixCommands, posixHostProcesses, posixProcesses, posixShell } from "./posix.ts";
-import type { LockOps, LoginItemOps, Platform, ProcessOps, SystemDeps } from "./types.ts";
+import type { LockOps, LoginItemOps, Platform, ProcessOps, SystemDeps, TrashOps, WorkingFolder } from "./types.ts";
 
 /**
  * The XDG autostart entry that starts the launcher at login (Settings › Start at login): `Exec` runs it with `--background`,
@@ -134,6 +134,35 @@ const locks: LockOps = {
 	holders: (lock, proc) => socketHolders(`@${abstractLockName(lock)}`, proc),
 };
 
+/**
+ * Linux has no Trash command of its own here (no freedesktop Trash is written): nothing is offered unless
+ * `OMP_WEBUI_TRASH_COMMAND` names one (tests). Working folders are `<proc>/<pid>/cwd` of this user's processes.
+ */
+export function linuxTrash(deps: SystemDeps, uid: () => number | undefined, proc = "/proc"): TrashOps {
+	return {
+		command: () => deps.env.OMP_WEBUI_TRASH_COMMAND || null,
+		async workingFolders() {
+			const me = uid();
+			const entries = await readdir(proc).catch(() => null);
+			if (me === undefined || entries === null) return null;
+			const out: WorkingFolder[] = [];
+			for (const entry of entries) {
+				const pid = Number(entry);
+				if (!Number.isInteger(pid) || pid <= 0) continue;
+				const owner = await stat(join(proc, entry))
+					.then((s) => s.uid)
+					.catch(() => null);
+				if (owner !== me) continue;
+				const cwd = await readlink(join(proc, entry, "cwd")).catch(() => null);
+				if (cwd === null || !cwd.startsWith("/")) continue;
+				const name = (deps.readFile(join(proc, entry, "comm")) ?? "").trim();
+				out.push({ pid, name, cwd });
+			}
+			return out;
+		},
+	};
+}
+
 /** How long which interfaces are a device is kept: they come and go seldom, and a new name is asked about at once. */
 const PHYSICAL_MS = 60_000;
 
@@ -170,10 +199,11 @@ export function linuxNetBytes(
 }
 
 export function createLinux(deps: SystemDeps): Platform {
+	const proc = posixProcesses(deps, procIdentity(deps));
 	return {
 		id: "linux",
 		capabilities: capabilitiesFor("linux"),
-		proc: posixProcesses(deps, procIdentity(deps)),
+		proc,
 		shell: posixShell(deps),
 		commands: posixCommands,
 		desktop: null,
@@ -200,5 +230,6 @@ export function createLinux(deps: SystemDeps): Platform {
 		skipPaths: () => [],
 		describe: async () => `linux ${release()} (${arch()})`,
 		loginItem: autostart(deps),
+		trash: linuxTrash(deps, () => proc.uid()),
 	};
 }

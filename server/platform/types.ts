@@ -173,6 +173,25 @@ export interface LoginItemOps {
 	write(home: string, program: string | null): Promise<void>;
 }
 
+/** A process's working folder, as the system tells it (links resolved). */
+export interface WorkingFolder {
+	pid: number;
+	/** Its program's name (`node`, `zsh`). */
+	name: string;
+	cwd: string;
+}
+
+/** Moving what a deleted conversation left to the Trash (docs/superpowers/specs/2026-11-11-delete-session-folder-design.md). */
+export interface TrashOps {
+	/**
+	 * The program that moves the paths it is given to the Trash, keeping Put Back (macOS's `/usr/bin/trash`); null where
+	 * there is none. `OMP_WEBUI_TRASH_COMMAND` names another (tests).
+	 */
+	command(): string | null;
+	/** The working folders of this user's processes; null when they could not be listed. */
+	workingFolders(): Promise<WorkingFolder[] | null>;
+}
+
 export interface Platform {
 	readonly id: PlatformId;
 	readonly capabilities: Capabilities;
@@ -202,4 +221,6 @@ export interface Platform {
 	 * Linux, the user's `Run` key on Windows. Null on macOS, where the app registers itself (`SMAppService`).
 	 */
 	readonly loginItem: LoginItemOps | null;
+	/** Null where nothing is ever moved to a Trash (Windows). */
+	readonly trash: TrashOps | null;
 }

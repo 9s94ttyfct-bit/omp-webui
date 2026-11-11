@@ -13,7 +13,7 @@ import {
 import { capabilitiesFor } from "./capabilities.ts";
 import { macNetBytes } from "./darwin-net.ts";
 import { HOST_READ_MS, posixCommands, posixHostProcesses, posixProcesses, posixShell, psIdentity } from "./posix.ts";
-import type { DesktopOps, LockOps, Platform, SystemDeps } from "./types.ts";
+import type { DesktopOps, LockOps, Platform, SystemDeps, TrashOps, WorkingFolder } from "./types.ts";
 
 /** How long `open`, and the question to LaunchServices, may take. */
 const OPEN_MS = 15_000;
@@ -98,6 +98,49 @@ function locks(deps: SystemDeps): LockOps {
 	};
 }
 
+/**
+ * `lsof -F pcn` records (`p<pid>`, `c<command>`, `f<fd>`, `n<name>`, one field a line) of `-d cwd`: each process's
+ * working folder.
+ */
+export function parseLsofCwds(text: string): WorkingFolder[] {
+	const out: WorkingFolder[] = [];
+	let pid = 0;
+	let name = "";
+	for (const line of text.split("\n")) {
+		const value = line.slice(1);
+		if (line.startsWith("p")) {
+			pid = Number(value);
+			name = "";
+		} else if (line.startsWith("c")) name = value;
+		else if (line.startsWith("n") && Number.isInteger(pid) && pid > 0 && value.startsWith("/"))
+			out.push({ pid, name, cwd: value });
+	}
+	return out;
+}
+
+/** macOS 14 and later have `trash` (Put Back kept, no Automation permission asked); `lsof` names where each process works. */
+function trash(deps: SystemDeps, uid: () => number | undefined): TrashOps {
+	return {
+		command: () => deps.env.OMP_WEBUI_TRASH_COMMAND || (existsSync("/usr/bin/trash") ? "/usr/bin/trash" : null),
+		async workingFolders() {
+			const me = uid();
+			if (me === undefined) return null;
+			for (const lsof of ["lsof", "/usr/sbin/lsof"]) {
+				try {
+					// lsof exits 1 when it could not look at some process (another user's): what it printed still holds.
+					const { stdout } = await deps.run([lsof, "-a", "-d", "cwd", "-u", String(me), "-F", "pcn"], {
+						timeoutMs: LSOF_MS,
+					});
+					if (stdout.trim()) return parseLsofCwds(stdout);
+				} catch {
+					// not there (or it hung): the next place
+				}
+			}
+			return null;
+		},
+	};
+}
+
 export function createDarwin(deps: SystemDeps): Platform {
 	let version: Promise<string | null> | undefined;
 	/** `sw_vers -productVersion`, asked once. */
@@ -113,10 +156,11 @@ export function createDarwin(deps: SystemDeps): Platform {
 		})();
 		return version;
 	};
+	const proc = posixProcesses(deps, psIdentity(deps));
 	return {
 		id: "darwin",
 		capabilities: capabilitiesFor("darwin"),
-		proc: posixProcesses(deps, psIdentity(deps)),
+		proc,
 		shell: posixShell(deps),
 		commands: posixCommands,
 		desktop: desktop(deps),
@@ -154,5 +198,6 @@ export function createDarwin(deps: SystemDeps): Platform {
 		},
 		// The app registers itself (`SMAppService`, macos/loginitem.swift): a server has no program of its own to name.
 		loginItem: null,
+		trash: trash(deps, () => proc.uid()),
 	};
 }

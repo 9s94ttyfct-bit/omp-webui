@@ -319,5 +319,6 @@ export function createWin32(deps: SystemDeps): Platform {
 		skipPaths: (home) => [join(home, "AppData")],
 		describe: async () => `win32 ${release()} (${arch()})`,
 		loginItem: runKey(deps),
+		trash: null,
 	};
 }
