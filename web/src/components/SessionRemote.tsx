@@ -1,7 +1,7 @@
 import * as Popover from "@radix-ui/react-popover";
 import type { MacListing } from "@shared/macs.ts";
 import { Server } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
 import { ownerPage, sessionActions } from "../lib/api.ts";
@@ -36,6 +36,8 @@ export function RemotePicker({ liveId }: { liveId: string }) {
 	const t = useT();
 	const macs = useApp((s) => s.meta?.macs);
 	const info = useApp((s) => s.lives[liveId]?.info);
+	// The settled picks are for this warm-up's send (`carryRemote`): a warm-up left (another folder, options, the page) drops them.
+	useEffect(() => () => void choosing.delete(liveId), [liveId]);
 	if (!info || !macs || macs.length === 0) return null;
 	const have = info.remoteComputers ?? NONE;
 	const names = macs.filter((m) => have.includes(m.id)).map((m) => m.name);
