@@ -553,6 +553,8 @@
 		"default-star.spec.ts › the stars are in Chinese, and a filled one is not told by colour alone": 9,
 		"delete-busy.spec.ts › a delete the server refuses because the conversation is busy tells why, and leaves it running": 8,
 		"delete-busy.spec.ts › the delete dialog of a replying conversation says to stop it first and cannot be confirmed": 7.6,
+		"delete-cleanup.spec.ts › the bulk delete dialog lists every selected conversation, each with its own options": 6,
+		"delete-cleanup.spec.ts › the delete dialog offers the folder and its dependency folders; a ticked dependency folder goes to the Trash": 9,
 		"dialog-deadline.spec.ts › a command omp runs at once leaves the approval alone": 8.2,
 		"dialog-deadline.spec.ts › a dialog without a deadline has no countdown, and one closed for another reason leaves no note": 8.9,
 		"dialog-deadline.spec.ts › a message sent with no approval waiting answers nothing, and a question that is not an approval stays open": 8.3,

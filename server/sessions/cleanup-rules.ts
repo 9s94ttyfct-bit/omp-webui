@@ -19,6 +19,7 @@ const SYSTEM_EXACT = new Set([
 	"/",
 	"/Users",
 	"/Volumes",
+	// platform-allow: a folder never moved to the Trash, compared with real paths; no file is used
 	"/tmp",
 	"/var",
 	"/etc",

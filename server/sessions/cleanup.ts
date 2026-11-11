@@ -11,7 +11,7 @@ import type {
 import { run } from "../omp/run.ts";
 import type { TrashOps } from "../platform/types.ts";
 import { depUse, type FolderUser, folderUse, isWithin, type Protected, protectedReason } from "./cleanup-rules.ts";
-import { gitRisk, isFolder, listDependencies, moreAtRisk, realOf, sizeOf } from "./cleanup-scan.ts";
+import { gitRisk, isFolder, isWorktreeTop, listDependencies, moreAtRisk, realOf, sizeOf } from "./cleanup-scan.ts";
 
 /**
  * What a delete may move to the Trash, and the moves (docs/superpowers/specs/2026-11-11-delete-session-folder-design.md).
@@ -129,8 +129,18 @@ export class DeleteCleanup {
 		const guarded = protectedReason(real, this.world.protect);
 		const use = folderUse(real, users.all, this.world.protect);
 		const refused = guarded ?? (users.checked ? use.refused : "unchecked");
-		const [bytes, git] = guarded ? [null, null] : await Promise.all([sizeOf(real, SIZE_MS), gitRisk(real)]);
-		const folder: CleanupFolder = { path: t.cwd, real, bytes, refused, usedBy: guarded ? [] : use.usedBy, git };
+		const [bytes, git, worktree] = guarded
+			? [null, null, false]
+			: await Promise.all([sizeOf(real, SIZE_MS), gitRisk(real), isWorktreeTop(real)]);
+		const folder: CleanupFolder = {
+			path: t.cwd,
+			real,
+			bytes,
+			refused,
+			usedBy: guarded ? [] : use.usedBy,
+			git,
+			worktree,
+		};
 		// The home folder or a system folder: what is in it is other projects', not this conversation's.
 		if (guarded) return { file: t.file, folder, deps: [] };
 		const deps: CleanupDep[] = [];

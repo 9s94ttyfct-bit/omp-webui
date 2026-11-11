@@ -33,7 +33,6 @@ import { useShallow } from "zustand/react/shallow";
 import { useT } from "../i18n/index.ts";
 import { api, ownerPage, sessionActions } from "../lib/api.ts";
 import { setArchived } from "../lib/archive.ts";
-import { forgetDraft } from "../lib/drafts.ts";
 import { dateGroup } from "../lib/format.ts";
 import { lazyChunk } from "../lib/lazy-chunk.ts";
 import { useLayout } from "../lib/panel-widths.ts";
@@ -77,9 +76,10 @@ const { Chunk: SessionSearch, preload: preloadSearch } = lazyChunk(() =>
 const { Chunk: ProjectsSection, preload: preloadProjects } = lazyChunk(() =>
 	import("./ProjectsSection.tsx").then((m) => ({ default: m.ProjectsSection })),
 );
-
-/** How many titles the bulk-delete confirmation lists before it sums up the rest. */
-const BULK_LIST_MAX = 8;
+// The delete dialogs, with what they offer to move to the Trash: a chunk of their own, fetched when one opens.
+const { Chunk: DeleteDialog } = lazyChunk(() =>
+	import("./DeleteDialog.tsx").then((m) => ({ default: m.DeleteDialog })),
+);
 
 /** The name each order of the list has in its select (#701). */
 const SORT_LABEL = {
@@ -163,7 +163,11 @@ export function Sidebar() {
 	const [selecting, setSelecting] = useState(false);
 	const [selected, setSelected] = useState<Set<string>>(new Set());
 	const [anchor, setAnchor] = useState<string | null>(null);
-	const [bulkDelete, setBulkDelete] = useState<SessionSummary[] | null>(null);
+	const [deleting, setDeleting] = useState<{
+		sessions: SessionSummary[];
+		bulk: boolean;
+		returnTo: HTMLElement | null;
+	} | null>(null);
 	const liveFiles = useMemo(() => new Map(Object.entries(liveDots)), [liveDots]);
 	const lightFiles = useMemo(() => new Set(lightList), [lightList]);
 	const archivedSet = useMemo(() => new Set(archived), [archived]);
@@ -345,7 +349,6 @@ export function Sidebar() {
 	});
 
 	const [pending, setPending] = useState<{
-		action: SessionAction;
 		session: SessionSummary;
 		title: string;
 		/** The row's menu button, which gets focus back when the dialog closes. */
@@ -353,10 +356,8 @@ export function Sidebar() {
 	} | null>(null);
 	const [working, setWorking] = useState(false);
 	// omp refuses to delete a conversation that is replying or waiting (the server answers 409): the dialog says so first.
-	const pendingDot = pending ? liveFiles.get(pending.session.file) : undefined;
-	const deleteBusy =
-		pending?.action === "delete" &&
-		(pendingDot === "running" || pendingDot === "needsInput" || pendingDot === "paused");
+	const deletingDot = deleting && !deleting.bulk ? liveFiles.get(deleting.sessions[0].file) : undefined;
+	const deleteBusy = deletingDot === "running" || deletingDot === "needsInput" || deletingDot === "paused";
 	const togglePin = (file: string) =>
 		void sessionActions
 			.setPin(file, !pinSet.has(file))
@@ -396,49 +397,17 @@ export function Sidebar() {
 	};
 
 	const confirmPending = async () => {
-		if (!pending || deleteBusy) return;
+		if (!pending) return;
 		setWorking(true);
 		try {
-			if (pending.action === "rename") {
-				await sessionActions.rename(pending.session.file, pending.title.trim());
-				// A running chat shows omp's in-memory name; set_session_name emits no frames.
-				const live = liveFor(pending.session.file);
-				if (live) await refreshState(live.info.liveId);
-			} else {
-				await sessionActions.remove(pending.session.file);
-				forgetDraft(pending.session.file);
-				if (activeFile === pending.session.file) setView({ kind: "new" });
-			}
+			await sessionActions.rename(pending.session.file, pending.title.trim());
+			// A running chat shows omp's in-memory name; set_session_name emits no frames.
+			const live = liveFor(pending.session.file);
+			if (live) await refreshState(live.info.liveId);
 			await loadSessions();
 			setPending(null);
 		} catch (e) {
-			toast(
-				"error",
-				t(pending.action === "rename" ? "shell.sidebarRenameFailed" : "shell.sidebarDeleteFailed", {
-					error: (e as Error).message,
-				}),
-			);
-		} finally {
-			setWorking(false);
-		}
-	};
-	const confirmBulkDelete = async () => {
-		if (!bulkDelete) return;
-		setWorking(true);
-		try {
-			const r = await sessionActions.removeMany(bulkDelete.map((s) => s.file));
-			for (const file of r.deleted) forgetDraft(file);
-			if (activeFile && r.deleted.includes(activeFile)) setView({ kind: "new" });
-			if (r.failed.length)
-				toast("error", t("shell.sidebarBulkDeleteFailed", { n: r.failed.length, error: r.failed[0].error }));
-			await loadSessions();
-			// omp can report a failure for a delete that did remove the file: whatever the list no longer has is gone.
-			const left = new Set(useApp.getState().sessions.map((s) => s.file));
-			for (const s of bulkDelete) if (!left.has(s.file)) forgetDraft(s.file);
-			setBulkDelete(null);
-			stopSelecting();
-		} catch (e) {
-			toast("error", t("shell.sidebarDeleteFailed", { error: (e as Error).message }));
+			toast("error", t("shell.sidebarRenameFailed", { error: (e as Error).message }));
 		} finally {
 			setWorking(false);
 		}
@@ -458,7 +427,9 @@ export function Sidebar() {
 	const pinRow = useStable((file: string) => togglePin(file));
 	const archiveRow = useStable((file: string) => void setArchived([file], !archivedSet.has(file)));
 	const actionRow = useStable((session: SessionSummary, action: SessionAction, returnTo: HTMLElement | null) =>
-		setPending({ action, session, title: sessionLabel(session), returnTo }),
+		action === "delete"
+			? setDeleting({ sessions: [session], bulk: false, returnTo })
+			: setPending({ session, title: sessionLabel(session), returnTo }),
 	);
 	const selectRow = useStable((file: string, e: MouseEvent) => select(file, e));
 
@@ -733,7 +704,7 @@ export function Sidebar() {
 							className="flex-1"
 							disabled={!chosen.length}
 							data-testid="selection-delete"
-							onClick={() => setBulkDelete(chosen)}
+							onClick={() => setDeleting({ sessions: chosen, bulk: true, returnTo: null })}
 						>
 							<Trash2 size={14} /> {t("shell.sidebarDeleteSelected")}
 						</Button>
@@ -827,57 +798,24 @@ export function Sidebar() {
 					</div>
 				</div>
 			)}
-			<Modal
-				open={bulkDelete !== null}
-				onOpenChange={(o) => !o && !working && setBulkDelete(null)}
-				title={t(bulkDelete?.length === 1 ? "shell.sidebarBulkDeleteTitleOne" : "shell.sidebarBulkDeleteTitle", {
-					n: bulkDelete?.length ?? 0,
-				})}
-				description={t(
-					bulkDelete?.length === 1 ? "shell.sidebarBulkDeleteDescriptionOne" : "shell.sidebarBulkDeleteDescription",
-				)}
-			>
-				<ul
-					aria-label={t("shell.sidebarBulkDeleteList")}
-					data-testid="bulk-delete-list"
-					className="mb-3 space-y-0.5 rounded-lg border border-border bg-bg-soft p-2 text-sm"
-				>
-					{bulkDelete?.slice(0, BULK_LIST_MAX).map((s) => (
-						<li key={s.file} className="truncate">
-							{sessionLabel(s)}
-						</li>
-					))}
-					{bulkDelete && bulkDelete.length > BULK_LIST_MAX ? (
-						<li className="text-muted">{t("shell.sidebarBulkDeleteMore", { n: bulkDelete.length - BULK_LIST_MAX })}</li>
-					) : null}
-				</ul>
-				<div className="flex justify-end gap-2">
-					<Button variant="ghost" disabled={working} onClick={() => setBulkDelete(null)}>
-						{t("common.cancel")}
-					</Button>
-					<Button
-						variant="danger"
-						data-testid="confirm-bulk-delete"
-						disabled={working}
-						onClick={() => void confirmBulkDelete()}
-					>
-						{working ? <Spinner size={14} /> : null}
-						{t("common.delete")}
-					</Button>
-				</div>
-			</Modal>
+			{deleting ? (
+				<DeleteDialog
+					sessions={deleting.sessions}
+					bulk={deleting.bulk}
+					busy={deleteBusy}
+					activeFile={activeFile}
+					returnTo={deleting.returnTo}
+					onClose={(deleted) => {
+						if (deleted && deleting.bulk) stopSelecting();
+						setDeleting(null);
+					}}
+				/>
+			) : null}
 			<Modal
 				open={pending !== null}
 				onOpenChange={(o) => !o && !working && setPending(null)}
 				returnFocusTo={pending?.returnTo}
-				title={pending?.action === "delete" ? t("shell.sidebarDeleteTitle") : t("shell.sidebarRenameTitle")}
-				description={
-					pending?.action === "delete"
-						? t(deleteBusy ? "shell.sidebarDeleteBusy" : "shell.sidebarDeleteDescription", {
-								title: sessionLabel(pending.session),
-							})
-						: undefined
-				}
+				title={t("shell.sidebarRenameTitle")}
 			>
 				<form
 					onSubmit={(e) => {
@@ -885,27 +823,25 @@ export function Sidebar() {
 						void confirmPending();
 					}}
 				>
-					{pending?.action === "rename" ? (
-						<input
-							aria-label={t("shell.sidebarNameLabel")}
-							data-testid="rename-input"
-							className="w-full rounded-lg border border-border bg-bg-soft px-3 py-2 text-sm outline-none focus:border-faint"
-							value={pending.title}
-							onChange={(e) => setPending({ ...pending, title: e.target.value })}
-						/>
-					) : null}
+					<input
+						aria-label={t("shell.sidebarNameLabel")}
+						data-testid="rename-input"
+						className="w-full rounded-lg border border-border bg-bg-soft px-3 py-2 text-sm outline-none focus:border-faint"
+						value={pending?.title ?? ""}
+						onChange={(e) => pending && setPending({ ...pending, title: e.target.value })}
+					/>
 					<div className="mt-3 flex justify-end gap-2">
 						<Button variant="ghost" disabled={working} onClick={() => setPending(null)}>
 							{t("common.cancel")}
 						</Button>
 						<Button
-							variant={pending?.action === "delete" ? "danger" : "primary"}
+							variant="primary"
 							type="submit"
 							data-testid="confirm-session-action"
-							disabled={working || deleteBusy || (pending?.action === "rename" && !pending.title.trim())}
+							disabled={working || !pending?.title.trim()}
 						>
 							{working ? <Spinner size={14} /> : null}
-							{pending?.action === "delete" ? t("common.delete") : t("common.save")}
+							{t("common.save")}
 						</Button>
 					</div>
 				</form>

@@ -52,6 +52,8 @@ export interface CleanupFolder extends CleanupPath {
 	usedBy: UsedBy[];
 	/** Null: not in a repository, or nothing at risk. */
 	git: GitRisk | null;
+	/** The top of a linked git worktree: git keeps listing it (prunable) until `git worktree prune`. */
+	worktree: boolean;
 }
 
 export interface CleanupDep extends CleanupPath {

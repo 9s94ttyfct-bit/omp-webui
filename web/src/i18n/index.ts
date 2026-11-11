@@ -11,6 +11,7 @@ import * as common from "./common.ts";
 // Not imported for its values: the English strings of a namespace that only a lazily loaded chunk uses are registered by
 // that chunk (`registerStrings`), so the first page does not carry them. The type is what keeps its keys checked.
 import type * as controlsHelp from "./controls-help.ts";
+import type * as deleteDialog from "./delete-dialog.ts";
 import type * as drop from "./drop.ts";
 import * as errors from "./errors.ts";
 import * as feedback from "./feedback.ts";
@@ -81,6 +82,7 @@ type LazyModules = {
 	navLayout: typeof navLayout;
 	browser: typeof browser;
 	plugins: typeof plugins;
+	deleteDialog: typeof deleteDialog;
 };
 type Modules = typeof MODULES & LazyModules;
 /**

@@ -399,7 +399,7 @@ export async function blobBase64(hash: string): Promise<string> {
 	return btoa(bin);
 }
 
-async function post<T>(path: string, body: unknown): Promise<T> {
+export async function post<T>(path: string, body: unknown): Promise<T> {
 	const res = await fetch(path, {
 		method: "POST",
 		headers: { "content-type": "application/json", "x-omp-webui": "1" },
@@ -455,12 +455,9 @@ export const sessionActions = {
 	setRemoteComputers: (liveId: string, macIds: string[]) =>
 		post<{ macIds: string[] }>("/api/remote-run/live", { liveId, macIds }),
 	rename: (file: string, title: string) => post<{ ok: true }>("/api/session/rename", { file, title }),
-	remove: (file: string) => post<{ ok: true }>("/api/session/delete", { file }),
 	/** omp's `/move` of a conversation (by its file, or its process when it has none yet) to `folder`; where it is now. */
 	move: (to: { file: string | null; liveId: string | null; folder: string }) =>
 		post<{ file: string | null; cwd: string }>("/api/session/move", to),
-	removeMany: (files: string[]) =>
-		post<{ deleted: string[]; failed: { file: string; error: string }[] }>("/api/sessions/delete", { files }),
 	archived: () => get<string[]>("/api/archive"),
 	setArchived: (files: string[], archived: boolean) => post<string[]>("/api/archive", { files, archived }),
 };

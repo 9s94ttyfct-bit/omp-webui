@@ -154,6 +154,19 @@ export async function gitRisk(path: string): Promise<GitRisk | null> {
 	return { uncommitted, unpushed };
 }
 
+/** Whether `path` is the top of a linked git worktree (its git folder is not the repository's own). */
+export async function isWorktreeTop(path: string): Promise<boolean> {
+	const r = await runGit(
+		safeGit("rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir"),
+		path,
+		GIT_MS,
+		gitEnv(),
+	);
+	if (r === null || r.code !== 0) return false;
+	const [top, gitDir, common] = r.stdout.trim().split("\n");
+	return realOf(top ?? "") === realOf(path) && realOf(gitDir ?? "") !== realOf(common ?? "");
+}
+
 /**
  * Whether `now` has more work at risk than `then`, what the dialog showed. A count the dialog showed as unknown was
  * accepted as such; one that was known and can no longer be read counts as more.
