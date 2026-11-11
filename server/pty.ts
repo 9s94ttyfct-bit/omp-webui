@@ -272,6 +272,13 @@ export class PtyManager {
 			}));
 	}
 
+	/** The process ids of the terminals' shells (and programs) still running. */
+	pids(): Set<number> {
+		const out = new Set<number>();
+		for (const s of this.sessions.values()) if (s.exited === undefined) out.add(s.proc.pid);
+		return out;
+	}
+
 	/** Shells for remote pages were turned off: the shells remote pages have open (`omp shell` among them) end now. */
 	killRemoteShells(): void {
 		for (const s of this.sessions.values()) if ((s.shell || runsOmpShell(s.args)) && s.remote) end(s);

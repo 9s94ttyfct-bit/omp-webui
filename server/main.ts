@@ -3,12 +3,13 @@ import "./omp/relay-main.ts";
 import { timingSafeEqual } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { type ApprovalMode, approvalModeNeeds, isApprovalMode } from "../shared/approval.ts";
 import { factsOf, noticeLang, working } from "../shared/attention.ts";
 import { chatProjectOfScope } from "../shared/chat-projects.ts";
 import { CI_SCOPES } from "../shared/ci.ts";
 import { compactAtOf } from "../shared/compact-at.ts";
+import { type TrashPick, trashPicksOf } from "../shared/delete-cleanup.ts";
 import { type ErrorInfo, errorInfoOf } from "../shared/error-info.ts";
 import { ISSUE_FILTERS } from "../shared/github.ts";
 import {
@@ -133,6 +134,8 @@ import {
 	SessionOpenElsewhereError,
 	type SessionTarget,
 } from "./sessions/actions.ts";
+import { type CleanupTarget, DeleteCleanup } from "./sessions/cleanup.ts";
+import { realOf } from "./sessions/cleanup-scan.ts";
 import { SessionPins } from "./sessions/pins.ts";
 import { SessionRoots } from "./sessions/roots.ts";
 import { SessionStore } from "./sessions/store.ts";
@@ -618,6 +621,29 @@ const remoteAuth = new LazyRemote(
 	},
 );
 const ptys = new PtyManager(cfg.ompBin);
+/**
+ * Moving what a deleted conversation left to the Trash (docs/superpowers/specs/2026-11-11-delete-session-folder-design.md):
+ * its folder or dependency folders in it, as the delete dialogs offer them. Never the home folder, the system's folders or
+ * omp's and omp-webui's data; never a folder anything else works in.
+ */
+const deleteCleanup = new DeleteCleanup({
+	protect: {
+		home: realOf(homedir()) ?? homedir(),
+		data: [cfg.dataDir, dirname(cfg.agentDir), ...knownDataDirs()].map((d) => realOf(d) ?? d),
+	},
+	trash: platform.trash,
+	conversations: async () =>
+		(await store.list()).map((s) => ({ file: s.file, cwd: s.cwd, title: s.title ?? (s.preview.slice(0, 60) || s.id) })),
+	lives: () =>
+		pool
+			.list()
+			.filter((l) => !l.exited)
+			.map((l) => ({ file: l.sessionFile, cwd: l.cwd, pid: l.pid })),
+	projects: async () =>
+		(await chatProjects.list()).projects.flatMap((p) => (p.folder ? [{ name: p.name, folder: p.folder }] : [])),
+	terminalPids: () => ptys.pids(),
+	ownPids: () => new Set([process.pid, ...pool.pids().relay]),
+});
 /**
  * The load of this computer (#613): looked at every few seconds while a page shows the graphs of it and every ten while
  * only the sidebar's line does (or no page at all), so that the history reaches back to when nobody watched. The paces are
@@ -2318,12 +2344,32 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				return fail(`Could not change unattended mode: ${(e as Error).message}`, 409);
 			}
 		}
+		case "/api/session/delete-preview": {
+			// What the delete dialogs offer to move to the Trash with the conversations (`DeleteCleanup.preview`): nothing moves.
+			if (req.method !== "POST") return fail("POST required", 405);
+			const body = (await req.json()) as { files?: unknown };
+			if (!Array.isArray(body.files) || !body.files.every((f) => typeof f === "string")) return fail("files required");
+			const targets: CleanupTarget[] = [];
+			for (const requested of body.files as string[]) {
+				const file = store.resolveSessionPath(requested);
+				if (!file) return fail("Unknown session file", 404);
+				targets.push({ file, cwd: (await sessionTarget(file)).cwd });
+			}
+			const answer = await deleteCleanup.preview(targets);
+			// Each preview under the name the page gave its conversation.
+			answer.previews.forEach((preview, i) => {
+				preview.file = (body.files as string[])[i];
+			});
+			return json(answer);
+		}
 		case "/api/session/rename":
 		case "/api/session/delete": {
 			if (req.method !== "POST") return fail("POST required", 405);
-			const body = (await req.json()) as { file?: unknown; title?: unknown };
+			const body = (await req.json()) as { file?: unknown; title?: unknown; trash?: unknown };
 			const file = typeof body.file === "string" ? store.resolveSessionPath(body.file) : null;
 			if (!file) return fail("Unknown session file", 404);
+			const picks = trashPicksOf(body.trash);
+			if (picks === null) return fail("trash must be a list of the paths the preview gave");
 			const target = await sessionTarget(file);
 			try {
 				if (p === "/api/session/rename") {
@@ -2342,6 +2388,10 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				throw e;
 			}
 			await store.refresh(true);
+			if (p === "/api/session/delete" && picks.length) {
+				const trashed = await deleteCleanup.moveAfter([{ file, cwd: target.cwd }], new Map([[file, picks]]));
+				return json({ ok: true, trashed: trashed[file] });
+			}
 			return json({ ok: true });
 		}
 		case "/api/session/move": {
@@ -2396,12 +2446,24 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			}
 		}
 		case "/api/sessions/delete": {
-			// Bulk delete through omp, one session at a time; reports per-file failures.
+			// Bulk delete through omp, one session at a time; reports per-file failures. What was ticked to go to the Trash
+			// (`trash`: the paths of each conversation, by its file) moves once every delete is done (`DeleteCleanup.moveAfter`).
 			if (req.method !== "POST") return fail("POST required", 405);
-			const body = (await req.json()) as { files?: unknown };
+			const body = (await req.json()) as { files?: unknown; trash?: unknown };
 			if (!Array.isArray(body.files) || !body.files.every((f) => typeof f === "string")) return fail("files required");
+			const trashBody = (body.trash ?? {}) as Record<string, unknown>;
+			if (typeof trashBody !== "object" || trashBody === null || Array.isArray(trashBody))
+				return fail("trash must be an object");
 			const deleted: string[] = [];
 			const failed: { file: string; error: string }[] = [];
+			const gone: CleanupTarget[] = [];
+			const picks = new Map<string, TrashPick[]>();
+			for (const requested of body.files as string[]) {
+				const listed = trashPicksOf(trashBody[requested]);
+				if (listed === null) return fail("trash must list the paths the preview gave");
+				const file = store.resolveSessionPath(requested);
+				if (file && listed.length) picks.set(file, listed);
+			}
 			for (const requested of body.files as string[]) {
 				const file = store.resolveSessionPath(requested);
 				if (!file) {
@@ -2410,8 +2472,10 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				}
 				try {
 					const key = sessionKey(file);
-					await actions.delete(await sessionTarget(file));
+					const target = await sessionTarget(file);
+					await actions.delete(target);
 					deleted.push(file);
+					gone.push({ file, cwd: target.cwd });
 					await closeBrowserOf(key);
 				} catch (e) {
 					failed.push({ file, error: (e as Error).message });
@@ -2419,7 +2483,8 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			}
 			archived.set(deleted, false);
 			await store.refresh(true);
-			return json({ deleted, failed });
+			const trashed = picks.size ? await deleteCleanup.moveAfter(gone, picks) : {};
+			return json({ deleted, failed, trashed });
 		}
 		case "/api/archive":
 			if (req.method === "POST") {

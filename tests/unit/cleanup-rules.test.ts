@@ -8,6 +8,7 @@ import {
 	type Protected,
 	protectedReason,
 } from "../../server/sessions/cleanup-rules.ts";
+import type { UsedBy } from "../../shared/delete-cleanup.ts";
 
 const p: Protected = { home: "/Users/me", data: ["/Users/me/.omp", "/Users/me/Library/Application Support/omp-webui"] };
 
@@ -45,12 +46,15 @@ describe("protectedReason", () => {
 });
 
 describe("folderUse", () => {
-	const user = (real: string, kind: FolderUser["kind"], label = real): FolderUser => ({ real, kind, label });
+	const user = (real: string, kind: UsedBy["kind"], name = real, pid?: number): FolderUser => ({
+		real,
+		who: pid === undefined ? { kind, name } : { kind, name, pid },
+	});
 
 	test("another conversation in the same folder makes it in use", () => {
-		expect(folderUse("/Users/me/code/app", [user("/Users/me/code/app", "conversation", "“Fix CI”")], p)).toEqual({
+		expect(folderUse("/Users/me/code/app", [user("/Users/me/code/app", "conversation", "Fix CI")], p)).toEqual({
 			refused: "inUse",
-			usedBy: ["“Fix CI”"],
+			usedBy: [{ kind: "conversation", name: "Fix CI" }],
 		});
 	});
 
@@ -59,13 +63,13 @@ describe("folderUse", () => {
 		expect(folderUse("/Users/me/code/app", [user("/Users/me", "conversation")], p).refused).toBeNull();
 	});
 
-	test("a process counts only in the folder or inside it", () => {
+	test("a process or Terminal tab counts only in the folder or inside it", () => {
 		expect(
-			folderUse("/Users/me/code/app", [user("/", "process"), user("/Users/me/code", "process")], p).refused,
+			folderUse("/Users/me/code/app", [user("/", "process"), user("/Users/me/code", "terminal")], p).refused,
 		).toBeNull();
-		expect(folderUse("/Users/me/code/app", [user("/Users/me/code/app/web", "process", "node (pid 7)")], p)).toEqual({
+		expect(folderUse("/Users/me/code/app", [user("/Users/me/code/app/web", "process", "node", 7)], p)).toEqual({
 			refused: "containsOther",
-			usedBy: ["node (pid 7)"],
+			usedBy: [{ kind: "process", name: "node", pid: 7 }],
 		});
 	});
 
@@ -75,11 +79,17 @@ describe("folderUse", () => {
 			[
 				user("/Users/me/code/app/x", "conversation", "a"),
 				user("/Users/me/code/app", "project", "b"),
-				user("/Users/me/code/app", "process", "b"),
+				user("/Users/me/code/app/y", "project", "b"),
 			],
 			p,
 		);
-		expect(r).toEqual({ refused: "inUse", usedBy: ["a", "b"] });
+		expect(r).toEqual({
+			refused: "inUse",
+			usedBy: [
+				{ kind: "conversation", name: "a" },
+				{ kind: "project", name: "b" },
+			],
+		});
 	});
 
 	test("a sibling folder that shares a prefix is not inside", () => {
@@ -90,12 +100,12 @@ describe("folderUse", () => {
 
 describe("depUse", () => {
 	test("only what runs in the conversation's folder or inside it blocks a dependency folder", () => {
-		const running: FolderUser[] = [
-			{ real: "/Users/me/code/app/web", kind: "process", label: "node (pid 9)" },
-			{ real: "/Users/me/code/other", kind: "process", label: "zsh (pid 3)" },
+		const active: FolderUser[] = [
+			{ real: "/Users/me/code/app/web", who: { kind: "process", name: "node", pid: 9 } },
+			{ real: "/Users/me/code/other", who: { kind: "terminal", name: "" } },
 		];
-		expect(depUse("/Users/me/code/app", running)).toEqual(["node (pid 9)"]);
-		expect(depUse("/Users/me/code/elsewhere", running)).toEqual([]);
+		expect(depUse("/Users/me/code/app", active)).toEqual([{ kind: "process", name: "node", pid: 9 }]);
+		expect(depUse("/Users/me/code/elsewhere", active)).toEqual([]);
 	});
 });
 

@@ -18,15 +18,21 @@ export type FolderRefusal =
 	/** A folder inside it is another conversation's, a project's or a running process's. */
 	| "containsOther"
 	/** Which processes work in it could not be found out. */
-	| "unchecked"
-	/** It is not there (or is not a folder) any more. */
-	| "missing";
+	| "unchecked";
+
+/** Something that works in a folder, as the dialog names it. */
+export interface UsedBy {
+	kind: "conversation" | "project" | "terminal" | "process";
+	/** A conversation's title, a project's name, a process's program (`node`); empty for a Terminal tab. */
+	name: string;
+	pid?: number;
+}
 
 /** Work git has that moving the folder would take away. Null counts: git could not be asked. */
 export interface GitRisk {
 	/** Changed or untracked files under the folder. */
 	uncommitted: number | null;
-	/** Commits of the branch not on its upstream (a branch without one: its commits); counted at a repository's top only. */
+	/** Commits of the branch not pushed (a branch without an upstream: those no remote has); counted at a repository's top only. */
 	unpushed: number | null;
 }
 
@@ -42,8 +48,8 @@ interface CleanupPath {
 export interface CleanupFolder extends CleanupPath {
 	/** Null: it may be ticked. */
 	refused: FolderRefusal | null;
-	/** Who works in it, for `inUse` and `containsOther` ("“Fix CI”", "a Terminal tab", "node (pid 4120)"). */
-	usedBy: string[];
+	/** Who works in it, for `inUse` and `containsOther`. */
+	usedBy: UsedBy[];
 	/** Null: not in a repository, or nothing at risk. */
 	git: GitRisk | null;
 }
@@ -51,13 +57,14 @@ export interface CleanupFolder extends CleanupPath {
 export interface CleanupDep extends CleanupPath {
 	/** `node_modules`, `.venv`, `target`, … */
 	kind: string;
-	/** What runs in the conversation's folder now; not empty: it is shown, not offered. */
-	usedBy: string[];
+	/** What runs in the conversation's folder now (shown, not offered); `unchecked`: that could not be found out. */
+	refused: "inUse" | "unchecked" | null;
+	usedBy: UsedBy[];
 }
 
 export interface DeletePreview {
 	file: string;
-	/** Null: nothing to offer (no Trash here, the folder is gone, or another conversation of the same request offers it). */
+	/** Null: nothing to offer (the folder is gone, or another conversation of the same request offers it). */
 	folder: CleanupFolder | null;
 	deps: CleanupDep[];
 }
@@ -72,11 +79,30 @@ export interface DeletePreviewAnswer {
 export interface TrashPick {
 	path: string;
 	real: string;
-	/** The preview's git counts: more work than this since then stops the move. */
+	/** The preview's git counts (a dependency folder: null): more work than this since then stops the move. */
 	git: GitRisk | null;
 }
 
 export interface TrashResult {
 	moved: string[];
 	notMoved: { path: string; error: string }[];
+}
+
+/** A ticked path read from a request body; null when it is not one. */
+function trashPickOf(value: unknown): TrashPick | null {
+	if (typeof value !== "object" || value === null) return null;
+	const v = value as Record<string, unknown>;
+	if (typeof v.path !== "string" || typeof v.real !== "string") return null;
+	const count = (n: unknown): number | null => (typeof n === "number" && Number.isInteger(n) && n >= 0 ? n : null);
+	const g = v.git as Record<string, unknown> | null | undefined;
+	const git = g && typeof g === "object" ? { uncommitted: count(g.uncommitted), unpushed: count(g.unpushed) } : null;
+	return { path: v.path, real: v.real, git };
+}
+
+/** A conversation's ticked paths read from a request body (absent: none); null when it is not a list of them. */
+export function trashPicksOf(value: unknown): TrashPick[] | null {
+	if (value === undefined) return [];
+	if (!Array.isArray(value)) return null;
+	const picks = value.map(trashPickOf);
+	return picks.every((p): p is TrashPick => p !== null) ? picks : null;
 }

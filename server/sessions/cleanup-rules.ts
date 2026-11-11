@@ -1,4 +1,5 @@
 import { sep } from "node:path";
+import type { UsedBy } from "../../shared/delete-cleanup.ts";
 
 /**
  * The rules of what a delete may move to the Trash (docs/superpowers/specs/2026-11-11-delete-session-folder-design.md),
@@ -60,8 +61,14 @@ export interface FolderUser {
 	/** Its folder, real. */
 	real: string;
 	/** How the dialog names it. */
-	label: string;
-	kind: "conversation" | "project" | "process";
+	who: UsedBy;
+}
+
+const running = (u: FolderUser): boolean => u.who.kind === "process" || u.who.kind === "terminal";
+
+/** `who` added to `list` unless it is there already. */
+function addOnce(list: UsedBy[], who: UsedBy): void {
+	if (!list.some((w) => w.kind === who.kind && w.name === who.name && w.pid === who.pid)) list.push(who);
 }
 
 /**
@@ -74,29 +81,29 @@ export function folderUse(
 	real: string,
 	users: readonly FolderUser[],
 	p: Protected,
-): { refused: "inUse" | "containsOther" | null; usedBy: string[] } {
+): { refused: "inUse" | "containsOther" | null; usedBy: UsedBy[] } {
 	let refused: "inUse" | "containsOther" | null = null;
-	const usedBy: string[] = [];
+	const usedBy: UsedBy[] = [];
 	for (const u of users) {
 		let hit: "inUse" | "containsOther" | null = null;
 		if (u.real === real) hit = "inUse";
 		else if (isWithin(u.real, real)) hit = "containsOther";
-		else if (u.kind !== "process" && isWithin(real, u.real) && protectedReason(u.real, p) === null) hit = "inUse";
+		else if (!running(u) && isWithin(real, u.real) && protectedReason(u.real, p) === null) hit = "inUse";
 		if (!hit) continue;
 		if (refused !== "inUse") refused = hit;
-		if (!usedBy.includes(u.label)) usedBy.push(u.label);
+		addOnce(usedBy, u.who);
 	}
 	return { refused, usedBy };
 }
 
 /**
- * What blocks a dependency folder of the conversation working in `folder`: only what runs there now (a conversation's
- * process, a Terminal tab, a dev server), in the folder or inside it. Old conversations and projects do not: what is in
- * a dependency folder can be installed again.
+ * What blocks a dependency folder of the conversation working in `folder`: only what runs there now (`active`: running
+ * conversations' processes, Terminal tabs, a dev server), in the folder or inside it. Old conversations and projects do
+ * not: what is in a dependency folder can be installed again.
  */
-export function depUse(folder: string, running: readonly FolderUser[]): string[] {
-	const usedBy: string[] = [];
-	for (const u of running) if (isWithin(u.real, folder) && !usedBy.includes(u.label)) usedBy.push(u.label);
+export function depUse(folder: string, active: readonly FolderUser[]): UsedBy[] {
+	const usedBy: UsedBy[] = [];
+	for (const u of active) if (isWithin(u.real, folder)) addOnce(usedBy, u.who);
 	return usedBy;
 }
 
