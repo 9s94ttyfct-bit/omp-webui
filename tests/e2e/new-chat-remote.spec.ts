@@ -100,13 +100,16 @@ test("New chat's Remote computers sit beside the guard, act on the warm-up proce
 		await expect(button).toHaveText("Remote: off");
 		await expect(button).toHaveAttribute("data-on", "false");
 
-		// A tick gives the warm-up process the computer at once.
+		// A tick gives the warm-up process the computer at once. That process may be older than this test (a New chat of an
+		// earlier test in the same folder and options is still warm), so it is the one the tick's request names.
 		await button.click();
 		const panel = page.getByTestId("remote-picker-panel");
+		const ticked = page.waitForRequest((r) => r.url().endsWith("/api/remote-run/live") && r.method() === "POST");
 		await panel.locator(`[data-testid="session-remote-computer"][data-mac="${mac.id}"] input`).check();
+		const { liveId } = (await ticked).postDataJSON() as { liveId: string };
 		await expect
-			.poll(async () => (await mine()).some((l) => l.remoteComputers?.includes(mac.id)), { timeout: 30_000 })
-			.toBe(true);
+			.poll(async () => (await lives()).find((l) => l.liveId === liveId)?.remoteComputers ?? null, { timeout: 30_000 })
+			.toEqual([mac.id]);
 		await expect(button).toHaveText("Remote: E2E Mac");
 		await expect(button).toHaveAttribute("data-on", "true");
 		await page.keyboard.press("Escape");

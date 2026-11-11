@@ -63,11 +63,18 @@ export async function gitIgnored(folder: string, paths: string[]): Promise<Set<s
 	const env = gitEnv();
 	if (!(await vetted(folder, env)).ok) return new Set();
 	// One `check-ignore -q` per path, told by its exit code (0: ignored, 1: not; anything else says nothing): what it
-	// prints is C-quoted (every Windows path, a name outside ASCII), and the paths asked are few.
-	const ignored = await Promise.all(
-		paths.map(async (p) => (await runGit(safeGit("check-ignore", "-q", "--", p), folder, GIT_MS, env))?.code === 0),
-	);
-	return new Set(paths.filter((_, i) => ignored[i]));
+	// prints is C-quoted (every Windows path, a name outside ASCII). Four at a time: there may be 50 paths.
+	const ignored = new Set<string>();
+	for (let i = 0; i < paths.length; i += 4) {
+		const batch = paths.slice(i, i + 4);
+		const codes = await Promise.all(
+			batch.map(async (p) => (await runGit(safeGit("check-ignore", "-q", "--", p), folder, GIT_MS, env))?.code),
+		);
+		batch.forEach((p, j) => {
+			if (codes[j] === 0) ignored.add(p);
+		});
+	}
+	return ignored;
 }
 
 /**
