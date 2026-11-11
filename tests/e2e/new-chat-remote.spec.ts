@@ -37,6 +37,13 @@ test("a new project's conversation starts with the computers ticked on the warm-
 	expect((await page.request.post("/api/projects", { headers: mutating, data: { folder: root } })).ok()).toBe(true);
 	const id = await addMac(page);
 	try {
+		// The tick's request is slow, and the message is sent while it is on its way: the project's conversation still gets it.
+		let slow = true;
+		await page.route("**/api/remote-run/live", async (route) => {
+			if (slow) await new Promise((r) => setTimeout(r, 1500));
+			slow = false;
+			await route.continue();
+		});
 		await page.goto("/");
 		const button = page.getByTestId("remote-picker");
 		await expect(button).toBeVisible({ timeout: 60_000 });
@@ -45,7 +52,6 @@ test("a new project's conversation starts with the computers ticked on the warm-
 			.getByTestId("remote-picker-panel")
 			.locator(`[data-testid="session-remote-computer"][data-mac="${id}"] input`)
 			.check();
-		await expect(button).toHaveText("Remote: E2E Mac");
 		await page.keyboard.press("Escape");
 		const composer = page.getByTestId("composer");
 		await composer.fill("!true");

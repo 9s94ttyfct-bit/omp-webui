@@ -8,6 +8,7 @@ import { ownerPage, sessionActions } from "../lib/api.ts";
 import { errorText } from "../lib/error-text.ts";
 import { fmtClock } from "../lib/format.ts";
 import { signedInUntil } from "../lib/macs.ts";
+import { choosing } from "../lib/new-chat-remote.ts";
 import { useApp } from "../store/app.ts";
 import { cx } from "./ui.tsx";
 
@@ -106,11 +107,15 @@ function RemoteComputers({ liveId, className }: { liveId: string; className?: st
 		setAsked(next);
 		setFailed(null);
 		try {
-			const { macIds } = await sessionActions.setRemoteComputers(liveId, next);
+			const asking = sessionActions.setRemoteComputers(liveId, next).then((r) => r.macIds);
+			// A new project's conversation started meanwhile is given what this settles on (`carryRemote`).
+			choosing.set(liveId, asking);
+			const macIds = await asking;
 			setAnswer({ ids: macIds, over: have });
 		} catch (e) {
 			setFailed(t("panel.controlsRemoteFailed", { error: errorText(e) }));
 		} finally {
+			choosing.delete(liveId);
 			setAsked(null);
 		}
 	};

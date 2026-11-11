@@ -4,13 +4,20 @@ import { sessionActions } from "./api.ts";
 import { errorText } from "./error-text.ts";
 
 /**
+ * The remote computers asked for a process and not answered yet, by its liveId (the list's ticks, `SessionRemote.tsx`): what
+ * the server settles on, so that a send right after a tick is not given the list from before it.
+ */
+export const choosing = new Map<string, Promise<string[]>>();
+
+/**
  * Give the process `to` (a new project's conversation, started as its first message is sent) the remote computers ticked on
  * New chat's warm-up process `from` (`RemotePicker`); a warning says so when they could not be. Its own module, loaded only
  * then: New chat is in the first paint.
  */
 export async function carryRemote(from: string, to: string): Promise<void> {
+	const settled = await choosing.get(from)?.catch(() => undefined);
 	const { lives, meta, toast } = useApp.getState();
-	const ids = lives[from]?.info.remoteComputers;
+	const ids = settled ?? lives[from]?.info.remoteComputers;
 	if (!ids || ids.length === 0) return;
 	try {
 		await sessionActions.setRemoteComputers(to, ids);
