@@ -30,11 +30,12 @@ describe("listDependencies", () => {
 		expect(found.map((f) => f.path).sort()).toEqual([join(app, "node_modules"), join(app, "web", ".venv")]);
 	});
 
+	// The folder's name is not ASCII: git quotes such a path (and every Windows path) in what it prints.
 	test("a vendor folder beside go.mod is listed only when git ignores it", async () => {
-		const repo = dir("vendor-repo");
+		const repo = dir("vendör-repo");
 		git(repo, "init", "-q");
 		file(join(repo, "go.mod"), "module x\n");
-		dir("vendor-repo", "vendor", "x");
+		dir("vendör-repo", "vendor", "x");
 		expect(await listDependencies(repo)).toEqual([]);
 		file(join(repo, ".gitignore"), "vendor/\n");
 		expect(await listDependencies(repo)).toEqual([{ path: join(repo, "vendor"), kind: "vendor" }]);

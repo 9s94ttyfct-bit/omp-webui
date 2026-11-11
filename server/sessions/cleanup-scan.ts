@@ -1,5 +1,5 @@
 import { type Dirent, existsSync, readdirSync, realpathSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import type { GitRisk } from "../../shared/delete-cleanup.ts";
 import { childEnv } from "../env.ts";
 import type { Run } from "../git.ts";
@@ -62,15 +62,12 @@ export async function gitIgnored(folder: string, paths: string[]): Promise<Set<s
 	if (paths.length === 0) return new Set();
 	const env = gitEnv();
 	if (!(await vetted(folder, env)).ok) return new Set();
-	// Exit 0: some are ignored, 1: none; anything else (not a repository) says nothing.
-	const r = await runGit(safeGit("check-ignore", "--", ...paths), folder, GIT_MS, env);
-	if (r === null || (r.code !== 0 && r.code !== 1)) return new Set();
-	const ignored = new Set<string>();
-	for (const line of r.stdout.split("\n")) {
-		const p = line.trim();
-		if (p) ignored.add(resolve(folder, p));
-	}
-	return ignored;
+	// One `check-ignore -q` per path, told by its exit code (0: ignored, 1: not; anything else says nothing): what it
+	// prints is C-quoted (every Windows path, a name outside ASCII), and the paths asked are few.
+	const ignored = await Promise.all(
+		paths.map(async (p) => (await runGit(safeGit("check-ignore", "-q", "--", p), folder, GIT_MS, env))?.code === 0),
+	);
+	return new Set(paths.filter((_, i) => ignored[i]));
 }
 
 /**
