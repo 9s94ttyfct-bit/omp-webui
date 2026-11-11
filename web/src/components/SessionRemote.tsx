@@ -73,15 +73,18 @@ export function RemotePicker({ liveId }: { liveId: string }) {
 					className="z-50 max-h-[var(--radix-popover-content-available-height)] w-96 max-w-[calc(100vw-1rem)] overflow-y-auto overscroll-contain rounded-2xl border border-border bg-surface p-4 shadow-2xl"
 					data-testid="remote-picker-panel"
 				>
-					<RemoteComputers liveId={liveId} />
+					<RemoteComputers liveId={liveId} carried />
 				</Popover.Content>
 			</Popover.Portal>
 		</Popover.Root>
 	);
 }
 
-/** The list itself: the title, what the tools do, a tick per saved Mac, and why it cannot be changed when it cannot. */
-function RemoteComputers({ liveId, className }: { liveId: string; className?: string }) {
+/**
+ * The list itself: the title, what the tools do, a tick per saved Mac, and why it cannot be changed when it cannot.
+ * `carried`: New chat's warm-up process, whose picks a new project's conversation is given (`carryRemote`).
+ */
+function RemoteComputers({ liveId, className, carried }: { liveId: string; className?: string; carried?: boolean }) {
 	const t = useT();
 	const macs = useApp((s) => s.meta?.macs);
 	const owner = useApp((s) => ownerPage(s.meta));
@@ -110,7 +113,7 @@ function RemoteComputers({ liveId, className }: { liveId: string; className?: st
 			const asking = sessionActions.setRemoteComputers(liveId, next).then((r) => r.macIds);
 			// A new project's conversation started meanwhile, or before the process's own record says it, is given what this
 			// settled on (`carryRemote`): the server's word on the page's socket may come after this answer.
-			choosing.set(liveId, asking);
+			if (carried) choosing.set(liveId, asking);
 			const macIds = await asking;
 			setAnswer({ ids: macIds, over: have });
 		} catch (e) {
