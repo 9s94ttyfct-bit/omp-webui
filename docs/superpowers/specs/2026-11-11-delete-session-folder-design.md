@@ -128,7 +128,11 @@ the page shows a toast for anything not moved, and the conversation stays delete
   an upstream; then a branch with commits and no upstream counts as unpushed). Run the way the status line runs git
   (`safeGit`/`vetRepository`: no hooks, no fsmonitor, no command from the repository's config). Warning only: the box
   stays tickable, and the dialog states the counts next to it. A git worktree moved to the Trash keeps git's record of
-  it (Put Back restores a working worktree); the dialog says git lists it until `git worktree prune`.
+  it: checked with a scratch repository and `/usr/bin/trash`, git then lists it as `prunable` ("gitdir file points to
+  non-existent location"), and moving it back to the same place (by `mv`, standing in for Finder's Put Back, which was
+  not run) gives a worktree that works. The record is lost if `git worktree prune` runs meanwhile, which `git gc` does
+  for worktrees missing longer than `gc.worktreePruneExpire` (3 months by default); then the folder comes back as
+  files without a working `.git`. The dialog says git lists it until `git worktree prune`.
 
 ### Dependency folders (what is listed)
 
