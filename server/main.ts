@@ -633,7 +633,9 @@ const deleteCleanup = new DeleteCleanup({
 	},
 	trash: platform.trash,
 	conversations: async () =>
-		(await store.list()).map((s) => ({ file: s.file, cwd: s.cwd, title: s.title ?? (s.preview.slice(0, 60) || s.id) })),
+		(await store.list())
+			.filter((s) => s.messageCount > 0)
+			.map((s) => ({ file: s.file, cwd: s.cwd, title: s.title ?? (s.preview.slice(0, 60) || s.id) })),
 	lives: () =>
 		pool
 			.list()

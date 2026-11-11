@@ -35,7 +35,10 @@ export interface CleanupWorld {
 	/** The real home folder, and the data folders never offered (omp-webui's, omp's home). */
 	protect: Protected;
 	trash: TrashOps | null;
-	/** Every recorded conversation: its file, folder and title. */
+	/**
+	 * Every recorded conversation with a message (those the sidebar lists): its file, folder and title. One with none is
+	 * left out: omp 18.18.9's `/session delete` starts an empty one in the deleted conversation's folder.
+	 */
 	conversations(): Promise<{ file: string; cwd: string; title: string }[]>;
 	/** The conversations' processes the server holds that have not ended (a new chat has no file yet). */
 	lives(): { file: string | null; cwd: string; pid: number | null }[];
