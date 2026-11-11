@@ -108,14 +108,15 @@ function RemoteComputers({ liveId, className }: { liveId: string; className?: st
 		setFailed(null);
 		try {
 			const asking = sessionActions.setRemoteComputers(liveId, next).then((r) => r.macIds);
-			// A new project's conversation started meanwhile is given what this settles on (`carryRemote`).
+			// A new project's conversation started meanwhile, or before the process's own record says it, is given what this
+			// settled on (`carryRemote`): the server's word on the page's socket may come after this answer.
 			choosing.set(liveId, asking);
 			const macIds = await asking;
 			setAnswer({ ids: macIds, over: have });
 		} catch (e) {
+			choosing.delete(liveId);
 			setFailed(t("panel.controlsRemoteFailed", { error: errorText(e) }));
 		} finally {
-			choosing.delete(liveId);
 			setAsked(null);
 		}
 	};

@@ -4,8 +4,9 @@ import { sessionActions } from "./api.ts";
 import { errorText } from "./error-text.ts";
 
 /**
- * The remote computers asked for a process and not answered yet, by its liveId (the list's ticks, `SessionRemote.tsx`): what
- * the server settles on, so that a send right after a tick is not given the list from before it.
+ * The remote computers last asked for a process from this page, by its liveId (the list's ticks, `SessionRemote.tsx`): what
+ * the server settles on, kept after its answer (the process's own record may come later), dropped when it failed. A send
+ * right after a tick is then not given the list from before it.
  */
 export const choosing = new Map<string, Promise<string[]>>();
 
@@ -16,6 +17,7 @@ export const choosing = new Map<string, Promise<string[]>>();
  */
 export async function carryRemote(from: string, to: string): Promise<void> {
 	const settled = await choosing.get(from)?.catch(() => undefined);
+	choosing.delete(from);
 	const { lives, meta, toast } = useApp.getState();
 	const ids = settled ?? lives[from]?.info.remoteComputers;
 	if (!ids || ids.length === 0) return;
