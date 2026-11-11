@@ -1333,6 +1333,8 @@
 		"new-chat-project.spec.ts › the first message makes a folder named by the time, and a !command runs there, never in the projects folder": 9.1,
 		"new-chat-project.spec.ts › the folder button's menu switches to an existing folder from the folder picker, and back to a new project": 7.2,
 		"new-chat-project.spec.ts › what is typed in the message box before the project's name arrives stays there, and the name does not take the caret": 5.3,
+		"new-chat-remote.spec.ts › New chat's Remote computers sit beside the guard, act on the warm-up process, a later warm-up starts with none, and are not there without a saved computer": 2.9,
+		"new-chat-remote.spec.ts › a new project's conversation starts with the computers ticked on the warm-up process": 1.9,
 		"new-chat-requests.spec.ts › a new chat asks for no file omp has not written: no 404, no console error, and the family loads once it is written": 4.9,
 		"new-chat-retry.spec.ts › a failed start shows its error in full with Retry; Send says why instead of 'still starting'; Retry recovers": 7.9,
 		"new-chat-retry.spec.ts › a local backend that does not answer › the start is tried again by itself once the backend's address is fixed": 0,

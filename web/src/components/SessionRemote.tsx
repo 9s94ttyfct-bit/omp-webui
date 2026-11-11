@@ -1,4 +1,6 @@
+import * as Popover from "@radix-ui/react-popover";
 import type { MacListing } from "@shared/macs.ts";
+import { Server } from "lucide-react";
 import { useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
@@ -20,6 +22,65 @@ const NONE: readonly string[] = [];
  * (`remoteComputersUnavailable`): the panel says why. Nothing is shown while no Mac is saved.
  */
 export default function SessionRemote({ liveId }: { liveId: string }) {
+	return <RemoteComputers liveId={liveId} className="mt-4 border-t border-border pt-3" />;
+}
+
+/**
+ * New chat's control for the same list (in its settings bar, right after the guard's): an icon button that says which
+ * computers the warm-up process has, and opens the list in a popover. A tick acts on that process; a new project's
+ * conversation, started as the message is sent, is given the same (`NewChat`'s `startProject`). A warm-up New chat starts
+ * later (another folder or options) starts with none, as every new conversation does. Not shown while no Mac is saved.
+ */
+export function RemotePicker({ liveId }: { liveId: string }) {
+	const t = useT();
+	const macs = useApp((s) => s.meta?.macs);
+	const info = useApp((s) => s.lives[liveId]?.info);
+	if (!info || !macs || macs.length === 0) return null;
+	const have = info.remoteComputers ?? NONE;
+	const names = macs.filter((m) => have.includes(m.id)).map((m) => m.name);
+	const on = names.length > 0;
+	const label =
+		names.length === 0
+			? t("panel.remotePickerOff")
+			: names.length === 1
+				? t("panel.remotePickerOne", { name: names[0] })
+				: t("panel.remotePickerMany", { n: names.length });
+	return (
+		<Popover.Root>
+			<Popover.Trigger asChild>
+				<button
+					type="button"
+					data-testid="remote-picker"
+					data-on={on}
+					title={t("panel.remotePickerTitle")}
+					className={cx(
+						"inline-flex h-8 max-w-48 items-center gap-1.5 rounded-lg px-2 text-xs composer-narrow:w-8 composer-narrow:justify-center composer-narrow:px-0",
+						// On is a shape as well as a tint (a ring), as the advisor's and unattended switches.
+						on ? "bg-accent-soft text-accent ring-1 ring-accent/60" : "text-muted hover:bg-hover hover:text-fg",
+					)}
+				>
+					<Server size={14} className="shrink-0" />
+					<span className="truncate composer-narrow:sr-only">{label}</span>
+				</button>
+			</Popover.Trigger>
+			<Popover.Portal>
+				<Popover.Content
+					align="start"
+					side="top"
+					sideOffset={6}
+					collisionPadding={8}
+					className="z-50 max-h-[var(--radix-popover-content-available-height)] w-96 max-w-[calc(100vw-1rem)] overflow-y-auto overscroll-contain rounded-2xl border border-border bg-surface p-4 shadow-2xl"
+					data-testid="remote-picker-panel"
+				>
+					<RemoteComputers liveId={liveId} />
+				</Popover.Content>
+			</Popover.Portal>
+		</Popover.Root>
+	);
+}
+
+/** The list itself: the title, what the tools do, a tick per saved Mac, and why it cannot be changed when it cannot. */
+function RemoteComputers({ liveId, className }: { liveId: string; className?: string }) {
 	const t = useT();
 	const macs = useApp((s) => s.meta?.macs);
 	const owner = useApp((s) => ownerPage(s.meta));
@@ -55,11 +116,7 @@ export default function SessionRemote({ liveId }: { liveId: string }) {
 	};
 
 	return (
-		<section
-			className="mt-4 border-t border-border pt-3"
-			data-testid="session-remote"
-			aria-label={t("panel.controlsRemoteTitle")}
-		>
+		<section className={className} data-testid="session-remote" aria-label={t("panel.controlsRemoteTitle")}>
 			<div className="text-sm font-semibold">{t("panel.controlsRemoteTitle")}</div>
 			<p className="mt-1 text-xs text-muted" data-testid="session-remote-help">
 				{t("panel.controlsRemoteHelp")}

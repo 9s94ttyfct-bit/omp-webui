@@ -947,6 +947,11 @@ html[data-full-view] .app-shell {
 [data-testid="pickers-skeleton"] [data-sk="guard"] {
 	width: 95px;
 }
+/* Remote computers ("Remote: off"): there only once a computer is saved; also its own chunk's placeholder */
+[data-testid="pickers-skeleton"] [data-sk="remote"],
+[data-testid="remote-skeleton"] {
+	width: 108px;
+}
 [data-testid="pickers-skeleton"] [data-sk="guidance"],
 [data-testid="guidance-skeleton"] {
 	width: 88px;
@@ -971,6 +976,10 @@ html[data-full-view] .app-shell {
 :root[lang="zh-CN"] [data-testid="pickers-skeleton"] [data-sk="guard"] {
 	width: 97px;
 }
+:root[lang="zh-CN"] [data-testid="pickers-skeleton"] [data-sk="remote"],
+:root[lang="zh-CN"] [data-testid="remote-skeleton"] {
+	width: 85px;
+}
 :root[lang="zh-CN"] [data-testid="pickers-skeleton"] [data-sk="guidance"],
 :root[lang="zh-CN"] [data-testid="guidance-skeleton"] {
 	width: 83px;
@@ -984,7 +993,8 @@ html[data-full-view] .app-shell {
 /* More specific than the per-language rules above (`:root`, `:nth-child(n)`), and after them, so the narrow settings bar's
  * icon squares win in every language; the divider between the model's settings and the rules stays a line. */
 :root [data-composer-narrow] [data-testid="pickers-skeleton"] [data-sk]:nth-child(n),
-:root [data-composer-narrow] [data-testid="guidance-skeleton"] {
+:root [data-composer-narrow] [data-testid="guidance-skeleton"],
+:root [data-composer-narrow] [data-testid="remote-skeleton"] {
 	width: 2rem;
 }
 :root [data-composer-narrow] [data-testid="pickers-skeleton"] [data-sk="divider"]:nth-child(n) {

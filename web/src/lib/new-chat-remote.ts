@@ -1,0 +1,21 @@
+import { t } from "../i18n/index.ts";
+import { useApp } from "../store/app.ts";
+import { sessionActions } from "./api.ts";
+import { errorText } from "./error-text.ts";
+
+/**
+ * Give the process `to` (a new project's conversation, started as its first message is sent) the remote computers ticked on
+ * New chat's warm-up process `from` (`RemotePicker`); a warning says so when they could not be. Its own module, loaded only
+ * then: New chat is in the first paint.
+ */
+export async function carryRemote(from: string, to: string): Promise<void> {
+	const { lives, meta, toast } = useApp.getState();
+	const ids = lives[from]?.info.remoteComputers;
+	if (!ids || ids.length === 0) return;
+	try {
+		await sessionActions.setRemoteComputers(to, ids);
+	} catch (e) {
+		const names = (meta?.macs ?? []).filter((m) => ids.includes(m.id)).map((m) => m.name);
+		toast("warning", t("pages.newPickLost", { what: names.join(", "), error: errorText(e) }));
+	}
+}

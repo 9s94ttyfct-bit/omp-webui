@@ -234,6 +234,11 @@ export const en = {
 	controlsRemoteServerTools:
 		"This conversation's server tools are in use for something else (Set up with AI, Ask agent for help), so it cannot be given remote computers.",
 	controlsRemoteFailed: "Could not change the remote computers: {error}",
+	// New chat's control for the same list, beside the guard's: the button's text and its tooltip
+	remotePickerOff: "Remote: off",
+	remotePickerOne: "Remote: {name}",
+	remotePickerMany: "Remote: {n} computers",
+	remotePickerTitle: "Remote computers this conversation may run commands on",
 	// Force restart: the conversation's omp is ended with everything it started, and the conversation goes on in a fresh one
 	controlsRestartTitle: "Restart the process",
 	controlsRestartHint:

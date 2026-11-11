@@ -4,6 +4,7 @@ import type { LiveGuidance, SessionGuidance } from "@shared/model-guidance.ts";
 import { lazy, type MutableRefObject, type ReactNode, Suspense } from "react";
 import { lazyChunk } from "../lib/lazy-chunk.ts";
 import type { PickedModel } from "../lib/new-chat-picks.ts";
+import { useApp } from "../store/app.ts";
 import type { ModelInfo } from "../store/live.ts";
 import { AdvisorToggle } from "./AdvisorToggle.tsx";
 import { ApprovalPicker } from "./ApprovalPicker.tsx";
@@ -11,6 +12,9 @@ import { ModelPicker, ThinkingPicker } from "./ModelPicker.tsx";
 import { ModePicker } from "./ModePicker.tsx";
 import { PresetPicker } from "./PresetPicker.tsx";
 import { GuardPicker } from "./SessionGuard.tsx";
+
+// Remote computers (the list of Session controls, with the later strings): a chunk of its own, fetched when this one is drawn.
+const RemotePicker = lazy(() => import("./SessionRemote.tsx").then((m) => ({ default: m.RemotePicker })));
 
 // The switch for unattended mode (#646) is for a few people some of the time: a chunk of its own, fetched when this one is drawn.
 const UnattendedToggle = lazy(() => import("./UnattendedToggle.tsx"));
@@ -64,6 +68,8 @@ export function NewChatPickers({
 	// Two groups, each wrapping as one: the bar breaks between them (the rules under the model's settings, aligned at the
 	// left), never inside one while it fits a line. `PickersSkeleton` in NewChat.tsx holds the same groups.
 	const group = "inline-flex min-w-0 flex-wrap items-center gap-1";
+	// Remote computers: a control only once a computer is saved; its own chunk, so a bar of its width holds its place.
+	const remote = useApp((s) => (s.meta?.macs?.length ?? 0) > 0);
 	return (
 		<>
 			<span className={group} data-group="model">
@@ -81,6 +87,16 @@ export function NewChatPickers({
 			<span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-border" />
 			<span className={group} data-group="rules">
 				<GuardPicker liveId={liveId} onChange={onGuard} />
+				{/* The computers the conversation may run commands on (only once one is saved): picked on the warm-up process, given to a new project's conversation as it starts, never to a later warm-up. */}
+				<Suspense
+					fallback={
+						remote ? (
+							<span aria-hidden data-testid="remote-skeleton" className="h-8 shrink-0 rounded-lg bg-hover" />
+						) : null
+					}
+				>
+					<RemotePicker liveId={liveId} />
+				</Suspense>
 				{/* Its own chunk lands after the others: a bar of its width holds its place, so the row does not wrap twice. */}
 				<Suspense
 					fallback={<span aria-hidden data-testid="guidance-skeleton" className="h-8 shrink-0 rounded-lg bg-hover" />}

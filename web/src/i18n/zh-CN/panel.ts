@@ -219,6 +219,10 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	controlsRemoteServerTools:
 		"这个对话的服务器工具正被别的功能占用（“用 AI 设置”“请智能体帮忙”），所以不能给它远程电脑。",
 	controlsRemoteFailed: "无法更改远程电脑：{error}",
+	remotePickerOff: "远程：关",
+	remotePickerOne: "远程：{name}",
+	remotePickerMany: "远程：{n} 台电脑",
+	remotePickerTitle: "这个对话可以在哪些远程电脑上运行命令",
 	controlsRestartTitle: "重启进程",
 	controlsRestartHint:
 		"结束这个对话的 omp 以及它启动的一切（正在进行的这一轮、后台任务、开发服务器、MCP 服务器），然后在新的进程中继续同一个对话。用于卡住的对话。",

@@ -166,6 +166,8 @@ function pickIo(liveId: string): PickIo {
  */
 function PickersSkeleton() {
 	const bar = "h-8 shrink-0 rounded-lg bg-hover";
+	// Remote computers: a control only once a computer is saved (`RemotePicker`).
+	const remote = useApp((s) => !!s.meta?.macs?.length);
 	// The pickers' own two groups (`NewChatPickers`), so the placeholder breaks where the controls will.
 	const group = "inline-flex min-w-0 flex-wrap items-center gap-1";
 	return (
@@ -178,9 +180,10 @@ function PickersSkeleton() {
 				<span data-sk="mode" className={bar} />
 			</span>
 			<span data-sk="divider" className="mx-1 h-5 w-px shrink-0 bg-border" />
-			{/* the conversation's rules: guard, guidance (#641), permission mode, the advisor and unattended mode (#646; squares), the goal */}
+			{/* the conversation's rules: guard, remote computers (once one is saved), guidance (#641), permission mode, the advisor and unattended mode (#646; squares), the goal */}
 			<span className={group}>
 				<span data-sk="guard" className={bar} />
+				{remote ? <span data-sk="remote" className={bar} /> : null}
 				<span data-sk="guidance" className={bar} />
 				<span data-sk="approval" className={bar} />
 				<span data-sk="advisor" className={`${bar} w-8`} />
@@ -499,6 +502,9 @@ export function NewChat({ cwd: openedIn, project }: { cwd?: string; project?: st
 		// The choices belong to the models the warm-up process was started on.
 		const on = runsLocal(useApp.getState().lives[warm]?.info ?? useMode.getState().state) ? "local" : "own";
 		const lost = await applyPicks(picks.current[on], pickIo(id), () => gen === madeGen.current);
+		// The computers ticked on the warm-up process are this conversation's too: it is the one being started (a process
+		// started for another folder or other options is not, and starts with none).
+		await import("../lib/new-chat-remote.ts").then((m) => m.carryRemote(warm, id));
 		if (gen !== madeGen.current) {
 			closeLive(id);
 			return null;
