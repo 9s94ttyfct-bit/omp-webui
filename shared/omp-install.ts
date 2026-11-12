@@ -38,6 +38,23 @@ export function ompLacks(feature: OmpFeature, version: string | null | undefined
 	return compareVersions(version, since) < 0 ? since : null;
 }
 
+/**
+ * The first omp release without each thing the web UI offers only where omp still has it: there the page stops offering
+ * it, as omp would refuse it.
+ */
+export const OMP_DROPPED = {
+	/** The todo status "blocked" (`[!]`, with a `<!-- blocker: … -->` reason); omp 18.19.0 reads such tasks as pending. */
+	todoBlocked: "18.19.0",
+} as const;
+
+export type OmpDropped = keyof typeof OMP_DROPPED;
+
+/** Whether `version` is an omp without `feature`; false when it is not a version (nothing is held back on a guess). */
+export function ompDropped(feature: OmpDropped, version: string | null | undefined): boolean {
+	if (!version || !parseVersion(version)) return false;
+	return compareVersions(version, OMP_DROPPED[feature]) >= 0;
+}
+
 /** The range as a person reads it. */
 export const OMP_COMPAT_RANGE = `>=${OMP_COMPAT.min} <${OMP_COMPAT.below}`;
 

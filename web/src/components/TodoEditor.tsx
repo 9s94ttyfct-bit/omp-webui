@@ -1,4 +1,5 @@
 import * as Menu from "@radix-ui/react-dropdown-menu";
+import { ompDropped } from "@shared/omp-install.ts";
 import { ArrowDown, ArrowUp, Check, FileText, MoreHorizontal, Pencil, Plus, Trash2, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import "../i18n/later.ts";
@@ -145,6 +146,8 @@ function TaskRow({ ctrl, p, i, task, last }: { ctrl: Ctrl; p: number; i: number;
 	const t = useT();
 	const { Icon, tone, label } = statusOf(task.status);
 	const over = task.status === "completed" || task.status === "abandoned";
+	// omp 18.19.0 has no "blocked" status: it is not offered there (a task that is blocked still shows its state).
+	const withBlocked = !useApp((s) => ompDropped("todoBlocked", s.meta?.ompVersion));
 	const draft = ctrl.editing;
 	const open =
 		draft &&
@@ -229,30 +232,32 @@ function TaskRow({ ctrl, p, i, task, last }: { ctrl: Ctrl; p: number; i: number;
 					>
 						<Menu.Label className="px-2 py-1 text-xs uppercase text-faint">{t("panel.todoEditState")}</Menu.Label>
 						<Menu.RadioGroup value={task.status}>
-							{TODO_STATUSES.map((status) => (
-								<Menu.RadioItem
-									key={status}
-									value={status}
-									className={itemCls}
-									data-testid={`todo-set-${status}`}
-									onSelect={() => {
-										if (status === "blocked") {
-											// A reason is asked for: the task is blocked once it is given (or left empty).
-											toField.current = true;
-											ctrl.setEditing({ kind: "blocker", p, i, content: task.content });
-											return;
-										}
-										void ctrl.run(here, (cur) => setStatus(cur, p, i, status));
-									}}
-								>
-									<span className="flex w-4 shrink-0 justify-center">
-										<Menu.ItemIndicator>
-											<Check size={14} />
-										</Menu.ItemIndicator>
-									</span>
-									{t(STATE_LABELS[status])}
-								</Menu.RadioItem>
-							))}
+							{TODO_STATUSES.filter((status) => status !== "blocked" || withBlocked || task.status === "blocked").map(
+								(status) => (
+									<Menu.RadioItem
+										key={status}
+										value={status}
+										className={itemCls}
+										data-testid={`todo-set-${status}`}
+										onSelect={() => {
+											if (status === "blocked") {
+												// A reason is asked for: the task is blocked once it is given (or left empty).
+												toField.current = true;
+												ctrl.setEditing({ kind: "blocker", p, i, content: task.content });
+												return;
+											}
+											void ctrl.run(here, (cur) => setStatus(cur, p, i, status));
+										}}
+									>
+										<span className="flex w-4 shrink-0 justify-center">
+											<Menu.ItemIndicator>
+												<Check size={14} />
+											</Menu.ItemIndicator>
+										</span>
+										{t(STATE_LABELS[status])}
+									</Menu.RadioItem>
+								),
+							)}
 						</Menu.RadioGroup>
 						<Menu.Separator className="my-1 h-px bg-border" />
 						<Menu.Item

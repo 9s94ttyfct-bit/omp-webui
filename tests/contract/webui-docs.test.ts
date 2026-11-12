@@ -131,9 +131,9 @@ test("the app starts omp with the docs extension, and the main agent is offered 
 	const m = mark("offered");
 	await turn(c, m);
 	const req = await mainRequestFor(m);
-	// Mounted among omp's discoverable tools, with its summary: the schema is read on demand.
-	expect(req.text).toContain(DEVICE);
-	expect(req.text).toContain("omp-webui's own documentation");
+	// Mounted among omp's discoverable tools, with its summary: the schema is read on demand. omp up to 18.18 lists the
+	// device as `- xd://webui_docs — …`; 18.19 drops the scheme (`- webui_docs — …`, read through `xd://<tool>`).
+	expect(req.text).toMatch(/- (xd:\/\/)?webui_docs — Look up omp-webui's own documentation/);
 	// And told to look at pages in the built-in browser, never in a window on the person's desktop.
 	expect(req.text).toContain(BROWSER_NOTE.split("\n")[1]);
 	c.ws.close();

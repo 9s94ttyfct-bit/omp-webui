@@ -88,8 +88,14 @@ test("sizeOf measures a folder", async () => {
 	expect(bytes as number).toBeGreaterThanOrEqual(64 * 1024);
 });
 
-test.skipIf(platform.trash === null)("the working folders of this user's processes include this test's", async () => {
-	const own = await platform.trash?.workingFolders();
-	expect(own).not.toBeNull();
-	expect(own?.find((w) => w.pid === process.pid)?.cwd).toBe(realpathSync(process.cwd()));
-});
+test.skipIf(platform.trash === null)(
+	"the working folders of this user's processes include this test's, with its parent",
+	async () => {
+		const own = await platform.trash?.workingFolders();
+		expect(own).not.toBeNull();
+		const me = own?.find((w) => w.pid === process.pid);
+		expect(me?.cwd).toBe(realpathSync(process.cwd()));
+		// What a deleted conversation's omp started is told by it (`DeleteCleanup.users`).
+		expect(me?.ppid).toBe(process.ppid);
+	},
+);

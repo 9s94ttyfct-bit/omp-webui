@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { capabilities } from "../../server/platform/capabilities.ts";
+import { ompDropped } from "../../shared/omp-install.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
@@ -51,8 +52,25 @@ async function open(target: object) {
 	};
 }
 
+/**
+ * A task that waits on something, as the omp under test writes it: blocked with its reason, or (omp 18.19.0, which has no
+ * blocked status) abandoned.
+ */
+let waiting: { line: string; task: { content: string; status: string; blocker?: string } };
+
 beforeAll(async () => {
 	s = await startTestServer();
+	const meta = (await (
+		await fetch(`${s.url}/api/meta`, { headers: { "x-omp-webui-token": s.accessToken } })
+	).json()) as {
+		ompVersion: string;
+	};
+	waiting = ompDropped("todoBlocked", meta.ompVersion)
+		? { line: "- [-] Ship it", task: { content: "Ship it", status: "abandoned" } }
+		: {
+				line: "- [!] Ship it <!-- blocker: waiting for review -->",
+				task: { content: "Ship it", status: "blocked", blocker: "waiting for review" },
+			};
 }, 90_000);
 afterAll(async () => {
 	await s?.stop();
@@ -77,15 +95,12 @@ test("the markdown becomes the list, with omp's own rule that exactly one task i
 			{ name: "Later", tasks: [{ content: "Think", status: "completed" }] },
 		]);
 
-		// A blocked task keeps its reason; a second edit replaces the whole list; no text clears it.
-		await putTodos(chat.info.liveId, "# Plan\n- [/] Write it\n- [!] Ship it <!-- blocker: waiting for review -->\n");
+		// A task that waits keeps what it waits on; a second edit replaces the whole list; no text clears it.
+		await putTodos(chat.info.liveId, `# Plan\n- [/] Write it\n${waiting.line}\n`);
 		expect(await chat.todos()).toEqual([
 			{
 				name: "Plan",
-				tasks: [
-					{ content: "Write it", status: "in_progress" },
-					{ content: "Ship it", status: "blocked", blocker: "waiting for review" },
-				],
+				tasks: [{ content: "Write it", status: "in_progress" }, waiting.task],
 			},
 		]);
 		expect((await putTodos(chat.info.liveId, "")).status).toBe(200);
@@ -138,9 +153,7 @@ test("the edit is recorded in the conversation: a resumed one has it", async () 
 	const file = chat.info.sessionFile as string;
 	try {
 		expect(await chat.todos()).toEqual([]);
-		expect(
-			(await putTodos(chat.info.liveId, "# Resumed\n- [/] Still here\n- [!] Stuck <!-- blocker: later -->\n")).status,
-		).toBe(200);
+		expect((await putTodos(chat.info.liveId, `# Resumed\n- [/] Still here\n${waiting.line}\n`)).status).toBe(200);
 	} finally {
 		await chat.close();
 	}
@@ -151,10 +164,7 @@ test("the edit is recorded in the conversation: a resumed one has it", async () 
 		expect(await again.todos()).toEqual([
 			{
 				name: "Resumed",
-				tasks: [
-					{ content: "Still here", status: "in_progress" },
-					{ content: "Stuck", status: "blocked", blocker: "later" },
-				],
+				tasks: [{ content: "Still here", status: "in_progress" }, waiting.task],
 			},
 		]);
 	} finally {

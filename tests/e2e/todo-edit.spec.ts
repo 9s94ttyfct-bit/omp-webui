@@ -1,3 +1,4 @@
+import { ompDropped } from "@shared/omp-install.ts";
 import { openSidebar, ownSession, startLive } from "../support/live.ts";
 import { topTab } from "../support/panel.ts";
 import { type SocketTap, tapSocket } from "../support/socket-tap.ts";
@@ -55,6 +56,13 @@ async function enter(panel: Locator, label: string, text: string) {
 	await field.press("Enter");
 }
 
+/** Whether the omp under test has no "blocked" todo status (omp 18.19.0 dropped it). */
+const noBlocked = async (page: Page): Promise<boolean> =>
+	ompDropped(
+		"todoBlocked",
+		((await (await page.request.get("/api/meta")).json()) as { ompVersion: string }).ompVersion,
+	);
+
 test("a list is built and changed with the state icon, the menus and the fields, and omp's list is what shows", async ({
 	page,
 }) => {
@@ -92,12 +100,19 @@ test("a list is built and changed with the state icon, the menus and the fields,
 		"Reopen: Wire the strip",
 	);
 
-	// Blocked asks what it is blocked on.
+	// Blocked asks what it is blocked on; an omp without that status is not offered it, and the task is set aside instead.
+	const setAside = await noBlocked(page);
 	await taskRow(panel, "Deploy").getByTestId("todo-task-menu").click();
-	await page.getByTestId("todo-set-blocked").click();
-	await enter(panel, "What is it blocked on? (optional)", "the credentials");
-	await expect(taskRow(panel, "Deploy")).toHaveAttribute("data-status", "blocked");
-	await expect(taskRow(panel, "Deploy").getByTestId("todo-blocker")).toHaveText("Blocked: the credentials");
+	if (setAside) {
+		await expect(page.getByTestId("todo-set-blocked")).toHaveCount(0);
+		await page.getByTestId("todo-set-abandoned").click();
+		await expect(taskRow(panel, "Deploy")).toHaveAttribute("data-status", "abandoned");
+	} else {
+		await page.getByTestId("todo-set-blocked").click();
+		await enter(panel, "What is it blocked on? (optional)", "the credentials");
+		await expect(taskRow(panel, "Deploy")).toHaveAttribute("data-status", "blocked");
+		await expect(taskRow(panel, "Deploy").getByTestId("todo-blocker")).toHaveText("Blocked: the credentials");
+	}
 
 	// Text edit, then order.
 	await taskRow(panel, "Write the parser").getByTestId("todo-task-menu").click();
@@ -120,20 +135,27 @@ test("a list is built and changed with the state icon, the menus and the fields,
 				{ content: "Write the parser v2", status: "in_progress" },
 			],
 		},
-		{ name: "Ship", tasks: [{ content: "Deploy", status: "blocked", blocker: "the credentials" }] },
+		{
+			name: "Ship",
+			tasks: [
+				setAside
+					? { content: "Deploy", status: "abandoned" }
+					: { content: "Deploy", status: "blocked", blocker: "the credentials" },
+			],
+		},
 	]);
 
 	// The strip above the composer offers the same edits. It is not drawn while a pane shows the Todos tab, so the pane is folded.
 	await page.getByTestId("pane-fold-top").click();
 	const strip = page.getByTestId("todo-strip");
-	await expect(strip.getByTestId("todo-progress")).toHaveText("1/3");
+	await expect(strip.getByTestId("todo-progress")).toHaveText(setAside ? "2/3" : "1/3");
 	await strip.getByTestId("todo-toggle").click();
 	await strip
 		.getByTestId("todo-expanded")
 		.locator('[data-testid="todo-task"]', { hasText: "Wire the strip" })
 		.getByTestId("todo-status-button")
 		.click();
-	await expect(strip.getByTestId("todo-progress")).toHaveText("0/3");
+	await expect(strip.getByTestId("todo-progress")).toHaveText(setAside ? "1/3" : "0/3");
 	await page.getByTestId("pane-fold-top").click();
 	await expect(strip).toHaveCount(0);
 	await expect(taskRow(panel, "Wire the strip")).toHaveAttribute("data-status", "pending");
@@ -176,16 +198,20 @@ test("the Markdown dialog shows the list as omp writes it, applies an edit, and 
 	await panel.getByTestId("todo-edit-markdown").click();
 	const area = page.getByTestId("todo-markdown");
 	await expect(area).toHaveValue("");
-	await area.fill("# Docs\n- [x] Write\n- [ ] Review\n- [!] Publish <!-- blocker: legal -->\n");
+	// A blocked line where omp has that status; a set-aside one where it does not.
+	const last = (await noBlocked(page)) ? "- [-] Publish" : "- [!] Publish <!-- blocker: legal -->";
+	await area.fill(`# Docs\n- [x] Write\n- [ ] Review\n${last}\n`);
 	await page.getByTestId("todo-markdown-save").click();
 	await expect(area).toHaveCount(0);
 	await expect(panel.getByTestId("todo-task")).toHaveCount(3);
 	await expect(taskRow(panel, "Review")).toHaveAttribute("data-status", "in_progress");
-	await expect(taskRow(panel, "Publish").getByTestId("todo-blocker")).toHaveText("Blocked: legal");
+	if (last.startsWith("- [!]"))
+		await expect(taskRow(panel, "Publish").getByTestId("todo-blocker")).toHaveText("Blocked: legal");
+	else await expect(taskRow(panel, "Publish")).toHaveAttribute("data-status", "abandoned");
 
 	// What the dialog shows now is the list as omp reports it, in omp's own format.
 	await panel.getByTestId("todo-edit-markdown").click();
-	await expect(area).toHaveValue("# Docs\n- [x] Write\n- [/] Review\n- [!] Publish <!-- blocker: legal -->\n");
+	await expect(area).toHaveValue(`# Docs\n- [x] Write\n- [/] Review\n${last}\n`);
 	await area.fill("# Docs\n- [?] odd\nnot a task\n");
 	await page.getByTestId("todo-markdown-save").click();
 	const error = page.getByTestId("todo-markdown-error");
