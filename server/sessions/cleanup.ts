@@ -23,6 +23,15 @@ import { gitRisk, isFolder, isWorktreeTop, listDependencies, moreAtRisk, realOf,
 const SIZE_MS = 3000;
 /** How long the Trash command may take for one path (a large folder on another volume is copied). */
 const TRASH_MS = 120_000;
+/** How long a move waits for the processes a deleted conversation's omp started to end, and how often it looks. */
+const SETTLE_MS = 5000;
+const SETTLE_STEP_MS = 250;
+
+/** Whether what runs in `folders` (or inside them) is processes only, which may be ones still ending. */
+function onlyProcessesIn(folders: string[], users: Users): boolean {
+	const inside = users.active.filter((u) => folders.some((f) => isWithin(u.real, f)));
+	return inside.length > 0 && inside.every((u) => u.who.kind === "process");
+}
 
 /** A conversation of the request: its file, and the folder it works in. */
 export interface CleanupTarget {
@@ -43,6 +52,8 @@ export interface CleanupWorld {
 	lives(): { file: string | null; cwd: string; pid: number | null }[];
 	/** The sidebar's projects with a folder. */
 	projects(): Promise<{ name: string; folder: string }[]>;
+	/** The projects folder, where New chat makes each new project's folder (`Protected.shared`). */
+	projectsFolder(): Promise<string>;
 	/** The shells of the Terminal tabs. */
 	terminalPids(): Set<number>;
 	/** Processes of the server's own (itself, its relays): never anyone's use of a folder. */
@@ -56,6 +67,8 @@ interface Users {
 	active: FolderUser[];
 	/** False: the processes could not be listed; no folder is offered or moved. */
 	checked: boolean;
+	/** The rules of what is never offered, with the projects folder as it is now. */
+	protect: Protected;
 }
 
 export class DeleteCleanup {
@@ -66,7 +79,11 @@ export class DeleteCleanup {
 		return (this.world.trash?.command() ?? null) !== null;
 	}
 
-	/** Who works where, leaving out the conversations of `leaving` (they are being deleted) and their processes. */
+	/**
+	 * Who works where, leaving out the conversations of `leaving` (they are being deleted), their omp processes and what
+	 * those started (MCP servers, a tool's shell): the delete ends them. One that outlives its omp is counted again once
+	 * it is on its own (`moveAfter` looks after the delete).
+	 */
 	private async users(leaving: Set<string>): Promise<Users> {
 		const all: FolderUser[] = [];
 		const active: FolderUser[] = [];
@@ -83,9 +100,13 @@ export class DeleteCleanup {
 			if (real) all.push({ real, who: { kind: "conversation", name: c.title } });
 		}
 		const livePids = new Set<number>();
+		const leavingPids = new Set<number>();
 		for (const l of this.world.lives()) {
 			if (l.pid !== null) livePids.add(l.pid);
-			if (l.file !== null && leaving.has(l.file)) continue;
+			if (l.file !== null && leaving.has(l.file)) {
+				if (l.pid !== null) leavingPids.add(l.pid);
+				continue;
+			}
 			const real = realCached(l.cwd);
 			if (!real) continue;
 			// A new chat has no title yet: the dialog names it as one.
@@ -100,9 +121,15 @@ export class DeleteCleanup {
 		const folders = (await this.world.trash?.workingFolders()) ?? null;
 		const own = this.world.ownPids();
 		const terminals = this.world.terminalPids();
+		const parent = new Map((folders ?? []).map((w) => [w.pid, w.ppid]));
+		const startedByLeaving = (pid: number): boolean => {
+			for (let p = parent.get(pid), depth = 0; p !== undefined && p > 1 && depth < 64; p = parent.get(p), depth++)
+				if (leavingPids.has(p)) return true;
+			return false;
+		};
 		for (const w of folders ?? []) {
 			// A conversation's own omp is that conversation (counted above, or being deleted).
-			if (own.has(w.pid) || livePids.has(w.pid)) continue;
+			if (own.has(w.pid) || livePids.has(w.pid) || startedByLeaving(w.pid)) continue;
 			const who: UsedBy = terminals.has(w.pid)
 				? { kind: "terminal", name: w.name, pid: w.pid }
 				: { kind: "process", name: w.name, pid: w.pid };
@@ -110,7 +137,9 @@ export class DeleteCleanup {
 			all.push(u);
 			active.push(u);
 		}
-		return { all, active, checked: folders !== null };
+		const projectsFolder = realOf(await this.world.projectsFolder());
+		const protect = { ...this.world.protect, shared: projectsFolder ? [projectsFolder] : [] };
+		return { all, active, checked: folders !== null, protect };
 	}
 
 	/** What each of `targets` would offer; a folder (or dependency folder) two of them share is offered by the first. */
@@ -129,7 +158,7 @@ export class DeleteCleanup {
 		if (real === null || !isFolder(real) || offered.has(real)) return { file: t.file, folder: null, deps: [] };
 		offered.add(real);
 		const guarded = protectedReason(real, this.world.protect);
-		const use = folderUse(real, users.all, this.world.protect);
+		const use = folderUse(real, users.all, users.protect);
 		const refused = guarded ?? (users.checked ? use.refused : "unchecked");
 		const [bytes, git, worktree] = guarded
 			? [null, null, false]
@@ -189,7 +218,15 @@ export class DeleteCleanup {
 		const command = this.world.trash?.command() ?? null;
 		// The empty sessions omp went on with after the deletes are the deleted conversations', not someone else's.
 		const started = deleted.flatMap((t) => (t.startedInstead ? [t.startedInstead] : []));
-		const users = await this.users(new Set([...gone, ...started]));
+		const leaving = new Set([...gone, ...started]);
+		// What a deleted conversation's omp started (its MCP servers) ends a moment after it: a process alone in a picked
+		// folder is waited for, a while. One still there then (a dev server) is in use, and the folder stays.
+		const folders = todo.map((t) => realOf(t.cwd)).filter((f): f is string => f !== null);
+		let users = await this.users(leaving);
+		for (let waited = 0; waited < SETTLE_MS && onlyProcessesIn(folders, users); waited += SETTLE_STEP_MS) {
+			await Bun.sleep(SETTLE_STEP_MS);
+			users = await this.users(leaving);
+		}
 		for (const t of todo) out[t.file] = await this.moveOne(t, picks.get(t.file) ?? [], users, command);
 		return out;
 	}
@@ -227,7 +264,7 @@ export class DeleteCleanup {
 				continue;
 			}
 			if (now === folder) {
-				const use = folderUse(now, users.all, this.world.protect);
+				const use = folderUse(now, users.all, users.protect);
 				if (use.refused) {
 					refuse(p, `It is in use: ${use.usedBy.map(describe).join(", ")}.`);
 					continue;

@@ -63,6 +63,14 @@ describe("folderUse", () => {
 		expect(folderUse("/Users/me/code/app", [user("/Users/me", "conversation")], p).refused).toBeNull();
 	});
 
+	test("a conversation in the projects folder does not hold a new project's folder in it; one in the folder does", () => {
+		const withProjects = { ...p, shared: ["/Users/me/omp"] };
+		const chats = [user("/Users/me/omp", "conversation", "Old chat")];
+		expect(folderUse("/Users/me/omp/chat-2026-11-12-1341", chats, withProjects).refused).toBeNull();
+		expect(folderUse("/Users/me/omp/chat-2026-11-12-1341", chats, p).refused).toBe("inUse");
+		expect(folderUse("/Users/me/omp", chats, withProjects).refused).toBe("inUse");
+	});
+
 	test("a process or Terminal tab counts only in the folder or inside it", () => {
 		expect(
 			folderUse("/Users/me/code/app", [user("/", "process"), user("/Users/me/code", "terminal")], p).refused,

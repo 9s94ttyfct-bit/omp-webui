@@ -99,21 +99,24 @@ function locks(deps: SystemDeps): LockOps {
 }
 
 /**
- * `lsof -F pcn` records (`p<pid>`, `c<command>`, `f<fd>`, `n<name>`, one field a line) of `-d cwd`: each process's
- * working folder.
+ * `lsof -F pRcn` records (`p<pid>`, `R<parent pid>`, `c<command>`, `f<fd>`, `n<name>`, one field a line) of `-d cwd`:
+ * each process's working folder.
  */
 export function parseLsofCwds(text: string): WorkingFolder[] {
 	const out: WorkingFolder[] = [];
 	let pid = 0;
+	let ppid = 0;
 	let name = "";
 	for (const line of text.split("\n")) {
 		const value = line.slice(1);
 		if (line.startsWith("p")) {
 			pid = Number(value);
+			ppid = 0;
 			name = "";
-		} else if (line.startsWith("c")) name = value;
+		} else if (line.startsWith("R")) ppid = Number(value) || 0;
+		else if (line.startsWith("c")) name = value;
 		else if (line.startsWith("n") && Number.isInteger(pid) && pid > 0 && value.startsWith("/"))
-			out.push({ pid, name, cwd: value });
+			out.push({ pid, ppid, name, cwd: value });
 	}
 	return out;
 }
@@ -128,7 +131,7 @@ function trash(deps: SystemDeps, uid: () => number | undefined): TrashOps {
 			for (const lsof of ["lsof", "/usr/sbin/lsof"]) {
 				try {
 					// lsof exits 1 when it could not look at some process (another user's): what it printed still holds.
-					const { stdout } = await deps.run([lsof, "-a", "-d", "cwd", "-u", String(me), "-F", "pcn"], {
+					const { stdout } = await deps.run([lsof, "-a", "-d", "cwd", "-u", String(me), "-F", "pRcn"], {
 						timeoutMs: LSOF_MS,
 					});
 					if (stdout.trim()) return parseLsofCwds(stdout);

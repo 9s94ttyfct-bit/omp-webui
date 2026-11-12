@@ -44,6 +44,11 @@ export interface Protected {
 	home: string;
 	/** omp-webui's data folder and omp's home (`~/.omp`), real. */
 	data: string[];
+	/**
+	 * Folders that hold other people's folders, real: the projects folder (`~/omp`), where New chat makes a folder for each
+	 * new project. A conversation or project there does not hold the folders inside it, as one in the home folder does not.
+	 */
+	shared?: string[];
 }
 
 /** Why `real` is never offered, or null when nothing forbids it. */
@@ -75,8 +80,8 @@ function addOnce(list: UsedBy[], who: UsedBy): void {
 /**
  * Whether anything else works in the folder `real`. A conversation or a project in it, or in a folder that holds it (a
  * project's subfolder is not moved from under it), makes it `inUse`, unless that folder is the home folder or above it
- * (a chat started in `~` would otherwise hold every folder); a process counts only in the folder or inside it (every app
- * works in `/`). Anything in a folder inside it makes it `containsOther`.
+ * or the projects folder (a chat started in `~` or `~/omp` would otherwise hold every folder in it); a process counts only
+ * in the folder or inside it (every app works in `/`). Anything in a folder inside it makes it `containsOther`.
  */
 export function folderUse(
 	real: string,
@@ -85,11 +90,12 @@ export function folderUse(
 ): { refused: "inUse" | "containsOther" | null; usedBy: UsedBy[] } {
 	let refused: "inUse" | "containsOther" | null = null;
 	const usedBy: UsedBy[] = [];
+	const holds = (folder: string) => protectedReason(folder, p) === null && !(p.shared ?? []).includes(folder);
 	for (const u of users) {
 		let hit: "inUse" | "containsOther" | null = null;
 		if (u.real === real) hit = "inUse";
 		else if (isWithin(u.real, real)) hit = "containsOther";
-		else if (!running(u) && isWithin(real, u.real) && protectedReason(u.real, p) === null) hit = "inUse";
+		else if (!running(u) && isWithin(real, u.real) && holds(u.real)) hit = "inUse";
 		if (!hit) continue;
 		if (refused !== "inUse") refused = hit;
 		addOnce(usedBy, u.who);

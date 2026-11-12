@@ -19,11 +19,15 @@ let server: TestServer;
 let backend: StubScripted;
 /** What the title model answers next (`null`: a refusal, as a model that gave nothing). */
 let title: string | null = "A fine title";
+/** While set, the title model answers only once this settles: a title that takes long. */
+let titleHeld: Promise<void> | null = null;
 const asked = () => backend.requests.filter((r) => r.tools.length === 0).length;
 
-const script = (req: { tools: string[] }): ScriptedTurn => {
-	if (req.tools.length === 0)
+const script = async (req: { tools: string[] }): Promise<ScriptedTurn> => {
+	if (req.tools.length === 0) {
+		if (titleHeld) await titleHeld;
 		return title === null ? { refuse: { retryAfterMs: 1, status: 400, message: "no title today" } } : { text: title };
+	}
 	return { text: "Ok." };
 };
 
@@ -153,3 +157,32 @@ test("a title model that gives nothing leaves the conversation unnamed, and it i
 	await request(c.ws, { t: "close", liveId: c.live.liveId }).catch(() => {});
 	c.ws.close();
 }, 180_000);
+
+// A slow title model kept a conversation "working" for minutes after its reply: its delete was refused all that time.
+test("a title still being made does not hold the conversation: it is not working, and it can be deleted", async () => {
+	title = "Slow title";
+	let release = () => {};
+	titleHeld = new Promise((r) => {
+		release = r;
+	});
+	try {
+		const asks = asked();
+		const c = await firstExchange({ detach: false });
+		await pollUntil(() => asked() > asks, "the title to be asked for");
+		const lives = (await (await fetch(`${server.url}/api/lives`, { headers: headers() })).json()) as (LiveInfo & {
+			holding: string | null;
+		})[];
+		const mine = lives.find((l) => l.liveId === c.live.liveId);
+		expect(mine?.holding).toBeNull();
+		const res = await fetch(`${server.url}/api/session/delete`, {
+			method: "POST",
+			headers: headers(),
+			body: JSON.stringify({ file: mine?.sessionFile }),
+		});
+		expect(res.status).toBe(200);
+		c.ws.close();
+	} finally {
+		release();
+		titleHeld = null;
+	}
+}, 120_000);

@@ -88,6 +88,7 @@
     "tests/unit/macos-shell-events.test.ts": 5960,
     "tests/contract/advisor.test.ts": 5941,
     "tests/unit/macos-background.test.ts": 5807,
+    "tests/unit/cleanup-processes.test.ts": 5621,
     "tests/contract/compact-between.test.ts": 5531,
     "tests/contract/shell-events.test.ts": 5514,
     "tests/unit/migrate-whole.test.ts": 5366,

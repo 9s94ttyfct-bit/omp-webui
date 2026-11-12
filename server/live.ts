@@ -3253,7 +3253,7 @@ export class Live {
 		const catalog = await this.rpc({ type: "get_available_commands" });
 		if (!catalog.success) throw new Error(catalog.error ?? "omp did not list its commands");
 		if (!hasCommand(isRecord(catalog.data) ? catalog.data.commands : undefined, "rename")) return "";
-		return this.command("/rename", {}, TITLE_OUTPUT_MS);
+		return this.command("/rename", {}, TITLE_OUTPUT_MS, true);
 	}
 
 	/**
@@ -3650,22 +3650,35 @@ export class Live {
 	 * see (the `command_output` frames are taken here). omp runs a builtin command at once, mid-turn too, and leaves
 	 * the turn alone. The caller must know omp has the command: a line omp does not know goes to the model, and
 	 * the reply says `agentInvoked`, which is `null` here. `user`: as for `rpc`. `outputMs`: how long the printout is waited
-	 * for once omp has answered (a command that asks a model prints when it has its answer).
+	 * for once omp has answered (a command that asks a model prints when it has its answer). `background`: the server's own
+	 * errand (the title), which is not the conversation working: it does not hold a delete, a move or a restart, and the
+	 * pages do not show it either.
 	 */
-	command(message: string, options: RpcOptions = {}, outputMs: number = OUTPUT_MS): Promise<string | null> {
-		const run = this.commandQueue.then(() => this.runCommand(message, options, outputMs));
+	command(
+		message: string,
+		options: RpcOptions = {},
+		outputMs: number = OUTPUT_MS,
+		background = false,
+	): Promise<string | null> {
+		const run = this.commandQueue.then(() => this.runCommand(message, options, outputMs, background));
 		this.commandQueue = run.catch(() => {});
 		return run;
 	}
 
-	private async runCommand(message: string, options: RpcOptions, outputMs: number): Promise<string | null> {
+	private async runCommand(
+		message: string,
+		options: RpcOptions,
+		outputMs: number,
+		background: boolean,
+	): Promise<string | null> {
 		if (this.shifts > 0) await this.signalling;
 		if (this.info.pausedAt !== null && !options.user)
 			throw new CodedError("This conversation is paused; resume it to continue.", "paused");
 		const printed: string[] = [];
+		const counted = background ? 0 : 1;
 		const ask = async (): Promise<string | null> => {
 			this.capture = printed;
-			this.inFlight++;
+			this.inFlight += counted;
 			try {
 				const reply = await this.client.call<{ agentInvoked?: boolean } | undefined>(
 					{ type: "prompt", message },
@@ -3678,7 +3691,7 @@ export class Live {
 				return printed.join("\n");
 			} finally {
 				this.capture = null;
-				this.inFlight--;
+				this.inFlight -= counted;
 				this.checkModeSwitch();
 				this.lastActivity = Date.now();
 			}

@@ -118,10 +118,13 @@ the page shows a toast for anything not moved, and the conversation stays delete
   (`lsof -a -d cwd -u <uid> -Fn`, so a dev server or a shell started elsewhere counts) are compared, real path to real
   path. Refused as `inUse` when one of them is this folder or contains it (a project's subfolder is not moved from under
   it), as `containsOther` when one is inside it. Containing counts only for conversations and projects, and only when
-  their folder is not the home folder, above it or a system folder (a chat started in `~` would otherwise block
-  everything); for Terminal tabs and processes only "this folder or inside it" counts (every app's working folder is
-  `/`). `usedBy` names them ("a Terminal tab", "node (pid 4120)"). The omp
-  processes of the conversations being deleted are not counted (the delete ends them); anything else they started is.
+  their folder is not the home folder, above it, a system folder or the projects folder (a chat started in `~` or in
+  `~/omp`, where New chat makes each new project's folder, would otherwise block every folder in it); for Terminal tabs
+  and processes only "this folder or inside it" counts (every app's working folder is `/`). `usedBy` names them ("a
+  Terminal tab", "node (pid 4120)"). The omp processes of the conversations being deleted are not counted (the delete
+  ends them), nor what they started (`lsof`'s parent pids: its MCP servers, which end with it). After the delete, the
+  move waits up to 5 s for processes that are all that runs in a picked folder to end; one that goes on (a dev server
+  the agent started) is then on its own and refuses the move, by name.
 - **git**: in a repository, uncommitted work is `git status --porcelain -- <path>` (limited to what would move, so a
   subfolder is not warned about changes elsewhere in the repository). Unpushed work is
   `git rev-list --count @{u}..HEAD`, counted only when the folder is the repository's top or a worktree's (null without

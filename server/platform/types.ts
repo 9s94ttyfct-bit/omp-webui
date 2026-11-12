@@ -176,6 +176,8 @@ export interface LoginItemOps {
 /** A process's working folder, as the system tells it (links resolved). */
 export interface WorkingFolder {
 	pid: number;
+	/** Its parent's pid; 0 when it is not known. */
+	ppid: number;
 	/** Its program's name (`node`, `zsh`). */
 	name: string;
 	cwd: string;

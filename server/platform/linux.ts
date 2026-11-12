@@ -156,7 +156,16 @@ export function linuxTrash(deps: SystemDeps, uid: () => number | undefined, proc
 				const cwd = await readlink(join(proc, entry, "cwd")).catch(() => null);
 				if (cwd === null || !cwd.startsWith("/")) continue;
 				const name = (deps.readFile(join(proc, entry, "comm")) ?? "").trim();
-				out.push({ pid, name, cwd });
+				// `<pid> (<comm>) <state> <ppid> …`: the name may hold spaces and parentheses, so read after its last `)`.
+				const status = deps.readFile(join(proc, entry, "stat")) ?? "";
+				const ppid =
+					Number(
+						status
+							.slice(status.lastIndexOf(")") + 1)
+							.trim()
+							.split(" ")[1],
+					) || 0;
+				out.push({ pid, ppid, name, cwd });
 			}
 			return out;
 		},
