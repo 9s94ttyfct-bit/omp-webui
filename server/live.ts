@@ -71,6 +71,7 @@ import { formQuestions } from "./ask-form.ts";
 import { AutoTitle } from "./auto-title.ts";
 import { SubagentCoalescer } from "./coalesce.ts";
 import type { Config } from "./config.ts";
+import { envFor, findIsolatedRoot, worktreeToAdopt } from "./isolated-env.ts";
 import { FULL, type Launcher, type LaunchPlan } from "./offline/index.ts";
 import {
 	type ApprovalStore,
@@ -1575,15 +1576,23 @@ export class Live {
 		// What a page is told of the work is what the process holds now (a conversation a former server left asking is asking).
 		this.told = { streaming: this.info.streaming, asking: this.pendingUI.size > 0, continuing: false };
 		if (this.told.asking) this.info.asking = true;
+		// The folder's isolated environment (`server/isolated-env.ts`), worked out from where it starts. An adopted process
+		// has the environment it was started with: what its record says it had stands.
+		const isolation = extra.via?.kind === "adopt" ? null : envFor(cwd, launch.env.PATH ?? process.env.PATH ?? "");
+		if (extra.via?.kind !== "adopt") {
+			if (isolation) this.info.isolated = isolation.root;
+			else delete this.info.isolated;
+		}
 		this.client = new RpcClient({
 			bin: cfg.ompBin,
 			// Last, so that no overlay the user passed in the options can override it.
 			args: overlay ? [...args, "--config", overlay.file] : args,
 			cwd,
 			// Never omp's relay to the person's own Chrome (docs/agents/browser.md); not part of `launch.env`, which a spare is
-			// matched on.
+			// matched on (it is matched on `info.isolated` instead).
 			env: {
 				...launch.env,
+				...isolation?.env,
 				PI_BROWSER_RELAY: "0",
 				...(this.guidanceFile ? { [GUIDANCE_FILE_ENV]: this.guidanceFile } : {}),
 				...(this.unattendedFile ? { [UNATTENDED_FILE_ENV]: this.unattendedFile } : {}),
@@ -1755,9 +1764,25 @@ export class Live {
 		const cwd = printed ? /^CWD: (.+)$/m.exec(printed)?.[1]?.trim() : undefined;
 		if (!cwd || cwd === this.info.cwd) return;
 		this.info.cwd = cwd;
+		this.checkIsolation();
 		void this.refreshModelRoles().catch((e) => {
 			console.error(`omp-webui: could not update the model settings of ${this.info.liveId}: ${(e as Error).message}`);
 		});
+	}
+
+	/**
+	 * Whether the folder's isolated environment is still the one this process started with (`LiveInfo.isolationStale`): a
+	 * switch in New chat, or `/move` and `/wt` to another folder, take effect when the process starts again. The pages are
+	 * told when that changes. An adopted process keeps what it had.
+	 */
+	checkIsolation(): void {
+		if (this.info.exited) return;
+		const now = findIsolatedRoot(this.info.cwd) ?? worktreeToAdopt(this.info.cwd) ?? undefined;
+		const stale = now !== this.info.isolated;
+		if (stale === (this.info.isolationStale === true)) return;
+		if (stale) this.info.isolationStale = true;
+		else delete this.info.isolationStale;
+		this.pool.announce(this);
 	}
 
 	/**
@@ -4063,6 +4088,11 @@ export class LivePool {
 		this.listeners.add(fn);
 	}
 
+	/** A folder's isolation was switched: each running process whose folder's isolation it no longer has says so. */
+	refreshIsolation(): void {
+		for (const live of this.lives.values()) live.checkIsolation();
+	}
+
 	announce(live: Live): void {
 		live.info.subscribers = live.subscribers.size;
 		// What a page is told of the gate is what the process holds now (a new process, or one taken over, is first announced here).
@@ -4746,21 +4776,22 @@ export class LivePool {
 	 */
 	private spare(cwd: string, args: string[], launch: LaunchPlan): Live | undefined {
 		const full = this.launchArgs(launch, args, cwd);
-		return [...this.lives.values()]
-			.reverse()
-			.find(
-				(l) =>
-					l.pristine &&
-					!this.claimed.has(l) &&
-					l.subscribers.size === 0 &&
-					l.info.mode === launch.mode &&
-					l.info.lightModels === launch.lightModels &&
-					Object.keys(l.env).length === Object.keys(launch.env).length &&
-					Object.entries(launch.env).every(([k, v]) => l.env[k] === v) &&
-					l.info.cwd === cwd &&
-					l.info.args.length === full.length &&
-					l.info.args.every((a, i) => a === full[i]),
-			);
+		return [...this.lives.values()].reverse().find(
+			(l) =>
+				l.pristine &&
+				!this.claimed.has(l) &&
+				l.subscribers.size === 0 &&
+				l.info.mode === launch.mode &&
+				l.info.lightModels === launch.lightModels &&
+				Object.keys(l.env).length === Object.keys(launch.env).length &&
+				Object.entries(launch.env).every(([k, v]) => l.env[k] === v) &&
+				l.info.cwd === cwd &&
+				// Started with the folder's isolation as it is now (a switch in New chat restarts the warm-up process).
+				!l.info.isolationStale &&
+				l.info.isolated === (findIsolatedRoot(cwd) ?? undefined) &&
+				l.info.args.length === full.length &&
+				l.info.args.every((a, i) => a === full[i]),
+		);
 	}
 
 	/**

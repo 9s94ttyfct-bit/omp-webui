@@ -1,12 +1,13 @@
 import type { ApprovalMode } from "@shared/approval.ts";
 import type { GuardOverride } from "@shared/guard.ts";
+import type { IsolationInfo } from "@shared/isolated-env.ts";
 import type { LiveGuidance, SessionGuidance } from "@shared/model-guidance.ts";
 import { MODEL_FLAGS, runsLocal } from "@shared/offline.ts";
 import { PREF } from "@shared/prefs.ts";
 import type { ProjectsInfo } from "@shared/projects.ts";
 import type { CliFlag } from "@shared/protocol.ts";
 import { FastForward, FolderKanban, RotateCw, SlidersHorizontal, Target } from "lucide-react";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { type MessageKey, useT } from "../i18n/index.ts";
 import { api, ownerPage } from "../lib/api.ts";
@@ -58,6 +59,8 @@ const {
 	preload: preloadPickers,
 	retry: retryPickers,
 } = lazyChunk(() => import("./NewChatPickers.tsx").then((m) => ({ default: m.NewChatPickers })));
+// New chat's switch for the folder's isolated environment: its own chunk, as the other switches of the bar.
+const IsolationToggle = lazy(() => import("./IsolationToggle.tsx"));
 
 // The folder picker is opened a few times in a person's life: a chunk of its own, fetched when the pointer reaches its
 // button or it is first opened (its "New project folder" is another, with its strings).
@@ -186,6 +189,7 @@ function PickersSkeleton() {
 				{remote ? <span data-sk="remote" className={bar} /> : null}
 				<span data-sk="guidance" className={bar} />
 				<span data-sk="approval" className={bar} />
+				<span data-sk="isolation" className={`${bar} w-8`} />
 				<span data-sk="advisor" className={`${bar} w-8`} />
 				<span data-sk="unattended" className={`${bar} w-8`} />
 				<span data-sk="goal" className={bar} />
@@ -290,6 +294,30 @@ export function NewChat({ cwd: openedIn, project }: { cwd?: string; project?: st
 	 * applied to it by the switch itself).
 	 */
 	const advisorPick = useRef<boolean | null>(null);
+	/**
+	 * The folder's isolated environment (`shared/isolated-env.ts`): what the server says of the existing folder (or, for a new
+	 * project, whether this computer offers it), and the person's flip (null: none). A flip for an existing folder starts the
+	 * warm-up process again with the folder switched; for a new project it is given to the folder made at the first message.
+	 */
+	const [isoInfo, setIsoInfo] = useState<IsolationInfo | null>(null);
+	const [isoPick, setIsoPick] = useState<boolean | null>(null);
+	const isoFolder = existing ?? rootWarm;
+	useEffect(() => {
+		setIsoPick(null);
+		setIsoInfo(null);
+		if (!isoFolder) return;
+		let live = true;
+		api.isolation(isoFolder).then(
+			(info) => live && setIsoInfo(info),
+			() => {},
+		);
+		return () => {
+			live = false;
+		};
+	}, [isoFolder]);
+	const isoOn = isoPick ?? (existing ? (isoInfo?.root ?? null) !== null : false);
+	/** What restarts the warm-up process: a flip for an existing folder (a new project's warm-up runs in the projects folder). */
+	const isoWarm = existing ? isoPick : null;
 	const composer = useRef<ComposerHandle>(null);
 	useGoalRequest((mode) => {
 		setGoalMode(mode);
@@ -355,7 +383,7 @@ export function NewChat({ cwd: openedIn, project }: { cwd?: string; project?: st
 
 	// Pre-start omp for the chosen directory so commands, models and thinking levels are live. The process is shown
 	// (`warmId`) once it runs with the pickers' choices on it, so a message is never sent to the defaults.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: `warmGen`, `mode` and `local` restart the warm-up process.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `warmGen`, `mode`, `local` and `isoWarm` restart the warm-up process.
 	useEffect(() => {
 		if (!cwd) return;
 		let cancelled = false;
@@ -385,6 +413,7 @@ export function NewChat({ cwd: openedIn, project }: { cwd?: string; project?: st
 						...(guidancePick.current ? { guidance: guidancePick.current } : {}),
 						unattended: unattendedPick.current,
 						...(advisorPick.current === null ? {} : { advisor: advisorPick.current }),
+						...(isoWarm === null ? {} : { isolated: isoWarm }),
 					});
 				} catch (e) {
 					if (cancelled) return;
@@ -413,7 +442,7 @@ export function NewChat({ cwd: openedIn, project }: { cwd?: string; project?: st
 			clearTimeout(timer);
 			if (started && !sent.current) closeLive(started);
 		};
-	}, [cwd, argsKey, warmGen, mode, local]);
+	}, [cwd, argsKey, warmGen, mode, local, isoWarm]);
 
 	// Only the warm-up process's own record: a frame of another conversation streaming is none of this page's business.
 	const live = useApp((s) => (warmId ? s.lives[warmId] : undefined));
@@ -490,6 +519,7 @@ export function NewChat({ cwd: openedIn, project }: { cwd?: string; project?: st
 				...(guidancePick.current ? { guidance: guidancePick.current } : {}),
 				unattended: unattendedPick.current,
 				...(advisorPick.current === null ? {} : { advisor: advisorPick.current }),
+				...(isoPick ? { isolated: true } : {}),
 			});
 		} catch (e) {
 			if (gen === madeGen.current) toast("error", errorText(e));
@@ -796,6 +826,19 @@ export function NewChat({ cwd: openedIn, project }: { cwd?: string; project?: st
 									unattended={unattendedPick}
 									advisor={advisorPick}
 									goal={goalSwitches}
+									isolation={
+										isoInfo?.supported ? (
+											<Suspense fallback={<span aria-hidden className="h-8 w-8 shrink-0 rounded-lg bg-hover" />}>
+												<IsolationToggle
+													on={isoOn}
+													folder={existing}
+													refused={existing ? isoInfo.refused : null}
+													notOwner={notOwner}
+													onToggle={setIsoPick}
+												/>
+											</Suspense>
+										) : null
+									}
 								/>
 							</Suspense>
 						</ErrorBoundary>

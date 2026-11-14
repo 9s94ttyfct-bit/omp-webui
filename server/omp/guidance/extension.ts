@@ -56,6 +56,9 @@ export const GUIDANCE_FILE_ENV = "OMPW_GUIDANCE_FILE";
 /** What follows the guidance file's name in the note the extension leaves when it has started in the process. */
 export const GUIDANCE_LOADED_SUFFIX = ".loaded";
 
+/** The environment variable with the isolated environment's note for the agent (`shared/isolated-env.ts` `ISOLATED_NOTE_VAR`). */
+export const ISOLATED_NOTE_ENV = "OMPW_ISOLATED_NOTE";
+
 /** The most characters of the file one turn takes: `GUIDANCE_MAX` of `shared/model-guidance.ts`. */
 export const GUIDANCE_READ_MAX = 4_000;
 
@@ -145,11 +148,18 @@ export default function modelGuidance(pi: {
 	on(event: "before_agent_start", handler: (event: BeforeAgentStart, ctx: Context) => unknown): void;
 }): void {
 	const file = process.env[GUIDANCE_FILE_ENV];
+	// The isolated environment's note (`shared/isolated-env.ts` `isolatedNote`), for every agent: a subagent installs too.
+	const isolated = (process.env[ISOLATED_NOTE_ENV] ?? "").trim();
 	pi.on("before_agent_start", async (event, ctx) => {
+		// A title's request has no agent (`ctx.agent` absent) and is left alone.
+		if (!ctx?.agent?.kind) return undefined;
+		const blocks = Array.isArray(event?.systemPrompt)
+			? event.systemPrompt.filter((b): b is string => typeof b === "string")
+			: [];
+		const tail = isolated ? [isolated] : [];
 		// A subagent's prompt is its own: the guidance is about how the main agent hands work out, and must not read as an
-		// instruction to the subagent about itself. A title's request has no agent (`ctx.agent` absent) and is left alone too.
-		if (ctx?.agent?.kind !== "main") return undefined;
-		if (!file) return undefined;
+		// instruction to the subagent about itself.
+		if (ctx.agent.kind !== "main" || !file) return tail.length ? { systemPrompt: [...blocks, ...tail] } : undefined;
 		let text = "";
 		try {
 			text = readCapped(file).replace(/^\s+|\s+$/g, "");
@@ -157,12 +167,8 @@ export default function modelGuidance(pi: {
 			// No file: the conversation has no guidance (or its overlay is gone, and omp is ending anyway).
 		}
 		const result: { systemPrompt?: string[]; message?: unknown } = {};
-		if (text) {
-			const blocks = Array.isArray(event?.systemPrompt)
-				? event.systemPrompt.filter((b): b is string => typeof b === "string")
-				: [];
-			result.systemPrompt = [...blocks, `${GUIDANCE_HEADING}\n${PRIORITY}\n\n${text}`];
-		}
+		if (text || tail.length)
+			result.systemPrompt = [...blocks, ...(text ? [`${GUIDANCE_HEADING}\n${PRIORITY}\n\n${text}`] : []), ...tail];
 		const { given, hadTurns } = branchState(ctx);
 		if (text !== given) {
 			if (hadTurns)

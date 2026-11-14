@@ -8,10 +8,12 @@ import extension, {
 	GUIDANCE_LOADED_SUFFIX,
 	GUIDANCE_NOTE_TYPE,
 	GUIDANCE_READ_MAX,
+	ISOLATED_NOTE_ENV,
 } from "../../server/omp/guidance/extension.ts";
 import { guidancePaths, installGuidanceExtension } from "../../server/omp/guidance/install.ts";
 import { GuidanceSessions, guidanceFileFor, writeGuidanceFile } from "../../server/omp/guidance/session.ts";
 import { GuidanceStore, GuidanceStoreError } from "../../server/omp/guidance/store.ts";
+import { ISOLATED_NOTE_VAR } from "../../shared/isolated-env.ts";
 import {
 	BUILTIN_GUIDANCE,
 	GUIDANCE_ID_MAX,
@@ -317,6 +319,27 @@ describe("the extension's own side of the file", () => {
 		const note = `${file}${GUIDANCE_LOADED_SUFFIX}`;
 		expect(readFileSync(note, "utf8")).toBe(String(process.pid));
 		expectMode(note, 0o600);
+	});
+
+	test("an isolated folder's note reaches every agent's prompt, after the guidance, and its variable is the server's", async () => {
+		expect(ISOLATED_NOTE_ENV).toBe(ISOLATED_NOTE_VAR);
+		const file = join(dir(), "L1.yml.guidance.md");
+		writeFileSync(file, "One at a time.");
+		process.env[ISOLATED_NOTE_ENV] = "## Isolated project environment\nInstall inside.";
+		try {
+			const main = await load(file, "main");
+			expect(main?.systemPrompt?.[0]).toBe("omp's own");
+			expect(main?.systemPrompt?.[1]?.startsWith(GUIDANCE_HEADING)).toBe(true);
+			expect(main?.systemPrompt?.[2]).toBe("## Isolated project environment\nInstall inside.");
+			// A subagent installs too: it is told, without the main agent's guidance.
+			expect((await load(file, "sub"))?.systemPrompt).toEqual([
+				"omp's own",
+				"## Isolated project environment\nInstall inside.",
+			]);
+			expect(await load(file, undefined)).toBeUndefined();
+		} finally {
+			delete process.env[ISOLATED_NOTE_ENV];
+		}
 	});
 
 	describe("what a branch was told", () => {

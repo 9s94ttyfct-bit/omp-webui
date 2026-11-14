@@ -167,6 +167,29 @@ export const en = {
 	planBadgeTitle:
 		"Read-only plan mode (started with --plan-yolo): omp researches and writes a plan, and moves on to implement it once the plan is approved. omp cannot switch plan mode on or off from the web UI; to work without it, start a new chat without that option.",
 
+	// A project folder's isolated environment (`shared/isolated-env.ts`)
+	isolatedBadge: "Isolated",
+	isolatedBadgeTitle:
+		"This conversation runs in an isolated project folder ({folder}): what npm, bun, pip, uv, cargo, go, Playwright and Hugging Face install or download goes into its .ompw-env folder, so moving the folder to the Trash removes all of it.",
+	isolatedStale: "Restart to apply",
+	isolatedStaleTitle:
+		"The isolated environment of this conversation's folder was switched since it started (or it moved to another folder). Restart it to apply the change.",
+	isolationToggle: "Isolated environment",
+	isolationToggleOn:
+		"Isolated environment: on. What the project's tools install and download stays in its folder and goes with it to the Trash.",
+	isolationToggleOff:
+		"Isolated environment: off. Turn it on to keep what the project's tools (npm, bun, pip, uv, cargo, go, Playwright, Hugging Face) install and download inside the project's folder.",
+	isolationToggleFolder:
+		"It is the folder's ({folder}): every conversation in it follows, and those already running apply a change when restarted.",
+	isolationRefusedProtected:
+		"Not available here: the home folder, a folder above it, system folders and omp's own data cannot be isolated.",
+	isolationRefusedProjectsFolder:
+		"Not available for the projects folder itself: start a new project, or pick a project's folder in it.",
+	isolationRefusedContainsOther: "Not available: this folder holds other conversations' folders.",
+	isolationRefusedLinked: "Not available: this folder's .ompw-env is a link to somewhere else.",
+	isolationNotOwner:
+		"The isolated environment is switched from your own page: this computer's, or one signed in through Cloudflare Access.",
+
 	// Message rows
 	siblingPrevious: "Previous version",
 	siblingNext: "Next version",

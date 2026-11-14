@@ -105,6 +105,7 @@ import { ComposerMore } from "./ComposerMore.tsx";
 import { ErrorBoundary, ErrorScreen } from "./ErrorBoundary.tsx";
 import { GoalBar, GoalDialog } from "./Goal.tsx";
 import { GuidedGoalBar } from "./GuidedGoal.tsx";
+import { IsolatedBadge } from "./IsolatedBadge.tsx";
 import { JobsBlock } from "./JobsBlock.tsx";
 import { LiveCelebration } from "./LiveCelebration.tsx";
 import { LoadError } from "./LoadError.tsx";
@@ -1466,6 +1467,7 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 				</h1>
 				<ModeBadge info={live?.info} />
 				{live?.planMode && !live.exited ? <PlanBadge /> : null}
+				<IsolatedBadge info={live?.info} />
 				{rename ? (
 					<IconButton label={t("common.rename")} size="xs" onClick={() => setRenaming(title)}>
 						<Pencil size={12} />

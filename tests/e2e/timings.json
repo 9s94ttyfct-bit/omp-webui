@@ -943,6 +943,8 @@
 		"ime-enter.spec.ts › paused banner: Esc that belongs to an IME does not stop the command": 7,
 		"ime-enter.spec.ts › queued message editor: that Enter does not save the half-typed word; a later Enter does": 6.5,
 		"inline-code-wrap.spec.ts › inline code that wraps is boxed on every line": 3.1,
+		"isolated-env.spec.ts › New chat's switch cannot turn the home folder isolated, and says why": 1.2,
+		"isolated-env.spec.ts › New chat's switch makes the folder isolated, its conversation is marked, and switched off again the running one asks for a restart": 3.5,
 		"issues-tab.spec.ts › a folder that is not a repository says so, and gh is not asked": 1.7,
 		"issues-tab.spec.ts › an issue opens with its body and comments, and goes into this conversation's message box": 2,
 		"issues-tab.spec.ts › an issue starts a new conversation in the same folder with it in the message box": 1.9,

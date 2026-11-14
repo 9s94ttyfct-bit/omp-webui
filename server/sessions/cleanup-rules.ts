@@ -135,6 +135,10 @@ export function dependencyCandidate(
 	switch (name) {
 		case "node_modules":
 			return { kind: name, needsIgnored: false };
+		// A project's isolated environment (`shared/isolated-env.ts`): what its tools installed and downloaded, also after the
+		// folder was switched off (`ompw-env.off`).
+		case ".ompw-env":
+			return holds("ompw-env.json") || holds("ompw-env.off") ? { kind: name, needsIgnored: false } : null;
 		case ".venv":
 		case "venv":
 			return holds("pyvenv.cfg") ? { kind: name, needsIgnored: false } : null;

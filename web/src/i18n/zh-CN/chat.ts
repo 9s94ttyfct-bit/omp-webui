@@ -195,6 +195,22 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	planBadgeTitle:
 		"只读的计划模式（以 --plan-yolo 启动）：omp 先调研并写出计划，计划获批后自动转入实施。网页版无法开启或退出计划模式；想不受它约束，请开一个不带该选项的新对话。",
 
+	isolatedBadge: "独立环境",
+	isolatedBadgeTitle:
+		"这个对话在独立环境的项目文件夹（{folder}）里运行：npm、bun、pip、uv、cargo、go、Playwright 和 Hugging Face 安装或下载的东西都放在它的 .ompw-env 文件夹里，把文件夹移到废纸篓就全部清除。",
+	isolatedStale: "重启后生效",
+	isolatedStaleTitle: "这个对话启动之后，它所在文件夹的独立环境被切换过（或者它换到了别的文件夹）。重启对话后生效。",
+	isolationToggle: "独立环境",
+	isolationToggleOn: "独立环境：已开启。项目的工具安装和下载的东西都留在项目文件夹里，并随文件夹一起移到废纸篓。",
+	isolationToggleOff:
+		"独立环境：已关闭。开启后，项目的工具（npm、bun、pip、uv、cargo、go、Playwright、Hugging Face）安装和下载的东西都会留在项目文件夹里。",
+	isolationToggleFolder: "这是文件夹（{folder}）的设置：里面的所有对话都跟着变，已在运行的对话重启后生效。",
+	isolationRefusedProtected: "这里不能用：主目录及其上级、系统文件夹和 omp 自己的数据不能设为独立环境。",
+	isolationRefusedProjectsFolder: "项目总文件夹本身不能用：请新建项目，或选择其中某个项目的文件夹。",
+	isolationRefusedContainsOther: "不能用：这个文件夹里装着其他对话的文件夹。",
+	isolationRefusedLinked: "不能用：这个文件夹的 .ompw-env 是指向别处的链接。",
+	isolationNotOwner: "独立环境只能在你自己的页面上切换：这台电脑上的页面，或通过 Cloudflare Access 登录的页面。",
+
 	siblingPrevious: "上一个版本",
 	siblingNext: "下一个版本",
 	userEditMessage: "编辑消息",

@@ -46,6 +46,7 @@ export function NewChatPickers({
 	onGuidance,
 	guidanceDisabled,
 	goal,
+	isolation,
 }: {
 	liveId: string;
 	model: ModelInfo | undefined;
@@ -64,6 +65,8 @@ export function NewChatPickers({
 	advisor: MutableRefObject<boolean | null>;
 	/** New chat's own controls (the goal switches), at the end of the bar. */
 	goal?: ReactNode;
+	/** New chat's switch for the folder's isolated environment (`IsolationToggle`), before the advisor's. */
+	isolation?: ReactNode;
 }) {
 	// Two groups, each wrapping as one: the bar breaks between them (the rules under the model's settings, aligned at the
 	// left), never inside one while it fits a line. `PickersSkeleton` in NewChat.tsx holds the same groups.
@@ -104,6 +107,7 @@ export function NewChatPickers({
 					<GuidancePicker value={guidance} liveId={liveId} disabled={guidanceDisabled} onPick={onGuidance} />
 				</Suspense>
 				<ApprovalPicker liveId={liveId} onChange={onApproval} />
+				{isolation}
 				<AdvisorToggle liveId={liveId} pick={advisor} />
 				<Suspense
 					fallback={

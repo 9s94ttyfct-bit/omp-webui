@@ -80,6 +80,31 @@ export class DeleteCleanup {
 	}
 
 	/**
+	 * What New chat's isolated-environment switch is checked against (`server/isolated-env.ts`): the folders never offered,
+	 * the projects folder, and every recorded conversation's and sidebar project's folder, real.
+	 */
+	async isolationContext(): Promise<{ protect: Protected; projectsFolder: string | null; others: string[] }> {
+		const others = new Set<string>();
+		for (const c of await this.world.conversations()) {
+			const real = realOf(c.cwd);
+			if (real) others.add(real);
+		}
+		for (const l of this.world.lives()) {
+			const real = realOf(l.cwd);
+			if (real) others.add(real);
+		}
+		for (const p of await this.world.projects()) {
+			const real = realOf(p.folder);
+			if (real) others.add(real);
+		}
+		return {
+			protect: this.world.protect,
+			projectsFolder: realOf(await this.world.projectsFolder()),
+			others: [...others],
+		};
+	}
+
+	/**
 	 * Who works where, leaving out the conversations of `leaving` (they are being deleted), their omp processes and what
 	 * those started (MCP servers, a tool's shell): the delete ends them. One that outlives its omp is counted again once
 	 * it is on its own (`moveAfter` looks after the delete).

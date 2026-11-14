@@ -3,6 +3,7 @@ import type { ChatProjects } from "@shared/chat-projects.ts";
 import type { CompactAt, CompactSettings } from "@shared/compact-at.ts";
 import type { DirListing } from "@shared/dirs.ts";
 import type { ErrorParams } from "@shared/error-info.ts";
+import type { IsolationInfo } from "@shared/isolated-env.ts";
 import type { MacListing } from "@shared/macs.ts";
 import type { ConversationModels } from "@shared/model-config.ts";
 import type { Capabilities } from "@shared/platform.ts";
@@ -375,6 +376,8 @@ export const api = {
 	cli: () => get<CliInventory>("/api/cli"),
 	cliHelp: (cmd: string) => get<CliHelp>(`/api/cli/help?cmd=${enc(cmd)}`),
 	dirs: (path: string) => get<DirListing>(`/api/dirs?path=${enc(path)}`),
+	/** The folder's isolated environment as New chat's switch shows it (`shared/isolated-env.ts`). */
+	isolation: (folder: string) => get<IsolationInfo>(`/api/isolation?folder=${enc(folder)}`),
 	exportUrl: (file: string) => `/api/export?file=${enc(file)}`,
 	blobUrl: (hash: string) => `/api/blob/${hash}`,
 };

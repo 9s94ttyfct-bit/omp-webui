@@ -1,8 +1,65 @@
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { basename, join } from "node:path";
+import { isolatedPathPrefix } from "../shared/isolated-env.ts";
 import { childEnv } from "./env.ts";
+import { envFor } from "./isolated-env.ts";
 import type { Subscriber } from "./live.ts";
 import { platform } from "./platform/index.ts";
+
+/** The folder of the zsh startup files `keepPathInFront` gives an isolated folder's Terminal tab; made once, private. */
+let zdotdir: string | null = null;
+
+/** zsh's startup files, each running the person's own of that name and then going on with ours; the last puts the prefix back. */
+function wrapperZdotdir(): string {
+	if (zdotdir && existsSync(zdotdir)) return zdotdir;
+	const dir = mkdtempSync(join(tmpdir(), "ompw-zdotdir-"));
+	mkdirSync(dir, { recursive: true, mode: 0o700 });
+	const run = (name: string) =>
+		[
+			"# omp-webui: the person's own startup file, then back to these (server/pty.ts `keepPathInFront`).",
+			'ZDOTDIR="$OMPW_USER_ZDOTDIR"',
+			`[[ -r "$ZDOTDIR/${name}" ]] && source "$ZDOTDIR/${name}"`,
+			'OMPW_USER_ZDOTDIR="$ZDOTDIR"',
+		].join("\n");
+	for (const name of [".zshenv", ".zprofile", ".zshrc"])
+		writeFileSync(join(dir, name), `${run(name)}\nZDOTDIR="$OMPW_WRAP_ZDOTDIR"\n`);
+	// The last file of a login shell: the person's, then the isolated folders in front again, and the person's ZDOTDIR kept.
+	writeFileSync(
+		join(dir, ".zlogin"),
+		`${run(".zlogin")}\npath=(\${(s.:.)OMPW_ISOLATED_PATH} $path)\ntypeset -U path\nunset OMPW_ISOLATED_PATH OMPW_WRAP_ZDOTDIR OMPW_USER_ZDOTDIR\n`,
+	);
+	zdotdir = dir;
+	return dir;
+}
+
+/**
+ * What a Terminal tab's login shell `shell` is given so that the isolated folder `root`'s `PATH` prefix is still in front
+ * after the startup files: a login shell runs `path_helper` (macOS `/etc/zprofile`, `/etc/profile`), which moves it behind
+ * the system's. zsh: startup files that run the person's own and put it back last; bash: a first prompt that puts it back.
+ * Other shells get the variables only. The person's own files are never changed.
+ */
+export function keepPathInFront(shell: string, root: string): Record<string, string> {
+	const prefix = isolatedPathPrefix(root).join(":");
+	switch (basename(shell)) {
+		case "zsh": {
+			const wrap = wrapperZdotdir();
+			return {
+				ZDOTDIR: wrap,
+				OMPW_WRAP_ZDOTDIR: wrap,
+				OMPW_USER_ZDOTDIR: process.env.ZDOTDIR ?? homedir(),
+				OMPW_ISOLATED_PATH: prefix,
+			};
+		}
+		case "bash":
+			return {
+				OMPW_ISOLATED_PATH: prefix,
+				PROMPT_COMMAND: 'PATH="$OMPW_ISOLATED_PATH:$PATH"; unset OMPW_ISOLATED_PATH PROMPT_COMMAND',
+			};
+		default:
+			return {};
+	}
+}
 
 /** Where a terminal runs: `cwd` when that folder exists, else the home directory. */
 export function terminalDir(cwd: string | undefined): string {
@@ -148,10 +205,17 @@ export class PtyManager {
 		});
 		let proc: Bun.Subprocess;
 		try {
+			const isolation = platform.id === "win32" ? null : envFor(dir, process.env.PATH ?? "");
 			proc = Bun.spawn(shell ? platform.shell.interactive() : [this.bin, ...args], {
 				cwd: dir,
 				terminal,
-				env: childEnv({ TERM: "xterm-256color", COLORTERM: "truecolor" }),
+				env: childEnv({
+					...isolation?.env,
+					// A login shell's startup files move a `PATH` prefix behind the system's (`path_helper`): it is put back after them.
+					...(isolation && shell ? keepPathInFront(platform.shell.interactive()[0] ?? "", isolation.root) : {}),
+					TERM: "xterm-256color",
+					COLORTERM: "truecolor",
+				}),
 				// A session of its own, with this terminal as its controlling terminal: without it the process stays in the
 				// server's process group, with no terminal of its own, so a shell has no job control and hangs up its group
 				// when it is hung up (bash): the server itself. Windows has no sessions (and `detached` means something else).

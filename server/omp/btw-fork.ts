@@ -5,6 +5,7 @@ import { CodedError } from "../../shared/error-info.ts";
 import { isRecord } from "../../shared/guards.ts";
 import { parseSelector } from "../../shared/model-config.ts";
 import { RISK_SUFFIX } from "../../shared/risk-confirm.ts";
+import { envFor } from "../isolated-env.ts";
 import { RpcClient, type RpcResponse } from "./rpc-client.ts";
 
 /**
@@ -573,7 +574,11 @@ export class BtwForks {
 				bin: this.deps.bin(),
 				args: forkArgs(job.launch.args, { model: job.model, ...files }),
 				cwd: job.launch.cwd,
-				env: job.launch.env,
+				// The side question runs where the conversation does: in its isolated environment, if the folder has one.
+				env: {
+					...job.launch.env,
+					...envFor(job.launch.cwd, job.launch.env.PATH ?? process.env.PATH ?? "")?.env,
+				},
 				mode: "rpc",
 				private: true,
 				onFrame: (f) => {

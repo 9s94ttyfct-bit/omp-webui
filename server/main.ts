@@ -73,6 +73,7 @@ import {
 	runningServerPorts,
 	stopStaleServer,
 } from "./instance.ts";
+import { IsolationError, isolationState, setIsolated } from "./isolated-env.ts";
 import { FINISH_WAIT_MS, heldByImport, type Live, LivePool, type Subscriber, stopKindOf } from "./live.ts";
 import { LOGIN_START_PATH, LoginStart } from "./login-start.ts";
 import {
@@ -1227,6 +1228,8 @@ const UPDATE_NOT_HERE =
 	"The app is updated on the computer omp-webui runs on, or from a page signed in through Cloudflare Access";
 const REMOTE_RUN_NOT_HERE =
 	"Remote computers are given to a conversation on the computer omp-webui runs on, or from a page signed in through Cloudflare Access";
+const ISOLATION_NOT_HERE =
+	"A folder's isolated environment is switched on the computer omp-webui runs on, or from a page signed in through Cloudflare Access";
 /** What the file transfer asks of a request: who it is from, what this computer lets that page do, and what must not be touched. */
 function transferEnv(req: Request, peer: string | undefined): TransferEnv {
 	const local = onThisComputer.has(req);
@@ -1532,6 +1535,15 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				if (e instanceof DirError) return fail(e.message, e.status, errorInfoOf(e) ?? undefined);
 				throw e;
 			}
+		}
+		case "/api/isolation": {
+			// What New chat's isolated-environment switch shows for a folder (`server/isolated-env.ts`): the isolated folder it is
+			// in, or why it could not be made one. Reading it changes nothing; switching it is `open`'s (the person's own page).
+			const folder = q.get("folder") ?? "";
+			if (!folder) return fail("No folder", 400);
+			const supported = platform.id !== "win32";
+			if (!supported) return json({ root: null, refused: null, supported });
+			return json({ ...isolationState(folder, await deleteCleanup.isolationContext()), supported });
 		}
 		case "/api/projects":
 		case "/api/projects/new": {
@@ -2692,6 +2704,21 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 					asked = { template: asked.template };
 				}
 				target = { ...target, guidance: asked ?? undefined };
+			}
+			if (target.kind === "new" && target.isolated !== undefined) {
+				// The folder's isolated environment, switched before the process starts (`server/isolated-env.ts`): it changes the
+				// folder for every conversation in it, so it is the person's own page's to change.
+				if (!isOwnerPage(ws.data.remote, ws.data.local))
+					return reply({ t: "reply", req: msg.req, ok: false, error: ISOLATION_NOT_HERE });
+				if (platform.id !== "win32") {
+					try {
+						setIsolated(target.cwd, target.isolated, await deleteCleanup.isolationContext());
+					} catch (e) {
+						if (!(e instanceof IsolationError)) throw e;
+						return reply({ t: "reply", req: msg.req, ok: false, error: e.message, code: "isolationRefused" });
+					}
+					pool.refreshIsolation();
+				}
 			}
 			const live = await pool.open(target, cwdOfSessionFile);
 			if (target.kind === "new" && typeof target.project === "string" && target.project !== "") {

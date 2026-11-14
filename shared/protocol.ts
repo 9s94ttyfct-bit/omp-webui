@@ -71,6 +71,11 @@ export type OpenTarget =
 			unattended?: boolean;
 			/** Whether the advisor reviews the conversation (see `shared/advisor.ts`); absent: omp's configuration decides. */
 			advisor?: boolean;
+			/**
+			 * The folder's isolated environment (`shared/isolated-env.ts`): true switches it on for `cwd`'s folder, false off,
+			 * before the process starts; absent leaves the folder as it is. The person's own page only.
+			 */
+			isolated?: boolean;
 			mode?: Mode;
 			/**
 			 * The sidebar project the conversation starts in (`shared/chat-projects.ts`, its id): the server puts it there with
@@ -207,6 +212,13 @@ export interface LiveInfo {
 	 * `controls.settings`).
 	 */
 	advisor?: boolean;
+	/**
+	 * The isolated project folder this process was started in (`shared/isolated-env.ts`): what it installs and downloads
+	 * goes into its `.ompw-env`. Absent: it was started without one.
+	 */
+	isolated?: string;
+	/** The folder's isolation is no longer what this process was started with (switched since, or `/move`): a restart applies it. */
+	isolationStale?: boolean;
 	/**
 	 * The saved computers (the Macs list, `SavedMac.id`) this conversation may run shell commands on, with the `remote_run` tool
 	 * this server serves it (see `shared/remote-run.ts`): the person's choice, kept with the conversation (so a resumed one has it
