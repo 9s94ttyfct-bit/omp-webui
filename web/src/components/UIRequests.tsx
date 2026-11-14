@@ -13,7 +13,15 @@ import {
 	useState,
 } from "react";
 import { useT } from "../i18n/index.ts";
-import { type CheckboxDialog, checkboxDialog, knownTicks, picked, tickedIn } from "../lib/ask-checks.ts";
+import {
+	type CheckboxDialog,
+	checkboxDialog,
+	fieldTitle,
+	formChoice,
+	knownTicks,
+	picked,
+	tickedIn,
+} from "../lib/ask-checks.ts";
 import { type FormBlock, formContext, runningAskForm } from "../lib/ask-form.ts";
 import { useImeGuard } from "../lib/ime.ts";
 import { revealed } from "../lib/invisible.ts";
@@ -205,17 +213,29 @@ export function UIRequests({ live }: { live: LiveState }) {
 		req && !approval && !risk && (req.method === "input" || req.method === "editor" || req.method === "select")
 			? runningAskForm(live)
 			: null;
-	const formBlocks = useMemo(() => (askHtml ? formContext(askHtml) : null), [askHtml]);
+	// omp 18.19 and later put the form's words around the field in the dialog's title themselves: they are not said twice.
+	const titled = askHtml !== null && req?.title !== undefined && fieldTitle(req.title).context !== null;
+	const formBlocks = useMemo(() => (askHtml && !titled ? formContext(askHtml) : null), [askHtml, titled]);
 	// One question of checkboxes, asked over and over by omp until "Done selecting": the page shows what is ticked.
 	const boxes = req?.method === "select" && askHtml ? checkboxDialog(req.title, req.options) : null;
+	// One choice of radios or a `<select>`: the page shows which one the form preselects (the model's recommendation).
+	const choice = useMemo(
+		() =>
+			req?.method === "select" && askHtml && !checkboxDialog(req.title, req.options)
+				? formChoice(askHtml, req.options)
+				: null,
+		[req, askHtml],
+	);
 	const scope = `${live.info.liveId}\u0000${askHtml ?? ""}`;
 	const checks: Checks | null =
 		req && boxes
 			? {
 					dialog: boxes,
 					scope,
-					// Held after a pick: omp's count is the one before it, so the page's own ticks are shown.
-					ticked: holding ? knownTicks(scope, boxes) : tickedIn(scope, boxes, req.options ?? [], askHtml),
+					// Held after a pick: omp's ticks are the ones before it, so the page's own are shown.
+					ticked: holding
+						? knownTicks(scope, boxes)
+						: tickedIn(scope, boxes, req.options ?? [], askHtml, req.checkedIndices),
 				}
 			: null;
 	// An approval's title is several lines: the tool first, then the command or path it is about.
@@ -276,9 +296,10 @@ export function UIRequests({ live }: { live: LiveState }) {
 				data-method={req.method}
 				data-approval={approval || undefined}
 			>
-				<div className="mb-2 flex items-center gap-2 text-sm font-semibold [[data-short]_&]:mb-1">
-					<Icon size={16} className="shrink-0 text-accent" />
-					<span id={titleId} className="min-w-0 break-words">
+				<div className="mb-2 flex items-start gap-2 text-sm font-semibold [[data-short]_&]:mb-1">
+					<Icon size={16} className="mt-0.5 shrink-0 text-accent" />
+					{/* A field's title from omp 18.19 on is the form's words, a blank line, then the question: kept in paragraphs. */}
+					<span id={titleId} className="min-w-0 break-words whitespace-pre-line">
 						<Revealed text={title} />
 					</span>
 					{live.uiRequests.length > 1 ? (
@@ -350,6 +371,7 @@ export function UIRequests({ live }: { live: LiveState }) {
 					req={req}
 					liveId={liveId}
 					checks={checks}
+					choice={choice}
 					held={holding}
 					onPick={(option) => {
 						if (checks && option !== checks.dialog.done) setHeld({ liveId, req });
@@ -389,12 +411,15 @@ function Body({
 	req,
 	liveId,
 	checks = null,
+	choice = null,
 	held = false,
 	onPick,
 }: {
 	req: UIRequest;
 	liveId: string;
 	checks?: Checks | null;
+	/** A choice of the `ask` form (radios, a `<select>`): what the form checks to begin with (see `formChoice`). */
+	choice?: string[] | null;
 	/** Answered: on the screen until omp asks again, and not to be answered twice. */
 	held?: boolean;
 	onPick?: (option: string) => void;
@@ -428,6 +453,8 @@ function Body({
 					{(req.options ?? []).map((o, i) => {
 						const closing = checks !== null && o === checks.dialog.done;
 						const ticked = checks !== null && !closing ? (checks.ticked?.has(o) ?? null) : null;
+						// The option the form preselects, a click away like the others: omp opens its dialog on it.
+						const preselected = choice?.includes(o) ?? false;
 						return (
 							<button
 								type="button"
@@ -435,7 +462,7 @@ function Body({
 								className={cx(
 									"rounded-xl border px-3 py-2 text-left text-sm",
 									TOUCH,
-									ticked ? "border-accent bg-accent-soft" : "border-border",
+									ticked || preselected ? "border-accent bg-accent-soft" : "border-border",
 									closing ? "font-semibold" : "",
 									isApproval(req) && /^deny/i.test(o)
 										? "text-danger hover:border-danger hover:bg-danger/10"
@@ -447,6 +474,7 @@ function Body({
 								)}
 								aria-pressed={ticked === null ? undefined : ticked}
 								data-ticked={ticked ?? undefined}
+								data-preselected={preselected || undefined}
 								disabled={held}
 								onClick={() => {
 									if (checks) picked(checks.scope, checks.dialog, o);
@@ -466,7 +494,23 @@ function Body({
 											{ticked ? <Check size={12} strokeWidth={3} /> : null}
 										</span>
 									) : null}
+									{choice !== null ? (
+										<span
+											aria-hidden
+											className={cx(
+												"mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border",
+												preselected ? "border-accent" : "border-border",
+											)}
+										>
+											{preselected ? <span className="size-2 rounded-full bg-accent" /> : null}
+										</span>
+									) : null}
 									<span className="min-w-0">{labelOf(o)}</span>
+									{preselected ? (
+										<Badge tone="accent" className="ml-auto shrink-0">
+											{t("panel.reqRecommended")}
+										</Badge>
+									) : null}
 								</div>
 								{req.optionDetails?.[i]?.description ? (
 									<div className="text-xs text-muted break-words">{req.optionDetails[i].description}</div>

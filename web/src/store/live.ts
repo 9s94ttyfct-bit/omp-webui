@@ -180,6 +180,8 @@ export interface UIRequest {
 	message?: string;
 	options?: string[];
 	optionDetails?: { description?: string }[];
+	/** `select` of a checkbox question of omp's `ask` form (omp 18.20.0): the indices into `options` ticked now. */
+	checkedIndices?: number[];
 	placeholder?: string;
 	prefill?: string;
 	questions?: AskQuestion[];

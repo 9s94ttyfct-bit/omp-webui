@@ -97,3 +97,67 @@ test("a field of an ask form is shown with what the form says around it, as text
 	await expect(request).toContainText("Something else");
 	await expect(request.getByTestId("ask-form-context")).toHaveCount(0);
 });
+
+/** A form of radio choices, each with its recommendation checked (the model's way of asking: `ask` preselects). */
+const CHOICES = `<form>
+<p>Two things to decide; I preselected what I recommend.</p>
+<fieldset><legend>1. Where should a bad finding go back to?</legend>
+<p>The review cannot send it back to synthesis today.</p>
+<label><input type="radio" name="route" value="edge" checked> Add a new edge</label>
+<label><input type="radio" name="route" value="argue"> Go through argue</label>
+<label><input type="radio" name="route" value="leave"> Leave it</label>
+</fieldset>
+<fieldset><legend>2. Reset the counts on a new run?</legend>
+<label><input type="radio" name="reset" value="keep"> Keep counting</label>
+<label><input type="radio" name="reset" value="run" checked> Count per run</label>
+</fieldset>
+</form>`;
+
+test("a choice of an ask form shows the option the form preselects, and the form's words once", async ({ page }) => {
+	ownSession(0x5f01, "Ask form choice");
+	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
+	const tap = await tapSocket(page);
+	await page.goto("/");
+	const liveId = await startLive(page, tap, "Ask form choice", "ask-form-choice-1");
+	tap.push({
+		t: "frame",
+		liveId,
+		frame: { type: "tool_execution_start", toolCallId: "ask-1", toolName: "ask", args: { html: CHOICES } },
+	});
+	// As omp 18.20 asks it: the form's words around the field, a blank line, the question; the dialog opens on the checked
+	// option (`initialIndex`), which is also where it opens when none is.
+	const ask = (id: string, title: string, options: string[], initialIndex: number) =>
+		tap.push({
+			t: "frame",
+			liveId,
+			frame: {
+				type: "extension_ui_request",
+				id,
+				method: "select",
+				title,
+				options,
+				initialIndex,
+				selectionMarker: "radio",
+			},
+		});
+	ask(
+		"route-1",
+		"Two things to decide; I preselected what I recommend.\n\n1. Where should a bad finding go back to?\n\nThe review cannot send it back to synthesis today.",
+		["Add a new edge", "Go through argue", "Leave it", "Other (type your own)"],
+		0,
+	);
+	const request = page.getByTestId("ui-request");
+	const preselected = request.locator("[data-preselected]");
+	await expect(preselected).toHaveCount(1);
+	await expect(preselected).toContainText("Add a new edge");
+	await expect(preselected).toContainText("recommended");
+	// omp's title carries the form's words already: the page does not show them a second time.
+	await expect(request).toContainText("The review cannot send it back to synthesis today.");
+	await expect(request.getByTestId("ask-form-context")).toHaveCount(0);
+
+	// The second choice preselects its second option.
+	await request.getByRole("button", { name: /Add a new edge/ }).click();
+	ask("reset-1", "2. Reset the counts on a new run?", ["Keep counting", "Count per run", "Other (type your own)"], 1);
+	await expect(preselected).toHaveCount(1);
+	await expect(preselected).toContainText("Count per run");
+});

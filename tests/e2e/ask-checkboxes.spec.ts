@@ -118,3 +118,41 @@ test("a held checkbox question goes when the ask call ends", async ({ page }) =>
 	});
 	await expect(request).toHaveCount(0);
 });
+
+test("omp 18.20's ticks are the ones shown, with the form's words before the question", async ({ page }) => {
+	ownSession(0x5f12, "Ask checkboxes sent");
+	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
+	const tap = await tapSocket(page);
+	await page.goto("/");
+	const liveId = await startLive(page, tap, "Ask checkboxes sent", "ask-checkboxes-3");
+	tap.push({
+		t: "frame",
+		liveId,
+		frame: { type: "tool_execution_start", toolCallId: "ask-3", toolName: "ask", args: { html: FORM } },
+	});
+	const ask = (id: string, title: string, checkedIndices: number[]) =>
+		tap.push({
+			t: "frame",
+			liveId,
+			frame: {
+				type: "extension_ui_request",
+				id,
+				method: "select",
+				title,
+				options: OPTIONS,
+				selectionMarker: "checkbox",
+				checkedIndices,
+				markableCount: 4,
+			},
+		});
+	const request = page.getByTestId("ui-request");
+	const ticked = () => request.locator('button[aria-pressed="true"]');
+	ask("s-1", "Pick what the panel shows.\n\n(1 selected) Show what", [0]);
+	await expect(ticked()).toHaveText(["CPU"]);
+	await request.getByRole("button", { name: "Disk" }).click();
+	await expect(ticked()).toHaveText(["CPU", "Disk"]);
+	// omp says which are ticked: that is what the page shows, whatever it held.
+	ask("s-2", "Pick what the panel shows.\n\n(2 selected) Show what", [1, 2]);
+	await expect(request.getByRole("button", { name: "Disk" })).toBeEnabled();
+	await expect(ticked()).toHaveText(["Network", "Disk"]);
+});
