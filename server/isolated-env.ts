@@ -11,8 +11,16 @@ import {
 	isolatedEnv,
 	isolatedNote,
 } from "../shared/isolated-env.ts";
+import { platform } from "./platform/index.ts";
 import { isWithin, type Protected, protectedReason } from "./sessions/cleanup-rules.ts";
 import { realOf } from "./sessions/cleanup-scan.ts";
+
+/**
+ * Whether this computer offers isolated environments: not Windows, whose `PATH` and the tools' folders the variables are
+ * not made for. Where it is not offered, no folder is isolated, whatever marker it holds (one made on another computer):
+ * a process gets no variables there, and New chat shows no switch (`GET /api/isolation`).
+ */
+export const ISOLATION_SUPPORTED = platform.id !== "win32";
 
 /**
  * A project folder's isolated environment, the server's part (docs/superpowers/specs/2026-11-14-isolated-project-env-design.md):
@@ -37,7 +45,7 @@ function ownFolder(path: string): boolean | null {
 
 /** The nearest folder from `folder` up to `/` that holds the marker in a `.ompw-env` of its own, real; null when none does. */
 export function findIsolatedRoot(folder: string): string | null {
-	const real = realOf(folder);
+	const real = ISOLATION_SUPPORTED ? realOf(folder) : null;
 	if (!real) return null;
 	for (let dir = real; ; dir = dirname(dir)) {
 		if (ownFolder(join(dir, ISOLATED_DIR)) && existsSync(markerOf(dir))) return dir;
@@ -96,6 +104,7 @@ function linkedWorktree(folder: string): { top: string; mainIsolated: boolean } 
  * worktree itself.
  */
 export function worktreeToAdopt(folder: string): string | null {
+	if (!ISOLATION_SUPPORTED) return null;
 	const wt = linkedWorktree(folder);
 	if (!wt?.mainIsolated || existsSync(join(wt.top, ISOLATED_DIR, OPTED_OUT))) return null;
 	return wt.top;

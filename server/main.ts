@@ -73,7 +73,7 @@ import {
 	runningServerPorts,
 	stopStaleServer,
 } from "./instance.ts";
-import { IsolationError, isolationState, setIsolated } from "./isolated-env.ts";
+import { ISOLATION_SUPPORTED, IsolationError, isolationState, setIsolated } from "./isolated-env.ts";
 import { FINISH_WAIT_MS, heldByImport, type Live, LivePool, type Subscriber, stopKindOf } from "./live.ts";
 import { LOGIN_START_PATH, LoginStart } from "./login-start.ts";
 import {
@@ -1541,7 +1541,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			// in, or why it could not be made one. Reading it changes nothing; switching it is `open`'s (the person's own page).
 			const folder = q.get("folder") ?? "";
 			if (!folder) return fail("No folder", 400);
-			const supported = platform.id !== "win32";
+			const supported = ISOLATION_SUPPORTED;
 			if (!supported) return json({ root: null, refused: null, supported });
 			return json({ ...isolationState(folder, await deleteCleanup.isolationContext()), supported });
 		}
@@ -2710,7 +2710,7 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 				// folder for every conversation in it, so it is the person's own page's to change.
 				if (!isOwnerPage(ws.data.remote, ws.data.local))
 					return reply({ t: "reply", req: msg.req, ok: false, error: ISOLATION_NOT_HERE });
-				if (platform.id !== "win32") {
+				if (ISOLATION_SUPPORTED) {
 					try {
 						setIsolated(target.cwd, target.isolated, await deleteCleanup.isolationContext());
 					} catch (e) {

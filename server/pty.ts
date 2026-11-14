@@ -205,7 +205,7 @@ export class PtyManager {
 		});
 		let proc: Bun.Subprocess;
 		try {
-			const isolation = platform.id === "win32" ? null : envFor(dir, process.env.PATH ?? "");
+			const isolation = envFor(dir, process.env.PATH ?? "");
 			proc = Bun.spawn(shell ? platform.shell.interactive() : [this.bin, ...args], {
 				cwd: dir,
 				terminal,

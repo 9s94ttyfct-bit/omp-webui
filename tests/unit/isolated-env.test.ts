@@ -1,5 +1,16 @@
 import { expect, test } from "bun:test";
-import { isolatedEnv, isolatedNote } from "../../shared/isolated-env.ts";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { envFor, findIsolatedRoot, ISOLATION_SUPPORTED, worktreeToAdopt } from "../../server/isolated-env.ts";
+import {
+	ISOLATED_DIR,
+	ISOLATED_MARKER,
+	ISOLATED_MARKER_BODY,
+	isolatedEnv,
+	isolatedNote,
+} from "../../shared/isolated-env.ts";
+import { has } from "../support/needs.ts";
+import { tempDir } from "../support/temp-dirs.ts";
 
 test("an isolated folder sends every covered tool's installs and caches into its .ompw-env, and nothing of the person's login", () => {
 	const { env, covered } = isolatedEnv("/p", { nvm: false }, "/usr/bin:/bin");
@@ -27,3 +38,16 @@ test("with nvm installed npm's global installs are left outside, and the agent i
 	expect(note).toContain("ask the person before using them: `npm install -g`");
 	expect(isolatedNote("/p", isolatedEnv("/p", { nvm: false }, "").covered)).toContain("npm (`npm install -g`)");
 });
+
+test.skipIf(has.isolatedEnvironment)(
+	"where it is not offered (Windows), a folder with the marker is not isolated, and nothing started there gets its variables",
+	() => {
+		const dir = tempDir("ompw-iso-win-");
+		mkdirSync(join(dir, ISOLATED_DIR));
+		writeFileSync(join(dir, ISOLATED_DIR, ISOLATED_MARKER), ISOLATED_MARKER_BODY);
+		expect(ISOLATION_SUPPORTED).toBe(false);
+		expect(findIsolatedRoot(dir)).toBeNull();
+		expect(worktreeToAdopt(dir)).toBeNull();
+		expect(envFor(dir, "C:\\Windows")).toBeNull();
+	},
+);
