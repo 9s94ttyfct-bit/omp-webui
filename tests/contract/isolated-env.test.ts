@@ -1,3 +1,4 @@
+// needs: isolatedEnvironment
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { existsSync, mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";

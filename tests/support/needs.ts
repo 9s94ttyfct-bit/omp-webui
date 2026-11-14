@@ -46,6 +46,10 @@ const HARNESS = {
 		has: platformId !== "win32",
 		why: "a page from the network is stood in for by a connection from this computer's own network address, which Windows refuses to make to 127.0.0.1 (EADDRNOTAVAIL)",
 	},
+	isolatedEnvironment: {
+		has: platformId !== "win32",
+		why: "a project's isolated environment is offered on macOS and Linux only (`GET /api/isolation` says `supported: false` on Windows, and the server does not switch a folder there)",
+	},
 } as const;
 
 export type Need = Capability | keyof typeof HARNESS;
