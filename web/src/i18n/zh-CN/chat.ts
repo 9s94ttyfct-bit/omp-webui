@@ -197,11 +197,12 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 
 	isolatedBadge: "独立环境",
 	isolatedBadgeTitle:
-		"这个对话在独立环境的项目文件夹（{folder}）里运行：npm、bun、pip、uv、cargo、go、Playwright 和 Hugging Face 安装或下载的东西都放在它的 .ompw-env 文件夹里，把文件夹移到废纸篓就全部清除。",
+		"这个对话在独立环境的项目文件夹（{folder}）里运行：npm、bun、pip、uv、cargo、go、Playwright 和 Hugging Face 安装或下载的东西都放在它的 .ompw-env 文件夹里（npm 的全局安装也是，除非装了 nvm），会随文件夹一起移到废纸篓。brew、sudo 和系统包管理器仍会装到外面。",
 	isolatedStale: "重启后生效",
 	isolatedStaleTitle: "这个对话启动之后，它所在文件夹的独立环境被切换过（或者它换到了别的文件夹）。重启对话后生效。",
 	isolationToggle: "独立环境",
-	isolationToggleOn: "独立环境：已开启。项目的工具安装和下载的东西都留在项目文件夹里，并随文件夹一起移到废纸篓。",
+	isolationToggleOn:
+		"独立环境：已开启。npm、bun、pip、uv、cargo、go、Playwright 和 Hugging Face 安装和下载的东西都留在项目文件夹里，并随文件夹一起移到废纸篓（npm 的全局安装也是，除非装了 nvm）。brew、sudo 和系统包管理器仍会装到外面。",
 	isolationToggleOff:
 		"独立环境：已关闭。开启后，项目的工具（npm、bun、pip、uv、cargo、go、Playwright、Hugging Face）安装和下载的东西都会留在项目文件夹里。",
 	isolationToggleFolder: "这是文件夹（{folder}）的设置：里面的所有对话都跟着变，已在运行的对话重启后生效。",

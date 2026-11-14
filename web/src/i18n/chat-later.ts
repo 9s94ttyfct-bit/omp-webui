@@ -170,13 +170,13 @@ export const en = {
 	// A project folder's isolated environment (`shared/isolated-env.ts`)
 	isolatedBadge: "Isolated",
 	isolatedBadgeTitle:
-		"This conversation runs in an isolated project folder ({folder}): what npm, bun, pip, uv, cargo, go, Playwright and Hugging Face install or download goes into its .ompw-env folder, so moving the folder to the Trash removes all of it.",
+		"This conversation runs in an isolated project folder ({folder}): what npm, bun, pip, uv, cargo, go, Playwright and Hugging Face install or download goes into its .ompw-env folder (npm's global installs too, unless nvm is installed), and goes with the folder to the Trash. brew, sudo and system package managers still install outside.",
 	isolatedStale: "Restart to apply",
 	isolatedStaleTitle:
 		"The isolated environment of this conversation's folder was switched since it started (or it moved to another folder). Restart it to apply the change.",
 	isolationToggle: "Isolated environment",
 	isolationToggleOn:
-		"Isolated environment: on. What the project's tools install and download stays in its folder and goes with it to the Trash.",
+		"Isolated environment: on. What npm, bun, pip, uv, cargo, go, Playwright and Hugging Face install and download stays in the folder and goes with it to the Trash (npm's global installs too, unless nvm is installed). brew, sudo and system package managers still install outside.",
 	isolationToggleOff:
 		"Isolated environment: off. Turn it on to keep what the project's tools (npm, bun, pip, uv, cargo, go, Playwright, Hugging Face) install and download inside the project's folder.",
 	isolationToggleFolder:

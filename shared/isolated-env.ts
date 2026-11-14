@@ -104,7 +104,7 @@ export function isolatedNote(root: string, covered: readonly IsolatedTool[]): st
 		outside.unshift("`npm install -g` (nvm is installed, so npm's global folder is not moved)");
 	return [
 		"## Isolated project environment",
-		`This project folder (${root}) has an isolated environment: what these tools install or download goes into ${root}/${ISOLATED_DIR}, so the person can remove the whole project with nothing left behind. Install and download with them as usual, globally too: ${inside.join("; ")}.`,
+		`This project folder (${root}) has an isolated environment: what these tools install or download goes into ${root}/${ISOLATED_DIR}, so it goes with the project when the person removes the folder. Install and download with them as usual, globally too: ${inside.join("; ")}.`,
 		`These would still install outside the project, so ask the person before using them: ${outside.join(", ")}.`,
 	].join("\n");
 }
