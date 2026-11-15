@@ -154,7 +154,9 @@ async function compare(home: string, agentDir: string, env: Record<string, strin
 		expect(t.totalRequests).toBe(types.get(t.agentType)?.totalRequests as number);
 		expect(t.totalCost).toBeCloseTo(types.get(t.agentType)?.totalCost as number, 9);
 	}
-	expect(ours.timeSeries).toEqual(answer.timeSeries as typeof ours.timeSeries);
+	// The sums are added up in another order (by quarter hour first), so a cost may differ in its last bit.
+	const theirSeries = (answer.timeSeries as Bucket[]).map((b) => ({ ...b, cost: expect.closeTo(b.cost as number, 9) }));
+	expect(ours.timeSeries).toEqual(theirSeries as unknown as typeof ours.timeSeries);
 	const theirCost = (answer.costSeries as Bucket[]).map((c) => `${c.timestamp} ${c.model} ${c.requests}`).sort();
 	expect(ours.costSeries.map((c) => `${c.timestamp} ${c.model} ${c.requests}`).sort()).toEqual(theirCost);
 }

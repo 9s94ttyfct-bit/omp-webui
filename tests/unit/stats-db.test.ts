@@ -173,6 +173,30 @@ test("a day of the charts is the page's day, from its own midnight, on the days 
 	expect(dayStartIn(LATE, "Asia/Kolkata")).toBe(Date.UTC(2026, 10, 14, 18, 30));
 });
 
+test("requests minutes apart across a half-hour zone's midnight, in one UTC hour, are counted in their own days", () => {
+	// 18:20Z and 18:40Z on 14 November: 23:50 and 00:10 in Kolkata (UTC+5:30); 00:05 and 00:25 in Kathmandu (UTC+5:45),
+	// where 18:10Z is 23:55 the day before.
+	const path = makeDb("half-hour-midnight", [
+		{ at: Date.UTC(2026, 10, 14, 18, 10), cost: 1 },
+		{ at: Date.UTC(2026, 10, 14, 18, 20), cost: 2 },
+		{ at: Date.UTC(2026, 10, 14, 18, 40), cost: 4 },
+	]);
+	const days = (timeZone: string) =>
+		(statsFromDb(path, { from: 0, to: LATE + DAY }, "day", timeZone)?.costSeries ?? []).map((c) => [
+			c.timestamp,
+			c.requests,
+			c.cost,
+		]);
+	expect(days("Asia/Kolkata")).toEqual([
+		[Date.UTC(2026, 10, 13, 18, 30), 2, 3],
+		[Date.UTC(2026, 10, 14, 18, 30), 1, 4],
+	]);
+	expect(days("Asia/Kathmandu")).toEqual([
+		[Date.UTC(2026, 10, 13, 18, 15), 1, 1],
+		[Date.UTC(2026, 10, 14, 18, 15), 2, 6],
+	]);
+});
+
 test("omp's own answer (the database unread) has its days moved to the page's, whichever omp counted them", () => {
 	const body = (timestamp: number) => JSON.stringify({ overall: {}, costSeries: [{ timestamp, model: "m", cost: 1 }] });
 	const day = (answer: string) =>

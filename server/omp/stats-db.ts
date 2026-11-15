@@ -129,16 +129,22 @@ export interface DbStats {
 }
 
 const HOUR = 3_600_000;
+/**
+ * The span the requests are grouped by: a quarter of an hour, so that every group lies wholly in one day of any time
+ * zone (every offset in use is whole quarters of an hour: Kolkata's +5:30, Kathmandu's +5:45). Hours would put the
+ * half hour after a Kolkata midnight in the day before.
+ */
+const SLOT = 900_000;
 
 /** A request's tokens per second: only one that took time and wrote something has a speed (omp's rule). */
 const SPEED = "CASE WHEN duration > 0 AND output_tokens > 0 THEN output_tokens * 1000.0 / duration END";
 
 /**
- * One pass over the window: the requests grouped by UTC hour, model, folder and agent type, with sums and counts (not
- * averages, which do not add up). Every figure of the answer is rolled up from these groups, so a month of 100k
- * requests is read once rather than once per table of the page.
+ * One pass over the window: the requests grouped by quarter of an hour (`SLOT`), model, folder and agent type, with sums
+ * and counts (not averages, which do not add up). Every figure of the answer is rolled up from these groups, so a month
+ * of 100k requests is read once rather than once per table of the page.
  */
-const GROUPS = `SELECT (timestamp / ${3_600_000}) * ${3_600_000} AS hour, model, provider, folder, agent_type AS agentType,
+const GROUPS = `SELECT (timestamp / ${SLOT}) * ${SLOT} AS slot, model, provider, folder, agent_type AS agentType,
 	COUNT(*) AS n, SUM(stop_reason = 'error') AS failed,
 	SUM(input_tokens) AS input, SUM(output_tokens) AS output, SUM(cache_read_tokens) AS cacheRead,
 	SUM(cache_write_tokens) AS cacheWrite, SUM(total_tokens) AS tokens,
@@ -150,7 +156,7 @@ const GROUPS = `SELECT (timestamp / ${3_600_000}) * ${3_600_000} AS hour, model,
 FROM messages WHERE timestamp >= $from AND timestamp <= $to GROUP BY 1, 2, 3, 4, 5`;
 
 interface Group {
-	hour: number;
+	slot: number;
 	model: string;
 	provider: string;
 	folder: string;
@@ -645,8 +651,7 @@ export function statsFromDb(
 	} finally {
 		db.close();
 	}
-	// Each hour's day, once: an hour lies wholly in one day in every zone whose offset is whole hours (and the database's
-	// groups are hours).
+	// Each group's day, once per quarter of an hour.
 	const days = new Map<number, number>();
 	const dayOf = (t: number) => {
 		let d = days.get(t);
@@ -676,9 +681,9 @@ export function statsFromDb(
 			totalCost: sum.cost,
 		}))
 		.sort(byCostDesc);
-	const timeSeries = [...rollUp(groups, (g) => String(stepOf(g.hour))).values()]
+	const timeSeries = [...rollUp(groups, (g) => String(stepOf(g.slot))).values()]
 		.map(({ first, sum }) => ({
-			timestamp: stepOf(first.hour),
+			timestamp: stepOf(first.slot),
 			requests: sum.n,
 			errors: sum.failed,
 			tokens: sum.tokens,
@@ -689,9 +694,9 @@ export function statsFromDb(
 		a.timestamp - b.timestamp || a.model.localeCompare(b.model) || a.provider.localeCompare(b.provider);
 	// omp's cost chart is by day whatever the range (its own days, see `dayStartIn`): a day's cost is what a budget is
 	// read against.
-	const costSeries = [...rollUp(groups, (g) => `${dayOf(g.hour)}\0${g.provider}\0${g.model}`).values()]
+	const costSeries = [...rollUp(groups, (g) => `${dayOf(g.slot)}\0${g.provider}\0${g.model}`).values()]
 		.map(({ first, sum }) => ({
-			timestamp: dayOf(first.hour),
+			timestamp: dayOf(first.slot),
 			model: first.model,
 			provider: first.provider,
 			cost: sum.cost,
@@ -703,11 +708,11 @@ export function statsFromDb(
 			requests: sum.n,
 		}))
 		.sort(byTimeAndModel);
-	const modelPerformanceSeries = [...rollUp(groups, (g) => `${stepOf(g.hour)}\0${g.provider}\0${g.model}`).values()]
+	const modelPerformanceSeries = [...rollUp(groups, (g) => `${stepOf(g.slot)}\0${g.provider}\0${g.model}`).values()]
 		.map(({ first, sum }) => {
 			const b = sum.bucket();
 			return {
-				timestamp: stepOf(first.hour),
+				timestamp: stepOf(first.slot),
 				model: first.model,
 				provider: first.provider,
 				requests: sum.n,
