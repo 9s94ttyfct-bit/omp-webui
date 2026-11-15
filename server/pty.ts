@@ -57,8 +57,14 @@ function wrapperBashRc(): string {
 			'PATH="$OMPW_ISOLATED_PATH:$PATH"',
 			"unset OMPW_ISOLATED_PATH",
 			'logout() { exit "$@"; }',
-			// An EXIT trap of the person's own stays theirs.
-			'[ -z "$(trap -p EXIT)" ] && trap \'[ -r "$HOME/.bash_logout" ] && . "$HOME/.bash_logout"\' EXIT',
+			// `~/.bash_logout` when it ends, after an EXIT trap of the person's own (as a login bash runs them), which stays.
+			"__ompw_mine=",
+			'eval "set -- $(trap -p EXIT)"',
+			"[ $# -ge 3 ] && __ompw_mine=$3",
+			'trap -- "$__ompw_mine',
+			'[ -r \\"\\$HOME/.bash_logout\\" ] && . \\"\\$HOME/.bash_logout\\"" EXIT',
+			"unset __ompw_mine",
+			"set --",
 			"",
 		].join("\n"),
 		{ mode: 0o600 },

@@ -357,6 +357,8 @@ export const en = {
 	termOpenLink:
 		"Open this link in your browser?\n\n{url}\n\nThe program that printed it chose the address; the text of a link can say something else.",
 	termCopyOutput: "Copy output",
+	termShowAnswer: "Show what is typed",
+	termHideAnswer: "Hide what is typed",
 
 	// Accounts
 	accTitle: "Accounts",

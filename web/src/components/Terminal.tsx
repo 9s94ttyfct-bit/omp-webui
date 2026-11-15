@@ -1,11 +1,10 @@
 import type { Terminal as XTerm } from "@xterm/xterm";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Eye, EyeOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import "../i18n/later.ts";
 import { type MessageKey, t as translate, useT } from "../i18n/index.ts";
 import { stripAnsi } from "../lib/ansi.ts";
 import { useCopy } from "../lib/clipboard.ts";
-import { credentialQuestion } from "../lib/credential-question.ts";
 import { errorText } from "../lib/error-text.ts";
 import { socket } from "../lib/ws.ts";
 import { bufferText, makeXterm } from "../lib/xterm-view.ts";
@@ -24,8 +23,9 @@ const STATUS_KEYS = {
  * for this window (`pty_held`), which is given the tail of what it printed and goes on from there.
  *
  * With `lines`, `omp <args>` runs without a terminal (`pty_open`'s `lines`) and is answered a line at a time from a field
- * under it, masked while the question asks for a credential (`credentialQuestion`): `omp login` asks for keys in plain
- * text and, in a terminal, shows them as they are typed. The terminal shows `********` for such an answer.
+ * under it: `omp login` asks for keys in plain text and, in a terminal, shows them as they are typed. What omp asks says
+ * nothing structured about which answer is a secret, so every answer is hidden as it is typed, and shown as `********`
+ * after it, unless the person shows it (the eye button).
  */
 export function Terminal({
 	args,
@@ -48,7 +48,8 @@ export function Terminal({
 	/** For `lines`: the line omp printed last and has not ended (its question), and how an answer is sent. */
 	const [question, setQuestion] = useState("");
 	const [answer, setAnswer] = useState("");
-	const send = useRef<((line: string) => void) | null>(null);
+	const [shown, setShown] = useState(false);
+	const send = useRef<((line: string, hidden: boolean) => void) | null>(null);
 	const field = useRef<HTMLInputElement>(null);
 	// The only thing to do in it is to answer omp's question: the field has the keyboard once omp runs.
 	useEffect(() => {
@@ -84,11 +85,11 @@ export function Terminal({
 			}
 			if (msg.t === "pty_exit" && msg.ptyId === ptyId) finished(msg.code);
 		});
-		send.current = (line) => {
+		send.current = (line, hidden) => {
 			if (!ptyId) return;
 			socket.post({ t: "pty_input", ptyId, data: `${line}\n` });
-			// Nothing typed comes back from a process without a terminal: the answer is shown here, a credential as stars.
-			term.write(`${credentialQuestion(tail) ? "********" : line}\r\n`);
+			// Nothing typed comes back from a process without a terminal: the answer is shown here, a hidden one as stars.
+			term.write(`${hidden ? "********" : line}\r\n`);
 			tail = "";
 			setQuestion("");
 		};
@@ -143,7 +144,6 @@ export function Terminal({
 			termRef.current = null;
 		};
 	}, [args, cwd, attach, onExit, lines]);
-	const secret = credentialQuestion(question);
 	return (
 		<div className="flex h-full flex-col overflow-hidden rounded-xl border border-border bg-code">
 			<div className="flex items-center gap-2 border-b border-border px-3 py-1.5 font-mono text-xs text-muted">
@@ -173,8 +173,9 @@ export function Terminal({
 					data-testid="terminal-answer"
 					onSubmit={(e) => {
 						e.preventDefault();
-						send.current?.(answer);
+						send.current?.(answer, !shown);
 						setAnswer("");
+						setShown(false);
 					}}
 				>
 					<input
@@ -184,11 +185,24 @@ export function Terminal({
 						value={answer}
 						disabled={status.key !== "running"}
 						onChange={(e) => setAnswer(e.target.value)}
-						// A key is hidden as it is typed, and the browser neither offers nor keeps it.
-						{...(secret
-							? { type: "password", autoComplete: "off", spellCheck: false, "data-secret": "" }
-							: { type: "text", autoComplete: "off" })}
+						// Hidden as it is typed, and the browser neither offers nor keeps it.
+						{...(shown
+							? { type: "text", autoComplete: "off" }
+							: { type: "password", autoComplete: "off", spellCheck: false, "data-secret": "" })}
 					/>
+					<Button
+						size="sm"
+						variant="ghost"
+						aria-label={t(shown ? "pages.termHideAnswer" : "pages.termShowAnswer")}
+						aria-pressed={shown}
+						data-testid="terminal-answer-show"
+						onClick={() => {
+							setShown((s) => !s);
+							field.current?.focus();
+						}}
+					>
+						{shown ? <EyeOff size={13} /> : <Eye size={13} />}
+					</Button>
 					<Button size="sm" variant="primary" type="submit" disabled={status.key !== "running"}>
 						{t("panel.reqSubmit")}
 					</Button>

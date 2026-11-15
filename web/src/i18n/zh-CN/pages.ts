@@ -367,6 +367,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	termOpenLink:
 		"要在浏览器中打开这个链接吗？\n\n{url}\n\n这个地址是打印它的程序决定的；链接上显示的文字可能与实际地址不同。",
 	termCopyOutput: "复制输出",
+	termShowAnswer: "显示输入的内容",
+	termHideAnswer: "隐藏输入的内容",
 
 	// Accounts
 	accTitle: "账号",

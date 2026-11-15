@@ -86,26 +86,27 @@ test.skipIf(!bash)(
 	async () => {
 		const home = realpathSync(mkdtempSync(join(tmpdir(), "ompw-bash-home-")));
 		try {
-			// A profile that sets PROMPT_COMMAND and PATH whole: the hook a first prompt ran was lost to the first.
+			// A profile that sets PROMPT_COMMAND and PATH whole (a one-time PROMPT_COMMAND hook was lost to the first), and an
+			// EXIT trap of its own: it still runs, and ~/.bash_logout after it, as in a login bash.
 			writeFileSync(
 				join(home, ".bash_profile"),
-				'PROMPT_COMMAND="history -a"\nexport PATH="/usr/bin:/bin"\nPROFILE_RAN=yes\n',
+				'PROMPT_COMMAND="history -a"\nexport PATH="/usr/bin:/bin"\nPROFILE_RAN=yes\ntrap \'echo "mine" >> "$HOME/logged-out"\' EXIT\n',
 			);
-			writeFileSync(join(home, ".bash_logout"), 'echo bye > "$HOME/logged-out"\n');
+			writeFileSync(join(home, ".bash_logout"), 'echo bye >> "$HOME/logged-out"\n');
 			const { argv, env } = keepPathInFront(bash as string, "/p");
 			if (!argv) throw new Error("bash is started with a startup file of its own");
 			const proc = Bun.spawn(argv, {
 				cwd: home,
 				env: { HOME: home, PATH: "/usr/bin:/bin", ...env },
-				stdin: new Blob(['echo "P=$PATH R=$PROFILE_RAN I=[$OMPW_ISOLATED_PATH]"\nlogout\necho after-logout\n']),
+				stdin: new Blob(['echo "P=$PATH R=$PROFILE_RAN I=[$OMPW_ISOLATED_PATH] A=$#"\nlogout\necho after-logout\n']),
 				stdout: "pipe",
 				stderr: "pipe",
 			});
 			const out = await new Response(proc.stdout).text();
 			expect(await proc.exited).toBe(0);
-			expect(out).toContain(`P=${isolatedPathPrefix("/p").join(":")}:/usr/bin:/bin R=yes I=[]`);
+			expect(out).toContain(`P=${isolatedPathPrefix("/p").join(":")}:/usr/bin:/bin R=yes I=[] A=0`);
 			expect(out).not.toContain("after-logout");
-			expect(readFileSync(join(home, "logged-out"), "utf8")).toBe("bye\n");
+			expect(readFileSync(join(home, "logged-out"), "utf8")).toBe("mine\nbye\n");
 		} finally {
 			rmSync(home, { recursive: true, force: true });
 		}
