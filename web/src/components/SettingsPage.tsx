@@ -5,6 +5,7 @@ import { lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef
 import { useShallow } from "zustand/react/shallow";
 import "../i18n/later.ts";
 import { LANGS, type Lang, useLang, useT } from "../i18n/index.ts";
+import { isAccountsHelper } from "../lib/accounts-helper.ts";
 import { ownerPage } from "../lib/api.ts";
 import { setNotifications, useNotify } from "../lib/attention.ts";
 import { resetAllWidths } from "../lib/panel-widths.ts";
@@ -24,7 +25,7 @@ import {
 } from "../lib/shell-notify.ts";
 import { applyTheme } from "../lib/theme.ts";
 import { autoTitleEnabled, closeLive, useApp } from "../store/app.ts";
-import { Accounts, isAccountsHelper } from "./Accounts.tsx";
+import { Accounts } from "./Accounts.tsx";
 import { AnimationSettings } from "./AnimationSettings.tsx";
 import { ApprovalSettings } from "./ApprovalSettings.tsx";
 import { CompactAtSettings } from "./CompactAtSettings.tsx";

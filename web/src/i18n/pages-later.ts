@@ -362,6 +362,8 @@ export const en = {
 	accTitle: "Accounts",
 	accIntro: "Log in to model providers. omp stores the credentials, as with `omp login`.",
 	accLoggedIn: "Logged in to {name}",
+	accNothingStored:
+		"Nothing was stored for {name}: no key was given, and omp uses it without one (a local server with no sign-in). Log in again to add a key.",
 	accSignInCancelled: "Sign-in cancelled",
 	accLoginFailed: "Login failed: {error}",
 	accLoggedOutVia: "Logged out; still authenticated via {source}",
@@ -375,6 +377,9 @@ export const en = {
 	accPasteBack:
 		"This page is not on the computer omp runs on, so the browser cannot hand the sign-in back by itself: once you have signed in, it shows a localhost page that does not load. Copy that page's whole address from the address bar and paste it below.",
 	accCancelSignIn: "Cancel sign-in",
+	accTerminalLogin:
+		"omp signs in to {name} only in its terminal login, which asks a question first (a key, an address or a domain). Answer it here (`omp login {id}`); the list is updated when it ends.",
+	accCloseTerminal: "Close the terminal sign-in",
 	accSignedIn: "Signed in",
 	accLogInTo: "Log in to {name}",
 	accLogIn: "Log in",

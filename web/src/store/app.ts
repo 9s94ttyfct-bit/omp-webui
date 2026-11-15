@@ -18,6 +18,7 @@ import type {
 } from "@shared/protocol.ts";
 import { create } from "zustand";
 import { t } from "../i18n/index.ts";
+import { isAccountsHelper } from "../lib/accounts-helper.ts";
 import { api, type Meta, ownerPage, sessionActions } from "../lib/api.ts";
 import { loadCommandNotes, rememberCommandNotes } from "../lib/command-notes.ts";
 import { moveDraft } from "../lib/drafts.ts";
@@ -1416,6 +1417,9 @@ function toastNeedsInput(liveId: string): void {
 	const st = useApp.getState();
 	const now = st.lives[liveId];
 	if (!now) return;
+	// The Accounts section's helper: what it asks (a key, a code) is answered in Settings › Accounts, under the provider's
+	// row, which is where the person already is; there is no conversation to open.
+	if (isAccountsHelper(now.info, st.meta?.home)) return;
 	const file = now.info.sessionFile;
 	const summary = file ? st.sessions.find((s) => s.file === file) : undefined;
 	const title =

@@ -372,6 +372,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	accTitle: "账号",
 	accIntro: "登录模型提供商。omp 负责保存凭据，与 `omp login` 相同。",
 	accLoggedIn: "已登录 {name}",
+	accNothingStored:
+		"{name} 没有存下任何凭据：没有填密钥，omp 会在没有密钥的情况下使用它（不需要登录的本地服务）。要添加密钥，请再登录一次。",
 	accSignInCancelled: "已取消登录",
 	accLoginFailed: "登录失败：{error}",
 	accLoggedOutVia: "已退出登录；仍通过 {source} 认证",
@@ -385,6 +387,9 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	accPasteBack:
 		"这个页面不在运行 omp 的那台电脑上，浏览器没法自己把登录结果交回去：登录完成后它会打开一个 localhost 页面，那个页面打不开。请从地址栏复制那个页面的完整地址，粘贴到下面。",
 	accCancelSignIn: "取消登录",
+	accTerminalLogin:
+		"omp 只能在终端里登录 {name}：它会先问一个问题（密钥、地址或域名）。请在这里回答（`omp login {id}`），结束后列表会更新。",
+	accCloseTerminal: "关闭终端登录",
 	accSignedIn: "已登录",
 	accLogInTo: "登录 {name}",
 	accLogIn: "登录",

@@ -268,3 +268,78 @@ test("a reconnect of the page's socket keeps the Accounts list and its helper om
 	await expect(anthropic).toBeVisible();
 	await expect(manage).toHaveAttribute("aria-expanded", "true");
 });
+
+/** The list open with every provider in it, and the row of `id`. */
+async function providerRow(page: Page, id: string) {
+	await page.goto("/#/settings/models");
+	await page.getByTestId("accounts-toggle").click();
+	await expect(page.locator('[data-testid="provider"][data-provider="anthropic"]')).toBeVisible({ timeout: 60_000 });
+	const others = page.getByTestId("other-providers");
+	if ((await others.getAttribute("aria-expanded")) !== "true") await others.click();
+	return page.locator(`[data-testid="provider"][data-provider="${id}"]`);
+}
+
+test("an API-key sign-in asks in the row that was clicked, far down the list, and a key left empty says nothing was stored", async ({
+	page,
+}) => {
+	test.setTimeout(150_000);
+	const row = await providerRow(page, "ollama");
+	await row.getByRole("button", { name: /^Log in to / }).click();
+	// The question comes under the row, on screen: not at the top of a list of some ninety providers, out of sight.
+	const progress = row.getByTestId("login-progress");
+	const prompt = progress.getByTestId("ui-request");
+	await expect(prompt).toContainText(/Ollama API key/, { timeout: 30_000 });
+	await expect(progress).toBeInViewport();
+	// What the helper asks is answered here: no toast offers to open a "New conversation" for it.
+	expect(
+		await page
+			.getByTestId("toast")
+			.filter({ hasText: /needs your input/ })
+			.count(),
+	).toBe(0);
+
+	await prompt.getByRole("button", { name: "Submit" }).click();
+	await expect(page.getByTestId("toast").filter({ hasText: /Nothing was stored for Ollama/ })).toBeVisible({
+		timeout: 30_000,
+	});
+	await expect(progress).toHaveCount(0);
+	await expect(row.getByRole("button", { name: /^Log in to / })).toBeEnabled();
+});
+
+test("a provider omp's RPC cannot sign in to is signed in to with omp login in a terminal in its row, and the list follows", async ({
+	page,
+}) => {
+	test.setTimeout(180_000);
+	const row = await providerRow(page, "lm-studio");
+	await row.getByRole("button", { name: /^Log in to / }).click();
+	const box = row.getByTestId("login-terminal");
+	await expect(box).toBeInViewport({ timeout: 30_000 });
+	await expect(box).toContainText("omp login lm-studio");
+	const screen = box.getByTestId("terminal");
+	await expect(screen).toContainText(/LM Studio API key/, { timeout: 30_000 });
+	expect(
+		await page
+			.getByTestId("toast")
+			.filter({ hasText: /Login failed/ })
+			.count(),
+	).toBe(0);
+
+	await screen.click();
+	await page.keyboard.type("e2e-local-key");
+	await page.keyboard.press("Enter");
+	// omp stored it; the list is read again by a new helper (the running one does not see the store change).
+	await expect(row.getByText("Signed in")).toBeVisible({ timeout: 60_000 });
+	await expect(box).toBeVisible();
+	await box.getByTestId("close-login-terminal").click();
+	await expect(box).toHaveCount(0);
+
+	// Logged out again, so no other spec finds a key for LM Studio.
+	await row.getByRole("button", { name: /^Manage .* accounts$/ }).click();
+	await row
+		.getByTestId("provider-accounts")
+		.getByRole("button", { name: /^Log out / })
+		.first()
+		.click();
+	await page.getByTestId("confirm-logout").click();
+	await expect(row.getByRole("button", { name: /^Log in to / })).toBeVisible({ timeout: 30_000 });
+});

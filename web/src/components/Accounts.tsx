@@ -1,14 +1,26 @@
-import type { LiveInfo } from "@shared/protocol.ts";
-import { ChevronRight, CircleCheck, ExternalLink, LogIn, LogOut, Plus } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ChevronRight, CircleCheck, ExternalLink, LogIn, LogOut, Plus, X } from "lucide-react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
+import { HELPER_ARGS } from "../lib/accounts-helper.ts";
 import { signInLink } from "../lib/web-url.ts";
 import { socket } from "../lib/ws.ts";
 import { closeLive, openLive, useApp } from "../store/app.ts";
 import { UIRequests } from "./UIRequests.tsx";
 import { Badge, Button, CardHeader, cx, Modal, Spinner, WithCode } from "./ui.tsx";
+
+// The terminal (xterm) is loaded only for a provider whose sign-in omp's RPC cannot run.
+const Terminal = lazy(() => import("./Terminal.tsx").then((m) => ({ default: m.Terminal })));
+
+/**
+ * omp's RPC `login` refuses a provider that asks something before it has a sign-in page to show (a base address, an
+ * enterprise domain) or asks for a secret it cannot mask, and says to use the terminal (omp 18.20: "… not supported in RPC
+ * mode. Use the terminal UI to log in."). Such a sign-in runs as `omp login <provider>` in a terminal instead.
+ */
+export function needsTerminalLogin(error: string): boolean {
+	return /not supported in RPC mode/i.test(error);
+}
 
 interface Provider {
 	id: string;
@@ -30,14 +42,6 @@ interface Account {
 function accountName(a: Account): string {
 	const name = a.label ?? a.type ?? `#${a.credentialId}`;
 	return a.detail ? `${name} (${a.detail})` : name;
-}
-
-/** How the Accounts section starts its omp: no conversation, in the home folder. */
-const HELPER_ARGS = ["--no-session"];
-
-/** Whether a process is the Accounts section's helper rather than a conversation (Settings names it so). */
-export function isAccountsHelper(info: LiveInfo, home: string | undefined): boolean {
-	return info.sessionFile === null && info.cwd === home && HELPER_ARGS.every((a) => info.args.includes(a));
 }
 
 /**
@@ -71,13 +75,21 @@ export function Accounts({
 	const cancelled = useRef(false);
 	/** The other providers' list: open by default only while nothing is signed in; `null` follows that default. */
 	const [othersOpen, setOthersOpen] = useState<boolean | null>(null);
+	/** The provider whose sign-in runs as `omp login <id>` in a terminal (`needsTerminalLogin`); null: none. */
+	const [terminalFor, setTerminalFor] = useState<string | null>(null);
+	/**
+	 * The next restart of the helper keeps the list on screen until the new one is in: after a terminal sign-in, whose
+	 * credential the running helper does not see (omp reads its store once), the terminal stays open in its row.
+	 */
+	const keepList = useRef(false);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: `generation` restarts the process after a cancelled sign-in.
 	useEffect(() => {
 		if (!home || !shown) return;
 		let started: string | null = null;
 		let alive = true;
-		setProviders(null);
+		if (!keepList.current) setProviders(null);
+		keepList.current = false;
 		setError(null);
 		openLive({ kind: "new", cwd: home, args: HELPER_ARGS })
 			.then(async (id) => {
@@ -96,33 +108,48 @@ export function Accounts({
 		};
 	}, [home, generation, shown]);
 
-	const refresh = async () => {
-		if (!liveId) return;
+	const refresh = async (): Promise<Provider[] | null> => {
+		if (!liveId) return null;
 		const r = await socket.rpc<{ providers: Provider[] }>(liveId, { type: "get_login_providers" });
 		setProviders(r.providers);
+		return r.providers;
 	};
 
 	/** What was done worked (it is not reported as failed); only the list on screen could not be brought up to date. */
 	const refreshAfter = () =>
-		refresh().catch((e: Error) => toast("error", t("pages.accRefreshFailed", { error: e.message })));
+		refresh().catch((e: Error) => {
+			toast("error", t("pages.accRefreshFailed", { error: e.message }));
+			return null;
+		});
 
 	const login = (p: Provider) => {
 		if (!liveId) return;
 		cancelled.current = false;
+		setTerminalFor(null);
 		setLoggingIn(p.id);
 		socket
 			.rpc(liveId, { type: "login", providerId: p.id })
 			.then(
-				() => {
-					toast("success", t("pages.accLoggedIn", { name: p.name }));
-					return refreshAfter();
+				async () => {
+					const list = await refreshAfter();
+					// omp answers a sign-in that stored nothing as done too: a local server left without a key (Ollama, llama.cpp).
+					if (list?.find((x) => x.id === p.id)?.authenticated === false && !p.authenticated)
+						toast("info", t("pages.accNothingStored", { name: p.name }));
+					else toast("success", t("pages.accLoggedIn", { name: p.name }));
 				},
-				(e) =>
-					cancelled.current
-						? toast("info", t("pages.accSignInCancelled"))
-						: toast("error", t("pages.accLoginFailed", { error: e.message })),
+				(e: Error) => {
+					if (cancelled.current) toast("info", t("pages.accSignInCancelled"));
+					else if (needsTerminalLogin(e.message)) setTerminalFor(p.id);
+					else toast("error", t("pages.accLoginFailed", { error: e.message }));
+				},
 			)
 			.finally(() => setLoggingIn(null));
+	};
+
+	/** The terminal sign-in ended: the helper is started again, so that the list says what omp has stored now. */
+	const terminalEnded = () => {
+		keepList.current = true;
+		setGeneration((g) => g + 1);
 	};
 
 	const cancelLogin = () => {
@@ -191,6 +218,22 @@ export function Accounts({
 		if (providers) onSignedIn?.(signedInCount);
 	}, [providers, signedInCount, onSignedIn]);
 
+	/** Brings a block that opened in a row into view: the list of providers is long, and the row clicked may be at its end. */
+	const reveal = (el: HTMLElement | null) => el?.scrollIntoView({ block: "nearest" });
+
+	// Only the helper's own process: a frame of any other conversation is none of this list's business.
+	const live = useApp((s) => (liveId ? s.lives[liveId] : undefined));
+	const pendingUrl = live?.loginUrl;
+	// What omp (or an extension) names as the sign-in page is a link only if it is a web address: `javascript:` would run here.
+	// From a page not on the computer omp runs on, omp's loopback addresses are this device's own (`signInLink`).
+	const { href: loginHref, pasteBack } = pendingUrl
+		? signInLink(pendingUrl, window.location.hostname)
+		: { href: null, pasteBack: false };
+	// The helper was closed from outside (Settings › Running sessions) or died: fold the list; "Show accounts" starts a new one.
+	const helperGone = live?.info.exited === true;
+	useEffect(() => {
+		if (helperGone) setShown(false);
+	}, [helperGone]);
 	const providerRow = (p: Provider) => {
 		const accountsOpen = accounts?.provider === p.id;
 		const cannotLogIn = !p.available || loggingIn !== null;
@@ -259,50 +302,13 @@ export function Accounts({
 						)}
 					</div>
 				) : null}
-			</li>
-		);
-	};
-
-	// Only the helper's own process: a frame of any other conversation is none of this list's business.
-	const live = useApp((s) => (liveId ? s.lives[liveId] : undefined));
-	const pendingUrl = live?.loginUrl;
-	// What omp (or an extension) names as the sign-in page is a link only if it is a web address: `javascript:` would run here.
-	// From a page not on the computer omp runs on, omp's loopback addresses are this device's own (`signInLink`).
-	const { href: loginHref, pasteBack } = pendingUrl
-		? signInLink(pendingUrl, window.location.hostname)
-		: { href: null, pasteBack: false };
-	// The helper was closed from outside (Settings › Running sessions) or died: fold the list; "Show accounts" starts a new one.
-	const helperGone = live?.info.exited === true;
-	useEffect(() => {
-		if (helperGone) setShown(false);
-	}, [helperGone]);
-	return (
-		<section className="rounded-2xl border border-border bg-surface p-4" data-testid="accounts">
-			<CardHeader title={t("pages.accTitle")} hint={<WithCode text={t("pages.accIntro")} />} />
-			<Button
-				size="sm"
-				className="mb-3"
-				data-testid="accounts-toggle"
-				aria-expanded={shown}
-				aria-controls="accounts-body"
-				disabled={loggingIn !== null}
-				onClick={() => setShown(!shown)}
-			>
-				<ChevronRight size={13} className={cx("transition-transform", shown && "rotate-90")} />{" "}
-				{t(shown ? "pages.accHide" : "pages.accShow")}
-			</Button>
-			{shown ? null : <p className="text-xs text-muted">{t("pages.accLazyHint")}</p>}
-			<div id="accounts-body">
-				{error ? <div className="text-sm text-danger">{error}</div> : null}
-				{!providers && !error && shown ? <Spinner /> : null}
-				{loggingIn && live ? (
+				{loggingIn === p.id && live ? (
 					<div
-						className="mb-3 rounded-xl border border-accent/40 bg-accent-soft p-3 text-sm"
+						ref={reveal}
+						className="mt-2 rounded-xl border border-accent/40 bg-accent-soft p-3 text-sm"
 						data-testid="login-progress"
 					>
-						<div className="mb-1 font-medium">
-							{t("pages.accSigningIn", { name: providers?.find((p) => p.id === loggingIn)?.name ?? "" })}
-						</div>
+						<div className="mb-1 font-medium">{t("pages.accSigningIn", { name: p.name })}</div>
 						{pendingUrl ? (
 							<>
 								{loginHref ? (
@@ -340,6 +346,56 @@ export function Accounts({
 						</div>
 					</div>
 				) : null}
+				{terminalFor === p.id ? (
+					<div
+						ref={reveal}
+						className="mt-2 rounded-xl border border-border bg-bg-soft p-3"
+						data-testid="login-terminal"
+					>
+						<div className="mb-2 flex items-start gap-2">
+							<p className="min-w-0 flex-1 text-xs text-muted">
+								<WithCode text={t("pages.accTerminalLogin", { name: p.name, id: p.id })} />
+							</p>
+							<Button
+								size="sm"
+								variant="ghost"
+								aria-label={t("pages.accCloseTerminal")}
+								onClick={() => setTerminalFor(null)}
+								data-testid="close-login-terminal"
+							>
+								<X size={13} />
+							</Button>
+						</div>
+						<div className="h-64">
+							<Suspense fallback={<Spinner size={14} />}>
+								<Terminal args={["login", p.id]} cwd={home} onExit={terminalEnded} />
+							</Suspense>
+						</div>
+					</div>
+				) : null}
+			</li>
+		);
+	};
+
+	return (
+		<section className="rounded-2xl border border-border bg-surface p-4" data-testid="accounts">
+			<CardHeader title={t("pages.accTitle")} hint={<WithCode text={t("pages.accIntro")} />} />
+			<Button
+				size="sm"
+				className="mb-3"
+				data-testid="accounts-toggle"
+				aria-expanded={shown}
+				aria-controls="accounts-body"
+				disabled={loggingIn !== null}
+				onClick={() => setShown(!shown)}
+			>
+				<ChevronRight size={13} className={cx("transition-transform", shown && "rotate-90")} />{" "}
+				{t(shown ? "pages.accHide" : "pages.accShow")}
+			</Button>
+			{shown ? null : <p className="text-xs text-muted">{t("pages.accLazyHint")}</p>}
+			<div id="accounts-body">
+				{error ? <div className="text-sm text-danger">{error}</div> : null}
+				{!providers && !error && shown ? <Spinner /> : null}
 				{signedIn.length ? <ul className="divide-y divide-border">{signedIn.map(providerRow)}</ul> : null}
 				{others.length ? (
 					<div className={cx(signedIn.length > 0 && "mt-3 border-t border-border pt-2")}>
