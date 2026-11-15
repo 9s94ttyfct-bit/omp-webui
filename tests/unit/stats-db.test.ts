@@ -3,7 +3,16 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { agentTypesOf, entryKey, holdsLatest, statsDbPath, statsFromDb } from "../../server/omp/stats-db.ts";
+import {
+	agentTypesOf,
+	dayStartIn,
+	entryKey,
+	holdsLatest,
+	inPageDays,
+	statsDbPath,
+	statsForRange,
+	statsFromDb,
+} from "../../server/omp/stats-db.ts";
 import { removeScratch } from "../support/scratch.ts";
 
 /**
@@ -111,7 +120,7 @@ test("models, folders and agent types are split, the costliest first", () => {
 	]);
 });
 
-test("charts step by UTC day beyond a day, by UTC hour within it; cost is by day either way", () => {
+test("charts step by day beyond a day (UTC's without a time zone), by UTC hour within it; cost is by day either way", () => {
 	const path = makeDb("series", rows);
 	const days = statsFromDb(path, { from: T0, to: T0 + 2 * DAY }, "day");
 	if (!days) throw new Error("no stats");
@@ -131,6 +140,68 @@ test("charts step by UTC day beyond a day, by UTC hour within it; cost is by day
 		[midnight, "opus", 2],
 		[midnight, "sonnet", 1],
 	]);
+});
+
+/** Late on 14 November in Chicago, the 15th in UTC and Shanghai; and the days the US clocks move in 2026. */
+const LATE = Date.UTC(2026, 10, 15, 3);
+const SPRING = Date.UTC(2026, 2, 8, 12);
+const FALL = Date.UTC(2026, 10, 1, 12);
+
+test("a day of the charts is the page's day, from its own midnight, on the days the clocks move too", () => {
+	const path = makeDb("page-days", [{ at: SPRING }, { at: FALL }, { at: LATE }]);
+	const days = (timeZone: string) => {
+		const s = statsFromDb(path, { from: 0, to: LATE + DAY }, "day", timeZone);
+		if (!s) throw new Error("no stats");
+		expect(s.timeSeries.map((b) => b.timestamp)).toEqual(s.costSeries.map((c) => c.timestamp));
+		return s.costSeries.map((c) => c.timestamp);
+	};
+	// Chicago: midnight of 8 March is still on winter time (UTC−6), of 1 November still on summer time (UTC−5).
+	expect(days("America/Chicago")).toEqual([
+		Date.UTC(2026, 2, 8, 6),
+		Date.UTC(2026, 10, 1, 5),
+		Date.UTC(2026, 10, 14, 6),
+	]);
+	expect(days("Asia/Shanghai")).toEqual([
+		Date.UTC(2026, 2, 7, 16),
+		Date.UTC(2026, 9, 31, 16),
+		Date.UTC(2026, 10, 14, 16),
+	]);
+	expect(days("UTC")).toEqual([Date.UTC(2026, 2, 8), Date.UTC(2026, 10, 1), Date.UTC(2026, 10, 15)]);
+	// UTC+14: 17:00 on the 15th.
+	expect(dayStartIn(LATE, "Pacific/Kiritimati")).toBe(Date.UTC(2026, 10, 14, 10));
+	// Kolkata (UTC+5:30): 08:30 on the 15th.
+	expect(dayStartIn(LATE, "Asia/Kolkata")).toBe(Date.UTC(2026, 10, 14, 18, 30));
+});
+
+test("omp's own answer (the database unread) has its days moved to the page's, whichever omp counted them", () => {
+	const body = (timestamp: number) => JSON.stringify({ overall: {}, costSeries: [{ timestamp, model: "m", cost: 1 }] });
+	const day = (answer: string) =>
+		(JSON.parse(answer) as { costSeries: { timestamp: number }[] }).costSeries[0].timestamp;
+	// Before omp 18.20.1 a day is UTC's (00:00Z), wherever the server is.
+	const utc = Date.UTC(2026, 9, 19);
+	expect(day(inPageDays(body(utc), "America/Chicago", "Asia/Shanghai"))).toBe(Date.UTC(2026, 9, 19, 5));
+	expect(day(inPageDays(body(utc), "Asia/Shanghai", "America/Chicago"))).toBe(Date.UTC(2026, 9, 18, 16));
+	// Since, it is the server's: midnight of 19 October in Shanghai is the 19th in Chicago too.
+	const shanghai = Date.UTC(2026, 9, 18, 16);
+	expect(day(inPageDays(body(shanghai), "America/Chicago", "Asia/Shanghai"))).toBe(Date.UTC(2026, 9, 19, 5));
+	expect(day(inPageDays(body(shanghai), "Asia/Shanghai", "Asia/Shanghai"))).toBe(shanghai);
+	// A server whose midnight is 00:00Z (London in winter) counts the same day either way.
+	expect(day(inPageDays(body(Date.UTC(2026, 0, 10)), "America/Chicago", "Europe/London"))).toBe(
+		Date.UTC(2026, 0, 10, 6),
+	);
+	expect(inPageDays("not json", "UTC")).toBe("not json");
+	expect(inPageDays('{"overall":{}}', "UTC")).toBe('{"overall":{}}');
+	// The answer of a range whose database is not the one omp read is omp's, in the page's days.
+	const path = makeDb("fallback-days", rows);
+	const fallback = statsForRange(
+		JSON.stringify({ overall: { lastTimestamp: T0 + 9 * DAY }, costSeries: [{ timestamp: utc, model: "m" }] }),
+		"7d",
+		path,
+		T0 + 10 * DAY,
+		"America/Chicago",
+	);
+	expect(fallback.window).toBeNull();
+	expect(day(fallback.body)).toBe(Date.UTC(2026, 9, 19, 5));
 });
 
 test("a database without a column the queries read, or no database, gives no figures", () => {

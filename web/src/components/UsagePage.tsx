@@ -20,7 +20,7 @@ import { api, type OmpStats, type StatsBucket } from "../lib/api.ts";
 import { costColumn, fmtCost, fmtCostExact, fmtDuration, fmtTime, fmtTokens } from "../lib/format.ts";
 import { setPref } from "../lib/prefs.ts";
 import { projectLabels } from "../lib/usage-projects.ts";
-import { dailyByModel, OTHER_MODELS, paddedDays, seriesColor, utcDate } from "../lib/usage-series.ts";
+import { dailyByModel, localDate, OTHER_MODELS, paddedDays, seriesColor } from "../lib/usage-series.ts";
 import { useApp } from "../store/app.ts";
 import { ScrollPane } from "./ScrollPane.tsx";
 import { ErrorsTable, ModelComparison, RangeConversations, TimeOfDay, ToolsTable } from "./UsageAnalysis.tsx";
@@ -337,7 +337,7 @@ export function UsagePage() {
 								label={t("pages.usageTotalCost")}
 								value={fmtCost(o.totalCost)}
 								exact={fmtCostExact(o.totalCost)}
-								sub={o.firstTimestamp ? t("pages.usageSince", { date: utcDate(o.firstTimestamp) }) : undefined}
+								sub={o.firstTimestamp ? t("pages.usageSince", { date: localDate(o.firstTimestamp) }) : undefined}
 							/>
 							<Stat
 								id="Requests"

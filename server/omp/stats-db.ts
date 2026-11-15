@@ -129,7 +129,6 @@ export interface DbStats {
 }
 
 const HOUR = 3_600_000;
-const DAY = 24 * HOUR;
 
 /** A request's tokens per second: only one that took time and wrote something has a speed (omp's rule). */
 const SPEED = "CASE WHEN duration > 0 AND output_tokens > 0 THEN output_tokens * 1000.0 / duration END";
@@ -315,6 +314,59 @@ export function timeZoneOr(asked: string | null | undefined): string {
 	} catch {
 		return "UTC";
 	}
+}
+
+/**
+ * The start of the calendar day that holds `t` in `timeZone` (an instant): what omp's own day buckets are, in its time
+ * zone (`date(…, 'localtime')`, omp 18.20.1 and later). A day is not always 24 hours (summer time), so it is worked out,
+ * not divided.
+ */
+export function dayStartIn(t: number, timeZone: string): number {
+	return midnightIn(dateIn(t, timeZone), timeZone);
+}
+
+/** The calendar date `t` falls on in `timeZone`, as the instant of that date's 00:00Z (the date alone). */
+function dateIn(t: number, timeZone: string): number {
+	const p = Object.fromEntries(
+		wallClock(timeZone)
+			.formatToParts(t)
+			.map((x) => [x.type, x.value]),
+	);
+	return Date.UTC(+p.year, +p.month - 1, +p.day);
+}
+
+/** The instant the date `date` (its 00:00Z) begins in `timeZone`. */
+function midnightIn(date: number, timeZone: string): number {
+	// The offset of the zone at an instant: its wall-clock time read as if it were UTC, less the instant. It is read at
+	// midnight itself, which may have another offset than an hour near it when the clocks move that day.
+	const offsetAt = (at: number) => {
+		const p = Object.fromEntries(
+			wallClock(timeZone)
+				.formatToParts(at)
+				.map((x) => [x.type, x.value]),
+		);
+		return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(at / 1000) * 1000;
+	};
+	return date - offsetAt(date - offsetAt(date));
+}
+
+const wallClocks = new Map<string, Intl.DateTimeFormat>();
+function wallClock(timeZone: string): Intl.DateTimeFormat {
+	let f = wallClocks.get(timeZone);
+	if (!f) {
+		f = new Intl.DateTimeFormat("en-US", {
+			timeZone,
+			year: "numeric",
+			month: "numeric",
+			day: "numeric",
+			hour: "numeric",
+			minute: "numeric",
+			second: "numeric",
+			hourCycle: "h23",
+		});
+		wallClocks.set(timeZone, f);
+	}
+	return f;
 }
 
 /** A part of `analysisOf`, or null when its query fails: one part the database cannot answer leaves the others. */
@@ -572,8 +624,8 @@ export function agentTypesOf(path: string, entries: readonly { id: string; at: n
 
 /**
  * omp's figures for the requests from `from` to `to` (both inclusive, milliseconds), with the charts in `bucket` steps
- * (UTC hours or UTC days, as omp's own series are) and the hours of the day in `timeZone`. Null when the database cannot
- * be used.
+ * (hours, or calendar days in `timeZone`) and the hours of the day in `timeZone`. omp's own days are those of its time
+ * zone: with the page's zone the server's, they are the same days. Null when the database cannot be used.
  */
 export function statsFromDb(
 	path: string,
@@ -593,9 +645,18 @@ export function statsFromDb(
 	} finally {
 		db.close();
 	}
-	const step = bucket === "hour" ? HOUR : DAY;
-	const stepOf = (t: number) => Math.floor(t / step) * step;
-	const dayOf = (t: number) => Math.floor(t / DAY) * DAY;
+	// Each hour's day, once: an hour lies wholly in one day in every zone whose offset is whole hours (and the database's
+	// groups are hours).
+	const days = new Map<number, number>();
+	const dayOf = (t: number) => {
+		let d = days.get(t);
+		if (d === undefined) {
+			d = dayStartIn(t, timeZone);
+			days.set(t, d);
+		}
+		return d;
+	};
+	const stepOf = bucket === "hour" ? (t: number) => Math.floor(t / HOUR) * HOUR : dayOf;
 	const all = new Sum();
 	for (const g of groups) all.add(g);
 	const byModel = [...rollUp(groups, (g) => `${g.provider}\0${g.model}`).values()]
@@ -626,7 +687,8 @@ export function statsFromDb(
 		.sort((a, b) => a.timestamp - b.timestamp);
 	const byTimeAndModel = (a: { timestamp: number; model: string; provider: string }, b: typeof a) =>
 		a.timestamp - b.timestamp || a.model.localeCompare(b.model) || a.provider.localeCompare(b.provider);
-	// omp's cost chart is by UTC day whatever the range: a day's cost is what a budget is read against.
+	// omp's cost chart is by day whatever the range (its own days, see `dayStartIn`): a day's cost is what a budget is
+	// read against.
 	const costSeries = [...rollUp(groups, (g) => `${dayOf(g.hour)}\0${g.provider}\0${g.model}`).values()]
 		.map(({ first, sum }) => ({
 			timestamp: dayOf(first.hour),
@@ -732,8 +794,35 @@ function readRange(
 	latest: number,
 	timeZone: string,
 ): { body: string; window: { from: number; to: number } | null } {
-	if (latest > 0 && !holdsLatest(dbPath, latest)) return { body: ompBody, window: null };
+	if (latest > 0 && !holdsLatest(dbPath, latest)) return { body: inPageDays(ompBody, timeZone), window: null };
 	const window = usageWindow(range, now);
 	const stats = statsFromDb(dbPath, window, usageBucket(range), timeZone);
-	return stats ? { body: JSON.stringify(stats), window } : { body: ompBody, window: null };
+	return stats ? { body: JSON.stringify(stats), window } : { body: inPageDays(ompBody, timeZone), window: null };
+}
+
+/**
+ * omp's own answer with its cost chart's days moved to the page's (`timeZone`), as the database's figures are. omp's
+ * day is the date its bucket starts on: a UTC day before omp 18.20.1 (the bucket starts at 00:00Z) and the day of its
+ * machine since (a local midnight there; omp runs on this one, `serverZone`). A start at 00:00Z is that date in either
+ * case (a machine whose midnight is 00:00Z is on UTC's clock that day); any other start is a local midnight here.
+ */
+export function inPageDays(
+	ompBody: string,
+	timeZone: string,
+	serverZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
+): string {
+	let parsed: { costSeries?: unknown };
+	try {
+		parsed = JSON.parse(ompBody);
+	} catch {
+		return ompBody;
+	}
+	if (!Array.isArray(parsed?.costSeries)) return ompBody;
+	for (const point of parsed.costSeries as { timestamp?: unknown }[]) {
+		const t = point?.timestamp;
+		if (typeof t !== "number") continue;
+		const date = t % (24 * HOUR) === 0 ? t : dateIn(t, serverZone);
+		point.timestamp = midnightIn(date, timeZone);
+	}
+	return JSON.stringify(parsed);
 }

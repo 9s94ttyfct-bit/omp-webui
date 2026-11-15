@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { utcDate } from "../../web/src/lib/usage-series.ts";
+import { localDate } from "../../web/src/lib/usage-series.ts";
 import { appReady } from "../support/live.ts";
 import { newChatIn } from "../support/new-chat.ts";
 import { topTab } from "../support/panel.ts";
@@ -103,7 +103,7 @@ test("usage page daily totals match `omp stats --json`", async ({ page }) => {
 	const stats = JSON.parse(raw) as { costSeries: { timestamp: number; cost: number }[] };
 	const byDay = new Map<string, number>();
 	for (const p of stats.costSeries) {
-		const key = utcDate(p.timestamp);
+		const key = localDate(p.timestamp);
 		byDay.set(key, (byDay.get(key) ?? 0) + p.cost);
 	}
 	expect(byDay.size).toBeGreaterThan(0);

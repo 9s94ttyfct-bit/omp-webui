@@ -1,12 +1,13 @@
 import { expect, test } from "bun:test";
+import { dayStartIn } from "../../server/omp/stats-db.ts";
 import type { OmpStats } from "../../web/src/lib/api.ts";
 import {
 	dailyByModel,
+	localDate,
 	OTHER_MODELS,
 	paddedDays,
 	SERIES_COLORS,
 	seriesColor,
-	utcDate,
 } from "../../web/src/lib/usage-series.ts";
 
 /**
@@ -14,8 +15,8 @@ import {
  * whatever the palette has no colour for added up under one "Other" instead of reusing one.
  */
 
-/** omp's `costSeries` points are UTC days: each `timestamp` is that day's 00:00:00Z. */
-const DAY = (n: number) => Date.UTC(2026, 0, n);
+/** The server's `costSeries` points are the page's days: each `timestamp` is that day's local midnight. */
+const DAY = (n: number) => new Date(2026, 0, n).getTime();
 
 /** A cost series of `costs[i]` dollars a day for model `m<i>`, over `days` days. */
 function stats(costs: number[], days = 2): OmpStats {
@@ -87,11 +88,21 @@ function inZone<T>(zone: string, fn: () => T): T {
 	}
 }
 
+/**
+ * What the server answers a page in `zone` for the date `y-m-d`: its midnight there, which is the start of the day the
+ * server works out (`dayStartIn`) for any instant of that date, such as an hour later.
+ */
+function midnight(zone: string, y: number, m: number, d: number): number {
+	const at = inZone(zone, () => new Date(y, m, d).getTime());
+	expect(dayStartIn(at + 3_600_000, zone), zone).toBe(at);
+	return at;
+}
+
 test("a day's bucket carries the date it covers, in every time zone (#293)", () => {
-	const bucket = {
-		costSeries: [{ timestamp: Date.UTC(2026, 9, 19), model: "m", cost: 1, requests: 17 }],
-	} as unknown as OmpStats;
 	for (const zone of ZONES) {
+		const bucket = {
+			costSeries: [{ timestamp: midnight(zone, 2026, 9, 19), model: "m", cost: 1, requests: 17 }],
+		} as unknown as OmpStats;
 		const { rows } = inZone(zone, () => dailyByModel(bucket));
 		expect(
 			rows.map((r) => r.day),
@@ -100,15 +111,13 @@ test("a day's bucket carries the date it covers, in every time zone (#293)", () 
 	}
 });
 
-test("two buckets a day apart are two days in every time zone, never merged or shifted together (#293)", () => {
-	const two = {
-		costSeries: [
-			{ timestamp: Date.UTC(2026, 2, 8), model: "m", cost: 1 },
-			{ timestamp: Date.UTC(2026, 2, 9), model: "m", cost: 2 },
-			{ timestamp: Date.UTC(2026, 10, 1), model: "m", cost: 3 },
-		],
-	} as unknown as OmpStats;
+test("buckets a day apart are days apart in every time zone, across the clocks' change, never merged or shifted (#293)", () => {
 	for (const zone of ZONES) {
+		const two = {
+			costSeries: [midnight(zone, 2026, 2, 8), midnight(zone, 2026, 2, 9), midnight(zone, 2026, 10, 1)].map(
+				(timestamp, i) => ({ timestamp, model: "m", cost: i + 1 }),
+			),
+		} as unknown as OmpStats;
 		const { rows } = inZone(zone, () => dailyByModel(two));
 		expect(
 			rows.map((r) => r.day),
@@ -122,21 +131,22 @@ test("two buckets a day apart are two days in every time zone, never merged or s
 });
 
 test("the date printed for the first request is the label of the day it fell in, whatever the zone (#293)", () => {
-	const startOfUtcDay = (ts: number) => ts - (ts % 86_400_000);
-	// 10:37 in Chicago, just after midnight in Honolulu's evening, the last second of the UTC day.
+	// 10:37 in Chicago, just after midnight UTC (the evening before in Honolulu), the last second of the UTC day.
 	for (const first of [
 		Date.UTC(2026, 9, 19, 15, 37, 55),
 		Date.UTC(2026, 9, 19, 0, 0, 1),
 		Date.UTC(2026, 9, 19, 23, 59, 59),
 	]) {
-		const bucket = { costSeries: [{ timestamp: startOfUtcDay(first), model: "m", cost: 1 }] } as unknown as OmpStats;
 		for (const zone of ZONES) {
-			const day = inZone(zone, () => ({ label: dailyByModel(bucket).rows[0].day, since: utcDate(first) }));
+			const bucket = {
+				costSeries: [{ timestamp: dayStartIn(first, zone), model: "m", cost: 1 }],
+			} as unknown as OmpStats;
+			const day = inZone(zone, () => ({ label: dailyByModel(bucket).rows[0].day, since: localDate(first) }));
 			expect(day.label, `${zone} ${new Date(first).toISOString()}`).toBe(day.since);
 		}
 	}
-	expect(utcDate(Date.UTC(2026, 0, 5, 23, 59, 59, 999))).toBe("2026-01-05");
-	expect(utcDate(Date.UTC(2026, 11, 31, 23, 0))).toBe("2026-12-31");
+	expect(inZone("America/Chicago", () => localDate(Date.UTC(2026, 9, 19, 3)))).toBe("2026-10-18");
+	expect(inZone("Pacific/Kiritimati", () => localDate(Date.UTC(2026, 9, 19, 12)))).toBe("2026-10-20");
 });
 
 test("a chart of fewer than seven days is padded to a week with empty days before the first", () => {

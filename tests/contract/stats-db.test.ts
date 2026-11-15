@@ -3,7 +3,7 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { holdsLatest, statsDbPath, statsFromDb } from "../../server/omp/stats-db.ts";
+import { holdsLatest, inPageDays, statsDbPath, statsFromDb } from "../../server/omp/stats-db.ts";
 
 /**
  * Usage & cost reads omp's statistics database for ranges `omp stats --json` does not answer (#714). This holds the
@@ -116,17 +116,30 @@ function expectSameBucket(ours: Bucket, theirs: Bucket, what: string): void {
 	}
 }
 
+/**
+ * omp runs in UTC+14, where its days (omp 18.20.1 and later: its machine's) are another date than UTC's for most of the
+ * day, and never begin at 00:00Z. Before 18.20.1 omp's days were UTC's, and that omp is compared with UTC's days.
+ */
+const ZONE = "Pacific/Kiritimati";
+
 async function compare(home: string, agentDir: string, env: Record<string, string>): Promise<void> {
 	writeSession(agentDir, CALLS);
-	const answer = await ompStats(env);
+	const answer = await ompStats({ ...env, TZ: ZONE });
 	const overall = answer.overall as Bucket;
 	expect(overall.totalRequests).toBe(CALLS.length);
 	const path = statsDbPath(agentDir, env, home);
 	expect(holdsLatest(path, overall.lastTimestamp as number)).toBe(true);
+	const utcDays = (answer.costSeries as Bucket[]).every((c) => (c.timestamp as number) % 86_400_000 === 0);
+	if (!utcDays) {
+		// omp's own answer (shown when the database cannot be read) keeps its days: they are the page's in that zone.
+		const kept = JSON.parse(inPageDays(JSON.stringify(answer), ZONE, ZONE)) as { costSeries: Bucket[] };
+		expect(kept.costSeries).toEqual(answer.costSeries as Bucket[]);
+	}
 	const ours = statsFromDb(
 		path,
 		{ from: overall.firstTimestamp as number, to: overall.lastTimestamp as number },
 		"hour",
+		utcDays ? "UTC" : ZONE,
 	);
 	if (!ours) throw new Error(`no figures from ${path}`);
 	expectSameBucket(ours.overall as unknown as Bucket, overall, "overall");

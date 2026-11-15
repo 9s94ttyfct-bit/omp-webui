@@ -8,14 +8,19 @@ export const seriesColor = (index: number) => `var(--chart-${(index % SERIES_COL
 export const OTHER_MODELS = "__other";
 
 /**
- * The UTC calendar date (`2026-10-19`) of an instant. omp's `costSeries` buckets are UTC days (each `timestamp` is that
- * day's 00:00:00Z, and a bucket holds nothing finer), so a bucket is labelled with the date it covers, not with the
- * viewer's local date of its start, which is the day before in every zone west of UTC. The usage page prints the date
- * of the first request the same way, so the two never disagree.
+ * The calendar date (`2026-10-19`) of an instant in the page's time zone. The server's `costSeries` buckets are the
+ * page's days (it is asked with the page's `tz`, and each `timestamp` is that day's local midnight), as omp's own are
+ * its machine's days (omp 18.20.1 and later), so a bucket is labelled with the date it covers. The usage page prints the
+ * date of the first request the same way, so the two never disagree.
  */
-export function utcDate(ts: number): string {
+export function localDate(ts: number): string {
 	const d = new Date(ts);
-	return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** The date `days` after the date `day` (`2026-10-19`), counted on the calendar, not in hours. */
+function addDays(day: string, days: number): string {
+	return new Date(Date.parse(`${day}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
 }
 
 export interface DailyRow {
@@ -39,7 +44,7 @@ export function dailyByModel(stats: OmpStats): { rows: DailyRow[]; models: strin
 	const named = new Set(ranked.length > SERIES_COLORS ? ranked.slice(0, SERIES_COLORS - 1) : ranked);
 	const byDay = new Map<string, DailyRow>();
 	for (const p of stats.costSeries ?? []) {
-		const day = utcDate(Number(p.timestamp));
+		const day = localDate(Number(p.timestamp));
 		const model = named.has(String(p.model)) ? String(p.model) : OTHER_MODELS;
 		const row = byDay.get(day) ?? { day, total: 0 };
 		row[model] = Number(row[model] ?? 0) + Number(p.cost ?? 0);
@@ -72,7 +77,7 @@ export function paddedDays(rows: DailyRow[]): DailyRow[] {
 	const byDay = new Map(rows.map((r) => [r.day, r]));
 	const missing = Math.max(0, MIN_CHART_DAYS - span);
 	return Array.from({ length: missing + span }, (_, i) => {
-		const day = utcDate(start + (i - missing) * DAY_MS);
+		const day = addDays(first.day, i - missing);
 		return byDay.get(day) ?? { day, total: 0 };
 	});
 }

@@ -124,7 +124,7 @@ test("the models beyond the eight colours add up under Other in the table too, a
 }) => {
 	await showChart(page);
 	const table = page.getByTestId("daily-table");
-	await expect(table.locator("thead th")).toHaveText(["Day (UTC)", ...NAMES.slice(0, 7), "Other", "Total"]);
+	await expect(table.locator("thead th")).toHaveText(["Day", ...NAMES.slice(0, 7), "Other", "Total"]);
 	// Day one: models 7, 8 and 9 cost 3 + 2 + 1 cents; the day's total is every model's.
 	const lastRow = table.locator("tbody tr").last();
 	await expect(lastRow.locator("td").nth(8)).toHaveText("$0.06");
