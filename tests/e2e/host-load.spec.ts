@@ -41,7 +41,7 @@ test.describe("with figures the spec chose", () => {
 		const host = await open(page, history);
 		const last = lookAt(history.fine.t.at(-1) as number);
 		await expect(page.getByTestId("host-figures")).toHaveText(
-			`CPU ${Math.round(last.cpu)}% · GPU ${Math.round(last.gpu as number)}% · MEM ${Math.round(last.mem as number)}% · ${(last.power as number).toFixed(1)} W · ↓${fmtRate(last.rx)} ↑${fmtRate(last.tx)} · ${fmtMem(last.disks["/"] as number)} free`,
+			`CPU ${Math.round(last.cpu)}% · GPU ${Math.round(last.gpu as number)}% · MEM ${Math.round(last.mem as number)}% · Pressure Normal · ${(last.power as number).toFixed(1)} W · ↓${fmtRate(last.rx)} ↑${fmtRate(last.tx)} · ${fmtMem(last.disks["/"] as number)} free`,
 		);
 		await expect(chip(page)).toHaveAttribute("data-level", "0");
 		await expect(page.getByTestId("host-dot")).toHaveClass(/bg-success/);
@@ -61,7 +61,7 @@ test.describe("with figures the spec chose", () => {
 			disks: { "/": 120e9 },
 		});
 		await expect(page.getByTestId("host-figures")).toHaveText(
-			"CPU 88% · GPU 41% · MEM 73% · 6.2 W · ↓1.5 MB/s ↑40 KB/s · 120 GB free",
+			"CPU 88% · GPU 41% · MEM 73% · Pressure Warning · 6.2 W · ↓1.5 MB/s ↑40 KB/s · 120 GB free",
 		);
 		await expect(chip(page)).toHaveAttribute("data-level", "1");
 		await expect(page.getByTestId("host-dot")).toHaveClass(/bg-warning/);
@@ -74,7 +74,7 @@ test.describe("with figures the spec chose", () => {
 	test("a computer with no GPU to read has none on the line, nor a tile, nor a graph", async ({ page }) => {
 		await open(page, historyAt(Date.now(), { noGpu: true }));
 		await expect(page.getByTestId("host-figures")).toHaveText(
-			new RegExp(`^CPU \\d+% · MEM \\d+% · \\d+\\.\\d W${NET_DISK}$`),
+			new RegExp(`^CPU \\d+% · MEM \\d+% · Pressure Normal · \\d+\\.\\d W${NET_DISK}$`),
 		);
 		await expect(chip(page)).not.toHaveAttribute("aria-label", /GPU/);
 		await chip(page).click();
@@ -92,7 +92,7 @@ test.describe("with figures the spec chose", () => {
 		history.coarse.power = history.coarse.power.map(() => null);
 		await open(page, history);
 		await expect(page.getByTestId("host-figures")).toHaveText(
-			new RegExp(`^CPU \\d+% · GPU \\d+% · MEM \\d+%${NET_DISK}$`),
+			new RegExp(`^CPU \\d+% · GPU \\d+% · MEM \\d+% · Pressure Normal${NET_DISK}$`),
 		);
 		await expect(chip(page)).not.toHaveAttribute("aria-label", /power/);
 		await chip(page).click();
@@ -106,7 +106,7 @@ test.describe("with figures the spec chose", () => {
 		await open(page, historyAt(now));
 		// The sidebar's line tells the network and the system's disk only (none chosen in Settings).
 		await expect(page.getByTestId("host-figures")).toHaveText(
-			new RegExp(`^CPU \\d+% · GPU \\d+% · MEM \\d+% · \\d+\\.\\d W${NET_DISK}$`),
+			new RegExp(`^CPU \\d+% · GPU \\d+% · MEM \\d+% · Pressure Normal · \\d+\\.\\d W${NET_DISK}$`),
 		);
 		await chip(page).click();
 		await expect(popover(page)).toBeVisible();
@@ -194,6 +194,7 @@ test.describe("with figures the spec chose", () => {
 		history.coarse.pressure = history.coarse.pressure.map(() => null);
 		await open(page, history);
 		await expect(page.getByTestId("host-dot")).toHaveClass(/bg-faint/);
+		await expect(page.getByTestId("host-figures")).not.toContainText("Pressure");
 		await expect(chip(page)).toHaveAttribute(
 			"aria-label",
 			/^Host load: CPU \d+%, GPU \d+%, MEM \d+%, power \d+\.\d W, received [^,]+, sent [^,]+, Macintosh HD \d+ GB free\.$/,
@@ -226,7 +227,7 @@ test.describe("with figures the spec chose", () => {
 		// The fixture draws 12–24 W: the graph's top is 50 W, the next round step above.
 		await expect(page.getByTestId("host-chart-power")).toContainText("50 W");
 		await expect(page.getByTestId("host-pressure")).toHaveAttribute("data-level", "0");
-		await expect(page.getByTestId("host-pressure")).toHaveText("Normal");
+		await expect(page.getByTestId("host-pressure")).toHaveText("Pressure Normal");
 
 		// 1 h at 30 s: 120 looks, fewer than the graph's limit, drawn as they are.
 		for (const series of ["cpu", "gpu", "mem"]) {
@@ -403,7 +404,7 @@ test.describe("with figures the spec chose", () => {
 		await expect(chip(page)).toHaveAttribute("aria-label", /Not connected: these are the last figures received\.$/);
 		// The figures it had are still there.
 		await expect(page.getByTestId("host-figures")).toHaveText(
-			new RegExp(`^CPU \\d+% · GPU \\d+% · MEM \\d+% · \\d+\\.\\d W${NET_DISK}$`),
+			new RegExp(`^CPU \\d+% · GPU \\d+% · MEM \\d+% · Pressure Normal · \\d+\\.\\d W${NET_DISK}$`),
 		);
 		host.reconnect();
 		await expect(chip(page)).toHaveAttribute("data-connected", "true", { timeout: 30_000 });
@@ -463,7 +464,7 @@ test.describe("in Chinese", () => {
 	test("the line, the pressure and the pane are in Chinese, with CPU and GPU in Latin", async ({ page }) => {
 		const host = await open(page, historyAt(Date.now(), { pressure: [[40, 60, 1]] }));
 		await expect(page.getByTestId("host-figures")).toHaveText(
-			/^CPU \d+% · GPU \d+% · 内存 \d+% · \d+\.\d W · ↓\d+(\.\d)? [KM]B\/s ↑\d+(\.\d)? KB\/s · 可用 \d+ GB$/,
+			/^CPU \d+% · GPU \d+% · 内存 \d+% · 压力 正常 · \d+\.\d W · ↓\d+(\.\d)? [KM]B\/s ↑\d+(\.\d)? KB\/s · 可用 \d+ GB$/,
 		);
 		await expect(chip(page)).toHaveAttribute(
 			"aria-label",
@@ -472,12 +473,14 @@ test.describe("in Chinese", () => {
 		await chip(page).click();
 		await expect(popover(page).getByRole("heading", { name: "本机负载" })).toBeVisible();
 		await expect(page.getByTestId("host-tile-gpu")).toContainText("Apple M4 Pro · 16 核");
-		await expect(page.getByTestId("host-pressure")).toHaveText("正常");
+		await expect(page.getByTestId("host-pressure")).toHaveText("压力 正常");
 		await expect(page.getByTestId("host-range-24h")).toHaveText("24 小时");
 		await expect(page.getByTestId("host-chart-cpu")).toHaveAttribute("aria-label", /最近 1 小时/);
 		await expect(page.getByTestId("host-footer")).toContainText("服务器重启后会重新开始");
 		await host.push({ pressure: 2 });
-		await expect(page.getByTestId("host-pressure")).toHaveText("严重");
+		await expect(page.getByTestId("host-pressure")).toHaveText("压力 严重");
+		await expect(page.getByTestId("host-figures")).toContainText("内存 ");
+		await expect(page.getByTestId("host-figures")).toContainText(" · 压力 严重 · ");
 		await host.push({ cpu: 20 }, { procs: PROCS });
 		await expect(page.getByTestId("host-proc-server")).toContainText("omp-webui 服务器");
 		await expect(page.getByTestId("host-proc-omp")).toContainText("2 个对话");
@@ -586,7 +589,7 @@ test.describe("the real sampler", () => {
 		// This computer's power draw where it tells one (a Mac with the SMC key), none where it does not (a CI runner); its
 		// network where it tells one (not Windows), and its system disk's free space.
 		await expect(page.getByTestId("host-figures")).toHaveText(
-			/^CPU \d+%( · GPU \d+%)? · MEM \d+%( · \d+(\.\d)? W)?( · ↓.+ ↑.+)?( · (—|\d+(\.\d)? [KMGT]?B) free)?$/,
+			/^CPU \d+%( · GPU \d+%)? · MEM \d+%( · Pressure (—|Normal|Warning|Critical))?( · \d+(\.\d)? W)?( · ↓.+ ↑.+)?( · (—|\d+(\.\d)? [KMGT]?B) free)?$/,
 			{
 				timeout: 20_000,
 			},

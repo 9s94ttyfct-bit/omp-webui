@@ -11,6 +11,8 @@ export const en = {
 	chipCpu: "CPU {v}",
 	chipGpu: "GPU {v}",
 	chipMem: "MEM {v}",
+	// Memory pressure on the line, as the system says it (`{v}`: Normal, Warning, Critical), after the memory in use.
+	chipPressure: "Pressure {v}",
 	// The sidebar's line shows the power draw as its figure alone (`6.2 W`); a screen reader hears its name too.
 	chipPower: "power {v}",
 	// The network on the line: received and sent each second, as arrows; a screen reader hears the words.

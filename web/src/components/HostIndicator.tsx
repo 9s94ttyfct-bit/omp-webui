@@ -15,14 +15,15 @@ import { cx, Spinner, Tip } from "./ui.tsx";
 export const { Chunk: HostPaneChunk, retry: retryHostPane, preload } = lazyChunk(() => import("./HostPane.tsx"));
 
 /**
- * The host's load in the sidebar's footer, as one line (`CPU 12% · GPU 3% · MEM 61% · 6.2 W · ↓1.2 MB/s ↑40 KB/s · 120 GB
- * free` and a dot that is the colour of the memory pressure), or, in the rail, as three small bars. A click, a tap or the
- * keyboard opens the graphs. While it is on screen the server tells this page each look, at its background pace (the line
- * alone is no reason to look every 2 s); the pane that opens here asks for the live pace (`HostPane`). A page that is
- * hidden, or has no connection, asks for nothing (`useHostWatch`) and the line is dimmed while there is no connection. The
- * GPU is left out on a computer that has none to read, the power draw on one that tells none, and the network on one that
- * tells none (Windows). The disks are the ones chosen in Settings, or the system's disk (`lineDisks`); each is named when
- * there are several. The rail's bars are shares, so it has no bar for power, the network or the disks.
+ * The host's load in the sidebar's footer, as one line (`CPU 12% · GPU 3% · MEM 61% · Pressure Normal · 6.2 W ·
+ * ↓1.2 MB/s ↑40 KB/s · 120 GB free` and a dot that is the colour of the memory pressure), or, in the rail, as three small
+ * bars. A click, a tap or the keyboard opens the graphs. While it is on screen the server tells this page each look, at
+ * its background pace (the line alone is no reason to look every 2 s); the pane that opens here asks for the live pace
+ * (`HostPane`). A page that is hidden, or has no connection, asks for nothing (`useHostWatch`) and the line is dimmed
+ * while there is no connection. The GPU is left out on a computer that has none to read; the memory pressure (macOS's
+ * level), the power draw and the network on one that tells none (the network: Windows). The disks are the ones chosen in
+ * Settings, or the system's disk (`lineDisks`); each is named when there are several. The rail's bars are shares, so it
+ * has no bar for the pressure, power, the network or the disks.
  */
 export default function HostIndicator({ variant }: { variant: "line" | "rail" }) {
 	const ready = useHostStrings();
@@ -33,6 +34,7 @@ export default function HostIndicator({ variant }: { variant: "line" | "rail" })
 	const latest = useHost((s) => s.fine.at(-1) ?? null);
 	const gpuKnown = useHost((s) => s.info?.gpu != null);
 	const powerKnown = useHost((s) => s.info?.power === true);
+	const pressureKnown = useHost((s) => s.info?.pressure === true);
 	const netKnown = useHost((s) => s.info?.net === true);
 	const listed = useHost((s) => s.info?.disks);
 	const dataDisk = useHost((s) => s.info?.dataDisk ?? null);
@@ -42,6 +44,12 @@ export default function HostIndicator({ variant }: { variant: "line" | "rail" })
 
 	const showGpu = gpuKnown || (latest?.gpu ?? null) !== null;
 	const level = latest?.pressure ?? null;
+	// The pressure as the system says it, after the memory in use; a screen reader hears it at the end (`chipAria`).
+	const showPressure = pressureKnown || level !== null;
+	const pressure = t("host.chipPressure", { v: level === null ? "—" : t(PRESSURE_KEY[level]) });
+	const widestLevel = ([0, 1, 2] as const)
+		.map((l) => t(PRESSURE_KEY[l]))
+		.reduce((a, b) => (b.length > a.length ? b : a));
 	const figures = [
 		t("host.chipCpu", { v: fmtShare(latest?.cpu) }),
 		...(showGpu ? [t("host.chipGpu", { v: fmtShare(latest?.gpu) })] : []),
@@ -63,6 +71,7 @@ export default function HostIndicator({ variant }: { variant: "line" | "rail" })
 		named ? t("host.chipDisk", { name, v }) : t("host.diskValue", { free: v });
 	const shown = [
 		...figures,
+		...(showPressure ? [pressure] : []),
 		...(showPower ? [watts] : []),
 		...(showNet ? [t("host.chipNet", { down, up })] : []),
 		...disks.map((d) => diskFigure(d.name, free(d.id))),
@@ -73,6 +82,7 @@ export default function HostIndicator({ variant }: { variant: "line" | "rail" })
 		t("host.chipCpu", { v: "88%" }),
 		...(showGpu ? [t("host.chipGpu", { v: "88%" })] : []),
 		t("host.chipMem", { v: "88%" }),
+		...(showPressure ? [t("host.chipPressure", { v: widestLevel })] : []),
 		...(showPower ? [fmtWatts(88.8)] : []),
 		...(showNet ? [t("host.chipNet", { down: "888 KB/s", up: "888 KB/s" })] : []),
 		...disks.map((d) => diskFigure(d.name, "888 GB")),

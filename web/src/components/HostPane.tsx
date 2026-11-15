@@ -471,7 +471,7 @@ export default function HostPane({ titleId }: { titleId?: string }) {
 					badge={
 						level === null ? null : (
 							<span title={t("host.pressureName")} data-testid="host-pressure" data-level={level}>
-								<Badge tone={PRESSURE_TONE[level]}>{t(PRESSURE_KEY[level])}</Badge>
+								<Badge tone={PRESSURE_TONE[level]}>{t("host.chipPressure", { v: t(PRESSURE_KEY[level]) })}</Badge>
 							</span>
 						)
 					}
