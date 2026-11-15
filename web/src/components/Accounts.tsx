@@ -1,5 +1,5 @@
 import { ChevronRight, CircleCheck, ExternalLink, LogIn, LogOut, Plus, X } from "lucide-react";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
@@ -146,11 +146,16 @@ export function Accounts({
 			.finally(() => setLoggingIn(null));
 	};
 
-	/** The terminal sign-in ended: the helper is started again, so that the list says what omp has stored now. */
-	const terminalEnded = () => {
+	/**
+	 * The terminal sign-in ended: the helper is started again, so that the list says what omp has stored now. Its arguments
+	 * and this are the same objects across renders: `Terminal` starts its process again when either changes, and every
+	 * frame of the helper renders this card again (the sign-in would be lost mid-question).
+	 */
+	const terminalEnded = useCallback(() => {
 		keepList.current = true;
 		setGeneration((g) => g + 1);
-	};
+	}, []);
+	const terminalArgs = useMemo(() => (terminalFor ? ["login", terminalFor] : []), [terminalFor]);
 
 	const cancelLogin = () => {
 		if (!liveId) return;
@@ -368,7 +373,7 @@ export function Accounts({
 						</div>
 						<div className="h-64">
 							<Suspense fallback={<Spinner size={14} />}>
-								<Terminal args={["login", p.id]} cwd={home} onExit={terminalEnded} />
+								<Terminal args={terminalArgs} cwd={home} onExit={terminalEnded} />
 							</Suspense>
 						</div>
 					</div>

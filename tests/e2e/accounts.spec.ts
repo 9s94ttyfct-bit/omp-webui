@@ -310,6 +310,7 @@ test("a provider omp's RPC cannot sign in to is signed in to with omp login in a
 	page,
 }) => {
 	test.setTimeout(180_000);
+	const tap = await tapSocket(page);
 	const row = await providerRow(page, "lm-studio");
 	await row.getByRole("button", { name: /^Log in to / }).click();
 	const box = row.getByTestId("login-terminal");
@@ -323,6 +324,21 @@ test("a provider omp's RPC cannot sign in to is signed in to with omp login in a
 			.filter({ hasText: /Login failed/ })
 			.count(),
 	).toBe(0);
+	// A frame of the helper renders the card again while omp waits for the key: the terminal keeps its one process.
+	const [helper] = await helperIds(page);
+	tap.push({
+		t: "frame",
+		liveId: helper,
+		frame: {
+			type: "extension_ui_request",
+			id: "rerender-probe",
+			method: "open_url",
+			url: "https://example.com/rerender",
+		},
+	});
+	await page.waitForTimeout(500);
+	expect(tap.sent.filter((m) => m.t === "pty_open").length).toBe(1);
+	expect(tap.sent.filter((m) => m.t === "pty_kill").length).toBe(0);
 
 	await screen.click();
 	await page.keyboard.type("e2e-local-key");
