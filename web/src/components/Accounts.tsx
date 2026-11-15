@@ -7,6 +7,7 @@ import { HELPER_ARGS } from "../lib/accounts-helper.ts";
 import { signInLink } from "../lib/web-url.ts";
 import { socket } from "../lib/ws.ts";
 import { closeLive, openLive, useApp } from "../store/app.ts";
+import type { UIRequest } from "../store/live.ts";
 import { UIRequests } from "./UIRequests.tsx";
 import { Badge, Button, CardHeader, cx, Modal, Spinner, WithCode } from "./ui.tsx";
 
@@ -20,6 +21,15 @@ const Terminal = lazy(() => import("./Terminal.tsx").then((m) => ({ default: m.T
  */
 export function needsTerminalLogin(error: string): boolean {
 	return /not supported in RPC mode/i.test(error);
+}
+
+/**
+ * A sign-in prompt for a credential: omp asks "Paste your <provider> API key" (or token, or secret key) as a plain
+ * prompt, since its RPC cannot ask a `secret` one in a login. It is masked here; an authorization code or redirect
+ * address (which the person may need to read back) is not.
+ */
+export function credentialPrompt(req: UIRequest): boolean {
+	return req.method === "input" && /\b(key|token|secret)\b/i.test(req.title ?? "");
 }
 
 interface Provider {
@@ -342,7 +352,7 @@ export function Accounts({
 							<Spinner size={14} />
 						)}
 						<div className="mt-3">
-							<UIRequests live={live} />
+							<UIRequests live={live} secretInput={credentialPrompt} />
 						</div>
 						<div className="mt-2 flex justify-end">
 							<Button size="sm" variant="ghost" onClick={cancelLogin} data-testid="cancel-login">

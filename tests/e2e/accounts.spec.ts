@@ -28,6 +28,8 @@ test("providers, stored accounts, and a cancelled login", async ({ page }) => {
 	await expect(progress.getByTestId("login-link")).toHaveAttribute("href", /^https?:\/\//, { timeout: 30_000 });
 	const prompt = progress.getByTestId("ui-request");
 	await expect(prompt).toContainText(/authorization code/i);
+	// An authorization code (or the redirect address pasted back) is read back by the person: it is not masked.
+	await expect(prompt.locator("input")).not.toHaveAttribute("type", "password");
 	// omp keeps waiting for the browser callback; cancelling stops the sign-in process.
 	await progress.getByTestId("cancel-login").click();
 	await expect(page.getByTestId("toast").filter({ hasText: /Sign-in cancelled/ })).toBeVisible({ timeout: 30_000 });
@@ -297,6 +299,13 @@ test("an API-key sign-in asks in the row that was clicked, far down the list, an
 			.filter({ hasText: /needs your input/ })
 			.count(),
 	).toBe(0);
+	// omp cannot mark a login prompt secret, so the key is masked here: not shown, not offered or kept by the browser.
+	const field = prompt.locator("input");
+	await expect(field).toHaveAttribute("type", "password");
+	await expect(field).toHaveAttribute("autocomplete", "off");
+	await field.fill("sk-e2e-masked-key");
+	expect(await page.locator("body").innerText()).not.toContain("sk-e2e-masked-key");
+	await field.fill("");
 
 	await prompt.getByRole("button", { name: "Submit" }).click();
 	await expect(page.getByTestId("toast").filter({ hasText: /Nothing was stored for Ollama/ })).toBeVisible({

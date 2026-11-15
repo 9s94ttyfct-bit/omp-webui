@@ -147,7 +147,17 @@ function FormContext({ blocks }: { blocks: FormBlock[] }) {
 const CHECKBOX_HOLD_MS = 15_000;
 
 /** Pending extension/tool dialogs (omp rpc.md "Extension UI Sub-Protocol"), rendered inline. */
-export function UIRequests({ live }: { live: LiveState }) {
+export function UIRequests({
+	live,
+	secretInput,
+}: {
+	live: LiveState;
+	/**
+	 * Which text requests to mask though omp does not mark them `secret`: Settings › Accounts' sign-in, whose API-key
+	 * prompts omp's RPC cannot mark (it refuses a `secret` prompt in a login).
+	 */
+	secretInput?: (req: UIRequest) => boolean;
+}) {
 	const t = useT();
 	const pending = live.uiRequests[0];
 	/** The checkbox question just picked from, kept on the screen until omp asks it again (see `CHECKBOX_HOLD_MS`). */
@@ -370,6 +380,7 @@ export function UIRequests({ live }: { live: LiveState }) {
 					key={req.id}
 					req={req}
 					liveId={liveId}
+					secret={req.secret === true || secretInput?.(req) === true}
 					checks={checks}
 					choice={choice}
 					held={holding}
@@ -414,8 +425,11 @@ function Body({
 	choice = null,
 	held = false,
 	onPick,
+	secret = false,
 }: {
 	req: UIRequest;
+	/** The text request's answer is a secret: masked as it is typed (`req.secret`, or the caller says so). */
+	secret?: boolean;
 	liveId: string;
 	checks?: Checks | null;
 	/** A choice of the `ask` form (radios, a `<select>`): what the form checks to begin with (see `formChoice`). */
@@ -531,7 +545,9 @@ function Body({
 			);
 		case "input":
 		case "editor":
-			return <TextBody req={req} liveId={liveId} multiline={req.method === "editor"} onCancel={cancel} />;
+			return (
+				<TextBody req={req} liveId={liveId} multiline={req.method === "editor"} secret={secret} onCancel={cancel} />
+			);
 		case "ask":
 			return <AskBody req={req} liveId={liveId} onCancel={cancel} />;
 		case "propose_goal":
@@ -549,11 +565,13 @@ function TextBody({
 	req,
 	liveId,
 	multiline,
+	secret,
 	onCancel,
 }: {
 	req: UIRequest;
 	liveId: string;
 	multiline: boolean;
+	secret: boolean;
 	onCancel: () => void;
 }) {
 	const t = useT();
@@ -583,9 +601,7 @@ function TextBody({
 					value={value}
 					placeholder={req.placeholder}
 					onChange={(e) => setValue(e.target.value)}
-					{...(req.secret === true
-						? { type: "password", autoComplete: "off", spellCheck: false, "data-secret": "" }
-						: {})}
+					{...(secret ? { type: "password", autoComplete: "off", spellCheck: false, "data-secret": "" } : {})}
 				/>
 			)}
 			<div className="mt-2 flex justify-end gap-2 [[data-short]_&]:mt-1">
