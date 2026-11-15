@@ -341,10 +341,12 @@ function dateIn(t: number, timeZone: string): number {
 	return Date.UTC(+p.year, +p.month - 1, +p.day);
 }
 
-/** The instant the date `date` (its 00:00Z) begins in `timeZone`. */
+/**
+ * The first instant of the date `date` (its 00:00Z) in `timeZone`. Where the clocks move at midnight, the day may begin
+ * at 01:00 (a skipped midnight, São Paulo until 2019) or have two midnights (the earlier is its start).
+ */
 function midnightIn(date: number, timeZone: string): number {
-	// The offset of the zone at an instant: its wall-clock time read as if it were UTC, less the instant. It is read at
-	// midnight itself, which may have another offset than an hour near it when the clocks move that day.
+	// The offset of the zone at an instant: its wall-clock time read as if it were UTC, less the instant.
 	const offsetAt = (at: number) => {
 		const p = Object.fromEntries(
 			wallClock(timeZone)
@@ -353,7 +355,12 @@ function midnightIn(date: number, timeZone: string): number {
 		);
 		return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(at / 1000) * 1000;
 	};
-	return date - offsetAt(date - offsetAt(date));
+	// The zone's offsets either side of that midnight: one of them puts its start on the date.
+	const near = date - offsetAt(date);
+	const starts = [offsetAt(near - 3 * HOUR), offsetAt(near), offsetAt(near + 3 * HOUR)]
+		.map((offset) => date - offset)
+		.filter((at) => dateIn(at, timeZone) === date);
+	return starts.length ? Math.min(...starts) : near;
 }
 
 const wallClocks = new Map<string, Intl.DateTimeFormat>();

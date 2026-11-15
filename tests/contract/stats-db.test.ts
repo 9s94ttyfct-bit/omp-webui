@@ -129,6 +129,8 @@ async function compare(home: string, agentDir: string, env: Record<string, strin
 	expect(overall.totalRequests).toBe(CALLS.length);
 	const path = statsDbPath(agentDir, env, home);
 	expect(holdsLatest(path, overall.lastTimestamp as number)).toBe(true);
+	// The days are told apart by their buckets: with none, which days omp counts could not be told.
+	expect((answer.costSeries as Bucket[]).length).toBeGreaterThan(0);
 	const utcDays = (answer.costSeries as Bucket[]).every((c) => (c.timestamp as number) % 86_400_000 === 0);
 	if (!utcDays) {
 		// omp's own answer (shown when the database cannot be read) keeps its days: they are the page's in that zone.

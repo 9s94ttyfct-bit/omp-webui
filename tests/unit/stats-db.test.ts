@@ -171,6 +171,12 @@ test("a day of the charts is the page's day, from its own midnight, on the days 
 	expect(dayStartIn(LATE, "Pacific/Kiritimati")).toBe(Date.UTC(2026, 10, 14, 10));
 	// Kolkata (UTC+5:30): 08:30 on the 15th.
 	expect(dayStartIn(LATE, "Asia/Kolkata")).toBe(Date.UTC(2026, 10, 14, 18, 30));
+	// São Paulo skipped midnight on 4 November 2018 (00:00 became 01:00, UTC−3 to UTC−2): the day began at 01:00, 03:00Z.
+	expect(dayStartIn(Date.UTC(2018, 10, 4, 15), "America/Sao_Paulo")).toBe(Date.UTC(2018, 10, 4, 3));
+	// The day before is a whole day of its own, from its midnight on winter time.
+	expect(dayStartIn(Date.UTC(2018, 10, 4, 2, 59), "America/Sao_Paulo")).toBe(Date.UTC(2018, 10, 3, 3));
+	// Santiago turned 6 April 2025's midnight back to 23:00 the day before (UTC−3 to UTC−4): the 6th began at 04:00Z.
+	expect(dayStartIn(Date.UTC(2025, 3, 6, 12), "America/Santiago")).toBe(Date.UTC(2025, 3, 6, 4));
 });
 
 test("requests minutes apart across a half-hour zone's midnight, in one UTC hour, are counted in their own days", () => {
