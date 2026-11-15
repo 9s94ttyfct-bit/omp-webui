@@ -4,6 +4,7 @@ import { useShallow } from "zustand/react/shallow";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
 import { HELPER_ARGS } from "../lib/accounts-helper.ts";
+import { credentialQuestion } from "../lib/credential-question.ts";
 import { signInLink } from "../lib/web-url.ts";
 import { socket } from "../lib/ws.ts";
 import { closeLive, openLive, useApp } from "../store/app.ts";
@@ -23,13 +24,9 @@ export function needsTerminalLogin(error: string): boolean {
 	return /not supported in RPC mode/i.test(error);
 }
 
-/**
- * A sign-in prompt for a credential: omp asks "Paste your <provider> API key" (or token, or secret key) as a plain
- * prompt, since its RPC cannot ask a `secret` one in a login. It is masked here; an authorization code or redirect
- * address (which the person may need to read back) is not.
- */
+/** A sign-in prompt for a credential (`credentialQuestion`): omp's RPC cannot ask a `secret` one in a login. */
 export function credentialPrompt(req: UIRequest): boolean {
-	return req.method === "input" && /\b(key|token|secret)\b/i.test(req.title ?? "");
+	return req.method === "input" && credentialQuestion(req.title ?? "");
 }
 
 interface Provider {
@@ -383,7 +380,7 @@ export function Accounts({
 						</div>
 						<div className="h-64">
 							<Suspense fallback={<Spinner size={14} />}>
-								<Terminal args={terminalArgs} cwd={home} onExit={terminalEnded} />
+								<Terminal args={terminalArgs} cwd={home} onExit={terminalEnded} lines />
 							</Suspense>
 						</div>
 					</div>

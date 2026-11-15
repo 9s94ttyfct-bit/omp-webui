@@ -2944,6 +2944,7 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 				// Ended when the person turns shells for remote pages off: those of pages that are not the person's own.
 				remote: !owner,
 				tag: msg.tag,
+				lines: msg.lines === true,
 			});
 			return reply({ t: "reply", req: msg.req, ok: true, data: { ptyId: id } });
 		}

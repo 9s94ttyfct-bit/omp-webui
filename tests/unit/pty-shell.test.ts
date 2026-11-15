@@ -1,9 +1,10 @@
 // needs: posixShell
 import { expect, test } from "bun:test";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PtyManager } from "../../server/pty.ts";
+import { keepPathInFront, PtyManager } from "../../server/pty.ts";
+import { isolatedPathPrefix } from "../../shared/isolated-env.ts";
 import { pollUntil } from "../support/poll.ts";
 
 /**
@@ -49,6 +50,67 @@ test("a shell runs in the folder it is given and takes input", async () => {
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+test("omp run without a terminal (lines) reads what is typed a line at a time and never shows it", async () => {
+	// `omp` here is `sh`: it asks, reads one line and says only how long it was.
+	const ptys = new PtyManager("/bin/sh");
+	const page = watched();
+	try {
+		const id = ptys.open(
+			page.owner,
+			["-c", 'printf "Paste your API key: "; read k; echo "got $(printf %s "$k" | wc -c | tr -d " ") chars"'],
+			undefined,
+			80,
+			24,
+			{
+				lines: true,
+			},
+		);
+		await pollUntil(() => page.text().includes("Paste your API key: "), "the question", 10_000);
+		// A terminal's Enter (a carriage return) ends the line too.
+		ptys.input(page.owner, id, "sk-never-shown\r");
+		await pollUntil(page.exited, "the answer to be read", 10_000);
+		expect(page.text()).toBe("Paste your API key: got 14 chars\r\n");
+		expect(() => ptys.open(page.owner, [], undefined, 80, 24, { shell: true, lines: true })).toThrow(
+			"needs a terminal",
+		);
+	} finally {
+		ptys.killAll();
+	}
+});
+
+const bash = Bun.which("bash");
+
+test.skipIf(!bash)(
+	"an isolated folder's bash keeps its folders in front, whatever the login files do to PROMPT_COMMAND or PATH; logout and ~/.bash_logout still work",
+	async () => {
+		const home = realpathSync(mkdtempSync(join(tmpdir(), "ompw-bash-home-")));
+		try {
+			// A profile that sets PROMPT_COMMAND and PATH whole: the hook a first prompt ran was lost to the first.
+			writeFileSync(
+				join(home, ".bash_profile"),
+				'PROMPT_COMMAND="history -a"\nexport PATH="/usr/bin:/bin"\nPROFILE_RAN=yes\n',
+			);
+			writeFileSync(join(home, ".bash_logout"), 'echo bye > "$HOME/logged-out"\n');
+			const { argv, env } = keepPathInFront(bash as string, "/p");
+			if (!argv) throw new Error("bash is started with a startup file of its own");
+			const proc = Bun.spawn(argv, {
+				cwd: home,
+				env: { HOME: home, PATH: "/usr/bin:/bin", ...env },
+				stdin: new Blob(['echo "P=$PATH R=$PROFILE_RAN I=[$OMPW_ISOLATED_PATH]"\nlogout\necho after-logout\n']),
+				stdout: "pipe",
+				stderr: "pipe",
+			});
+			const out = await new Response(proc.stdout).text();
+			expect(await proc.exited).toBe(0);
+			expect(out).toContain(`P=${isolatedPathPrefix("/p").join(":")}:/usr/bin:/bin R=yes I=[]`);
+			expect(out).not.toContain("after-logout");
+			expect(readFileSync(join(home, "logged-out"), "utf8")).toBe("bye\n");
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	},
+);
 
 test("a shell takes no arguments", () => {
 	const ptys = new PtyManager("/bin/echo");

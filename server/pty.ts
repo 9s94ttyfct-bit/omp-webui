@@ -33,31 +33,65 @@ function wrapperZdotdir(): string {
 	return dir;
 }
 
+/** The startup file `keepPathInFront` gives an isolated folder's bash Terminal tab; made once, private. */
+let bashRc: string | null = null;
+
 /**
- * What a Terminal tab's login shell `shell` is given so that the isolated folder `root`'s `PATH` prefix is still in front
- * after the startup files: a login shell runs `path_helper` (macOS `/etc/zprofile`, `/etc/profile`), which moves it behind
- * the system's. zsh: startup files that run the person's own and put it back last; bash: a first prompt that puts it back.
- * Other shells get the variables only. The person's own files are never changed.
+ * bash's startup file for an isolated folder: what a login bash reads (`/etc/profile`, then the first of
+ * `~/.bash_profile`, `~/.bash_login`, `~/.profile`), then the prefix in front, so that nothing those files do (a
+ * `PROMPT_COMMAND` of their own, a `PATH` set whole) can undo it. A shell started with it is not a login shell, so
+ * `logout` ends it as `exit` does and `~/.bash_logout` still runs when it ends.
  */
-export function keepPathInFront(shell: string, root: string): Record<string, string> {
+function wrapperBashRc(): string {
+	if (bashRc && existsSync(bashRc)) return bashRc;
+	const dir = mkdtempSync(join(tmpdir(), "ompw-bashrc-"));
+	const file = join(dir, "bashrc");
+	writeFileSync(
+		file,
+		[
+			"# omp-webui: a login shell's startup files, then the isolated folders in front (server/pty.ts `keepPathInFront`).",
+			"[ -r /etc/profile ] && . /etc/profile",
+			'if [ -r "$HOME/.bash_profile" ]; then . "$HOME/.bash_profile"',
+			'elif [ -r "$HOME/.bash_login" ]; then . "$HOME/.bash_login"',
+			'elif [ -r "$HOME/.profile" ]; then . "$HOME/.profile"; fi',
+			'PATH="$OMPW_ISOLATED_PATH:$PATH"',
+			"unset OMPW_ISOLATED_PATH",
+			'logout() { exit "$@"; }',
+			// An EXIT trap of the person's own stays theirs.
+			'[ -z "$(trap -p EXIT)" ] && trap \'[ -r "$HOME/.bash_logout" ] && . "$HOME/.bash_logout"\' EXIT',
+			"",
+		].join("\n"),
+		{ mode: 0o600 },
+	);
+	bashRc = file;
+	return file;
+}
+
+/**
+ * How a Terminal tab's login shell `shell` is started so that the isolated folder `root`'s `PATH` prefix is still in front
+ * after the startup files: a login shell runs `path_helper` (macOS `/etc/zprofile`, `/etc/profile`), which moves it behind
+ * the system's. zsh: startup files that run the person's own and put it back last; bash: a startup file that runs what a
+ * login bash runs and then puts it back (`argv` replaces the login shell's). Other shells get the variables only. The
+ * person's own files are never changed.
+ */
+export function keepPathInFront(shell: string, root: string): { env: Record<string, string>; argv?: string[] } {
 	const prefix = isolatedPathPrefix(root).join(":");
 	switch (basename(shell)) {
 		case "zsh": {
 			const wrap = wrapperZdotdir();
 			return {
-				ZDOTDIR: wrap,
-				OMPW_WRAP_ZDOTDIR: wrap,
-				OMPW_USER_ZDOTDIR: process.env.ZDOTDIR ?? homedir(),
-				OMPW_ISOLATED_PATH: prefix,
+				env: {
+					ZDOTDIR: wrap,
+					OMPW_WRAP_ZDOTDIR: wrap,
+					OMPW_USER_ZDOTDIR: process.env.ZDOTDIR ?? homedir(),
+					OMPW_ISOLATED_PATH: prefix,
+				},
 			};
 		}
 		case "bash":
-			return {
-				OMPW_ISOLATED_PATH: prefix,
-				PROMPT_COMMAND: 'PATH="$OMPW_ISOLATED_PATH:$PATH"; unset OMPW_ISOLATED_PATH PROMPT_COMMAND',
-			};
+			return { env: { OMPW_ISOLATED_PATH: prefix }, argv: [shell, "--noprofile", "--rcfile", wrapperBashRc(), "-i"] };
 		default:
-			return {};
+			return { env: {} };
 	}
 }
 
@@ -98,7 +132,8 @@ const TAG_MAX = 4096;
 interface PtySession {
 	id: string;
 	proc: Bun.Subprocess;
-	terminal: Bun.Terminal;
+	/** Where its input goes and its size is set: the pseudo-terminal, or for `lines` the process's stdin. */
+	io: { write(data: string): void; resize(cols: number, rows: number): void; close(): void };
 	args: string[];
 	cwd: string;
 	/** A login shell of the panel's Terminal tab, not `omp <args>`. */
@@ -172,7 +207,9 @@ export class PtyManager {
 	/**
 	 * Start a terminal for `owner`: `omp <args>`, or with `shell` the person's login shell (`-l`, so their profile is
 	 * read) and no arguments, with `tag` naming the conversation it is for. `remote` says the page is not on this
-	 * computer: its shells end when shells for remote pages are turned off (`killRemoteShells`).
+	 * computer: its shells end when shells for remote pages are turned off (`killRemoteShells`). With `lines`, `omp
+	 * <args>` runs without a terminal, on pipes: it reads its answers a line at a time and nothing typed is echoed back
+	 * (`omp login` asks for keys in plain text: in a terminal it shows them as they are typed).
 	 */
 	open(
 		owner: Subscriber,
@@ -180,56 +217,102 @@ export class PtyManager {
 		cwd: string | undefined,
 		cols: number,
 		rows: number,
-		opts: { shell?: boolean; remote?: boolean; tag?: unknown } = {},
+		opts: { shell?: boolean; remote?: boolean; tag?: unknown; lines?: boolean } = {},
 	): string {
 		// From the page's socket: what is not a list of strings is refused before a terminal is made for it.
 		if (!Array.isArray(args) || !args.every((a) => typeof a === "string"))
 			throw new Error("args must be a list of strings");
 		const shell = opts.shell === true;
 		if (shell && args.length > 0) throw new Error("a shell takes no arguments");
+		const lines = opts.lines === true;
+		if (shell && lines) throw new Error("a shell needs a terminal");
 		const tag = shell && typeof opts.tag === "string" && opts.tag.length <= TAG_MAX ? opts.tag : undefined;
 		const id = `P${++this.seq}`;
 		const dir = terminalDir(cwd);
 		const dec = new TextDecoder();
 		// Filled in once the session exists: the first output cannot come before it.
 		let session: PtySession | undefined;
-		const terminal = new Bun.Terminal({
-			cols: Math.max(20, cols | 0),
-			rows: Math.max(5, rows | 0),
-			data: (_t, data) => {
-				const text = dec.decode(data, { stream: true });
-				if (!session) return;
-				this.remember(session, text);
-				session.owner?.send({ t: "pty_data", ptyId: id, data: text });
-			},
-		});
+		const output = (text: string) => {
+			if (!session || !text) return;
+			this.remember(session, text);
+			session.owner?.send({ t: "pty_data", ptyId: id, data: text });
+		};
+		const terminal = lines
+			? null
+			: new Bun.Terminal({
+					cols: Math.max(20, cols | 0),
+					rows: Math.max(5, rows | 0),
+					data: (_t, data) => output(dec.decode(data, { stream: true })),
+				});
 		let proc: Bun.Subprocess;
+		let io: PtySession["io"];
+		let streams: Promise<unknown> = Promise.resolve();
 		try {
 			const isolation = envFor(dir, process.env.PATH ?? "");
-			proc = Bun.spawn(shell ? platform.shell.interactive() : [this.bin, ...args], {
-				cwd: dir,
-				terminal,
-				env: childEnv({
-					...isolation?.env,
-					// A login shell's startup files move a `PATH` prefix behind the system's (`path_helper`): it is put back after them.
-					...(isolation && shell ? keepPathInFront(platform.shell.interactive()[0] ?? "", isolation.root) : {}),
-					TERM: "xterm-256color",
-					COLORTERM: "truecolor",
-				}),
-				// A session of its own, with this terminal as its controlling terminal: without it the process stays in the
-				// server's process group, with no terminal of its own, so a shell has no job control and hangs up its group
-				// when it is hung up (bash): the server itself. Windows has no sessions (and `detached` means something else).
-				detached: platform.id !== "win32",
+			const login = platform.shell.interactive();
+			// A login shell's startup files move a `PATH` prefix behind the system's (`path_helper`): it is put back after them.
+			const inFront = isolation && shell ? keepPathInFront(login[0] ?? "", isolation.root) : null;
+			const env = childEnv({
+				...isolation?.env,
+				...inFront?.env,
+				TERM: "xterm-256color",
+				COLORTERM: "truecolor",
 			});
+			const argv = shell ? (inFront?.argv ?? login) : [this.bin, ...args];
+			if (terminal) {
+				proc = Bun.spawn(argv, {
+					cwd: dir,
+					terminal,
+					env,
+					// A session of its own, with this terminal as its controlling terminal: without it the process stays in the
+					// server's process group, with no terminal of its own, so a shell has no job control and hangs up its group
+					// when it is hung up (bash): the server itself. Windows has no sessions (and `detached` means something else).
+					detached: platform.id !== "win32",
+				});
+				io = {
+					write: (data) => terminal.write(data),
+					resize: (c, r) => terminal.resize(c, r),
+					close: () => terminal.close(),
+				};
+			} else {
+				const piped = Bun.spawn(argv, { cwd: dir, env, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+				proc = piped;
+				// Each stream decoded on its own: a character split across two reads of one must not meet the other's bytes.
+				// A pipe's lines end in a newline alone; the page draws them as a terminal does.
+				const pump = async (stream: ReadableStream<Uint8Array>) => {
+					const d = new TextDecoder();
+					for await (const chunk of stream) output(d.decode(chunk, { stream: true }).replace(/\r?\n/g, "\r\n"));
+				};
+				streams = Promise.all([pump(piped.stdout), pump(piped.stderr)]).catch(() => {});
+				io = {
+					write: (data) => {
+						try {
+							// What a terminal's Enter sends is a carriage return; on a pipe a line ends with a newline.
+							piped.stdin.write(data.replace(/\r\n?/g, "\n"));
+							piped.stdin.flush();
+						} catch {
+							// It ended: what was typed has nobody to read it.
+						}
+					},
+					resize: () => {},
+					close: () => {
+						try {
+							piped.stdin.end();
+						} catch {
+							// Already closed.
+						}
+					},
+				};
+			}
 		} catch (e) {
 			// No process will ever end to close it: its descriptors would stay open for as long as the server runs.
-			terminal.close();
+			terminal?.close();
 			throw e;
 		}
 		session = {
 			id,
 			proc,
-			terminal,
+			io,
 			args,
 			cwd: dir,
 			shell,
@@ -241,10 +324,10 @@ export class PtyManager {
 		};
 		const made = session;
 		this.sessions.set(id, made);
-		void proc.exited.then((code) => {
+		void Promise.all([proc.exited, streams]).then(([code]) => {
 			// Let the PTY flush its last bytes before announcing the exit.
 			setTimeout(() => {
-				terminal.close();
+				made.io.close();
 				if (made.owner) {
 					made.owner.send({ t: "pty_exit", ptyId: id, code });
 					this.sessions.delete(id);
@@ -271,11 +354,11 @@ export class PtyManager {
 	}
 
 	input(owner: Subscriber, id: string, data: string): void {
-		this.owned(owner, id)?.terminal.write(data);
+		this.owned(owner, id)?.io.write(data);
 	}
 
 	resize(owner: Subscriber, id: string, cols: number, rows: number): void {
-		this.owned(owner, id)?.terminal.resize(Math.max(20, cols | 0), Math.max(5, rows | 0));
+		this.owned(owner, id)?.io.resize(Math.max(20, cols | 0), Math.max(5, rows | 0));
 	}
 
 	kill(owner: Subscriber, id: string): void {

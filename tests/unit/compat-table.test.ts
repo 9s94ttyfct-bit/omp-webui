@@ -217,6 +217,9 @@ describe("docs/TECHNICAL.md › How it stays compatible with omp updates names",
 		"--stop",
 		// docker's, in an MCP server added from the registry (server/omp/mcp-registry.ts: `docker run -i --rm`).
 		"--rm",
+		// bash's, for an isolated folder's Terminal tab (server/pty.ts `keepPathInFront`: `bash --noprofile --rcfile`).
+		"--noprofile",
+		"--rcfile",
 	]);
 
 	test("every flag it passes, checks for, or refuses", () => {

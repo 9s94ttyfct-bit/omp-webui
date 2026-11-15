@@ -478,6 +478,8 @@ export type ClientMessage =
 			shell?: boolean;
 			/** For a shell: the conversation it is for, given back by `pty_held` after Run in Background. */
 			tag?: string;
+			/** `omp <args>` without a terminal, on pipes: what is typed is sent a line at a time and never echoed (`omp login`). */
+			lines?: boolean;
 	  }
 	/**
 	 * The terminals the macOS app's last Run in Background left for this window to take over (`PtyManager.held`): replies

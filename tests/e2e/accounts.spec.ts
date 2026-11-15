@@ -349,9 +349,16 @@ test("a provider omp's RPC cannot sign in to is signed in to with omp login in a
 	expect(tap.sent.filter((m) => m.t === "pty_open").length).toBe(1);
 	expect(tap.sent.filter((m) => m.t === "pty_kill").length).toBe(0);
 
-	await screen.click();
-	await page.keyboard.type("e2e-local-key");
-	await page.keyboard.press("Enter");
+	// `omp login` asks for the key in plain text and shows it as it is typed in a terminal: it runs without one, and the
+	// key is answered in a masked field under it; the terminal shows stars.
+	const field = box.getByTestId("terminal-answer").locator("input");
+	await expect(field).toHaveAttribute("type", "password");
+	await expect(field).toHaveAttribute("autocomplete", "off");
+	await expect(field).toBeFocused();
+	await field.fill("e2e-local-key");
+	await field.press("Enter");
+	await expect(screen).toContainText("********");
+	expect(await page.locator("body").innerText()).not.toContain("e2e-local-key");
 	// omp stored it; the list is read again by a new helper (the running one does not see the store change).
 	await expect(row.getByText("Signed in")).toBeVisible({ timeout: 60_000 });
 	await expect(box).toBeVisible();
