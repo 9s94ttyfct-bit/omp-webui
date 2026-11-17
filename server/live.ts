@@ -525,7 +525,8 @@ export class Live {
 	 * omp is doing or awaiting something: a turn, a running command, a dialog the user must answer, a retry backoff of
 	 * its own (`auto_retry_start` to `auto_retry_end`: between turns, but the retry is still to come, which includes the
 	 * hours omp sleeps through a usage limit), work it has not settled (compacting, background jobs that can wake the
-	 * agent again), or it is paused.
+	 * agent again), a subagent that still works (omp 18.21 ends the main agent's run on a plain `abort` while a subagent
+	 * waits for its retry), or it is paused.
 	 */
 	get busy(): boolean {
 		return (
@@ -534,9 +535,16 @@ export class Live {
 			this.pendingUI.size > 0 ||
 			this.info.retry !== undefined ||
 			this.unsettled ||
+			this.workingSubs.size > 0 ||
 			this.info.pausedAt !== null
 		);
 	}
+
+	/**
+	 * The subagents omp said are working (`subagent_lifecycle`), by id: one leaves when omp says its run is over or it waits
+	 * between runs, and the list is put right whenever omp is asked for its subagents (`listSubagents`).
+	 */
+	private readonly workingSubs = new Set<string>();
 
 	/** Why `busy`, when it is: paused wins (nothing runs), then a dialog waiting for the user, then work. */
 	get holding(): Holding | null {
@@ -866,12 +874,20 @@ export class Live {
 	/** How long omp is given to list its subagents and to say its state before it is frozen: a process that does not answer is frozen without. */
 	private static readonly FREEZE_ASK_MS = 2000;
 
-	/** What omp lists of its subagents now (`get_subagents`), or null when it does not say. Never throws: pausing matters more. */
+	/**
+	 * What omp lists of its subagents now (`get_subagents`), or null when it does not say; the working ones it lists are the
+	 * ones `busy` counts from now on. Never throws: pausing matters more.
+	 */
 	private async listSubagents(): Promise<Record<string, unknown>[] | null> {
 		try {
 			const reply = await this.client.request({ type: "get_subagents" }, Live.FREEZE_ASK_MS);
 			const listed = isRecord(reply.data) ? reply.data.subagents : undefined;
-			return reply.success && Array.isArray(listed) ? listed.filter(isRecord) : null;
+			if (!reply.success || !Array.isArray(listed)) return null;
+			const subagents = listed.filter(isRecord);
+			this.workingSubs.clear();
+			for (const s of subagents)
+				if (typeof s.id === "string" && isWorkingStatus(String(s.status ?? ""))) this.workingSubs.add(s.id);
+			return subagents;
 		} catch {
 			return null;
 		}
@@ -1616,6 +1632,7 @@ export class Live {
 				// Nothing waits for a slot in a process that ended.
 				this.queuedSubagents.end();
 				delete this.info.queuedSubagents;
+				this.workingSubs.clear();
 				delete this.info.softStop;
 				clearTimeout(this.softStopRemind ?? undefined);
 				this.softStopRemind = null;
@@ -2301,6 +2318,11 @@ export class Live {
 		this.compactQueue.frame(frame);
 		this.trackRetry(frame);
 		this.queuedSubagents.frame(frame);
+		if (frame.type === "subagent_lifecycle" && isRecord(frame.payload) && typeof frame.payload.id === "string") {
+			const { id, status } = frame.payload;
+			if (isWorkingStatus(typeof status === "string" ? status : "running")) this.workingSubs.add(id);
+			else this.workingSubs.delete(id);
+		}
 		// A turn that begins or ends, a usage-limit wait or its end: what the quota floor holds, and looks at, follows (#652).
 		if (
 			frame.type === "agent_start" ||
