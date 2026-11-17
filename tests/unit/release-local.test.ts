@@ -13,6 +13,7 @@ import {
 import { availableParallelism, tmpdir } from "node:os";
 import { join } from "node:path";
 import { ALLOWED, ALLOWED_NAMES } from "../../scripts/check-authors.ts";
+import { liveE2e } from "../../scripts/live-e2e.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
 
 /**
@@ -351,6 +352,7 @@ test("with no tag, CI's success on origin/main is required, then the macOS and t
 		"bun install",
 		"bun run test:mac",
 		"bun run test:live",
+		"bun run test:live:e2e",
 		"bun run app",
 		"bun run dmg",
 		`gh release create ${TAG}`,
@@ -676,4 +678,16 @@ test("a flag it does not know, the quiet-machine wait's included (CI runs the ti
 		]);
 		expect(calls()).toBe("");
 	}
+});
+
+test("the end-to-end tests that skip without a login (as CI runs them) are the release's to run with it", () => {
+	expect(liveE2e()).toEqual([
+		"tests/e2e/new-chat-picks.spec.ts",
+		"tests/e2e/new-chat-retry.spec.ts",
+		"tests/e2e/settings-model-catalog.spec.ts",
+	]);
+	const pkg = JSON.parse(readFileSync(join(import.meta.dir, "..", "..", "package.json"), "utf8")) as {
+		scripts: Record<string, string>;
+	};
+	expect(pkg.scripts["test:live:e2e"]).toContain("--require-login bun scripts/live-e2e.ts");
 });

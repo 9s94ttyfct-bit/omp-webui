@@ -34,7 +34,7 @@ export const MAC_ONLY = (Object.keys(mac) as Capability[]).filter((c) => mac[c] 
 
 /** A gate of a case only a Mac runs: a capability of `MAC_ONLY` (in code or a `// needs:` line), or the darwin adapter by its id. */
 const MAC_GATE = new RegExp(
-	`\\b(?:capabilities|has)\\.(?:${MAC_ONLY.join("|")})\\b|^// needs: .*\\b(?:${MAC_ONLY.join("|")})\\b|\\bplatform\\.id\\s*[!=]==?\\s*["']darwin["']`,
+	`\\b(?:capabilities|has)\\.(?:${MAC_ONLY.join("|")})\\b|^// needs: .*\\b(?:${MAC_ONLY.join("|")})\\b|\\b(?:platform\\.id|platformId)\\s*[!=]==?\\s*["']darwin["']`,
 	"m",
 );
 

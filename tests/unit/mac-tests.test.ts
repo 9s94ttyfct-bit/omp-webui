@@ -48,6 +48,15 @@ test("the list holds the app shell's harnesses, the updater's, signing, and the 
 	expect(new Set(MAC_TESTS).size).toBe(MAC_TESTS.length);
 });
 
+test("a case that asks the darwin adapter's id, by either name, puts its file in the list", () => {
+	const asksId = /\b(?:platform\.id|platformId)\s*[!=]==?\s*["']darwin["']/;
+	const files = testFiles(join(root, "tests")).filter(
+		(file) => /\.test\.tsx?$/.test(file) && asksId.test(readFileSync(join(root, file), "utf8")),
+	);
+	expect(files).toContain("tests/unit/guard-gate.test.ts");
+	for (const file of files) expect(MAC_TESTS).toContain(file);
+});
+
 test("the release runs the macOS step before the live tests, and `test:mac` is the script that runs the list", () => {
 	const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { scripts: Record<string, string> };
 	expect(pkg.scripts["test:mac"]).toContain("scripts/mac-tests.ts");

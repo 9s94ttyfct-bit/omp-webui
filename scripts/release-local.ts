@@ -343,7 +343,8 @@ async function release(): Promise<void> {
 	const version = JSON.parse(await Bun.file(join(tree, "package.json")).text()).version as string;
 	if (`v${version}` !== tag) throw new Error(`tag ${tag} != package.json v${version}`);
 	await run(["bun", "scripts/check-release-notes.ts", tag], { cwd: tree });
-	// The tests CI cannot run: the cases only macOS has, then the ones that call a real model with this machine's login.
+	// The tests CI cannot run: the cases only macOS has, then the ones that call a real model with this machine's login, then
+	// the end-to-end tests that need that login (CI's are offline: `scripts/live-e2e.ts`).
 	// This Mac is usually in use: they run on half its cores (or OMPW_TEST_WORKERS), not one worker per core (#1).
 	if (!skipTests) {
 		const cores = availableParallelism();
@@ -352,6 +353,7 @@ async function release(): Promise<void> {
 		const env = { [TEST_WORKERS_ENV]: workers };
 		await run(["bun", "run", "test:mac"], { cwd: tree, env });
 		await run(["bun", "run", "test:live"], { cwd: tree, env });
+		await run(["bun", "run", "test:live:e2e"], { cwd: tree });
 	}
 
 	await run(["bun", "run", "app"], { cwd: tree });
