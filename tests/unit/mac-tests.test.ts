@@ -50,9 +50,10 @@ test("the list holds the app shell's harnesses, the updater's, signing, and the 
 
 test("a case that asks the darwin adapter's id, by either name, puts its file in the list", () => {
 	const asksId = /\b(?:platform\.id|platformId)\s*[!=]==?\s*["']darwin["']/;
-	const files = testFiles(join(root, "tests")).filter(
-		(file) => /\.test\.tsx?$/.test(file) && asksId.test(readFileSync(join(root, file), "utf8")),
-	);
+	const files = testFiles(join(root, "tests"))
+		.filter((file) => /\.test\.tsx?$/.test(file) && asksId.test(readFileSync(join(root, file), "utf8")))
+		// The list names files with `/` on every system.
+		.map((file) => file.split("\\").join("/"));
 	expect(files).toContain("tests/unit/guard-gate.test.ts");
 	for (const file of files) expect(MAC_TESTS).toContain(file);
 });
