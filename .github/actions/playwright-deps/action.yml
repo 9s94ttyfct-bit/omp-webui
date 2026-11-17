@@ -22,7 +22,7 @@ runs:
       env:
         BROWSERS: ${{ inputs.browsers }}
     - id: debs
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ~/.cache/playwright-debs
         key: playwright-debs-${{ steps.image.outputs.browsers }}-${{ steps.image.outputs.os }}-${{ steps.image.outputs.version }}-${{ hashFiles('bun.lock') }}
@@ -55,7 +55,7 @@ runs:
       env:
         BROWSERS: ${{ inputs.browsers }}
     - if: steps.debs.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ~/.cache/playwright-debs
         key: ${{ steps.debs.outputs.cache-primary-key }}
