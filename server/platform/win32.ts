@@ -288,6 +288,13 @@ export function createWin32(deps: SystemDeps): Platform {
 			"url.dll,FileProtocolHandler",
 			url,
 		],
+		unzipArgv: (file, into) => [
+			windowsPath.join(deps.env.SystemRoot || "C:\\Windows", "System32", "tar.exe"),
+			"-xf",
+			file,
+			"-C",
+			into,
+		],
 		power: null,
 		host: {
 			async processes(): Promise<PsRow[]> {

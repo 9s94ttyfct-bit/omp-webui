@@ -217,6 +217,7 @@ export function createLinux(deps: SystemDeps): Platform {
 		commands: posixCommands,
 		desktop: null,
 		openUrlArgv: (url) => ["xdg-open", url],
+		unzipArgv: (file, into) => ["unzip", "-q", file, "-d", into],
 		power: null,
 		host: {
 			processes: posixHostProcesses(deps),

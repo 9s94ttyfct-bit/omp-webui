@@ -168,6 +168,7 @@ export function createDarwin(deps: SystemDeps): Platform {
 		commands: posixCommands,
 		desktop: desktop(deps),
 		openUrlArgv: (url) => [OPEN, url],
+		unzipArgv: (file, into) => ["unzip", "-q", file, "-d", into],
 		power: {
 			keepAwakeBin: (env) => env.OMP_WEBUI_CAFFEINATE || "/usr/bin/caffeinate",
 			keepAwakeArgv: (bin, pid) => [bin, "-i", "-w", String(pid)],

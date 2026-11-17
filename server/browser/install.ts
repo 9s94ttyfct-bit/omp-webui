@@ -524,7 +524,7 @@ export class BrowserInstaller {
 async function unpack(file: string, into: string, signal: AbortSignal): Promise<void> {
 	rmSync(into, { recursive: true, force: true });
 	mkdirSync(into, { recursive: true });
-	const cmd = platform.id === "win32" ? ["tar", "-xf", file, "-C", into] : ["unzip", "-q", file, "-d", into];
+	const cmd = platform.unzipArgv(file, into);
 	const proc = Bun.spawn(cmd, { stdout: "ignore", stderr: "pipe", signal });
 	const code = await proc.exited;
 	if (signal.aborted) throw new Cancelled();

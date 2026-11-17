@@ -77,3 +77,21 @@ test("Windows refuses the signals it has not, ends trees with taskkill, and find
 	writeFileSync(join(dir, "bin", "omp.cmd"), "");
 	expect(win.commands.which("omp", [join(dir, "bin")])).toBe(join(dir, "bin", "omp.cmd"));
 });
+
+test("a zip is unpacked on Windows by the system's own tar, by its full path, whatever is first on PATH", () => {
+	const win = platformFor("win32", { env: { SystemRoot: "D:\\Win", PATH: "C:\\Program Files\\Git\\usr\\bin" } });
+	expect(win.unzipArgv("C:\\dl\\cft.zip", "C:\\cft\\1")).toEqual([
+		"D:\\Win\\System32\\tar.exe",
+		"-xf",
+		"C:\\dl\\cft.zip",
+		"-C",
+		"C:\\cft\\1",
+	]);
+	expect(platformFor("linux", {}).unzipArgv("/dl/cft.zip", "/cft/1")).toEqual([
+		"unzip",
+		"-q",
+		"/dl/cft.zip",
+		"-d",
+		"/cft/1",
+	]);
+});

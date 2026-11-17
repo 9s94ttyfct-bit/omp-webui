@@ -207,6 +207,11 @@ export interface Platform {
 	 * ever given an address the server made; unlike `desktop`, nothing a page names is opened with it.
 	 */
 	openUrlArgv(url: string): string[];
+	/**
+	 * The command that unpacks the zip `file` into the folder `into` (a download of the built-in browser). Windows' is its
+	 * own bsdtar by its full path: a GNU tar first on `PATH` (Git for Windows, MSYS2) does not read zips.
+	 */
+	unzipArgv(file: string, into: string): string[];
 	/** Null where `capabilities.keepAwake` is false. */
 	readonly power: PowerOps | null;
 	readonly host: HostOps;
