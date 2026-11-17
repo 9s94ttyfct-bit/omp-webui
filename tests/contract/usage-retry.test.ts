@@ -3,7 +3,7 @@ import type { LiveInfo } from "../../shared/protocol.ts";
 import { isUsageLimitError } from "../../shared/retry.ts";
 import { pollUntil } from "../support/poll.ts";
 import { rejectionOf } from "../support/rejection.ts";
-import { messageEnds, usageResetWaitFixture } from "../support/usage-reset-wait.ts";
+import { messageEnds, turnChats, turnRefusals, usageResetWaitFixture } from "../support/usage-reset-wait.ts";
 import { connect, request } from "../support/ws.ts";
 
 const fixture = usageResetWaitFixture();
@@ -14,8 +14,8 @@ test("omp waits out the usage limit and the turn continues at the reset, through
 	const chat = await conversation();
 	try {
 		fixture.backend.limitUntil = Date.now() + 8000;
-		const refusedBefore = fixture.backend.refused.length;
-		const chatsBefore = fixture.backend.chats.length;
+		const refusedBefore = turnRefusals(fixture.backend);
+		const chatsBefore = turnChats(fixture.backend).length;
 		const started = chat.next("auto_retry_start");
 		await chat.prompt("hello again");
 		const start = await started;
@@ -30,9 +30,9 @@ test("omp waits out the usage limit and the turn continues at the reset, through
 		const end = await chat.next("auto_retry_end");
 		expect(end.success).toBe(true);
 		// The request at the reset is the one that got through: one refusal, no repeated asking.
-		expect(fixture.backend.refused.length - refusedBefore).toBe(1);
-		expect(fixture.backend.chats.length - chatsBefore).toBe(1);
-		expect((fixture.backend.chats.at(-1)?.at ?? 0) >= fixture.backend.limitUntil).toBe(true);
+		expect(turnRefusals(fixture.backend) - refusedBefore).toBe(1);
+		expect(turnChats(fixture.backend).length - chatsBefore).toBe(1);
+		expect((turnChats(fixture.backend).at(-1)?.at ?? 0) >= fixture.backend.limitUntil).toBe(true);
 		await pollUntil(async () => (await chat.listing())?.retry === undefined, "the countdown to end");
 		await pollUntil(async () => (await chat.listing())?.busy === false, "the conversation to settle");
 		// What the turn says, in the conversation.

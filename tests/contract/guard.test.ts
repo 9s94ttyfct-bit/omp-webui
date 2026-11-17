@@ -344,7 +344,9 @@ describe("a subagent's risky call is decided by the reviewer", () => {
 						model?: string;
 						usage?: { input?: number; cost?: { total?: number } };
 					},
-			);
+			)
+			// omp 18.21 writes records of its own beside it (`auto-thinking`, by its judge): the reviewer's is the one of the guard.
+			.filter((r) => r.purpose === "guard");
 		expect(records).toHaveLength(1);
 		expect(records[0]).toMatchObject({ purpose: "guard", role: "reviewer", provider: "revco", model: "stub-reviewer" });
 		expect(records[0].usage?.input).toBe(10);

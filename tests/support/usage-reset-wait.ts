@@ -16,6 +16,14 @@ export function messageEnds(frames: Frame[], role: string): Record<string, unkno
 	);
 }
 
+/**
+ * The chat requests of a conversation's turns (they offer tools), and how many of them were refused for the limit. omp
+ * 18.21 also asks a model it does not know whether it reasons, with requests of its own that offer none: they are not turns.
+ */
+export const turnChats = (backend: StubOmlx): StubOmlx["chats"] =>
+	backend.chats.filter((c) => (c.body.tools?.length ?? 0) > 0);
+export const turnRefusals = (backend: StubOmlx): number => backend.refused.filter((r) => r.turn).length;
+
 /** What `usageResetWaitFixture().conversation()` hands a test: one page's socket on a conversation, and what it heard of it. */
 export interface UsageConversation {
 	ws: WebSocket;

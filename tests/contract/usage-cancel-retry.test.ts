@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { pollUntil } from "../support/poll.ts";
-import { messageEnds, usageResetWaitFixture } from "../support/usage-reset-wait.ts";
+import { messageEnds, turnChats, usageResetWaitFixture } from "../support/usage-reset-wait.ts";
 import { request } from "../support/ws.ts";
 
 const fixture = usageResetWaitFixture();
@@ -11,7 +11,7 @@ test("Cancel is omp's abort_retry: the wait ends, nothing continues at the reset
 	const chat = await conversation();
 	try {
 		fixture.backend.limitUntil = Date.now() + 6000;
-		const chatsBefore = fixture.backend.chats.length;
+		const chatsBefore = turnChats(fixture.backend).length;
 		const started = chat.next("auto_retry_start");
 		await chat.prompt("cancel me");
 		await started;
@@ -26,7 +26,7 @@ test("Cancel is omp's abort_retry: the wait ends, nothing continues at the reset
 
 		// Past the reset, with time to spare: omp asked nothing more.
 		await pollUntil(() => Date.now() > fixture.backend.limitUntil + 2500, "the reset to pass");
-		expect(fixture.backend.chats.length).toBe(chatsBefore);
+		expect(turnChats(fixture.backend).length).toBe(chatsBefore);
 		expect((await chat.listing())?.streaming).toBe(false);
 	} finally {
 		chat.close();
@@ -45,7 +45,7 @@ test("omp 18.12 loses a retry when Cancel runs two messages queued during the wa
 	const chat = await conversation();
 	try {
 		fixture.backend.limitUntil = Date.now() + 12_000;
-		const chatsBefore = fixture.backend.chats.length;
+		const chatsBefore = turnChats(fixture.backend).length;
 		const started = chat.next("auto_retry_start");
 		await chat.prompt("lose the retry");
 		await started;
@@ -65,7 +65,7 @@ test("omp 18.12 loses a retry when Cancel runs two messages queued during the wa
 
 		// At the reset omp asks nothing, and the conversation is as idle as it was.
 		await pollUntil(() => Date.now() > fixture.backend.limitUntil + 2500, "the reset to pass");
-		expect(fixture.backend.chats.length).toBe(chatsBefore);
+		expect(turnChats(fixture.backend).length).toBe(chatsBefore);
 		expect((await chat.listing())?.busy).toBe(false);
 
 		// The provider answers; Retry now redoes the failed turn, and the conversation is idle again after it.
@@ -74,7 +74,7 @@ test("omp 18.12 loses a retry when Cancel runs two messages queued during the wa
 			() => messageEnds(chat.frames.seen, "assistant").some((m) => JSON.stringify(m.content).includes("STUB-REPLY")),
 			"the retried turn's reply",
 		);
-		expect(fixture.backend.chats.length - chatsBefore).toBe(1);
+		expect(turnChats(fixture.backend).length - chatsBefore).toBe(1);
 		await pollUntil(async () => (await chat.listing())?.busy === false, "the conversation to settle");
 		expect((await chat.listing())?.retry).toBeUndefined();
 	} finally {

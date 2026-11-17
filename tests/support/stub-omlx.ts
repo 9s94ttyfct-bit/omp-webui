@@ -31,8 +31,12 @@ export interface StubOmlx {
 	authorizations: (string | null)[];
 	/** `METHOD /path` of every request, in order. */
 	requests: string[];
-	/** Chat requests refused for the usage limit (`limit`), as `{ at }` in order; they are not in `chats`. */
-	refused: { at: number }[];
+	/**
+	 * Chat requests refused for the usage limit (`limit`), as `{ at, turn }` in order; they are not in `chats`. `turn`: the
+	 * request offered tools (a conversation's turn), not one of omp's helper requests (a title, omp 18.21's probe of whether
+	 * a model it does not know reasons).
+	 */
+	refused: { at: number; turn: boolean }[];
 	/** While in the future, chat requests are refused for a usage limit that says when it ends (needs the `limit` option). */
 	limitUntil: number;
 	/**
@@ -89,7 +93,7 @@ export async function startStubOmlx(opts: StubOptions = {}): Promise<StubOmlx> {
 	const chats: StubChat[] = [];
 	const authorizations: (string | null)[] = [];
 	const requests: string[] = [];
-	const refused: { at: number }[] = [];
+	const refused: { at: number; turn: boolean }[] = [];
 	const state = {
 		limitUntil: 0,
 		refuseTurnMs: null as number | null,
@@ -215,7 +219,7 @@ export async function startStubOmlx(opts: StubOptions = {}): Promise<StubOmlx> {
 				const wait = left > 0 ? left : (state.refuseTurnMs as number);
 				if (turn) state.refuseTurnMs = null;
 				if (opts.limit.delayMs) await new Promise<void>((resolve) => setTimeout(resolve, opts.limit?.delayMs));
-				refused.push({ at: Date.now() });
+				refused.push({ at: Date.now(), turn: (JSON.parse(text).tools?.length ?? 0) > 0 });
 				res
 					.writeHead(opts.limit.status ?? usageLimitStatus(), {
 						"content-type": "application/json",
