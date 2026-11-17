@@ -21,6 +21,9 @@ let configFile: string;
 
 const HAIKU = "anthropic/claude-haiku-5-5";
 const SONNET = "anthropic/claude-sonnet-5-5";
+const OPUS = "anthropic/claude-opus-5-5";
+/** A model's row in the picker, by its id: omp lists other providers' models under the same name (Bedrock's regions). */
+const option = (page: Page, id: string) => page.locator(`[role="option"][data-value="${id}"]`);
 /** The test server's roles with the default role moved to Sonnet. */
 const DEEP = {
 	default: `${SONNET}:high`,
@@ -197,14 +200,14 @@ test("a conversation moved to another model by the model picker is Custom", asyn
 
 	await page.getByTestId("model-picker").click();
 	await page.getByPlaceholder("Search models…").fill("Opus 5.5");
-	await page.getByRole("option", { name: /Claude Opus 5\.5/ }).click();
+	await option(page, OPUS).click();
 	await expect(page.getByTestId("model-picker")).toContainText("Opus 5.5", { timeout: 30_000 });
 	await expect(page.getByTestId("preset-picker")).toContainText("Custom");
 
 	// Back on a model a preset names, that preset is the active one again.
 	await page.getByTestId("model-picker").click();
 	await page.getByPlaceholder("Search models…").fill("Sonnet 5.5");
-	await page.getByRole("option", { name: /Claude Sonnet 5\.5/ }).click();
+	await option(page, SONNET).click();
 	await expect(page.getByTestId("preset-picker")).toContainText("deep");
 });
 
@@ -253,7 +256,7 @@ test("saving after the model picker moved the conversation keeps that model, and
 	await openNewChat(page);
 	await page.getByTestId("model-picker").click();
 	await page.getByPlaceholder("Search models…").fill("Opus 5.5");
-	await page.getByRole("option", { name: /Claude Opus 5\.5/ }).click();
+	await option(page, OPUS).click();
 	await expect(page.getByTestId("preset-picker")).toContainText("Custom", { timeout: 30_000 });
 
 	await page.getByTestId("preset-picker").click();
@@ -434,7 +437,7 @@ test("Settings: model roles are edited as a draft, saved to omp's config, and ca
 	// Another model with its own level, a new role, a removed one, and a new default thinking level.
 	await row("default").getByTestId("role-model").click();
 	await page.getByPlaceholder("Search models…").fill("Sonnet 5.5");
-	await page.getByRole("option", { name: /Claude Sonnet 5\.5/ }).click();
+	await option(page, SONNET).click();
 	await choose(row("default").getByTestId("role-thinking"), "high");
 	await row("commit").getByTestId("role-remove").click();
 	await roles.getByTestId("new-role").fill("1x");
