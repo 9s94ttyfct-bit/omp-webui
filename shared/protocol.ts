@@ -562,7 +562,6 @@ export type ServerMessage =
 	 * which of the server's reasons it was, for the same reason.
 	 */
 	| ({ t: "live_exit"; liveId: string } & ExitReport)
-	| { t: "lives"; list: LiveInfo[] }
 	| { t: "pty_data"; ptyId: string; data: string }
 	| { t: "pty_exit"; ptyId: string; code: number | null }
 	| { t: "sessions_changed" }

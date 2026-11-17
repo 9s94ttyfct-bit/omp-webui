@@ -151,9 +151,6 @@ export interface GuardPolicy {
 	basedOn: number;
 }
 
-/** The text the reviewer follows: the person's, or the default. */
-export const policyText = (policy: GuardPolicy | undefined | null): string => policy?.text ?? DEFAULT_POLICY;
-
 /** Whether `text` is the default template (line endings and the ends of the text do not count). */
 export const isDefaultPolicy = (text: string): boolean => normalizePolicy(text) === normalizePolicy(DEFAULT_POLICY);
 

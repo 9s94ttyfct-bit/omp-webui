@@ -153,10 +153,6 @@ export function guidanceNameProblem(
 	return null;
 }
 
-/** Whether `id` names a template of `templates`. */
-export const hasTemplate = (templates: readonly GuidanceTemplate[], id: string): boolean =>
-	templates.some((t) => t.id === id);
-
 /**
  * The text a conversation carries: the template `id` names, as it stands now (editing a template reaches the
  * conversations that use it at their next turn: `LivePool.followGuidanceTemplates`), else the text the conversation was
