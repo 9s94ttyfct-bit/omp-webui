@@ -570,6 +570,8 @@
     "tests/unit/slash.test.ts": 8,
     "tests/unit/slim-state.test.ts": 8,
     "tests/unit/socket.test.ts": 8,
+    "tests/unit/workflow-pins.test.ts": 32,
+    "tests/unit/parity-script.test.ts": 346,
     "tests/unit/subagent-assignment.test.ts": 8,
     "tests/unit/subagent-wait.test.ts": 8,
     "tests/unit/surplus.test.ts": 8,
