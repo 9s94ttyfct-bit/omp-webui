@@ -88,9 +88,9 @@ Environment variables the server reads:
 
 ## Security notes
 
-- The token lets a page use the conversations; it never lets a page that holds only the token reconfigure, replace or carry away this computer: the owner-only routes are decided by the connection and its Cloudflare Access sign-in, not by the token or the bind address.
+- The token lets a page use the conversations; the owner-only routes are decided by the connection and its Cloudflare Access sign-in, not by the token or the bind address. A page that holds only the token and may open a shell (`remoteShell`, on by default) can still do anything the person can: a command it runs reaches the server from this computer. With `remoteShell` off it gets no terminal and no `!command`, and its turns are locked (the gate refuses calls that touch this app's or omp's configuration, the guard, `~/.ssh` or stored credentials); the lock reads what a call says and is not a sandbox.
 - The token is not shown to remote pages, and the token link and `/api/auth` are refused through the tunnel.
 - The data folder holds the token and the text of every conversation; it is private to the user (0700 / 0600).
 - The Content Security Policy blocks a model's reply from making the page contact other sites.
-- A terminal opened from a page that holds only the token (the Terminal tab, `omp shell`) is allowed only as remote access's settings allow; the person's own pages may always open one.
+- A terminal (the Terminal tab, any `omp` command line) or a `!command` from a page that holds only the token is allowed only as remote access's settings allow (`remoteShell`); the person's own pages may always open one.
 - Agents must never print, copy or send the access token, and must not change `OMP_WEBUI_HOST` or `OMP_WEBUI_AUTH` unless the user asks.

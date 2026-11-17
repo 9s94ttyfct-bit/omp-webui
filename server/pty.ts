@@ -107,15 +107,6 @@ export function terminalDir(cwd: string | undefined): string {
 }
 
 /**
- * Whether `omp <args>` is omp's interactive shell console (`omp shell`): a shell like the login one, so a page that may not
- * open a shell may not open this either (#682). Any argument that says `shell` counts: omp's global options before the
- * command take values, and a page is not given the benefit of the doubt.
- */
-export function runsOmpShell(args: readonly string[]): boolean {
-	return args.includes("shell");
-}
-
-/**
  * End a terminal's process. An interactive shell ignores SIGTERM (zsh, bash): it is hung up, as closing a terminal window
  * does (`Platform.shell.hangup`; Windows terminates it). The terminal's process runs in a session of its own, which it
  * leads (`open`), and the whole process group it leads is hung up, not the shell alone: a command it runs in the
@@ -146,7 +137,7 @@ interface PtySession {
 	shell: boolean;
 	/** For a shell: the conversation the panel opened it for, as the page names it (given back by `held`). */
 	tag?: string;
-	/** Opened by a page that is not on this computer (see `killRemoteShells`). */
+	/** Opened by a page that is not the person's own (see `killRemoteTerminals`). */
 	remote: boolean;
 	/** The page that has it; null while it is held for a page that has not come back yet. */
 	owner: Subscriber | null;
@@ -213,7 +204,7 @@ export class PtyManager {
 	/**
 	 * Start a terminal for `owner`: `omp <args>`, or with `shell` the person's login shell (`-l`, so their profile is
 	 * read) and no arguments, with `tag` naming the conversation it is for. `remote` says the page is not on this
-	 * computer: its shells end when shells for remote pages are turned off (`killRemoteShells`). With `lines`, `omp
+	 * computer: its terminals end when shells for remote pages are turned off (`killRemoteTerminals`). With `lines`, `omp
 	 * <args>` runs without a terminal, on pipes: it reads its answers a line at a time and nothing typed is echoed back
 	 * (`omp login` asks for keys in plain text: in a terminal it shows them as they are typed).
 	 */
@@ -432,9 +423,12 @@ export class PtyManager {
 		return out;
 	}
 
-	/** Shells for remote pages were turned off: the shells remote pages have open (`omp shell` among them) end now. */
-	killRemoteShells(): void {
-		for (const s of this.sessions.values()) if ((s.shell || runsOmpShell(s.args)) && s.remote) end(s);
+	/**
+	 * Shells for remote pages were turned off: the terminals pages that are not the person's own have open end now, omp's
+	 * among them (its console runs `!command`s, its RPC mode `bash` commands).
+	 */
+	killRemoteTerminals(): void {
+		for (const s of this.sessions.values()) if (s.remote) end(s);
 	}
 
 	/**

@@ -285,6 +285,7 @@ function argvOf(log: string): string[] {
 
 function setup(options: {
 	on: () => boolean;
+	locks?: () => boolean;
 	gate?: boolean;
 	ports?: () => number[] | undefined;
 	hosts?: () => string[] | undefined;
@@ -300,6 +301,7 @@ function setup(options: {
 			extension: join(dir, "gate", "extension.ts"),
 			protect: [dir],
 			confirm: options.on,
+			...(options.locks ? { locks: options.locks } : {}),
 			...(options.ports ? { ports: options.ports } : {}),
 			...(options.hosts ? { hosts: options.hosts } : {}),
 			ensure: () => true,
@@ -325,7 +327,7 @@ test("a process is started with the gate, and says in its first moments whether 
 	// The setting is off: it never asks, whoever drives.
 	expect(state().armed).toBe(false);
 	expect(state().protect).toHaveLength(2);
-	live.noteOrigin(true);
+	live.noteOrigin(true, false);
 	expect(state().armed).toBe(false);
 });
 
@@ -335,15 +337,15 @@ test("armed while the setting is on and the turn is a remote page's, or nobody's
 	const live = await open();
 	// Nobody has sent anything: not known to be a person at this computer's turn, so it asks.
 	expect(state().armed).toBe(true);
-	live.noteOrigin(false);
+	live.noteOrigin(false, true);
 	expect(state().armed).toBe(false);
-	live.noteOrigin(true);
+	live.noteOrigin(true, false);
 	expect(state().armed).toBe(true);
 	// A page on this computer sends the next message, and takes the turn back.
-	live.noteOrigin(false);
+	live.noteOrigin(false, true);
 	expect(state().armed).toBe(false);
 	// The setting turned off while a remote page drives: the next look says so, with no message needed.
-	live.noteOrigin(true);
+	live.noteOrigin(true, false);
 	on = false;
 	pool.syncRisk();
 	expect(state().armed).toBe(false);
@@ -352,14 +354,32 @@ test("armed while the setting is on and the turn is a remote page's, or nobody's
 	expect(state().armed).toBe(true);
 });
 
+test("locked while shells are off for remote pages and the turn is a page's that holds only the token", async () => {
+	let off = true;
+	const { open, pool, overlayOf } = setup({ on: () => false, locks: () => off });
+	const live = await open();
+	const locked = (): boolean => JSON.parse(readFileSync(`${overlayOf()}.risk`, "utf8")).locked === true;
+	// Nobody has sent anything to a process this server started: its turns are the server's own.
+	expect(locked()).toBe(false);
+	live.noteOrigin(true, false);
+	expect(locked()).toBe(true);
+	// A page signed in through Access is remote and the person's own: not locked.
+	live.noteOrigin(true, true);
+	expect(locked()).toBe(false);
+	live.noteOrigin(true, false);
+	off = false;
+	pool.syncRisk();
+	expect(locked()).toBe(false);
+});
+
 test("the conversation's permission mode is never changed by any of it", async () => {
 	let on = true;
 	const { open, overlayOf } = setup({ on: () => on });
 	const live = await open();
 	const before = readFileSync(overlayOf(), "utf8");
-	live.noteOrigin(true);
-	live.noteOrigin(false);
-	live.noteOrigin(true);
+	live.noteOrigin(true, false);
+	live.noteOrigin(false, true);
+	live.noteOrigin(true, false);
 	on = false;
 	live.syncRisk();
 	expect(readFileSync(overlayOf(), "utf8")).toBe(before);
@@ -649,13 +669,13 @@ test("a gate whose files cannot be put in place before a start leaves that proce
 test("a word the gate may not have is reported: noteOrigin says whether the state file was written", async () => {
 	const { open, overlayOf } = setup({ on: () => true });
 	const live = await open();
-	expect(live.noteOrigin(true)).toBe(true);
+	expect(live.noteOrigin(true, false)).toBe(true);
 	// A folder where the temporary file belongs: the state cannot be written.
 	mkdirSync(`${overlayOf()}.risk.tmp`);
 	// The turn goes to a local page: the file has to change, and cannot.
-	expect(live.noteOrigin(false)).toBe(false);
+	expect(live.noteOrigin(false, true)).toBe(false);
 	rmSync(`${overlayOf()}.risk.tmp`, { recursive: true });
-	expect(live.noteOrigin(false)).toBe(true);
+	expect(live.noteOrigin(false, true)).toBe(true);
 });
 
 test("the setting is read once for all conversations, not once for each", async () => {

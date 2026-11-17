@@ -108,7 +108,10 @@ interface Loaded {
 	decisions(): GuardDecision[];
 }
 
-async function load(over: Partial<GuardWord> = {}, state: Record<string, unknown> = { armed: false }): Promise<Loaded> {
+async function load(
+	over: Partial<GuardWord> = {},
+	state: Record<string, unknown> = { armed: false, locked: false },
+): Promise<Loaded> {
 	const root = scratch();
 	const data = join(root, "Application Support", "omp-webui");
 	mkdirSync(data, { recursive: true });
@@ -773,6 +776,24 @@ describe("Off, and the other setting", () => {
 		const { ctx, asked } = context({ cwd: scratch(), answer: RISK_ALLOW });
 		expect(await g.handler(RISKY, ctx)).toBeUndefined();
 		expect(asked).toHaveLength(1);
+	});
+
+	test("a locked turn's protected call is refused, whoever would allow it; its other calls go as they would", async () => {
+		const g = await load({ mode: "off" }, { armed: false, locked: true });
+		const { ctx, asked } = context({ cwd: scratch(), answer: RISK_ALLOW });
+		const own = {
+			toolName: "bash",
+			toolCallId: "call_3",
+			input: { command: `echo x >> ${home}/.ssh/authorized_keys` },
+		};
+		expect((await g.handler(own, ctx))?.reason).toContain("holds only the access token");
+		expect(await g.handler(RISKY, ctx)).toBeUndefined();
+		expect(asked).toEqual([]);
+		// Armed as well: still refused, not put to the page that drives the turn.
+		const armed = await load({ mode: "off" }, { armed: true, locked: true });
+		const second = context({ cwd: scratch(), answer: RISK_ALLOW });
+		expect((await armed.handler(own, second.ctx))?.reason).toContain("holds only the access token");
+		expect(second.asked).toEqual([]);
 	});
 });
 

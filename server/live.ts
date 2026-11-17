@@ -1368,6 +1368,12 @@ export class Live {
 	 * A page that only looks at the conversation (attached or not) changes nothing: sending is what makes a turn its own.
 	 */
 	private origin: "local" | "remote" | null = null;
+	/**
+	 * Whether that message came from the person's own page (this computer's, or one signed in through Access) rather than one
+	 * that holds only the token; null as `origin` is. Such a page's turn is locked while shells are off for remote pages
+	 * (see `syncRisk`).
+	 */
+	private byOwner: boolean | null = null;
 	/** A conversation a former server left kept and this one took over (see `adopt`): this server did not start it, so that it has no gate is not its choice. */
 	private readonly inherited: boolean;
 	/** The word to this process's gate (see `syncRisk`); null where there is no gate, or no overlay to put the word beside. */
@@ -2529,11 +2535,13 @@ export class Live {
 
 	/**
 	 * A page sent this conversation a message that drives it (a prompt, a steer, a follow-up): from now on its turn is that
-	 * page's, a remote page's or one on this computer's, and the gate is armed or not by it (see `syncRisk`). Called before
-	 * the message is handed to omp, so that not one call of the turn it starts runs unarmed.
+	 * page's, a remote page's or one on this computer's, the person's own or one that holds only the token, and the gate is
+	 * armed or locked by it (see `syncRisk`). Called before the message is handed to omp, so that not one call of the turn it
+	 * starts runs unarmed.
 	 */
-	noteOrigin(remote: boolean): boolean {
+	noteOrigin(remote: boolean, owner: boolean): boolean {
 		this.origin = remote ? "remote" : "local";
+		this.byOwner = owner;
 		return this.syncRisk();
 	}
 
@@ -2541,6 +2549,9 @@ export class Live {
 	 * Tell this process's gate whether to ask: armed while "Confirm risky commands from remote pages" is on and the turn is
 	 * not a page on this computer's. A conversation nobody has sent anything to since the server took it over (its turn may
 	 * be a remote page's, from before) is armed too: a safety net that lets a call through when it does not know is none.
+	 * Locked while shells are off for remote pages and the turn is a page's that holds only the token (or, by the same net,
+	 * not known in a process taken over): a page that may not run commands of its own may not have the agent change what
+	 * configures this computer either.
 	 * The file changes at once and omp reads it before each tool call, so there is nothing to wait for (as there is for
 	 * the settings overlay, which omp reloads after a debounce). The same word carries what "Guard dangerous commands"
 	 * says now (see `guardWord`).
@@ -2553,6 +2564,7 @@ export class Live {
 				this.guardWord(),
 				this.pool.gate?.ports?.(),
 				this.pool.gate?.hosts?.(),
+				this.pool.gate?.locks?.() === true && (this.byOwner === false || (this.byOwner === null && this.inherited)),
 			);
 			return true;
 		} catch (e) {

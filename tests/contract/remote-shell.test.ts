@@ -115,12 +115,25 @@ test("a page that is not the person's own has a shell by default; off refuses ne
 		await pollUntil(() => localSeen.text.includes("LOCAL-42"), "this computer's shell to answer", 30_000);
 		expect(localSeen.exited).toBe(false);
 		await openShell(local);
-
-		// A remote page may still run `omp` in a terminal: the switch is about shells. omp's own shell console is one (#682).
-		await request(remote, { t: "pty_open", args: ["--version"], cwd: root, cols: 80, rows: 24 });
+		// Nor any other terminal: omp's console runs `!command`s, its `shell` is one (#682), its RPC mode takes `bash`.
+		for (const args of [["--version"], ["shell"], ["--mode", "rpc"]])
+			expect(
+				await rejectionOf(request(remote, { t: "pty_open", args, cwd: root, cols: 80, rows: 24, lines: true })),
+			).toThrow(REMOTE_SHELL_OFF);
+		// Nor the composer's `!command`, nor omp started with a flag that loads code; a conversation it may still have.
 		expect(
-			await rejectionOf(request(remote, { t: "pty_open", args: ["shell"], cwd: root, cols: 80, rows: 24 })),
+			await rejectionOf(request(remote, { t: "open", target: { kind: "new", cwd: root, args: ["--extension=x.ts"] } })),
 		).toThrow(REMOTE_SHELL_OFF);
+		const chat = await request<{ liveId: string }>(remote, {
+			t: "open",
+			target: { kind: "new", cwd: root, args: ["--no-title"] },
+		});
+		expect(
+			await rejectionOf(
+				request(remote, { t: "rpc", liveId: chat.liveId, command: { type: "bash", command: "echo RAN" } }),
+			),
+		).toThrow(REMOTE_SHELL_OFF);
+		await request(remote, { t: "close", liveId: chat.liveId });
 		// Nor does it reach this computer's shell by its id (#682): what it types there is not run, and its kill ends nothing.
 		remote.send(JSON.stringify({ t: "pty_input", ptyId: localId, data: "echo HIJACK-$((1+1))\r" }));
 		remote.send(JSON.stringify({ t: "pty_kill", ptyId: localId }));

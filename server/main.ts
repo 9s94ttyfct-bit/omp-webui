@@ -119,7 +119,7 @@ import { UnattendedService } from "./omp/unattended/service.ts";
 import { InstructionError } from "./omp/unattended/store.ts";
 import { platform } from "./platform/index.ts";
 import { PrefsError, UiPrefs } from "./prefs.ts";
-import { PtyManager, runsOmpShell, terminalDir } from "./pty.ts";
+import { PtyManager, terminalDir } from "./pty.ts";
 import type { PushHub } from "./push/hub.ts";
 import type { RemoteIdentity } from "./remote-auth.ts";
 import { remotePingMs } from "./remote-keepalive.ts";
@@ -174,26 +174,69 @@ function drivesTurn(command: { type?: unknown; op?: unknown }): boolean {
 /**
  * Why a message from a page may not start or steer this conversation's turn, or null when it may. `remote`: the page came in
  * through the tunnel or over the network, and then "Confirm risky commands from remote pages" asks about its risky calls; a
- * page on this computer takes the turn back (see `Live.noteOrigin`). The one rule for every message a page sends, the
- * composer's and an answer to a question of unattended mode (#646) alike: a message is a message.
+ * page on this computer takes the turn back (see `Live.noteOrigin`). `owner`: the page is the person's own (`isOwnerPage`);
+ * one that holds only the token has its turn locked while shells are off for remote pages. The one rule for every message
+ * a page sends, the composer's and an answer to a question of unattended mode (#646) alike: a message is a message.
  *
  * The guard is the gate's, which only a process that started with it has. One this server started without it (its own flags
  * rule the check out, or the check could not start) is not given a turn at all, for what it would run cannot be looked at.
  * One this server took over (`inherited`: it was started before, by an older version or by a server that is gone) is not
  * refused: that would strand every paused or waiting conversation after an update, and its turn would run unguarded
- * anyway; its page says so (`LiveInfo.ungated`).
+ * anyway; its page says so (`LiveInfo.ungated`). A locked turn is the exception: it is the gate's or nobody's.
  */
-function turnRefusal(live: Live, remote: boolean): string | null {
+function turnRefusal(live: Live, remote: boolean, owner: boolean): string | null {
 	if ((live.effectiveGuard()?.config ?? guardSettings.get()).mode !== "off" && live.ungated === "chosen")
 		return "Guard dangerous commands is on for this conversation (Settings › Safety, or This session), but its omp started without the check that does it (its own flags rule the check out, or the check could not start). Open it again, and it will be covered, or turn the guard off in Settings › Safety (or in This session, for this conversation alone).";
 	// Asking is the gate's, which only a process that started with it has: another is not given a remote page's turn.
 	if (remote && remoteAuth.confirmRisky() && !live.gated)
 		return "Confirm risky commands from remote pages is on, but this conversation's omp started without the check that does it (it was already running before this version, its own flags rule the check out, or the check could not start). Continue it on this computer, or open it again there, and it will be covered.";
+	// So is the lock of a page that holds only the token while shells are off for such pages.
+	if (!owner && !remoteAuth.remoteShell() && !live.gated)
+		return "Shells are off for remote pages, and this conversation's omp started without the check that keeps such a page's turn from changing this computer's settings (it was already running before this version, its own flags rule the check out, or the check could not start). Continue it on this computer, or from a page signed in through Cloudflare Access.";
 	// A word the gate may not have is not one a remote page's turn starts with.
-	if (!live.noteOrigin(remote) && remote)
+	if (!live.noteOrigin(remote, owner) && (remote || !owner))
 		return "Confirm risky commands from remote pages could not be told to this conversation's omp, so the message was not sent. Try again, or continue on this computer.";
 	return null;
 }
+
+/**
+ * The omp flags a new conversation of a page that holds only the token may be started with while shells are off for such
+ * pages: models, thinking, the tools and helpers omp has, limits. None loads code, reads a file, changes where omp keeps
+ * its data or writes one.
+ */
+const TOKEN_PAGE_FLAGS: ReadonlySet<string> = new Set([
+	"--model",
+	"--smol",
+	"--slow",
+	"--plan",
+	"--models",
+	"--thinking",
+	"--service-tier",
+	"--hide-thinking",
+	"--external-thinking",
+	"--advisor",
+	"--prewalk",
+	"--no-prewalk",
+	"--prewalk-into",
+	"--plan-yolo",
+	"--plan-yolo-into",
+	"--tools",
+	"--no-tools",
+	"--no-lsp",
+	"--no-pty",
+	"--no-judge",
+	"--no-spotlight",
+	"--offline",
+	"--no-skills",
+	"--skills",
+	"--no-rules",
+	"--no-context-files",
+	"--no-title",
+	"--no-session",
+	"--max-time",
+	"--warn-cost",
+	"--max-cost",
+]);
 
 const SERVER_VERSION = APP_VERSION;
 // The macOS app names the user's login shell: its environment (`PATH` first) is what omp and its tools run in, as
@@ -405,6 +448,9 @@ pool.gate = {
 	// The data folders of other omp-webui instances hold their sign-in tokens too.
 	protect: [...new Set([cfg.dataDir, cfg.agentDir, ...knownDataDirs()])],
 	confirm: () => remoteAuth.confirmRisky(),
+	// A page that holds only the token, while shells are off for such pages, may not have the agent change what configures
+	// this computer: its turn's protected calls are refused, not put to it.
+	locks: () => !remoteAuth.remoteShell(),
 	// Only an omp-webui's API is protected, not any loopback `/api/`: this server's port once it has bound, and the ports
 	// another one may serve on (see `apiPorts`).
 	ports: gateApiPorts,
@@ -616,9 +662,11 @@ const remoteAuth = new LazyRemote(
 		// A page that is not the person's own could answer omp's approval prompts on the conversation: its tools are refused while one is.
 		heldRemotely,
 	},
-	// Shells for remote pages turned off: the ones they have open end now, not when their pages next close.
+	// Shells for remote pages turned off: the terminals they have open end now, not when their pages next close; and every
+	// gate is told whether such a page's turn is locked (`Live.syncRisk`), as it is of "Confirm risky commands".
 	(config) => {
-		if (!config.remoteShell) ptys.killRemoteShells();
+		if (!config.remoteShell) ptys.killRemoteTerminals();
+		pool.syncRisk();
 	},
 );
 const ptys = new PtyManager(cfg.ompBin);
@@ -2263,7 +2311,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			try {
 				const remote = !onThisComputer.has(req);
 				const live = await pool.open({ kind: "resume", sessionFile: asked.session }, cwdOfSessionFile);
-				const refusal = turnRefusal(live, remote);
+				const refusal = turnRefusal(live, remote, fromOwner(req));
 				if (refusal) return fail(refusal, 403);
 				if (!fromOwner(req)) remoteTouched.add(live.info.liveId);
 				else remoteTouched.delete(live.info.liveId);
@@ -2674,6 +2722,19 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 				const refused = modeTooNew(target.approvalMode);
 				if (refused) return reply({ t: "reply", req: msg.req, ok: false, error: refused });
 			}
+			if (target.kind === "new" && !isOwnerPage(ws.data.remote, ws.data.local) && !remoteAuth.remoteShell()) {
+				// omp's flags can load code (`--extension`, `--hook`, `--plugin-dir`), another configuration, a file into the
+				// prompt, or write files (`--export`, `--alias`): a page that may not run commands of its own starts omp with
+				// the flags New chat offers that do none of that.
+				const refused = (target.args ?? []).find((a) => !TOKEN_PAGE_FLAGS.has(a.split("=", 1)[0]));
+				if (refused !== undefined)
+					return reply({
+						t: "reply",
+						req: msg.req,
+						ok: false,
+						error: `${REMOTE_SHELL_OFF}: ${refused.split("=", 1)[0]}`,
+					});
+			}
 			if (target.kind === "new" && target.guard !== undefined) {
 				// A conversation's own guard settings are changed from the person's own page, like the global ones (`isOwnerPage`:
 				// this computer's, or one signed in through Access): any other page starts it under the global settings.
@@ -2782,14 +2843,27 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 					ok: false,
 					error: "Live session not found",
 				});
+			const owner = isOwnerPage(ws.data.remote, ws.data.local);
+			// The composer's `!command` runs on this computer with no gate in between: a shell, which a page that holds only the
+			// token has only as Settings › Remote access allows. omp's `export_html` writes wherever it is told: the page never
+			// sends it (the server's export does its own), and one that holds only the token may not.
+			if (!owner && msg.command.type === "bash" && !remoteAuth.remoteShell())
+				return reply({ t: "reply", req: msg.req, ok: false, error: REMOTE_SHELL_OFF });
+			if (!owner && msg.command.type === "export_html")
+				return reply({
+					t: "reply",
+					req: msg.req,
+					ok: false,
+					error: "Only a page on this computer, or one signed in through Cloudflare Access, may export this way",
+				});
 			// A message the person sends from their own page is theirs to answer for: it lifts what another page left on the conversation.
-			if (isOwnerPage(ws.data.remote, ws.data.local) && (msg.command.type === "prompt" || msg.command.type === "steer"))
+			if (owner && (msg.command.type === "prompt" || msg.command.type === "steer"))
 				remoteTouched.delete(live.info.liveId);
 			// The turn this message starts (or steers) is its sender's: a remote page's when the sender came in through the
 			// tunnel, and then "Confirm risky commands from remote pages" asks about its risky calls; a page on this computer
 			// takes the turn back. A page that only looks at the conversation never has a turn (it sends nothing).
 			if (drivesTurn(msg.command)) {
-				const refusal = turnRefusal(live, !ws.data.local);
+				const refusal = turnRefusal(live, !ws.data.local, owner);
 				if (refusal) return reply({ t: "reply", req: msg.req, ok: false, error: refusal });
 			}
 			touch(live);
@@ -2928,10 +3002,11 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 		}
 		case "pty_open": {
 			const shell = msg.shell === true;
-			// A shell for a page that is not the person's own is the person's to allow (Settings › Remote access): the login
-			// shell, and omp's own shell console (`omp shell`), which is one too (#682). The person's own page always may.
+			// A terminal for a page that is not the person's own is the person's to allow (Settings › Remote access): the login
+			// shell, and any omp in it, whose console runs `!command`s, whose `shell` is one (#682) and whose RPC mode takes
+			// `bash` commands on its input. The person's own page always may.
 			const owner = isOwnerPage(ws.data.remote, ws.data.local);
-			if ((shell || (Array.isArray(msg.args) && runsOmpShell(msg.args))) && !owner && !remoteAuth.remoteShell())
+			if (!owner && !remoteAuth.remoteShell())
 				return reply({ t: "reply", req: msg.req, ok: false, error: REMOTE_SHELL_OFF });
 			// A terminal's omp would write the same files an import is writing.
 			if (!shell && importWriting) throw heldByImport();

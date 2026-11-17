@@ -7,13 +7,15 @@ import { replaceSync } from "../extension-files.ts";
 
 /**
  * The server's word to one process's gate: whether "Confirm risky commands" is armed (the setting is on and the turn is
- * remote-driven; see `Live.syncRisk`), the places the gate treats as protected besides the built-in ones, and what the
- * guard does (`guard`, see `shared/guard.ts`), the ports an omp-webui may serve its API on (`ports`, so that only their
- * `/api/` is protected) and the addresses this server answers on besides the loopback (`hosts`, `OMP_WEBUI_HOST`: the
- * same API, reached on that address). Written whole and moved into place, and only when it changes: omp reads it before
- * each tool call, and never half of it. A file that is gone or no longer says what the server wrote (an agent that
- * changed it, a cleaner of the temp dir) is written again, so that what the gate reads is the server's word and nobody's
- * else: each look compares the file's content, not its size or time, which an agent that overwrote it could put back.
+ * remote-driven; see `Live.syncRisk`), whether the turn is locked (driven by a page that holds only the token while shells
+ * are off for such pages: a protected call is refused, not put to that page), the places the gate treats as protected
+ * besides the built-in ones, and what the guard does (`guard`, see `shared/guard.ts`), the ports an omp-webui may serve
+ * its API on (`ports`, so that only their `/api/` is protected) and the addresses this server answers on besides the
+ * loopback (`hosts`, `OMP_WEBUI_HOST`: the same API, reached on that address). Written whole and moved into place, and
+ * only when it changes: omp reads it before each tool call, and never half of it. A file that is gone or no longer says
+ * what the server wrote (an agent that changed it, a cleaner of the temp dir) is written again, so that what the gate
+ * reads is the server's word and nobody's else: each look compares the file's content, not its size or time, which an
+ * agent that overwrote it could put back.
  */
 export class RiskState {
 	/** The server's word to the gate (`<overlay>.risk`). */
@@ -64,9 +66,10 @@ export class RiskState {
 	}
 
 	/** Throws when the word cannot be written: the caller must not let a remote message through then. */
-	set(armed: boolean, guard?: GuardWord, ports?: readonly number[], hosts?: readonly string[]): void {
+	set(armed: boolean, guard?: GuardWord, ports?: readonly number[], hosts?: readonly string[], locked = false): void {
 		const text = JSON.stringify({
 			armed,
+			...(locked ? { locked } : {}),
 			protect: this.protect,
 			...(guard ? { guard } : {}),
 			...(ports && ports.length > 0 ? { ports } : {}),
@@ -115,6 +118,12 @@ export interface RiskGate {
 	protect: readonly string[];
 	/** Whether "Confirm risky commands from remote pages" is on now. */
 	confirm(): boolean;
+	/**
+	 * Whether a turn a page that holds only the token drives is locked now: "Let remote pages open a shell" is off, so such a
+	 * page may not run commands of its own, nor have the agent touch what configures this computer (see `RiskState.set`).
+	 * Absent: never.
+	 */
+	locks?(): boolean;
 	/**
 	 * The ports an omp-webui may serve its API on, once the server has bound its own (see `apiPorts`): the gate protects
 	 * the `/api/` of these and no other loopback port's.

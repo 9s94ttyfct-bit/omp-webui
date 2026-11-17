@@ -131,19 +131,22 @@ function overlayFile(argv: readonly string[]): string | null {
 }
 
 /**
- * What the server says in the `.risk` file: whether "Confirm risky commands" is armed, the places that are never changed
- * unasked, and what the guard does. Only an explicit `armed: false` lets a call go: a file that is gone, cannot be read, is
- * not an object or says nothing about it is not the server's word, and the gate asks. A word of the guard it cannot read is
- * the guard on, with a reviewer of its own choosing.
+ * What the server says in the `.risk` file: whether "Confirm risky commands" is armed, whether the turn is locked, the
+ * places that are never changed unasked, and what the guard does. Only an explicit `armed: false` lets a call go: a file
+ * that is gone, cannot be read, is not an object or says nothing about it is not the server's word, and the gate asks; one
+ * that is gone or cannot be read locks the turn as well, so that taking the file away unlocks nothing. A word of the guard
+ * it cannot read is the guard on, with a reviewer of its own choosing.
  */
 function readState(file: string | null): {
 	armed: boolean;
+	locked: boolean;
 	protect: string[];
 	guard: GuardWord;
 	ports?: number[];
 	hosts?: string[];
 } {
-	if (file === null) return { armed: false, protect: [], guard: { ...GUARD_WORD_FALLBACK, mode: "off" } };
+	if (file === null)
+		return { armed: false, locked: false, protect: [], guard: { ...GUARD_WORD_FALLBACK, mode: "off" } };
 	try {
 		const state: unknown = JSON.parse(readFileSync(`${file}${RISK_SUFFIX}`, "utf8"));
 		const record = typeof state === "object" && state !== null ? (state as Record<string, unknown>) : {};
@@ -160,13 +163,14 @@ function readState(file: string | null): {
 			: [];
 		return {
 			armed: record.armed !== false,
+			locked: record.locked === true,
 			protect,
 			guard: parseGuardWord(record.guard) ?? GUARD_WORD_FALLBACK,
 			...(ports.length > 0 ? { ports } : {}),
 			...(hosts.length > 0 ? { hosts } : {}),
 		};
 	} catch {
-		return { armed: true, protect: [], guard: GUARD_WORD_FALLBACK };
+		return { armed: true, locked: true, protect: [], guard: GUARD_WORD_FALLBACK };
 	}
 }
 
@@ -213,6 +217,14 @@ const agentName = (ctx: Context, subagent: boolean): string =>
 	subagent ? (ctx.agent?.id ?? ctx.agent?.name ?? "subagent") : "main";
 
 const refuse = (reason: string): { block: true; reason: string } => ({ block: true, reason });
+
+/**
+ * What a locked turn (a page that holds only the token drives it while shells are off for such pages) may not do, whoever
+ * would approve: change what configures this computer or its guard, or read what signs in to something.
+ */
+const LOCKED_KINDS: ReadonlySet<string> = new Set(["protected", "secret_read"]);
+const LOCKED_TEXT =
+	"This turn was started from a page that holds only the access token, and remote pages may not open a shell (Settings › Remote access), so the agent may not change this computer's settings, its guard, omp's configuration or other protected places, or read stored credentials. The call was not run. Do not look for another way to do it: say in your answer what you would have run, so that the person can do it from this computer.";
 
 /** What a call names, as text: the guard's own files are looked for in it. */
 function textOf(input: unknown): string {
@@ -654,14 +666,16 @@ export default function remoteRiskGate(pi: Pi): void {
 	const overlay = overlayFile(process.argv);
 	pi.on("tool_call", async (event, ctx) => {
 		const state = readState(overlay);
-		if (!state.armed && state.guard.mode === "off") return undefined;
+		if (!state.armed && !state.locked && state.guard.mode === "off") return undefined;
 		const risk = classifyToolCall(
 			event.toolName,
 			event.input,
 			contextFor(ctx.cwd, state.protect, state.ports, state.hosts),
 		);
 		if (risk === null) return undefined;
-		return state.armed ? confirmWithPerson(event, ctx, risk) : guardCall(pi, event, ctx, risk, state.guard);
+		if (state.locked && risk.kinds.some((k) => LOCKED_KINDS.has(k))) return refuse(LOCKED_TEXT);
+		if (state.armed) return confirmWithPerson(event, ctx, risk);
+		return state.guard.mode === "off" ? undefined : guardCall(pi, event, ctx, risk, state.guard);
 	});
 	// Said last, once the handler is in: the server covers a process with this note, and not on the strength of its command line (omp carries on without an extension it could not load).
 	if (overlay === null) return;
