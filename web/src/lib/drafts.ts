@@ -63,6 +63,20 @@ export function forgetDraft(key: string): void {
 	changed();
 }
 
+/**
+ * Put `back` in front of what is kept under `key`: what would have gone back into the composer (a send that failed, a
+ * queue that Stop withdrew) after the person left the conversation, so that it is there when they return.
+ */
+export function prependDraft(key: string, back: Draft): void {
+	const cur = drafts.get(key);
+	const files = [...(back.files ?? []), ...(cur?.files ?? [])];
+	keepDraft(key, {
+		text: cur?.text.trim() ? (back.text ? `${back.text}\n\n${cur.text}` : cur.text) : back.text,
+		images: [...back.images, ...(cur?.images ?? [])],
+		...(files.length ? { files } : {}),
+	});
+}
+
 /** The conversation `from` is now known as `to` (its process wrote a session file, or moved to another one): its draft follows. */
 export function moveDraft(from: string, to: string): void {
 	if (from === to) return;

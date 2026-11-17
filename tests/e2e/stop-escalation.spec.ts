@@ -1,5 +1,5 @@
 import * as omp from "../support/omp-frames.ts";
-import { runningTurn, SIDES, startWorld, type World } from "../support/two-pages.ts";
+import { lag, runningTurn, SIDES, show, startWorld, type World } from "../support/two-pages.ts";
 import { expect, test } from "./fixtures.ts";
 
 /**
@@ -77,6 +77,36 @@ test("what was queued behind a turn that had to be ended is back in the message 
 		await pages.local.getByTestId("stop").click();
 		await expect(pages.local.getByTestId("exit-notice")).toContainText("you pressed Stop", { timeout: 30_000 });
 		await expect(pages.local.getByTestId("composer")).toHaveValue(/Queued behind/);
+	} finally {
+		await pages.close();
+	}
+});
+
+test("what Stop withdrew from the queue is kept when the person has opened another conversation before Stop was answered", async ({
+	browser,
+}) => {
+	const title = "Stop and leave";
+	const other = "Elsewhere meanwhile";
+	world.seed(next(), other);
+	const { pages } = await runningTurn(world, browser, next(), title, "local");
+	try {
+		const composer = pages.local.getByTestId("composer");
+		await composer.fill("Withdrawn while away");
+		await composer.press("Enter");
+		await expect(pages.local.getByTestId("queue-chip")).toContainText("Withdrawn while away");
+		// What the page sends leaves late (a far tunnel): Stop is answered after the person has left.
+		const aborts = () => world.received().filter((c) => c.type === "abort_and_restore_queue").length;
+		const before = aborts();
+		await lag(pages.local, 1500);
+		await pages.local.getByTestId("stop").click();
+		await show(pages.local, other);
+		await expect.poll(aborts).toBe(before + 1);
+		await lag(pages.local, 0);
+		// The answer comes back without the lag: it has reached the page well within this.
+		await pages.local.waitForTimeout(1000);
+		await expect(composer).toHaveValue("");
+		await show(pages.local, title);
+		await expect(composer).toHaveValue(/Withdrawn while away/);
 	} finally {
 		await pages.close();
 	}

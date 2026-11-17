@@ -1290,12 +1290,12 @@ export function runBash(liveId: string, command: string): void {
 		});
 }
 
-/** Stop the `!command`s that run; resolves when they have stopped, or when the server ended omp's process because they would not (see `Live.stop`). */
+/**
+ * Stop the `!command`s that run; resolves when they have stopped, or when the server ended omp's process because they would
+ * not (see `Live.stop`). Rejects when the request failed: the command still runs, and the caller says so.
+ */
 export function abortBash(liveId: string): Promise<void> {
-	return socket.stop(liveId, { type: "abort_bash" }).then(
-		() => {},
-		() => {},
-	);
+	return socket.stop(liveId, { type: "abort_bash" }).then(() => {});
 }
 
 /** Cancel the backoff before omp's next automatic retry of a failed turn. */

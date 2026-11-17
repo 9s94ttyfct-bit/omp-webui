@@ -1995,6 +1995,7 @@
 		"stop-escalation.spec.ts › Stop on an omp that does not answer: the page says it is stopping, then that the process was ended and why; the conversation is kept and the next message reopens it": 11.3,
 		"stop-escalation.spec.ts › a subagent that works keeps the conversation busy after its turn is over: Stop is offered for it and cancels it": 4.7,
 		"stop-escalation.spec.ts › what was queued behind a turn that had to be ended is back in the message box": 9.9,
+		"stop-escalation.spec.ts › what Stop withdrew from the queue is kept when the person has opened another conversation before Stop was answered": 7.4,
 		"stream-cost.spec.ts › a streamed token costs the page the same with hundreds of conversations listed as with one": 20.4,
 		"stream-handoff.spec.ts › the row that streamed is the row that is saved: same element, never faded, thinking still open": 8.2,
 		"stream-shapes.spec.ts › a token costs the page the same with hundreds of messages opened as with the latest ones": 45.4,

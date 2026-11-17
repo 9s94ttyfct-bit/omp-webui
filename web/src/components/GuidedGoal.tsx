@@ -202,7 +202,14 @@ export function ProposalBody({ req, liveId }: { req: UIRequest; liveId: string }
 						className="mr-auto"
 						disabled={busy}
 						data-testid="proposal-cancel"
-						onClick={() => live && void cancelGuidedGoal(live).catch(() => {})}
+						onClick={() =>
+							live &&
+							void cancelGuidedGoal(live).catch((e) =>
+								useApp
+									.getState()
+									.toast("error", t("chat.runError", { label: t("chat.errGoal"), error: (e as Error).message })),
+							)
+						}
 					>
 						{t("panel.proposalCancel")}
 					</Button>

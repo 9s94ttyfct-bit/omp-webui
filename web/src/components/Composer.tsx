@@ -18,7 +18,7 @@ import { flushSync } from "react-dom";
 import { useT } from "../i18n/index.ts";
 import { api } from "../lib/api.ts";
 import { appendPiece, offerComposer } from "../lib/composer-bridge.ts";
-import { forgetDraft, keepDraft, readDraft } from "../lib/drafts.ts";
+import { forgetDraft, keepDraft, prependDraft, readDraft } from "../lib/drafts.ts";
 import { type DropRequest, pickedFiles, takeDrop } from "../lib/drop-items.ts";
 import { accept, afterEdit, type Ghost, type GhostFeedback, remaining, wantsPrediction } from "../lib/ghost.ts";
 import { useImeGuard } from "../lib/ime.ts";
@@ -485,13 +485,7 @@ export function Composer({
 				setImages((cur) => [...attached, ...cur]);
 				setFiles((cur) => [...attachedFiles, ...cur]);
 			} else if (!sent && keptUnder.current) {
-				const cur = readDraft(keptUnder.current);
-				const back = [...attachedFiles, ...(cur?.files ?? [])];
-				keepDraft(keptUnder.current, {
-					text: cur?.text.trim() ? `${original}\n\n${cur.text}` : original,
-					images: [...attached, ...(cur?.images ?? [])],
-					...(back.length ? { files: back } : {}),
-				});
+				prependDraft(keptUnder.current, { text: original, images: attached, files: attachedFiles });
 			}
 		}
 	};

@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, expect, type Mock, spyOn, test } from 
 import { bashEnded, bashStarted } from "../../shared/held-state.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { socket } from "../../web/src/lib/ws.ts";
-import { onServer, runBash, useApp } from "../../web/src/store/app.ts";
+import { abortBash, onServer, runBash, useApp } from "../../web/src/store/app.ts";
 import { initialLive } from "../../web/src/store/live.ts";
 import { installGlobals, restoreGlobals } from "./browser-globals.ts";
 
@@ -126,4 +126,13 @@ test("a command omp answers with a failing exit says so, and one that fails to r
 		"Command exited with 1",
 		"This conversation is paused; resume it to continue.",
 	]);
+});
+
+test("a Stop of a `!command` that could not be sent fails, so that the page says so: the command still runs", async () => {
+	const stop = spyOn(socket, "stop").mockImplementation(() => Promise.reject(new Error("Connection lost")));
+	try {
+		await expect(abortBash("L1")).rejects.toThrow("Connection lost");
+	} finally {
+		stop.mockRestore();
+	}
 });

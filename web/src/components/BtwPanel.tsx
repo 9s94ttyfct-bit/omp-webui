@@ -181,7 +181,12 @@ export function BtwPanel({ live, start }: { live: LiveState | undefined; start?:
 				{running ? (
 					<IconButton
 						label={t("chat.btwStop")}
-						onClick={() => liveId && void socket.act(liveId, { type: "btw_cancel" }).catch(() => {})}
+						onClick={() =>
+							liveId &&
+							void socket
+								.act(liveId, { type: "btw_cancel" })
+								.catch((e) => toast("error", t("chat.btwFailed", { error: (e as Error).message })))
+						}
 					>
 						<Square size={13} />
 					</IconButton>

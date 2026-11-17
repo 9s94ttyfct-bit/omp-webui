@@ -36,6 +36,7 @@ import { askChangeFolder } from "../lib/change-folder.ts";
 import { useChatBottom } from "../lib/chat-bottom.ts";
 import { loadCommandNotes } from "../lib/command-notes.ts";
 import { withHeldFollowUps } from "../lib/compact-queue.ts";
+import { prependDraft } from "../lib/drafts.ts";
 import { errorText } from "../lib/error-text.ts";
 import { destinationFor, FamilyBuilder, familySignature, unwrittenOwnFile } from "../lib/family.ts";
 import { glideToEnd, useFollowEnd } from "../lib/follow-end.ts";
@@ -611,6 +612,23 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 	}, []);
 	useGoalRequest(openGoal);
 	const [draft, setDraft] = useState<ComposerDraft | null>(null);
+	// What goes back to the composer: a Stop is answered once the turn is over, seconds later, and the person may have left
+	// the conversation by then (this view is another one's then). It goes to the draft kept for this conversation instead,
+	// in front of what was typed: there when they come back (see `lib/drafts.ts`).
+	const mounted = useRef(true);
+	useEffect(() => {
+		mounted.current = true;
+		return () => {
+			mounted.current = false;
+		};
+	}, []);
+	const draftKey = useRef<string | null | undefined>(null);
+	draftKey.current = currentFile ?? liveIdProp;
+	const giveBack = useCallback((back: ComposerDraft) => {
+		if (mounted.current) setDraft(back);
+		else if (draftKey.current)
+			prependDraft(draftKey.current, { text: back.text, images: back.images ?? [], files: back.files });
+	}, []);
 	const summary = sessions.find((s) => s.file === currentFile);
 	const isArchived = currentFile !== null && archived.includes(currentFile);
 	// What the status line under the composer has put elsewhere for want of room (`ChatStatus`): the header shows it then.
@@ -757,9 +775,9 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 		void refreshEntries(liveId);
 		void refreshState(liveId);
 		void import("../lib/queued-compact.ts").then((m) =>
-			m.noteQueuedCompactEnd(compactEnded, toast, (text, images) => setDraft(toDraft(text, images))),
+			m.noteQueuedCompactEnd(compactEnded, toast, (text, images) => giveBack(toDraft(text, images))),
 		);
-	}, [liveId, compactEnded?.at, toast]);
+	}, [liveId, compactEnded?.at, toast, giveBack]);
 	// A tool approval waits: a message typed now denies it, and the composer says so before the user sends one.
 	const approvalPending = Boolean(live?.uiRequests.some(isApproval));
 	/** Any request omp waits on: it is on the screen above the composer, which is what the bottom block makes room for. */
@@ -1024,7 +1042,7 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 							]
 						: [...(r?.steering ?? []), ...(r?.followUp ?? [])];
 				if (!items.length) return;
-				setDraft(
+				giveBack(
 					toDraft(
 						items.map((w) => w.text).join("\n\n"),
 						items.flatMap((w) => w.images ?? []),
@@ -1035,7 +1053,7 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 				toast("error", translate("chat.errStop", { error: (e as Error).message }));
 			}
 		},
-		[toast],
+		[toast, giveBack],
 	);
 
 	/**
@@ -1052,12 +1070,12 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 				taken = await socket.act(liveId, { type: "remove_queued_message", message: text, queue });
 			} catch (e) {
 				toast("error", translate("chat.errQueueEdit", { error: (e as Error).message }));
-				setDraft(toDraft(next, []));
+				giveBack(toDraft(next, []));
 				return;
 			}
 			if (!taken?.removed) {
 				toast("info", translate("chat.queueEditGone"));
-				setDraft(toDraft(next, []));
+				giveBack(toDraft(next, []));
 				return;
 			}
 			const images = taken.images ?? [];
@@ -1070,12 +1088,12 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 				});
 			} catch (e) {
 				toast("error", translate("chat.errQueueEdit", { error: (e as Error).message }));
-				setDraft(toDraft(next, images));
+				giveBack(toDraft(next, images));
 				return;
 			}
 			if (taken.imagesDropped) toast("warning", translate("chat.queueEditImagesDropped"));
 		},
-		[liveId, toast],
+		[liveId, toast, giveBack],
 	);
 
 	/**
@@ -1090,7 +1108,10 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 		setStopping(true);
 		if (paused)
 			void setPaused(liveId, false).catch((e) => toast("error", translate("chat.errPause", { error: e.message })));
-		void (bashRunning ? abortBash(liveId) : stop(liveId)).finally(() => {
+		const stopping = bashRunning
+			? abortBash(liveId).catch((e) => toast("error", translate("chat.errStop", { error: (e as Error).message })))
+			: stop(liveId);
+		void stopping.finally(() => {
 			if (stoppingFor.current !== liveId) return;
 			stoppingFor.current = null;
 			setStopping(false);
@@ -1208,7 +1229,7 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 								await socket.rpc(id, { type: "prompt", message: text, images });
 							} catch (e) {
 								// The edit exists nowhere else: it goes back to the composer instead of vanishing with the error.
-								setDraft(toDraft(text, images));
+								giveBack(toDraft(text, images));
 								throw e;
 							}
 						});
@@ -1236,7 +1257,7 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 								await socket.rpc(id, { type: "prompt", message: text, images });
 							} catch (e) {
 								// Once branched, the conversation on screen is a new file without this prompt: the prompt goes back to the composer.
-								if (branched) setDraft(toDraft(text, images));
+								if (branched) giveBack(toDraft(text, images));
 								throw e;
 							}
 						});
@@ -1285,7 +1306,7 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 								await socket.rpc(id, { type: "prompt", message: text, images });
 							} catch (e) {
 								// The edit exists nowhere else: it goes back to the composer instead of vanishing with the error.
-								setDraft(toDraft(text, images));
+								giveBack(toDraft(text, images));
 								throw e;
 							}
 						});
@@ -1300,7 +1321,7 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 			resume,
 			paused,
 		}),
-		[working, retry, resume, paused],
+		[working, retry, resume, paused, giveBack],
 	);
 
 	// ------------------------------------------------------------------ scrolling
