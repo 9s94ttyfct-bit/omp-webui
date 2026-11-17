@@ -751,6 +751,69 @@ describe("the ways around the gate: its own settings, API and token", () => {
 	});
 });
 
+describe("a glob or a part only known when it runs does not hide the gate's own files or a protected name", () => {
+	const live = "/var/folders/ab/T/ompw-live-*";
+	test.each([
+		`echo '{"armed":false}' > ${live}/L1-*.yml.risk`,
+		`echo x | tee ${live}/*.risk`,
+		`sed -i '' s/a/b/ ${live}/*.risk`,
+		`cp x.json /var/folders/ab/T/ompw-live-?/L1.yml.risk`,
+		"echo x > $TMPDIR/ompw-live-*/L1-*.yml.risk",
+		"D=/Users/me; echo x > $D/.zshrc",
+		'echo x >> "$PWD/../.zshrc"',
+		"echo x > $D/.ssh/authorized_keys",
+		"echo x > .o?p/config.yml",
+		"echo x > /var/folders/ab/T/$name",
+	])("%s", (command) => {
+		expect(shell(command), command).toContain("protected");
+	});
+
+	test.each([
+		'echo hi > "$f"',
+		"echo hi > $OUT/result.json",
+		"echo hi > /tmp/$name.log",
+		"cat src/*.ts > /tmp/all.txt",
+		"echo x > out/*.txt",
+		'for f in ~/Documents/*; do cat "$f" > /tmp/x; done',
+	])("%s is not protected", (command) => {
+		expect(shell(command), command).not.toContain("protected");
+	});
+});
+
+describe("what a wrapper runs is read: macOS's arch, script and sandbox-exec, flock, watch, busybox, …", () => {
+	test.each([
+		"arch -arm64 rm -rf ~/Documents",
+		"arch -x86_64 -e A=1 rm -rf ~/Documents",
+		"script -q /dev/null rm -rf ~/Documents",
+		"script -q -c 'rm -rf ~/Documents' /dev/null",
+		"script --command='rm -rf ~/Documents' /dev/null",
+		"sandbox-exec -n no-network rm -rf ~/Documents",
+		"flock /tmp/l rm -rf ~/Documents",
+		"flock -w 5 /tmp/l -c 'rm -rf ~/Documents'",
+		"watch rm -rf ~/Documents",
+		"watch -n 5 'rm -rf ~/Documents'",
+		"gtimeout 5 rm -rf ~/Documents",
+		"parallel rm -rf ::: ~/Documents",
+		"parallel 'rm -rf {}' ::: ~/Documents",
+		"busybox rm -rf ~/Documents",
+		"toybox rm -rf ~/Documents",
+		"busybox sh -c 'rm -rf ~/Documents'",
+		"/usr/bin/time -p rm -rf ~/Documents",
+		"env -S 'rm -rf ~/Documents'",
+		"strace -f -o /tmp/t rm -rf ~/Documents",
+		"fakeroot rm -rf ~/Documents",
+	])("%s", (command) => {
+		expect(shell(command), command).toContain("delete_outside");
+	});
+
+	test.each(["watch ls -la", "arch", "script -q out.log", "flock /tmp/lock make build", "busybox ls"])(
+		"%s is not asked about",
+		(command) => {
+			expect(shell(command), command).toEqual([]);
+		},
+	);
+});
+
 describe("shell: what comes through xargs, the package runners, git's other ways to lose work, dd's ~", () => {
 	test.each<[string, RiskKind]>([
 		["printf 'a\\nb\\n' | xargs rm", "delete_outside"],

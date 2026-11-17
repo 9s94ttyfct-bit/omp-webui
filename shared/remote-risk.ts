@@ -660,6 +660,68 @@ function resolveWord(w: Word, cwd: string | null, ctx: RiskContext): string | nu
 	return cwd === null ? null : normalize(`${cwd}/${base}`);
 }
 
+/**
+ * Whether a word with a glob, or a part only known when the command runs, may name something in a protected place that
+ * the folder `resolveWord` gives for it does not show: `/tmp/ompw-live-?…/L1.yml.risk` is in the temporary folder and in
+ * the gate's own as well, and `$TMPDIR/ompw-live-?…/x.risk` or `$D/.zshrc` have no folder at all. A glob part stands for
+ * one name; a part only known when the command runs, or a brace list, for any number of folders, so once one is reached
+ * on the way into a protected folder the word may be in it. A word that starts with such a part may be anywhere: it is in
+ * a protected folder when what follows it is the rest of one's path (`…/ompw-live-?…/x`), and protected when it goes
+ * through a protected name (`$D/.ssh/x`) or ends in a shell's start-up file (`$D/.zshrc`).
+ */
+function mayBeProtected(w: Word, cwd: string | null, ctx: RiskContext): boolean {
+	const raw = ctx.windows ? windowsView(w.text) : w.text;
+	if (!/[\uE000*?[{]/.test(raw)) return false;
+	const text = folded(raw, ctx);
+	const anywhere = text.startsWith(DYN) || (!text.startsWith("/") && cwd === null);
+	const path = text.startsWith("/") || anywhere ? text : `${folded(cwd ?? "", ctx)}/${text}`;
+	const parts = path.split("/").filter((s) => s !== "" && s !== ".");
+	if (text.startsWith(DYN)) parts.shift();
+	// Each part as the one name it stands for, or null: any number of folders.
+	const tokens: (RegExp | null)[] = [];
+	for (const part of parts) {
+		if (part !== "..") tokens.push(/[\uE000{]/.test(part) ? null : namePattern(part));
+		else if (tokens.length > 0 && tokens[tokens.length - 1] !== null) tokens.pop();
+	}
+	const names = (t: Table) => Object.keys(t).map((n) => folded(n, ctx));
+	if (tokens.some((t) => t !== null && names(PROTECTED_SEGMENTS).some((n) => t.test(n)))) return true;
+	const last = tokens[tokens.length - 1];
+	if (anywhere && last && names(PROTECTED_HOME_FILES).some((n) => last.test(n))) return true;
+	/** Whether the tokens from `from` on, laid on `dir`'s folders from `at` on, may go past its end: something in it. */
+	const inside = (dir: readonly string[], from: number, at: number): boolean => {
+		for (let i = from, k = at; ; i++, k++) {
+			if (k === dir.length) return i < tokens.length;
+			const t = tokens[i];
+			if (t === undefined) return false;
+			if (t === null) return true;
+			if (!t.test(dir[k])) return false;
+		}
+	};
+	return ctx.protect.some((d) => {
+		if (d === "") return false;
+		const dir = folded(normalize(d), ctx).split("/").filter(Boolean);
+		if (!anywhere) return inside(dir, 0, 0);
+		// What comes before the word's first part is not known: it may be any of the folder's own parents.
+		return tokens[0] !== null && tokens.length > 0 && dir.some((_, at) => inside(dir, 0, at));
+	});
+}
+
+/** One part of a path with `*`, `?` or `[…]` in it, as a pattern of the names it matches (as bash: not one starting with `.`). */
+function namePattern(part: string): RegExp {
+	let out = "";
+	for (let i = 0; i < part.length; i++) {
+		const c = part[i];
+		const close = c === "[" ? part.indexOf("]", i + 2) : -1;
+		if (c === "*") out += "[^/]*";
+		else if (c === "?") out += "[^/]";
+		else if (close > 0) {
+			out += "[^/]";
+			i = close;
+		} else out += c.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+	}
+	return new RegExp(`^${/^[*?[]/.test(part) ? "(?!\\.)" : ""}${out}$`);
+}
+
 // ---------------------------------------------------------------------------------------------------- the shell
 
 /** One word of a command, as the shell takes it apart: quotes and escapes gone, `~` and `$HOME` written out. */
@@ -1069,20 +1131,67 @@ interface Command {
 	dynamic?: true;
 }
 
-/** The programs that run another: the options that take a value, and how many plain words come before the command. */
-const WRAPPERS: Readonly<Record<string, { value: Table; positional: number }>> = {
-	env: { value: table("-u", "-C", "-S", "-P"), positional: 0 },
+/**
+ * The programs that run another: the options that take a value, how many plain words come before the command, the options
+ * whose value is a command line the program hands a shell (`script -c '…'`, `flock x -c '…'`), and whether a lone word
+ * after its options is such a line (`watch 'rm …'`, `parallel 'rm {}' ::: …`).
+ */
+const WRAPPERS: Readonly<Record<string, { value: Table; positional: number; script?: Table; line?: true }>> = {
+	env: { value: table("-u", "-C", "-P"), positional: 0, script: table("-S", "--split-string") },
 	nohup: { value: table(), positional: 0 },
 	command: { value: table(), positional: 0 },
+	time: { value: table("-o", "-f", "--output", "--format"), positional: 0 },
 	nice: { value: table("-n"), positional: 0 },
 	ionice: { value: table("-c", "-n", "-p"), positional: 0 },
+	chrt: { value: table(), positional: 1 },
+	taskset: { value: table(), positional: 1 },
 	stdbuf: { value: table("-i", "-o", "-e"), positional: 0 },
 	timeout: { value: table("-s", "-k"), positional: 1 },
+	gtimeout: { value: table("-s", "-k"), positional: 1 },
 	xargs: { value: table("-I", "-n", "-P", "-L", "-s", "-d", "-E", "-a"), positional: 0 },
+	parallel: { value: table("-j", "--jobs", "-S", "--sshlogin", "-a", "--arg-file"), positional: 0, line: true },
 	caffeinate: { value: table("-t", "-w"), positional: 0 },
 	setsid: { value: table(), positional: 0 },
 	unbuffer: { value: table(), positional: 0 },
+	chronic: { value: table(), positional: 0 },
+	nocache: { value: table(), positional: 0 },
+	eatmydata: { value: table(), positional: 0 },
+	fakeroot: { value: table("-l", "-s", "-i", "--lib", "--faked"), positional: 0 },
+	faketime: { value: table(), positional: 1 },
+	torsocks: { value: table("-u", "-p", "-a", "-P"), positional: 0 },
+	proxychains: { value: table("-f"), positional: 0 },
+	proxychains4: { value: table("-f"), positional: 0 },
+	firejail: { value: table(), positional: 0 },
+	"xvfb-run": { value: table("-n", "-s", "-f", "-e", "-p", "-w"), positional: 0 },
+	"dbus-launch": { value: table(), positional: 0 },
+	"ssh-agent": { value: table("-a", "-E", "-t", "-P"), positional: 0 },
+	strace: { value: table("-o", "-e", "-s", "-u", "-E", "-a", "-O", "-P", "-S", "-X"), positional: 0 },
+	ltrace: { value: table("-o", "-e", "-s", "-u", "-a"), positional: 0 },
+	// macOS: the architecture to run it as, a sandbox profile, a terminal recording (`script -q out cmd …`).
+	arch: { value: table("-arch", "-d", "-e"), positional: 0 },
+	"sandbox-exec": { value: table("-f", "-n", "-p", "-D"), positional: 0 },
+	script: {
+		value: table("-F", "-t", "-T", "-I", "-O", "-B", "-E", "-o"),
+		positional: 1,
+		script: table("-c", "--command"),
+	},
+	flock: {
+		value: table("-w", "--timeout", "-E", "--conflict-exit-code"),
+		positional: 1,
+		script: table("-c", "--command"),
+	},
+	watch: { value: table("-n", "--interval", "-q", "--equexit"), positional: 0, line: true },
+	// One program that is many (`busybox rm -rf …`): its first word is the one it acts as.
+	busybox: { value: table(), positional: 0 },
+	toybox: { value: table(), positional: 0 },
 };
+
+/** `sh -c <line>`: what a wrapper that hands a shell a command line runs. */
+const shellLine = (line: Word, viaXargs: boolean): Command => ({
+	name: "sh",
+	args: [{ text: "-c", dynamic: false, subs: [] }, line],
+	viaXargs,
+});
 
 function commandOf(words: readonly Word[]): Command | null {
 	let i = 0;
@@ -1104,6 +1213,10 @@ function commandOf(words: readonly Word[]): Command | null {
 				j++;
 				break;
 			}
+			if (wrapper.script && listed(wrapper.script, t)) return words[j + 1] ? shellLine(words[j + 1], viaXargs) : null;
+			const joined =
+				wrapper.script && Object.keys(wrapper.script).find((o) => o.startsWith("--") && t.startsWith(`${o}=`));
+			if (joined) return shellLine({ ...words[j], text: t.slice(joined.length + 1) }, viaXargs);
 			if (listed(wrapper.value, t)) j += 2;
 			else if (t.startsWith("-") && t.length > 1) j++;
 			else if (name === "env" && ASSIGNMENT.test(t)) j++;
@@ -1112,6 +1225,7 @@ function commandOf(words: readonly Word[]): Command | null {
 				j++;
 			} else break;
 		}
+		if (wrapper.line && j < words.length && /\s/.test(words[j].text)) return shellLine(words[j], viaXargs);
 		i = j;
 	}
 	return null;
@@ -1936,13 +2050,16 @@ class Scan {
 		this.kinds.add(kind);
 	}
 
-	/** A command writes (creates, changes) the place `w` points to: outside the project, or protected. */
+	/**
+	 * A command writes (creates, changes) the place `w` points to: outside the project, or protected. A glob or a part only
+	 * known when it runs may hide a protected place behind a folder that is not (`mayBeProtected`).
+	 */
 	write(w: Word, cwd: string | null): void {
 		for (const each of this.named(w)) {
 			const abs = resolveWord(each, cwd, this.ctx);
-			if (abs === null) continue;
-			if (isProtected(abs, this.ctx)) this.add("protected");
-			else if (!inProject(abs, this.ctx) && !inTemp(abs, this.ctx)) this.add("write_outside");
+			if (abs !== null && isProtected(abs, this.ctx)) this.add("protected");
+			else if (mayBeProtected(each, cwd, this.ctx)) this.add("protected");
+			else if (abs !== null && !inProject(abs, this.ctx) && !inTemp(abs, this.ctx)) this.add("write_outside");
 		}
 	}
 
