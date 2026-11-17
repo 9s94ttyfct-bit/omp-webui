@@ -93,7 +93,7 @@ test("Retry now, from omp's own commands: abort_retry ends the backoff, /retry r
 	try {
 		// A reset ten minutes away: omp sleeps for it. The provider is fine again (the page's case when omp's own timer is overdue).
 		fixture.backend.limitUntil = Date.now() + 600_000;
-		const chatsBefore = fixture.backend.chats.length;
+		const chatsBefore = turnChats(fixture.backend).length;
 		const started = chat.next("auto_retry_start");
 		await chat.prompt("retry me now");
 		expect((await started).delayMs as number).toBeGreaterThan(500_000);
@@ -110,7 +110,7 @@ test("Retry now, from omp's own commands: abort_retry ends the backoff, /retry r
 			() => messageEnds(chat.frames.seen, "assistant").some((m) => JSON.stringify(m.content).includes("STUB-REPLY")),
 			"the retried turn's reply",
 		);
-		expect(fixture.backend.chats.length - chatsBefore).toBe(1);
+		expect(turnChats(fixture.backend).length - chatsBefore).toBe(1);
 		// The conversation has one user message: /retry redid the turn, it did not add a prompt.
 		expect(
 			messageEnds(chat.frames.seen, "user").filter((m) => JSON.stringify(m.content).includes("retry me now")),

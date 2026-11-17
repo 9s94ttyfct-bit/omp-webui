@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { watchFrames } from "../support/frames.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
-import { messageEnds, usageResetWaitFixture } from "../support/usage-reset-wait.ts";
+import { messageEnds, turnChats, turnRefusals, usageResetWaitFixture } from "../support/usage-reset-wait.ts";
 import { connect, request } from "../support/ws.ts";
 
 /**
@@ -44,7 +44,7 @@ for (const signal of ["SIGTERM", "SIGKILL"] as const) {
 			const file = await chat.start();
 			const before = answers(file);
 			fixture.backend.limitUntil = Date.now() + 8000;
-			const chatsBefore = fixture.backend.chats.length;
+			const chatsBefore = turnChats(fixture.backend).length;
 			const started = chat.next("auto_retry_start");
 			await chat.prompt(`the server goes while ${signal} waits`);
 			await started;
@@ -59,8 +59,8 @@ for (const signal of ["SIGTERM", "SIGKILL"] as const) {
 
 			// omp's own timer fires at the reset, whatever the server did meanwhile; the one request that goes out is the retry.
 			await pollUntil(() => answers(file) === before + 1, "the retried turn to be in the conversation", 30_000);
-			expect(fixture.backend.chats.length - chatsBefore).toBe(1);
-			expect((fixture.backend.chats.at(-1)?.at ?? 0) >= fixture.backend.limitUntil).toBe(true);
+			expect(turnChats(fixture.backend).length - chatsBefore).toBe(1);
+			expect((turnChats(fixture.backend).at(-1)?.at ?? 0) >= fixture.backend.limitUntil).toBe(true);
 			// The wait is over, and the conversation is an ordinary idle one again.
 			await pollUntil(async () => {
 				const l = await listed(ws as WebSocket, chat.liveId);
@@ -85,7 +85,7 @@ test("the reset passes while no server runs: omp retries on its own, and the ser
 		const file = await chat.start();
 		const before = answers(file);
 		fixture.backend.limitUntil = Date.now() + 5000;
-		const chatsBefore = fixture.backend.chats.length;
+		const chatsBefore = turnChats(fixture.backend).length;
 		const started = chat.next("auto_retry_start");
 		await chat.prompt("the reset comes with nobody there");
 		await started;
@@ -99,7 +99,7 @@ test("the reset passes while no server runs: omp retries on its own, and the ser
 		const found = await listed(ws, chat.liveId);
 		expect(found?.pid).toBe(pid);
 		await pollUntil(() => answers(file) === before + 1, "the retried turn to be in the conversation", 30_000);
-		expect(fixture.backend.chats.length - chatsBefore).toBe(1);
+		expect(turnChats(fixture.backend).length - chatsBefore).toBe(1);
 		await pollUntil(async () => {
 			const l = await listed(ws as WebSocket, chat.liveId);
 			return l?.retry === undefined && l?.busy === false;
@@ -204,14 +204,14 @@ test("Quit and end ends a conversation that waits out a usage limit: its omp is 
 		await chat.prompt("end me while I wait");
 		await started;
 		const pid = (await chat.listing())?.pid as number;
-		const requestsBefore = fixture.backend.chats.length + fixture.backend.refused.length;
+		const requestsBefore = turnChats(fixture.backend).length + turnRefusals(fixture.backend);
 
 		const done = await api("/api/lives/end-kept", {});
 		expect(await done.json()).toEqual({ ended: 1 });
 		await pollUntil(() => !processExists(pid), "the waiting omp to end");
 		await pollUntil(() => Date.now() > fixture.backend.limitUntil + 500, "the wait to be over");
 		await omissionWindow();
-		expect(fixture.backend.chats.length + fixture.backend.refused.length).toBe(requestsBefore);
+		expect(turnChats(fixture.backend).length + turnRefusals(fixture.backend)).toBe(requestsBefore);
 		expect(answers(file)).toBe(before);
 	} finally {
 		chat.close();

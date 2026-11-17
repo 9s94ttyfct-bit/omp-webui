@@ -4,7 +4,7 @@ import type { LiveInfo, LiveListing } from "../../shared/protocol.ts";
 import { watchFrames } from "../support/frames.ts";
 import { pollUntil, processExists } from "../support/poll.ts";
 import { rejectionOf } from "../support/rejection.ts";
-import { messageEnds, usageResetWaitFixture } from "../support/usage-reset-wait.ts";
+import { messageEnds, turnChats, turnRefusals, usageResetWaitFixture } from "../support/usage-reset-wait.ts";
 import { connect, request } from "../support/ws.ts";
 
 const fixture = usageResetWaitFixture();
@@ -37,7 +37,7 @@ test("a user's action on a paused conversation whose retry wait is over does not
 		expect(stopped(pid)).toBe(true);
 		// The reset passes while it is paused: omp's own timer is due, and fires the moment omp runs.
 		await pollUntil(() => Date.now() > (wait?.startedAt ?? 0) + (wait?.delayMs ?? 0) + 500, "the wait to be over");
-		const chatsBefore = fixture.backend.chats.length;
+		const chatsBefore = turnChats(fixture.backend).length;
 		const framesBefore = chat.frames.seen.length;
 
 		// An action on the paused conversation (a picker, a thinking level, a rename) would run omp, and with it the retried turn.
@@ -48,7 +48,7 @@ test("a user's action on a paused conversation whose retry wait is over does not
 		).toThrow(/paused/);
 		await omissionWindow();
 		expect(stopped(pid)).toBe(true);
-		expect(fixture.backend.chats.length).toBe(chatsBefore);
+		expect(turnChats(fixture.backend).length).toBe(chatsBefore);
 		expect(chat.frames.seen.slice(framesBefore).some((f) => f.type === "agent_start")).toBe(false);
 		expect((await chat.listing())?.pausedAt).toBeTruthy();
 		expect((await chat.listing())?.retry).toMatchObject({ resumed: false });
@@ -57,7 +57,7 @@ test("a user's action on a paused conversation whose retry wait is over does not
 		const ended = chat.next("auto_retry_end");
 		await request(chat.ws, { t: "resume", liveId: chat.liveId });
 		expect((await ended).success).toBe(true);
-		expect(fixture.backend.chats.length - chatsBefore).toBe(1);
+		expect(turnChats(fixture.backend).length - chatsBefore).toBe(1);
 	} finally {
 		chat.close();
 		await api("/api/usage-reset-wait", { enabled: false });
@@ -82,18 +82,18 @@ test("closing a paused conversation whose retry wait is over does not start the 
 		await request(ended.ws, { t: "pause", liveId: ended.liveId });
 		expect(pids.every(stopped)).toBe(true);
 		await pollUntil(() => Date.now() > fixture.backend.limitUntil + 500, "the wait to be over");
-		const requestsBefore = fixture.backend.chats.length + fixture.backend.refused.length;
+		const requestsBefore = turnChats(fixture.backend).length + turnRefusals(fixture.backend);
 
 		await request(closed.ws, { t: "close", liveId: closed.liveId });
 		await pollUntil(() => !processExists(pids[0]), "the closed conversation's omp to end");
 		await omissionWindow();
-		expect(fixture.backend.chats.length + fixture.backend.refused.length).toBe(requestsBefore);
+		expect(turnChats(fixture.backend).length + turnRefusals(fixture.backend)).toBe(requestsBefore);
 
 		const done = await api("/api/lives/end-kept", {});
 		expect(await done.json()).toEqual({ ended: 1 });
 		await pollUntil(() => !processExists(pids[1]), "the ended conversation's omp to end");
 		await omissionWindow();
-		expect(fixture.backend.chats.length + fixture.backend.refused.length).toBe(requestsBefore);
+		expect(turnChats(fixture.backend).length + turnRefusals(fixture.backend)).toBe(requestsBefore);
 	} finally {
 		closed.close();
 		ended.close();
@@ -111,7 +111,7 @@ test("a user's action on a paused conversation in the middle of a long retry wai
 		await started;
 		await request(chat.ws, { t: "pause", liveId: chat.liveId });
 		const pid = (await chat.listing())?.pid as number;
-		const chatsBefore = fixture.backend.chats.length;
+		const chatsBefore = turnChats(fixture.backend).length;
 
 		const state = await request<{ isStreaming?: boolean }>(chat.ws, {
 			t: "rpc",
@@ -122,7 +122,7 @@ test("a user's action on a paused conversation in the middle of a long retry wai
 		expect(state).toBeTruthy();
 		expect(stopped(pid)).toBe(true);
 		expect((await chat.listing())?.retry).toMatchObject({ usageLimit: true, resumed: false });
-		expect(fixture.backend.chats.length).toBe(chatsBefore);
+		expect(turnChats(fixture.backend).length).toBe(chatsBefore);
 	} finally {
 		chat.close();
 		await api("/api/usage-reset-wait", { enabled: false });
@@ -156,7 +156,7 @@ test("a conversation paused during a usage-limit wait keeps the wait across a re
 		const attached = await request<LiveInfo>(ws, { t: "attach", liveId: chat.liveId });
 		expect(attached.retry).toEqual(waiting);
 		fixture.backend.limitUntil = 0;
-		const chatsBefore = fixture.backend.chats.length;
+		const chatsBefore = turnChats(fixture.backend).length;
 		const ended = frames.after("auto_retry_end");
 		const info = await request<LiveInfo>(ws, { t: "retry_now", liveId: chat.liveId });
 		expect(info.retry).toBeUndefined();
@@ -168,7 +168,7 @@ test("a conversation paused during a usage-limit wait keeps the wait across a re
 			() => messageEnds(frames.seen, "assistant").some((m) => JSON.stringify(m.content).includes("STUB-REPLY")),
 			"the retried turn's reply",
 		);
-		expect(fixture.backend.chats.length - chatsBefore).toBe(1);
+		expect(turnChats(fixture.backend).length - chatsBefore).toBe(1);
 	} finally {
 		if (ws) {
 			void request(ws, { t: "close", liveId: chat.liveId }).catch(() => {});

@@ -149,7 +149,12 @@ function lastUser(chat: StubChat): string {
 		: "";
 }
 
-const requestsTo = (model: string) => backend.chats.filter((c) => c.body.model === model);
+/**
+ * The turns asked of `model` (they offer tools). omp 18.21 also asks a model it does not know whether it reasons, with
+ * requests of its own that offer none: they are not turns (see `turnChats`, tests/support/usage-reset-wait.ts).
+ */
+const requestsTo = (model: string) =>
+	backend.chats.filter((c) => c.body.model === model && (c.body.tools?.length ?? 0) > 0);
 
 /** Every path under `dir` (links aside) that group or others can reach, with its mode. */
 function reachableBy(dir: string): string[] {
