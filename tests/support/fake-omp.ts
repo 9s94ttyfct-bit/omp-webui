@@ -57,7 +57,8 @@ export interface FakeOmpOptions {
 	};
 	/**
 	 * `cancel_subagent` parks the subagent (`get_subagents` no longer lists it) and these frames follow it `afterMs` later, as omp
-	 * (18.14) continues the turn that waited for it; `marker`: a file created once they are written.
+	 * (18.14) continues the turn that waited for it; `marker`: a file created as that time comes, before the frames are written
+	 * (after them, a server quick to take them could answer before the file was there).
 	 */
 	onCancelSubagent?: { frames: Record<string, unknown>[]; afterMs: number; marker?: string };
 	/**
@@ -170,8 +171,8 @@ for await (const chunk of Bun.stdin.stream()) {
       const follow = options.onCancelSubagent;
       subagents = subagents.filter((s) => s.id !== cmd.subagentId);
       setTimeout(() => {
-        for (const f of follow.frames) out(f);
         if (follow.marker) require("node:fs").writeFileSync(follow.marker, "");
+        for (const f of follow.frames) out(f);
       }, follow.afterMs);
     }
     // wedge: omp as a process that hangs (what restart_session is for): a thread of its own that spins forever (it keeps omp alive when
