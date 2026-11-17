@@ -96,6 +96,8 @@ test("a running conversation switches its folder from This session, restarts whe
 	expect(existsSync(join(real, ISOLATED_DIR, "ompw-env.json"))).toBe(true);
 	await expect(page.getByTestId("isolated-stale")).toBeVisible();
 	await section.getByTestId("session-isolation-restart").click();
+	// It asks once: a restart ends what the conversation started.
+	await section.getByTestId("session-isolation-restart-yes").click();
 	await expect(page.getByTestId("isolated-badge")).toBeVisible({ timeout: 30_000 });
 	await expect(page.getByTestId("isolated-stale")).toHaveCount(0);
 	await page.keyboard.press("Escape");

@@ -2975,6 +2975,7 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 				if (!(e instanceof IsolationError)) throw e;
 				return reply({ t: "reply", req: msg.req, ok: false, error: e.message, code: "isolationRefused" });
 			}
+			touch(live);
 			// This process keeps what it started with: it, and every other one in the folder, now says a restart applies it.
 			pool.refreshIsolation();
 			return reply({ t: "reply", req: msg.req, ok: true, data: live.info });

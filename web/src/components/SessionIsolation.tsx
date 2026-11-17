@@ -31,6 +31,8 @@ export default function SessionIsolation({ liveId, className }: { liveId: string
 	const [state, setState] = useState<IsolationInfo | null>(null);
 	const [asked, setAsked] = useState(0);
 	const [busy, setBusy] = useState(false);
+	// Restart now asks once, as the panel's own Restart: it ends what the conversation started (background jobs, dev servers).
+	const [confirming, setConfirming] = useState(false);
 	const infoId = useId();
 	const [infoOpen, setInfoOpen] = useState(false);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: `asked` moves after a flip: the folder is read again.
@@ -112,16 +114,40 @@ export default function SessionIsolation({ liveId, className }: { liveId: string
 						<span className="text-fg">{t("panel.controlsIsolationPaused")}</span>
 					) : idle ? (
 						<>
-							<span className="text-fg">{t("panel.controlsIsolationApply")}</span>
-							<Button
-								size="sm"
-								type="button"
-								disabled={busy || !info.sessionFile}
-								data-testid="session-isolation-restart"
-								onClick={() => void restart()}
-							>
-								{busy ? t("panel.controlsRestarting") : t("panel.controlsIsolationRestartNow")}
-							</Button>
+							<span className="text-fg">
+								{confirming
+									? busy
+										? t("panel.controlsRestarting")
+										: t("panel.controlsRestartConfirm")
+									: t("panel.controlsIsolationApply")}
+							</span>
+							{confirming ? (
+								<>
+									<Button
+										size="sm"
+										variant="danger"
+										type="button"
+										disabled={busy}
+										data-testid="session-isolation-restart-yes"
+										onClick={() => void restart().finally(() => setConfirming(false))}
+									>
+										{t("panel.controlsRestartYes")}
+									</Button>
+									<Button size="sm" type="button" disabled={busy} onClick={() => setConfirming(false)}>
+										{t("common.cancel")}
+									</Button>
+								</>
+							) : (
+								<Button
+									size="sm"
+									type="button"
+									disabled={busy || !info.sessionFile}
+									data-testid="session-isolation-restart"
+									onClick={() => setConfirming(true)}
+								>
+									{t("panel.controlsIsolationRestartNow")}
+								</Button>
+							)}
 						</>
 					) : (
 						<span className="text-fg">{t("panel.controlsIsolationWorking")}</span>
