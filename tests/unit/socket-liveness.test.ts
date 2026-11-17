@@ -159,7 +159,7 @@ test("a request of a kind that is answered at once fails when it is not, and is 
 	ws.reply(sent, { agentInvoked: true });
 });
 
-test("a prompt asks the server to say when omp has it; other requests do not", () => {
+test("a prompt (a slash command too) asks the server to say when omp has it; other requests do not", () => {
 	const { s, ws } = connected();
 	void s.rpc("L1", { type: "prompt", message: "hello" }).catch(() => {});
 	void s.rpc("L1", { type: "steer", message: "this way" }).catch(() => {});
@@ -169,7 +169,7 @@ test("a prompt asks the server to say when omp has it; other requests do not", (
 	expect(ws.sent.map((m) => [m.command?.type ?? m.t, "ack" in m ? m.ack : undefined])).toEqual([
 		["prompt", true],
 		["steer", true],
-		["prompt", undefined],
+		["prompt", true],
 		["get_state", undefined],
 		["list_lives", undefined],
 	]);
@@ -396,6 +396,8 @@ test("a command that takes as long as it takes (a !command, a slash command) is 
 		);
 	}
 	const bashReq = ws.sent[0].req as string;
+	// The slash command, a prompt, was handed to omp: the server said so.
+	ws.say({ t: "ack", req: ws.sent[1].req as string });
 	// An hour, with the connection answering whenever it is asked.
 	passWhileAnswering(ws, 3600_000);
 	await Promise.resolve();
