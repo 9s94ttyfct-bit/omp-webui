@@ -6,7 +6,6 @@ import { isRecord } from "./guards.ts";
  */
 
 export type PluginScope = "user" | "project";
-export const PLUGIN_SCOPES: readonly PluginScope[] = ["user", "project"];
 export const isPluginScope = (v: unknown): v is PluginScope => v === "user" || v === "project";
 
 /** Something the server could not read from omp, in omp's own words. */

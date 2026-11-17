@@ -91,9 +91,6 @@ const REFUSAL_TEXT: Record<RestartRefusal, { cause: string; instead: string }> =
 	},
 };
 
-/** The cause of a refusal, as the agent reads it. */
-export const refusalCause = (why: RestartRefusal): string => REFUSAL_TEXT[why].cause;
-
 /** The tool's arguments as the server keeps them, or null when they lack what the tool requires. */
 export interface RestartArgs {
 	reason: string;

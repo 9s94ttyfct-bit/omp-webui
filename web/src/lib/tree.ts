@@ -101,10 +101,3 @@ export function siblingsOf(idx: TreeIndex, entry: SessionEntry): SessionEntry[] 
 	const sibs = (idx.children.get(entry.parentId ?? null) ?? []).filter((e) => roleOf(e) === r);
 	return sibs.length ? sibs : [entry];
 }
-
-/** Number of distinct leaves (conversation branches) in the whole tree. */
-export function branchCount(idx: TreeIndex): number {
-	let n = 0;
-	for (const e of idx.byId.values()) if (!idx.children.get(e.id)?.length) n++;
-	return n;
-}

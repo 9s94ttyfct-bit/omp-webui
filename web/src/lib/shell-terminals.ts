@@ -122,12 +122,6 @@ function restore(): Promise<void> {
 	return restored;
 }
 
-/** The conversation's shell as it is now (none before its tab was first shown). */
-export function shellState(key: string): ShellState | undefined {
-	const s = shells.get(key);
-	return s ? stateOf(s) : undefined;
-}
-
 /**
  * Follow the conversation's shell: `listener` is first given what it printed so far and its state, then what it prints
  * and each change of state. Returns the way to stop following.

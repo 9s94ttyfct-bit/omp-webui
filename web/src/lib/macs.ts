@@ -26,9 +26,6 @@ interface Bridge {
 const bridge = (): Bridge | undefined =>
 	typeof window === "undefined" ? undefined : window.webkit?.messageHandlers?.ompwMacs;
 
-/** The page runs in the macOS app and the app has a window for other Macs (macOS 14 or later). */
-export const hasMacBridge = (): boolean => typeof bridge()?.postMessage === "function";
-
 /**
  * Ask the shell for `message`: whether it did it (`{ ok: true }`), or null when this page has no shell to ask (the caller then
  * does what a browser does). A shell that fails to answer, or answers anything but `{ ok: true }`, did not.
@@ -75,15 +72,6 @@ export const useMacLive = create<MacLiveStore>(() => ({ states: {} }));
 
 export function setMacLive(id: string, state: MacLive): void {
 	useMacLive.setState((s) => (s.states[id] === state ? s : { states: { ...s.states, [id]: state } }));
-}
-
-/** A Mac that was saved and is no more: its state goes with it. */
-export function forgetMacLive(id: string): void {
-	useMacLive.setState((s) => {
-		if (!(id in s.states)) return s;
-		const { [id]: _gone, ...rest } = s.states;
-		return { states: rest };
-	});
 }
 
 /** The colour of each state's dot (the app's own tones). A Mac whose state is not known has a neutral one. */

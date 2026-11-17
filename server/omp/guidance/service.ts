@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { GuidanceProblem, GuidanceTemplate, GuidanceTemplates } from "../../../shared/model-guidance.ts";
+import type { GuidanceTemplate, GuidanceTemplates } from "../../../shared/model-guidance.ts";
 import type { GuidanceHooks } from "./hooks.ts";
 import { guidancePaths, installGuidanceExtension } from "./install.ts";
 import { GuidanceSessions, guidanceFileFor, writeGuidanceFile } from "./session.ts";
@@ -76,10 +76,4 @@ export class GuidanceService implements GuidanceHooks {
 	restoreDefaults(): GuidanceTemplates {
 		return this.store.restoreDefaults();
 	}
-}
-
-/** The word a page is given for a change the store refuses (`shared/model-guidance.ts`). */
-export function guidanceProblemOf(e: unknown): GuidanceProblem {
-	const problem = (e as { problem?: unknown } | null)?.problem;
-	return typeof problem === "string" ? (problem as GuidanceProblem) : "unknown";
 }
