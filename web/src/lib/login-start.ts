@@ -4,6 +4,7 @@
  * Where neither can (a browser on a Mac, a server run from source) the switch is not shown.
  */
 
+import "../i18n/later.ts";
 import { t } from "../i18n/index.ts";
 
 /** What the switch shows: `approval` is on, waiting for the person in macOS's System Settings. */
