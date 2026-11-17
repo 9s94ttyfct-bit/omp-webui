@@ -5,7 +5,8 @@
  * surface, and statically checks that every surface exists in the web UI
  * source (route components, data-testids). The E2E spec
  * `tests/e2e/parity.spec.ts` then proves each surface in a running browser.
- * Exits non-zero below 100%.
+ * Exits non-zero below 100%, and when omp listed nothing of a kind: a changed help layout or RPC answer that hides every
+ * command, flag or slash command is not 100% of nothing.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -46,6 +47,8 @@ const rows = inventory.map((item) => {
 });
 const stale = Object.keys(FLAG_SURFACES).filter((f) => !inventory.some((i) => i.kind === "flag" && i.name === f));
 
+/** What omp always has some of: none of one is a reading that failed, not parity. */
+const KINDS = ["command", "flag", "slash"] as const;
 const byKind = new Map<string, { total: number; ok: number }>();
 for (const r of rows) {
 	const k = byKind.get(r.item.kind) ?? { total: 0, ok: 0 };
@@ -60,8 +63,10 @@ for (const r of rows) {
 		console.log(`${r.ok ? "✓" : "✗"} ${r.item.kind.padEnd(7)} ${r.item.name.padEnd(24)} ${describeSurface(r.surface)}`);
 }
 for (const [kind, k] of byKind) console.log(`${kind.padEnd(8)} ${k.ok}/${k.total}`);
+const empty = KINDS.filter((kind) => !byKind.get(kind)?.total);
+if (empty.length) console.log(`omp listed no ${empty.join(", ")}: its --help or get_available_commands was not read`);
 if (stale.length) console.log(`note: mapping entries for flags omp no longer has: ${stale.join(", ")}`);
 const ok = rows.filter((r) => r.ok).length;
-const pct = (100 * ok) / rows.length;
+const pct = rows.length ? (100 * ok) / rows.length : 0;
 console.log(`\nparity: ${ok}/${rows.length} items mapped to implemented UI surfaces (${pct.toFixed(1)}%)`);
-process.exit(ok === rows.length ? 0 : 1);
+process.exit(ok === rows.length && !empty.length ? 0 : 1);
