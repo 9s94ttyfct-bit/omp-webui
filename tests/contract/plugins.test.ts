@@ -213,7 +213,11 @@ test("a local marketplace: added, its catalog listed, a plugin installed, switch
 		// A newer version in the catalog: listed once the marketplace is updated, then upgraded.
 		writeCatalog("1.1.0");
 		expect((await job({ action: "marketplace-update", name: "testmarket" })).state).toBe("done");
-		expect(installed(await list())[0].upgrade).toEqual({ from: "1.0.0", to: "1.1.0" });
+		// omp's dry run that finds the newer version answered: when it failed (it once ran past its 30 s on a slow runner,
+		// run 41571790027), the failure is named here, not hidden behind every row's `upgrade: null`.
+		const offered = await list();
+		expect(offered.upgradeError).toBeNull();
+		expect(installed(offered)[0].upgrade).toEqual({ from: "1.0.0", to: "1.1.0" });
 		const upgraded = await job({ action: "upgrade", id: "greeter@testmarket", scope: "user" });
 		expect(upgraded.state).toBe("done");
 		const now = installed(await list())[0];
