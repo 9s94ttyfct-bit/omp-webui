@@ -55,3 +55,18 @@ test("a request rejected as 'Connection lost' is not sent after reconnecting; la
 	second.onmessage?.({ data: JSON.stringify({ t: "reply", req: "r2", ok: true, data: [] }) });
 	await expect(queued).resolves.toEqual([]);
 });
+
+test("a slash command the server took is not given back when the connection drops, as a message is not", async () => {
+	const s = new Socket();
+	s.connect();
+	const ws = FakeWS.instances.at(-1) as FakeWS;
+	ws.open();
+	const plain = s.rpc("L1", { type: "prompt", message: "hello" });
+	const slash = s.rpc("L1", { type: "prompt", message: "/compact keep the API notes" });
+	const sent = ws.sent.map((m) => JSON.parse(m));
+	expect(sent.map((m) => m.ack)).toEqual([true, true]);
+	for (const m of sent) ws.onmessage?.({ data: JSON.stringify({ t: "ack", req: m.req }) });
+	ws.drop();
+	const settled = await Promise.allSettled([plain, slash]);
+	expect(settled.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+});

@@ -49,8 +49,9 @@ export interface Bound {
  * done, `retry_now` when omp has redone the turn: no bound. A prompt (and a steer) is answered when omp has taken it
  * in, which is at once unless omp holds it: behind a compaction or a handoff for minutes, and for other reasons that are
  * omp's to add. So only the server's acknowledgement is bounded, which says the message is where it can be answered;
- * a server that never took it still ends in an error, and Send gets its draft back. Starting a goal is answered at once,
- * but it is what the user typed too, so it is acknowledged as well.
+ * a server that never took it still ends in an error, and Send gets its draft back. A slash command is acknowledged too:
+ * one that omp is running when the connection drops is not given back to be run twice. Starting a goal is answered at
+ * once, but it is what the user typed too, so it is acknowledged as well.
  */
 function replyBound(msg: Outgoing): Bound {
 	// A switch of mode, and a Force restart, end the conversation's omp and resume it: as long as a start takes.
@@ -58,10 +59,7 @@ function replyBound(msg: Outgoing): Bound {
 	if (msg.t === "retry_now") return { reply: null };
 	if (msg.t !== "rpc") return { reply: REPLY_MS };
 	const type = String(msg.command.type);
-	if (type === "prompt") {
-		return String(msg.command.message ?? "").startsWith("/") ? { reply: null } : { ack: REPLY_MS, reply: null };
-	}
-	if (type === "steer") return { ack: REPLY_MS, reply: null };
+	if (type === "prompt" || type === "steer") return { ack: REPLY_MS, reply: null };
 	if (type === "goal" && msg.command.op === "create") return { ack: REPLY_MS, reply: REPLY_MS };
 	return { reply: QUICK_COMMANDS.test(type) ? REPLY_MS : null };
 }
