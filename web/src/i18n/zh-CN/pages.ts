@@ -184,6 +184,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 		"服务器启动后不会打开页面；再次打开 omp-webui 即可看到。Windows 上它的窗口最小化在任务栏里（关掉它就会停止 omp-webui）；Linux 上它没有窗口，用 `omp-webui --stop` 停止。",
 	settingsLoginStartApproval: "macOS 正在等你在「系统设置 › 通用 › 登录项」里允许它。",
 	settingsLoginStartFailed: "无法更改开机启动：{error}",
+	settingsLoginStartUnavailable: "这里无法设置开机启动",
 	settingsHostDisks: "本机负载中的磁盘",
 	settingsHostDisksHint: "本机负载面板为哪些磁盘显示可用空间的数值块和曲线。",
 	settingsHostDisksNone: "服务器还没有报告它的磁盘。",

@@ -21,6 +21,7 @@ export const zh: Record<keyof typeof en, string> = {
 	blocked: "这个网站的通知被阻止了。请在浏览器或系统设置里允许通知，然后重试。",
 	macApp: "macOS 应用会显示自己的通知；这里用于浏览器或主屏幕应用。",
 	failed: "无法开启：{error}",
+	noSubscription: "浏览器没有给出订阅",
 	// The devices
 	devices: "会收到通知的设备",
 	none: "还没有设备。",

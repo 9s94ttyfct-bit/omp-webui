@@ -4,6 +4,8 @@
  * Where neither can (a browser on a Mac, a server run from source) the switch is not shown.
  */
 
+import { t } from "../i18n/index.ts";
+
 /** What the switch shows: `approval` is on, waiting for the person in macOS's System Settings. */
 export type LoginStartState = "on" | "off" | "approval";
 
@@ -56,6 +58,6 @@ export async function loadLoginStart(): Promise<LoginStartAnswer | null> {
 export async function setLoginStart(on: boolean): Promise<LoginStartAnswer> {
 	const app = bridge();
 	const answer = app ? fromApp(await app.postMessage({ type: "set", on })) : await server(on);
-	if (!answer) throw new Error("Start at login is not available here");
+	if (!answer) throw new Error(t("pages.settingsLoginStartUnavailable"));
 	return answer;
 }

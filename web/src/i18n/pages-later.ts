@@ -170,6 +170,7 @@ export const en = {
 		"The server starts without opening its page; open omp-webui to see it. On Windows its window waits minimized in the taskbar (closing it stops omp-webui); on Linux it has no window, and `omp-webui --stop` stops it.",
 	settingsLoginStartApproval: "macOS waits for you to allow it in System Settings › General › Login Items.",
 	settingsLoginStartFailed: "Start at login could not be changed: {error}",
+	settingsLoginStartUnavailable: "starting at login is not available here",
 	settingsHostDisks: "Disks in Host load",
 	settingsHostDisksHint: "Which disks the Host load pane shows a free-space tile and graph for.",
 	settingsHostDisksNone: "The server has not told its disks yet.",

@@ -7,7 +7,7 @@ import {
 	type PushSubscribed,
 	type PushTested,
 } from "@shared/push.ts";
-import { useLang } from "../i18n/index.ts";
+import { t, useLang } from "../i18n/index.ts";
 import { ApiError } from "./api.ts";
 import { setNotifications } from "./attention.ts";
 import { pushDevice, rememberPushDevice } from "./push-presence.ts";
@@ -106,7 +106,7 @@ export async function enablePush(preview = false): Promise<void> {
 		applicationServerKey: key as BufferSource,
 	});
 	const json = subscription.toJSON();
-	if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) throw new Error("The browser gave no subscription");
+	if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) throw new Error(t("push.noSubscription"));
 	const device = pushDevice()?.device ?? newDeviceName();
 	const made = await pushApi.subscribe({
 		subscription: { endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } },

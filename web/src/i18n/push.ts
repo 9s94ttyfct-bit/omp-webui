@@ -28,6 +28,7 @@ export const en = {
 		"Notifications are blocked for this site. Allow them in the browser's or the system's settings, then try again.",
 	macApp: "The macOS app shows its own notifications; this is for a browser or a Home Screen app.",
 	failed: "Could not turn it on: {error}",
+	noSubscription: "the browser gave no subscription",
 	// The devices
 	devices: "Devices that are notified",
 	none: "No device yet.",
