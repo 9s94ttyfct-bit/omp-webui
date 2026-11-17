@@ -3,8 +3,8 @@ import { useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
 import { errorText } from "../lib/error-text.ts";
-import { socket } from "../lib/ws.ts";
-import { attachLiveForFile, useApp } from "../store/app.ts";
+import { forceRestart } from "../lib/force-restart.ts";
+import { useApp } from "../store/app.ts";
 import { Button } from "./ui.tsx";
 
 /**
@@ -25,9 +25,8 @@ export default function SessionRestart({ liveId }: { liveId: string }) {
 	const restart = async () => {
 		setBusy(true);
 		try {
-			const answer = await socket.request<{ liveId: string }>({ t: "force_restart", liveId });
 			// The conversation is on another process now: the page listens to it and shows it.
-			if (info.sessionFile) await attachLiveForFile(info.sessionFile, answer.liveId);
+			await forceRestart(liveId);
 		} catch (e) {
 			toast("error", t("panel.controlsRestartFailed", { error: errorText(e) }));
 		} finally {

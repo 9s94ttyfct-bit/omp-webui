@@ -55,6 +55,8 @@ const SessionGuard = lazy(() => import("./SessionGuard.tsx"));
 const SessionMode = lazy(() => import("./SessionMode.tsx"));
 // The computers the conversation may run commands on (`remote_run`): a chunk of its own, loaded with the panel.
 const SessionRemote = lazy(() => import("./SessionRemote.tsx"));
+// The isolated environment of the conversation's folder: New chat's switch, for a conversation that runs already.
+const SessionIsolation = lazy(() => import("./SessionIsolation.tsx"));
 // Force restart: ends the conversation's omp with everything it started and goes on in a fresh one (`restart_session`'s path).
 const SessionRestart = lazy(() => import("./SessionRestart.tsx"));
 
@@ -1014,6 +1016,13 @@ export function SessionControls({
 									void send({ type: "set_cache_warming", mode: v }, t("panel.controlsToastCacheWarming"))
 								}
 							/>
+							{/* The folder's isolated environment: switched rarely, after the conversation started; the header's
+							    "Restart to apply" is where a change waits to be applied. */}
+							{id ? (
+								<Suspense fallback={null}>
+									<SessionIsolation liveId={id} className="py-1.5" />
+								</Suspense>
+							) : null}
 						</div>
 					) : null}
 					{id ? (

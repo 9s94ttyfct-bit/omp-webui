@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { pollUntil } from "../support/poll.ts";
+import { proxiedClient } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -87,6 +88,42 @@ test("the home folder cannot be made isolated, and the reason comes back", async
 	expect(state).toMatchObject({ root: null, refused: "protected" });
 	ws.close();
 }, 60_000);
+
+test("a running conversation's folder is switched from This session: the process says a restart applies it; a remote page and the home folder are refused", async () => {
+	const folder = join(s.work, "iso-later");
+	mkdirSync(folder, { recursive: true });
+	const real = realpathSync(folder);
+	const ws = await connect(s);
+	const live = await request<LiveInfo>(ws, { t: "open", target: { kind: "new", cwd: folder } });
+	expect(live.isolated).toBeUndefined();
+
+	// A page that is not the person's own changes nothing.
+	const phone = await proxiedClient(s).socket();
+	if (!phone) throw new Error("the proxied page could not connect");
+	await expect(request(phone, { t: "set_isolation", liveId: live.liveId, on: true })).rejects.toThrow(
+		/switched on the computer omp-webui runs on/,
+	);
+	phone.close();
+	expect(existsSync(join(real, ".ompw-env", "ompw-env.json"))).toBe(false);
+
+	// The person's page switches the folder on: the process keeps what it started with and says a restart applies it.
+	const after = await request<LiveInfo>(ws, { t: "set_isolation", liveId: live.liveId, on: true });
+	expect(existsSync(join(real, ".ompw-env", "ompw-env.json"))).toBe(true);
+	expect(after.isolationStale).toBe(true);
+	expect((await listed(ws, live.liveId))?.isolationStale).toBe(true);
+	expect(await env(ws, live.liveId, "CARGO_HOME")).not.toContain(".ompw-env");
+	// Switched off again, the folder is what the process has: nothing to apply.
+	const back = await request<LiveInfo>(ws, { t: "set_isolation", liveId: live.liveId, on: false });
+	expect(back.isolationStale).toBeUndefined();
+	await request(ws, { t: "close", liveId: live.liveId }).catch(() => {});
+
+	const home = await request<LiveInfo>(ws, { t: "open", target: { kind: "new", cwd: s.home } });
+	await expect(request(ws, { t: "set_isolation", liveId: home.liveId, on: true })).rejects.toThrow(
+		/cannot have an isolated environment/,
+	);
+	await request(ws, { t: "close", liveId: home.liveId }).catch(() => {});
+	ws.close();
+}, 120_000);
 
 test("the Terminal tab of an isolated folder has the variables, with the project's programs first after the login shell's startup", async () => {
 	const folder = join(s.work, "iso-terminal");

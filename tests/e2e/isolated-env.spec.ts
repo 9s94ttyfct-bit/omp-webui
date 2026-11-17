@@ -69,6 +69,54 @@ test("New chat's switch makes the folder isolated, its conversation is marked, a
 	await expect(page.getByTestId("isolated-badge")).toHaveCount(0);
 });
 
+test("a running conversation switches its folder from This session, restarts when the person says, and is isolated then; the header's Restart to apply switches back", async ({
+	page,
+}) => {
+	const { folder, real } = freshFolder("iso-later");
+	await page.goto(newChatIn(folder));
+	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
+	const composer = page.getByTestId("composer");
+	const echo = async (tag: string) => {
+		await composer.fill(`!echo "${tag}:$OMPW_ISOLATED_ENV."`);
+		await composer.press("Enter");
+	};
+	await echo("before");
+	await expect(page.getByText("before:.", { exact: true })).toBeVisible({ timeout: 30_000 });
+	await expect(page.getByTestId("isolated-badge")).toHaveCount(0);
+
+	// This session's switch (under Advanced): the folder is switched at once, and the process, idle, is offered a restart now.
+	await page.getByTestId("session-controls").click();
+	const advanced = page.getByTestId("session-controls-advanced");
+	if ((await advanced.getAttribute("aria-expanded")) !== "true") await advanced.click();
+	const section = page.getByTestId("session-isolation");
+	const toggle = section.getByTestId("isolation-toggle");
+	await expect(toggle).toHaveAttribute("aria-checked", "false");
+	await toggle.click();
+	await expect(toggle).toHaveAttribute("aria-checked", "true");
+	expect(existsSync(join(real, ISOLATED_DIR, "ompw-env.json"))).toBe(true);
+	await expect(page.getByTestId("isolated-stale")).toBeVisible();
+	await section.getByTestId("session-isolation-restart").click();
+	await expect(page.getByTestId("isolated-badge")).toBeVisible({ timeout: 30_000 });
+	await expect(page.getByTestId("isolated-stale")).toHaveCount(0);
+	await page.keyboard.press("Escape");
+	await echo("after");
+	await expect(page.getByText(`after:${join(real, ISOLATED_DIR)}.`, { exact: true })).toBeVisible({ timeout: 30_000 });
+
+	// Switched off again: the header says a restart applies it, and restarts when asked.
+	await page.getByTestId("session-controls").click();
+	// The fold stays as it was left.
+	await expect(advanced).toHaveAttribute("aria-expanded", "true");
+	await toggle.click();
+	await expect(toggle).toHaveAttribute("aria-checked", "false");
+	await page.keyboard.press("Escape");
+	await page.getByTestId("isolated-stale").click();
+	await page.getByTestId("isolated-stale-restart").click();
+	await expect(page.getByTestId("isolated-stale")).toHaveCount(0, { timeout: 30_000 });
+	await expect(page.getByTestId("isolated-badge")).toHaveCount(0);
+	await echo("off");
+	await expect(page.getByText("off:.", { exact: true })).toBeVisible({ timeout: 30_000 });
+});
+
 test("New chat's switch cannot turn the home folder isolated, and says why", async ({ page }) => {
 	await page.goto(newChatIn(process.env.OMPW_E2E_HOME as string));
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });

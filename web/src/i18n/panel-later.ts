@@ -249,6 +249,16 @@ export const en = {
 	controlsRestarting: "Restarting…",
 	controlsRestartFailed: "Could not restart: {error}",
 	controlsRestartPaused: "A paused conversation cannot be restarted. Resume it first.",
+	// The isolated environment of the conversation's folder (`SessionIsolation`)
+	controlsIsolationTitle: "Isolated environment",
+	controlsIsolationHint:
+		"Keeps what the project's tools install and download in its folder. It is the folder's: every conversation there follows, and a running one applies a change when it restarts.",
+	controlsIsolationApply: "Applies when this conversation restarts.",
+	controlsIsolationRestartNow: "Restart now",
+	controlsIsolationWorking:
+		"Applies when this conversation restarts: once the reply has finished, click Restart to apply above the conversation.",
+	controlsIsolationPaused: "Applies when this conversation restarts: resume it first.",
+	controlsIsolationFailed: "Could not switch the isolated environment: {error}",
 	controlsFastFamily: "Fast mode ({provider})",
 	controlsFastNoTier: "This conversation's model has no service tier for fast mode, so there is no default to set.",
 	controlsHelpCost: "Cost and risk",

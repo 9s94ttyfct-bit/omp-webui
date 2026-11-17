@@ -439,6 +439,13 @@ export type ClientMessage =
 	 */
 	| { t: "force_restart"; req: string; liveId: string }
 	/**
+	 * Switch the isolated environment of the folder this conversation works in (This session), as New chat's switch does for a
+	 * new one: it is the folder's, so every conversation there is told (`LiveInfo.isolationStale`). The running process keeps
+	 * the variables it started with until it is restarted (`force_restart`). From the person's own page only. Replies with its
+	 * `LiveInfo`.
+	 */
+	| { t: "set_isolation"; req: string; liveId: string; on: boolean }
+	/**
 	 * Switch this conversation to the global preset `name`: its model and the roles its subagents resolve change for this
 	 * conversation only, and omp's global config is left as it is. Replies with its `LiveInfo`.
 	 */

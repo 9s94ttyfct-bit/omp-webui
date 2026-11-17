@@ -2960,6 +2960,25 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 			const next = await restarts.forceRestart(live);
 			return reply({ t: "reply", req: msg.req, ok: true, data: { liveId: next.info.liveId } });
 		}
+		case "set_isolation": {
+			const live = pool.get(msg.liveId);
+			if (!live) return reply({ t: "reply", req: msg.req, ok: false, error: "Live session not found" });
+			if (typeof msg.on !== "boolean") return reply({ t: "reply", req: msg.req, ok: false, error: "Bad switch" });
+			// The folder's, as New chat's switch: it changes every conversation there, so it is the person's own page's to change.
+			if (!isOwnerPage(ws.data.remote, ws.data.local))
+				return reply({ t: "reply", req: msg.req, ok: false, error: ISOLATION_NOT_HERE });
+			if (!ISOLATION_SUPPORTED)
+				return reply({ t: "reply", req: msg.req, ok: false, error: "Isolated environments are not offered here" });
+			try {
+				setIsolated(live.info.cwd, msg.on, await deleteCleanup.isolationContext());
+			} catch (e) {
+				if (!(e instanceof IsolationError)) throw e;
+				return reply({ t: "reply", req: msg.req, ok: false, error: e.message, code: "isolationRefused" });
+			}
+			// This process keeps what it started with: it, and every other one in the folder, now says a restart applies it.
+			pool.refreshIsolation();
+			return reply({ t: "reply", req: msg.req, ok: true, data: live.info });
+		}
 		case "model_preset": {
 			const live = pool.get(msg.liveId);
 			if (!live) return reply({ t: "reply", req: msg.req, ok: false, error: "Live session not found" });
