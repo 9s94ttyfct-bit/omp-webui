@@ -12,6 +12,7 @@ export const zh: Record<keyof typeof en, string> = {
 	sidebarSearchHint: "匹配结果：↑↓ 移动，Enter 打开",
 	sidebarSearchCount: "{n} 个结果",
 	sidebarInMessages: "消息中",
+	sidebarRelated: "语义相关",
 	sidebarAlsoMatching: "相近的结果",
 	navFold: "把页面收成一行图标",
 	navUnfold: "显示页面名称",

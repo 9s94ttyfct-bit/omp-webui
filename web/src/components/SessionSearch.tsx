@@ -1,4 +1,5 @@
 import { SEARCH_LIMIT_MAX, type SearchHit, type SessionSummary } from "@shared/protocol.ts";
+import type { SemanticHit } from "@shared/semantic.ts";
 import { type RefObject, useEffect, useMemo, useState } from "react";
 import { useT } from "../i18n/index.ts";
 import { api } from "../lib/api.ts";
@@ -105,6 +106,29 @@ export function SessionSearch({
 			stop.abort();
 		};
 	}, [query, limit, attempt]);
+	// What the conversations are about (semantic search, when it is on): asked beside the words, a page of conversations; a
+	// server where it is off answers nothing at once. Its answer may take a moment more (the model may have to start), and
+	// the list does not wait for it: the Related group comes when it does. Its code is loaded on the first search.
+	const [semantic, setSemantic] = useState<{ query: string; hits: SemanticHit[] } | null>(null);
+	useEffect(() => {
+		if ([...query].length < CONTENT_MIN) return;
+		const stop = new AbortController();
+		const timer = setTimeout(() => {
+			import("../lib/semantic-api.ts")
+				.then(({ semanticApi }) => semanticApi.search(query, CONTENT_PAGE, stop.signal))
+				.then(
+					(hits) => setSemantic({ query, hits }),
+					// Not on, or not answering: the words' matches are the list.
+					() => {
+						if (!stop.signal.aborted) setSemantic({ query, hits: [] });
+					},
+				);
+		}, CONTENT_DEBOUNCE_MS);
+		return () => {
+			clearTimeout(timer);
+			stop.abort();
+		};
+	}, [query]);
 	/** The answer for what is typed now: one for an earlier query is not this one's (the list would jump). */
 	const current = found && found.query === query && [...query].length >= CONTENT_MIN ? found : null;
 	/** The conversations the filters keep whatever was typed: a content match outside them is not listed. */
@@ -119,6 +143,19 @@ export function SessionSearch({
 				: { sessions: [], hits: new Map() },
 		[current, scope, ranked],
 	);
+	/** Semantic search's conversations that are not listed above already (by name, or by what was said in them). */
+	const related = useMemo(
+		() =>
+			semantic && semantic.query === query && [...query].length >= CONTENT_MIN
+				? contentMatches(
+						semantic.hits,
+						scope,
+						new Set([...ranked.map((r) => r.session.file), ...content.sessions.map((s) => s.file)]),
+					)
+				: { sessions: [], hits: new Map() },
+		[semantic, query, scope, ranked, content],
+	);
+	const listed = ranked.length + content.sessions.length + related.sessions.length;
 	/** The server found more conversations than were asked for: "More results" asks for the next page. */
 	const more = current?.more === true;
 	/** As many as one search answers are shown, and there are more: a narrower search finds the rest. */
@@ -134,9 +171,10 @@ export function SessionSearch({
 			searching,
 			loose: new Set(searching ? ranked.filter((r) => !r.positions.length).map((r) => r.session.file) : []),
 			content: searching ? content.sessions : [],
-			hits: searching ? content.hits : new Map(),
+			related: searching ? related.sessions : [],
+			hits: searching ? new Map([...related.hits, ...content.hits]) : new Map(),
 		});
-	}, [ranked, searching, content, onResults]);
+	}, [ranked, searching, content, related, onResults]);
 	// A date range is read against the clock: the hour turning over changes what "today" and "7 days" keep.
 	useEffect(() => {
 		if (range === "all") return;
@@ -162,7 +200,7 @@ export function SessionSearch({
 							setFilter("");
 						}
 						// Down from the field is into the results: the first one, focused, so the arrows and Enter walk them.
-						if (e.key === "ArrowDown" && filter.trim() !== "" && ranked.length + content.sessions.length) {
+						if (e.key === "ArrowDown" && filter.trim() !== "" && listed) {
 							e.preventDefault();
 							focusFirst.current?.();
 						}
@@ -180,7 +218,7 @@ export function SessionSearch({
 					data-testid="session-search-status"
 					className="flex items-center justify-between gap-2 px-3 pt-1.5 text-xs text-faint"
 				>
-					<span>{t("shell.sidebarSearchCount", { n: ranked.length + content.sessions.length })}</span>
+					<span>{t("shell.sidebarSearchCount", { n: listed })}</span>
 					{pendingContent ? (
 						<span className="truncate" data-testid="session-search-pending">
 							{t("shell.sidebarSearchingMessages")}
@@ -212,7 +250,7 @@ export function SessionSearch({
 						>
 							{t("shell.sidebarSearchMore")}
 						</button>
-					) : ranked.length + content.sessions.length > 0 ? (
+					) : listed > 0 ? (
 						// The keys move through matches: with none there is nothing for them to do.
 						<span className="truncate">{t("shell.sidebarSearchHint")}</span>
 					) : null}

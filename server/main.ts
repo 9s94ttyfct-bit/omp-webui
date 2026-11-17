@@ -128,6 +128,7 @@ import type { RemoteFiles } from "./remote-run/files.ts";
 import { RemoteRun, RemoteRunError } from "./remote-run/service.ts";
 import { RemoteSignIns } from "./remote-run/sign-ins.ts";
 import { SavedMacs, savedMacsPath } from "./saved-macs.ts";
+import type { SemanticService } from "./semantic/service.ts";
 import {
 	ListPref,
 	SessionActions,
@@ -1181,6 +1182,30 @@ function migrateService(): Promise<MigrateService> {
 	})();
 	return migrating;
 }
+
+/**
+ * Semantic search (Settings › Conversations), made on first use, and at the start when it is on (`<data dir>/semantic/on`):
+ * it carries on with an install or an index the last run did not finish. Off, nothing of it is loaded.
+ */
+let semanticLoading: Promise<SemanticService> | null = null;
+function semanticService(): Promise<SemanticService> {
+	semanticLoading ??= (async () => {
+		const { SemanticService } = await import("./semantic/service.ts");
+		const service = new SemanticService({
+			dataDir: cfg.dataDir,
+			ftsPath: store.searchDbPath,
+			describe: (files) => store.describe(files),
+		});
+		await service.resume();
+		return service;
+	})().catch((e: unknown) => {
+		semanticLoading = null;
+		throw e;
+	});
+	return semanticLoading;
+}
+if (existsSync(join(cfg.dataDir, "semantic", "on")))
+	semanticService().catch((e: unknown) => console.error("omp-webui: semantic search did not start:", e));
 
 /** The Memory page's server side, made on first use: omp's long-term memory is read and changed only when somebody asks. */
 let memoryLoading: Promise<MemoryService> | null = null;
@@ -2605,6 +2630,10 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 	}
 	if (p.startsWith("/api/migrate/")) return (await (await migrateService()).handle(req, url)) ?? fail("Not found", 404);
 	if (p === "/api/memory" || p.startsWith("/api/memory/")) return (await memoryService()).handle(req, url);
+	// Semantic search: its status and search to every page that holds the token, as the full-text search is; turning it on
+	// (a download, a process) or off (a deletion) to the person's own page alone (`SemanticService.handle`).
+	if (p === "/api/semantic" || p.startsWith("/api/semantic/"))
+		return (await semanticService()).handle(req, url, fromOwner(req));
 	// Ask agent for help (the owner's: `isOwnerRoute`, refused to any other page in `route`).
 	if (p === "/api/settings-help" || p.startsWith("/api/settings-help/"))
 		return handleSettingsHelp(req, url, settingsHelp, fromOwner(req), { json, fail });
@@ -3619,6 +3648,8 @@ function shutdown(): Promise<never> {
 			loopback?.server.stop(true);
 			// What was being sent here is stopped, and the files that were not finished are removed.
 			await folder.close();
+			// `llama-server` ends with the server; semantic search stays on, and the next start takes it up.
+			if (semanticLoading) (await semanticLoading.catch(() => null))?.stop();
 			if (remoteFilesLoading) await (await remoteFilesLoading.catch(() => null))?.close();
 			server.stop(true);
 			// The databases are closed, and say so: the next start does not look at every page of them.

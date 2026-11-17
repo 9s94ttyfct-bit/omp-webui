@@ -220,6 +220,13 @@ describe("docs/TECHNICAL.md › How it stays compatible with omp updates names",
 		// bash's, for an isolated folder's Terminal tab (server/pty.ts `keepPathInFront`: `bash --noprofile --rcfile`).
 		"--noprofile",
 		"--rcfile",
+		// llama.cpp's `llama-server`, semantic search's model server (server/semantic/runtime.ts).
+		"--embeddings",
+		"--host",
+		"--port",
+		"--api-key-file",
+		"--cache-ram",
+		"--list-devices",
 	]);
 
 	test("every flag it passes, checks for, or refuses", () => {

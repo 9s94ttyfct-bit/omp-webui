@@ -39,7 +39,12 @@ export interface SearchResults {
 	 * name match, in a group of their own.
 	 */
 	content: SessionSummary[];
-	/** The message each of `content` matched in, by file: the row shows it and opens the conversation there. */
+	/**
+	 * The conversations semantic search found by what they are about (while it is on), best first, without those listed
+	 * above them: a group of their own, after the content matches.
+	 */
+	related: SessionSummary[];
+	/** The message each of `content` and `related` matched in, by file: the row shows it and opens the conversation there. */
 	hits: ReadonlyMap<string, ContentMatch>;
 }
 

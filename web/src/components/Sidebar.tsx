@@ -192,7 +192,9 @@ export function Sidebar() {
 	const searching = results?.searching ?? false;
 	/** The conversations found by what was said in them (#717): their own group, after every name match. */
 	const content = results?.content;
-	/** The message each of `content` matched in: its row shows the line and opens the conversation there. */
+	/** The conversations semantic search found by what they are about: a group after the content matches. */
+	const related = results?.related;
+	/** The message each of `content` and `related` matched in: its row shows the line and opens the conversation there. */
 	const hits = results?.hits;
 	// The bar is fetched as soon as there is something to search: by the time the pointer reaches the field, it is there.
 	const hasSessions = sessionsLoaded && sessions.some((s) => s.messageCount > 0);
@@ -262,9 +264,13 @@ export function Sidebar() {
 	const pinnedLabel = t("shell.sidebarPinned");
 	const byNameLabel = t("shell.sidebarByName");
 	const inMessagesLabel = t("shell.sidebarInMessages");
+	const relatedLabel = t("shell.sidebarRelated");
 	const looseLabel = t("shell.sidebarAlsoMatching");
-	/** The headings a search's ranked list still draws: the looser matches' and the content matches'. */
-	const headed = useMemo(() => new Set([looseLabel, inMessagesLabel]), [looseLabel, inMessagesLabel]);
+	/** The headings a search's ranked list still draws: the looser matches', the content matches' and the related ones'. */
+	const headed = useMemo(
+		() => new Set([looseLabel, inMessagesLabel, relatedLabel]),
+		[looseLabel, inMessagesLabel, relatedLabel],
+	);
 	const loose = results?.loose;
 	const groups = useMemo(() => {
 		const named = sessionGroups({
@@ -286,6 +292,7 @@ export function Sidebar() {
 			...named,
 			...(looser.length ? [[looseLabel, looser] as [string, SessionSummary[]]] : []),
 			...(content?.length ? [[inMessagesLabel, content] as [string, SessionSummary[]]] : []),
+			...(related?.length ? [[relatedLabel, related] as [string, SessionSummary[]]] : []),
 		];
 	}, [
 		visible,
@@ -298,7 +305,9 @@ export function Sidebar() {
 		searching,
 		pinnedFolded,
 		content,
+		related,
 		inMessagesLabel,
+		relatedLabel,
 		looseLabel,
 		inProject,
 	]);
@@ -622,7 +631,7 @@ export function Sidebar() {
 					before={
 						<>
 							{!sessionsLoaded ? <SessionsPending /> : null}
-							{sessionsLoaded && !visible.length ? (
+							{sessionsLoaded && !visible.length && !content?.length && !related?.length ? (
 								firstRun ? (
 									<div className="px-4 py-8 text-center" data-testid="sidebar-onboarding">
 										<MessageSquarePlus size={22} className="mx-auto mb-2 text-accent" aria-hidden />

@@ -6,7 +6,12 @@ import { join } from "node:path";
  * missing here is found missing only when the program built without it starts it (tests/unit/server-compile.test.ts checks the list
  * against the server's `new Worker` calls).
  */
-export const SERVER_WORKERS = ["family-worker.ts", "search-index-worker.ts", "host-gpu-worker.ts"] as const;
+export const SERVER_WORKERS = [
+	"family-worker.ts",
+	"search-index-worker.ts",
+	"host-gpu-worker.ts",
+	"semantic-worker.ts",
+] as const;
 
 /**
  * The `bun build` command that compiles the server into one program, the same for every package: `entry` (server/main.ts in the

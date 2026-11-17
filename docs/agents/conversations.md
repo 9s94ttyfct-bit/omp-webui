@@ -1,7 +1,7 @@
 ---
 title: Conversations, sidebar and history
-summary: The sidebar list of conversations (grouping, filter, message search, sort, pins, archive), ⌘K search, rename, delete, branches, export, automatic titles and how a transcript is shown.
-settings: auto-title, keep-thinking, tool-timer
+summary: The sidebar list of conversations (grouping, filter, message search, semantic search, sort, pins, archive), ⌘K search, rename, delete, branches, export, automatic titles and how a transcript is shown.
+settings: auto-title, keep-thinking, tool-timer, semantic-search
 ---
 
 # Conversations, sidebar and history
@@ -19,6 +19,7 @@ settings: auto-title, keep-thinking, tool-timer
 - **Archive**: hides conversations from the main list without deleting them. *Archived · N* at the right of the list's first line opens the archived list (*All conversations* goes back); command palette *Go to › Archived conversations* opens it too. The archive is kept by omp-webui (`archived.json` in its data folder), not by omp.
 - **Select**: pick several rows (*Select all*) to Archive / Unarchive or Delete at once, after a dialog listing them.
 - **Filter**: the field at the top is a fuzzy match on conversation names (and project names), with a time range (Today, 7 days, 30 days, All time). Names that hold the query as typed come first; names that hold its letters only spread out, and conversations matched by their project's name, follow under **Also matching**. From two characters on, an **In messages** group also lists conversations whose messages contain every word typed (any order, in one message), each with the matching line; a click opens the conversation at that message. 30 conversations at a time (*More results* adds 30, up to 199). The search waits for a 250 ms pause in typing. Tool calls, tool output, thinking and subagent transcripts are not searched.
+- **Semantic search** (off by default): Settings › Conversations & files › Conversations › *Semantic search*. Turned on, it downloads once llama.cpp's official `llama-server` build for this computer (Metal on Apple silicon, Vulkan on Windows and Linux, CPU fallback) and the EmbeddingGemma 2 model (Q8_0 GGUF, about 310 MB; both pinned by size and SHA-256) into `<data dir>/semantic/`, embeds every message the full-text index holds (passages of about 1000 characters, 512-dimension vectors), and the sidebar filter then also lists, under **Related** after **In messages**, the conversations closest in meaning to what was typed (not those already listed above), each with its closest passage; a click opens the conversation at that message. Everything runs on this computer: the model server is a child process on `127.0.0.1` with a random key, started when needed and stopped after 5 minutes idle. The card shows download progress, indexing progress, the device it runs on and the disk it takes; *Turn off and delete* stops the model server and deletes `<data dir>/semantic/` (the build, the model and the index).
 - **⌘K search** (Ctrl+K elsewhere; command palette): full-text search across every message of every conversation, plus *Go to* entries (pages, Questions, Archived conversations). While the server is still indexing (first start, after an update) it says so and results may be partial.
 - **Rename**: the pencil in a conversation's header (*Rename conversation*). Done through omp (`set_session_name`).
 - **Delete**: row menu *Delete…* or Select › Delete. omp deletes the transcript and its subagent transcripts (omp's `/session delete`); it cannot be undone.
@@ -77,10 +78,15 @@ Edit a prompt or regenerate a reply to create a branch and flip between versions
 | `/api/archive` | GET, POST | token | GET: archived session files. POST `{ files: [...], archived }`. |
 | `/api/export` | POST | token | `?file=`: the conversation as a self-contained HTML download (`omp --export`, hardened by the server so opening it runs no unexpected script and loads nothing but omp's pinned viewer scripts). |
 | `/api/blob/<sha256>` | GET | token | An image or file omp stored in its blob store (`~/.omp/agent/blobs`), by its 64-hex SHA-256; cached as immutable. |
+| `/api/semantic` | GET | token | Semantic search's state: `{ state: off\|installing\|on\|failed, supported, downloadBytes, canChange, download?, index?: { indexed, total }, device?, diskBytes?, failure? }` (`canChange`: this page may turn it on or off). |
+| `/api/semantic/search` | GET | token | `q`, `conversations=N` (default 30): the conversations closest in meaning, best first, one passage each (`{ file, entryId, role, snippet, timestamp, score, title, cwd }`); `[]` while it is off. May start the model server first. 503 when the model server cannot answer. |
+| `/api/semantic/on` | POST | token (the person's own page; 403 to any other) | Turn it on: download and verify what is not there yet, then index. 409 on a computer with no build. Answers the state. |
+| `/api/semantic/off` | POST | token (the person's own page; 403 to any other) | Turn it off and delete everything it downloaded and made. Answers the state. |
 
 ## Limits and caveats
 
 - Message search needs at least two characters; it skips tool calls, tool output, thinking and subagent transcripts. Results may be partial while the index is built.
+- Semantic search is off until the person turns it on (a download of about 330 MB). The first indexing takes minutes (about 40 messages a second on an Apple M4 Pro); results are partial meanwhile. It finds conversations related in meaning, not exact words: use the filter's **In messages** for those.
 - Delete is permanent and removes subagent transcripts; it is refused while the conversation works, waits for input or is paused (stop it first) and while a terminal's omp holds it.
 - Archive and pins are different stores: archive is omp-webui's; pins are omp's and shared with the terminal.
 - `/api/family` without `view` returns the whole lineage and can be large.

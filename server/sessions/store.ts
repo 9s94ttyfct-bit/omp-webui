@@ -250,6 +250,8 @@ export class SessionStore {
 	private dependents = new Map<string, Dependents>();
 	private index: SubagentIndex;
 	private searchIndex: SearchIndex;
+	/** The full-text index's file (`index.search.db` beside the store's own), which the semantic index reads too. */
+	readonly searchDbPath: string;
 	private scanning: Promise<void> | null = null;
 	/** Every session file is to be looked at again: at the start, when the sessions dir appears, after a scan that failed. */
 	private dirtyAll = true;
@@ -302,7 +304,8 @@ export class SessionStore {
 		this.summaries = opened.summaries;
 		this.tails = opened.tails;
 		this.index = opened.index;
-		this.searchIndex = new SearchIndex(dbPath.replace(/(\.db)?$/, ".search.db"), options.searchIndex);
+		this.searchDbPath = dbPath.replace(/(\.db)?$/, ".search.db");
+		this.searchIndex = new SearchIndex(this.searchDbPath, options.searchIndex);
 		this.watch();
 	}
 
@@ -1032,12 +1035,27 @@ export class SessionStore {
 				role: h.role,
 				snippet: h.snippet,
 				timestamp: h.timestamp,
-				title: s?.title ?? s?.preview ?? null,
-				cwd: s?.cwd ?? "",
+				...this.labelOf(s),
 				...(h.more > 0 ? { more: h.more } : {}),
 			};
 		});
 		return { hits, coverage, ...(covered ? { file: covered } : {}) };
+	}
+
+	/** What a hit says of its conversation: its name (the title, or the first prompt) and folder. */
+	private labelOf(s: SessionSummary | undefined): { title: string | null; cwd: string } {
+		return { title: s?.title ?? s?.preview ?? null, cwd: s?.cwd ?? "" };
+	}
+
+	/** The name and folder of each of `files` the session list has (a conversation deleted since is not in the answer). */
+	async describe(files: readonly string[]): Promise<Map<string, { title: string | null; cwd: string }>> {
+		await this.refresh();
+		const out = new Map<string, { title: string | null; cwd: string }>();
+		for (const file of files) {
+			const s = this.summaries.get(file);
+			if (s) out.set(file, this.labelOf(s));
+		}
+		return out;
 	}
 
 	/**

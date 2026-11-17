@@ -40,6 +40,8 @@ export interface DownloadOptions {
 	/** The longest the download may go without a byte before it is given up on. */
 	idleMs?: number;
 	fetch?: typeof fetch;
+	/** The places a redirect may send the download on to: GitHub's (`redirectAllowed`) unless the caller names others. */
+	allowRedirect?: (url: URL) => boolean;
 }
 
 /** Redirects followed for one download: GitHub's asset address answers with one, and one more is allowed for the storage's. */
@@ -50,7 +52,12 @@ const MAX_REDIRECTS = 3;
  * or the download is refused. The first address was checked when the release was read; what an answer sends the download on to
  * is not, and bytes from anywhere else would be parsed by `hdiutil` before the signature is looked at.
  */
-async function fetchPinned(url: string, signal: AbortSignal, fetcher: typeof fetch): Promise<Response> {
+async function fetchPinned(
+	url: string,
+	signal: AbortSignal,
+	fetcher: typeof fetch,
+	allowed: (url: URL) => boolean,
+): Promise<Response> {
 	let at = url;
 	for (let hops = 0; ; hops++) {
 		const res = await fetcher(at, { signal, redirect: "manual" });
@@ -63,7 +70,7 @@ async function fetchPinned(url: string, signal: AbortSignal, fetcher: typeof fet
 		} catch {
 			// not an address
 		}
-		if (next === null || hops >= MAX_REDIRECTS || !redirectAllowed(next)) {
+		if (next === null || hops >= MAX_REDIRECTS || !allowed(next)) {
 			throw new UpdateError("download", { reason: "redirect", host: next?.host || "?" });
 		}
 		at = next.href;
@@ -89,7 +96,7 @@ export async function download(opts: DownloadOptions): Promise<void> {
 		rearm();
 		let res: Response;
 		try {
-			res = await fetchPinned(opts.url, signal, opts.fetch ?? fetch);
+			res = await fetchPinned(opts.url, signal, opts.fetch ?? fetch, opts.allowRedirect ?? redirectAllowed);
 		} catch (e) {
 			if (e instanceof UpdateError) throw e;
 			if (opts.signal.aborted) throw new UpdateCancelled();

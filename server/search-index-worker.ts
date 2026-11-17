@@ -12,15 +12,16 @@ import {
 	wasLeftOpen,
 } from "./db-recover.ts";
 import { dropGroupAndOther } from "./private.ts";
-import type {
-	Coverage,
-	FileCoverage,
-	FileState,
-	IndexStats,
-	Job,
-	RawHit,
-	Reply,
-	SearchRequest,
+import {
+	type Coverage,
+	type FileCoverage,
+	type FileState,
+	type IndexStats,
+	type Job,
+	type RawHit,
+	type Reply,
+	ROWS_PER_FILE,
+	type SearchRequest,
 } from "./search-index.ts";
 import { SHORT_BEFORE, SHORT_LENGTH, SNIPPET_CLOSE, SNIPPET_OPEN, shortSnippet } from "./search-snippet.ts";
 import { type LineCursor, SessionFile, yieldToLoop } from "./sessions/lines.ts";
@@ -40,8 +41,6 @@ import { parseLine, searchableText } from "./sessions/parse.ts";
  * (`compact`).
  */
 
-/** Row ids reserved per file. A file whose entries run past this simply stops being indexed there. */
-const ROWS_PER_FILE = 2 ** 24;
 /** One transaction of indexing work takes about this long, so a query is answered between two of them. */
 const BATCH_MS = 10;
 const BATCH_ROWS = 500;
@@ -185,8 +184,14 @@ function openDatabase(path: string): void {
 		if (wasLeftOpen(conn)) verify(conn);
 		markOpen(conn);
 		conn.run(
-			"CREATE TABLE IF NOT EXISTS files (fid INTEGER PRIMARY KEY AUTOINCREMENT, file TEXT NOT NULL UNIQUE, indexed INTEGER NOT NULL DEFAULT 0, tail TEXT NOT NULL DEFAULT '', seq INTEGER NOT NULL DEFAULT 0)",
+			"CREATE TABLE IF NOT EXISTS files (fid INTEGER PRIMARY KEY AUTOINCREMENT, file TEXT NOT NULL UNIQUE, indexed INTEGER NOT NULL DEFAULT 0, tail TEXT NOT NULL DEFAULT '', seq INTEGER NOT NULL DEFAULT 0, epoch INTEGER NOT NULL DEFAULT 0)",
 		);
+		// What the semantic index (`semantic-worker.ts`) reads this file by: `epoch` counts the times a file's rows were dropped
+		// to be indexed again (`reset`), so that the rows it took under the same row ids are known to be others; `id` names this
+		// file, so that one made again (a damaged one is set aside, `recover`) is not taken for it (its `fid`s start over).
+		if (!conn.query<{ name: string }, []>("SELECT name FROM pragma_table_info('files') WHERE name = 'epoch'").get())
+			conn.run("ALTER TABLE files ADD COLUMN epoch INTEGER NOT NULL DEFAULT 0");
+		conn.run("INSERT OR IGNORE INTO meta (key, value) VALUES ('id', ?)", [crypto.randomUUID()]);
 		conn.run(
 			"CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(text, entry_id UNINDEXED, role UNINDEXED, ts UNINDEXED, tokenize = 'trigram')",
 		);
@@ -311,8 +316,10 @@ async function reset(st: Indexed): Promise<boolean> {
 	stats.resets++;
 	const rows = st.seq;
 	if (!(await deleteBlock(st))) return false;
+	// The rows that come next take the same row ids: `epoch` says they are others (with `seq` back at 0, in one transaction).
 	db.transaction(() => {
 		saveFile.run(0, "", 0, st.fid);
+		db.run("UPDATE files SET epoch = epoch + 1 WHERE fid = ?", [st.fid]);
 		removed(rows);
 	})();
 	st.indexed = 0;

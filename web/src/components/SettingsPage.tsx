@@ -69,6 +69,10 @@ const UnattendedSettings = lazy(() =>
 const SleepSettings = lazy(() => import("./SleepSettings.tsx").then((m) => ({ default: m.SleepSettings })));
 // Which disks the Host load pane shows (#613); a chunk of its own, with the code that reads the host's history.
 const HostDisksSettings = lazy(() => import("./HostDisksSettings.tsx").then((m) => ({ default: m.HostDisksSettings })));
+// Semantic search: a model of this computer that finds conversations by what they are about; a chunk of its own.
+const SemanticSearchSettings = lazy(() =>
+	import("./SemanticSearchSettings.tsx").then((m) => ({ default: m.SemanticSearchSettings })),
+);
 // The quota floor (#652): holding a working conversation at a provider's quota floor; a chunk of its own, with the code that reads the figures.
 const QuotaFloorSettings = lazy(() =>
 	import("./QuotaFloorSettings.tsx").then((m) => ({ default: m.QuotaFloorSettings })),
@@ -476,6 +480,9 @@ export function SettingsPage() {
 									</p>
 								) : null}
 							</section>
+							<Suspense fallback={null}>
+								<SemanticSearchSettings />
+							</Suspense>
 							<Suspense fallback={null}>
 								<QuickPromptsSettings />
 							</Suspense>

@@ -57,6 +57,7 @@ export const en = {
 	sidebarSearchHint: "Match: ↑↓ to move, Enter to open",
 	sidebarSearchCount: "{n} matches",
 	sidebarInMessages: "In messages",
+	sidebarRelated: "Related",
 	sidebarAlsoMatching: "Also matching",
 	navFold: "Fold the pages into a row of icons",
 	navUnfold: "Show the pages with their names",

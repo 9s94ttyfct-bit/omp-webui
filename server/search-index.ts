@@ -17,6 +17,12 @@ import { WorkerDeadlineError } from "./worker-deadline.ts";
  * through the same relative URL as from source: keep both files next to `main.ts`.
  */
 
+/**
+ * Row ids the index reserves per file: a file's rows are `fid * ROWS_PER_FILE + n`, `n` their position in it (the semantic
+ * index reads them by these ranges too). A file whose entries run past this simply stops being indexed there.
+ */
+export const ROWS_PER_FILE = 2 ** 24;
+
 /** A search over the index; `q` is already trimmed and non-empty. */
 export interface SearchRequest {
 	q: string;
