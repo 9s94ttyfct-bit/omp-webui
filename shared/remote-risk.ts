@@ -1896,6 +1896,12 @@ function namesPrivateFile(w: Word, cwd: string | null, ctx: RiskContext): boolea
 
 /** The whole working tree as a git path: `.`, `./`, `:/`, `*`. */
 const wholeTree = (w: Word): boolean => /^(?:\.\/?|:\/\.?|\*)$/.test(w.text);
+/**
+ * A repository's own store, wherever it is: its `.git` (a folder, or a worktree's file), and in it the objects, the refs, the
+ * packed refs, the index, `HEAD` and the reflog. Deleting, emptying or moving one away loses every commit, branch and stash
+ * that is nowhere else (#316).
+ */
+const GIT_STORE = /(?:^|\/)\.git(?:\/(?:objects|refs|packed-refs|index|HEAD|logs)(?:\/.*)?)?$/i;
 
 // ---------------------------------------------------------------------------------------------------- Windows' shells
 
@@ -2416,6 +2422,7 @@ class Scan {
 		if (strong && (each.length !== 1 || each[0] !== w)) this.add("delete_outside");
 		for (const one of each) {
 			const abs = resolveWord(one, cwd, this.ctx);
+			if (abs !== null && GIT_STORE.test(abs)) this.add("discard");
 			if (abs === null) {
 				if (strong) {
 					this.add("delete_outside");
@@ -2442,6 +2449,7 @@ class Scan {
 		const several = each.length !== 1 || each[0] !== w;
 		for (const one of each) {
 			const abs = resolveWord(one, cwd, this.ctx);
+			if (abs !== null && GIT_STORE.test(abs)) this.add("discard");
 			if (abs === null || isProtected(abs, this.ctx) || inProject(abs, this.ctx) || inTemp(abs, this.ctx)) continue;
 			this.add("delete_outside");
 			if (several || globby(one)) this.add("mass_delete");
@@ -3131,6 +3139,11 @@ class Scan {
 				break;
 			case "worktree":
 				if (operands[0]?.text === "add" && operands[1]) this.write(operands[1], cwd);
+				// `remove --force` deletes another checkout with what is changed and untracked in it (#318): what git refuses without it.
+				if (operands[0]?.text === "remove" && (hasShort(opts, "f") || hasLong(opts, "--force"))) {
+					this.add("discard");
+					for (const t of operands.slice(1)) this.delete(t, dir, true, true);
+				}
 				break;
 			case "checkout":
 			case "switch":
@@ -3153,6 +3166,15 @@ class Scan {
 					((hasShort(opts, "d") || hasLong(opts, "--delete")) && (hasShort(opts, "f") || hasLong(opts, "--force")))
 				)
 					this.add("discard");
+				break;
+			case "update-ref":
+				// A ref deleted by plumbing (`-d`, or a `delete` line on `--stdin`), as `branch -D` deletes it (#258).
+				if (hasShort(opts, "d") || hasLong(opts, "--delete", "--stdin")) this.add("discard");
+				break;
+			case "tag":
+			case "symbolic-ref":
+				// A tag deleted, or `HEAD` itself (#258).
+				if (hasShort(opts, "d") || hasLong(opts, "--delete")) this.add("discard");
 				break;
 			case "config":
 				this.gitConfig(rest, opts, operands, cwd, depth);
@@ -3335,8 +3357,15 @@ class Scan {
 		// With no folder named, find searches the one it runs in (GNU's; `cd ~ && find -delete`).
 		if (roots.length === 0) roots.push({ text: ".", dynamic: false, subs: [] });
 		const expression = end < 0 ? [] : rest.slice(end);
+		// A search for repositories' stores (`-name .git`, `-path '*/.git'`) whose finds are deleted loses them (#316).
+		const stores = expression.some(
+			(a, n) =>
+				/^-(?:i?name|i?path|i?wholename)$/.test(expression[n - 1]?.text ?? "") &&
+				[".git", "./x/.git"].some((s) => globMatches(a.text, s)),
+		);
 		// What the search finds under its roots is deleted, not the roots themselves: only a root that is too broad matters.
 		const sweep = (recursive: boolean): void => {
+			if (stores) this.add("discard");
 			for (const r of roots) {
 				const abs = resolveWord(r, cwd, this.ctx);
 				this.delete(r, cwd, true, recursive && !(abs !== null && this.ctx.roots.includes(abs)), true);

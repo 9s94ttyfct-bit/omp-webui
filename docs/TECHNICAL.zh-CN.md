@@ -448,6 +448,8 @@ bun run start          # http://127.0.0.1:7878
 
 **解释器的输入和名字**（#412、#413）。`<` 后面的进程替换是命令的输入，和用管道接进去一样：`bash < <(curl …)`、`python3 < <(curl …)` 算 `remote_exec`，`bash < <(echo …)` 算 `dynamic_command`。作为参数交给脚本的进程替换是脚本要读的文件：`bash x.sh <(curl …)` 不询问，和 `python3 x.py <(curl …)` 一样。带版本号的解释器名字也认得（`python3.12`、`pypy3.10`、`perl5.36`、`ruby3.3`），所以 `curl … | python3.12` 算 `remote_exec`，`python3.12 -c '…'` 的代码也照常读。
 
+**`discard` 还包括**（#258、#316、#318）：用底层命令删除引用（`git update-ref -d`、`git update-ref --stdin`）、`git tag -d`/`--delete`、`git symbolic-ref -d`；删除、清空或挪走仓库自己的存储，不管它在哪（`rm -rf .git`、`rm -rf .git/objects`、`.git/refs`、`.git/packed-refs`、`.git/index`、`.git/HEAD`、`.git/logs`、`mv .git /tmp/x`、`: > .git/index`、`find . -name .git -exec rm -rf {} +`），这会一次丢掉所有没推送的提交、分支和 stash；以及 `git worktree remove -f`/`--force`，它会连同改动和未跟踪的文件删掉另一份检出，它的文件夹也按删除来读（在项目之外算 `delete_outside`）。
+
 **废纸篓**（#257）。`trash`（macOS 15 的 `/usr/bin/trash`）、trash-cli 的 `trash-put` 和 `gio trash` 把给它们的东西移到废纸篓，清空之后就无法恢复：它们和 `rm -rf` 一样算删除（经 `xargs`、`find -exec` 也算），所以 `trash ~/Documents` 算 `delete_outside` 和 `mass_delete`。`trash-empty` 和 `gio trash --empty` 算 `mass_delete`；`gio remove` 算删除。
 
 **PowerShell 用管道交给 `Remove-Item`**（#274）。不带路径的 `Remove-Item`（`ri`、`rm`、`del`…）删除管道送来的东西：前面的列举在它的文件夹下找到的一切（`Get-ChildItem <folder>`、`gci`、`ls`、`dir`、`Get-Item`，中间隔着 `Where-Object`、`Sort-Object`、`Select-Object` 也看得穿），和 `find <folder> -delete` 一样，所以 `gci $HOME\Documents | Remove-Item -Recurse` 算 `delete_outside` 和 `mass_delete`；前面是别的东西时（`Get-Content list.txt | Remove-Item`）读不出来，和 `xargs rm` 一样会询问。不带路径的 `Clear-Content`/`Clear-Item` 同样清空管道送来的东西。

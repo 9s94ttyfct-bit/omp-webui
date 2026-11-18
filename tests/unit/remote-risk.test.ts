@@ -2271,3 +2271,42 @@ describe("moving to the Trash is a delete, emptying it a mass one (#257)", () =>
 		expect(shell("trash build/old")).toEqual([]);
 	});
 });
+
+describe("what loses commits, branches and stashes that are nowhere else is discard (#258, #316, #318)", () => {
+	test.each([
+		"git update-ref -d refs/heads/main",
+		"git update-ref --stdin < cmds.txt",
+		"git tag -d v1",
+		"git tag --delete v1",
+		"git symbolic-ref -d HEAD",
+		"rm -rf .git",
+		"rm -rf /work/proj/.git",
+		"rm -rf .git/objects",
+		"rm -rf .git/refs .git/packed-refs",
+		"rm .git/index",
+		"rm -rf .git/*",
+		"mv .git /tmp/oldgit",
+		": > .git/index",
+		"find . -name .git -prune -exec rm -rf {} +",
+		"find . -path '*/.git' -delete",
+		"git worktree remove -f /work/proj/wt",
+	])("%s is discard", (command) => {
+		expect(shell(command)).toEqual(["discard"]);
+	});
+
+	test("a forced worktree removal outside the project deletes there too", () => {
+		expect(shell("git worktree remove --force ../wt")).toEqual(["delete_outside", "discard"]);
+	});
+
+	test.each([
+		"git tag v2",
+		"git tag -l",
+		"git worktree remove wt2",
+		"rm -rf .github",
+		"rm .gitignore",
+		"rm .git/hooks/pre-commit.sample",
+		"find . -name .git -print",
+	])("%s is not asked about", (command) => {
+		expect(shell(command)).toEqual([]);
+	});
+});
