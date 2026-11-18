@@ -1246,6 +1246,16 @@ function knownVars(ctx: RiskContext): Record<string, string> {
 }
 const RESERVED = table("if", "then", "else", "elif", "do", "while", "until", "!", "time", "coproc", "exec", "builtin");
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+/** An assignment of a variable whose value is a command line a program runs: git's, an editor, a pager, an askpass (#221). */
+const COMMAND_VARIABLE =
+	/^(?:GIT_(?:SSH_COMMAND|SSH|PAGER|EDITOR|SEQUENCE_EDITOR|EXTERNAL_DIFF|ASKPASS|PROXY_COMMAND)|SSH_ASKPASS|SUDO_ASKPASS|EDITOR|VISUAL|PAGER|MANPAGER|LESSOPEN|LESSCLOSE|BROWSER)=([\s\S]+)$/;
+/**
+ * A git setting whose value is a command line git runs (`git -c key=…`, `git config key …`, #221): an alias that starts with
+ * `!`, the pager, editor, ssh command, file-system monitor and askpass, an external diff, a textconv, a filter, a merge driver, a
+ * diff or merge tool, a credential helper, gpg's program, the programs a remote is fetched or pushed with. Keys have no case.
+ */
+const GIT_COMMAND_KEY =
+	/^(?:core\.(?:pager|editor|sshcommand|fsmonitor|askpass)|sequence\.editor|diff\.external|diff\.[^=]+\.(?:textconv|command)|filter\.[^=]+\.(?:clean|smudge|process)|merge\.[^=]+\.driver|(?:diff|merge)tool\.[^=]+\.cmd|pager\.[^=]+|gpg(?:\.[^=]+)?\.program|credential(?:\.[^=]+)?\.helper|uploadpack\.packobjectshook|remote\.[^=]+\.(?:uploadpack|receivepack))$/i;
 
 /** What a command runs once its wrappers are looked through (`env X=1 nice -n 5 rm …` runs `rm`), and what it is given. */
 interface Command {
@@ -1261,11 +1271,14 @@ interface Command {
 }
 
 /**
- * The programs that run another: the options that take a value, how many plain words come before the command, the options
- * whose value is a command line the program hands a shell (`script -c '…'`, `flock x -c '…'`), and whether a lone word
- * after its options is such a line (`watch 'rm …'`, `parallel 'rm {}' ::: …`).
+ * The programs that run another: the options that take a value (and the short letters that take one at the end of a
+ * cluster, `screen -dmS name …`), how many plain words come before the command, the options whose value is a command line
+ * the program hands a shell (`script -c '…'`, `flock x -c '…'`), and whether a lone word after its options is such a line
+ * (`watch 'rm …'`, `parallel 'rm {}' ::: …`).
  */
-const WRAPPERS: Readonly<Record<string, { value: Table; positional: number; script?: Table; line?: true }>> = {
+const WRAPPERS: Readonly<
+	Record<string, { value: Table; letters?: string; positional: number; script?: Table; line?: true }>
+> = {
 	env: { value: table("-u", "-C", "-P"), positional: 0, script: table("-S", "--split-string") },
 	nohup: { value: table(), positional: 0 },
 	command: { value: table(), positional: 0 },
@@ -1313,6 +1326,12 @@ const WRAPPERS: Readonly<Record<string, { value: Table; positional: number; scri
 	// One program that is many (`busybox rm -rf …`): its first word is the one it acts as.
 	busybox: { value: table(), positional: 0 },
 	toybox: { value: table(), positional: 0 },
+	// A terminal multiplexer starts its command in a session of its own (#221): `screen -dmS w cmd …`, `tmux new -d 'cmd'`
+	// (its subcommand is the plain word before), `tmux send-keys -t w 'cmd' Enter`; an `expect` script's `spawn cmd …`.
+	screen: { value: table("-S", "-c", "-e", "-p", "-T", "-h", "-t", "-X", "-Logfile"), letters: "Sceph", positional: 0 },
+	tmux: { value: table("-L", "-S", "-f", "-c", "-s", "-n", "-t", "-x", "-y", "-e", "-F"), positional: 1, line: true },
+	expect: { value: table("-f"), positional: 0, script: table("-c") },
+	spawn: { value: table(), positional: 0 },
 };
 
 /** `sh -c <line>`: what a wrapper that hands a shell a command line runs. */
@@ -1346,7 +1365,7 @@ function commandOf(words: readonly Word[]): Command | null {
 			const joined =
 				wrapper.script && Object.keys(wrapper.script).find((o) => o.startsWith("--") && t.startsWith(`${o}=`));
 			if (joined) return shellLine({ ...words[j], text: t.slice(joined.length + 1) }, viaXargs);
-			if (listed(wrapper.value, t)) j += 2;
+			if (listed(wrapper.value, t) || (wrapper.letters?.includes(t.slice(-1)) && /^-[A-Za-z]{2,}$/.test(t))) j += 2;
 			else if (t.startsWith("-") && t.length > 1) j++;
 			else if (name === "env" && ASSIGNMENT.test(t)) j++;
 			else if (positional > 0) {
@@ -2371,10 +2390,17 @@ class Scan {
 			else if (/^(>|>>|>\||&>|&>>|<>)$/.test(r.op)) this.write(r.target, cwd);
 			for (const sub of r.target.subs) this.script(sub, cwd, depth + 1);
 		}
-		for (const w of simple.words) {
+		// The words that are assignments: those before the command word, and what `export`, `env`, `declare` … are given.
+		const head = simple.words.findIndex((w) => !listed(RESERVED, w.text) && !ASSIGNMENT.test(w.text));
+		const assigns = head < 0 || /^(?:export|env|declare|typeset|local|readonly)$/.test(simple.words[head].text);
+		simple.words.forEach((w, k) => {
 			if (namesPrivateFile(w, cwd, this.ctx)) this.add("protected");
 			for (const sub of w.subs) this.script(sub, cwd, depth + 1);
-		}
+			// A variable whose value is a command line a program runs (`GIT_SSH_COMMAND='…' git fetch`, `EDITOR='…' git commit`,
+			// `export PAGER=…`, #221): read as one.
+			const held = k < head || assigns ? COMMAND_VARIABLE.exec(w.text) : null;
+			if (held) this.script(held[1].replace(/^\|{1,2}/, ""), cwd, depth + 1);
+		});
 		return cmd ? this.command(cmd, simple.body, cwd, depth) : cwd;
 	}
 
@@ -2472,7 +2498,7 @@ class Scan {
 
 		switch (name) {
 			case "git":
-				this.git(args, cwd);
+				this.git(args, cwd, depth);
 				break;
 			case "rm":
 			case "unlink":
@@ -2526,6 +2552,18 @@ class Scan {
 				// `--remove-source-files` removes what it copied.
 				if (opts.includes("--remove-source-files"))
 					for (const src of operands.slice(0, -1)) if (!remote(src)) this.delete(src, cwd, true, true, true);
+				// `-e '<command>'` (also at the end of a cluster, `-avze '…'`), `--rsh=…`: the remote shell it starts, here (#221).
+				for (let i = 0; i < args.length; i++) {
+					const t = args[i].text;
+					if (t === "--") break;
+					const line =
+						/^-[A-Za-z]*e$/.test(t) || t === "--rsh"
+							? args[++i]?.text
+							: t.startsWith("--rsh=")
+								? t.slice(6)
+								: undefined;
+					if (line !== undefined) this.script(line, cwd, depth + 1);
+				}
 				break;
 			}
 			case "dd":
@@ -2564,7 +2602,27 @@ class Scan {
 				for (const v of optionValues(args, ["-d"], [])) this.write(v, cwd);
 				break;
 			case "tar":
-				this.tar(args, opts, operands, cwd);
+				this.tar(args, opts, operands, cwd, depth);
+				break;
+			case "zip":
+				// `-TT '<command>'`: what it tests the archive with (#221).
+				for (const v of optionValues(args, ["-TT"], ["--unzip-command"])) this.script(v.text, cwd, depth + 1);
+				break;
+			case "vim":
+			case "vi":
+			case "nvim":
+			case "view":
+			case "vimdiff":
+			case "gvim":
+			case "mvim":
+			case "ex":
+				this.vim(args, cwd, depth);
+				break;
+			case "awk":
+			case "gawk":
+			case "mawk":
+			case "nawk":
+				this.awk(args, cwd, depth);
 				break;
 			default:
 		}
@@ -2709,7 +2767,17 @@ class Scan {
 		}
 	}
 
-	private tar(args: Word[], opts: string[], operands: Word[], cwd: string | null): void {
+	private tar(args: Word[], opts: string[], operands: Word[], cwd: string | null, depth: number): void {
+		// What GNU tar runs (#221): the compressor (`-I`, `--use-compress-program`), what each member is piped to, the scripts
+		// run between volumes, the remote shell, and a checkpoint's `exec=` action.
+		const commands = optionValues(
+			args,
+			["-I", "-F"],
+			["--use-compress-program", "--to-command", "--info-script", "--new-volume-script", "--rsh-command"],
+		);
+		for (const v of commands) this.script(v.text, cwd, depth + 1);
+		for (const v of optionValues(args, [], ["--checkpoint-action"]))
+			if (v.text.startsWith("exec=")) this.script(v.text.slice(5), cwd, depth + 1);
 		// `tar xzf a.tgz` (the first operand holds the options) and `tar -xzf a.tgz`.
 		const old = operands[0] && /^[cxtuAdrf][A-Za-z0-9]*$/.test(operands[0].text) ? operands[0].text : "";
 		const cluster = old || opts.filter((o) => /^-[^-]/.test(o)).join("");
@@ -2720,14 +2788,92 @@ class Scan {
 		if (archive && archive.text !== "-") this.write(archive, cwd);
 	}
 
-	private git(args: Word[], cwd: string | null): void {
+	/**
+	 * The editor commands vim is started with (`-c '…'`, `--cmd '…'`, `+'…'`, #221): a shell command in them (`:!cmd`,
+	 * `:silent !cmd`, `:r !cmd`, `:w !cmd`, `system('cmd')`) is read; the `!` takes the rest of the line, `|` included.
+	 */
+	private vim(args: Word[], cwd: string | null, depth: number): void {
+		const commands = [
+			...optionValues(args, ["-c"], ["--cmd"]).map((v) => v.text),
+			...args.filter((a) => a.text.startsWith("+")).map((a) => a.text.slice(1)),
+		];
+		for (const command of commands) {
+			const parts = command.split("|");
+			for (let k = 0; k < parts.length; k++) {
+				const bang = /^[\s:]*(?:(?:sil(?:ent)?!?|r(?:ead)?|w(?:rite)?)\s*)?!([\s\S]*)$/.exec(parts[k]);
+				if (bang) {
+					this.script([bang[1], ...parts.slice(k + 1)].join("|"), cwd, depth + 1);
+					break;
+				}
+				for (const m of parts[k].matchAll(/\bsystem\s*\(\s*(["'])((?:(?!\1).)*)\1/g)) this.script(m[2], cwd, depth + 1);
+			}
+		}
+	}
+
+	/**
+	 * An awk program (the first operand, or `-e`/`--source`; not one from a file) and the command lines it runs (#221):
+	 * `system("…")`, `print … | "…"`, `"…" | getline`. One worked out when it runs is `shell_out`, as in any program's code;
+	 * what it prints into a shell (`print | "sh"`) is a script put together when it runs.
+	 */
+	private awk(args: Word[], cwd: string | null, depth: number): void {
+		const programs: string[] = [];
+		let fromFile = false;
+		let i = 0;
+		for (; i < args.length; i++) {
+			const t = args[i].text;
+			if (t === "--") {
+				i++;
+				break;
+			}
+			if (t === "-e" || t === "--source") {
+				if (args[i + 1]) programs.push(args[++i].text);
+			} else if (t === "-f" || t === "--file") {
+				fromFile = true;
+				i++;
+			} else if (t === "-F" || t === "-v" || t === "--assign" || t === "--field-separator") i++;
+			else if (!t.startsWith("-") || t === "-") break;
+		}
+		if (!fromFile && programs.length === 0 && args[i]) programs.push(args[i].text);
+		const text = (s: string): string => s.replace(/\\(.)/g, "$1");
+		for (const program of programs) {
+			for (const m of program.matchAll(/\bsystem\s*\(/g)) {
+				const at = m.index + m[0].length;
+				const arg = readBalanced(program.slice(at, at + 4000), 0, "(", ")").text;
+				const literal = /^\s*"((?:\\.|[^"\\])*)"\s*$/.exec(arg);
+				if (literal) this.script(text(literal[1]), cwd, depth + 1);
+				else this.add("shell_out");
+			}
+			for (const m of program.matchAll(/\|\s*"((?:\\.|[^"\\])*)"|"((?:\\.|[^"\\])*)"\s*\|\s*getline/g)) {
+				const line = text(m[1] ?? m[2]);
+				this.script(line, cwd, depth + 1);
+				const into = parseScript(line, knownVars(this.ctx))[0]?.[0];
+				const stage = into ? commandOf(into.words) : null;
+				if (m[1] !== undefined && stage && runsPipedCode(stage)) this.add("dynamic_command");
+			}
+		}
+	}
+
+	private git(args: Word[], cwd: string | null, depth: number): void {
 		const takesValue = table("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env");
 		let i = 0;
 		// Where git works: the folder it was started in, or the one `-C` names (null: not known).
 		let dir: string | null = cwd;
 		while (i < args.length && args[i].text.startsWith("-")) {
-			if (args[i].text === "-C" && args[i + 1]) dir = resolveWord(args[i + 1], dir, this.ctx);
-			i += listed(takesValue, args[i].text) ? 2 : 1;
+			const t = args[i].text;
+			if (t === "-C" && args[i + 1]) dir = resolveWord(args[i + 1], dir, this.ctx);
+			// `-c key=value`: a command line git runs is read; one taken from the environment (`--config-env`) cannot be.
+			const setting = t === "-c" ? args[i + 1]?.text : undefined;
+			const fromEnv =
+				t === "--config-env" ? args[i + 1]?.text : t.startsWith("--config-env=") ? t.slice(13) : undefined;
+			if (setting?.includes("=")) {
+				const at = setting.indexOf("=");
+				this.gitSetting(setting.slice(0, at), setting.slice(at + 1), cwd, depth);
+			}
+			if (fromEnv?.includes("=")) {
+				const key = fromEnv.slice(0, fromEnv.indexOf("="));
+				if (/^alias\./i.test(key) || GIT_COMMAND_KEY.test(key)) this.add("dynamic_command");
+			}
+			i += listed(takesValue, t) ? 2 : 1;
 		}
 		const rest = args.slice(i + 1);
 		const { opts, operands } = splitArgs(rest);
@@ -2794,14 +2940,27 @@ class Scan {
 					this.add("discard");
 				break;
 			case "config":
-				this.gitConfig(rest, opts, operands, cwd);
+				this.gitConfig(rest, opts, operands, cwd, depth);
 				break;
 			default:
 		}
 	}
 
-	/** `git config` that writes: the global or system file (the home folder's `.gitconfig`) or a file outside the project. */
-	private gitConfig(args: Word[], opts: string[], operands: Word[], cwd: string | null): void {
+	/**
+	 * A git setting whose value is a command line git runs (`GIT_COMMAND_KEY`, an alias that starts with `!`): read as one. An
+	 * alias without `!` is the git command it stands for (`alias.p='push --force'`).
+	 */
+	private gitSetting(key: string, value: string, cwd: string | null, depth: number): void {
+		if (/^alias\./i.test(key)) this.script(value.startsWith("!") ? value.slice(1) : `git ${value}`, cwd, depth + 1);
+		else if (GIT_COMMAND_KEY.test(key)) this.script(value.replace(/^!/, ""), cwd, depth + 1);
+	}
+
+	/**
+	 * `git config` that writes: the global or system file (the home folder's `.gitconfig`) or a file outside the project. One
+	 * that sets a command line git will run later (`git config alias.x '!…'`, `core.fsmonitor`, #221) plants a command put
+	 * together now and run when it is not looked at: `dynamic_command`, and what it would run is read too.
+	 */
+	private gitConfig(args: Word[], opts: string[], operands: Word[], cwd: string | null, depth: number): void {
 		const reads =
 			hasLong(
 				opts,
@@ -2830,7 +2989,16 @@ class Scan {
 			operands.length >= 2;
 		if (reads || !writes) return;
 		if (hasLong(opts, "--global", "--system")) this.add("protected");
-		for (const f of optionValues(args, ["-f"], ["--file"])) this.write(f, cwd);
+		const files = optionValues(args, ["-f"], ["--file"]);
+		for (const f of files) this.write(f, cwd);
+		// `git config key value`, `git config set key value` (git 2.46), `git config --add key value`.
+		const named = operands.filter((o) => !files.includes(o));
+		const [key, value] = named[0]?.text === "set" ? named.slice(1) : named;
+		if (key === undefined || value === undefined || hasLong(opts, "--unset", "--unset-all")) return;
+		const command = /^alias\./i.test(key.text) ? value.text.startsWith("!") : GIT_COMMAND_KEY.test(key.text);
+		if (!command) return;
+		this.add("dynamic_command");
+		this.gitSetting(key.text, value.text, cwd, depth);
 	}
 
 	/** `npx …`, `npm exec …`: the program it fetches and runs is looked at as a command. */
