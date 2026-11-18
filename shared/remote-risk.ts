@@ -674,6 +674,10 @@ const FETCH_CODE =
 /** A call that runs code it is given (`eval(t)`, `exec(t)`, `new Function(t)`, `vm.runInThisContext(t)`), or `eval` handed on as a function. */
 const EVAL_CALL = /(?<![.\w$])(?:eval|exec|Function)\s*\(|\bnew\s+Function\s*\(|\bvm\.run\w*\s*\(/g;
 const EVAL_PASSED = /\.then\s*\(\s*(?:eval|Function)\s*\)/;
+/** A module loaded by a call (`import(u)`, `require(u)`; not Python's `from x import (a, b)`): what it names runs (#414). */
+const IMPORT_CALL = /(?<![.\w$])(?<!\bfrom\s+[\w.]+\s+)(import|require)\s*\(/g;
+/** A module a static import or re-export loads from the network (`import x from "https://…"`, `import "https://…"`, #414). */
+const URL_IMPORT = /(?<![.\w$])(?:(?:import|export)\s[^;"'`]{0,300}?\bfrom\s*|import\s*)["'`]https?:\/\//i;
 /** What stands in a word for a part that is only known when the command runs (`$VAR`, `$(…)`): a private-use character. */
 const DYN = "\uE000";
 
@@ -1797,6 +1801,16 @@ function codeKinds(code: string, ctx: RiskContext): RiskKind[] {
 			}))
 	)
 		kinds.push("remote_exec");
+	// A module loaded from the network is code downloaded and run; one named by what is worked out when the code runs may be
+	// such a module, which cannot be read here (`import(u)`; a `require(p)` cannot load a URL by itself, #414).
+	if (URL_IMPORT.test(code)) kinds.push("remote_exec");
+	for (const m of code.matchAll(IMPORT_CALL)) {
+		const at = m.index + m[0].length;
+		const first = splitTop(readBalanced(code.slice(at, at + 4000), 0, "(", ")").text)[0]?.trim();
+		if (first === undefined || first === "") continue;
+		if (/^["'`]https?:\/\//i.test(first)) kinds.push("remote_exec");
+		else if (m[1] === "import" && literalOf(first) === null) kinds.push("dynamic_command");
+	}
 	return kinds;
 }
 
