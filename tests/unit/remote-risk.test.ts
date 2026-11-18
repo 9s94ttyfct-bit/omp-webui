@@ -2184,3 +2184,37 @@ describe("deletes in deno eval, Ruby's File.delete, Perl's remove_tree, and of w
 		expect(shell(command)).toEqual([]);
 	});
 });
+
+describe("archivers and compressors that remove what they take in delete it (#227)", () => {
+	test.each([
+		"tar --remove-files -czf /tmp/x.tgz ~/Documents",
+		"tar -czf /tmp/x.tgz --remove-files ~/Documents",
+		"tar -C ~ --remove-files -czf /tmp/x.tgz Documents",
+		"zip -rm /tmp/x.zip ~/Documents",
+		"7z a -sdel /tmp/x.7z ~/Documents",
+		"gzip -r ~/Documents",
+		"tar --remove-files -czf /tmp/x.tgz ~/Documents && rm -f /tmp/x.tgz",
+	])("%s is a mass delete outside the project", (command) => {
+		expect(shell(command)).toEqual(expect.arrayContaining(["mass_delete", "delete_outside"]));
+	});
+
+	test.each([
+		"bzip2 ~/Documents/report.pdf",
+		"zip -m /tmp/x.zip ~/a.txt",
+		"gunzip ~/Downloads/a.gz",
+		"zstd --rm ~/a.txt",
+	])("%s deletes a file outside the project", (command) => {
+		expect(shell(command)).toEqual(["delete_outside"]);
+	});
+
+	test.each([
+		"gzip -k ~/a.txt",
+		"zstd ~/a.txt",
+		"gzip build/x.log",
+		"tar czf /tmp/x.tgz --remove-files src",
+		"cat x | gzip -c > /tmp/y.gz",
+		"zip -r /tmp/x.zip src",
+	])("%s is not asked about", (command) => {
+		expect(shell(command)).toEqual([]);
+	});
+});

@@ -447,6 +447,8 @@ bun run start          # http://127.0.0.1:7878
 
 **解释器的输入和名字**（#412、#413）。`<` 后面的进程替换是命令的输入，和用管道接进去一样：`bash < <(curl …)`、`python3 < <(curl …)` 算 `remote_exec`，`bash < <(echo …)` 算 `dynamic_command`。作为参数交给脚本的进程替换是脚本要读的文件：`bash x.sh <(curl …)` 不询问，和 `python3 x.py <(curl …)` 一样。带版本号的解释器名字也认得（`python3.12`、`pypy3.10`、`perl5.36`、`ruby3.3`），所以 `curl … | python3.12` 算 `remote_exec`，`python3.12 -c '…'` 的代码也照常读。
 
+**会删掉所收内容的归档和压缩程序**（#227）算删除，和 `rsync --remove-source-files` 一样：`tar --remove-files` 的来源（相对 `-C` 的文件夹来读）、`zip -m`/`-rm`/`--move`、`7z a … -sdel`，以及 `gzip`、`gunzip`、`pigz`、`bzip2`、`xz`、`lzma`、`compress`（和它们的 `un…`）用副本替换掉的每个文件，带 `-r` 时是文件夹下的每个文件；`zstd` 只有带 `--rm` 才算。`-k`/`--keep`、`-c`、`-t` 和 `-l` 会保留文件。在项目之外算 `delete_outside`，对象是文件夹时还算 `mass_delete`。
+
 **代码里更多的删除**（#222）。`deno eval '<代码>'`（含 `-p`）按代码读；Perl 的 `remove_tree` 和 Ruby 的 `File.delete` 算删除，和 `rmtree`、`File.unlink` 一样。代码对写明的文件夹做 glob，又删除程序自己算出的路径（`[os.remove(f) for f in glob.glob("/x/*")]`、`Dir.glob("/x/*").each { |f| File.delete(f) }`、`Dir["/x/*"]`、Perl 的 `unlink glob q(/x/*)` 和 `unlink <~/x/*>`），删的是那个文件夹里的文件，和 `rm /x/*` 一样：在项目之外算 `delete_outside` 和 `mass_delete`。
 
 **从网络加载的模块**（#414）。在 `eval` 单元格、`-e` 或 `-c` 的代码里，`import("https://…")`、`` import(`https://${h}/…`) ``、`require("https://…")`、`import x from "https://…"`、`import "https://…"` 和 `export … from "https://…"` 算 `remote_exec`；模块名要到代码运行时才算出来的 `import(u)` 算 `dynamic_command`。本地模块（`import("./x.ts")`、`require(name)`、`node:` 模块）和 Python 的 `from x import (a, b)` 不询问。

@@ -2723,10 +2723,46 @@ class Scan {
 			case "tar":
 				this.tar(args, opts, operands, cwd, depth);
 				break;
-			case "zip":
+			case "zip": {
 				// `-TT '<command>'`: what it tests the archive with (#221).
-				for (const v of optionValues(args, ["-TT"], ["--unzip-command"])) this.script(v.text, cwd, depth + 1);
+				const tests = optionValues(args, ["-TT"], ["--unzip-command"]);
+				for (const v of tests) this.script(v.text, cwd, depth + 1);
+				// `-m` (`-rm`, `--move`) deletes what it put in the archive (#227).
+				if (!hasShort(opts, "m") && !hasLong(opts, "--move")) break;
+				const recursive = hasShort(opts, "r") || hasLong(opts, "--recurse-paths");
+				for (const t of operands.slice(1)) if (!tests.includes(t)) this.delete(t, cwd, true, recursive, recursive);
 				break;
+			}
+			case "7z":
+			case "7za":
+			case "7zz":
+			case "7zr":
+				// `a -sdel` deletes what it put in the archive, folders whole (#227).
+				if (/^[au]$/.test(operands[0]?.text ?? "") && opts.includes("-sdel"))
+					for (const t of operands.slice(2)) this.delete(t, cwd, true, true, true);
+				break;
+			case "gzip":
+			case "gunzip":
+			case "pigz":
+			case "unpigz":
+			case "bzip2":
+			case "bunzip2":
+			case "xz":
+			case "unxz":
+			case "lzma":
+			case "unlzma":
+			case "compress":
+			case "uncompress":
+			case "zstd":
+			case "unzstd": {
+				// Each file is replaced by its (un)compressed copy, every file under a folder with `-r` (#227); zstd only with `--rm`.
+				// `-k` keeps it, and `-c` (to the output), `-t` and `-l` change nothing.
+				const keeps = hasShort(opts, "kctl") || hasLong(opts, "--keep", "--stdout", "--to-stdout", "--test", "--list");
+				if (keeps || (name.endsWith("zstd") && !hasLong(opts, "--rm"))) break;
+				const recursive = hasShort(opts, "r") || hasLong(opts, "--recursive");
+				for (const t of operands) this.delete(t, cwd, recursive, recursive, recursive);
+				break;
+			}
 			case "vim":
 			case "vi":
 			case "nvim":
@@ -2900,11 +2936,18 @@ class Scan {
 		// `tar xzf a.tgz` (the first operand holds the options) and `tar -xzf a.tgz`.
 		const old = operands[0] && /^[cxtuAdrf][A-Za-z0-9]*$/.test(operands[0].text) ? operands[0].text : "";
 		const cluster = old || opts.filter((o) => /^-[^-]/.test(o)).join("");
-		for (const d of optionValues(args, ["-C"], ["--directory"])) this.write(d, cwd);
+		const directories = optionValues(args, ["-C"], ["--directory"]);
+		for (const d of directories) this.write(d, cwd);
 		if (!cluster.includes("c") && !hasLong(opts, "--create")) return;
 		const files = optionValues(args, ["-f"], ["--file"]);
 		const archive = files[0] ?? (cluster.includes("f") ? (old ? operands[1] : operands[0]) : undefined);
 		if (archive && archive.text !== "-") this.write(archive, cwd);
+		// `--remove-files` deletes what it put in the archive (#227), as `rsync --remove-source-files` does; `-C` is where they are.
+		if (!hasLong(opts, "--remove-files")) return;
+		const values = [...commands, ...directories, ...files, archive];
+		const from = directories.length > 0 ? resolveWord(directories[directories.length - 1], cwd, this.ctx) : cwd;
+		for (const source of operands.slice(old ? 1 : 0))
+			if (!values.includes(source)) this.delete(source, from, true, true, true);
 	}
 
 	/**
