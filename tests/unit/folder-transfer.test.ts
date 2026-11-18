@@ -872,9 +872,9 @@ describe("uploading a file", () => {
 			status: 403,
 			code: "secret",
 		});
-		expect(await failed(await up(w, { name: "server.key", size: 4, body: "oops", extra: `&replace=${etag}` }))).toMatchObject(
-			{ status: 403, code: "secret" },
-		);
+		expect(
+			await failed(await up(w, { name: "server.key", size: 4, body: "oops", extra: `&replace=${etag}` })),
+		).toMatchObject({ status: 403, code: "secret" });
 		expect(readFileSync(join(w.proj, "server.key"), "utf8")).toBe(key);
 		expect(staged(w.proj)).toEqual([]);
 		// Beside it, under the next free name, is fine.
