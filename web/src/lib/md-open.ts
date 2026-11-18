@@ -48,6 +48,9 @@ function normalize(parts: string[]): string | null {
 	return out.length > 0 ? out.join("/") : null;
 }
 
+/** A Windows path from its drive (`C:\proj\README.md`, `C:/proj/README.md`), as omp on Windows writes a file it edited. */
+const DRIVE = /^[A-Za-z]:[\\/]/;
+
 /**
  * The file a link's address names, or null when it names none: a web or other address, an anchor, a path that climbs out
  * of the folder. `base` is the folder relative paths start from. A query and a `:line[:column]` suffix (as agents write
@@ -56,8 +59,14 @@ function normalize(parts: string[]): string | null {
 export function linkedPath(href: string | undefined, base: string): LinkedPath | null {
 	if (!href) return null;
 	let raw = href.trim();
-	if (/^file:\/\//i.test(raw)) raw = raw.replace(/^file:\/\/(?:localhost)?/i, "");
-	else if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("//") || raw.startsWith("#")) return null;
+	if (/^file:\/\//i.test(raw)) {
+		raw = raw.replace(/^file:\/\/(?:localhost)?/i, "");
+		// `file:///C:/proj/x.md` names `C:/proj/x.md` (#345).
+		if (/^\/[A-Za-z]:\//.test(raw)) raw = raw.slice(1);
+	} else if (DRIVE.test(raw)) {
+		// Not an address with the scheme `C:`; its `\` are Windows's separators (#345).
+		raw = raw.replace(/\\/g, "/");
+	} else if (/^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith("//") || raw.startsWith("#")) return null;
 	const hash = raw.indexOf("#");
 	const fragment = hash < 0 ? "" : raw.slice(hash + 1);
 	raw = raw.replace(/[?#].*$/, "").replace(/:\d+(?::\d+)?$/, "");
@@ -75,7 +84,7 @@ export function linkedPath(href: string | undefined, base: string): LinkedPath |
 		// Left unnamed.
 	}
 	const section = named === "" ? {} : { section: named };
-	if (raw.startsWith("/")) return { kind: "absolute", path: raw, ...section };
+	if (raw.startsWith("/") || DRIVE.test(raw)) return { kind: "absolute", path: raw, ...section };
 	const path = normalize([...base.split("/"), ...raw.split("/")]);
 	return path === null ? null : { kind: "relative", path, ...section };
 }
@@ -97,11 +106,17 @@ export function linkedImage(src: string | undefined, base: string): string | nul
 	return linked?.kind === "relative" ? linked.path : null;
 }
 
-/** `abs` relative to the folder `root`, or null when it is not in it. */
+/**
+ * `abs` relative to the folder `root`, or null when it is not in it. A Windows root (`C:\proj`, the server's `realpath` on
+ * Windows) is compared with `/` for `\` and without case, as Windows names files (#345).
+ */
 export function insideRoot(abs: string, root: string): string | null {
-	const top = root.replace(/\/+$/, "");
-	if (!abs.startsWith(`${top}/`)) return null;
-	return normalize(abs.slice(top.length + 1).split("/"));
+	const windows = DRIVE.test(root);
+	const path = windows ? abs.replace(/\\/g, "/") : abs;
+	const top = (windows ? root.replace(/\\/g, "/") : root).replace(/\/+$/, "");
+	const head = path.slice(0, top.length + 1);
+	if (windows ? head.toLowerCase() !== `${top.toLowerCase()}/` : head !== `${top}/`) return null;
+	return normalize(path.slice(top.length + 1).split("/"));
 }
 
 /** The conversation's folder as the server resolved it: asked for once per conversation, when an absolute path needs it. */

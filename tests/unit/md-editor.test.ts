@@ -229,6 +229,24 @@ describe("links and images of a Markdown file", () => {
 		expect(insideRoot("/w/other/a.md", "/w/proj")).toBeNull();
 	});
 
+	test("on Windows, a path from its drive is an absolute path, and the folder is compared as Windows names it (#345)", () => {
+		for (const href of ["C:\\proj\\docs\\a.md", "C:/proj/docs/a.md", "file:///C:/proj/docs/a.md"])
+			expect({ href, linked: linkedMarkdown(href, "") }).toEqual({
+				href,
+				linked: { kind: "absolute", path: "C:/proj/docs/a.md" },
+			});
+		expect(linkedMarkdown("C:\\proj\\README.md:12#Usage", "")).toEqual({
+			kind: "absolute",
+			path: "C:/proj/README.md",
+			section: "Usage",
+		});
+		expect(insideRoot("C:/proj/docs/a.md", "C:\\proj")).toBe("docs/a.md");
+		expect(insideRoot("c:/PROJ/docs/a.md", "C:\\proj\\")).toBe("docs/a.md");
+		expect(insideRoot("C:/project/a.md", "C:\\proj")).toBeNull();
+		expect(insideRoot("D:/proj/a.md", "C:\\proj")).toBeNull();
+		expect(insideRoot("C:/proj/../x.md", "C:\\proj")).toBeNull();
+	});
+
 	test("an image is a file of the folder only by a relative path", () => {
 		expect(linkedImage("img/pic.png", "docs")).toBe("docs/img/pic.png");
 		expect(linkedImage("../pic.png", "docs")).toBe("pic.png");
