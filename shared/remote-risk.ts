@@ -1499,6 +1499,96 @@ function literalOf(expression: string): string | null {
 	return m[3];
 }
 
+/** A part of a value in a program's source that is only worked out when it runs (`p` in `{ path: p }`). */
+const UNKNOWN = Symbol("unknown");
+type Written = string | number | boolean | null | Written[] | { [key: string]: Written } | typeof UNKNOWN;
+const ESCAPES: Readonly<Record<string, string>> = { n: "\n", t: "\t", r: "\r", "0": "\0" };
+
+/** The text of a string written out with its escapes worked out (`"a\nb"` holds a newline; a raw `r"…"` does not), or null. */
+function stringOf(expression: string): string | null {
+	const text = literalOf(expression);
+	if (text === null) return null;
+	if (/^[bBuUfF]?[rR]/.test(expression.trim())) return text;
+	return text.replace(/\\(.)/gs, (_, c: string) => ESCAPES[c] ?? c);
+}
+
+/** What a value written in a program's source holds (`"x"`, `1`, `[…]`, `{ key: … }`, a Python dict), `UNKNOWN` where it is worked out. */
+function writtenValue(expression: string): Written {
+	const e = expression.trim();
+	const s = stringOf(e);
+	if (s !== null) return s;
+	if (/^-?\d+(?:\.\d+)?$/.test(e)) return Number(e);
+	if (e === "true" || e === "True") return true;
+	if (e === "false" || e === "False") return false;
+	if (e === "null" || e === "None" || e === "undefined") return null;
+	const close = e.startsWith("[") ? "]" : e.startsWith("{") ? "}" : "";
+	if (close === "") return UNKNOWN;
+	const inner = readBalanced(e, 1, e[0], close);
+	if (inner.end !== e.length) return UNKNOWN;
+	if (close === "]") return splitTop(inner.text).map(writtenValue);
+	const out: { [key: string]: Written } = {};
+	for (const entry of splitTop(inner.text)) {
+		const keyed = /^(?:([A-Za-z_$][\w$]*)|(["'])((?:\\.|(?!\2).)*)\2)\s*:/s.exec(entry);
+		if (keyed) out[keyed[1] ?? keyed[3]] = writtenValue(entry.slice(keyed[0].length));
+		// `{ path }`: the value of a variable of that name.
+		else if (/^[A-Za-z_$][\w$]*$/.test(entry)) out[entry] = UNKNOWN;
+		// A spread (`...opts`, `**opts`), a computed key, a method: what the object holds is not known.
+		else return UNKNOWN;
+	}
+	return out;
+}
+
+/** The argument a call is given, as one value: an object (`f({ … })`), keyword arguments (`f(path="…")`), or `UNKNOWN`. */
+function callArgument(args: readonly string[]): Written {
+	if (args.length === 0) return {};
+	if (args.every((a) => /^[A-Za-z_]\w*\s*=(?!=)/.test(a)))
+		return Object.fromEntries(
+			args.map((a) => [a.slice(0, a.indexOf("=")).trim(), writtenValue(a.slice(a.indexOf("=") + 1))]),
+		);
+	return args.length === 1 ? writtenValue(args[0]) : UNKNOWN;
+}
+
+const hasUnknown = (v: Written): boolean =>
+	v === UNKNOWN ||
+	(Array.isArray(v) ? v.some(hasUnknown) : typeof v === "object" && v !== null && Object.values(v).some(hasUnknown));
+
+/** `v` without what is not known in it: an object's entry or a list's element that is worked out is left out. */
+function knownPart(v: Written): unknown {
+	if (Array.isArray(v)) return v.filter((x) => x !== UNKNOWN).map(knownPart);
+	if (typeof v !== "object" || v === null) return v;
+	return Object.fromEntries(
+		Object.entries(v)
+			.filter(([, x]) => x !== UNKNOWN)
+			.map(([k, x]) => [k, knownPart(x)]),
+	);
+}
+
+/** What a tool's call is judged by (`classify`): a part of it that is only worked out when the program runs, there, cannot be. */
+const JUDGED_KEYS = table(
+	"path",
+	"paths",
+	"file",
+	"file_path",
+	"filePath",
+	"edits",
+	"input",
+	"patch",
+	"code",
+	"command",
+	"cwd",
+	"local",
+	"remote",
+	"direction",
+	"overwrite",
+);
+/**
+ * A session tool called by an `eval` cell: `tool.write(…)`, `tool["write"](…)`, `tool[name](…)` (the name in group 1 or 2;
+ * a computed one is read up to 200 characters, so that many `tool[` on a long line stay linear).
+ */
+const TOOL_CALL = /(?<![.\w$])tool\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*([^\]\n]{0,200}?)\s*\])\s*\(/g;
+/** The `write(path, content)` of omp's eval prelude, not a method (`f.write(…)`) nor one the cell defines (`def write(…)`). */
+const PRELUDE_WRITE = /(?<![.\w$])(?<!\b(?:def|function)\s+)write\s*\(/g;
+
 /** The text an argument of a call writes out (`'/x'`, `Path('/x')`, `expanduser('~/x')`), or null when it is worked out when the program runs. */
 function writtenOut(argument: string): string | null {
 	const bare = argument.trim().replace(/^[A-Za-z_]\w*\s*=(?!=)\s*/, "");
@@ -3432,6 +3522,51 @@ class Scan {
 		for (const argv of argvLists(code)) this.script(argv, cwd, depth);
 		for (const kind of codeKinds(code, this.ctx)) this.add(kind);
 		this.toolCalls(code);
+	}
+
+	/**
+	 * The session's tools an `eval` cell calls (`await tool.write({ … })`, `tool["edit"]({ … })`) and the prelude's `write(path,
+	 * content)`, judged as those calls are (`classifyToolCall`, #224). A tool whose name, or whose argument where the call is
+	 * judged (`JUDGED_KEYS`), is only worked out when the cell runs cannot be read: a `dynamic_command`, unless the tool only reads.
+	 */
+	private toolCalls(code: string): void {
+		const judge = (name: string, input: Written): void => {
+			const tool = name.toLowerCase();
+			const record = typeof input === "object" && input !== null && !Array.isArray(input) ? input : null;
+			// A file's content is only read for a tool behind `write`'s `xd://`.
+			const behind = tool === "write" && (typeof record?.path !== "string" || record.path.startsWith("xd://"));
+			const unseen =
+				input === UNKNOWN ||
+				(record !== null &&
+					Object.entries(record).some(
+						([k, v]) => hasUnknown(v) && (listed(JUDGED_KEYS, k) || (k === "content" && behind)),
+					));
+			if (unseen && !listed(READ_ONLY_TOOLS, tool) && !listed(REMOTE_TOOLS_READING, tool)) this.add("dynamic_command");
+			if (input !== UNKNOWN)
+				for (const k of classifyToolCall(name, knownPart(input), this.ctx)?.kinds ?? []) this.add(k);
+		};
+		// Only the start of what follows is read, as for the other calls: an argument longer than that is not known, so it asks.
+		const argsAt = (at: number): string[] => splitTop(readBalanced(code.slice(at, at + 4000), 0, "(", ")").text);
+		for (const m of code.matchAll(TOOL_CALL)) {
+			const name = m[1] ?? stringOf(m[2]);
+			if (name === null) this.add("dynamic_command");
+			else judge(name, callArgument(argsAt(m.index + m[0].length)));
+		}
+		const homeUse = HOME_USE.test(code);
+		for (const m of code.matchAll(PRELUDE_WRITE)) {
+			const args = argsAt(m.index + m[0].length);
+			const named = callArgument(args);
+			const given: { [key: string]: Written } =
+				typeof named === "object" && named !== null && !Array.isArray(named) && "path" in named
+					? named
+					: {
+							path: args[0] === undefined ? UNKNOWN : writtenValue(args[0]),
+							content: args[1] === undefined ? "" : writtenValue(args[1]),
+						};
+			// A path worked out is judged as any write's is (`codeKinds`): outside the project when the cell works with the home folder.
+			if (typeof given.path === "string") judge("write", given);
+			else if (homeUse) this.add("write_outside");
+		}
 	}
 }
 
