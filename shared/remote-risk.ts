@@ -654,15 +654,15 @@ const ARGV_CALL =
 	/\b(?:subprocess\.(?:run|call|check_call|check_output|Popen)|Popen|os\.(?:exec|spawn|posix_spawn)\w*|Bun\.spawn(?:Sync)?|(?:child_process\.)?(?:spawn|spawnSync|execFile|execFileSync|fork)|execa(?:Sync)?)\s*\(\s*(?:(["'])([^"'\n]*)\1\s*,\s*)?\[/g;
 /**
  * A call that starts a program or a shell from a command written as one string or built (`execSync(cmd)`, `os.system(cmd)`,
- * `subprocess.run(cmd, shell=True)`). A command written out in it is read as a shell command; one only known when the
- * program runs cannot be, and is `shell_out`. (The bare `exec`, `execFile` and `spawn` count where the program says it
- * brings them in from `child_process`: `regex.exec(…)` is no program.)
+ * `subprocess.run(cmd, shell=True)`, the `sh(cmd)` of omp's eval prelude, #216). A command written out in it is read as a
+ * shell command; one only known when the program runs cannot be, and is `shell_out`. (The bare `exec`, `execFile` and
+ * `spawn` count where the program says it brings them in from `child_process`: `regex.exec(…)` is no program.)
  */
 const SHELL_CALL =
-	/\b(?:os\.(?:system|popen)|subprocess\.(?:run|call|check_call|check_output|Popen|getoutput|getstatusoutput)|commands\.getoutput|Bun\.spawn(?:Sync)?|(?:child_process\.)?(?:execSync|execFileSync|spawnSync)|child_process\.(?:exec|execFile|spawn)|execa(?:Sync)?|Deno\.Command)\s*\(/g;
+	/\b(?:os\.(?:system|popen)|subprocess\.(?:run|call|check_call|check_output|Popen|getoutput|getstatusoutput)|commands\.getoutput|Bun\.spawn(?:Sync)?|(?:child_process\.)?(?:execSync|execFileSync|spawnSync)|child_process\.(?:exec|execFile|spawn)|execa(?:Sync)?|Deno\.Command|(?<![.\w$])sh)\s*\(/g;
 const SHELL_CALL_BARE = /(?<![.\w])(?:exec|execFile|spawn)\s*\(/g;
-/** A tagged template whose command is nothing but a part worked out when it runs: ``Bun.$`${cmd}` ``, ``$`${cmd} ${x}` ``. */
-const SHELL_TEMPLATE = /\$\s*`\s*\$\{/;
+/** A tagged template whose command is nothing but a part worked out when it runs: ``Bun.$`${cmd}` ``, ``$`${cmd} ${x}` ``, ``sh`${cmd}` ``. */
+const SHELL_TEMPLATE = /(?:\$|(?<![.\w$])sh)\s*`\s*\$\{/;
 /** What stands in a word for a part that is only known when the command runs (`$VAR`, `$(…)`): a private-use character. */
 const DYN = "\uE000";
 
@@ -3388,7 +3388,23 @@ class Scan {
 			return;
 		}
 		if (selfAccess(code, this.ctx)) this.add("protected");
-		for (const line of code.split("\n")) if (line.trim() !== "") this.script(line, cwd, depth);
+		for (const line of code.split("\n")) {
+			if (line.trim() === "") continue;
+			// omp's Python eval runs a line that starts with `!` as a shell command (`!rm -rf ~/x`, #216): that is the shell's
+			// own script, not the program's text, so a command put together in it when it runs is a `dynamic_command` again.
+			const bang = /^\s*!(?!=)/.exec(line);
+			if (!bang) {
+				this.script(line, cwd, depth);
+				continue;
+			}
+			const outer = this.inCode;
+			this.inCode = 0;
+			try {
+				this.script(line.slice(bang[0].length), cwd, depth);
+			} finally {
+				this.inCode = outer;
+			}
+		}
 		// Every literal is matched, the short ones too, and those are dropped after: a literal left unmatched (`""`, `"x"`)
 		// would pair its closing quote with the next one's opening and read every string after it inside out (#223).
 		const strings = [
