@@ -48,9 +48,11 @@ const LOG_KEEP = 16 * 1024;
 
 /**
  * The arguments it runs with: embeddings only, every layer on the GPU when there is one (llama.cpp puts what does not fit,
- * or everything on a computer without one, on the processor), four slots of 2048 tokens each (a passage of 1000 characters
- * is at most about 1100), and no prompt cache (a cache is for chat, and would hold gigabytes for nothing). Measured on an
- * Apple M4 Pro, 2048-token batches embed as fast as 4096-token ones and take about 60 MB less while working.
+ * or everything on a computer without one, on the processor), four slots of 4096 tokens each, and no prompt cache (a cache
+ * is for chat, and would hold gigabytes for nothing). A passage is embedded in one batch or not at all, so a batch must hold
+ * the longest one there can be: 1000 UTF-16 code units are at most 3000 bytes of UTF-8, and the model's tokenizer never
+ * makes more tokens than bytes (it falls back to one token a byte). 2048 would hold ordinary text and take some 60 MB less
+ * while working, but a passage of rare characters would fail its batch, and the batch would be tried again for good.
  */
 export function serverArgs(model: string, port: number, keyFile: string): string[] {
 	return [
@@ -67,13 +69,13 @@ export function serverArgs(model: string, port: number, keyFile: string): string
 		"-ngl",
 		"999",
 		"-c",
-		"8192",
+		"16384",
 		"-np",
 		"4",
 		"-b",
-		"2048",
+		"4096",
 		"-ub",
-		"2048",
+		"4096",
 		"--cache-ram",
 		"0",
 	];
