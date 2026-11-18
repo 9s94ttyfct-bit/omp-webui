@@ -38,6 +38,8 @@ Deleting a conversation together with its folder (the Trash) is the same (#368):
 
 The default permission mode of new conversations (Settings › Permissions, `POST /api/approval`) is the person's own to change (#228): such a page reads it and is refused a change; it still switches the mode of a conversation it is in.
 
+A `remote.json` that cannot be trusted (not JSON, or one value this version refuses) means remote access off with every switch for other pages at its most restrictive (no shell, no file transfer, risky commands confirmed): the server enforces that, the card shows it with a warning saying why the file was not read, and the next save starts from it, keeping the old file as `remote.json.damaged` (#367).
+
 **Share these settings with another computer**: **Export settings** saves `omp-webui-remote-access.json` holding only team, AUD and emails (no hostname, tunnel or credentials); **Import settings…** fills the form from such a file (max 64 KB, max 200 emails, version 1) and the user then adds this computer's hostname and saves. One Access application with a wildcard domain can serve several computers.
 
 ### What a remote page can and cannot do

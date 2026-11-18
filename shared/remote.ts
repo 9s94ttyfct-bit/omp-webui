@@ -75,6 +75,11 @@ export interface RemoteSnapshot {
 	loginUrl?: string;
 	/** The opt-in to let the AI help with the set-up. */
 	ai: RemoteAiState;
+	/**
+	 * Why the settings file could not be trusted, when it could not: the settings shown are `UNTRUSTED_REMOTE_CONFIG`, which
+	 * the server enforces, and the next change keeps the file as `remote.json.damaged` (#367).
+	 */
+	untrusted?: string;
 }
 
 /** The answer of `POST /api/remote/login`: the snapshot, and the URL the browser has to visit to log in. */
@@ -93,6 +98,18 @@ export const DEFAULT_REMOTE_CONFIG: RemoteConfig = {
 	confirmRisky: false,
 	fileTransfer: DEFAULT_FILE_TRANSFER,
 	remoteShell: true,
+};
+
+/**
+ * What a `remote.json` that is there but cannot be trusted (not JSON, a value this version refuses) means, and what a change
+ * made over it starts from (#367): remote access off, and every switch for pages that are not the person's own at its
+ * most restrictive. The defaults would turn on what the person may have turned off.
+ */
+export const UNTRUSTED_REMOTE_CONFIG: RemoteConfig = {
+	...DEFAULT_REMOTE_CONFIG,
+	confirmRisky: true,
+	fileTransfer: "off",
+	remoteShell: false,
 };
 
 /** What the server answers a remote page's request for a shell while Settings › Remote access has them off: the page says so in its words. */

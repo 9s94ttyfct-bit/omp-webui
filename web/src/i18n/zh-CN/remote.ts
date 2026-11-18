@@ -98,6 +98,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	// What went wrong
 	actionFailed: "操作失败：{error}",
 	saveDone: "设置已保存",
+	untrusted:
+		"设置文件无法读取（{why}）。在再次保存之前，远程访问是关闭的，不是你本人的页面没有终端、没有文件传输，高风险命令也要先确认；这里显示的就是这些值。下一次修改会把旧文件保留为 remote.json.damaged。",
 
 	transferTitle: "把这些设置分享给另一台电脑",
 	transferHint:

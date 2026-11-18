@@ -10,6 +10,7 @@ import {
 	parseRemoteConfig,
 	parseRemoteConfigPatch,
 	RemoteConfigError,
+	UNTRUSTED_REMOTE_CONFIG,
 } from "../../shared/remote.ts";
 import { expectMode } from "../support/modes.ts";
 
@@ -65,7 +66,7 @@ test("confirming risky commands is off until it is turned on, and a file from be
 	expect(existsSync(`${file}.damaged`)).toBe(false);
 	// A file that holds the key wrongly is not trusted.
 	writeFileSync(file, JSON.stringify({ confirmRisky: "yes" }));
-	expect(new RemoteStore(file).read()).toEqual(DEFAULT_REMOTE_CONFIG);
+	expect(new RemoteStore(file).read()).toEqual(UNTRUSTED_REMOTE_CONFIG);
 });
 test("file transfer is on in both directions until it is turned down; a bad value is refused, and a file that holds one wrongly is not trusted", () => {
 	expect(DEFAULT_REMOTE_CONFIG.fileTransfer).toBe("full");
@@ -84,7 +85,7 @@ test("file transfer is on in both directions until it is turned down; a bad valu
 	expect(parseRemoteConfig({ fileTransfer: "off" }).fileTransfer).toBe("off");
 	// Not trusted: all of the file is set aside, as for any other key held wrongly.
 	writeFileSync(file, JSON.stringify({ fileTransfer: "sometimes" }));
-	expect(new RemoteStore(file).read()).toEqual(DEFAULT_REMOTE_CONFIG);
+	expect(new RemoteStore(file).read()).toEqual(UNTRUSTED_REMOTE_CONFIG);
 });
 
 test("a change names only what it changes, and a page cannot name the tunnel", () => {
@@ -199,22 +200,32 @@ test("a remote.json from before 'ask for every tool while remote' went away stil
 	expect(parseRemoteConfigPatch({ askWhileRemote: false })).toEqual({});
 });
 
-test("a file that cannot be trusted leaves remote access off, and the next change keeps a copy of it", () => {
+test("a file that cannot be trusted reads as remote access off with every switch at its most restrictive, says why, and the next change keeps a copy of it and starts from those (#367)", () => {
 	const file = join(dir, "remote.json");
+	expect(UNTRUSTED_REMOTE_CONFIG).toMatchObject({
+		enabled: false,
+		remoteShell: false,
+		fileTransfer: "off",
+		confirmRisky: true,
+	});
 	for (const damaged of [
 		"{",
 		"[]",
 		JSON.stringify({ enabled: true, aud: "short", team: "t" }),
 		JSON.stringify({ tunnelId: "--x" }),
+		JSON.stringify({ remoteShell: false, fileTransfer: "off", emails: ["a typo@example.test"] }),
 	]) {
 		rmSync(`${file}.damaged`, { force: true });
 		writeFileSync(file, damaged);
 		const store = new RemoteStore(file);
 		expect(isRemoteOn(store.read()), damaged).toBe(false);
-		expect(store.read()).toEqual(DEFAULT_REMOTE_CONFIG);
+		expect(store.read()).toEqual(UNTRUSTED_REMOTE_CONFIG);
+		expect(store.state().problem, damaged).toBeString();
 		store.patch({ team: "t" });
 		expect(readFileSync(`${file}.damaged`, "utf8"), damaged).toBe(damaged);
-		expect(new RemoteStore(file).read().team).toBe("t");
+		const written = new RemoteStore(file);
+		expect(written.read(), damaged).toEqual({ ...UNTRUSTED_REMOTE_CONFIG, team: "t" });
+		expect(written.state().problem).toBeNull();
 	}
 });
 

@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { DEFAULT_REMOTE_CONFIG, parseRemoteConfig, type RemoteConfig, RemoteConfigError } from "../shared/remote.ts";
+import {
+	DEFAULT_REMOTE_CONFIG,
+	parseRemoteConfig,
+	type RemoteConfig,
+	RemoteConfigError,
+	UNTRUSTED_REMOTE_CONFIG,
+} from "../shared/remote.ts";
 
 /** Where the settings are: `<data dir>/remote.json`, or the file `OMP_WEBUI_REMOTE_CONFIG` names (what the specs use). */
 export function remoteConfigPath(dataDir: string, env: Record<string, string | undefined> = process.env): string {
@@ -14,24 +20,33 @@ export function remoteConfigPath(dataDir: string, env: Record<string, string | u
  *
  * The file, not this object, is the truth: the part of the server that decides who is let in reads the same file, and a
  * person may edit it. So it is read again at every `read`, never remembered. A file that cannot be trusted (not JSON,
- * not settings, a field that does not fit) reads as the defaults — remote access off — and the next change keeps a copy
- * of it beside the file (`.damaged`) before it writes: a half-read file would be a way in nobody chose.
+ * not settings, a field that does not fit) reads as `UNTRUSTED_REMOTE_CONFIG` — remote access off, every switch for other
+ * pages at its most restrictive, as the server enforces it (#367) — and the next change starts from those and keeps a copy
+ * of the file beside it (`.damaged`) before it writes: a half-read file would be a way in nobody chose.
  */
 export class RemoteStore {
 	constructor(private readonly file: string) {}
 
-	/** The settings as the file holds them; the defaults when there is no file, or none that can be trusted. */
+	/** The settings as the file holds them; the defaults when there is no file; `UNTRUSTED_REMOTE_CONFIG` for one that cannot be trusted. */
 	read(): RemoteConfig {
-		return this.load() ?? { ...DEFAULT_REMOTE_CONFIG };
+		return this.state().config;
+	}
+
+	/** `read`, and why the file cannot be trusted (null when it can, or there is none), from one read of it. */
+	state(): { config: RemoteConfig; problem: string | null } {
+		const loaded = this.load();
+		return "config" in loaded
+			? { config: loaded.config, problem: null }
+			: { config: { ...UNTRUSTED_REMOTE_CONFIG }, problem: loaded.problem };
 	}
 
 	/** `changes` merged into the settings and written. Refused whole (`RemoteConfigError`) when the result would not be trustworthy. */
 	patch(changes: Partial<RemoteConfig>): RemoteConfig {
 		const loaded = this.load();
-		const next = parseRemoteConfig({ ...(loaded ?? DEFAULT_REMOTE_CONFIG), ...changes });
+		const next = parseRemoteConfig({ ...("config" in loaded ? loaded.config : UNTRUSTED_REMOTE_CONFIG), ...changes });
 		mkdirSync(dirname(this.file), { recursive: true, mode: 0o700 });
 		// What could not be trusted is kept, not written over.
-		if (loaded === null) this.keepDamaged();
+		if ("problem" in loaded) this.keepDamaged();
 		// Written whole and moved into place: a crash mid-write leaves the old file, never half of one.
 		const temporary = `${this.file}.${randomUUID()}.tmp`;
 		try {
@@ -44,22 +59,22 @@ export class RemoteStore {
 		return next;
 	}
 
-	/** The settings; the defaults when there is no file; null when the file is there but cannot be trusted. */
-	private load(): RemoteConfig | null {
+	/** The settings (the defaults when there is no file), or why the file that is there cannot be trusted. */
+	private load(): { config: RemoteConfig } | { problem: string } {
 		let text: string;
 		try {
 			text = readFileSync(this.file, "utf8");
 		} catch (e) {
-			if ((e as NodeJS.ErrnoException).code === "ENOENT") return { ...DEFAULT_REMOTE_CONFIG };
+			if ((e as NodeJS.ErrnoException).code === "ENOENT") return { config: { ...DEFAULT_REMOTE_CONFIG } };
 			console.warn(`omp-webui: ${this.file} cannot be read (${(e as Error).message}): remote access stays off`);
-			return null;
+			return { problem: `it cannot be read (${(e as Error).message})` };
 		}
 		try {
-			return parseRemoteConfig(JSON.parse(text));
+			return { config: parseRemoteConfig(JSON.parse(text)) };
 		} catch (e) {
 			const why = e instanceof RemoteConfigError ? e.message : "it is not JSON";
 			console.warn(`omp-webui: ${this.file} is not usable (${why}): remote access stays off`);
-			return null;
+			return { problem: why };
 		}
 	}
 

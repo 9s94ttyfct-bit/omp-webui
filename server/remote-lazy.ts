@@ -1,7 +1,13 @@
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ServerMessage } from "../shared/protocol.ts";
-import { asciiLower, isRemoteOn, parseRemoteConfig, type RemoteConfig } from "../shared/remote.ts";
+import {
+	asciiLower,
+	isRemoteOn,
+	parseRemoteConfig,
+	type RemoteConfig,
+	UNTRUSTED_REMOTE_CONFIG,
+} from "../shared/remote.ts";
 import { DEFAULT_FILE_TRANSFER, type FileTransfer } from "../shared/transfer.ts";
 import type { RemoteAiHooks } from "./remote-ai.ts";
 import type { RemoteAuth, RemoteIdentity } from "./remote-auth.ts";
@@ -86,8 +92,8 @@ export class LazyRemote {
 	 * Look at the file for the switches that are read without the chain, again whenever the file changes: "Confirm risky
 	 * commands from remote pages" (off unless the file says so), the file transfer (on in both directions unless the
 	 * file says otherwise) and shells for remote pages (on unless the file says otherwise). They are read whether or not
-	 * remote access is on (the person may set them first). A file that is there and cannot be read or trusted says no to
-	 * all of them, as it does for remote access itself.
+	 * remote access is on (the person may set them first). A file that is there and cannot be read or trusted means
+	 * `UNTRUSTED_REMOTE_CONFIG`: every one at its most restrictive (risky commands confirmed, no transfer, no shell).
 	 */
 	private readSwitches(): void {
 		let stamp = "";
@@ -111,9 +117,10 @@ export class LazyRemote {
 			this.transfer = config.fileTransfer ?? DEFAULT_FILE_TRANSFER;
 			this.shell = config.remoteShell;
 		} catch {
-			this.confirm = false;
-			this.transfer = "off";
-			this.shell = false;
+			// The values the card shows for such a file, and what a change over it starts from (#367).
+			this.confirm = UNTRUSTED_REMOTE_CONFIG.confirmRisky;
+			this.transfer = UNTRUSTED_REMOTE_CONFIG.fileTransfer ?? "off";
+			this.shell = UNTRUSTED_REMOTE_CONFIG.remoteShell;
 		}
 	}
 

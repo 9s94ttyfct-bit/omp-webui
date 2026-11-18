@@ -84,7 +84,7 @@ export class RemoteService {
 	}
 
 	snapshot(): RemoteSnapshot {
-		const config = this.store.read();
+		const { config, problem } = this.store.state();
 		const loginUrl = this.tunnel.loginPending();
 		return {
 			config,
@@ -94,6 +94,7 @@ export class RemoteService {
 			url: remoteUrl(config.hostname),
 			...(loginUrl === null ? {} : { loginUrl }),
 			ai: this.ai.state(),
+			...(problem === null ? {} : { untrusted: problem }),
 		};
 	}
 

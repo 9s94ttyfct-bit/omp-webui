@@ -99,6 +99,8 @@ export const en = {
 	// What went wrong
 	actionFailed: "Could not do that: {error}",
 	saveDone: "Settings saved",
+	untrusted:
+		"The settings file could not be read ({why}). Until it is saved again, remote access is off and pages that are not your own get no shell, no file transfer and are asked about risky commands; that is what is shown here. The next change keeps the old file as remote.json.damaged.",
 
 	// Export and import of the settings a second computer shares (team, AUD, allowed addresses)
 	transferTitle: "Share these settings with another computer",

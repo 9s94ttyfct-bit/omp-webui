@@ -312,6 +312,13 @@ export function RemoteSettings() {
 				</p>
 			) : null}
 
+			{snapshot.untrusted ? (
+				<p className="mt-2 flex items-start gap-1.5 text-xs text-warning" role="alert" data-testid="remote-untrusted">
+					<CircleAlert size={14} className="mt-px shrink-0" />
+					{t("remote.untrusted", { why: snapshot.untrusted })}
+				</p>
+			) : null}
+
 			<div className="mt-3 rounded-xl border border-border bg-bg-soft p-3" data-testid="remote-ai">
 				<div className="flex items-center gap-3">
 					<Sparkles size={15} className="shrink-0 text-accent" aria-hidden />
