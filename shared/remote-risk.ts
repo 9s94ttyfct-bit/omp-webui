@@ -2436,8 +2436,22 @@ class Scan {
 		}
 
 		const runs = listed(SHELLS, name) || name === "eval" || name === "source" || name === ".";
-		// A download is `remote_exec`: the substitution it comes in is not said to be a command put together as well.
-		const fetched = runs && args.some((a) => a.subs.some((s) => mentions(s, FETCHERS, knownVars(this.ctx))));
+		const fetches = (w: Word | undefined): boolean =>
+			(w?.subs ?? []).some((s) => mentions(s, FETCHERS, knownVars(this.ctx)));
+		// The program an interpreter runs: the code after `-c`/`-e`, else its first operand (`deno run` / `bun run` X's X).
+		const codeAt = listed(CODE_INTERPRETERS, name)
+			? args.findIndex((a) => /^-(c|e|p|pe|ne|ep|r)$|^--eval$/.test(a.text))
+			: -1;
+		const program = !listed(CODE_INTERPRETERS, name)
+			? undefined
+			: codeAt >= 0
+				? args[codeAt + 1]
+				: (name === "deno" || name === "bun") && operands[0]?.text === "run"
+					? operands[1]
+					: operands[0];
+		// A download is `remote_exec`: the substitution it comes in is not said to be a command put together as well. A shell
+		// runs one given anywhere; an interpreter one given as its program (`python3 <(curl …)`, `node -e "$(curl …)"`, #251).
+		const fetched = (runs && args.some(fetches)) || fetches(program);
 		if (fetched) this.add("remote_exec");
 		if (listed(SHELLS, name)) {
 			// A shell that is handed a script (`-c`), or reads one from its input (a here-document).
@@ -2452,8 +2466,7 @@ class Scan {
 		} else if ((name === "source" || name === ".") && !fetched && opensSubstitution(operands[0])) {
 			this.dynamicCommand();
 		} else if (listed(CODE_INTERPRETERS, name)) {
-			const at = args.findIndex((a) => /^-(c|e|p|pe|ne|ep|r)$|^--eval$/.test(a.text));
-			const code = at >= 0 ? args[at + 1]?.text : body;
+			const code = codeAt >= 0 ? args[codeAt + 1]?.text : body;
 			if (code) this.code(code, cwd, depth + 1);
 		}
 
