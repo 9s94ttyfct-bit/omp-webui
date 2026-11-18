@@ -53,6 +53,7 @@ import type { QuotaHoldReason } from "../shared/quota-floor.ts";
 import { QUOTA_DIALOG_CONTINUE, QUOTA_FILE_ENV, QUOTA_LOADED_SUFFIX } from "../shared/quota-hold.ts";
 import { REMOTE_RUN_TOOL } from "../shared/remote-run.ts";
 import { isUsageLimitError } from "../shared/retry.ts";
+import { parseRiskTitle } from "../shared/risk-confirm.ts";
 import { type ConfigValue, isChoice, type Unreported } from "../shared/session-defaults.ts";
 import { STOP_GRACE_MS } from "../shared/stop.ts";
 import { isWorkingStatus } from "../shared/subagent-status.ts";
@@ -2489,11 +2490,17 @@ export class Live {
 		});
 	}
 
-	/** Answer a dialog and tell every other tab it is settled. */
-	respondUI(response: Record<string, unknown>): void {
+	/**
+	 * Answer a dialog and tell every other tab it is settled. `owner`: the answer comes from the person's own page
+	 * (`isOwnerPage`); the guard's own question ("Guard dangerous commands", `Asked by: guard`) is taken from such a page
+	 * alone (#226), as is every other way to change how strict the guard is: another page's answer to it is dropped.
+	 */
+	respondUI(response: Record<string, unknown>, owner = true): void {
 		const id = String(response.id);
-		this.untouched = false;
 		const call = this.pendingUI.get(id);
+		if (!owner && call?.type === "extension_ui_request" && parseRiskTitle(String(call.title ?? ""))?.by === "guard")
+			return;
+		this.untouched = false;
 		if (call?.type === "host_tool_call") {
 			// The user's decision on a tool call the web UI serves goes back as that call's result.
 			const { result, isError } = response;

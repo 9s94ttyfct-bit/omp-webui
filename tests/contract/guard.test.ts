@@ -12,7 +12,7 @@ import { type AccessKey, type Jwks, makeKey, startJwks } from "../support/access
 import { type Frame, messageWhere, watchFrames } from "../support/frames.ts";
 import { pollUntil } from "../support/poll.ts";
 import { rejectionOf } from "../support/rejection.ts";
-import { remoteClient, remoteSettings } from "../support/remote-client.ts";
+import { proxiedClient, remoteClient, remoteSettings } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import {
 	type ScriptedRequest,
@@ -551,6 +551,39 @@ describe("the main agent's risky call", () => {
 		await mainDoes(c, write("ask-no.txt"), RISK_DENY);
 		expect(existsSync(join(outside, "ask-no.txt"))).toBe(false);
 		expect(reviewer.requests.length).toBe(asked);
+		await c.close();
+	}, 120_000);
+
+	test("Ask me: a page that holds only the token is shown the question, and its answer is dropped (#226)", async () => {
+		await setGuard({ mode: "ask" });
+		const c = await conversation();
+		const phone = await proxiedClient(s).socket();
+		if (!phone) throw new Error("the token page did not connect");
+		await request(phone, { t: "attach", liveId: c.live.liveId });
+		const theirs = watchFrames(phone, c.live.liveId);
+		plan.main = write("ask-token.txt");
+		const ended = fresh(c, (f) => f.type === "agent_end");
+		const asked = fresh(
+			c,
+			(f) =>
+				f.type === "extension_ui_request" && f.method === "select" && parseRiskTitle(String(f.title))?.by === "guard",
+		);
+		await prompt(c);
+		const question = await asked;
+		// The token page is told of it too, and answers Allow once: nothing comes of it.
+		await theirs.next((f) => f.type === "extension_ui_request" && f.id === question.id);
+		phone.send(
+			JSON.stringify({ t: "ui_response", liveId: c.live.liveId, response: { id: question.id, value: RISK_ALLOW } }),
+		);
+		await Bun.sleep(1500);
+		expect(existsSync(join(outside, "ask-token.txt"))).toBe(false);
+		// The person's own page answers, and that is what counts.
+		c.ws.send(
+			JSON.stringify({ t: "ui_response", liveId: c.live.liveId, response: { id: question.id, value: RISK_DENY } }),
+		);
+		await ended;
+		expect(existsSync(join(outside, "ask-token.txt"))).toBe(false);
+		phone.close();
 		await c.close();
 	}, 120_000);
 

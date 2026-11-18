@@ -13,6 +13,7 @@ import {
 	useState,
 } from "react";
 import { useT } from "../i18n/index.ts";
+import { ownerPage } from "../lib/api.ts";
 import {
 	type CheckboxDialog,
 	checkboxDialog,
@@ -29,7 +30,7 @@ import { useNow } from "../lib/now.ts";
 import { RISK_KIND_LABEL } from "../lib/risk-kinds.ts";
 import { resetShellScroll } from "../lib/shell-scroll.ts";
 import { fmtCountdown } from "../lib/usage-limit.ts";
-import { answerDialog as respond } from "../store/app.ts";
+import { answerDialog as respond, useApp } from "../store/app.ts";
 import { type AskQuestion, isApproval, type LiveState, type UIRequest } from "../store/live.ts";
 import { Revealed } from "./Revealed.tsx";
 import { Badge, Button, cx } from "./ui.tsx";
@@ -214,6 +215,7 @@ export function UIRequests({
 		el.focus({ preventScroll: true });
 	}, [id]);
 	const liveId = live.info.liveId;
+	const owner = useApp((s) => ownerPage(s.meta));
 	const approval = req ? isApproval(req) : false;
 	// The gate's confirmation of a risky call has its own words (see `shared/risk-confirm.ts`).
 	const risk = req ? parseRiskTitle(req.title) : null;
@@ -268,6 +270,9 @@ export function UIRequests({
 			: risk?.by === "guard" && !risk.denied && !risk.unavailable
 				? t("panel.reqRiskNoteGuard")
 				: null;
+	// The guard's own question is answered by the person's own page alone (#226; the server drops another page's answer):
+	// any other page shows it with no choices.
+	const ownerOnly = risk?.by === "guard" && !owner;
 	const title = !req
 		? ""
 		: req.method === "propose_goal"
@@ -360,7 +365,7 @@ export function UIRequests({
 					</>
 				) : null}
 				{approval && details ? <ApprovalDetails text={details} /> : null}
-				{approval ? (
+				{approval && !ownerOnly ? (
 					// The message box says the same in its placeholder, and a short window has no room for both.
 					<p className="mb-3 text-xs text-muted [[data-short]_&]:hidden" data-testid="approval-deny-hint">
 						{t("panel.reqDenyOnSend")}
@@ -376,18 +381,24 @@ export function UIRequests({
 				) : null}
 				{/* No key of its own: `Body` below has one, and two siblings with the same key make React render one of them twice. */}
 				<Countdown req={req} approval={approval} />
-				<Body
-					key={req.id}
-					req={req}
-					liveId={liveId}
-					secret={req.secret === true || secretInput?.(req) === true}
-					checks={checks}
-					choice={choice}
-					held={holding}
-					onPick={(option) => {
-						if (checks && option !== checks.dialog.done) setHeld({ liveId, req });
-					}}
-				/>
+				{ownerOnly ? (
+					<p className="text-xs text-muted" data-testid="risk-owner-only">
+						{t("panel.reqRiskOwnerOnly")}
+					</p>
+				) : (
+					<Body
+						key={req.id}
+						req={req}
+						liveId={liveId}
+						secret={req.secret === true || secretInput?.(req) === true}
+						checks={checks}
+						choice={choice}
+						held={holding}
+						onPick={(option) => {
+							if (checks && option !== checks.dialog.done) setHeld({ liveId, req });
+						}}
+					/>
+				)}
 			</div>
 		</>
 	);

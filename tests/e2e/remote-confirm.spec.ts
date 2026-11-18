@@ -337,6 +337,33 @@ for (const [lang, words] of [
 		await answer("rk-r");
 	});
 
+	test(`${lang}: a page that holds only the token sees the guard's question with no answers; Remote access's it answers (#226)`, async ({
+		page,
+	}) => {
+		await page.route("**/api/meta", async (route) => {
+			const real = await (await route.fetch()).json();
+			return route.fulfill({ json: { ...real, remote: true, local: false, owner: false } });
+		});
+		const { tap, liveId } = await openChat(page, lang, "light");
+		const card = page.getByTestId("ui-request");
+		push(tap, liveId, confirmation("rk-own", "bash", ["delete_outside"], OLD_DETAIL, { by: "guard" }));
+		await expect(page.getByTestId("risk-owner-only")).toHaveText(words.reqRiskOwnerOnly);
+		await expect(card.getByRole("button", { name: words.reqRiskAllow, exact: true })).toHaveCount(0);
+		await expect(page.getByTestId("approval-details")).toBeVisible();
+		push(tap, liveId, {
+			type: "extension_ui_request",
+			method: "cancel",
+			id: "answered-rk-own",
+			targetId: "rk-own",
+		});
+		await expect(card).toHaveCount(0);
+		// The confirmation of a turn this page drives is its own to answer.
+		push(tap, liveId, confirmation("rk-own-r", "bash", ["delete_outside"], OLD_DETAIL));
+		await card.getByRole("button", { name: words.reqRiskDeny, exact: true }).click();
+		await expect(card).toHaveCount(0);
+		expect(answers(tap)).toEqual([{ id: "rk-own-r", value: RISK_DENY }]);
+	});
+
 	test(`${lang}: a command's labels are the page's words, and the folder it runs in is apart from it (#785)`, async ({
 		page,
 	}) => {

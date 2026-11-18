@@ -2977,7 +2977,8 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 			const live = pool.get(msg.liveId);
 			if (!live) return;
 			touch(live);
-			live.respondUI(msg.response);
+			// The guard's own question is answered by the person's own page alone (#226): another page's answer is dropped.
+			live.respondUI(msg.response, isOwnerPage(ws.data.remote, ws.data.local));
 			return;
 		}
 		case "list_lives":
