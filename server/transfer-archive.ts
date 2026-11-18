@@ -14,6 +14,7 @@ import {
 	resolveInside,
 	throughHidden,
 } from "./folder.ts";
+import { type GitMarks, isIgnored } from "./git-marks.ts";
 import { type ZipSink, ZipWriter } from "./migrate/zip.ts";
 import {
 	busy,
@@ -178,11 +179,18 @@ async function startsWithKey(abs: string, size: number): Promise<boolean> {
 	}
 }
 
+/**
+ * The files of the ticket's folder a ZIP carries. Without hidden files asked for, what the Files tab hides is left out:
+ * `hiddenByDefault`, and what `.gitignore` names by `marks` (#347: a `venv/`, `bin/`, `vendor/`, logs), counted as hidden.
+ */
 async function walk(
 	t: Pick<Ticket, "root" | "folderAbs" | "hidden" | "guarded">,
 	env: TransferEnv,
 	limits: Limits,
+	marks: GitMarks | null,
 ): Promise<Walked> {
+	const ignored = (abs: string, isDir: boolean): boolean =>
+		marks !== null && isIgnored(marks, slashed(relative(t.root, abs)), isDir);
 	const skipped: ArchiveSkipped = { secret: 0, links: 0, special: 0, name: 0, hidden: 0 };
 	const entries: PlanEntry[] = [];
 	let files = 0;
@@ -220,7 +228,7 @@ async function walk(
 			const link = d.isSymbolicLink();
 			let isDir = d.isDirectory();
 			let isFile = d.isFile();
-			if (!t.hidden && hiddenByDefault(d.name, isDir, abs)) {
+			if (!t.hidden && (hiddenByDefault(d.name, isDir, abs) || ignored(abs, isDir))) {
 				skipped.hidden++;
 				continue;
 			}
@@ -241,7 +249,7 @@ async function walk(
 					skipped.secret++;
 					continue;
 				}
-				if (!t.hidden && hiddenBelow(t.root, t.folderAbs, real)) {
+				if (!t.hidden && (hiddenBelow(t.root, t.folderAbs, real) || ignored(real, false))) {
 					skipped.hidden++;
 					continue;
 				}
@@ -337,7 +345,9 @@ export async function planArchive(
 	if (!release) throw busy();
 	let found: Walked;
 	try {
-		found = await walk(t, env, deps.limits);
+		// What git ignores is asked of the same look at git as the tree's (it may be a moment old), only when it is left out.
+		const marks = hidden ? null : ((await ctx.marks?.(root).catch(() => null)) ?? null);
+		found = await walk(t, env, deps.limits, marks);
 	} finally {
 		release();
 	}

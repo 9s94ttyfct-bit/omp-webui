@@ -21,6 +21,7 @@ import {
 	rootOf,
 	SECRET_REFUSAL,
 } from "./folder.ts";
+import type { GitMarks } from "./git-marks.ts";
 import { platformId } from "./platform/capabilities.ts";
 import type { TransferLog } from "./transfer-log.ts";
 
@@ -70,6 +71,11 @@ export interface TransferEnv {
 export interface TransferContext {
 	/** The folder the conversation the request names works in; null when it names none the server knows. */
 	cwdOf(live: string | null, file: string | null): Promise<string | null>;
+	/**
+	 * What git says of the folder's files (the Files tab's `GitProbe.marks`), so that a ZIP leaves out what `.gitignore` names
+	 * as the tree does (#347); null or absent where git is not asked.
+	 */
+	marks?(root: string): Promise<GitMarks | null>;
 }
 
 /** The limits in force: `TRANSFER_LIMITS`, and the few more the server alone knows (tests use small ones). */

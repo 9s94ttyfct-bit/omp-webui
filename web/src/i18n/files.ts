@@ -161,7 +161,8 @@ export const en = {
 	transferSkipSpecial: "{n} that are not ordinary files",
 	transferSkipName: "{n} with names a ZIP cannot hold",
 	transferSkipHidden: "{n} hidden",
-	transferIncludeHidden: "Include hidden files and build folders (dotfiles, node_modules, dist…)",
+	transferIncludeHidden:
+		"Include hidden files and build folders (dotfiles, node_modules, dist, what .gitignore names…)",
 	transferIncludeHiddenOff: "Not offered in the home folder: a page sees there what the Files tab shows.",
 	transferZipDownload: "Download ZIP",
 	transferZipAgain: "Prepare again",

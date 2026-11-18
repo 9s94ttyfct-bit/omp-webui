@@ -1,5 +1,6 @@
 // needs: posixFiles
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
+import { execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import {
 	appendFileSync,
@@ -20,6 +21,7 @@ import {
 import { join } from "node:path";
 import { hiddenByDefault } from "../../server/files.ts";
 import { type TransferOptions, TransferService } from "../../server/folder-transfer.ts";
+import { type GitMarks, parseMarks } from "../../server/git-marks.ts";
 import { ZipReader } from "../../server/migrate/zip.ts";
 import type { TransferEnv } from "../../server/transfer-core.ts";
 import { contentDisposition, ifRangeHolds, parseRange } from "../../server/transfer-download.ts";
@@ -86,6 +88,8 @@ function world(opts: Partial<TransferOptions> = {}, root: "proj" | "home" = "pro
 	});
 	services.push(service);
 	const cwd = root === "proj" ? proj : home;
+	// What git says of the folder (the Files tab's `GitProbe.marks`), as a test sets it.
+	const git: { marks: GitMarks | null } = { marks: null };
 	const env = (over: Partial<TransferEnv> = {}): TransferEnv => ({
 		setting: "full",
 		// A page that is not the person's own (one on the network with the token) unless a test says otherwise.
@@ -107,7 +111,12 @@ function world(opts: Partial<TransferOptions> = {}, root: "proj" | "home" = "pro
 			init.body = o.body;
 			if (typeof o.body === "object" && "getReader" in o.body) init.duplex = "half";
 		}
-		const answered = service.handle(new Request(url, init), url, { cwdOf: async () => cwd }, e);
+		const answered = service.handle(
+			new Request(url, init),
+			url,
+			{ cwdOf: async () => cwd, marks: async () => git.marks },
+			e,
+		);
 		// An answer nobody reads is cancelled when the test is over, so that no file is left open.
 		void answered.then((r) => answers.push(r));
 		return answered;
@@ -119,7 +128,7 @@ function world(opts: Partial<TransferOptions> = {}, root: "proj" | "home" = "pro
 					.filter(Boolean)
 					.map((l) => JSON.parse(l) as Record<string, unknown>)
 			: [];
-	return { top, home, proj, outside, data, service, clock, env, call, log };
+	return { top, home, proj, outside, data, service, clock, env, call, log, git };
 }
 
 const write = (path: string, text: string | Uint8Array, mode?: number) => {
@@ -562,6 +571,28 @@ describe("a folder as a ZIP", () => {
 		expect(dist).toMatchObject({ name: "dist.zip", files: 1 });
 		expect(dist?.skipped.hidden).toBe(1);
 		expect((await unzip(await w.call(`archive/${dist?.ticket}`), w.top)).names).toEqual(["dist/bundle.js"]);
+	});
+
+	test("what .gitignore names is left out as the tree leaves it out, counted as hidden, and comes when hidden things are asked for (#347)", async () => {
+		const w = world();
+		write(join(w.proj, ".gitignore"), "venv/\n*.log\n");
+		write(join(w.proj, "work", "app.py"), "print(1)\n");
+		write(join(w.proj, "work", "debug.log"), "log\n");
+		write(join(w.proj, "work", "venv", "lib", "m.py"), "m\n");
+		execFileSync("git", ["init", "-q"], { cwd: w.proj });
+		const status = execFileSync("git", ["status", "--porcelain=v2", "-z", "--ignored=traditional"], { cwd: w.proj });
+		w.git.marks = parseMarks(status.toString("utf8"), "");
+		const p = (await plan(w, "work")).plan;
+		expect(p).toMatchObject({ files: 1 });
+		expect(p?.skipped.hidden).toBe(2);
+		expect((await unzip(await w.call(`archive/${p?.ticket}`), w.top)).names).toEqual(["work/app.py"]);
+		const all = (await plan(w, "work", { hidden: true })).plan;
+		expect(all).toMatchObject({ files: 3 });
+		expect((await unzip(await w.call(`archive/${all?.ticket}`), w.top)).names).toEqual([
+			"work/app.py",
+			"work/debug.log",
+			"work/venv/lib/m.py",
+		]);
 	});
 
 	test("in a conversation whose folder is the home folder hidden things are never in: the plan says they cannot be asked for", async () => {

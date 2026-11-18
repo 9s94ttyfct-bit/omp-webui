@@ -159,7 +159,7 @@ export const zh: Record<keyof typeof en, string> = {
 	transferSkipSpecial: "{n} 个不是普通文件",
 	transferSkipName: "{n} 个名称 ZIP 无法容纳",
 	transferSkipHidden: "{n} 个隐藏项",
-	transferIncludeHidden: "包含隐藏文件和构建文件夹（以点开头的文件、node_modules、dist…）",
+	transferIncludeHidden: "包含隐藏文件和构建文件夹（以点开头的文件、node_modules、dist、.gitignore 列出的内容…）",
 	transferIncludeHiddenOff: "主目录下不提供此选项：这里的页面只能看到“文件”标签页显示的内容。",
 	transferZipDownload: "下载 ZIP",
 	transferZipAgain: "重新准备",

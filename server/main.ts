@@ -2692,7 +2692,13 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			changes: (cwd, fresh) => git.changes(cwd, { fresh }),
 			diff: (cwd, path) => git.diff(cwd, path),
 			owner: fromOwner(req),
-			transfer: (r, u) => folder.transfer(r, u, { cwdOf: conversationCwd }, transferEnv(req, peer)),
+			transfer: (r, u) =>
+				folder.transfer(
+					r,
+					u,
+					{ cwdOf: conversationCwd, marks: (cwd) => git.marks(cwd, { fresh: false }) },
+					transferEnv(req, peer),
+				),
 			env: () => transferEnv(req, peer),
 		});
 	}
