@@ -327,5 +327,6 @@ export function createWin32(deps: SystemDeps): Platform {
 		describe: async () => `win32 ${release()} (${arch()})`,
 		loginItem: runKey(deps),
 		trash: null,
+		metadata: null,
 	};
 }

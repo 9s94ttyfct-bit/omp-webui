@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
 	chmodSync,
 	existsSync,
+	linkSync,
 	lstatSync,
 	mkdirSync,
 	readdirSync,
@@ -17,6 +18,7 @@ import { join } from "node:path";
 import { readFolderFile } from "../../server/folder.ts";
 import { type TransferOptions, TransferService } from "../../server/folder-transfer.ts";
 import { mayEdit } from "../../server/folder-write.ts";
+import { platform } from "../../server/platform/index.ts";
 import type { TransferEnv } from "../../server/transfer-core.ts";
 import { FOLDER_LIMITS, type FolderFile, type FolderSaved } from "../../shared/folder.ts";
 import { ERROR_HEADER, type TransferRecord } from "../../shared/transfer.ts";
@@ -122,6 +124,34 @@ describe("a save", () => {
 		expect(readFileSync(join(w.proj, "other.txt"), "utf8")).toBe("other\n");
 		expect(names(w.proj)).toEqual(["a.txt", "other.txt", "run.sh"]);
 	});
+
+	test("a file with another name (a hard link) is written in place, so both names have the new text (#300)", async () => {
+		const w = world();
+		write(join(w.proj, "a.txt"), "one\n");
+		linkSync(join(w.proj, "a.txt"), join(w.proj, "b.txt"));
+		const ino = statSync(join(w.proj, "a.txt")).ino;
+		expect((await w.save({ text: "one\ntwo\n", etag: sha("one\n") })).status).toBe(200);
+		expect(readFileSync(join(w.proj, "b.txt"), "utf8")).toBe("one\ntwo\n");
+		expect(statSync(join(w.proj, "a.txt")).ino).toBe(ino);
+		expect(names(w.proj)).toEqual(["a.txt", "b.txt"]);
+		// Shorter text leaves nothing of the longer one behind it.
+		expect((await w.save({ text: "x\n", etag: sha("one\ntwo\n") })).status).toBe(200);
+		expect(readFileSync(join(w.proj, "b.txt"), "utf8")).toBe("x\n");
+	});
+
+	test.skipIf(!platform.metadata)(
+		"a save keeps the file's extended attributes: Finder tags, custom ones (#300)",
+		async () => {
+			const w = world();
+			const file = join(w.proj, "a.txt");
+			write(file, "one\n");
+			const xattr = (...args: string[]) => Bun.spawnSync(["xattr", ...args], { stdout: "pipe" }).stdout.toString();
+			xattr("-w", "com.example.note", "kept", file);
+			expect((await w.save({ text: "one\ntwo\n", etag: sha("one\n") })).status).toBe(200);
+			expect(readFileSync(file, "utf8")).toBe("one\ntwo\n");
+			expect(xattr("-p", "com.example.note", file).trim()).toBe("kept");
+		},
+	);
 
 	test("is logged with who made it, what it was and its hash; a refusal of a rule is logged too", async () => {
 		const w = world();

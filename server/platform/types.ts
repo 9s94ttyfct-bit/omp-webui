@@ -194,6 +194,12 @@ export interface TrashOps {
 	workingFolders(): Promise<WorkingFolder[] | null>;
 }
 
+/** What a file carries besides its bytes and permission bits, which a save that writes a new file in its place copies over (#300). */
+export interface MetadataOps {
+	/** Copy the extended attributes (Finder tags, "Where from", custom ones) and the ACL of `from` onto `to`. Rejects when it cannot. */
+	copyExtras(from: string, to: string): Promise<void>;
+}
+
 export interface Platform {
 	readonly id: PlatformId;
 	readonly capabilities: Capabilities;
@@ -230,4 +236,6 @@ export interface Platform {
 	readonly loginItem: LoginItemOps | null;
 	/** Null where nothing is ever moved to a Trash (Windows). */
 	readonly trash: TrashOps | null;
+	/** Null where a file's extended attributes and ACL cannot be copied (Linux and Windows: a save there keeps only the bytes, mode and owner). */
+	readonly metadata: MetadataOps | null;
 }

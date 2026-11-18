@@ -11,6 +11,7 @@ import {
 	wiredPagesOfVmStat,
 } from "../host-parse.ts";
 import { capabilitiesFor } from "./capabilities.ts";
+import { macMetadata } from "./darwin-copyfile.ts";
 import { macNetBytes } from "./darwin-net.ts";
 import { HOST_READ_MS, posixCommands, posixHostProcesses, posixProcesses, posixShell, psIdentity } from "./posix.ts";
 import type { DesktopOps, LockOps, Platform, SystemDeps, TrashOps, WorkingFolder } from "./types.ts";
@@ -203,5 +204,6 @@ export function createDarwin(deps: SystemDeps): Platform {
 		// The app registers itself (`SMAppService`, macos/loginitem.swift): a server has no program of its own to name.
 		loginItem: null,
 		trash: trash(deps, () => proc.uid()),
+		metadata: macMetadata(),
 	};
 }

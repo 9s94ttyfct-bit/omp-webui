@@ -17,6 +17,7 @@ import {
 	type Resolved,
 	resolveFor,
 } from "./folder.ts";
+import { platform } from "./platform/index.ts";
 import {
 	conversationRoot,
 	holdsHome,
@@ -261,6 +262,55 @@ async function publish(
 	} catch {
 		throw new TransferError("That file is not writable", 403, "refused");
 	}
+	// What a save is checked against just before the file is replaced: the folder is the one it was, and the file the one read.
+	const unchanged = async (): Promise<void> => {
+		const [real, now] = await Promise.all([
+			realpath(dir).catch(() => null),
+			lstat(abs, { bigint: true }).catch(() => null),
+		]);
+		if (real !== dir || !inside(root, real))
+			throw new TransferError("The folder is not the one it was", 403, "refused");
+		if (
+			now === null ||
+			!now.isFile() ||
+			now.ino !== info.ino ||
+			now.dev !== info.dev ||
+			now.size !== info.size ||
+			now.mtimeNs !== info.mtimeNs
+		) {
+			// Changed under the save: the answer names what it is now (a file that is gone is a 404 of the read).
+			throw conflict(sha256((await holding(abs)).bytes));
+		}
+	};
+	const refusal = (e: unknown): unknown => {
+		const code = (e as NodeJS.ErrnoException).code;
+		if (code === "ENOSPC" || code === "EDQUOT") return new TransferError("The disk is full", 507, "diskFull");
+		if (code === "EACCES" || code === "EPERM" || code === "EROFS")
+			return new TransferError("That file is not writable", 403, "refused");
+		return e;
+	};
+	if (info.nlink > 1n) {
+		// A file with more than one name (a hard link): a new file renamed over this name would leave the others with the old
+		// text. It is written in place, so every name has the new text (#300); that write is not whole-or-nothing.
+		try {
+			await deps.beforePublish?.();
+			await unchanged();
+			const handle = await open(abs, constants.O_WRONLY | constants.O_NOFOLLOW);
+			try {
+				const opened = await handle.stat({ bigint: true });
+				if (opened.ino !== info.ino || opened.dev !== info.dev) throw conflict(sha256((await holding(abs)).bytes));
+				await handle.write(out, 0, out.length, 0);
+				await handle.truncate(out.length);
+				await handle.sync();
+			} finally {
+				await handle.close();
+			}
+		} catch (e) {
+			throw refusal(e);
+		}
+		const after = await lstat(abs).catch(() => null);
+		return { etag: sha256(out), size: out.length, modified: Math.floor(after?.mtimeMs ?? Date.now()) };
+	}
 	const staged = join(dir, `.ompw-edit-${randomBytes(16).toString("hex")}`);
 	// Written down before it is made: a server that ends without its shutdown leaves it to the next one to remove.
 	await deps.staged.add(staged);
@@ -272,6 +322,8 @@ async function publish(
 				0o600,
 			);
 			try {
+				// The file's owner and group where the system lets the server give them (it is not root: another owner is not).
+				await handle.chown(Number(info.uid), Number(info.gid)).catch(() => {});
 				// What the file was allowed to be it stays (never an execute bit it did not have, nor a setuid one).
 				await handle.chmod(Number(info.mode) & 0o777);
 				await handle.writeFile(out);
@@ -279,31 +331,13 @@ async function publish(
 			} finally {
 				await handle.close();
 			}
+			// Its extended attributes (Finder tags, "Where from") and ACL, where the system has them to copy (#300).
+			await platform.metadata?.copyExtras(abs, staged).catch(() => {});
 			await deps.beforePublish?.();
-			const [real, now] = await Promise.all([
-				realpath(dir).catch(() => null),
-				lstat(abs, { bigint: true }).catch(() => null),
-			]);
-			if (real !== dir || !inside(root, real))
-				throw new TransferError("The folder is not the one it was", 403, "refused");
-			if (
-				now === null ||
-				!now.isFile() ||
-				now.ino !== info.ino ||
-				now.dev !== info.dev ||
-				now.size !== info.size ||
-				now.mtimeNs !== info.mtimeNs
-			) {
-				// Changed under the save: the answer names what it is now (a file that is gone is a 404 of the read).
-				throw conflict(sha256((await holding(abs)).bytes));
-			}
+			await unchanged();
 			await rename(staged, abs);
 		} catch (e) {
-			const code = (e as NodeJS.ErrnoException).code;
-			if (code === "ENOSPC" || code === "EDQUOT") throw new TransferError("The disk is full", 507, "diskFull");
-			if (code === "EACCES" || code === "EPERM" || code === "EROFS")
-				throw new TransferError("That file is not writable", 403, "refused");
-			throw e;
+			throw refusal(e);
 		}
 	} catch (e) {
 		await unlink(staged).catch(() => {});

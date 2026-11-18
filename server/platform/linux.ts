@@ -241,5 +241,6 @@ export function createLinux(deps: SystemDeps): Platform {
 		describe: async () => `linux ${release()} (${arch()})`,
 		loginItem: autostart(deps),
 		trash: linuxTrash(deps, () => proc.uid()),
+		metadata: null,
 	};
 }
