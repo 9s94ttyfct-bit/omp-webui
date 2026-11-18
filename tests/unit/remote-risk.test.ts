@@ -2158,3 +2158,29 @@ describe("a module an eval cell loads from the network, or from a name worked ou
 		expect(shell("node -e 'import(\"https://x.example/a.mjs\")'")).toContain("remote_exec");
 	});
 });
+
+describe("deletes in deno eval, Ruby's File.delete, Perl's remove_tree, and of what a glob of a folder lists (#222)", () => {
+	test.each([
+		"perl -MFile::Path=remove_tree -e 'remove_tree(\"/Users/me/Documents\")'",
+		"perl -e 'unlink glob q(~/Documents/*)'",
+		"perl -e 'unlink <~/Documents/*>'",
+		"deno eval 'Deno.removeSync(\"/Users/me/Documents\",{recursive:true})'",
+		"ruby -e 'Dir.glob(\"/Users/me/Documents/*\").each{|f| File.delete(f)}'",
+		"python3 -c 'import glob,os; [os.remove(f) for f in glob.glob(\"/Users/me/Documents/*\")]'",
+		"ruby -e 'Dir[\"/Users/me/Downloads/*.dmg\"].each { |f| File.delete(f) }'",
+	])("%s is a mass delete outside the project", (command) => {
+		expect(shell(command)).toEqual(["mass_delete", "delete_outside"]);
+	});
+
+	test("Ruby's File.delete of one file outside the project", () => {
+		expect(shell("ruby -e 'File.delete(\"/Users/me/Documents/a\")'")).toEqual(["delete_outside"]);
+	});
+
+	test.each([
+		"python3 -c 'import glob,os; [os.remove(f) for f in glob.glob(\"/work/proj/build/*\")]'",
+		"python3 -c 'import glob; print(glob.glob(\"/Users/me/*\"))'",
+		"deno eval 'console.log(1)'",
+	])("%s is not asked about", (command) => {
+		expect(shell(command)).toEqual([]);
+	});
+});

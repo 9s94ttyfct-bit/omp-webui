@@ -583,6 +583,9 @@ const CODE_DELETE = table(
 	"rimraf.sync",
 	"emptyDir",
 	"emptyDirSync",
+	// Perl's `File::Path::remove_tree`, Ruby's `File.delete` (#222).
+	"remove_tree",
+	"File.delete",
 );
 /** The deletes that take everything under their path with them, whatever options they are given. */
 const CODE_DELETE_TREE = table(
@@ -597,6 +600,7 @@ const CODE_DELETE_TREE = table(
 	"removeSync",
 	"emptyDir",
 	"emptyDirSync",
+	"remove_tree",
 );
 const CODE_WRITE = table(
 	"writeFileSync",
@@ -1670,6 +1674,15 @@ function pathLiteral(argument: string, ctx: RiskContext): string | null {
 
 /** A program that makes and removes a temporary folder of its own: what it deletes by a path it works out is likely that. */
 const TEMP_USE = /\bmkdtemp(?:Sync)?\b|\btmpdir\s*\(|\bTemporaryDirectory\b|\btempfile\.|\bos\.tmpdir\b/;
+/**
+ * A glob of a folder written out in a program's source (#222): `glob.glob("/x/*")`, `glob("/x/*")`, `Dir.glob("/x/*")`,
+ * `Dir["/x/*"]` (the pattern a string literal, in group 1 or 3), Perl's `glob q(/x/*)` and `unlink <~/x/*>` (as written, in
+ * group 5 or 6).
+ */
+const GLOB_OF =
+	/\b(?:glob\.i?glob|Dir\.glob|globSync|glob)\s*\(\s*([rRbBuUfF]{0,2}(["'`])(?:\\.|(?!\2)[^\\\n]){1,500}\2)|\bDir\s*\[\s*((["'])(?:\\.|(?!\4)[^\\\n]){1,500}\4)|\bglob\s*\(?\s*q\(([^()\n]{1,500})\)|\bunlink\s+<([^<>\n]{1,500})>/g;
+/** Perl's delete of what is not written out, with no parentheses: `unlink glob …`, `unlink <…>`, `unlink @files`, `rmtree $d`. */
+const PERL_BLIND_DELETE = /\b(?:unlink|rmtree|remove_tree)\s+(?!["'(])\S/;
 
 /**
  * Whether a program starts another from a command it only works out when it runs (`execSync(cmd)`, `os.system(cmd)`,
@@ -1749,6 +1762,8 @@ function codeKinds(code: string, ctx: RiskContext): RiskKind[] {
 	};
 	let deletes = false;
 	let writes = false;
+	// A delete of a path the program works out (`os.remove(f)`), which may be one a glob lists.
+	let blind = PERL_BLIND_DELETE.test(code);
 	for (const m of code.matchAll(CODE_CALL)) {
 		const name = m[1];
 		const at = m.index + m[0].length;
@@ -1764,8 +1779,10 @@ function codeKinds(code: string, ctx: RiskContext): RiskKind[] {
 			if (tree && args.length > 0 && writtenOut(args[0]) === null && (!TEMP_USE.test(code) || HOME_USE.test(code)))
 				kinds.push("delete_outside", "mass_delete");
 			// A bare `remove(` is as likely a list's: only `os.remove` and the like count for the home folder.
-			if (name !== "remove" || /\b(?:os|fs|fse|Deno)\.$/.test(code.slice(Math.max(0, m.index - 5), m.index)))
+			if (name !== "remove" || /\b(?:os|fs|fse|Deno)\.$/.test(code.slice(Math.max(0, m.index - 5), m.index))) {
 				deletes = true;
+				if (args.length > 0 && writtenOut(args[0]) === null) blind = true;
+			}
 		} else if (listed(CODE_WRITE, name)) {
 			// Python's `open` writes only in a mode that says so.
 			const mode = args.slice(1).some((a) => /^(?:mode\s*=\s*)?[rRbBuUfF]*["'`][^"'`]*[wax+]/.test(a));
@@ -1782,6 +1799,20 @@ function codeKinds(code: string, ctx: RiskContext): RiskKind[] {
 			}
 		}
 	}
+	// What a glob of a folder written out lists, deleted by a path the program works out (`[os.remove(f) for f in
+	// glob.glob("/x/*")]`, `Dir.glob("/x/*").each { |f| File.delete(f) }`, `unlink glob q(/x/*)`, #222): that folder's files,
+	// as `rm /x/*` deletes them.
+	if (blind)
+		for (const m of code.matchAll(GLOB_OF)) {
+			const literal = m[1] ?? m[3];
+			const pattern = literal !== undefined ? stringOf(literal) : (m[5] ?? m[6]).trim();
+			const glob = pattern?.search(/[*?[{]/) ?? -1;
+			if (pattern === null || glob < 0) continue;
+			const folder = pattern.slice(0, Math.max(1, pattern.lastIndexOf("/", glob)));
+			const k = judgePath(pathLiteral(JSON.stringify(folder), ctx), "delete_outside", ctx);
+			if (k !== null) kinds.push(k);
+			if (k === "delete_outside") kinds.push("mass_delete");
+		}
 	for (const m of code.matchAll(PATH_CHAIN))
 		found(pathLiteral(m[1], ctx), /^(unlink|rmdir|rmtree|delete)$/.test(m[3]) ? "delete_outside" : "write_outside");
 	if (HOME_USE.test(code)) {
@@ -2537,8 +2568,13 @@ class Scan {
 		// A shell that is handed a script (`-c`): the line after it.
 		const lineAt = listed(SHELLS, name) ? args.findIndex((a) => /^-[a-z]*c[a-z]*$/.test(a.text)) : -1;
 		const script = lineAt >= 0 ? args.slice(lineAt + 1).find((a) => !a.text.startsWith("-")) : undefined;
-		// The program an interpreter runs: the code after `-c`/`-e`, else its first operand (`deno run` / `bun run` X's X).
-		const codeAt = isInterpreter(name) ? args.findIndex((a) => /^-(c|e|p|pe|ne|ep|r)$|^--eval$/.test(a.text)) : -1;
+		// The program an interpreter runs: the code after `-c`/`-e` (or `deno eval`'s, #222: just before it, `codeAt`), else its
+		// first operand (`deno run` / `bun run` X's X).
+		const codeAt = !isInterpreter(name)
+			? -1
+			: name === "deno" && operands[0]?.text === "eval" && operands[1]
+				? args.indexOf(operands[1]) - 1
+				: args.findIndex((a) => /^-(c|e|p|pe|ne|ep|r)$|^--eval$/.test(a.text));
 		const program = !isInterpreter(name)
 			? undefined
 			: codeAt >= 0
