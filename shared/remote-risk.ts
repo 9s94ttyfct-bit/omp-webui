@@ -3691,12 +3691,31 @@ class Scan {
 		let here = cwd;
 		for (const pipeline of parseWindowsScript(src, "ps", knownVars(this.ctx)))
 			pipeline.forEach((stage, n) => {
-				here = this.psStage(stage, here, depth, n > 0);
+				here = this.psStage(stage, here, depth, pipeline.slice(0, n));
 			});
 	}
 
-	/** One command of a PowerShell script; the answer is the folder the next one runs in. */
-	private psStage(simple: Simple, cwd: string | null, depth: number, piped: boolean): string | null {
+	/**
+	 * What comes down a PowerShell pipe into a stage (`before`: the stages before it): the folders a listing names (`Get-ChildItem
+	 * <folder>`, `gci`, `ls`, `dir`, `Get-Item`; its folder when it names none), looked through filters (`Where-Object`,
+	 * `Sort-Object`, `Select-Object`); null when that is not known (#274).
+	 */
+	private pipedPaths(before: readonly Simple[]): Word[] | null {
+		for (let n = before.length - 1; n >= 0; n--) {
+			const [head, ...args] = before[n].words;
+			const name = head && !head.dynamic ? baseName(head.text) : "";
+			if (/^(?:where-object|where|\?|sort-object|sort|select-object|select)$/.test(name)) continue;
+			if (!/^(?:get-childitem|gci|ls|dir|get-item|gi)$/.test(name)) return null;
+			const p = psParams(args);
+			const named = [...p.values("path", "literalpath", "lp"), ...p.positional];
+			return named.length > 0 ? named : [literalWord(".")];
+		}
+		return null;
+	}
+
+	/** One command of a PowerShell script (`before`: the stages piped into it); the answer is the folder the next one runs in. */
+	private psStage(simple: Simple, cwd: string | null, depth: number, before: readonly Simple[]): string | null {
+		const piped = before.length > 0;
 		for (const r of simple.redirects) if (r.target.text.toLowerCase() !== "$null") this.write(r.target, cwd);
 		for (const w of simple.words) {
 			if (namesPrivateFile(w, cwd, this.ctx)) this.add("protected");
@@ -3726,14 +3745,33 @@ class Scan {
 			case "remove-item": {
 				const recursive = p.has("recurse");
 				const strong = recursive || p.has("force");
-				for (const t of registered([...p.values("path", "literalpath", "lp"), ...p.positional]))
-					this.delete(t, cwd, strong, recursive);
+				const given = registered([...p.values("path", "literalpath", "lp"), ...p.positional]);
+				for (const t of given) this.delete(t, cwd, strong, recursive);
+				// No path: it deletes what comes down the pipe, everything a listing finds under its folders (#274), as `find -delete`.
+				const from = given.length === 0 && piped ? this.pipedPaths(before) : [];
+				if (from === null) {
+					this.add("delete_outside");
+					this.add("mass_delete");
+				}
+				for (const f of from ?? []) {
+					const abs = resolveWord(f, cwd, this.ctx);
+					this.delete(f, cwd, true, !(abs !== null && this.ctx.roots.includes(abs)), true);
+				}
 				break;
 			}
 			case "clear-content":
-			case "clear-item":
-				for (const t of registered(paths("path", "literalpath", "lp"))) this.overwrite(t, cwd);
+			case "clear-item": {
+				const given = registered(paths("path", "literalpath", "lp"));
+				for (const t of given) this.overwrite(t, cwd);
+				// No path: it empties each file that comes down the pipe (#274).
+				const from = given.length === 0 && piped ? this.pipedPaths(before) : [];
+				if (from === null) {
+					this.add("delete_outside");
+					this.add("mass_delete");
+				}
+				for (const f of from ?? []) this.overwrite({ ...f, text: `${f.text}/*` }, cwd);
 				break;
+			}
 			case "set-content":
 			case "add-content":
 			case "out-file":

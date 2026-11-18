@@ -179,3 +179,24 @@ describe("PowerShell is read on macOS and Linux too", () => {
 		expect(classifyShell("pwsh -c 'Remove-Item -Recurse ./build'", posix)).toEqual([]);
 	});
 });
+
+describe("Remove-Item and Clear-Content with what comes down the pipe (#274)", () => {
+	test.each([
+		"powershell -Command 'Get-ChildItem $HOME\\Documents | Remove-Item -Recurse -Force'",
+		"powershell -Command 'gci C:\\Users\\Me\\Documents | ri -Recurse -Force'",
+		"powershell -Command 'Get-ChildItem C:\\Users\\Me\\Documents -Recurse | Remove-Item -Force'",
+		"powershell -Command 'gci C:\\Users\\Me\\Documents | Sort-Object Length | Remove-Item'",
+		"powershell -Command 'Get-Content list.txt | Remove-Item'",
+		"powershell -Command 'gci C:\\Users\\Me\\Documents | Clear-Content'",
+	])("%s is a mass delete outside the project", (command) => {
+		expect(shell(command)).toEqual(expect.arrayContaining(["mass_delete", "delete_outside"]));
+	});
+
+	test.each([
+		"powershell -Command 'gci . -Filter *.log | Remove-Item'",
+		"powershell -Command 'gci | Remove-Item -Recurse'",
+		"powershell -Command 'Get-ChildItem build -Recurse | Remove-Item -Force'",
+	])("%s is not asked about", (command) => {
+		expect(shell(command)).toEqual([]);
+	});
+});
