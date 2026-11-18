@@ -2722,13 +2722,18 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 	}
 	if (p === "/api/model-config" || p.startsWith("/api/model-config/")) return handleModelConfig(req, url, cfg);
 	if (p === "/api/plugins" || p.startsWith("/api/plugins/")) {
-		// The Plugins page: loaded on its first request. Open to every page that has the token, as the Commands & terminal
-		// page's runner is (it runs `omp plugin …` and `omp skill …` for such a page too); nothing changes while an import
-		// writes. Its MCP section writes the user's `mcp.json` in omp's agent directory.
+		// The Plugins page: loaded on its first request. Its reads are every page's that has the token. What it writes
+		// installs code omp runs (a plugin's extensions, a skill, a marketplace, an MCP server's command in the user's
+		// `mcp.json`): a page that is not the person's own is refused it while it may open no shell, as a terminal is (#209).
+		// Nothing changes while an import writes.
+		if (req.method !== "GET" && !fromOwner(req) && !remoteAuth.remoteShell()) return fail(REMOTE_SHELL_OFF, 403);
 		const { handlePlugins } = await import("./omp/plugins.ts");
 		return handlePlugins(req, url, await pluginsDeps());
 	}
 	if (p.startsWith("/api/controls/")) {
+		// A plugin or an MCP server turned on in a conversation runs its code there: refused as the Plugins page's writes are.
+		if ((p === "/api/controls/plugin" || p === "/api/controls/mcp") && !fromOwner(req) && !remoteAuth.remoteShell())
+			return fail(REMOTE_SHELL_OFF, 403);
 		// Loaded on the first request: the toggles, the todo list and the session defaults are read when a panel opens (#585).
 		const { handleControls } = await import("./omp/controls.ts");
 		return handleControls(req, url, { cfg, pool, store });

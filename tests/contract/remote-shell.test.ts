@@ -153,3 +153,36 @@ test("a page that is not the person's own has a shell by default; off refuses ne
 		local.close();
 	}
 }, 60_000);
+
+test("with shells off, a page that is not the person's own installs and turns on no plugin, skill, marketplace or MCP server (#209)", async () => {
+	await setRemoteShell(false);
+	try {
+		const post = (client: Pick<RemoteClient, "fetch">, path: string, body: unknown) =>
+			client.fetch(
+				path,
+				{ method: "POST", headers: { "x-omp-webui": "1", "content-type": "application/json" } },
+				JSON.stringify(body),
+			);
+		const writes: [string, unknown][] = [
+			["/api/plugins/jobs", { action: "install", spec: "./evil-plugin" }],
+			["/api/plugins/jobs", { action: "marketplace-add", spec: "https://example.com/market" }],
+			["/api/plugins/mcp", { name: "evil", command: "/bin/sh", args: ["-c", "echo RAN"] }],
+			["/api/plugins/config", { name: "x", key: "y", value: "z" }],
+			["/api/plugins/enable", { name: "x", enabled: true }],
+			["/api/plugins/skills/enable", { name: "x", enabled: true }],
+			["/api/controls/plugin", { name: "x", enabled: true }],
+			["/api/controls/mcp", { name: "x", enabled: true }],
+		];
+		for (const [path, body] of writes) {
+			const res = await post(phone, path, body);
+			expect(res.status, path).toBe(403);
+			expect(((await res.json()) as { error: string }).error, path).toBe(REMOTE_SHELL_OFF);
+		}
+		// What the page shows is still its to read.
+		expect((await phone.fetch("/api/plugins")).status).toBe(200);
+		// The person's own page, signed in through Access, is not held back: its request reaches the Plugins page.
+		expect((await post(signedIn, "/api/plugins/jobs", { action: "install", spec: "--force" })).status).not.toBe(403);
+	} finally {
+		await setRemoteShell(true);
+	}
+}, 60_000);
