@@ -2553,6 +2553,16 @@ class Scan {
 		if ((name === "ssh" || name === "autossh") && args.some((a) => /^-[A-Za-z]*[RD]$|^-[RD][^A-Za-z]/.test(a.text)))
 			this.add("tunnel");
 		if (listed(SYSTEM_PROGRAMS, name) || name.startsWith("mkfs")) this.add("system");
+		// Every process the person may signal, unsaved work and this server included (#259): `kill … -1`, `pkill`/`killall -u`.
+		if (name === "kill") {
+			const at = /^-[sn]$/.test(args[0]?.text ?? "")
+				? 2
+				: args[0]?.text.startsWith("-") && args[0].text !== "--"
+					? 1
+					: 0;
+			if (args.slice(args[at]?.text === "--" ? at + 1 : at).some((a) => a.text === "-1")) this.add("system");
+		}
+		if ((name === "pkill" || name === "killall") && hasShort(opts, "uU")) this.add("system");
 		if (name === "diskutil" && /^(erase|partition|zero|secure|reformat|apfs)/i.test(operands[0]?.text ?? ""))
 			this.add("system");
 		this.install(name, operands, opts);

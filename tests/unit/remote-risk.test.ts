@@ -2310,3 +2310,19 @@ describe("what loses commits, branches and stashes that are nowhere else is disc
 		expect(shell(command)).toEqual([]);
 	});
 });
+
+describe("ending every process of the person is system (#259)", () => {
+	test.each(["kill -9 -1", "kill -KILL -1", "kill -s KILL -1", "kill -- -1", "pkill -9 -u me", "killall -9 -u me"])(
+		"%s is system",
+		(command) => {
+			expect(shell(command)).toEqual(["system"]);
+		},
+	);
+
+	test.each(["kill -1 1234", "kill 1234", "kill -9 4242", "killall Finder", "pkill -f vite"])(
+		"%s is not asked about",
+		(command) => {
+			expect(shell(command)).toEqual([]);
+		},
+	);
+});
