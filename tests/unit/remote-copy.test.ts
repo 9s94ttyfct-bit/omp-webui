@@ -2,11 +2,13 @@
 import { describe, expect, test } from "bun:test";
 import {
 	existsSync,
+	fstatSync,
 	lstatSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
 	readlinkSync,
+	renameSync,
 	statSync,
 	symlinkSync,
 	writeFileSync,
@@ -202,6 +204,35 @@ describe("a folder packed and unpacked", () => {
 		const walked = await walkFolder(src, LIMITS);
 		writeFileSync(join(src, "a.txt"), "now longer than it was\n");
 		await expect(bytesOf(packTar(src, walked.entries))).rejects.toMatchObject({ code: "changed" });
+	});
+
+	test("a tar dropped half way, with no cancel, leaves no file open; one replaced half way ends it with `changed`", async () => {
+		const src = join(tempDir("pack-drop"), "src");
+		mkdirSync(src);
+		writeFileSync(join(src, "big.bin"), Buffer.alloc(600_000, 7));
+		const walked = await walkFolder(src, LIMITS);
+		const { ino } = statSync(join(src, "big.bin"));
+		// The descriptors this process holds on `big.bin` (`/dev/fd` lists them on macOS and Linux alike).
+		const held = () =>
+			readdirSync("/dev/fd").filter((fd) => {
+				try {
+					return fstatSync(Number(fd)).ino === ino;
+				} catch {
+					return false;
+				}
+			}).length;
+		const reader = packTar(src, walked.entries).getReader();
+		await reader.read(); // its header
+		await reader.read(); // a first piece of it
+		expect(held()).toBe(0);
+		reader.releaseLock();
+
+		const swapped = packTar(src, walked.entries).getReader();
+		await swapped.read();
+		await swapped.read();
+		writeFileSync(join(src, "other.bin"), Buffer.alloc(600_000, 8));
+		renameSync(join(src, "other.bin"), join(src, "big.bin"));
+		await expect(swapped.read()).rejects.toMatchObject({ code: "changed" });
 	});
 
 	test("more than the limits allow is refused by the walk and by the unpacker", async () => {

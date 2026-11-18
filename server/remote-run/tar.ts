@@ -209,31 +209,51 @@ const READ_BYTES = 256 * 1024;
 
 /**
  * The tar of `entries` (a `walkFolder` of `root`), made as it is read: exactly `tarSize(entries)` bytes, or an error
- * (`changed`) when a file is no longer the size it was walked at.
+ * (`changed`) when a file is no longer the size it was walked at, or another file came in its place while it was read.
+ * Each piece is read through a handle opened and closed within that one read: no file is left open between reads, so a
+ * reader that goes away without cancelling (a connection dropped where the server is not told) leaves none to the
+ * garbage collector, which Bun takes as an error that ends the process.
  */
 export function packTar(root: string, entries: readonly TarEntry[]): ReadableStream<Uint8Array> {
 	let i = 0;
-	let file: { handle: FileHandle; left: number; entry: TarEntry } | null = null;
+	let file: { at: number; entry: TarEntry; dev: number; ino: number } | null = null;
 	const changed = (e: TarEntry) => new RemoteCopyError(`${e.path} changed while it was copied: try again`, "changed");
+	/** `e` opened without following a link, and found to be the file it was walked as (and, after its first read, the same file). */
+	const openEntry = async (e: TarEntry, same?: { dev: number; ino: number }) => {
+		const handle = await open(join(root, e.path), constants.O_RDONLY | constants.O_NOFOLLOW).catch((err) => {
+			throw (err as NodeJS.ErrnoException).code === "ENOENT" ? changed(e) : fsFailure(err, e.path);
+		});
+		const st = await handle.stat().catch(async (err) => {
+			await handle.close();
+			throw fsFailure(err, e.path);
+		});
+		if (!st.isFile() || st.size !== e.size || (same && (st.dev !== same.dev || st.ino !== same.ino))) {
+			await handle.close();
+			throw changed(e);
+		}
+		return { handle, dev: st.dev, ino: st.ino };
+	};
 	return new ReadableStream<Uint8Array>(
 		{
 			async pull(controller) {
 				if (file) {
 					const f = file;
-					const buf = new Uint8Array(Math.min(READ_BYTES, f.left));
-					const { bytesRead } = await f.handle.read(buf, 0, buf.length, null);
+					const { handle } = await openEntry(f.entry, f);
+					let bytesRead: number;
+					const buf = new Uint8Array(Math.min(READ_BYTES, f.entry.size - f.at));
+					try {
+						({ bytesRead } = await handle.read(buf, 0, buf.length, f.at));
+					} finally {
+						await handle.close();
+					}
 					if (bytesRead === 0) {
-						await f.handle.close();
 						file = null;
 						throw changed(f.entry);
 					}
-					f.left -= bytesRead;
+					f.at += bytesRead;
 					controller.enqueue(bytesRead === buf.length ? buf : buf.subarray(0, bytesRead));
-					if (f.left === 0) {
-						const st = await f.handle.stat();
-						await f.handle.close();
+					if (f.at === f.entry.size) {
 						file = null;
-						if (st.size !== f.entry.size) throw changed(f.entry);
 						const pad = padOf(f.entry.size);
 						if (pad > 0) controller.enqueue(new Uint8Array(pad));
 					}
@@ -246,20 +266,13 @@ export function packTar(root: string, entries: readonly TarEntry[]): ReadableStr
 					return;
 				}
 				if (e.type === "file" && e.size > 0) {
-					const handle = await open(join(root, e.path), constants.O_RDONLY | constants.O_NOFOLLOW).catch((err) => {
-						throw (err as NodeJS.ErrnoException).code === "ENOENT" ? changed(e) : fsFailure(err, e.path);
-					});
-					const st = await handle.stat();
-					if (!st.isFile() || st.size !== e.size) {
-						await handle.close();
-						throw changed(e);
-					}
-					file = { handle, left: e.size, entry: e };
+					const { handle, dev, ino } = await openEntry(e);
+					await handle.close();
+					file = { at: 0, entry: e, dev, ino };
 				}
 				controller.enqueue(entryHead(e));
 			},
-			async cancel() {
-				await file?.handle.close();
+			cancel() {
 				file = null;
 			},
 			// Nothing is read before it is asked for: a stream that is never read opens no file.
