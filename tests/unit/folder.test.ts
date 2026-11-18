@@ -1108,6 +1108,22 @@ describe("a page that is not this computer's (guarded)", () => {
 			".netrc",
 			".pgpass",
 			".htpasswd",
+			// Other tools' secret files, registry and cluster logins, infrastructure state, master keys (#346).
+			".envrc",
+			".dev.vars",
+			".vault-token",
+			".yarnrc.yml",
+			".pypirc",
+			"auth.json",
+			".docker/config.json",
+			".kube/config",
+			".kube/cache/token",
+			"terraform.tfstate",
+			"infra/terraform.tfstate.backup",
+			"prod.tfvars",
+			"prod.tfvars.json",
+			"config/master.key",
+			"config/credentials/production.key",
 		])
 			expect(isSecretLooking(path), path).toBe(true);
 	});
@@ -1165,6 +1181,10 @@ describe("a page that is not this computer's (guarded)", () => {
 			".github/workflows/ci.yml",
 			"git/config",
 			"npmrc",
+			".docker/daemon.json",
+			"main.tf",
+			"variables.tf",
+			"src/auth.ts",
 		])
 			expect(isSecretLooking(path), path).toBe(false);
 	});

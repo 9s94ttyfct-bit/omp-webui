@@ -72,15 +72,26 @@ export function hiddenByDefault(name: string, isDirectory: boolean, path: string
 	return isDirectory ? skipped(name, path) : name.startsWith(".");
 }
 
-/** Folders whose whole content is a secret, by name (lower case). */
-const SECRET_DIRS: readonly string[] = [".ssh", ".gnupg", ".aws"];
-/** File names that are a secret, whole (lower case). */
+/** Folders whose whole content is a secret, by name (lower case): kubectl's logins too (#346). */
+const SECRET_DIRS: readonly string[] = [".ssh", ".gnupg", ".aws", ".kube"];
+/**
+ * File names that are a secret, whole (lower case): other tools' environment and token files (direnv's `.envrc`,
+ * Wrangler's `.dev.vars`, Vault's `.vault-token`), registry logins (`.yarnrc.yml`, `.pypirc`, Composer's `auth.json`) and
+ * Rails' `master.key` (#346).
+ */
 const SECRET_NAMES: readonly string[] = [
 	".npmrc",
 	".netrc",
 	".pgpass",
 	".htpasswd",
 	".git-credentials",
+	".envrc",
+	".dev.vars",
+	".vault-token",
+	".yarnrc.yml",
+	".pypirc",
+	"auth.json",
+	"master.key",
 	"credentials",
 	"secrets",
 ];
@@ -88,6 +99,8 @@ const SECRET_NAMES: readonly string[] = [
 const SECRET_EXTENSIONS: readonly string[] = [".p12", ".pfx", ".keystore", ".jks", ".ppk"];
 /** `credentials.json`, `secrets.yml`: data files by those names. Not `credentialsProvider.tsx` or `secrets.ts`, which are code. */
 const SECRET_DATA = /^(?:credentials|secrets)\.(?:json|ya?ml|toml|ini|cfg|conf|xml|csv|txt|enc)$/;
+/** Terraform's state (every resource's attributes, passwords included) and variable files (#346). */
+const TERRAFORM_SECRET = /\.(?:tfstate(?:\.backup)?|tfvars(?:\.json)?)$/;
 /** The private keys ssh makes: `id_rsa`, `id_ed25519`, `id_ecdsa_sk`, `id_rsa.bak` (its `.pub` is public, and is not one). */
 const SSH_KEY = /^id_(?:rsa|dsa|ecdsa|ed25519)(?:_sk)?(?:\.(?!pub$).+)?$/;
 /** An environment file's name ends in what a template's does: `.env.example` has nothing in it. */
@@ -110,10 +123,13 @@ export function isSecretLooking(rel: string): boolean {
 	for (const [i, part] of parts.entries()) {
 		if (SECRET_DIRS.includes(part)) return true;
 		if (part === ".git" && parts[i + 1] === "config") return true;
+		if (part === ".docker" && parts[i + 1] === "config.json") return true;
 	}
 	const name = parts.at(-1) ?? "";
 	if (SECRET_NAMES.includes(name) || SECRET_DATA.test(name) || SSH_KEY.test(name)) return true;
-	if (SECRET_EXTENSIONS.some((x) => name.endsWith(x))) return true;
+	if (SECRET_EXTENSIONS.some((x) => name.endsWith(x)) || TERRAFORM_SECRET.test(name)) return true;
+	// Rails' per-environment keys: `config/credentials/production.key`.
+	if (name.endsWith(".key") && parts.at(-2) === "credentials") return true;
 	if (name === ".env" || name.endsWith(".env")) return true;
 	return name.startsWith(".env.") && !ENV_TEMPLATE.test(name);
 }
