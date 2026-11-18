@@ -388,6 +388,7 @@ const CODE_INTERPRETERS = table(
 	"python",
 	"python2",
 	"python3",
+	"pypy",
 	"perl",
 	"ruby",
 	"node",
@@ -397,6 +398,8 @@ const CODE_INTERPRETERS = table(
 	"lua",
 	"osascript",
 );
+/** One of `CODE_INTERPRETERS`, also by a name with its version (`python3.12`, `pypy3.10`, `perl5.36`, `ruby3.3`, #413). */
+const isInterpreter = (name: string): boolean => listed(CODE_INTERPRETERS, name.replace(/(?<=[a-z])[\d.]+$/, ""));
 const FETCHERS = table("curl", "wget", "fetch");
 /** What runs a command with more rights: Windows' `runas`, `gsudo` and its own `sudo` among them. */
 const PRIVILEGE = table("sudo", "doas", "pkexec", "run0", "su", "runas", "gsudo");
@@ -1468,7 +1471,7 @@ function readsStdinAsCode(stage: Command): boolean {
 	const { opts, operands } = splitArgs(stage.args);
 	if (listed(SHELLS, name))
 		return opts.includes("-s") || (operands.length === 0 && !opts.some((o) => /^-[a-z]*c/.test(o)));
-	if (listed(CODE_INTERPRETERS, name)) {
+	if (isInterpreter(name)) {
 		if (opts.some((o) => /^-(c|e|m|p|pe|ne|r)$/.test(o))) return false;
 		return operands.length === 0 || operands[0].text === "-";
 	}
@@ -2438,6 +2441,11 @@ class Scan {
 			if (empties && /^(>|>\||&>)$/.test(r.op)) this.overwrite(r.target, cwd);
 			else if (/^(>|>>|>\||&>|&>>|<>)$/.test(r.op)) this.write(r.target, cwd);
 			for (const sub of r.target.subs) this.script(sub, cwd, depth + 1);
+			// `bash < <(curl …)`: what a process substitution prints is the command's input, as down a pipe into it (#412).
+			if (r.op === "<" && cmd && opensSubstitution(r.target) && runsPipedCode(cmd)) {
+				if (r.target.subs.some((s) => mentions(s, FETCHERS, knownVars(this.ctx)))) this.add("remote_exec");
+				else this.dynamicCommand();
+			}
 		}
 		// The words that are assignments: those before the command word, and what `export`, `env`, `declare` … are given.
 		const head = simple.words.findIndex((w) => !listed(RESERVED, w.text) && !ASSIGNMENT.test(w.text));
@@ -2510,23 +2518,29 @@ class Scan {
 			this.add("mass_delete");
 		}
 
-		const runs = listed(SHELLS, name) || name === "eval" || name === "source" || name === ".";
 		const fetches = (w: Word | undefined): boolean =>
 			(w?.subs ?? []).some((s) => mentions(s, FETCHERS, knownVars(this.ctx)));
+		// A shell that is handed a script (`-c`): the line after it.
+		const lineAt = listed(SHELLS, name) ? args.findIndex((a) => /^-[a-z]*c[a-z]*$/.test(a.text)) : -1;
+		const script = lineAt >= 0 ? args.slice(lineAt + 1).find((a) => !a.text.startsWith("-")) : undefined;
 		// The program an interpreter runs: the code after `-c`/`-e`, else its first operand (`deno run` / `bun run` X's X).
-		const codeAt = listed(CODE_INTERPRETERS, name)
-			? args.findIndex((a) => /^-(c|e|p|pe|ne|ep|r)$|^--eval$/.test(a.text))
-			: -1;
-		const program = !listed(CODE_INTERPRETERS, name)
+		const codeAt = isInterpreter(name) ? args.findIndex((a) => /^-(c|e|p|pe|ne|ep|r)$|^--eval$/.test(a.text)) : -1;
+		const program = !isInterpreter(name)
 			? undefined
 			: codeAt >= 0
 				? args[codeAt + 1]
 				: (name === "deno" || name === "bun") && operands[0]?.text === "run"
 					? operands[1]
 					: operands[0];
-		// A download is `remote_exec`: the substitution it comes in is not said to be a command put together as well. A shell
-		// runs one given anywhere; an interpreter one given as its program (`python3 <(curl …)`, `node -e "$(curl …)"`, #251).
-		const fetched = (runs && args.some(fetches)) || fetches(program);
+		// A download is `remote_exec`: the substitution it comes in is not said to be a command put together as well. `eval`
+		// runs one given anywhere; a shell or `source` one given as its script (`bash <(curl …)`, `sh -c "$(curl …)"`), not as
+		// that script's argument (`bash x.sh <(curl …)` reads a file, #412); an interpreter one given as its program
+		// (`python3 <(curl …)`, `node -e "$(curl …)"`, #251).
+		const fetched =
+			(name === "eval" && args.some(fetches)) ||
+			(listed(SHELLS, name) && fetches(lineAt >= 0 ? script : operands[0])) ||
+			((name === "source" || name === ".") && fetches(operands[0])) ||
+			fetches(program);
 		if (fetched) this.add("remote_exec");
 		this.remoteRun(name, args, operands);
 		// A file a download wrote earlier in the same command line, run by a shell, an interpreter or `source`, or by its path
@@ -2538,8 +2552,6 @@ class Scan {
 		this.recordDownload(name, args, opts, operands, cwd);
 		if (listed(SHELLS, name)) {
 			// A shell that is handed a script (`-c`), or reads one from its input (a here-document).
-			const at = args.findIndex((a) => /^-[a-z]*c[a-z]*$/.test(a.text));
-			const script = at >= 0 ? args.slice(at + 1).find((a) => !a.text.startsWith("-")) : undefined;
 			if (script) {
 				if (!(fetched && script.dynamic)) this.script(script.text, cwd, depth + 1);
 			} else if (body !== null) this.script(body, cwd, depth + 1);
@@ -2548,7 +2560,7 @@ class Scan {
 			if (!(fetched && args.some((a) => a.dynamic))) this.script(args.map((a) => a.text).join(" "), cwd, depth + 1);
 		} else if ((name === "source" || name === ".") && !fetched && opensSubstitution(operands[0])) {
 			this.dynamicCommand();
-		} else if (listed(CODE_INTERPRETERS, name)) {
+		} else if (isInterpreter(name)) {
 			const code = codeAt >= 0 ? args[codeAt + 1]?.text : body;
 			if (code) this.code(code, cwd, depth + 1);
 		}
