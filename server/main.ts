@@ -239,6 +239,92 @@ const TOKEN_PAGE_FLAGS: ReadonlySet<string> = new Set([
 	"--max-cost",
 ]);
 
+/**
+ * The commands omp runs itself (`get_available_commands`, `source: "builtin"`) that a page that holds only the token may
+ * send while shells are off for such pages, with the subcommands it may give (none listed: any). They show or tune this
+ * conversation. Every other one runs a command, writes a file, installs code or reaches outside the conversation (`/mcp
+ * add`, `/plugins`, `/marketplace install`, `/ssh add`, `/memory`, `/share`, `/commit`, `/move`, …), and omp runs a slash
+ * command with no model and no tool call, so the gate never sees it (#213). Skills and `file` prompts are model prompts
+ * (their turn is gated); `extension` and `custom` commands run code and are refused too.
+ */
+const TOKEN_PAGE_COMMANDS: ReadonlyMap<string, ReadonlySet<string> | null> = new Map<
+	string,
+	ReadonlySet<string> | null
+>([
+	["model", null],
+	["switch", null],
+	["fast", null],
+	["slow", null],
+	["effort", null],
+	["extended-context", null],
+	["skillful", null],
+	["advisor", new Set(["on", "off", "status"])],
+	["modelpreset", new Set(["list", "switch"])],
+	["usage", null],
+	["changelog", null],
+	["tools", null],
+	["context", null],
+	["jobs", null],
+	["dump", null],
+	["dirs", null],
+	["session", new Set(["info"])],
+	["todo", new Set(["edit", "copy", "expand", "collapse", "append", "start", "done", "drop", "rm"])],
+	["compact", null],
+	["shake", null],
+	["handoff", null],
+	["fresh", null],
+	["retry", null],
+	["rename", null],
+	["pin", null],
+	["unpin", null],
+	["force", null],
+	["forget-approvals", null],
+	["reload-plugins", null],
+	["mcp", new Set(["list", "resources", "prompts", "notifications", "help"])],
+	["plugins", new Set(["list"])],
+	["marketplace", new Set(["list", "installed", "discover", "help"])],
+	["ssh", new Set(["list", "help"])],
+]);
+
+/** The name and the first argument of a slash command at the start of `text`, or null when it is no command line. */
+function slashLine(text: string): { name: string; sub: string } | null {
+	const m = /^\s*\/(\S+)(?:\s+(\S+))?/.exec(text);
+	return m ? { name: m[1], sub: m[2] ?? "" } : null;
+}
+
+const EXPORT_REFUSED = "Only a page on this computer, or one signed in through Cloudflare Access, may export this way";
+
+/**
+ * Why a message of a page that is not the person's own may not go to the conversation's omp, or null when it may: the
+ * slash commands omp runs itself. `/export` writes wherever it is told, as `export_html` does, and is refused to such a page
+ * always; the rest only while shells are off for it (`TOKEN_PAGE_COMMANDS`). What a name is comes from omp's own list
+ * (aliases too); a line whose name omp does not list goes to the model as a message, and is let through.
+ */
+async function tokenPageCommandRefusal(
+	live: Live,
+	command: { type?: unknown; message?: unknown },
+): Promise<string | null> {
+	if (typeof command.message !== "string") return null;
+	const line = slashLine(command.message);
+	if (!line) return null;
+	if (line.name === "export") return EXPORT_REFUSED;
+	if (remoteAuth.remoteShell()) return null;
+	const refused = `${REMOTE_SHELL_OFF}: /${line.name}`;
+	const catalog = await live.rpc({ type: "get_available_commands" }, { user: true }).catch(() => null);
+	const list = catalog?.success && isRecord(catalog.data) ? catalog.data.commands : null;
+	if (!Array.isArray(list)) return refused;
+	const entry = list.find(
+		(c) => isRecord(c) && (c.name === line.name || (Array.isArray(c.aliases) && c.aliases.includes(line.name))),
+	);
+	if (!isRecord(entry)) return null;
+	if (entry.source === "skill" || entry.source === "file") return null;
+	if (entry.source !== "builtin" || typeof entry.name !== "string") return refused;
+	if (entry.name === "export") return EXPORT_REFUSED;
+	if (!TOKEN_PAGE_COMMANDS.has(entry.name)) return refused;
+	const subs = TOKEN_PAGE_COMMANDS.get(entry.name);
+	return !subs || line.sub === "" || subs.has(line.sub) ? null : `${refused} ${line.sub}`;
+}
+
 const SERVER_VERSION = APP_VERSION;
 // The macOS app names the user's login shell: its environment (`PATH` first) is what omp and its tools run in, as
 // they do in a terminal; a Finder launch has none of it. A shell that does not answer in time leaves the server's own.
@@ -2915,12 +3001,12 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 			if (!owner && msg.command.type === "bash" && !remoteAuth.remoteShell())
 				return reply({ t: "reply", req: msg.req, ok: false, error: REMOTE_SHELL_OFF });
 			if (!owner && msg.command.type === "export_html")
-				return reply({
-					t: "reply",
-					req: msg.req,
-					ok: false,
-					error: "Only a page on this computer, or one signed in through Cloudflare Access, may export this way",
-				});
+				return reply({ t: "reply", req: msg.req, ok: false, error: EXPORT_REFUSED });
+			// Nor the slash commands omp runs itself, with no model and no tool call for the gate to see (#213).
+			if (!owner && drivesTurn(msg.command)) {
+				const refusal = await tokenPageCommandRefusal(live, msg.command);
+				if (refusal) return reply({ t: "reply", req: msg.req, ok: false, error: refusal });
+			}
 			// A message the person sends from their own page is theirs to answer for: it lifts what another page left on the conversation.
 			if (owner && (msg.command.type === "prompt" || msg.command.type === "steer"))
 				remoteTouched.delete(live.info.liveId);

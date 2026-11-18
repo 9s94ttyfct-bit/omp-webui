@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { REMOTE_SHELL_OFF } from "../../shared/remote.ts";
@@ -183,6 +183,53 @@ test("with shells off, a page that is not the person's own installs and turns on
 		// The person's own page, signed in through Access, is not held back: its request reaches the Plugins page.
 		expect((await post(signedIn, "/api/plugins/jobs", { action: "install", spec: "--force" })).status).not.toBe(403);
 	} finally {
+		await setRemoteShell(true);
+	}
+}, 60_000);
+
+test("a page that is not the person's own runs no slash command omp runs itself that writes or runs things: /export never, /mcp add and the like while shells are off (#213)", async () => {
+	const marker = join(root, "slash-marker");
+	const exported = join(root, "slash-export.html");
+	const prompt = (ws: WebSocket, liveId: string, message: string) =>
+		request(ws, { t: "rpc", liveId, command: { type: "prompt", message } });
+	let remote = await phone.socket();
+	if (!remote) throw new Error("the tunnel refused the page");
+	try {
+		let chat = await request<{ liveId: string }>(remote, {
+			t: "open",
+			target: { kind: "new", cwd: root, args: ["--no-title"] },
+		});
+		// `/export` writes wherever it is told, as `export_html` does: never such a page's, shells or not.
+		expect(await rejectionOf(prompt(remote, chat.liveId, `/export ${exported}`))).toThrow("may export this way");
+		await request(remote, { t: "close", liveId: chat.liveId });
+
+		await setRemoteShell(false);
+		remote.close();
+		const again = await phone.socket();
+		if (!again) throw new Error("the tunnel refused the page");
+		remote = again;
+		chat = await request<{ liveId: string }>(remote, {
+			t: "open",
+			target: { kind: "new", cwd: root, args: ["--no-title"] },
+		});
+		for (const line of [
+			`/mcp add evil -- /bin/sh -c "echo RAN > ${marker}"`,
+			"  /mcp test evil",
+			"/marketplace add https://example.com/market",
+			"/plugin install evil",
+			"/ssh add evil example.com",
+			`/move ${tmpdir()}`,
+		])
+			expect(await rejectionOf(prompt(remote, chat.liveId, line)), line).toThrow(REMOTE_SHELL_OFF);
+		expect(await rejectionOf(prompt(remote, chat.liveId, `/export ${exported}`))).toThrow("may export this way");
+		// What only shows the conversation still goes to omp.
+		await prompt(remote, chat.liveId, "/tools");
+		await request(remote, { t: "close", liveId: chat.liveId });
+		expect(existsSync(join(root, ".omp", "mcp.json"))).toBe(false);
+		expect(existsSync(marker)).toBe(false);
+		expect(existsSync(exported)).toBe(false);
+	} finally {
+		remote.close();
 		await setRemoteShell(true);
 	}
 }, 60_000);
