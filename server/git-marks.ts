@@ -31,7 +31,10 @@ function markOfRecord(type: string, xy: string): GitMark {
 export function parseMarks(text: string, prefix: string): GitMarks {
 	const marks: GitMarks = { files: new Map(), untrackedDirs: new Set(), changedDirs: new Set(), ignored: new Set() };
 	const records = text.split("\0");
-	const within = (path: string): string | null => (path.startsWith(prefix) ? path.slice(prefix.length) : null);
+	// Keys are NFC, and so is every name looked up (`markOf`, `isIgnored`): git on macOS writes names composed, while a name
+	// the file system holds decomposed comes back from `readdir` so (#341).
+	const within = (path: string): string | null =>
+		path.startsWith(prefix) ? path.slice(prefix.length).normalize("NFC") : null;
 	const changed = (path: string) => {
 		marks.changedDirs.add("");
 		for (let slash = path.indexOf("/"); slash >= 0; slash = path.indexOf("/", slash + 1))
@@ -74,7 +77,8 @@ function* ancestors(path: string): Generator<string> {
 }
 
 /** How `path` differs from the last commit: a file's mark, a folder's `changed`; undefined when it does not. */
-export function markOf(marks: GitMarks, path: string, isDir: boolean): GitMark | "changed" | undefined {
+export function markOf(marks: GitMarks, name: string, isDir: boolean): GitMark | "changed" | undefined {
+	const path = name.normalize("NFC");
 	for (const dir of ancestors(path)) if (marks.untrackedDirs.has(dir)) return "untracked";
 	if (isDir) {
 		if (marks.untrackedDirs.has(path)) return "untracked";
@@ -84,7 +88,8 @@ export function markOf(marks: GitMarks, path: string, isDir: boolean): GitMark |
 }
 
 /** Whether `.gitignore` names `path`, or a folder it is in. */
-export function isIgnored(marks: GitMarks, path: string, isDir: boolean): boolean {
+export function isIgnored(marks: GitMarks, name: string, isDir: boolean): boolean {
+	const path = name.normalize("NFC");
 	if (marks.ignored.has(isDir ? `${path}/` : path)) return true;
 	for (const dir of ancestors(path)) if (marks.ignored.has(`${dir}/`)) return true;
 	return false;

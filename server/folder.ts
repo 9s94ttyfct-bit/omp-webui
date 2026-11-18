@@ -308,14 +308,15 @@ function score(lower: string, q: string): number {
  * is not matched unless `all`.
  */
 export async function findFiles(root: string, query: string, opts: ListOptions): Promise<FolderFound> {
-	const q = query.trim().toLowerCase();
+	// Both sides NFC: what a keyboard types is composed, a name the file system holds decomposed is walked so (#341).
+	const q = query.trim().normalize("NFC").toLowerCase();
 	if (!q) return { matches: [], truncated: false, partial: false };
 	const guarded = opts.guarded === true;
 	const all = opts.all && !guarded;
 	const { files, complete } = await (all ? fullIndex : tidyIndex).walk(root, opts.fresh === true);
 	const scored: { path: string; score: number }[] = [];
 	for (const path of files) {
-		const s = score(path.toLowerCase(), q);
+		const s = score(path.normalize("NFC").toLowerCase(), q);
 		if (s < 0) continue;
 		if (guarded && isSecretLooking(path)) continue;
 		if (!all) {

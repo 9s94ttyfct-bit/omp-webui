@@ -126,6 +126,15 @@ describe("the list of changes", () => {
 			{ path: "gone.txt", state: "conflict", staged: false },
 		]);
 	});
+
+	test("a folder whose real path is decomposed still has the changes git names composed below it (#341)", () => {
+		const scan = scanStatus(status("# branch.head main"));
+		const { raws, counts } = scanDiffList(
+			`${raw("100644 100644", "M", "R\u00e9sum\u00e9/cv.md")}1\t0\tR\u00e9sum\u00e9/cv.md\0`,
+		);
+		const files = mergeChanges(scan, raws, counts, "Re\u0301sume\u0301");
+		expect(files.map((f) => [f.path, f.state])).toEqual([["cv.md", "modified"]]);
+	});
 });
 
 describe("one file's diff", () => {

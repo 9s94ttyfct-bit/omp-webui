@@ -314,7 +314,12 @@ export function mergeChanges(
 	prefix: string,
 ): ChangedFile[] {
 	const lead = prefix ? `${prefix}/` : "";
-	const within = (path: string): string | null => (path.startsWith(lead) ? path.slice(lead.length) : null);
+	// The prefix comes from the folder's real path, which keeps a name the file system holds decomposed so, while git on
+	// macOS writes names composed: they are compared as NFC, and what is below keeps git's spelling (#341).
+	const leadNfc = lead.normalize("NFC");
+	const depth = lead === "" ? 0 : lead.split("/").length - 1;
+	const within = (path: string): string | null =>
+		path.normalize("NFC").startsWith(leadNfc) ? path.split("/").slice(depth).join("/") : null;
 	const tracked: ChangedFile[] = [];
 	const seen = new Set<string>();
 	for (const raw of raws) {

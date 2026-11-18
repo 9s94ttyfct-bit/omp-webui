@@ -510,6 +510,31 @@ describe("find", () => {
 		expect(found.matches.map((m) => m.path).sort()).toEqual([".env.app", "node_modules/app/index.js", "src/app.ts"]);
 	});
 
+	test("a name stored decomposed is found by what a keyboard types, and gets git's marks (#341)", async () => {
+		const dir = join(world, "nfd");
+		mkdirSync(dir);
+		const resume = "Re\u0301sume\u0301.md";
+		const cafe = "cafe\u0301.txt";
+		write(resume, "x", dir);
+		write(cafe, "x", dir);
+		write("brouille\u0301.log", "x", dir);
+		const found = await findFiles(dir, "r\u00e9sum\u00e9", { all: false, marks: null });
+		expect(found.matches.map((m) => m.path)).toEqual([resume]);
+		// git on macOS writes names composed.
+		const marks = parseMarks(
+			["1 .M N... 100644 100644 100644 a b caf\u00e9.txt", "! brouill\u00e9.log", "? R\u00e9sum\u00e9.md", ""].join(
+				"\0",
+			),
+			"",
+		);
+		const listing = await listFolder(dir, "", { all: false, marks });
+		expect(Object.fromEntries(listing.entries.map((e) => [e.name, e.git]))).toEqual({
+			[resume]: "untracked",
+			[cafe]: "modified",
+		});
+		expect(listing.hiddenCount).toBe(1);
+	});
+
 	test("what .gitignore names is not matched unless everything is asked for, and a match carries its git mark", async () => {
 		const dir = join(world, "findgit");
 		mkdirSync(dir);
