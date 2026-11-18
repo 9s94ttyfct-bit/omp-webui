@@ -88,7 +88,7 @@ The Todos tab and the todo strip let the user finish/reopen a task, change its s
 
 | Route | Methods | Access | Purpose |
 |---|---|---|---|
-| `/api/approval` | GET, POST | token | GET `{ mode, omp }`: the default for new conversations (null: follow omp) and omp's own setting. POST `{ mode }` (a mode or null). |
+| `/api/approval` | GET, POST | token (POST: owner-only) | GET `{ mode, omp }`: the default for new conversations (null: follow omp) and omp's own setting. POST `{ mode }` (a mode or null): the person's own page only (this computer's, or one signed in through Access); a page that holds only the token gets `403` and Settings shows the choice disabled (#228). |
 | `/api/approval/session` | GET | token | `?file=`: the mode a conversation without a running omp starts in (its last pick, else the default, else omp's setting for its folder). |
 | `/api/controls` | POST | token | Prefix of the actions below (`/api/controls/<action>`); each takes a JSON body, POST only. |
 | `/api/controls/todos` | POST | token | `{ live, markdown }`: replace the todo list via omp's `/todo import`. |

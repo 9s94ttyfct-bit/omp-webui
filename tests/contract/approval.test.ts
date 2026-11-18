@@ -4,6 +4,7 @@ import type { LiveInfo } from "../../shared/protocol.ts";
 import { messageWhere, watchFrames } from "../support/frames.ts";
 import { canCallModel } from "../support/omp-env.ts";
 import { rejectionOf } from "../support/rejection.ts";
+import { proxiedClient } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { connect, request } from "../support/ws.ts";
 
@@ -156,6 +157,19 @@ test("only a real mode, from a page that sends the CSRF header, is accepted as t
 		body: JSON.stringify({ mode: "yolo" }),
 	});
 	expect(noHeader.status).toBe(403);
+	expect(await (await api("/api/approval")).json()).toEqual({ mode: null, omp: "yolo" });
+});
+
+test("a page that holds only the token may read the default, not change it (#228)", async () => {
+	const phone = proxiedClient(s);
+	expect((await phone.fetch("/api/approval")).status).toBe(200);
+	const set = await phone.fetch(
+		"/api/approval",
+		{ method: "POST", headers: { "x-omp-webui": "1", "content-type": "application/json" } },
+		JSON.stringify({ mode: "always-ask" }),
+	);
+	expect(set.status).toBe(403);
+	expect((await set.json()).error).toMatch(/default permission mode is changed on the computer/);
 	expect(await (await api("/api/approval")).json()).toEqual({ mode: null, omp: "yolo" });
 });
 

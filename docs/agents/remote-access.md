@@ -36,6 +36,8 @@ Slash commands omp runs itself are held the same way (#213): such a page may nev
 
 Deleting a conversation together with its folder (the Trash) is the same (#368): unless File transfer is *full*, such a page is offered no folder to move and its picks are refused; it may still delete the conversation alone.
 
+The default permission mode of new conversations (Settings › Permissions, `POST /api/approval`) is the person's own to change (#228): such a page reads it and is refused a change; it still switches the mode of a conversation it is in.
+
 **Share these settings with another computer**: **Export settings** saves `omp-webui-remote-access.json` holding only team, AUD and emails (no hostname, tunnel or credentials); **Import settings…** fills the form from such a file (max 64 KB, max 200 emails, version 1) and the user then adds this computer's hostname and saves. One Access application with a wildcard domain can serve several computers.
 
 ### What a remote page can and cannot do

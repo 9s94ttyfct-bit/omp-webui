@@ -148,6 +148,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 		"每个对话都可以在输入框下方单独切换。omp 设置中针对单个工具的策略（`tools.approval`）在任何模式下都生效。",
 	settingsApprovalFailed: "无法保存权限模式：{error}",
 	settingsApprovalLoadError: "无法读取权限模式",
+	settingsApprovalRemote:
+		"默认值要在运行 omp-webui 的电脑上修改，或在通过 Cloudflare Access 登录的页面上修改。这个页面只持有访问令牌。",
 	settingsNotify: "通知",
 	settingsNotifyHint:
 		"对话需要你的输入或已回复完毕时显示一条通知，除非你正看着那个对话（此标签页正在使用，并显示着它）。",

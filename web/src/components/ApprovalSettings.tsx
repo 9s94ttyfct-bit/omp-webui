@@ -2,7 +2,7 @@ import { APPROVAL_MODES, type ApprovalMode, approvalModeNeeds, isApprovalMode } 
 import { useCallback, useEffect, useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
-import { type ApprovalDefault, sessionActions } from "../lib/api.ts";
+import { type ApprovalDefault, ownerPage, sessionActions } from "../lib/api.ts";
 import { useApp } from "../store/app.ts";
 import { APPROVAL_META } from "./ApprovalPicker.tsx";
 import { LoadError } from "./LoadError.tsx";
@@ -17,6 +17,8 @@ export function ApprovalSettings() {
 	const t = useT();
 	const toast = useApp((s) => s.toast);
 	const ompVersion = useApp((s) => s.meta?.ompVersion);
+	// Only the person's own page changes the mode their later conversations start in (#228); this one may look.
+	const owner = useApp((s) => ownerPage(s.meta));
 	const [state, setState] = useState<ApprovalDefault | null>(null);
 	// Until it is read the choices stay disabled: a failed read says why and offers to read it again.
 	const [loadError, setLoadError] = useState<string | null>(null);
@@ -86,7 +88,7 @@ export function ApprovalSettings() {
 								name="approval-default"
 								className="mt-1 accent-[var(--accent)]"
 								data-testid={`approval-default-${o.mode ?? "omp"}`}
-								disabled={state === null || o.off === true}
+								disabled={state === null || o.off === true || !owner}
 								checked={on}
 								onChange={() => choose(o.mode)}
 							/>
@@ -101,6 +103,11 @@ export function ApprovalSettings() {
 			<p className="mt-3 text-xs text-muted">
 				<WithCode text={t("pages.settingsApprovalHint")} />
 			</p>
+			{owner ? null : (
+				<p className="mt-2 text-xs text-muted" data-testid="approval-default-remote">
+					{t("pages.settingsApprovalRemote")}
+				</p>
+			)}
 		</section>
 	);
 }

@@ -1397,6 +1397,8 @@ const TRASH_REFUSED =
 /** What a page that is not the person's own (`isOwnerPage`) is told when it asks to change the guard, the guidance or the app. */
 const GUARD_NOT_HERE =
 	"The guard is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access";
+const APPROVAL_NOT_HERE =
+	"The default permission mode is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access";
 const GUIDANCE_NOT_HERE =
 	"Guidance is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access";
 const UPDATE_NOT_HERE =
@@ -2114,6 +2116,8 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		case "/api/approval": {
 			// The default approval mode of new conversations: null follows omp's own setting, which is reported with it.
 			if (req.method === "POST") {
+				// Every later conversation of the person's starts in it: theirs to lower, not a page's that holds only the token (#228).
+				if (!fromOwner(req)) return fail(APPROVAL_NOT_HERE, 403);
 				const body = (await req.json()) as { mode?: unknown };
 				if (body.mode !== null && !isApprovalMode(body.mode)) return fail("Bad approval mode");
 				const refused = body.mode === null ? null : modeTooNew(body.mode);

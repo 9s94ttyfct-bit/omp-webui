@@ -132,6 +132,8 @@ export const en = {
 		"Each conversation can switch its own mode below the message box. Per-tool policies in omp's settings (`tools.approval`) apply in every mode.",
 	settingsApprovalFailed: "Could not save the permission mode: {error}",
 	settingsApprovalLoadError: "Couldn't read the permission mode",
+	settingsApprovalRemote:
+		"The default is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access. This page holds only the access token.",
 	settingsNotify: "Notifications",
 	settingsNotifyHint:
 		"Show a notification when a conversation needs your input, or finishes its reply, unless you are looking at that conversation: this tab is in use and shows it.",
