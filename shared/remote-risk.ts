@@ -2566,6 +2566,19 @@ class Scan {
 			if (args.slice(args[at]?.text === "--" ? at + 1 : at).some((a) => a.text === "-1")) this.add("system");
 		}
 		if ((name === "pkill" || name === "killall") && hasShort(opts, "uU")) this.add("system");
+		// macOS's own security switches that need no sudo (#256): Gatekeeper's quarantine taken off a download or turned off for
+		// every later one, the person's privacy decisions reset, Gatekeeper itself, remote login, the network's proxy and DNS
+		// (`systemsetup`/`networksetup -set…`), FileVault.
+		const first = operands[0]?.text ?? "";
+		if (
+			(name === "xattr" && hasShort(opts, "d") && args.some((a) => a.text === "com.apple.quarantine")) ||
+			(name === "defaults" && first === "write" && args.some((a) => a.text === "LSQuarantine")) ||
+			(name === "tccutil" && first === "reset") ||
+			(name === "spctl" && hasLong(opts, "--master-disable", "--global-disable", "--disable")) ||
+			((name === "systemsetup" || name === "networksetup") && opts.some((o) => /^-set/i.test(o))) ||
+			(name === "fdesetup" && first === "disable")
+		)
+			this.add("system");
 		if (name === "diskutil" && /^(erase|partition|zero|secure|reformat|apfs)/i.test(operands[0]?.text ?? ""))
 			this.add("system");
 		this.install(name, operands, opts);

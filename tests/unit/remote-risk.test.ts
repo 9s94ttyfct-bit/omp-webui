@@ -2490,3 +2490,30 @@ describe("chflags, setfacl, chattr and xattr -r change files' flags and ACLs as 
 		},
 	);
 });
+
+describe("macOS's security switches that need no sudo are system (#256)", () => {
+	test.each([
+		"xattr -dr com.apple.quarantine ~/Downloads/x.app",
+		"xattr -d com.apple.quarantine build/app",
+		"defaults write com.apple.LaunchServices LSQuarantine -bool false",
+		"tccutil reset All",
+		"spctl --master-disable",
+		"spctl --global-disable",
+		"systemsetup -setremotelogin on",
+		"networksetup -setwebproxy Wi-Fi 10.0.0.5 8080",
+		"networksetup -setdnsservers Wi-Fi 10.0.0.5",
+		"fdesetup disable",
+	])("%s", (command) => {
+		expect(shell(command)).toContain("system");
+	});
+
+	test.each([
+		"xattr -l x",
+		"defaults read com.apple.LaunchServices",
+		"spctl --status",
+		"networksetup -listallnetworkservices",
+		"fdesetup status",
+	])("%s is not asked about", (command) => {
+		expect(shell(command)).toEqual([]);
+	});
+});
