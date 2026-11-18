@@ -490,6 +490,19 @@ describe("reviewer mode", () => {
 		}
 	});
 
+	test("a reviewer's reason that ends in a full stop is logged with one (#411)", async () => {
+		answers["gpt-reviewer"] = reviewerSays('{"decision":"deny","reason":"It pipes a remote script to a shell."}');
+		const g = await load({ askWhenDenied: true, page: true });
+		const { ctx } = context({ cwd: scratch(), answer: RISK_DENY });
+		const out = await g.handler(RISKY, ctx);
+		expect(out?.block).toBe(true);
+		expect(out?.reason).toContain("to a shell. The person did not allow");
+		expect(out?.reason).not.toContain("..");
+		expect(g.decisions().at(-1)?.reason).toBe(
+			"The reviewer (openai/gpt-reviewer) denied it: It pipes a remote script to a shell. The person denied it.",
+		);
+	});
+
 	test("with the setting off, for a subagent, or with nobody to see the question, a reviewer's denial is final (#747)", async () => {
 		for (const [over, sub] of [
 			[{ askWhenDenied: false, page: true }, false],

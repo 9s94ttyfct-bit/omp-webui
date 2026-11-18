@@ -439,6 +439,16 @@ export async function review(
 // ---------------------------------------------------------------------------------------------------- what the agent is told
 
 /**
+ * `text` as one sentence: ended with a full stop, unless it already ends with one (or with `!`, `?` or `…`), so that a
+ * reviewer's reason, which is usually a sentence of its own, is not followed by a second stop (#411). Empty stays empty.
+ */
+export function endSentence(text: string): string {
+	const trimmed = text.trim();
+	if (trimmed === "") return "";
+	return /[.!?…]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+/**
  * The refusal after a reviewer's `deny`: why, and that it is not to be worked round. The main agent may try it again once
  * the person has approved this exact call in a message of their own: the gate then asks the reviewer again, and an earlier
  * denial is not the last word over the person's own say-so. A subagent never gets a message of the person's own, so it
@@ -448,7 +458,7 @@ export function deniedText(model: string, reason: string, kinds: readonly string
 	const next = subagent
 		? "A subagent cannot get the person's approval, so do not retry it or look for another way to do the same thing: name the exact command and why in your final answer, so that the main agent can have the person approve it."
 		: "Retry it only after the person explicitly approves this exact call in a message of their own, and do not look for another way to do the same thing: say what you meant to do and why in your answer, and let the person decide.";
-	return `The reviewer (${model}) denied this call (${kinds.join(", ")}): ${reason || "no reason given"}. It was not run. ${next}`;
+	return `The reviewer (${model}) denied this call (${kinds.join(", ")}): ${endSentence(reason) || "no reason given."} It was not run. ${next}`;
 }
 
 /** The refusal when the person set the call's category to Block: no reviewer was asked, and it is final. */

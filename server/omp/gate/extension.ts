@@ -30,6 +30,7 @@ import {
 	blockedText,
 	chooseReviewers,
 	deniedText,
+	endSentence,
 	intentOf,
 	type ModelLike,
 	type Models,
@@ -480,7 +481,9 @@ async function askPerson(
 	const title = riskTitle(event.toolName, risk.kinds, risk.detail, { by: "guard", denied, unavailable });
 	const answer = await ctx.ui.select(title, [RISK_ALLOW, RISK_DENY]);
 	const why = risk.kinds.join(", ");
-	const before = denied ? `The reviewer (${denied.model}) denied it: ${denied.reason || "no reason given"}. ` : "";
+	const before = denied
+		? `The reviewer (${denied.model}) denied it: ${endSentence(denied.reason) || "no reason given."} `
+		: "";
 	if (answer === RISK_ALLOW) {
 		decide(frame, "allow", "person", `${before}The person allowed it.`, extra);
 		return undefined;

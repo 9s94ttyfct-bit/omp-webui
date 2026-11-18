@@ -5,6 +5,7 @@ import {
 	blockedText,
 	chooseReviewers,
 	deniedText,
+	endSentence,
 	intentOf,
 	type ModelLike,
 	type Models,
@@ -567,6 +568,18 @@ describe("what the agent is told, and what a request spent", () => {
 		expect(text).toContain("A subagent cannot get the person's approval");
 		expect(text).toContain("name the exact command and why in your final answer");
 		expect(deniedText("a/b", "", ["x"], true)).toContain("no reason given");
+	});
+
+	test("a reason that ends in a full stop is not given two (#411)", () => {
+		const text = deniedText("a/b", "Deletes the home folder.", ["delete_outside"], false);
+		expect(text).toContain("Deletes the home folder. It was not run");
+		expect(text).not.toContain("..");
+		expect(deniedText("a/b", "Pipes a script to a shell!  ", ["remote_exec"], false)).toContain(
+			"a shell! It was not run",
+		);
+		expect(endSentence("Deletes the home folder.")).toBe("Deletes the home folder.");
+		expect(endSentence("wipes it")).toBe("wipes it.");
+		expect(endSentence("  ")).toBe("");
 	});
 
 	test("no reviewer is a refusal that begins with the words that tell it from a denial, and says what to do instead", () => {
