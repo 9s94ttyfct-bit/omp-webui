@@ -278,6 +278,8 @@ const BROWSER_SECRETS = table(
 );
 /** cloudflared's folder holds its account certificate and tunnels' credentials; its `config.yml` holds neither. */
 const CLOUDFLARED_NOT_SECRET = /^config\.ya?ml$/;
+/** A variable whose name says it holds a secret (`OPENAI_API_KEY`, `GITHUB_TOKEN`, `DB_PASSWORD`; not `SSH_AUTH_SOCK`). */
+const SECRET_VAR = /(^|_)(API_?KEY|KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASS|CREDENTIALS?)(_|$)/i;
 /** A `.env` file (`.env`, `.env.production`), but not the examples committed beside one. */
 const ENV_FILE = /^\.env(\.(?!(example|sample|template|dist)$)[^/]+)?$/;
 
@@ -787,6 +789,8 @@ interface Word {
 	subs: string[];
 	/** The shell variable the word is, when it is nothing but one (`"$f"`, `${f}`): a `for` loop's, for instance. */
 	named?: string;
+	/** Every shell variable it is made of, by name (`"key: $API_KEY"`): what an `echo` of it prints. */
+	vars?: string[];
 }
 
 interface Redirect {
@@ -980,6 +984,7 @@ function parseScript(src: string, vars: Readonly<Record<string, string>>): Simpl
 		const w = ensure();
 		// Only a word that is nothing but the variable names it: `$f.bak` is not what the loop goes over.
 		if (name !== undefined && w.text === "") w.named = name;
+		if (name !== undefined) w.vars = [...(w.vars ?? []), name];
 		w.dynamic = true;
 		w.text += DYN;
 		if (sub !== undefined) w.subs.push(sub);
@@ -1280,6 +1285,8 @@ function commandOf(words: readonly Word[]): Command | null {
 			} else break;
 		}
 		if (wrapper.line && j < words.length && /\s/.test(words[j].text)) return shellLine(words[j], viaXargs);
+		// `env` with nothing to run prints the environment (#291).
+		if (name === "env" && j >= words.length) return { name, args: [], viaXargs };
 		i = j;
 	}
 	return null;
@@ -2239,6 +2246,7 @@ class Scan {
 		if (name === "launchctl") this.add("launchctl");
 		this.scheduled(name, opts, operands);
 		this.credentials(name, opts, operands);
+		this.unfiled(name, args, opts, operands);
 		if (name === "ssh" || name === "autossh" || name === "mosh" || name === "scp" || name === "sftp")
 			this.ssh(name, args, cwd, depth);
 		if (listed(TUNNELS, name)) this.add("tunnel");
@@ -2784,6 +2792,45 @@ class Scan {
 				break;
 			default:
 		}
+		if (reads) this.add("secret_read");
+	}
+
+	/**
+	 * Secrets that are not in a file (#291): the environment, where the login shell's provider keys are (`env`,
+	 * `printenv`, `export -p`, a bare `set`, `declare -x`/`-p`, `ps e`/`-E`, and an `echo`/`printf`/`printenv` of a variable
+	 * whose name says it is a secret), the clipboard (`pbpaste`), and the screen (`screencapture`).
+	 */
+	private unfiled(name: string, args: Word[], opts: string[], operands: Word[]): void {
+		let reads = false;
+		switch (name) {
+			case "env":
+				reads = operands.length === 0;
+				break;
+			case "printenv":
+				reads = operands.length === 0 || operands.some((o) => SECRET_VAR.test(o.text));
+				break;
+			case "export":
+				reads = operands.length === 0;
+				break;
+			case "set":
+				reads = args.length === 0;
+				break;
+			case "declare":
+			case "typeset":
+				reads = operands.length === 0 && opts.some((o) => /^-[a-zA-Z]*[px]/.test(o));
+				break;
+			case "ps":
+				// BSD's `ps e`/`ps eww` (options without a dash, first) and macOS's `-E` show each process's environment.
+				reads = /^[a-zA-Z]*e[a-zA-Z]*$/.test(args[0]?.text ?? "") || opts.some((o) => /^-[a-zA-Z]*E/.test(o));
+				break;
+			case "pbpaste":
+			case "screencapture":
+				reads = true;
+				break;
+			default:
+		}
+		if (!reads && (name === "echo" || name === "printf" || name === "printenv"))
+			reads = args.some((a) => (a.vars ?? []).some((v) => SECRET_VAR.test(v)));
 		if (reads) this.add("secret_read");
 	}
 

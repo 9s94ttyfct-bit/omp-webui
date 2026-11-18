@@ -340,6 +340,23 @@ describe("reading a credential is asked about (secret_read), whatever reads it",
 		// Another project's `.env`: this one's is the agent's to read.
 		"cat ~/other-project/.env",
 		"cat /srv/app/.env.production",
+		// Secrets that are not in a file: the environment, the clipboard, the screen (#291).
+		"printenv ANTHROPIC_API_KEY",
+		"printenv",
+		"echo $OPENAI_API_KEY",
+		'echo "key: ${GITHUB_TOKEN}"',
+		'printf "%s" "$DB_PASSWORD"',
+		"env",
+		"env | grep KEY",
+		"export -p",
+		"export",
+		"set",
+		"declare -x",
+		"ps eww -o command",
+		"ps -E",
+		"pbpaste",
+		"pbpaste > /tmp/clip.txt",
+		"screencapture -x /tmp/s.png",
 	])("%s", (command) => {
 		expect(bash(command)).toContain("secret_read");
 	});
@@ -359,6 +376,16 @@ describe("reading a credential is asked about (secret_read), whatever reads it",
 		"cat /work/proj/.env.local",
 		"cat ~/other-project/.env.example",
 		"cat /tmp/scratch/.env",
+		"echo $HOME",
+		"echo $PATH",
+		"echo $SSH_AUTH_SOCK",
+		"printenv HOME",
+		"set -euo pipefail",
+		"export PATH=$PATH:/opt/x/bin",
+		"env X=1 make",
+		"ps aux",
+		"ps -o user -p 1",
+		'curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/user',
 	])("not for %s", (command) => {
 		expect(bash(command)).not.toContain("secret_read");
 	});
