@@ -2687,7 +2687,10 @@ class Scan {
 			case "chmod":
 			case "chown":
 			case "chgrp":
-				this.permissions(name, opts, operands, cwd);
+			case "chflags":
+			case "chattr":
+			case "setfacl":
+				this.permissions(name, opts, args, operands, cwd);
 				break;
 			case "tee":
 			case "touch":
@@ -2799,6 +2802,8 @@ class Scan {
 				if (hasShort(opts, "w")) for (const t of operands.slice(2)) this.write(t, cwd);
 				else if (hasShort(opts, "d")) for (const t of operands.slice(1)) this.write(t, cwd);
 				else if (hasShort(opts, "c")) for (const t of operands) this.write(t, cwd);
+				// `-r` with `-c`/`-d`: every file under a folder (#315).
+				if (hasShort(opts, "cd")) this.permissions(name, opts, args, operands, cwd);
 				break;
 			case "zip": {
 				// `-TT '<command>'`: what it tests the archive with (#221).
@@ -2964,13 +2969,30 @@ class Scan {
 		return false;
 	}
 
-	private permissions(name: string, opts: string[], operands: Word[], cwd: string | null): void {
-		const recursive = hasShort(opts, "R") || hasLong(opts, "--recursive");
-		// The mode (or the owner) is the first operand, unless `--reference` took its place.
-		const first = operands[0]?.text ?? "";
-		const given =
-			name === "chmod" ? /^([0-7]{3,4}|[ugoa]*[-+=][rwxXst,ugo+=-]*)$/.test(first) : !hasLong(opts, "--reference");
-		for (const t of given ? operands.slice(1) : operands) {
+	/**
+	 * A change of who may use files, or of their flags: `chmod`/`chown`/`chgrp`, and (#315) `chflags` (`uchg`, `schg`, `hidden`),
+	 * `chattr`, `setfacl` and `xattr -c`/`-d` (`-r`). Recursive on what is outside the project or broad, it is `permissions`.
+	 */
+	private permissions(name: string, opts: string[], args: Word[], operands: Word[], cwd: string | null): void {
+		const recursive = (name === "xattr" ? hasShort(opts, "r") : hasShort(opts, "R")) || hasLong(opts, "--recursive");
+		let targets: Word[];
+		if (name === "chmod")
+			// The mode is the first operand, unless `--reference` took its place.
+			targets = /^([0-7]{3,4}|[ugoa]*[-+=][rwxXst,ugo+=-]*)$/.test(operands[0]?.text ?? "")
+				? operands.slice(1)
+				: operands;
+		else if (name === "chattr") targets = operands.filter((o) => !/^[+=]/.test(o.text));
+		else if (name === "setfacl") {
+			const values = optionValues(
+				args,
+				["-m", "-M", "-x", "-X"],
+				["--modify", "--modify-file", "--remove", "--remove-file", "--set", "--set-file"],
+			);
+			targets = operands.filter((o) => !values.includes(o));
+		} else if (name === "xattr") targets = hasShort(opts, "d") ? operands.slice(1) : operands;
+		// The owner (or the flags) is the first operand, unless `--reference` took its place.
+		else targets = hasLong(opts, "--reference") ? operands : operands.slice(1);
+		for (const t of targets) {
 			const abs = resolveWord(t, cwd, this.ctx);
 			if (abs !== null && isProtected(abs, this.ctx)) this.add("protected");
 			else if (recursive && (abs === null || isBroad(abs, this.ctx) || !inProject(abs, this.ctx)))

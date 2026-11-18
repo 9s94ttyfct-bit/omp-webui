@@ -2464,3 +2464,29 @@ describe("npm, pnpm, yarn, pip and gh config set write settings every later comm
 		expect(shell(command)).toEqual([]);
 	});
 });
+
+describe("chflags, setfacl, chattr and xattr -r change files' flags and ACLs as chmod -R does (#315)", () => {
+	test.each([
+		"chflags -R uchg ~/Documents",
+		"chflags -R schg ~/Documents",
+		"chflags -R hidden ~",
+		"setfacl -R -m o::--- /home/me",
+		"setfacl -R -b /home/me/Documents",
+		"chattr -R +i /home/me/Documents",
+		"chattr -R -i /home/me/Documents",
+	])("%s is permissions", (command) => {
+		expect(shell(command)).toEqual(["permissions"]);
+	});
+
+	test("xattr -r clearing attributes outside the project", () => {
+		expect(shell("xattr -rc ~/Documents")).toContain("permissions");
+		expect(shell("xattr -r -d com.example.x ~/Documents")).toContain("permissions");
+	});
+
+	test.each(["chflags hidden build", "chflags -R nohidden build", "setfacl -m u:me:r x.txt", "xattr -c build/x"])(
+		"%s is not asked about",
+		(command) => {
+			expect(shell(command)).toEqual([]);
+		},
+	);
+});
