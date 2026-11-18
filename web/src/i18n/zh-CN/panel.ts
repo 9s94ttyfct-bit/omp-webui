@@ -428,6 +428,9 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	reqRisk_protected: "它涉及凭据、omp 或本应用的设置，或会启动程序的文件",
 	reqRisk_secret_read: "它读取密钥、令牌或密码（ssh 密钥、云服务或软件源的凭据、钥匙串）",
 	reqRisk_force_push: "它覆盖或删除 git 远程仓库上的历史",
+	reqRisk_remote_delete:
+		"它删除服务器、云端或软件源上的东西，或删除数据库（gh repo delete、terraform destroy、DROP DATABASE）",
+	reqRisk_publish: "它发布软件包、版本或仓库，或越过分支保护合并",
 	reqRisk_discard: "它丢弃未提交的工作或 git 历史",
 	reqRisk_remote_exec: "它运行自己下载的脚本",
 	reqRisk_dynamic_command: "它的命令要到运行时才拼出来（变量或 $(…) 充当命令、eval，或把脚本用管道交给 shell）",

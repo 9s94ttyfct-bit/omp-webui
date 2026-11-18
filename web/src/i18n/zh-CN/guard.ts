@@ -161,6 +161,8 @@ export const zh: Record<keyof typeof en, string> = {
 	catName_protected: "凭据和防护自己的文件",
 	catName_secret_read: "读取密钥和密码",
 	catName_force_push: "改写远程仓库的 git 历史",
+	catName_remote_delete: "删除远程和云端的资源",
+	catName_publish: "发布软件包和版本",
 	catName_discard: "丢弃工作成果",
 	catName_remote_exec: "运行下载来的脚本",
 	catName_dynamic_command: "运行时才拼出来的命令",

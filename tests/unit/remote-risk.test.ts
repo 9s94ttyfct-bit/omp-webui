@@ -2326,3 +2326,83 @@ describe("ending every process of the person is system (#259)", () => {
 		},
 	);
 });
+
+describe("deleting what is not on this computer is remote_delete (#263)", () => {
+	test.each([
+		"gh repo delete owner/repo --yes",
+		"gh release delete v1.0.0 --yes",
+		"gh api -X DELETE repos/owner/repo",
+		"gh api --method=DELETE repos/owner/repo/releases/1",
+		"gh secret delete TOKEN",
+		"npm unpublish my-pkg --force",
+		"docker system prune -a --volumes -f",
+		"docker volume rm data",
+		"docker compose down -v",
+		"kubectl delete namespace prod",
+		"helm uninstall prod",
+		"terraform destroy -auto-approve",
+		"terraform apply -destroy -auto-approve",
+		"aws s3 rm s3://bucket --recursive",
+		"aws --profile p s3 rb s3://bucket --force",
+		"aws ec2 terminate-instances --instance-ids i-1",
+		"aws s3 sync . s3://bucket --delete",
+		"gcloud projects delete my-proj --quiet",
+		"az group delete -n prod --yes",
+		"dropdb prod",
+		"psql -c 'DROP DATABASE prod'",
+		"mysql -e 'TRUNCATE users' app",
+		"redis-cli -h db.example.com FLUSHALL",
+		"mongosh --eval 'db.dropDatabase()'",
+		"supabase db reset --linked",
+	])("%s", (command) => {
+		expect(shell(command)).toEqual(["remote_delete"]);
+	});
+
+	test.each([
+		"gh release list",
+		"gh api repos/o/r",
+		"gh alias delete co",
+		"kubectl get pods",
+		"terraform plan",
+		"aws s3 ls",
+		"docker system prune -f",
+		"psql -c 'select 1'",
+		"supabase db reset",
+	])("%s is not asked about", (command) => {
+		expect(shell(command)).toEqual([]);
+	});
+});
+
+describe("putting code or work out in public is publish (#283)", () => {
+	test.each([
+		"npm publish",
+		"npm publish --access public",
+		"pnpm publish",
+		"yarn npm publish",
+		"bun publish",
+		"cargo publish",
+		"uv publish",
+		"poetry publish --build",
+		"twine upload dist/*",
+		"gem push x.gem",
+		"dotnet nuget push x.nupkg",
+		"docker push example.com/me/app:1",
+		"gh release create v9 dist/*",
+		"gh release upload v9 x.zip",
+		"gh pr merge 1 --admin --merge",
+		"gh repo create me/x --public",
+		"gh repo edit --visibility public",
+		"gh gist create --public notes.md",
+	])("%s", (command) => {
+		expect(shell(command)).toEqual(["publish"]);
+	});
+
+	test.each([
+		"npm publish --dry-run",
+		"cargo publish --dry-run",
+		"gh pr merge 1 --squash",
+		"gh repo create me/x --private",
+	])("%s is not asked about", (command) => {
+		expect(shell(command)).toEqual([]);
+	});
+});

@@ -52,6 +52,8 @@ export const CAT_NAME: Record<SettableKind, MessageKey> = {
 	protected: "guard.catName_protected",
 	secret_read: "guard.catName_secret_read",
 	force_push: "guard.catName_force_push",
+	remote_delete: "guard.catName_remote_delete",
+	publish: "guard.catName_publish",
 	discard: "guard.catName_discard",
 	remote_exec: "guard.catName_remote_exec",
 	dynamic_command: "guard.catName_dynamic_command",

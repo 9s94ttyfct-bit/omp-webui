@@ -10,6 +10,8 @@ export const RISK_KIND_LABEL: Record<RiskKind, MessageKey> = {
 	protected: "panel.reqRisk_protected",
 	secret_read: "panel.reqRisk_secret_read",
 	force_push: "panel.reqRisk_force_push",
+	remote_delete: "panel.reqRisk_remote_delete",
+	publish: "panel.reqRisk_publish",
 	discard: "panel.reqRisk_discard",
 	remote_exec: "panel.reqRisk_remote_exec",
 	dynamic_command: "panel.reqRisk_dynamic_command",

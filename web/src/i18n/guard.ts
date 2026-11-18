@@ -174,6 +174,8 @@ export const en = {
 	catName_protected: "Credentials and the guard's own files",
 	catName_secret_read: "Reading keys and passwords",
 	catName_force_push: "Rewriting git history on a remote",
+	catName_remote_delete: "Deleting remote and cloud resources",
+	catName_publish: "Publishing packages and releases",
 	catName_discard: "Throwing away work",
 	catName_remote_exec: "Running a downloaded script",
 	catName_dynamic_command: "A command put together when it runs",

@@ -22,6 +22,8 @@ export const RISK_KINDS = [
 	"protected",
 	"secret_read",
 	"force_push",
+	"remote_delete",
+	"publish",
 	"discard",
 	"remote_exec",
 	"dynamic_command",

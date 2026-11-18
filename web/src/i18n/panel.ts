@@ -95,6 +95,9 @@ export const en = {
 	reqRisk_protected: "it touches credentials, the settings of omp or of this app, or files that start programs",
 	reqRisk_secret_read: "it reads a key, a token or a password (ssh keys, cloud or registry credentials, the keychain)",
 	reqRisk_force_push: "it overwrites or deletes history on a git remote",
+	reqRisk_remote_delete:
+		"it deletes something on a server, in a cloud or a registry, or a database (gh repo delete, terraform destroy, DROP DATABASE)",
+	reqRisk_publish: "it publishes a package, a release or a repository, or merges past branch protection",
 	reqRisk_discard: "it throws away uncommitted work or git history",
 	reqRisk_remote_exec: "it runs a script it downloads",
 	reqRisk_dynamic_command:

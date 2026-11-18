@@ -2566,6 +2566,7 @@ class Scan {
 		if (name === "diskutil" && /^(erase|partition|zero|secure|reformat|apfs)/i.test(operands[0]?.text ?? ""))
 			this.add("system");
 		this.install(name, operands, opts);
+		this.remoteChange(name, args, opts, operands, body);
 		this.windowsProgram(name, args, operands, body, cwd, depth);
 		if (name === "omp") {
 			const group = operands[0]?.text ?? "";
@@ -3413,6 +3414,153 @@ class Scan {
 	}
 
 	/**
+	 * What deletes for good something that is not on this computer, with the person's signed-in command-line tools
+	 * (`remote_delete`, #263): a GitHub repository, release, secret or anything `gh … delete` names, `gh api -X DELETE`, a
+	 * published package version, docker volumes, Kubernetes objects, a Terraform/OpenTofu/Pulumi/CDK stack, S3 objects and
+	 * buckets and the cloud's `delete-*`/`terminate-*`, gcloud's and az's `delete`, a database (`dropdb`, SQL that drops,
+	 * truncates or deletes handed to `psql`/`mysql`, `redis-cli FLUSHALL`, a Mongo drop), a hosted app or project. And what
+	 * puts the person's code or work out in public (`publish`, #283): a package (`npm`/`pnpm`/`bun`/`yarn publish`, `cargo`,
+	 * `uv`, `poetry`, `hatch`, `flit publish`, `twine upload`, `gem push`, `dotnet nuget push`, `docker push`, `vsce publish`,
+	 * `mvn deploy`, `gradle publish`, `pod trunk push`), a release (`gh release create`/`upload`), a public repository or gist,
+	 * and a merge past branch protection (`gh pr merge --admin`). `--dry-run` publishes nothing.
+	 */
+	private remoteChange(name: string, args: Word[], opts: string[], operands: Word[], body: string | null): void {
+		const [verb = "", sub = ""] = operands.map((o) => o.text);
+		const words = operands.map((o) => o.text);
+		const values = (short: string[], long: string[]): string =>
+			[...optionValues(args, short, long).map((v) => v.text), body ?? ""].join("\n");
+		const dropsSql = (sql: string): boolean =>
+			/\b(?:drop\s+(?:database|schema|table|view|index|user|role|owned)|truncate|delete\s+from)\b/i.test(sql);
+		let deletes = false;
+		let publishes = false;
+		switch (name) {
+			case "gh": {
+				deletes =
+					(/^(?:delete|delete-asset)$/.test(sub) && !/^(?:alias|extension|config)$/.test(verb)) ||
+					(verb === "api" && optionValues(args, ["-X"], ["--method"]).some((v) => /^delete$/i.test(v.text)));
+				const visibility = optionValues(args, [], ["--visibility"]).some((v) => v.text === "public");
+				publishes =
+					(verb === "release" && /^(?:create|upload)$/.test(sub)) ||
+					(verb === "pr" && sub === "merge" && hasLong(opts, "--admin")) ||
+					(verb === "repo" && sub === "create" && hasLong(opts, "--public")) ||
+					(verb === "repo" && sub === "edit" && visibility) ||
+					(verb === "gist" && sub === "create" && (hasLong(opts, "--public") || opts.includes("-p")));
+				break;
+			}
+			case "npm":
+			case "pnpm":
+			case "bun":
+			case "yarn":
+				deletes = verb === "unpublish";
+				publishes = verb === "publish" || (name === "yarn" && verb === "npm" && sub === "publish");
+				break;
+			case "docker":
+			case "podman":
+				deletes =
+					(verb === "system" && sub === "prune" && hasLong(opts, "--volumes")) ||
+					(verb === "volume" && /^(?:rm|remove|prune)$/.test(sub)) ||
+					(verb === "compose" && words.includes("down") && (opts.includes("-v") || hasLong(opts, "--volumes")));
+				publishes = verb === "push" || (verb === "image" && sub === "push");
+				break;
+			case "docker-compose":
+				deletes = verb === "down" && (opts.includes("-v") || hasLong(opts, "--volumes"));
+				break;
+			case "kubectl":
+				deletes = verb === "delete";
+				break;
+			case "helm":
+				deletes = /^(?:uninstall|delete|del|un)$/.test(verb);
+				break;
+			case "terraform":
+			case "tofu":
+				deletes = verb === "destroy" || (verb === "apply" && opts.includes("-destroy"));
+				break;
+			case "pulumi":
+			case "cdk":
+				deletes = verb === "destroy";
+				break;
+			case "aws":
+				deletes =
+					words.some((w, n) => w === "s3" && /^(?:rm|rb)$/.test(words[n + 1] ?? "")) ||
+					(words.includes("s3") && words.includes("sync") && hasLong(opts, "--delete")) ||
+					words.some((w) => /^(?:delete|terminate|remove|deregister|purge)-[a-z0-9-]+$/.test(w));
+				break;
+			case "gcloud":
+			case "az":
+				deletes = words.includes("delete") || (name === "az" && words.includes("purge"));
+				break;
+			case "dropdb":
+				deletes = true;
+				break;
+			case "redis-cli":
+				deletes = words.some((w) => /^flush(?:all|db)$/i.test(w));
+				break;
+			case "psql":
+				deletes = dropsSql(values(["-c"], ["--command"]));
+				break;
+			case "mysql":
+			case "mariadb":
+				deletes = dropsSql(values(["-e"], ["--execute"]));
+				break;
+			case "mongosh":
+			case "mongo":
+				deletes = /\.(?:dropDatabase|drop|deleteMany|remove)\s*\(/.test(values([], ["--eval"]));
+				break;
+			case "supabase":
+				deletes =
+					(verb === "db" && sub === "reset" && hasLong(opts, "--linked", "--db-url")) || words.includes("delete");
+				break;
+			case "vercel":
+				deletes = /^(?:rm|remove)$/.test(verb);
+				break;
+			case "fly":
+			case "flyctl":
+				deletes = verb === "destroy" || words.includes("destroy");
+				break;
+			case "heroku":
+				deletes = /^(?:apps:destroy|destroy|pg:reset)$/.test(verb);
+				break;
+			case "netlify":
+				deletes = verb === "sites:delete";
+				break;
+			case "cargo":
+			case "uv":
+			case "poetry":
+			case "hatch":
+			case "flit":
+			case "vsce":
+			case "ovsx":
+				publishes = verb === "publish";
+				break;
+			case "twine":
+				publishes = verb === "upload";
+				break;
+			case "gem":
+				publishes = verb === "push";
+				break;
+			case "dotnet":
+				publishes = verb === "nuget" && sub === "push";
+				break;
+			case "nuget":
+				publishes = verb === "push";
+				break;
+			case "mvn":
+				publishes = words.includes("deploy");
+				break;
+			case "gradle":
+			case "gradlew":
+				publishes = words.some((w) => /^publish/.test(w));
+				break;
+			case "pod":
+				publishes = verb === "trunk" && sub === "push";
+				break;
+			default:
+		}
+		if (deletes) this.add("remote_delete");
+		if (publishes && !hasLong(opts, "--dry-run")) this.add("publish");
+	}
+
+	/**
 	 * `ssh host cmd`, `autossh … host cmd`, `mosh host -- cmd`: a command run on another computer (`remote_shell`), read as
 	 * one too, in the home folder it starts in there (which is this one's as far as can be told). What ssh, scp or sftp run
 	 * on this computer (`-o ProxyCommand=…`, `LocalCommand`, `KnownHostsCommand`) is read as a command here.
@@ -4137,7 +4285,9 @@ const ORDER: readonly RiskKind[] = [
 	"shell_out",
 	"mass_delete",
 	"delete_outside",
+	"remote_delete",
 	"force_push",
+	"publish",
 	"discard",
 	"protected",
 	"secret_read",
