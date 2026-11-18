@@ -313,6 +313,76 @@ function isSecret(
 	return env && ENV_FILE.test(name) && !ctx.roots.some((r) => within(abs, r)) && !ctx.temp.some((t) => within(abs, t));
 }
 
+/** Credentials as paths under the home folder: what a glob (`~/.ss?/id_*`) or a recursive read (`grep -r … ~`) may reach (#293). */
+const SECRET_SAMPLES = [
+	".ssh",
+	".ssh/id_rsa",
+	".ssh/id_ed25519",
+	".ssh/id_ecdsa",
+	".ssh/id_dsa",
+	".gnupg",
+	".aws",
+	".aws/credentials",
+	".cloudflared/cert.pem",
+	...Object.keys(SECRET_HOME_FILES),
+	...SECRET_HOME_PLACES,
+];
+/** The name of an ssh private key. */
+const KEY_FILE = /^id_(rsa|dsa|ecdsa|ed25519)(_sk)?$/;
+
+const secretSamples = (ctx: Pick<RiskContext, "home" | "caseless">): string[] =>
+	SECRET_SAMPLES.map((s) => folded(`${normalize(ctx.home)}/${s}`, ctx));
+
+/**
+ * Whether a word with a glob, or a part only known when the command runs, may name a credential that the folder
+ * `resolveWord` gives for it does not show (#293, as `mayBeProtected` does for writes, #191): a glob part stands for one
+ * name (`~/.ss?/id_ed25519`, `~/.*\/id_*`; bash's `*` does not match a name that starts with `.`). A word that starts
+ * with a part only known when the command runs may be anywhere: it is a credential when it goes through a credentials
+ * folder or ends in an ssh key's name (`$(ls -d ~/.ss*)/id_ed25519`); such a part further in (a brace list) is not read.
+ */
+function mayBeSecret(w: Word, cwd: string | null, ctx: RiskContext): boolean {
+	const raw = ctx.windows ? windowsView(w.text) : w.text;
+	if (!/[\uE000*?[]/.test(raw)) return false;
+	const text = folded(raw, ctx);
+	const parts = text.split("/").filter((s) => s !== "" && s !== ".");
+	if (text.startsWith(DYN)) {
+		const rest = parts.slice(1);
+		return (
+			rest.some((p) => p === ".ssh" || listed(SECRET_SEGMENTS, p)) ||
+			(rest.length > 0 && KEY_FILE.test(rest[rest.length - 1]))
+		);
+	}
+	if (!text.startsWith("/")) {
+		if (cwd === null) return false;
+		parts.unshift(
+			...folded(cwd, ctx)
+				.split("/")
+				.filter((s) => s !== "" && s !== "."),
+		);
+	}
+	const matches = (part: string, name: string): boolean =>
+		!part.includes(DYN) && (/[*?[]/.test(part) ? namePattern(part).test(name) : part === name);
+	return secretSamples(ctx).some((s) => {
+		const names = s.split("/").filter(Boolean);
+		return names.length === parts.length && parts.every((p, i) => matches(p, names[i]));
+	});
+}
+
+/** Whether `dir` holds a credential (`~`, `~/.config`, `/Users`); `hidden: false` for a reader that skips dotted names. */
+function holdsSecret(dir: string, ctx: RiskContext, hidden: boolean): boolean {
+	const d = folded(dir, ctx);
+	return secretSamples(ctx).some(
+		(s) =>
+			s !== d &&
+			within(s, d) &&
+			(hidden ||
+				!s
+					.slice(d === "/" ? 1 : d.length + 1)
+					.split("/")
+					.some((p) => p.startsWith("."))),
+	);
+}
+
 const SHELLS = table("sh", "bash", "zsh", "dash", "ksh", "fish", "csh", "tcsh");
 const CODE_INTERPRETERS = table(
 	"python",
@@ -2399,10 +2469,72 @@ class Scan {
 		const scriptShell = name === "powershell" || name === "pwsh" || name === "cmd";
 		if (!scriptShell && !listed(READING_PROGRAMS, name) && args.some((a) => this.touchesProtected(a, cwd)))
 			this.add("protected");
-		// Reading a credential is asked about too, by any program that looks into the file (`cat`, `grep`, `cp`, `base64`).
-		if (!scriptShell && !listed(METADATA_PROGRAMS, name) && args.some((a) => this.touchesSecret(a, cwd)))
+		// Reading a credential is asked about too, by any program that looks into the file (`cat`, `grep`, `cp`, `base64`),
+		// and by one that reads a folder that holds one, all of it (`grep -r … ~`, `cp -R ~ x`, `tar czf - ~`, #293).
+		if (
+			!scriptShell &&
+			!listed(METADATA_PROGRAMS, name) &&
+			(args.some((a) => this.touchesSecret(a, cwd)) || this.readsSecretFolder(name, args, opts, operands, cwd))
+		)
 			this.add("secret_read");
 		return cwd;
+	}
+
+	/** A program that reads whole folders, given one that holds a credential (`holdsSecret`). */
+	private readsSecretFolder(name: string, args: Word[], opts: string[], operands: Word[], cwd: string | null): boolean {
+		let sources: Word[] = [];
+		let hidden = true;
+		switch (name) {
+			case "grep":
+			case "egrep":
+			case "fgrep":
+				if (hasShort(opts, "rR") || hasLong(opts, "--recursive", "--dereference-recursive")) sources = operands;
+				break;
+			case "rg":
+			case "ag":
+				// Recursive by default; dotted names only when asked (`-u`, `-.`, `--hidden`).
+				sources = operands;
+				hidden = hasShort(opts, "u.") || hasLong(opts, "--hidden", "--unrestricted");
+				break;
+			case "cp":
+				if (hasShort(opts, "Rra") || hasLong(opts, "--recursive", "--archive")) sources = operands.slice(0, -1);
+				break;
+			case "rsync":
+				if (hasShort(opts, "ar") || hasLong(opts, "--recursive", "--archive")) sources = operands.slice(0, -1);
+				break;
+			case "scp":
+				if (hasShort(opts, "r")) sources = operands.slice(0, -1);
+				break;
+			case "ditto":
+				sources = operands.slice(0, -1);
+				break;
+			case "zip":
+				if (hasShort(opts, "r") || hasLong(opts, "--recurse-paths")) sources = operands;
+				break;
+			case "tar": {
+				// `tar czf - ~`, `tar -czf x ~`, `tar --create …`: what it is given goes into the archive.
+				const first = args[0]?.text ?? "";
+				if (hasShort(opts, "c") || hasLong(opts, "--create") || (!first.startsWith("-") && first.includes("c")))
+					sources = operands;
+				break;
+			}
+			case "find":
+				// `find ~ … -exec cat {} \;`: the places it starts from, read by what it runs.
+				if (args.some((a) => /^-(exec|execdir|ok|okdir)$/.test(a.text)))
+					sources = args.slice(
+						0,
+						Math.max(
+							0,
+							args.findIndex((a) => /^[-(!]/.test(a.text)),
+						),
+					);
+				break;
+			default:
+		}
+		return sources.some((w) => {
+			const abs = resolveWord(w, cwd, this.ctx);
+			return abs !== null && holdsSecret(abs, this.ctx, hidden);
+		});
 	}
 
 	/** A word that names a protected place: as a path, or as the value of an option (`--file=/…/.ssh/x`). */
@@ -2428,6 +2560,7 @@ class Scan {
 			if (path === "") continue;
 			const abs = resolveWord({ ...w, text: path }, cwd, this.ctx);
 			if (abs !== null && isSecret(abs, this.ctx)) return true;
+			if (mayBeSecret({ ...w, text: path }, cwd, this.ctx)) return true;
 		}
 		return false;
 	}
