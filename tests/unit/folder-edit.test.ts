@@ -429,6 +429,14 @@ describe("what the read says of a file: its etag, and whether it is editable", (
 		expect((await text(w.proj, "latin1.txt")).editable).toBe(false);
 	});
 
+	test("a file with CR line endings is editable; one that mixes a lone CR with line feeds is not, since a save would change lines nobody touched (#351)", async () => {
+		const w = world();
+		write(join(w.proj, "mac.csv"), "id,name\r1,Ann\r2,Bob\r");
+		write(join(w.proj, "progress.log"), "start\nprogress 10%\rprogress 100%\ndone\n");
+		expect((await text(w.proj, "mac.csv")).editable).toBe(true);
+		expect((await text(w.proj, "progress.log")).editable).toBe(false);
+	});
+
 	test("the answer of the route adds what the place and the page allow: a file no save would take is not editable", async () => {
 		const w = world();
 		write(join(w.proj, "a.txt"), "a");

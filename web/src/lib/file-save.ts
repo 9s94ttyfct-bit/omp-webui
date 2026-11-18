@@ -13,15 +13,25 @@ import { describeFailure } from "./transfer-words.ts";
 
 /**
  * The line ending a text is saved with: the one most of its lines end with, so that a file written with CRLF comes back with
- * CRLF. (The editor holds lines, not their endings; a file that mixes them is saved with its commonest one.)
+ * CRLF, and one written with CR alone (an old Mac text file) with CR (#351). (The editor holds lines, not their endings; a
+ * file that mixes CRLF and LF is saved with its commonest one, and one that mixes a lone CR with either is not offered for
+ * editing: `mixesLoneCr`.)
  */
-export function eolOf(text: string): "\n" | "\r\n" {
+export function eolOf(text: string): "\n" | "\r\n" | "\r" {
 	let crlf = 0;
 	let lf = 0;
-	for (let at = text.indexOf("\n"); at >= 0; at = text.indexOf("\n", at + 1)) {
-		if (text.charCodeAt(at - 1) === 13) crlf++;
-		else lf++;
+	let cr = 0;
+	for (let at = 0; at < text.length; at++) {
+		const c = text.charCodeAt(at);
+		if (c === 10) lf++;
+		else if (c === 13) {
+			if (text.charCodeAt(at + 1) === 10) {
+				crlf++;
+				at++;
+			} else cr++;
+		}
 	}
+	if (cr > crlf && cr > lf) return "\r";
 	return crlf > lf ? "\r\n" : "\n";
 }
 

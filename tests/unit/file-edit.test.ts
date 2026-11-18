@@ -1,6 +1,7 @@
 import "./browser-globals.ts";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { EditorState } from "@codemirror/state";
+import { mixesLoneCr } from "../../shared/folder.ts";
 import { CSRF_HEADER, ERROR_HEADER } from "../../shared/transfer.ts";
 import { en } from "../../web/src/i18n/files.ts";
 import { registerStrings } from "../../web/src/i18n/index.ts";
@@ -45,6 +46,14 @@ describe("the line ending a text is saved with", () => {
 			const doc = EditorState.create({ doc: text }).doc;
 			expect(doc.sliceString(0, doc.length, eolOf(text))).toBe(text);
 		}
+	});
+
+	test("a file with CR line endings comes back with CR; one that mixes a lone CR with LF is not offered for editing (#351)", () => {
+		expect(eolOf("id,name\r1,Ann\r2,Bob\r")).toBe("\r");
+		expect(mixesLoneCr("id,name\r1,Ann\r2,Bob\r")).toBe(false);
+		expect(mixesLoneCr("a\r\nb\r\n")).toBe(false);
+		expect(mixesLoneCr("start\nprogress 10%\rprogress 100%\ndone\n")).toBe(true);
+		expect(mixesLoneCr("a\r\nb\rc\r\n")).toBe(true);
 	});
 });
 

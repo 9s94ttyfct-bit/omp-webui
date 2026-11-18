@@ -151,6 +151,15 @@ export function mentionOf(path: string): string {
 	return /\s/.test(path) ? `@"${path}"` : `@${path}`;
 }
 
+/**
+ * Whether `text` has a carriage return that ends no line feed's line (`\r` alone) beside line feeds: a file the editor cannot
+ * write back as it was, since it holds lines and saves them with one ending (#351). A file whose every line ends in `\r` (an
+ * old Mac text file, Excel's "CSV (Macintosh)") is not one: it is saved with `\r`.
+ */
+export function mixesLoneCr(text: string): boolean {
+	return /\r(?!\n)/.test(text) && text.includes("\n");
+}
+
 /** The image types the panel shows (by extension), and what they are served as. */
 export const IMAGE_TYPES: Readonly<Record<string, string>> = {
 	png: "image/png",

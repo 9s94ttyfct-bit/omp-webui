@@ -15,6 +15,7 @@ import {
 	type FolderMatch,
 	type FolderView,
 	IMAGE_TYPES,
+	mixesLoneCr,
 } from "../shared/folder.ts";
 import { FileIndex, hiddenByDefault, isSecretLooking, SCAN_LIMITS, scanFiles, skipRepositoryData } from "./files.ts";
 import { type GitMarks, isIgnored, markOf } from "./git-marks.ts";
@@ -466,8 +467,9 @@ export async function readFolderFile(
 			truncated,
 			view: viewOf(name),
 			etag: createHash("sha256").update(bytes).digest("hex"),
-			// Whole, and bytes that are the text's own (a file in another encoding does not come back from a save as it was).
-			editable: !truncated && isUtf8(bytes),
+			// Whole, and bytes that are the text's own (a file in another encoding does not come back from a save as it was),
+			// with line endings a save can write back (#351).
+			editable: !truncated && isUtf8(bytes) && !mixesLoneCr(text),
 		};
 	} finally {
 		await handle.close();
