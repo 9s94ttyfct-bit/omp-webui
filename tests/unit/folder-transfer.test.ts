@@ -2,6 +2,7 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import {
+	appendFileSync,
 	chmodSync,
 	existsSync,
 	lstatSync,
@@ -1143,6 +1144,46 @@ describe("uploading a file", () => {
 		expect(existsSync(stale)).toBe(false);
 		expect(existsSync(young)).toBe(true);
 		expect(existsSync(lookalike)).toBe(true);
+	});
+
+	test("what a server that ended without its shutdown left staged is removed by the next one, in any folder (#350)", async () => {
+		// The first server is cut off: an upload has its first piece, and an editor's save never gets past writing beside the file.
+		const w = world({ now: () => Date.now(), beforePublish: () => new Promise<void>(() => {}) });
+		write(join(w.proj, "docs", "a.txt"), "one\n");
+		const first = await up(w, { dir: "media", name: "big.bin", size: 16, body: "12345678" });
+		expect(first.status).toBe(202);
+		void w.call("file", {
+			method: "POST",
+			body: JSON.stringify({ path: "docs/a.txt", text: "two\n", etag: sha("one\n") }),
+			headers: { "content-type": "application/json" },
+		});
+		const ours = (dir: string) => readdirSync(join(w.proj, dir)).filter((n) => n.startsWith(".ompw-"));
+		const left = async () => {
+			for (let i = 0; i < 100 && ours("docs").length === 0; i++) await Bun.sleep(5);
+			return [...ours("media"), ...ours("docs")];
+		};
+		const crashed = await left();
+		expect(crashed).toHaveLength(2);
+		// A file the list names that is not ours is never touched, however old.
+		const notOurs = join(w.proj, "notes.txt");
+		write(notOurs, "mine");
+		const old = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+		utimesSync(notOurs, old, old);
+		appendFileSync(join(w.top, "transfers-staged.jsonl"), `${JSON.stringify({ add: notOurs })}\n`);
+		const next = (now: () => number) => {
+			const s = new TransferService({ logFile: join(w.top, "transfers.jsonl"), now, statfs: roomy });
+			services.push(s);
+			return s;
+		};
+		// A server started while they may still be written to (another server's, less than idleMs ago) leaves them.
+		const soon = next(() => Date.now());
+		await soon.staged.sweep(soon.uploads.live());
+		expect(await left()).toEqual(crashed);
+		// Once nothing has written to them for idleMs, they are removed — without an upload into either folder.
+		const later = next(() => Date.now() + 30 * 60_000 + 1);
+		await later.staged.sweep(later.uploads.live());
+		expect(await left()).toEqual([]);
+		expect(readFileSync(notOurs, "utf8")).toBe("mine");
 	});
 
 	test("a folder swapped for a link between the first piece and the last: nothing lands outside, and nothing is left staged", async () => {

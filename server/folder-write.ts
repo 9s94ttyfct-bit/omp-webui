@@ -32,6 +32,7 @@ import {
 	viaFolder,
 } from "./transfer-core.ts";
 import type { TransferLog } from "./transfer-log.ts";
+import type { StagedFiles } from "./transfer-staged.ts";
 import { realAsFarAsItGoes, serialized } from "./upload.ts";
 
 /**
@@ -200,6 +201,8 @@ const conflict = (etag: string) =>
 
 export interface EditDeps {
 	log: TransferLog;
+	/** The list of staged files a crash would leave behind (`transfer-staged.ts`). */
+	staged: StagedFiles;
 	/** Steps a test takes between the ones of a read (see `OpenHooks`). */
 	hooks?: OpenHooks;
 	/** After the new text is on disk beside the file, before it is looked at once more and moved over it (tests change the file here). */
@@ -259,6 +262,8 @@ async function publish(
 		throw new TransferError("That file is not writable", 403, "refused");
 	}
 	const staged = join(dir, `.ompw-edit-${randomBytes(16).toString("hex")}`);
+	// Written down before it is made: a server that ends without its shutdown leaves it to the next one to remove.
+	await deps.staged.add(staged);
 	try {
 		try {
 			const handle = await open(
@@ -303,6 +308,8 @@ async function publish(
 	} catch (e) {
 		await unlink(staged).catch(() => {});
 		throw e;
+	} finally {
+		void deps.staged.done(staged);
 	}
 	const after = await lstat(abs).catch(() => null);
 	return { etag: sha256(out), size: out.length, modified: Math.floor(after?.mtimeMs ?? Date.now()) };

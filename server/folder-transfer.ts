@@ -1,3 +1,4 @@
+import { dirname, join } from "node:path";
 import type { OpenHooks } from "./folder.ts";
 import { editFile } from "./folder-write.ts";
 import { type ArchiveDeps, planArchive, sendArchive, TicketStore } from "./transfer-archive.ts";
@@ -15,6 +16,7 @@ import {
 } from "./transfer-core.ts";
 import { type DownloadDeps, download, downloadFile } from "./transfer-download.ts";
 import { TransferLog } from "./transfer-log.ts";
+import { StagedFiles } from "./transfer-staged.ts";
 import { type UploadDeps, Uploads } from "./transfer-upload.ts";
 
 /**
@@ -49,6 +51,8 @@ export class TransferService {
 	readonly limits: Limits;
 	readonly uploads: Uploads;
 	readonly tickets: TicketStore;
+	/** The staged files a crash would leave in a project (`<data dir>/transfers-staged.jsonl`). */
+	readonly staged: StagedFiles;
 	readonly #downloads: Gate;
 	readonly #archives: Gate;
 	readonly #plans: Gate;
@@ -63,6 +67,10 @@ export class TransferService {
 		this.#hooks = opts.hooks;
 		this.#beforePublish = opts.beforePublish;
 		this.log = new TransferLog(opts.logFile);
+		this.staged = new StagedFiles(join(dirname(opts.logFile), "transfers-staged.jsonl"), {
+			now: this.#now,
+			idleMs: this.limits.idleMs,
+		});
 		this.#downloads = new Gate(2, 4);
 		this.#archives = new Gate(1, 2);
 		this.#plans = new Gate(2, 4);
@@ -72,10 +80,16 @@ export class TransferService {
 			gate: new Gate(4, 8),
 			limits: this.limits,
 			now: this.#now,
+			staged: this.staged,
 			statfs: opts.statfs,
 			beforePublish: opts.beforePublish,
 		});
-		this.#timer = setInterval(() => void this.uploads.expire(), SWEEP_MS);
+		// What a server that ended without its shutdown left is removed now, and every minute until none is left.
+		void this.staged.sweep(this.uploads.live());
+		this.#timer = setInterval(
+			() => void this.uploads.expire().then(() => this.staged.sweep(this.uploads.live())),
+			SWEEP_MS,
+		);
 		this.#timer.unref();
 	}
 
@@ -192,7 +206,12 @@ export class TransferService {
 		}
 		if (route === "file") {
 			only("POST");
-			return editFile(req, ctx, env, trace, { log: this.log, hooks: this.#hooks, beforePublish: this.#beforePublish });
+			return editFile(req, ctx, env, trace, {
+				log: this.log,
+				staged: this.staged,
+				hooks: this.#hooks,
+				beforePublish: this.#beforePublish,
+			});
 		}
 		throw new TransferError("Not found", 404, "notFound");
 	}

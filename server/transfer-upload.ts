@@ -26,6 +26,7 @@ import {
 	viaFolder,
 } from "./transfer-core.ts";
 import type { TransferLog } from "./transfer-log.ts";
+import type { StagedFiles } from "./transfer-staged.ts";
 import { nextPiece, numbered, realAsFarAsItGoes, safeName, serialized, UploadError } from "./upload.ts";
 
 /**
@@ -87,6 +88,8 @@ export interface UploadDeps {
 	gate: Gate;
 	limits: Limits;
 	now: () => number;
+	/** The list of staged files a crash would leave behind (`transfer-staged.ts`). */
+	staged: StagedFiles;
 	/** What the disk holds free and in all, in bytes, at `path` (tests give a full one). */
 	statfs?: (path: string) => Promise<{ free: number; total: number }>;
 	/** A step a test takes between the last check and the publishing. */
@@ -146,6 +149,11 @@ export class Uploads {
 		return this.#byId.size;
 	}
 
+	/** The staged files of the uploads that are going on. */
+	live(): Set<string> {
+		return new Set([...this.#byId.values()].map((u) => u.staged));
+	}
+
 	/** The upload `id` of the one who asks: null for one that is not there, or is another's (neither says which). */
 	#find(id: string | null, env: TransferEnv): Upload {
 		const u = id !== null && /^[0-9a-f]{32}$/.test(id) ? this.#byId.get(id) : undefined;
@@ -179,6 +187,7 @@ export class Uploads {
 		if (this.#byId.get(u.id) === u) this.#byId.delete(u.id);
 		u.release();
 		await unlink(u.staged).catch(() => {});
+		void this.deps.staged.done(u.staged);
 		if (status) this.#log(u, status, { size: u.received });
 	}
 
@@ -376,6 +385,8 @@ export class Uploads {
 			await this.#taken(dir.abs, name, exists === "keep", replace, guarded);
 			this.#sweep(dir.abs);
 			const staged = join(dir.abs, `.ompw-upload-${randomBytes(16).toString("hex")}`);
+			// Written down before it is made: a server that ends without its shutdown leaves it to the next one to remove.
+			await this.deps.staged.add(staged);
 			// A new file, exclusively, and no link: the system itself says no to a name that is there.
 			const handle = await open(
 				staged,
@@ -541,6 +552,7 @@ export class Uploads {
 			const saved = await serialized(u.dirAbs, () => this.#publish(u, exists, replace));
 			// The staged file is gone from under its name (it became the file, or was moved there).
 			if (this.#byId.get(u.id) === u) this.#byId.delete(u.id);
+			void this.deps.staged.done(u.staged);
 			u.release();
 			this.#log(u, "ok", {
 				size: u.size,
