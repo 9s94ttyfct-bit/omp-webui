@@ -375,6 +375,43 @@ describe("a batch", () => {
 		expect(batch.busy).toBe(false);
 	});
 
+	test("a file the server is too busy to begin waits for another of the batch to be done, however long that takes (#348)", async () => {
+		// A server with room for two files at a time: a third is turned away (429 busy) until one of those is over.
+		let inFlight = 0;
+		let refused = 0;
+		const gates: (() => void)[] = [];
+		const transport: Transport = {
+			async piece(_s, params) {
+				if (inFlight >= 2) {
+					refused++;
+					return { ...fail(429, "busy"), retryAfterMs: 2000 };
+				}
+				inFlight++;
+				const { promise, resolve } = Promise.withResolvers<void>();
+				gates.push(resolve);
+				await promise;
+				inFlight--;
+				return json(200, saved(params.name, params.size));
+			},
+			state: async () => fail(404, "gone"),
+			cancel: async () => {},
+		};
+		const batch = new UploadBatch(scope, () => {}, { transport, sleep: noSleep });
+		const done = batch.add(items(3));
+		await flush();
+		// The other two take long (a slow link): the third has given up its turn, not used up its tries.
+		for (let i = 0; i < 10; i++) await flush();
+		expect(states(batch.rows)).toEqual(["sending", "sending", "waiting"]);
+		expect(refused).toBe(1);
+		for (let wave = 0; wave < 20 && gates.length > 0; wave++) {
+			for (const open of gates.splice(0)) open();
+			await flush();
+		}
+		await done;
+		expect(states(batch.rows)).toEqual(["done", "done", "done"]);
+		expect(batch.busy).toBe(false);
+	});
+
 	test("a file whose name is taken is held until the others are done; Keep both then sends it under a free name", async () => {
 		const existing = { size: 5, modified: 9, etag: "tag", replaceable: true };
 		const { transport, seen } = fake([

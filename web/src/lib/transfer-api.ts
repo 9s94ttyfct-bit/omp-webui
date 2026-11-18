@@ -385,7 +385,15 @@ export interface UploadOptions {
 	/** Replace the file there, if it is still the one with this etag. */
 	replace?: string;
 	sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
+	/**
+	 * Asked when the server is too busy to begin the file (`429` `busy` on its first piece): true makes it give up its turn at
+	 * once with `Busy` (the batch sends it again when another of its files is done) instead of trying again on a timer (#348).
+	 */
+	yieldWhenBusy?: () => boolean;
 }
+
+/** The server could not begin the file yet, and the file gave up its turn (`UploadOptions.yieldWhenBusy`). */
+export class Busy extends Error {}
 
 const isSaved = (v: Record<string, unknown> | null): v is Record<string, unknown> & UploadSaved =>
 	v !== null && v.done === true && typeof v.path === "string" && typeof v.name === "string";
@@ -463,6 +471,8 @@ export async function uploadOne(
 			received = Math.min(item.size, failure.received);
 			continue;
 		}
+		if (reply.status === 429 && id === undefined && failure.code === "busy" && options.yieldWhenBusy?.())
+			throw new Busy();
 		if (!isRetryable(reply.status) || ++failures >= MAX_TRIES) throw failure;
 		try {
 			await sleep(backoffMs(failures, failure.retryAfterMs), signal);
@@ -551,6 +561,8 @@ export class UploadBatch {
 	private readonly controllers = new Map<number, AbortController>();
 	private readonly modes = new Map<number, Resend>();
 	private readonly queue: UploadRow[] = [];
+	/** Files the server was too busy to begin while others of this batch were being sent: they go again when one of those is over. */
+	private readonly deferred: UploadRow[] = [];
 	private readonly waiters: (() => void)[] = [];
 	private readonly transport: Transport;
 	private readonly concurrency: number;
@@ -592,7 +604,7 @@ export class UploadBatch {
 
 	/** Whether any file is being sent or waits for its turn. */
 	get busy(): boolean {
-		return this.active > 0 || this.queue.length > 0;
+		return this.active > 0 || this.queue.length > 0 || this.deferred.length > 0;
 	}
 
 	/** Send these files too. Resolves when everything of the batch is settled (sent, failed, held, left out or cancelled). */
@@ -682,7 +694,8 @@ export class UploadBatch {
 			});
 		}
 		if (this.stopped) {
-			for (const row of this.queue.splice(0)) if (row.state === "waiting") row.state = "cancelled";
+			for (const row of [...this.queue.splice(0), ...this.deferred.splice(0)])
+				if (row.state === "waiting") row.state = "cancelled";
 			this.notify(true);
 		}
 		if (!this.busy) for (const wake of this.waiters.splice(0)) wake();
@@ -709,12 +722,23 @@ export class UploadBatch {
 					...(mode && "exists" in mode ? { exists: mode.exists } : {}),
 					...(mode && "replace" in mode ? { replace: mode.replace } : {}),
 					sleep: this.sleep,
+					// Another file of this batch holds what the server has room for: wait for it rather than on a timer.
+					yieldWhenBusy: () => this.active > 1,
 				},
 				this.transport,
 			);
 			row.state = "done";
 			row.sent = row.size;
 		} catch (e) {
+			if (e instanceof Busy) {
+				row.state = "waiting";
+				row.sent = 0;
+				if (mode) this.modes.set(row.key, mode);
+				this.deferred.push(row);
+				// The others may all have ended meanwhile: then nothing is left to wait for.
+				if (this.active === 1) this.queue.unshift(...this.deferred.splice(0));
+				return;
+			}
 			if (isAbort(e)) row.state = "cancelled";
 			else if (e instanceof TransferError) {
 				if (e.code === "exists" && e.existing && !mode) {
@@ -739,6 +763,8 @@ export class UploadBatch {
 			}
 		} finally {
 			this.controllers.delete(row.key);
+			// A file is over (sent, failed or cancelled): the ones that gave up their turn to it go again, first.
+			if (row.state !== "waiting") this.queue.unshift(...this.deferred.splice(0));
 			this.notify(true);
 		}
 	}
