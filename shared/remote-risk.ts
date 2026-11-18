@@ -2694,7 +2694,9 @@ class Scan {
 
 	/**
 	 * What prints a stored password or token (`secret_read`): the keychain's (`security find-*-password -w`/`-g`,
-	 * `dump-keychain`, `export`), gh's, gcloud's, aws's, 1Password's. Deleting from the keychain is `protected`.
+	 * `dump-keychain`, `export`), gh's, gcloud's, aws's, 1Password's, and omp's own (`omp token <provider>`, `omp auth
+	 * export`, the credential vault's `omp auth-broker token`: the logins every conversation runs on, #250). Deleting from
+	 * the keychain is `protected`.
 	 */
 	private credentials(name: string, opts: string[], operands: Word[]): void {
 		const verb = operands[0]?.text ?? "";
@@ -2721,6 +2723,10 @@ class Scan {
 				break;
 			case "op":
 				reads = verb === "read" || (verb === "item" && sub === "get" && opts.includes("--reveal"));
+				break;
+			case "omp":
+				reads =
+					verb === "token" || (verb === "auth" && sub === "export") || (verb === "auth-broker" && sub === "token");
 				break;
 			default:
 		}
