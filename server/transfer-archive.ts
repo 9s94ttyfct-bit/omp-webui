@@ -331,6 +331,8 @@ export async function planArchive(
 	};
 	// Room for the ticket is asked before the walk, not after it, and a walk holds a place for as long as it goes on.
 	deps.tickets.room(env.who);
+	// The ZIP itself is asked for as soon as the plan is shown: no plan while there is no place to send it in (#342).
+	if (!deps.gate.free(env.who)) throw busy();
 	const release = deps.plans.take(env.who);
 	if (!release) throw busy();
 	let found: Walked;

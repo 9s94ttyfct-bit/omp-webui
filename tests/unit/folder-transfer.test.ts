@@ -396,6 +396,33 @@ describe("downloading a file", () => {
 		expect(w.log().some((l) => l.status === "aborted" && l.kind === "download")).toBe(true);
 	});
 
+	test("the page's checks before a download say no when the download would be: a HEAD while both places are taken, a second ZIP's plan while one is sent (#342)", async () => {
+		const w = world({ limits: { chunkBytes: 16 } as TransferOptions["limits"] });
+		write(join(w.proj, "big.bin"), new Uint8Array(4096));
+		write(join(w.proj, "app", "a.txt"), "a".repeat(4096));
+		const first = await dl(w, "big.bin");
+		const second = await dl(w, "big.bin");
+		const head = await dl(w, "big.bin", w.env(), {}, "HEAD");
+		expect(head.status).toBe(429);
+		expect(head.headers.get(ERROR_HEADER)).toBe("busy");
+		await first.body?.cancel();
+		expect((await dl(w, "big.bin", w.env(), {}, "HEAD")).status).toBe(200);
+		await second.body?.cancel();
+		// One ZIP at a time: while it is sent, another plan is not made (it would end in a ZIP the browser is refused).
+		const one = await plan(w, "app");
+		const sending = await w.call(`archive/${one.plan?.ticket}`);
+		expect(sending.status).toBe(200);
+		expect(await failed((await plan(w, "app")).r)).toMatchObject({ status: 429, code: "busy" });
+		await sending.body?.cancel();
+		// The ZIP gives its place back once its writer has stopped.
+		let again = await plan(w, "app");
+		for (let i = 0; i < 100 && again.r.status === 429; i++) {
+			await Bun.sleep(10);
+			again = await plan(w, "app");
+		}
+		expect(again.r.status).toBe(200);
+	});
+
 	test("the log has who, the path inside the folder, the size and how it ended: no query string, no token", async () => {
 		const w = world();
 		write(join(w.proj, "sub", "f.txt"), "hello");

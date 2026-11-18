@@ -322,6 +322,11 @@ export class Gate {
 		readonly total: number,
 	) {}
 
+	/** Whether `take(who)` would give a place now (a `HEAD` and a ZIP's plan ask before the `GET` that takes one, #342). */
+	free(who: string): boolean {
+		return (this.#by.get(who) ?? 0) < this.perWho && this.#total < this.total;
+	}
+
 	take(who: string): (() => void) | null {
 		const mine = this.#by.get(who) ?? 0;
 		if (mine >= this.perWho || this.#total >= this.total) return null;

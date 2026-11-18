@@ -272,6 +272,8 @@ async function send(
 		if (partial) headers["content-range"] = `bytes ${part.start}-${part.end}/${size}`;
 		const status = partial ? 206 : 200;
 		if (head || length === 0) {
+			// A HEAD is the page's question before it starts the download: it is told no when the GET would be (#342).
+			if (head && length > 0 && !deps.gate.free(env.who)) throw busy();
 			if (!head) record(deps.log, env, trace, "ok", { size: 0 });
 			return new Response(null, { status, headers });
 		}
