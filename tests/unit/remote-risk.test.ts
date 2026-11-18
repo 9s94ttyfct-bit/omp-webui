@@ -2252,3 +2252,22 @@ describe("7z -o, bsdtar -C, cpio -D, git -C <repo> apply, sqlite3, plutil and xa
 		expect(shell(command)).toEqual([]);
 	});
 });
+
+describe("moving to the Trash is a delete, emptying it a mass one (#257)", () => {
+	test.each([
+		"trash ~/Documents",
+		"/usr/bin/trash ~/Documents",
+		"trash-put ~/Documents",
+		"gio trash ~/Documents",
+		"ls | xargs trash",
+	])("%s is a mass delete outside the project", (command) => {
+		expect(shell(command)).toEqual(["mass_delete", "delete_outside"]);
+	});
+
+	test("emptying the Trash, and gio's remove", () => {
+		expect(shell("trash-empty")).toEqual(["mass_delete"]);
+		expect(shell("gio trash --empty")).toEqual(["mass_delete"]);
+		expect(shell("gio remove ~/a.txt")).toEqual(["delete_outside"]);
+		expect(shell("trash build/old")).toEqual([]);
+	});
+});

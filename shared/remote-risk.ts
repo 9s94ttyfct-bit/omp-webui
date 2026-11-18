@@ -405,7 +405,8 @@ const FETCHERS = table("curl", "wget", "fetch");
 const PRIVILEGE = table("sudo", "doas", "pkexec", "run0", "su", "runas", "gsudo");
 /** Programs whose job is to carry this computer onto the internet. */
 const TUNNELS = table("cloudflared", "ngrok", "bore", "frpc", "frps", "localtunnel", "serveo");
-const DELETERS = table("rm", "unlink", "rmdir", "shred", "srm");
+/** Programs that delete what they are given; `trash` (macOS 15's `/usr/bin/trash`, trash-cli's `trash-put`) moves it to the Trash (#257). */
+const DELETERS = table("rm", "unlink", "rmdir", "shred", "srm", "trash", "trash-put");
 const SYSTEM_PROGRAMS = table(
 	"shutdown",
 	"reboot",
@@ -2631,8 +2632,20 @@ class Scan {
 			}
 			case "rimraf":
 			case "del-cli":
-				// Recursive and forced by nature.
+			case "trash":
+			case "trash-put":
+				// Recursive and forced by nature: a folder goes whole (to the Trash, which an emptying makes final, #257).
 				for (const t of operands) this.delete(t, cwd, true, true);
+				break;
+			case "trash-empty":
+				// Everything in the Trash, for good (#257), as the Finder's "empty the trash".
+				this.add("mass_delete");
+				break;
+			case "gio":
+				// `gio trash <file>…` (`--empty`: everything in it), `gio remove <file>…` (#257).
+				if (operands[0]?.text === "trash" && opts.includes("--empty")) this.add("mass_delete");
+				else if (operands[0]?.text === "trash" || operands[0]?.text === "remove")
+					for (const t of operands.slice(1)) this.delete(t, cwd, true, operands[0].text === "trash");
 				break;
 			case "find":
 				this.find(args, cwd, depth);

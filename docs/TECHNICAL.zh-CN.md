@@ -447,6 +447,8 @@ bun run start          # http://127.0.0.1:7878
 
 **解释器的输入和名字**（#412、#413）。`<` 后面的进程替换是命令的输入，和用管道接进去一样：`bash < <(curl …)`、`python3 < <(curl …)` 算 `remote_exec`，`bash < <(echo …)` 算 `dynamic_command`。作为参数交给脚本的进程替换是脚本要读的文件：`bash x.sh <(curl …)` 不询问，和 `python3 x.py <(curl …)` 一样。带版本号的解释器名字也认得（`python3.12`、`pypy3.10`、`perl5.36`、`ruby3.3`），所以 `curl … | python3.12` 算 `remote_exec`，`python3.12 -c '…'` 的代码也照常读。
 
+**废纸篓**（#257）。`trash`（macOS 15 的 `/usr/bin/trash`）、trash-cli 的 `trash-put` 和 `gio trash` 把给它们的东西移到废纸篓，清空之后就无法恢复：它们和 `rm -rf` 一样算删除（经 `xargs`、`find -exec` 也算），所以 `trash ~/Documents` 算 `delete_outside` 和 `mass_delete`。`trash-empty` 和 `gio trash --empty` 算 `mass_delete`；`gio remove` 算删除。
+
 **PowerShell 用管道交给 `Remove-Item`**（#274）。不带路径的 `Remove-Item`（`ri`、`rm`、`del`…）删除管道送来的东西：前面的列举在它的文件夹下找到的一切（`Get-ChildItem <folder>`、`gci`、`ls`、`dir`、`Get-Item`，中间隔着 `Where-Object`、`Sort-Object`、`Select-Object` 也看得穿），和 `find <folder> -delete` 一样，所以 `gci $HOME\Documents | Remove-Item -Recurse` 算 `delete_outside` 和 `mass_delete`；前面是别的东西时（`Get-Content list.txt | Remove-Item`）读不出来，和 `xargs rm` 一样会询问。不带路径的 `Clear-Content`/`Clear-Item` 同样清空管道送来的东西。
 
 **更多写到文件夹之外的情况**（#264），算 `write_outside`：`bsdtar` 按 `tar` 读（`-C`）；`7z`/`7za`/`7zz` 的 `-o<dir>`，以及 `a`/`u`/`d`/`rn` 改动的归档；`cpio -D`/`--directory`；在文件夹之外的仓库里 `git apply`/`git am`（`git -C ~/other apply p.diff`；`--check`/`--stat` 不算）；`sqlite3` 对文件夹之外的数据库执行会写入的语句（`INSERT`、`UPDATE`、`DELETE`、`DROP`、`CREATE`、`ALTER`、`.restore`、`.import`…，写在参数、`-cmd` 或 here-document 里），或输入来自别处（`< s.sql`；带 `-readonly` 不算）；`plutil -replace`/`-insert`/`-remove`/`-convert`/`-create`（以及 `-o`）；`xattr -w`/`-d`/`-c`。
