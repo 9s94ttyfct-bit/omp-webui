@@ -557,6 +557,8 @@ const RUNNER_VALUES = table(
 	"--prefix",
 	"--userconfig",
 );
+/** A package or a program named by where it is fetched from: a URL, a git repository, a forge's shorthand, or `@latest` (#322). */
+const REMOTE_SOURCE = /^(?:[a-z][a-z0-9+.-]*:\/\/|git\+|(?:github|gitlab|bitbucket|gist):)|@latest$/i;
 
 /** Calls in a program's source that delete their first argument, write it, put something at their second, or move it. */
 const CODE_DELETE = table(
@@ -663,6 +665,12 @@ const SHELL_CALL =
 const SHELL_CALL_BARE = /(?<![.\w])(?:exec|execFile|spawn)\s*\(/g;
 /** A tagged template whose command is nothing but a part worked out when it runs: ``Bun.$`${cmd}` ``, ``$`${cmd} ${x}` ``, ``sh`${cmd}` ``. */
 const SHELL_TEMPLATE = /(?:\$|(?<![.\w$])sh)\s*`\s*\$\{/;
+/** A program that fetches something over the network (`fetch(u)`, `urlopen(u)`, `requests.get(u)`, `https.get(u)`, #322). */
+const FETCH_CODE =
+	/\bfetch\s*\(|\burlopen\s*\(|\burllib\.request\b|\b(?:requests|httpx|axios|got|ky)\.(?:get|post|request)\s*\(|\bhttps?\.get\s*\(|\bBun\.fetch\s*\(/;
+/** A call that runs code it is given (`eval(t)`, `exec(t)`, `new Function(t)`, `vm.runInThisContext(t)`), or `eval` handed on as a function. */
+const EVAL_CALL = /(?<![.\w$])(?:eval|exec|Function)\s*\(|\bnew\s+Function\s*\(|\bvm\.run\w*\s*\(/g;
+const EVAL_PASSED = /\.then\s*\(\s*(?:eval|Function)\s*\)/;
 /** What stands in a word for a part that is only known when the command runs (`$VAR`, `$(…)`): a private-use character. */
 const DYN = "\uE000";
 
@@ -1268,6 +1276,8 @@ interface Command {
 	 * cannot be read here, and `name` (the word, its unknown parts `DYN`) matches no program.
 	 */
 	dynamic?: true;
+	/** The command word as written (`./i.sh`, `/tmp/i.sh`), when it is one: a file run by its path. */
+	word?: Word;
 }
 
 /**
@@ -1350,7 +1360,7 @@ function commandOf(words: readonly Word[]): Command | null {
 		if (words[i].dynamic) return { name: words[i].text, args: words.slice(i + 1), viaXargs, dynamic: true };
 		const name = baseName(words[i].text);
 		const wrapper = Object.hasOwn(WRAPPERS, name) ? WRAPPERS[name] : undefined;
-		if (!wrapper) return { name, args: words.slice(i + 1), viaXargs };
+		if (!wrapper) return { name, args: words.slice(i + 1), viaXargs, word: words[i] };
 		if (name === "xargs") viaXargs = true;
 		// Look through the wrapper: its options, then what it runs.
 		let j = i + 1;
@@ -1748,6 +1758,18 @@ function codeKinds(code: string, ctx: RiskContext): RiskKind[] {
 		if (writes) kinds.push("write_outside");
 	}
 	if (startsUnseenProgram(code)) kinds.push("shell_out");
+	// Code fetched from the network and run (`fetch(u).then(r => r.text()).then(eval)`, `exec(urlopen(u).read())`, #322): what
+	// runs is a download. (A call given a string written out runs that string, not what was fetched.)
+	if (
+		FETCH_CODE.test(code) &&
+		(EVAL_PASSED.test(code) ||
+			[...code.matchAll(EVAL_CALL)].some((m) => {
+				const at = m.index + m[0].length;
+				const first = splitTop(readBalanced(code.slice(at, at + 4000), 0, "(", ")").text)[0];
+				return first !== undefined && !/^[rRbBuUfF]{0,2}["'`]/.test(first);
+			}))
+	)
+		kinds.push("remote_exec");
 	return kinds;
 }
 
@@ -2270,6 +2292,9 @@ class Scan {
 	/** What each `for` loop of the script goes over, by its variable (`for f in ~/x/*; do …; done`): `"$f"` is one of those. */
 	private readonly loops = new Map<string, Word[]>();
 
+	/** The files a download wrote earlier in the command line (`curl -o /tmp/i.sh …`): running one later is `remote_exec` (#322). */
+	private readonly downloads = new Set<string>();
+
 	/** What `w` names: the words the loop goes over when it is a loop's variable, else itself. */
 	private named(w: Word): Word[] {
 		if (w.text !== DYN || w.named === undefined) return [w];
@@ -2479,6 +2504,14 @@ class Scan {
 		// runs one given anywhere; an interpreter one given as its program (`python3 <(curl …)`, `node -e "$(curl …)"`, #251).
 		const fetched = (runs && args.some(fetches)) || fetches(program);
 		if (fetched) this.add("remote_exec");
+		this.remoteRun(name, args, operands);
+		// A file a download wrote earlier in the same command line, run by a shell, an interpreter or `source`, or by its path
+		// (`curl -o /tmp/i.sh … && sh /tmp/i.sh`, `curl -O …/i.sh && ./i.sh`, #322).
+		const ran =
+			listed(SHELLS, name) || name === "source" || name === "." ? operands[0] : codeAt < 0 ? program : undefined;
+		if (this.downloadedRun(ran, cwd) || (cmd.word?.text.includes("/") && this.downloadedRun(cmd.word, cwd)))
+			this.add("remote_exec");
+		this.recordDownload(name, args, opts, operands, cwd);
 		if (listed(SHELLS, name)) {
 			// A shell that is handed a script (`-c`), or reads one from its input (a here-document).
 			const at = args.findIndex((a) => /^-[a-z]*c[a-z]*$/.test(a.text));
@@ -3001,8 +3034,12 @@ class Scan {
 		this.gitSetting(key.text, value.text, cwd, depth);
 	}
 
-	/** `npx …`, `npm exec …`: the program it fetches and runs is looked at as a command. */
+	/**
+	 * `npx …`, `npm exec …`: the program it fetches and runs is looked at as a command. A package given as a URL, a git
+	 * repository or `@latest` (`REMOTE_SOURCE`, #322) is code from the network run as it is fetched: `remote_exec`.
+	 */
 	private runner(args: Word[], cwd: string | null, depth: number): void {
+		const packages: Word[] = [];
 		let i = 0;
 		for (; i < args.length; i++) {
 			const t = args[i].text;
@@ -3013,13 +3050,88 @@ class Scan {
 			if (t === "-c" || t === "--call") {
 				const script = args[i + 1];
 				if (script) this.script(script.text, cwd, depth + 1);
-				return;
+				break;
 			}
-			if (listed(RUNNER_VALUES, t)) i++;
-			else if (!t.startsWith("-")) break;
+			if (listed(RUNNER_VALUES, t)) {
+				if ((t === "-p" || t === "--package") && args[i + 1]) packages.push(args[i + 1]);
+				i++;
+			} else if (!t.startsWith("-")) break;
 		}
+		if (args[i] && args[i].text !== "-c" && args[i].text !== "--call") packages.push(args[i]);
+		if (packages.some((w) => REMOTE_SOURCE.test(w.text))) this.add("remote_exec");
+		if (args[i]?.text === "-c" || args[i]?.text === "--call") return;
 		const inner = commandOf(args.slice(i));
 		if (inner) this.command(inner, null, cwd, depth + 1);
+	}
+
+	/**
+	 * A runner or an installer given code from the network (#322): `deno run`/`bun run`/`uv run` of a URL, `uvx`, `uv tool
+	 * run` and `pipx run` of a git repository or URL (`--from`, `--spec`), `go run module@version`, and `pip install` (also
+	 * `uv pip`, `python -m pip`) of a URL or a git repository, whose build script runs here.
+	 */
+	private remoteRun(name: string, args: Word[], operands: Word[]): void {
+		const verb = operands[0]?.text;
+		const from = optionValues(args, [], ["--from", "--with", "--spec"]);
+		let given: (Word | undefined)[] = [];
+		if (name === "deno" || name === "bun") given = [operands[0], verb === "run" ? operands[1] : undefined];
+		else if (name === "uvx") given = [operands[0], ...from];
+		else if (name === "uv" && verb === "run") given = [operands[1]];
+		else if (name === "uv" && verb === "tool" && operands[1]?.text === "run") given = [operands[2], ...from];
+		else if (name === "uv" && verb === "pip" && operands[1]?.text === "install") given = operands.slice(2);
+		else if (name === "pipx" && verb === "run") given = [operands[1], ...from];
+		else if ((name === "pip" || name === "pip3") && verb === "install") given = operands.slice(1);
+		else if (
+			/^python[\d.]*$/.test(name) &&
+			args[0]?.text === "-m" &&
+			args[1]?.text === "pip" &&
+			args[2]?.text === "install"
+		)
+			given = args.slice(3);
+		else if (name === "go" && verb === "run")
+			given = operands.slice(1, 2).filter((w) => /^[^@\s/]+\/[^@\s]*@\S+$/.test(w.text) || REMOTE_SOURCE.test(w.text));
+		const remote = given.filter((w): w is Word => w !== undefined);
+		if (name === "go" ? remote.length > 0 : remote.some((w) => REMOTE_SOURCE.test(w.text))) this.add("remote_exec");
+	}
+
+	/** The files a download writes (`curl -o f`, `curl -O url`, `wget url`, `wget -O f`/`-P dir`, `aria2c -o f -d dir`, #322). */
+	private recordDownload(name: string, args: Word[], opts: string[], operands: Word[], cwd: string | null): void {
+		const urls = operands.filter((w) => /^[a-z][a-z0-9+.-]*:\/\//i.test(w.text));
+		// The name a URL is saved under: its last part, without a query.
+		const saved = (dir: Word | undefined, w: Word): Word => ({
+			...w,
+			text: `${dir ? `${dir.text}/` : ""}${
+				w.text
+					.replace(/[?#].*$/, "")
+					.replace(/\/+$/, "")
+					.split("/")
+					.pop() || "index.html"
+			}`,
+		});
+		let files: Word[] = [];
+		if (name === "curl") {
+			const dir = optionValues(args, [], ["--output-dir"])[0];
+			files = optionValues(args, ["-o"], ["--output"]).map((f) => (dir ? saved(dir, f) : f));
+			if (hasShort(opts, "O") || hasLong(opts, "--remote-name", "--remote-name-all"))
+				files.push(...urls.map((u) => saved(dir, u)));
+		} else if (name === "wget") {
+			const named = optionValues(args, ["-O"], ["--output-document"]);
+			const dir = optionValues(args, ["-P"], ["--directory-prefix"])[0];
+			files = named.length > 0 ? named : urls.map((u) => saved(dir, u));
+		} else if (name === "aria2c") {
+			const dir = optionValues(args, ["-d"], ["--dir"])[0];
+			const named = optionValues(args, ["-o"], ["--out"]);
+			files = named.length > 0 ? named.map((f) => saved(dir, f)) : urls.map((u) => saved(dir, u));
+		}
+		for (const f of files) {
+			const abs = f.text === "-" ? null : resolveWord(f, cwd, this.ctx);
+			if (abs !== null) this.downloads.add(abs);
+		}
+	}
+
+	/** Whether `w` (a script given to a shell or an interpreter, or a command run by its path) is a file downloaded before in the same command line. */
+	private downloadedRun(w: Word | undefined, cwd: string | null): boolean {
+		const abs = w === undefined ? null : resolveWord(w, cwd, this.ctx);
+		return abs !== null && this.downloads.has(abs);
 	}
 
 	private find(args: Word[], cwd: string | null, depth: number): void {
