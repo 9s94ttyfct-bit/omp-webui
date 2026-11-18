@@ -73,7 +73,13 @@ describe("a token-only page in a folder it is kept out of (#219)", () => {
 		expect(await res.json()).toEqual([]);
 	});
 
-	test("saves nothing into a repository's .git, even as the conversation's own folder", async () => {
+	test("reads and saves nothing of a repository's .git outside the home folder, as the conversation's own folder", async () => {
+		const list = await token().fetch(`/api/folder/list?${q({ file: inGit, path: "" })}`);
+		expect(list.status).toBe(403);
+		const read = await token().fetch(`/api/folder/file?${q({ file: inGit, path: "config" })}`);
+		expect(read.status).toBe(403);
+		const download = await token().fetch(`/api/folder/download?${q({ file: inGit, path: "config" })}`);
+		expect(download.status).toBe(403);
 		const res = await token().fetch(
 			"/api/folder/file",
 			{ method: "POST", headers: { [CSRF_HEADER]: "1" } },

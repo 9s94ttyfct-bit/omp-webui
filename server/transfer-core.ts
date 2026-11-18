@@ -11,7 +11,16 @@ import {
 	type TransferKind,
 } from "../shared/transfer.ts";
 import { isSecretLooking } from "./files.ts";
-import { FolderError, guardedRefusal, inside, partsOf, type Resolved, resolveFor, rootOf } from "./folder.ts";
+import {
+	FolderError,
+	guardedRefusal,
+	inside,
+	partsOf,
+	type Resolved,
+	resolveFor,
+	rootOf,
+	SECRET_REFUSAL,
+} from "./folder.ts";
 import { platformId } from "./platform/capabilities.ts";
 import type { TransferLog } from "./transfer-log.ts";
 
@@ -191,14 +200,20 @@ export function requireUpload(env: TransferEnv): void {
  * Why a page that is not the person's own is kept out of a conversation's folder `root` altogether (#219), or null. The
  * folder is that page's own choice (a new conversation starts anywhere), so the rules it is held to inside the folder
  * (nothing hidden by default, nothing that looks like a secret, no protected place) are held for the folder itself too:
- * judged on its path from the home folder (`~/.config/gh`, `~/.ssh`, a repository's `.git` are hidden on the way down),
- * and a protected place (omp's agent folder, the app's data) wherever it is.
+ * judged on its path from the home folder (`~/.config/gh`, `~/.ssh`, a repository's `.git` are hidden on the way down);
+ * outside the home folder, a dotted folder on the way (`/srv/app/.git`, but `.github`) or a secret-looking path; and a
+ * protected place (omp's agent folder, the app's data) wherever it is.
  */
 export function guardedRootRefusal(root: string, env: Pick<TransferEnv, "home" | "protect">): FolderError | null {
 	const home = realHome(env.home);
 	if (root !== home && inside(home, root)) {
 		const refusal = guardedRefusal(home, `${relative(home, root).split(sep).join("/")}/`);
 		if (refusal) return refusal;
+	} else if (!inside(root, home)) {
+		const parts = root.split(sep).filter(Boolean);
+		if (isSecretLooking(parts.join("/"))) return new FolderError(SECRET_REFUSAL, 403);
+		if (parts.some((p) => p.startsWith(".") && p.toLowerCase() !== ".github"))
+			return new FolderError("This is hidden: it is not shown to a page that is not on this computer", 403);
 	}
 	if (isProtectedPath(root, { home, protect: env.protect, windows: platformId === "win32" }))
 		return new FolderError("This is a place nothing is shown to a page that is not on this computer", 403);
