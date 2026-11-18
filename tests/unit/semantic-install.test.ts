@@ -12,6 +12,7 @@ import {
 	SemanticInstallError,
 	treeContained,
 } from "../../server/semantic/install.ts";
+import { tarCommand } from "../../server/update/windows.ts";
 import { removeScratch } from "../support/scratch.ts";
 
 /**
@@ -40,21 +41,30 @@ afterAll(() => {
 const url = (path: string) => `http://127.0.0.1:${server.port}${path}`;
 const sha = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 
-/** `tar -czf` of `make`'s tree (made in a fresh folder; tar run in `sub` of it), served at `/<name>`: the asset that names it. */
+/**
+ * The build as llama.cpp publishes it for this computer: a `.tar.gz`, or on Windows a `.zip` made with Windows' own tar.exe,
+ * which the install unpacks it with (Git's GNU tar, first on PATH on CI, reads `D:\…` as a remote host's path).
+ */
+const WIN = process.platform === "win32";
+const SERVER = WIN ? "llama-server.exe" : "llama-server";
+
+/** An archive of `make`'s tree (made in a fresh folder; tar run in `sub` of it), served at `/<base>.<ext>`: the asset that names it. */
 async function archive(
-	name: string,
+	base: string,
 	make: (dir: string) => void,
 	tarArgs: string[] = ["."],
 	sub = ".",
 ): Promise<RuntimeAsset> {
 	const dir = mkdtempSync(join(root, "tree-"));
 	make(dir);
+	const name = `${base}.${WIN ? "zip" : "tar.gz"}`;
 	const out = join(root, name);
-	const p = Bun.spawnSync(["tar", "-czf", out, ...tarArgs], { cwd: join(dir, sub) });
+	const create = WIN ? [tarCommand(), "-a", "-cf", out] : ["tar", "-czf", out];
+	const p = Bun.spawnSync([...create, ...tarArgs], { cwd: join(dir, sub) });
 	if (p.exitCode !== 0) throw new Error(p.stderr.toString());
 	const bytes = readFileSync(out);
 	files.set(`/${name}`, bytes);
-	return { name, urls: [url(`/${name}`)], size: bytes.length, sha256: sha(bytes), kind: "tar" };
+	return { name, urls: [url(`/${name}`)], size: bytes.length, sha256: sha(bytes), kind: WIN ? "zip" : "tar" };
 }
 
 function model(name: string, bytes: Buffer<ArrayBuffer> = Buffer.from("GGUF model bytes".repeat(64))): Asset {
@@ -62,13 +72,13 @@ function model(name: string, bytes: Buffer<ArrayBuffer> = Buffer.from("GGUF mode
 	return { name, urls: [url(`/${name}`)], size: bytes.length, sha256: sha(bytes) };
 }
 
-/** A build as llama.cpp publishes it: one folder, the server, a library under two names. */
-const goodBuild = (name: string) =>
-	archive(name, (dir) => {
+/** A build as llama.cpp publishes it: one folder, the server, and (not on Windows, whose builds have none) a library under two names. */
+const goodBuild = (base: string) =>
+	archive(base, (dir) => {
 		mkdirSync(join(dir, "llama-b1"));
-		writeFileSync(join(dir, "llama-b1", "llama-server"), "#!/bin/sh\necho server\n");
+		writeFileSync(join(dir, "llama-b1", SERVER), "#!/bin/sh\necho server\n");
 		writeFileSync(join(dir, "llama-b1", "libggml.1.dylib"), "lib");
-		symlinkSync("libggml.1.dylib", join(dir, "llama-b1", "libggml.dylib"));
+		if (!WIN) symlinkSync("libggml.1.dylib", join(dir, "llama-b1", "libggml.dylib"));
 	});
 
 let n = 0;
@@ -98,13 +108,13 @@ async function failure(p: Promise<unknown>): Promise<SemanticInstallError> {
 }
 
 test("the build and the model are downloaded, checked and put in place; a second install downloads nothing", async () => {
-	const runtime = await goodBuild("good.tar.gz");
+	const runtime = await goodBuild("good");
 	const m = model("good.gguf");
 	const { dir, opts, progress } = options({ runtime, model: m });
 	const ready = await install(dir, opts);
 	expect(ready).toEqual(installed(dir, m, "b1") as NonNullable<ReturnType<typeof installed>>);
 	expect(readFileSync(ready.server, "utf8")).toContain("echo server");
-	expect(readlinkSync(join(dir, "runtime-b1", "libggml.dylib"))).toBe("libggml.1.dylib");
+	if (!WIN) expect(readlinkSync(join(dir, "runtime-b1", "libggml.dylib"))).toBe("libggml.1.dylib");
 	expect(progress.at(-1)).toBe(runtime.size + m.size);
 	expect(existsSync(join(dir, "downloads"))).toBe(false);
 
@@ -114,7 +124,7 @@ test("the build and the model are downloaded, checked and put in place; a second
 });
 
 test("an address that fails is passed over for the next one", async () => {
-	const runtime = await goodBuild("mirror.tar.gz");
+	const runtime = await goodBuild("mirror");
 	const m = model("mirror.gguf");
 	const { dir, opts } = options({ runtime, model: { ...m, urls: [url("/gone.gguf"), ...m.urls] } });
 	await install(dir, opts);
@@ -123,7 +133,7 @@ test("an address that fails is passed over for the next one", async () => {
 });
 
 test("bytes that are not the pinned ones are refused, and nothing is left of them", async () => {
-	const runtime = await goodBuild("pinned.tar.gz");
+	const runtime = await goodBuild("pinned");
 	const m = model("tampered.gguf");
 	const { dir, opts } = options({ runtime, model: { ...m, sha256: "0".repeat(64) } });
 	expect((await failure(install(dir, opts))).failure.code).toBe("verify");
@@ -133,13 +143,13 @@ test("bytes that are not the pinned ones are refused, and nothing is left of the
 
 test("an archive with a member outside its folder is not unpacked", async () => {
 	const evil = await archive(
-		"evil.tar.gz",
+		"evil",
 		(dir) => {
 			mkdirSync(join(dir, "in"));
 			writeFileSync(join(dir, "escaped"), "x");
-			writeFileSync(join(dir, "in", "llama-server"), "x");
+			writeFileSync(join(dir, "in", SERVER), "x");
 		},
-		["-P", "llama-server", "../escaped"],
+		["-P", SERVER, "../escaped"],
 		"in",
 	);
 	const { dir, opts } = options({ runtime: evil, model: model("evil.gguf") });
@@ -148,10 +158,11 @@ test("an archive with a member outside its folder is not unpacked", async () => 
 	expect(existsSync(join(dir, "..", "escaped"))).toBe(false);
 });
 
-test("an archive with a link leading out of it is not put in place", async () => {
-	const linked = await archive("linked.tar.gz", (dir) => {
+// The Windows builds hold no links, and treeContained itself is tested below on every system.
+test.skipIf(WIN)("an archive with a link leading out of it is not put in place", async () => {
+	const linked = await archive("linked", (dir) => {
 		mkdirSync(join(dir, "llama-b1"));
-		writeFileSync(join(dir, "llama-b1", "llama-server"), "x");
+		writeFileSync(join(dir, "llama-b1", SERVER), "x");
 		symlinkSync("/etc/hosts", join(dir, "llama-b1", "hosts"));
 	});
 	const { dir, opts } = options({ runtime: linked, model: model("linked.gguf") });
@@ -160,7 +171,7 @@ test("an archive with a link leading out of it is not put in place", async () =>
 });
 
 test("an install that would not fit on the disk does not start", async () => {
-	const runtime = await goodBuild("big.tar.gz");
+	const runtime = await goodBuild("big");
 	const { dir, opts } = options({ runtime, model: model("big.gguf"), freeBytes: () => 1024 });
 	expect((await failure(install(dir, opts))).failure.code).toBe("space");
 	expect(asked).not.toContain("/big.gguf");
