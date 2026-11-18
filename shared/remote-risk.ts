@@ -2721,7 +2721,37 @@ class Scan {
 				for (const v of optionValues(args, ["-d"], [])) this.write(v, cwd);
 				break;
 			case "tar":
+			case "bsdtar":
 				this.tar(args, opts, operands, cwd, depth);
+				break;
+			case "cpio":
+				// `-D <dir>`, `--directory=<dir>`: where it unpacks (#264).
+				for (const v of optionValues(args, ["-D"], ["--directory"])) this.write(v, cwd);
+				break;
+			case "sqlite3": {
+				// A database changed by a statement that writes, or by what it reads from its input (a script, a here-document) (#264).
+				const commands = optionValues(args, [], ["-cmd"]);
+				const values = [
+					...commands,
+					...optionValues(args, [], ["-init", "-separator", "-newline", "-nullvalue", "-vfs"]),
+				];
+				const [db, ...statements] = operands.filter((o) => !values.includes(o));
+				const sql = [...commands, ...statements].map((w) => w.text).join("\n") || body;
+				const writes =
+					/\b(?:insert|update|delete|drop|create|alter|replace|vacuum|reindex)\b|^\s*\.(?:restore|import|load)\b/im;
+				if (db && !opts.includes("-readonly") && (sql === null || writes.test(sql))) this.write(db, cwd);
+				break;
+			}
+			case "plutil":
+				// `-replace`, `-insert`, `-remove`, `-convert`, `-create` change the files they are given, or write `-o`'s (#264).
+				if (opts.some((o) => /^-(?:replace|insert|remove|convert|create)$/.test(o)))
+					for (const t of [...operands, ...optionValues(args, ["-o"], [])]) if (t.text !== "-") this.write(t, cwd);
+				break;
+			case "xattr":
+				// `-w name value file…`, `-d name file…`, `-c file…` change the files' extended attributes (#264).
+				if (hasShort(opts, "w")) for (const t of operands.slice(2)) this.write(t, cwd);
+				else if (hasShort(opts, "d")) for (const t of operands.slice(1)) this.write(t, cwd);
+				else if (hasShort(opts, "c")) for (const t of operands) this.write(t, cwd);
 				break;
 			case "zip": {
 				// `-TT '<command>'`: what it tests the archive with (#221).
@@ -2740,6 +2770,10 @@ class Scan {
 				// `a -sdel` deletes what it put in the archive, folders whole (#227).
 				if (/^[au]$/.test(operands[0]?.text ?? "") && opts.includes("-sdel"))
 					for (const t of operands.slice(2)) this.delete(t, cwd, true, true, true);
+				// What it writes (#264): where `x`/`e` unpack (`-o<dir>`, where the shell writes no `~` out), the archive `a`/`u`/`d`/`rn` change.
+				for (const v of optionValues(args, ["-o"], []))
+					this.write(v.text.startsWith("~/") ? { ...v, text: `${this.ctx.home}${v.text.slice(1)}` } : v, cwd);
+				if (/^(?:a|u|d|rn)$/.test(operands[0]?.text ?? "") && operands[1]) this.write(operands[1], cwd);
 				break;
 			case "gzip":
 			case "gunzip":
@@ -3072,6 +3106,12 @@ class Scan {
 				break;
 			case "gc":
 				if (rest.some((a) => a.text === "--prune=now")) this.add("discard");
+				break;
+			case "apply":
+			case "am":
+				// A patch applied to the repository git works in (#264): another one than the project's is a write outside it.
+				if (dir !== null && !hasLong(opts, "--check", "--stat", "--numstat", "--summary"))
+					this.write({ text: dir, dynamic: false, subs: [] }, null);
 				break;
 			case "clone":
 				if (operands.length >= 2) this.write(operands[operands.length - 1], cwd);

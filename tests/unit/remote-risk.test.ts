@@ -2218,3 +2218,37 @@ describe("archivers and compressors that remove what they take in delete it (#22
 		expect(shell(command)).toEqual([]);
 	});
 });
+
+describe("7z -o, bsdtar -C, cpio -D, git -C <repo> apply, sqlite3, plutil and xattr -w write where they say (#264)", () => {
+	test.each([
+		"7z x a.zip -o/Users/me/x",
+		"7z x a.zip -o~/x",
+		"7z a ~/backup.7z src",
+		"bsdtar -xf a.tar -C ~/x",
+		"cpio -idm -D ~/x < a.cpio",
+		"git -C ~/other apply p.diff",
+		"git -C ~/other am 0001.patch",
+		"sqlite3 ~/notes.db 'DELETE FROM notes'",
+		"sqlite3 -cmd 'DROP TABLE t' ~/x.db",
+		"sqlite3 ~/x.db < s.sql",
+		"plutil -replace x -string y ~/Library/Preferences/com.x.plist",
+		"plutil -convert xml1 a.plist -o ~/b.plist",
+		"xattr -w x y ~/file",
+	])("%s is write_outside", (command) => {
+		expect(shell(command)).toEqual(["write_outside"]);
+	});
+
+	test.each([
+		"7z x a.zip -obuild",
+		"git apply p.diff",
+		"git -C ~/other apply --check p.diff",
+		"sqlite3 ~/notes.db 'SELECT * FROM notes'",
+		"sqlite3 ~/notes.db .tables",
+		"sqlite3 -readonly ~/notes.db 'DELETE FROM notes'",
+		"sqlite3 data.db 'DELETE FROM t'",
+		"plutil -lint ~/Library/Preferences/com.x.plist",
+		"xattr -l ~/file",
+	])("%s is not asked about", (command) => {
+		expect(shell(command)).toEqual([]);
+	});
+});
