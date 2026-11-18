@@ -37,15 +37,20 @@ export interface RuntimeOptions {
 	onCrash?: (detail: string) => void;
 }
 
-const IDLE_MS = 5 * 60_000;
+/**
+ * Stopped this long after it was last used, its memory given back: it starts again in well under a second on Apple
+ * silicon (the model file stays in the system's cache), so it is not kept loaded for a search that may not come.
+ */
+const IDLE_MS = 60_000;
 const START_MS = 120_000;
 /** What is kept of what the server printed, for a start that failed. */
 const LOG_KEEP = 16 * 1024;
 
 /**
  * The arguments it runs with: embeddings only, every layer on the GPU when there is one (llama.cpp puts what does not fit,
- * or everything on a computer without one, on the processor), four slots of 4096 tokens each (a passage is at most a few
- * hundred), and no prompt cache (a cache is for chat, and would hold gigabytes for nothing).
+ * or everything on a computer without one, on the processor), four slots of 2048 tokens each (a passage of 1000 characters
+ * is at most about 1100), and no prompt cache (a cache is for chat, and would hold gigabytes for nothing). Measured on an
+ * Apple M4 Pro, 2048-token batches embed as fast as 4096-token ones and take about 60 MB less while working.
  */
 export function serverArgs(model: string, port: number, keyFile: string): string[] {
 	return [
@@ -62,13 +67,13 @@ export function serverArgs(model: string, port: number, keyFile: string): string
 		"-ngl",
 		"999",
 		"-c",
-		"16384",
+		"8192",
 		"-np",
 		"4",
 		"-b",
-		"4096",
+		"2048",
 		"-ub",
-		"4096",
+		"2048",
 		"--cache-ram",
 		"0",
 	];

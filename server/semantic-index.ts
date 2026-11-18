@@ -30,6 +30,8 @@ export interface SemanticProgress {
 	/** Messages embedded (or passed over as too short), of all the full-text index holds. */
 	indexed: number;
 	total: number;
+	/** It is embedding now (the model is loaded for it); the newest messages may wait for a batch to gather. */
+	running: boolean;
 }
 
 export type SemanticJob =
@@ -73,7 +75,7 @@ export class SemanticIndex {
 		{ resolve(hits: RawSemanticHit[]): void; reject(e: Error): void; timer: NodeJS.Timeout }
 	>();
 	private seq = 0;
-	private latest: SemanticProgress = { indexed: 0, total: 0 };
+	private latest: SemanticProgress = { indexed: 0, total: 0, running: false };
 	/** The worker holds the server (it is embedding): let go when it says so, or when it is gone. */
 	private holding = false;
 	private closed = false;

@@ -198,7 +198,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	settingsSemanticOn: "开启（下载 {size}）",
 	settingsSemanticDownloading: "正在下载：{done} / {total}",
 	settingsSemanticIndexing: "正在建立索引：{done} / {total} 条消息",
-	settingsSemanticIndexed: "已为 {total} 条消息建立索引；新消息写入后会自动加入。",
+	settingsSemanticIndexed:
+		"已为 {total} 条消息建立索引。新消息分批加入（每 50 条、每 10 分钟或搜索之后），所以聊天时模型不会一直占着内存；模型最后一次使用后 1 分钟就会卸载。",
 	settingsSemanticDevice: "模型运行在 {device} 上。",
 	settingsSemanticCpu: "没有找到 GPU：模型在处理器上运行。",
 	settingsSemanticDisk: "占用磁盘 {size}。",

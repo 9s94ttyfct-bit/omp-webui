@@ -1,5 +1,5 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type RawSemanticHit, SemanticIndex, type SemanticRuntime } from "../../server/semantic-index.ts";
@@ -38,8 +38,13 @@ const fake = Bun.serve({
 	},
 });
 const holds: boolean[] = [];
+/** The times the model server was asked for (each would load it if it were not running). */
+let ensured = 0;
 const runtime: SemanticRuntime = {
-	ensure: async () => ({ url: `http://127.0.0.1:${fake.port}`, key: "k" }),
+	ensure: async () => {
+		ensured++;
+		return { url: `http://127.0.0.1:${fake.port}`, key: "k" };
+	},
 	hold: (on) => holds.push(on),
 };
 
@@ -142,4 +147,32 @@ test("finds a conversation by what it is about, keeps its vectors, and forgets w
 	expect(again.searchDbPath).toBe(fts.searchDbPath);
 	await until(() => second.progress.total === 3 && second.progress.indexed === 3);
 	expect(await second.search("orchard", 10)).toEqual([]);
+}, 30_000);
+
+test("a new message waits for a batch instead of loading the model, and a search embeds it", async () => {
+	const lib = library({ music: TEXTS.music, cars: TEXTS.cars });
+	const fts = await store(lib.sessions, lib.data);
+	const index = semantic(lib.data, fts.searchDbPath);
+	await until(() => index.progress.total === 2 && index.progress.indexed === 2 && !index.progress.running);
+
+	// Said in the music conversation now: the full-text index has it, the model is not asked for it.
+	const line = {
+		type: "message",
+		id: "m-new",
+		parentId: "m0",
+		timestamp: "2026-01-07T00:01:00.000Z",
+		message: { role: "user", content: [{ type: "text", text: "The orchard needs pruning before the apple harvest." }] },
+	};
+	appendFileSync(lib.files.music as string, `${JSON.stringify(line)}\n`);
+	await fts.indexed();
+	await until(() => index.progress.total === 3);
+	const asked = ensured;
+	await Bun.sleep(6000); // more than one look at the full-text index
+	expect(index.progress.indexed).toBe(2);
+	expect(ensured).toBe(asked);
+
+	// A search loads the model anyway: what waited is embedded right after it, and found by the next one.
+	expect(filesOf(await index.search("fruit", 10))).toEqual([]);
+	await until(() => index.progress.indexed === 3);
+	expect(filesOf(await index.search("fruit", 10))).toEqual([lib.files.music]);
 }, 30_000);

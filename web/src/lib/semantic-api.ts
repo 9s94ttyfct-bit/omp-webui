@@ -17,7 +17,13 @@ export const semanticApi = {
 	status: () => get<SemanticStatus>("/api/semantic"),
 	/** Turn it on (download, then index), or off (and delete everything it downloaded and made). */
 	set: (on: boolean) => post<SemanticStatus>(`/api/semantic/${on ? "on" : "off"}`, {}),
-	/** The conversations closest to `q` by what they are about (`[]` while it is off), one passage of each. */
-	search: (q: string, limit: number, signal?: AbortSignal) =>
-		get<SemanticHit[]>(`/api/semantic/search?q=${encodeURIComponent(q)}&conversations=${limit}`, signal),
+	/**
+	 * The conversations closest to `query` by what they are about, one passage of each, with the query they answer; none
+	 * while it is off, when it does not answer, or when it was asked again meanwhile (`signal`). Never fails.
+	 */
+	related: (query: string, limit: number, signal: AbortSignal) =>
+		get<SemanticHit[]>(`/api/semantic/search?q=${encodeURIComponent(query)}&conversations=${limit}`, signal).then(
+			(hits) => ({ query, hits }),
+			() => ({ query, hits: [] as SemanticHit[] }),
+		),
 };

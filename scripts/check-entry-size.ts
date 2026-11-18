@@ -13,10 +13,11 @@ import { entryModules, measureEntry, readChunkModules, report } from "./lib/entr
 /**
  * The most gzip KiB of JS the first page load may carry. v0.11.7 carried 221.3; the benchmark allows its
  * `load.cold.jsTransfer_kb` 5% over v0.11.7's 223.0 (234), and that number also counts the fetch overhead this sum
- * does not. 228 is 3% over v0.11.7. Raise it only with a reason a release note could give: the usual fix is to put
- * what the first paint does not need behind `import()`.
+ * does not. 228 was 3% over v0.11.7; 229 since the sidebar's search lists semantic search's Related group (its
+ * state and grouping are in the sidebar, the rest behind `import()`), which left 228 a few bytes short. Raise it only
+ * with a reason a release note could give: the usual fix is to put what the first paint does not need behind `import()`.
  */
-export const ENTRY_BUDGET_KIB = 228;
+export const ENTRY_BUDGET_KIB = 229;
 
 function option(name: string): string | undefined {
 	const at = process.argv.indexOf(`--${name}`);

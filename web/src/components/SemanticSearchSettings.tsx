@@ -32,9 +32,7 @@ export function SemanticSearchSettings() {
 	const [status, setStatus] = useState<SemanticStatus | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [confirming, setConfirming] = useState(false);
-	const moving =
-		status?.state === "installing" ||
-		(status?.state === "on" && (status.index?.indexed ?? 0) < (status.index?.total ?? 0));
+	const moving = status?.state === "installing" || (status?.state === "on" && status.index?.running === true);
 	useEffect(() => {
 		let live = true;
 		let timer: ReturnType<typeof setTimeout>;
@@ -137,7 +135,7 @@ export function SemanticSearchSettings() {
 						/>
 					) : null}
 					{status.state === "on" && status.index ? (
-						status.index.indexed < status.index.total ? (
+						status.index.running && status.index.indexed < status.index.total ? (
 							<Progress
 								label={t("pages.settingsSemanticIndexing", {
 									done: status.index.indexed.toLocaleString(),
@@ -149,7 +147,7 @@ export function SemanticSearchSettings() {
 							/>
 						) : (
 							<p data-testid="semantic-indexed">
-								{t("pages.settingsSemanticIndexed", { total: status.index.total.toLocaleString() })}
+								{t("pages.settingsSemanticIndexed", { total: status.index.indexed.toLocaleString() })}
 							</p>
 						)
 					) : null}

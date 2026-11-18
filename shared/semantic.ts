@@ -44,8 +44,12 @@ export interface SemanticStatus {
 	/** The bytes the downloads come to, all of them (the llama.cpp build and the model), for the switch to say. */
 	downloadBytes: number;
 	download?: SemanticDownload;
-	/** The messages there are to index (as the full-text index holds them), and how many of them are. */
-	index?: { indexed: number; total: number };
+	/**
+	 * The messages there are to index (as the full-text index holds them), how many of them are, and whether it is embedding
+	 * now: new messages are embedded in batches (when enough have gathered, after a while, or after a search), so that the
+	 * model is not loaded for every message written.
+	 */
+	index?: { indexed: number; total: number; running: boolean };
 	/**
 	 * The device llama.cpp runs the model on, as it names it ("Apple M4 Pro", a Vulkan GPU's name); null when it found
 	 * none and runs on the processor. Absent until it was asked (the first start after the install).

@@ -24,6 +24,15 @@ const POLL_MS = 5000;
 const BATCH_MESSAGES = 24;
 /** After embedding failed (the server stopped, or does not answer), it is tried again this much later. */
 const RETRY_MS = 30_000;
+/**
+ * New messages wait for a batch: the model is loaded when this many have gathered, when the first of them has waited
+ * `GATHER_MS`, or when a search has the model loaded anyway (`WARM_MS` after it). A conversation being written to would
+ * otherwise keep the model in memory for as long as anyone is chatting.
+ */
+const GATHER_MESSAGES = 50;
+const GATHER_MS = 10 * 60_000;
+/** How long after a search the model is taken to be loaded still (less than `Runtime`'s idle time). */
+const WARM_MS = 30_000;
 /** How long one request to the server may take: a batch is a few seconds of work on a processor. */
 const EMBED_MS = 180_000;
 const PROGRESS_MS = 500;
@@ -179,11 +188,13 @@ function drop(fid: number, epoch?: number): void {
 }
 
 let lastProgress = 0;
-function report(progress: SemanticProgress, force = false): void {
+let reported: SemanticProgress | null = null;
+function report(progress: Omit<SemanticProgress, "running">, force = false): void {
+	reported = { ...progress, running: busy };
 	const now = performance.now();
 	if (!force && now - lastProgress < PROGRESS_MS) return;
 	lastProgress = now;
-	post({ t: "progress", progress });
+	post({ t: "progress", progress: reported });
 }
 
 // The server, as the other side gives it (`need`): asked for when there is something to embed.
@@ -220,11 +231,16 @@ let again = false;
 let retryAt = 0;
 let troubled = false;
 let busy = false;
+/** When the oldest message not embedded yet was first seen (0: none waits). */
+let waitingSince = 0;
+/** Until when a search has the model loaded. */
+let warmUntil = 0;
 
 function setBusy(on: boolean): void {
 	if (busy === on) return;
 	busy = on;
 	post({ t: "busy", on });
+	if (reported) report(reported, true);
 }
 
 /** One pass over the full-text index, again while something asked for one meanwhile. */
@@ -275,7 +291,7 @@ async function syncOnce(): Promise<void> {
 			if (!f) drop(fid);
 			else if (f.epoch !== mine.epoch || f.seq < mine.seq) drop(fid, f.epoch);
 		}
-		const progress = (): SemanticProgress => {
+		const progress = () => {
 			let indexed = 0;
 			let total = 0;
 			for (const f of listed) {
@@ -290,7 +306,17 @@ async function syncOnce(): Promise<void> {
 			const mine = own.get(f.fid);
 			return f.seq > (mine && mine.epoch === f.epoch ? mine.seq : 0);
 		});
-		if (work.length === 0 || Date.now() < retryAt) return;
+		if (work.length === 0) {
+			waitingSince = 0;
+			return;
+		}
+		if (Date.now() < retryAt) return;
+		const now = Date.now();
+		waitingSince ||= now;
+		const { indexed, total } = progress();
+		// The first indexing runs at once; after it, new messages gather into batches.
+		const gathering = indexed > 0 && total - indexed < GATHER_MESSAGES && now - waitingSince < GATHER_MS;
+		if (gathering && now >= warmUntil) return;
 		setBusy(true);
 		let endpoint: Endpoint;
 		try {
@@ -376,6 +402,7 @@ async function syncOnce(): Promise<void> {
 				report(progress());
 			}
 		}
+		waitingSince = 0;
 		report(progress(), true);
 	} finally {
 		fts.close();
@@ -462,6 +489,9 @@ self.onmessage = async (event: MessageEvent<SemanticJob>) => {
 			case "search": {
 				if (!opened) throw new Error("The semantic index is not open");
 				post({ t: "result", id: job.id, hits: await search(job.q, job.max, job.endpoint) });
+				// The model is loaded for this search: what waits for a batch is embedded now, while it is.
+				warmUntil = Date.now() + WARM_MS;
+				void pass();
 				return;
 			}
 			case "close":

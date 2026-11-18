@@ -184,7 +184,8 @@ export const en = {
 	settingsSemanticOn: "Turn on (download {size})",
 	settingsSemanticDownloading: "Downloading: {done} of {total}",
 	settingsSemanticIndexing: "Indexing: {done} of {total} messages",
-	settingsSemanticIndexed: "{total} messages indexed; new ones are added as they are written.",
+	settingsSemanticIndexed:
+		"{total} messages indexed. New ones are added in batches (every 50 messages, every 10 minutes, or after a search), so the model is not kept in memory while you chat; it is unloaded a minute after its last use.",
 	settingsSemanticDevice: "The model runs on {device}.",
 	settingsSemanticCpu: "No GPU found: the model runs on the processor.",
 	settingsSemanticDisk: "Takes {size} on disk.",

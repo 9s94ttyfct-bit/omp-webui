@@ -115,14 +115,8 @@ export function SessionSearch({
 		const stop = new AbortController();
 		const timer = setTimeout(() => {
 			import("../lib/semantic-api.ts")
-				.then(({ semanticApi }) => semanticApi.search(query, CONTENT_PAGE, stop.signal))
-				.then(
-					(hits) => setSemantic({ query, hits }),
-					// Not on, or not answering: the words' matches are the list.
-					() => {
-						if (!stop.signal.aborted) setSemantic({ query, hits: [] });
-					},
-				);
+				.then(({ semanticApi }) => semanticApi.related(query, CONTENT_PAGE, stop.signal))
+				.then(setSemantic, () => {});
 		}, CONTENT_DEBOUNCE_MS);
 		return () => {
 			clearTimeout(timer);
@@ -146,7 +140,7 @@ export function SessionSearch({
 	/** Semantic search's conversations that are not listed above already (by name, or by what was said in them). */
 	const related = useMemo(
 		() =>
-			semantic && semantic.query === query && [...query].length >= CONTENT_MIN
+			semantic?.query === query
 				? contentMatches(
 						semantic.hits,
 						scope,
