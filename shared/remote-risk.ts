@@ -3215,10 +3215,14 @@ class Scan {
 		];
 		for (const s of strings) if (/\s/.test(s)) this.script(s.replace(UNKNOWN_PART, "$X"), cwd, depth);
 		// A credential named in the code (`"~/.ssh/id_ed25519"`, `Path.home() / ".ssh"`, `join(homedir(), ".aws", …)`): the
-		// code may read it. A name relative to nothing is read as the home folder's, where these places are.
+		// code may read it. A name relative to nothing is read as the home folder's, where these places are. A path given
+		// in pieces (`join(homedir(), ".codex", "auth.json")`) is read as the pieces that follow one another, up to four.
 		const home = normalize(this.ctx.home);
-		for (const s of strings) {
-			if (/\s/.test(s)) continue;
+		const pieces = strings.filter((s) => !/\s/.test(s));
+		const names = pieces.flatMap((_, i) =>
+			[1, 2, 3, 4].filter((n) => i + n <= pieces.length).map((n) => pieces.slice(i, i + n).join("/")),
+		);
+		for (const s of names) {
 			const path = s === "~" ? home : s.startsWith("~/") ? `${home}${s.slice(1)}` : s;
 			const guessed = !path.startsWith("/");
 			if (isSecret(normalize(guessed ? `${home}/${path}` : path), this.ctx, { env: !guessed })) {

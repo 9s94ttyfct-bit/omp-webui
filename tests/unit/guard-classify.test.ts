@@ -369,6 +369,10 @@ describe("reading a credential is asked about (secret_read), whatever reads it",
 		expect(evalPy("(Path.home() / '.ssh' / 'id_rsa').read_text()")).toContain("secret_read");
 		expect(evalJs('readFileSync(join(homedir(), ".npmrc"), "utf8")')).toContain("secret_read");
 		expect(evalJs('readFileSync(join(homedir(), ".codex/auth.json"), "utf8")')).toContain("secret_read");
+		expect(evalJs('readFileSync(join(homedir(), ".codex", "auth.json"), "utf8")')).toContain("secret_read");
+		expect(evalPy("open(os.path.join(Path.home(), '.config', 'stripe', 'config.toml')).read()")).toContain(
+			"secret_read",
+		);
 		expect(evalJs('readFileSync("README.md", "utf8")')).not.toContain("secret_read");
 		// A bare `.env` in code is the project's (the one the agent works in), not the home folder's.
 		expect(evalJs('require("dotenv").config({ path: ".env" })')).not.toContain("secret_read");
