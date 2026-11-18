@@ -272,6 +272,7 @@
     "tests/contract/remote-lazy.test.ts": 558,
     "tests/contract/chat-projects.test.ts": 536,
     "tests/unit/auto-title.test.ts": 504,
+    "tests/contract/folder-guarded-root.test.ts": 502,
     "tests/contract/stats-range.test.ts": 496,
     "tests/unit/session-roots.test.ts": 496,
     "tests/unit/folder-edit.test.ts": 483,
