@@ -223,24 +223,74 @@ const SECRET_SEGMENTS = table(".gnupg", ".aws");
 /** What in an `.ssh` folder is not a secret: public keys, the hosts it knows and has let in, its own settings. */
 const SSH_NOT_SECRET = /^(.+\.pub|known_hosts(\.old)?|authorized_keys2?|config)$/;
 /** Files directly in the home folder that hold a password or a token. */
-const SECRET_HOME_FILES = table(".netrc", ".git-credentials", ".npmrc", ".pgpass", ".pypirc");
+const SECRET_HOME_FILES = table(
+	".netrc",
+	".git-credentials",
+	".npmrc",
+	".pgpass",
+	".pypirc",
+	".vault-token",
+	".my.cnf",
+	".s3cfg",
+	".boto",
+	".yarnrc.yml",
+);
 /**
  * Places under the home folder that hold tokens or keys: gh's login, docker's and kubectl's credentials, the keychains,
- * gcloud's, and where Windows keeps gpg's, gh's and gcloud's. Compared without case (macOS and Windows file names have none).
+ * gcloud's, and where Windows keeps gpg's, gh's and gcloud's; other coding agents' logins (Codex, Claude Code, Copilot),
+ * registry and cloud tokens (cargo, RubyGems, Maven, Gradle, Terraform, rclone, Azure, Wrangler, Fly, Stripe) and
+ * Safari's cookies (#260). Compared without case (macOS and Windows file names have none).
  */
 const SECRET_HOME_PLACES = [
 	".config/gh/hosts.yml",
 	".docker/config.json",
 	".kube/config",
 	"Library/Keychains",
+	"Library/Cookies",
 	".config/gcloud",
 	"AppData/Roaming/gnupg",
 	"AppData/Roaming/GitHub CLI/hosts.yml",
 	"AppData/Roaming/gcloud",
+	".codex/auth.json",
+	".claude/.credentials.json",
+	".config/github-copilot",
+	".cargo/credentials",
+	".cargo/credentials.toml",
+	".gem/credentials",
+	".m2/settings.xml",
+	".m2/settings-security.xml",
+	".gradle/gradle.properties",
+	".terraform.d/credentials.tfrc.json",
+	".config/rclone",
+	".azure",
+	".wrangler/config",
+	".fly/config.yml",
+	".config/stripe",
 ];
+/** A browser's saved logins and cookies (Chrome's and its kin's, Firefox's), in whatever profile folder they are; lowercase. */
+const BROWSER_SECRETS = table(
+	"login data",
+	"login data for account",
+	"cookies",
+	"logins.json",
+	"key4.db",
+	"cookies.sqlite",
+);
+/** cloudflared's folder holds its account certificate and tunnels' credentials; its `config.yml` holds neither. */
+const CLOUDFLARED_NOT_SECRET = /^config\.ya?ml$/;
+/** A `.env` file (`.env`, `.env.production`), but not the examples committed beside one. */
+const ENV_FILE = /^\.env(\.(?!(example|sample|template|dist)$)[^/]+)?$/;
 
-/** A path whose content is a credential: reading it hands over a key, a token or a password. */
-function isSecret(abs: string, ctx: Pick<RiskContext, "home" | "caseless">): boolean {
+/**
+ * A path whose content is a credential: reading it hands over a key, a token or a password. A `.env` counts outside the
+ * conversation's folders and the temp folder (another project's, #260); `env: false` leaves that rule out where a name
+ * was only guessed to be the home folder's (a bare string in code).
+ */
+function isSecret(
+	abs: string,
+	ctx: Pick<RiskContext, "home" | "caseless" | "roots" | "temp">,
+	{ env = true }: { env?: boolean } = {},
+): boolean {
 	const path = folded(abs, ctx);
 	const parts = path.split("/");
 	if (parts.some((s) => listed(SECRET_SEGMENTS, s))) return true;
@@ -251,10 +301,14 @@ function isSecret(abs: string, ctx: Pick<RiskContext, "home" | "caseless">): boo
 		return rest.length === 0 || !SSH_NOT_SECRET.test(rest[rest.length - 1]);
 	}
 	const h = normalize(ctx.home);
-	if (parentOf(path) === folded(h, ctx) && listed(SECRET_HOME_FILES, path.slice(path.lastIndexOf("/") + 1)))
-		return true;
+	const name = path.slice(path.lastIndexOf("/") + 1);
+	if (parentOf(path) === folded(h, ctx) && listed(SECRET_HOME_FILES, name)) return true;
 	const lower = abs.toLowerCase();
-	return SECRET_HOME_PLACES.some((p) => within(lower, `${h}/${p}`.toLowerCase()));
+	const home = h.toLowerCase();
+	if (SECRET_HOME_PLACES.some((p) => within(lower, `${home}/${p}`.toLowerCase()))) return true;
+	if (within(lower, `${home}/.cloudflared`) && !CLOUDFLARED_NOT_SECRET.test(name)) return true;
+	if (within(lower, home) && listed(BROWSER_SECRETS, name.toLowerCase())) return true;
+	return env && ENV_FILE.test(name) && !ctx.roots.some((r) => within(abs, r)) && !ctx.temp.some((t) => within(abs, t));
 }
 
 const SHELLS = table("sh", "bash", "zsh", "dash", "ksh", "fish", "csh", "tcsh");
@@ -3166,7 +3220,8 @@ class Scan {
 		for (const s of strings) {
 			if (/\s/.test(s)) continue;
 			const path = s === "~" ? home : s.startsWith("~/") ? `${home}${s.slice(1)}` : s;
-			if (isSecret(normalize(path.startsWith("/") ? path : `${home}/${path}`), this.ctx)) {
+			const guessed = !path.startsWith("/");
+			if (isSecret(normalize(guessed ? `${home}/${path}` : path), this.ctx, { env: !guessed })) {
 				this.add("secret_read");
 				break;
 			}
