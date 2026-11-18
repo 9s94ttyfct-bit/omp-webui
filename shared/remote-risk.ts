@@ -3389,10 +3389,12 @@ class Scan {
 		}
 		if (selfAccess(code, this.ctx)) this.add("protected");
 		for (const line of code.split("\n")) if (line.trim() !== "") this.script(line, cwd, depth);
+		// Every literal is matched, the short ones too, and those are dropped after: a literal left unmatched (`""`, `"x"`)
+		// would pair its closing quote with the next one's opening and read every string after it inside out (#223).
 		const strings = [
-			...[...code.matchAll(/(["'])((?:\\.|(?!\1).){3,2000}?)\1/g)].map((m) => m[2]),
-			...[...code.matchAll(/`((?:\\.|[^`\\]){3,2000}?)`/g)].map((m) => m[1]),
-		];
+			...[...code.matchAll(/(["'])((?:\\.|(?!\1).){0,2000}?)\1/g)].map((m) => m[2]),
+			...[...code.matchAll(/`((?:\\.|[^`\\]){0,2000}?)`/g)].map((m) => m[1]),
+		].filter((s) => s.length >= 3);
 		for (const s of strings) if (/\s/.test(s)) this.script(s.replace(UNKNOWN_PART, "$X"), cwd, depth);
 		// A credential named in the code (`"~/.ssh/id_ed25519"`, `Path.home() / ".ssh"`, `join(homedir(), ".aws", …)`): the
 		// code may read it. A name relative to nothing is read as the home folder's, where these places are. A path given
@@ -3402,7 +3404,8 @@ class Scan {
 		const names = pieces.flatMap((_, i) =>
 			[1, 2, 3, 4].filter((n) => i + n <= pieces.length).map((n) => pieces.slice(i, i + n).join("/")),
 		);
-		for (const s of names) {
+		// Each name once: a cell that repeats one string thousands of times is not read thousands of times.
+		for (const s of new Set(names)) {
 			const path = s === "~" ? home : s.startsWith("~/") ? `${home}${s.slice(1)}` : s;
 			const guessed = !path.startsWith("/");
 			if (isSecret(normalize(guessed ? `${home}/${path}` : path), this.ctx, { env: !guessed })) {
