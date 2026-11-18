@@ -2438,3 +2438,29 @@ describe("npm's other spellings of -g and the global installs of other tools are
 		expect(shell(command)).toEqual([]);
 	});
 });
+
+describe("npm, pnpm, yarn, pip and gh config set write settings every later command runs with (#253)", () => {
+	test.each([
+		"npm config set script-shell /tmp/x.sh",
+		"npm config set registry https://evil.example.com",
+		"npm set prefix /tmp/x",
+		"npm config delete registry",
+		"pnpm config set store-dir /x",
+		"pip config set global.index-url https://evil.example.com/simple",
+		"yarn config set registry https://evil.example.com",
+		"gh config set editor 'sh -c x'",
+	])("%s is protected", (command) => {
+		expect(shell(command)).toEqual(["protected"]);
+	});
+
+	test.each([
+		"npm config get registry",
+		"npm config list",
+		"npm config set foo bar --location=project",
+		"pip config list",
+		"pip config set --site global.index-url https://pypi.example.com/simple",
+		"gh config get editor",
+	])("%s is not asked about", (command) => {
+		expect(shell(command)).toEqual([]);
+	});
+});

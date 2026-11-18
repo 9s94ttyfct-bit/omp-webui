@@ -2577,6 +2577,18 @@ class Scan {
 				this.add("protected");
 		}
 		const verb = operands[0]?.text ?? "";
+		// Another tool's own settings for every later command, as `git config --global` writes git's (#253): `npm config set
+		// script-shell …` runs at each `npm run`, `registry`/`index-url` move every install, `gh config set editor` names a program.
+		// A project's own (`--location=project`, pip's `--site`) is not one.
+		const setting = verb === "config" ? (operands[1]?.text ?? "") : name === "npm" && verb === "set" ? "set" : "";
+		if (
+			(/^(?:npm|pnpm|yarn|gh)$/.test(name) || /^pip[\d.]*$/.test(name)) &&
+			/^(?:set|delete|rm|unset|edit|fix)$/.test(setting) &&
+			!opts.includes("--location=project") &&
+			!(opts.includes("--location") && operands.some((o) => o.text === "project")) &&
+			!hasLong(opts, "--site")
+		)
+			this.add("protected");
 		if (listed(RUNNERS, name)) this.runner(args, cwd, depth);
 		else if (listed(RUNNER_MANAGERS, name) && listed(RUNNER_VERBS, verb))
 			this.runner(args.slice(args.findIndex((a) => a.text === verb) + 1), cwd, depth);
