@@ -1875,11 +1875,33 @@ describe("omp's debug tool: what it launches, attaches to and evaluates at the d
 	});
 
 	test.each<unknown>([
+		{ action: "evaluate", context: "watch", expression: "__import__('os').system('rm -rf ~/Documents')" },
+		{ action: "evaluate", context: "hover", expression: "user.name" },
+		{ action: "evaluate", context: "variables", expression: '(int)system("rm -rf ~/Documents")' },
+		{ action: "set_breakpoint", file: "src/a.c", line: 3, condition: '(int)system("rm -rf ~/Documents") == 0' },
+		{ action: "set_breakpoint", file: "src/a.py", line: 3, hit_condition: "> 2" },
+		{ action: "set_data_breakpoint", data_id: "x", condition: "f()" },
+		{ action: "set_instruction_breakpoint", instruction_reference: "0x1000", condition: "g()" },
+		{ action: "write_memory", memory_reference: "0x1000", data: "kJCQ" },
+	])("debug %j evaluates in the debuggee, or changes it (#415)", (input) => {
+		expect(call("debug", input)?.kinds).toEqual(["dynamic_command"]);
+	});
+
+	test("a condition an eval cell works out is not known (#415)", () => {
+		expect(
+			call("eval", {
+				language: "js",
+				code: "await tool.debug({ action: 'set_breakpoint', file: 'a.c', line: 1, condition: c })",
+			})?.kinds,
+		).toEqual(["dynamic_command"]);
+	});
+
+	test.each<unknown>([
 		{ action: "launch", program: "/work/proj/build/app" },
 		{ action: "launch", program: "./build/app", args: ["--port", "3000"] },
-		{ action: "evaluate", context: "watch", expression: "x" },
-		{ action: "evaluate", context: "hover", expression: "user.name" },
 		{ action: "set_breakpoint", file: "src/a.c", line: 3 },
+		{ action: "set_breakpoint", file: "src/a.c", line: 3, condition: "" },
+		{ action: "read_memory", memory_reference: "0x1000", count: 16 },
 		{ action: "continue" },
 		{ action: "stack_trace" },
 		{ action: "variables", variable_ref: 4 },

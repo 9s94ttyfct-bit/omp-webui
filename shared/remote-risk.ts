@@ -1641,8 +1641,8 @@ const JUDGED_KEYS = table(
 	"direction",
 	"overwrite",
 );
-/** What a `debug` call is judged by besides (#217): what it does, the program it launches and its arguments, where it evaluates. */
-const DEBUG_KEYS = table("action", "program", "args", "context");
+/** What a `debug` call is judged by besides (#217, #415): what it does, the program it launches and its arguments, what the debuggee evaluates. */
+const DEBUG_KEYS = table("action", "program", "args", "condition", "hit_condition", "expression");
 /**
  * A session tool called by an `eval` cell: `tool.write(…)`, `tool["write"](…)`, `tool[name](…)` (the name in group 1 or 2;
  * a computed one is read up to 200 characters, so that many `tool[` on a long line stay linear).
@@ -4240,14 +4240,20 @@ function classify(tool: string, input: Record<string, unknown>, ctx: RiskContext
 	// `remote_copy`: a file or a folder carried between this computer and another (see `copyRisk`).
 	if (name === REMOTE_COPY) return copyRisk(input, ctx, root);
 	// omp's `debug` (#217): `launch` runs its `program` with `args`, read as that command line (an argv, as `subprocess.run([…])`
-	// is). What `attach` reaches, a `custom_request`, and what the debugger's own prompt runs (`evaluate` in `repl`, omp's
-	// default context: lldb's `platform shell …`, gdb's `shell …`) cannot be read.
+	// is). What `attach` reaches, a `custom_request`, an expression the debuggee evaluates (`evaluate` in any context: a watch
+	// or a hover may call a function too, `(int)system("…")`; a breakpoint's `condition` or `hit_condition`, each time it is
+	// hit) and what the debugger's own prompt runs (lldb's `platform shell …`, gdb's `shell …`) cannot be read; `write_memory`
+	// changes what the debuggee runs next (#415).
 	if (name === "debug") {
 		const { action } = input;
+		const breakpoint =
+			action === "set_breakpoint" || action === "set_instruction_breakpoint" || action === "set_data_breakpoint";
 		if (
 			action === "attach" ||
 			action === "custom_request" ||
-			(action === "evaluate" && (input.context ?? "repl") === "repl")
+			action === "evaluate" ||
+			action === "write_memory" ||
+			(breakpoint && [input.condition, input.hit_condition].some((c) => c !== undefined && c !== ""))
 		)
 			return { kinds: ["dynamic_command"], detail: `Tool: ${tool}\n${safeJson(input)}` };
 		if (action !== "launch" || !isString(input.program)) return null;
