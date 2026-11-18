@@ -1,3 +1,4 @@
+import { mentionOf } from "@shared/folder.ts";
 import { ArrowUp, Loader2, Paperclip, Pause, Play, Square, X, Zap } from "lucide-react";
 import {
 	type ClipboardEvent,
@@ -329,8 +330,9 @@ export function Composer({
 		if (dismissed === text) return [];
 		if (mention !== null) {
 			if (fileHits.q !== mention) return [];
-			const head = text.slice(0, text.length - mention.length);
-			return fileHits.files.map((f) => ({ value: `${head}${f} `, label: `@${f}` }));
+			// The text before the `@` that is typed; the path goes in as omp reads it back, quoted where it must be (#301).
+			const head = text.slice(0, text.length - mention.length - 1);
+			return fileHits.files.map((f) => ({ value: `${head}${mentionOf(f)} `, label: `@${f}` }));
 		}
 		return suggestionsFor(
 			text,

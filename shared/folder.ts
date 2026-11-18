@@ -154,9 +154,15 @@ export interface FolderWatchRequest {
 	dirs: string[];
 }
 
-/** The text of a mention of `path` in a prompt: `@path`, quoted when it holds a space. */
+/**
+ * The text of a mention of `path` in a prompt, as omp reads it back (#301; omp 18.22's `file-mentions.ts`): an unquoted
+ * `@path` runs to the next space or `@` and loses the punctuation it ends in (`) ] } > . , ; : ! ? " ' \``), so a path
+ * with a space or an `@` (`icon@2x.png`, `node_modules/@scope/x`), one that starts with a quote or a bracket, or one that
+ * ends in such a character is quoted: `@"path"`, or `@'path'` when it holds a `"`.
+ */
 export function mentionOf(path: string): string {
-	return /\s/.test(path) ? `@"${path}"` : `@${path}`;
+	if (/^[^\s@"'`([{<][^\s@]*$/.test(path) && !/[)\]}>.,;:!?"'`]$/.test(path)) return `@${path}`;
+	return path.includes('"') ? `@'${path}'` : `@"${path}"`;
 }
 
 /**

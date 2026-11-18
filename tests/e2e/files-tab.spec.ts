@@ -602,6 +602,23 @@ test.describe("the message box", () => {
 		const menu = page.getByTestId("slash-menu");
 		await expect(menu).toContainText("@src/app.ts");
 	});
+
+	test("a path with an `@` is quoted, by the button and by the `@` completion, so omp reads all of it (#301)", async ({
+		page,
+	}) => {
+		mkdirSync(join(proj, "assets"), { recursive: true });
+		writeFileSync(join(proj, "assets", "icon@2x.png.txt"), "x");
+		await openFiles(page);
+		const composer = page.getByTestId("composer");
+		await openFile(page, "assets", "assets/icon@2x.png.txt");
+		await page.getByTestId("file-mention").click();
+		await expect(composer).toHaveValue('@"assets/icon@2x.png.txt" ');
+		await composer.fill("see @2x.png");
+		await expect(page.getByTestId("slash-menu")).toContainText("@assets/icon@2x.png.txt");
+		await composer.press("Tab");
+		await expect(composer).toHaveValue('see @"assets/icon@2x.png.txt" ');
+		rmSync(join(proj, "assets"), { recursive: true, force: true });
+	});
 });
 
 test.describe("open in the default app and reveal in Finder", () => {

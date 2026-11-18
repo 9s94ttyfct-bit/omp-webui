@@ -966,6 +966,33 @@ describe("mentions", () => {
 		expect(mentionOf("src/app.ts")).toBe("@src/app.ts");
 		expect(mentionOf("notes with space.txt")).toBe('@"notes with space.txt"');
 	});
+
+	// omp 18.22's reading of a mention (`packages/coding-agent/src/utils/file-mentions.ts`): a quoted path whole, an
+	// unquoted one up to a space or `@`, without the quotes or brackets it starts with and the punctuation it ends in.
+	const ompReads = (prompt: string): string | null => {
+		const m = /@(?:"([^"]+)"|'([^']+)'|([^\s@]+))/.exec(prompt);
+		if (!m) return null;
+		if (m[1] !== undefined || m[2] !== undefined) return (m[1] ?? m[2]).trim();
+		return m[3].replace(/^[`"'([{<]+/, "").replace(/[)\]}>.,;:!?"'`]+$/, "");
+	};
+
+	test("omp reads back the path that was mentioned, whatever is in it (#301)", () => {
+		for (const path of [
+			"src/app.ts",
+			"Meeting notes.md",
+			"assets/icon@2x.png",
+			"node_modules/@scope/pkg/index.js",
+			"docs/v1.2!",
+			"notes.",
+			"(draft).md",
+			"a [b].txt",
+			'say "hi".txt',
+			"it's.md",
+		])
+			expect(ompReads(`look at ${mentionOf(path)} please`), path).toBe(path);
+		expect(mentionOf("assets/icon@2x.png")).toBe('@"assets/icon@2x.png"');
+		expect(mentionOf('say "hi".txt')).toBe(`@'say "hi".txt'`);
+	});
 });
 
 describe("the page on this computer", () => {
