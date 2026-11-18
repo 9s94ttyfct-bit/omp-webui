@@ -59,3 +59,32 @@ test("each upload's toast counts the files of that upload, not the ones sent bef
 		useApp.setState({ toast });
 	}
 });
+
+test("while a file is being sent the page asks before it is closed or reloaded, and stops asking when the upload is over (#353)", async () => {
+	const closing = () => {
+		const e = new Event("beforeunload", { cancelable: true });
+		globalThis.dispatchEvent(e);
+		return e.defaultPrevented;
+	};
+	const { promise: answered, resolve: answer } = Promise.withResolvers<Reply>();
+	const { toast } = useApp.getState();
+	const { promise: over, resolve: end } = Promise.withResolvers<void>();
+	useApp.setState({ toast: () => end() });
+	clearUpload(scope);
+	try {
+		expect(closing()).toBe(false);
+		spyOn(browserTransport, "piece").mockImplementation(() => answered);
+		startUpload(scope, "", {
+			items: [{ file: new File(["x"], "a.txt"), dir: "", name: "a.txt", size: 1 }],
+			hidden: 0,
+			tooMany: false,
+		});
+		expect(closing()).toBe(true);
+		answer(ok("a.txt"));
+		await over;
+		expect(closing()).toBe(false);
+	} finally {
+		clearUpload(scope);
+		useApp.setState({ toast });
+	}
+});

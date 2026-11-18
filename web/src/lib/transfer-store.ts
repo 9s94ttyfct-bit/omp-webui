@@ -57,6 +57,26 @@ const begun = new Map<string, number>();
 /** The upload last announced for a conversation (where it begins), so that two waits that end together say it once. */
 const told = new Map<string, number>();
 
+/** Asks the browser to ask before the page is closed or reloaded: what is being sent would be lost (#353). */
+const askFirst = (e: Event) => {
+	e.preventDefault();
+	(e as BeforeUnloadEvent).returnValue = "";
+};
+let holding = false;
+
+/**
+ * While a file of any conversation is being sent or waits for its turn, the page asks before it is closed or reloaded, as
+ * the editors do for unsaved text. A view or conversation the person goes to in the app leaves the upload running (it is
+ * this store's, not the panel's), so only the page's end is guarded.
+ */
+function holdPage(): void {
+	const busy = [...batches.values()].some((b) => b.busy);
+	if (busy === holding) return;
+	holding = busy;
+	if (busy) globalThis.addEventListener("beforeunload", askFirst);
+	else globalThis.removeEventListener("beforeunload", askFirst);
+}
+
 function put(key: string, change: Partial<Upload>): void {
 	useTransfers.setState((s) => ({ uploads: { ...s.uploads, [key]: { ...(s.uploads[key] ?? EMPTY), ...change } } }));
 }
@@ -65,15 +85,17 @@ function batchFor(scope: FolderScope): UploadBatch {
 	const key = keyOf(scope);
 	const have = batches.get(key);
 	if (have) return have;
-	const batch: UploadBatch = new UploadBatch(scope, (rows) =>
-		put(key, { rows, held: batch.held(), halted: batch.halted }),
-	);
+	const batch: UploadBatch = new UploadBatch(scope, (rows) => {
+		put(key, { rows, held: batch.held(), halted: batch.halted });
+		holdPage();
+	});
 	batches.set(key, batch);
 	return batch;
 }
 
 /** What was sent, said once the batch has nothing left to do (and no file is held for a decision). */
 function finished(scope: FolderScope, batch: UploadBatch): void {
+	holdPage();
 	const key = keyOf(scope);
 	if (batch.busy || batch.held().length > 0) return;
 	const from = begun.get(key) ?? 0;
