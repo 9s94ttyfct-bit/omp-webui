@@ -860,6 +860,35 @@ describe("uploading a file", () => {
 		expect(readFileSync(join(w.proj, "run.sh"), "utf8")).toBe("#!/bin/sh\n");
 	});
 
+	test("a file that holds a private key is neither replaced nor described to a token page; the person's own page may (#349)", async () => {
+		const w = world();
+		const key = "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n-----END OPENSSH PRIVATE KEY-----\n";
+		write(join(w.proj, "server.key"), key);
+		const there = lstatSync(join(w.proj, "server.key"), { bigint: true });
+		const etag = `${there.size}-${Math.floor(Number(there.mtimeMs))}-${there.ino}`;
+		// No 409 that tells its size, change time and etag.
+		expect(await failed(await up(w, { name: "server.key", size: 4, body: "oops" }))).toMatchObject({
+			status: 403,
+			code: "secret",
+		});
+		expect(await failed(await up(w, { name: "server.key", size: 4, body: "oops", extra: `&replace=${etag}` }))).toMatchObject(
+			{ status: 403, code: "secret" },
+		);
+		expect(readFileSync(join(w.proj, "server.key"), "utf8")).toBe(key);
+		expect(staged(w.proj)).toEqual([]);
+		// Beside it, under the next free name, is fine.
+		expect((await saved(await up(w, { name: "server.key", size: 4, body: "oops", extra: "&exists=keep" }))).name).toBe(
+			"server (1).key",
+		);
+		// The person's own page replaces it.
+		const owner = w.env({ owner: true });
+		const replaced = await saved(
+			await up(w, { name: "server.key", size: 4, body: "mine", extra: `&replace=${etag}` }, owner),
+		);
+		expect(replaced.replaced).toBe(true);
+		expect(readFileSync(join(w.proj, "server.key"), "utf8")).toBe("mine");
+	});
+
 	test("where a file may land: inside the folder only; `..`, an absolute path, a link (even one that leads inside), a file where a folder should be", async () => {
 		const w = world();
 		symlinkSync(w.outside, join(w.proj, "outlink"));

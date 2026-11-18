@@ -5,7 +5,7 @@ import { join, sep } from "node:path";
 import { isRecord } from "../shared/guards.ts";
 import { type ExistsFailure, isHiddenName, type UploadProgress, type UploadSaved } from "../shared/transfer.ts";
 import { isSecretLooking } from "./files.ts";
-import { inside, partsOf } from "./folder.ts";
+import { holdsPrivateKey, inside, partsOf } from "./folder.ts";
 import {
 	busy,
 	conversationRoot,
@@ -78,6 +78,8 @@ interface Upload {
 	busy: boolean;
 	started: number;
 	release: () => void;
+	/** The page is not the person's own: a file that holds a private key is not replaced (#349). */
+	guarded: boolean;
 }
 
 export interface UploadDeps {
@@ -92,6 +94,29 @@ export interface UploadDeps {
 }
 
 const MiB = 1024 * 1024;
+
+/**
+ * Whether the regular file at `path` holds a private key in its first MiB (as the editor's save looks, `folder-write.ts`):
+ * for a page that is not the person's own it is a secret whatever it is called (#349). A file that cannot be read is
+ * taken for one: the page is refused rather than told about it.
+ */
+async function holdsKey(path: string): Promise<boolean> {
+	try {
+		const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+		try {
+			const buf = Buffer.alloc(MiB);
+			const { bytesRead } = await handle.read(buf, 0, MiB, 0);
+			return holdsPrivateKey(buf.subarray(0, bytesRead).toString("utf8"));
+		} finally {
+			await handle.close();
+		}
+	} catch {
+		return true;
+	}
+}
+
+const keyRefusal = () =>
+	new TransferError("That file holds a private key: it is not replaced from this page", 403, "secret");
 const DAY_MS = 24 * 60 * 60 * 1000;
 const STAGED = /^\.ompw-upload-[0-9a-f]{32}$/;
 
@@ -348,7 +373,7 @@ export class Uploads {
 			// The free space does not show what the uploads that are going on will still write.
 			if (!leavesRoom(free, owed + size, this.deps.limits))
 				throw new TransferError("There is not enough room on the disk", 507, "diskFull");
-			await this.#taken(dir.abs, name, exists === "keep", replace);
+			await this.#taken(dir.abs, name, exists === "keep", replace, guarded);
 			this.#sweep(dir.abs);
 			const staged = join(dir.abs, `.ompw-upload-${randomBytes(16).toString("hex")}`);
 			// A new file, exclusively, and no link: the system itself says no to a name that is there.
@@ -380,6 +405,7 @@ export class Uploads {
 				busy: false,
 				started: this.deps.now(),
 				release: give,
+				guarded,
 			};
 			this.#byId.set(u.id, u);
 			kept = true;
@@ -389,17 +415,22 @@ export class Uploads {
 		}
 	}
 
-	/** What is at the name now: nothing, or what the page was told it may do about it. */
-	async #taken(dir: string, name: string, keep: boolean, replace: string | null): Promise<void> {
+	/**
+	 * What is at the name now: nothing, or what the page was told it may do about it. A file that holds a private key is
+	 * neither replaced nor described to a page that is not the person's own (#349); a new name beside it (`keep`) is fine.
+	 */
+	async #taken(dir: string, name: string, keep: boolean, replace: string | null, guarded: boolean): Promise<void> {
 		const there = await lstat(join(dir, name), { bigint: true }).catch(() => null);
 		if (there === null) return;
 		if (replace !== null) {
 			if (!there.isFile() || Number(there.mode) & 0o111)
 				throw new TransferError("That file is not replaced: it is a link, a folder or a program", 403, "refused");
+			if (guarded && (await holdsKey(join(dir, name)))) throw keyRefusal();
 			if (etagOf(there) !== replace) throw new TransferError("That file changed since it was seen", 412, "changed");
 			return;
 		}
 		if (keep) return;
+		if (guarded && there.isFile() && (await holdsKey(join(dir, name)))) throw keyRefusal();
 		throw await this.#exists(dir, name, there);
 	}
 
@@ -544,6 +575,7 @@ export class Uploads {
 			if (there !== null) {
 				if (!there.isFile() || Number(there.mode) & 0o111)
 					throw new TransferError("That file is not replaced: it is a link, a folder or a program", 403, "refused");
+				if (u.guarded && (await holdsKey(final))) throw keyRefusal();
 				if (etagOf(there) !== replace) throw new TransferError("That file changed since it was seen", 412, "changed");
 				// What the file was allowed to be it stays: its permissions, never an execute bit.
 				await chmod(u.staged, Number(there.mode) & 0o666);
@@ -570,6 +602,7 @@ export class Uploads {
 				if (!keep) {
 					const there = await lstat(target, { bigint: true }).catch(() => null);
 					if (there === null) continue;
+					if (u.guarded && there.isFile() && (await holdsKey(target))) throw keyRefusal();
 					throw await this.#exists(u.dirAbs, u.name, there);
 				}
 			}
