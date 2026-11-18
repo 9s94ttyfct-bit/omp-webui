@@ -53,7 +53,9 @@ export interface UploadContext {
 	statfs?: (path: string) => Promise<{ free: number; total: number }>;
 }
 
-/** The longest file name saved, in bytes: well inside what any file system takes (255), with room for ` (999)`. */
+/** The longest name a file system takes, in bytes (APFS, ext4: 255). */
+export const FS_NAME_BYTES = 255;
+/** The longest name the composer's upload saves, in bytes: well inside what any file system takes, with room for ` (999)`. */
 const MAX_NAME_BYTES = 120;
 /** The longest name the page may send (it is reduced to the above). */
 const MAX_GIVEN_CHARS = 1024;
@@ -64,10 +66,11 @@ const STALL_MS = 30_000;
  * What a name from a page becomes: a file name and nothing more. The part after the last `/` or `\`; control characters
  * (C0, DEL and C1), line and paragraph separators, characters that do not show (zero-width ones, the Arabic letter mark),
  * direction overrides (they make `gpj.exe` read as `exe.jpg`) and what file systems of other systems refuse (`: * ? " < > |`)
- * become `_`; dots and spaces at the end go; a name that is empty or only dots is `file`; one that is too long is cut in its
- * middle (the extension stays).
+ * become `_`; dots and spaces at the end go; a name that is empty or only dots is `file`; one longer than `maxBytes` is cut
+ * in its middle (the extension stays). The Files tab's upload keeps what a file system takes (`FS_NAME_BYTES`, #317); the
+ * composer's keeps names short.
  */
-export function safeName(given: string): string {
+export function safeName(given: string, maxBytes = MAX_NAME_BYTES): string {
 	let name = given.normalize("NFC");
 	name = name.slice(name.lastIndexOf("/") + 1);
 	name = name.slice(name.lastIndexOf("\\") + 1);
@@ -75,20 +78,30 @@ export function safeName(given: string): string {
 	name = name.replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff:*?"<>|]/g, "_");
 	name = name.trim().replace(/[. ]+$/, "");
 	if (name === "" || /^\.+$/.test(name)) return "file";
-	if (Buffer.byteLength(name) <= MAX_NAME_BYTES) return name;
+	return cutTo(name, maxBytes);
+}
+
+/** `name` cut in its middle, by whole characters, to at most `maxBytes` (the extension stays). */
+function cutTo(name: string, maxBytes: number): string {
+	if (Buffer.byteLength(name) <= maxBytes) return name;
 	const dot = name.lastIndexOf(".");
 	const ext = dot > 0 && name.length - dot <= 16 ? name.slice(dot) : "";
 	const stem = Array.from(name.slice(0, name.length - ext.length));
-	while (stem.length > 1 && Buffer.byteLength(stem.join("") + ext) > MAX_NAME_BYTES) stem.pop();
+	while (stem.length > 1 && Buffer.byteLength(stem.join("") + ext) > maxBytes) stem.pop();
 	const cut = stem.join("") + ext;
 	// The cut can leave what was inside the name at its end: no name ends in a dot or a space.
 	return (ext === "" ? cut.replace(/[. ]+$/, "") : cut) || "file";
 }
 
-/** `name` with `n` before its extension: `report (2).pdf`; a dotfile or a name without an extension gets it at the end. */
+/**
+ * `name` with `n` before its extension: `report (2).pdf`; a dotfile or a name without an extension gets it at the end. A name
+ * that would then pass what a file system takes is cut first.
+ */
 export function numbered(name: string, n: number): string {
-	const dot = name.lastIndexOf(".");
-	return dot > 0 ? `${name.slice(0, dot)} (${n})${name.slice(dot)}` : `${name} (${n})`;
+	const tag = ` (${n})`;
+	const base = cutTo(name, FS_NAME_BYTES - tag.length);
+	const dot = base.lastIndexOf(".");
+	return dot > 0 ? `${base.slice(0, dot)}${tag}${base.slice(dot)}` : `${base}${tag}`;
 }
 
 /** The day's folder name, in the server's time zone: `2026-10-23`. */

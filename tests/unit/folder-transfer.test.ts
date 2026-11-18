@@ -888,6 +888,48 @@ describe("uploading a file", () => {
 		expect(readFileSync(join(w.proj, "run.sh"), "utf8")).toBe("#!/bin/sh\n");
 	});
 
+	test("a long name is kept as given (up to what a file system takes), so the file of that name is found and asked about (#317)", async () => {
+		const w = world({ limits: { pieceMax: 64 } as TransferOptions["limits"] });
+		const long = `${"季".repeat(41)}.txt`;
+		write(join(w.proj, long), "old");
+		expect(await failed(await up(w, { name: long, size: 3, body: "new" }))).toMatchObject({
+			status: 409,
+			code: "exists",
+		});
+		const kept = await saved(await up(w, { name: long, size: 3, body: "new", extra: "&exists=keep" }));
+		expect(kept.name).toBe(`${"季".repeat(41)} (1).txt`);
+		// A name at the file system's limit gets its number by losing a little of its stem, never by passing 255 bytes.
+		const widest = `${"a".repeat(251)}.txt`;
+		write(join(w.proj, widest), "old");
+		const numbered = await saved(await up(w, { name: widest, size: 3, body: "new", extra: "&exists=keep" }));
+		expect(Buffer.byteLength(numbered.name)).toBeLessThanOrEqual(255);
+		expect(numbered.name.endsWith(" (1).txt")).toBe(true);
+	});
+
+	const caseBlind = (() => {
+		const probe = mkdtempSync(join(scratch, "case-"));
+		writeFileSync(join(probe, "Probe"), "");
+		return existsSync(join(probe, "probe"));
+	})();
+	test.skipIf(!caseBlind)(
+		"a folder named in another case or Unicode form is the folder that is there, spelled as it is stored (#340)",
+		async () => {
+			const w = world();
+			const cafe = "Cafe\u0301";
+			mkdirSync(join(w.proj, "Assets"));
+			mkdirSync(join(w.proj, cafe));
+			expect((await saved(await up(w, { dir: "assets", name: "a.txt", size: 1, body: "x" }))).path).toBe(
+				"Assets/a.txt",
+			);
+			expect((await saved(await up(w, { dir: "assets/icons", name: "b.txt", size: 1, body: "x" }))).path).toBe(
+				"Assets/icons/b.txt",
+			);
+			const nfc = "Caf\u00e9";
+			expect((await saved(await up(w, { dir: nfc, name: "c.txt", size: 1, body: "x" }))).path).toBe(`${cafe}/c.txt`);
+			expect(readdirSync(w.proj).sort()).toEqual(["Assets", cafe].sort());
+		},
+	);
+
 	test("a file that holds a private key is neither replaced nor described to a token page; the person's own page may (#349)", async () => {
 		const w = world();
 		const key = "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n-----END OPENSSH PRIVATE KEY-----\n";
@@ -1032,7 +1074,7 @@ describe("uploading a file", () => {
 		const turned = await saved(await up(w, { name: "evil\u202Egpj.sh", size: 1, body: "x" }));
 		expect(turned.name).not.toContain("\u202e");
 		const long = await saved(await up(w, { name: `${"é".repeat(200)}.txt`, size: 1, body: "x" }));
-		expect(Buffer.byteLength(long.name)).toBeLessThanOrEqual(120);
+		expect(Buffer.byteLength(long.name)).toBeLessThanOrEqual(255);
 		expect(long.name.endsWith(".txt")).toBe(true);
 	});
 

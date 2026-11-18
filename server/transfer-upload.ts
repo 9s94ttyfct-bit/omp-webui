@@ -1,7 +1,7 @@
 import { createHash, type Hash, randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import { chmod, copyFile, link, lstat, mkdir, open, readdir, realpath, rename, unlink } from "node:fs/promises";
-import { join, sep } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import { isRecord } from "../shared/guards.ts";
 import { type ExistsFailure, isHiddenName, type UploadProgress, type UploadSaved } from "../shared/transfer.ts";
 import { isSecretLooking } from "./files.ts";
@@ -27,7 +27,7 @@ import {
 } from "./transfer-core.ts";
 import type { TransferLog } from "./transfer-log.ts";
 import type { StagedFiles } from "./transfer-staged.ts";
-import { nextPiece, numbered, realAsFarAsItGoes, safeName, serialized, UploadError } from "./upload.ts";
+import { FS_NAME_BYTES, nextPiece, numbered, realAsFarAsItGoes, safeName, serialized, UploadError } from "./upload.ts";
 
 /**
  * `POST /api/folder/upload`: a file a page holds, into a folder of the conversation's folder, in pieces. What it promises, for
@@ -120,6 +120,17 @@ async function holdsKey(path: string): Promise<boolean> {
 
 const keyRefusal = () =>
 	new TransferError("That file holds a private key: it is not replaced from this page", 403, "secret");
+
+/**
+ * The name `dir` has for the folder `raw` found there (`info`, from `lstat`): its real path's last part, which a file system
+ * that does not tell case or Unicode forms apart spells as it stored it. A link or a file keeps `raw`: it is refused later.
+ */
+async function storedName(dir: string, raw: string, info: { isDirectory(): boolean }): Promise<string> {
+	if (!info.isDirectory()) return raw;
+	const real = await realpath(join(dir, raw)).catch(() => null);
+	return real !== null && dirname(real) === dir ? basename(real) : raw;
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 const STAGED = /^\.ompw-upload-[0-9a-f]{32}$/;
 
@@ -272,8 +283,10 @@ export class Uploads {
 			if (Buffer.byteLength(raw) > 255) throw new TransferError("A folder name is too long", 400, "badName");
 			const literal = join(abs, raw);
 			let info = await lstat(literal).catch(() => null);
-			// A folder that is there is used as it is named; one that is not is made under the name a file system takes.
-			const use = info === null ? safeName(raw) : raw;
+			// A folder that is there is used as the file system has it named: asked for `assets` or a composed `Café`, a file
+			// system that does not tell case or Unicode forms apart (APFS) finds `Assets` or a decomposed `Café`, and the real
+			// path checked below is spelled that way (#340). One that is not there is made under the name a file system takes.
+			const use = info === null ? safeName(raw, FS_NAME_BYTES) : await storedName(abs, raw, info);
 			if (guarded && (isHiddenName(raw, true) || isHiddenName(use, true)))
 				throw new TransferError("A hidden folder is not written into", 403, "hidden");
 			rels.push(use);
@@ -349,7 +362,9 @@ export class Uploads {
 		}
 		if (guarded && isProtected(real, env))
 			throw new TransferError("That is a place nothing is written into unasked", 403, "protected");
-		const name = safeName(given);
+		// The name as given, as far as a file system takes it: cut only past 255 bytes, so that a long name (40 Chinese characters
+		// are 120 bytes) finds the file of that name and asks before replacing it (#317).
+		const name = safeName(given, FS_NAME_BYTES);
 		if (guarded && (isHiddenName(name, false) || given.startsWith(".")))
 			throw new TransferError("A hidden file is not received", 403, "hidden");
 		const releaseSlot = this.deps.gate.take(env.who);
