@@ -305,11 +305,11 @@ function isSecret(
 	const h = normalize(ctx.home);
 	const name = path.slice(path.lastIndexOf("/") + 1);
 	if (parentOf(path) === folded(h, ctx) && listed(SECRET_HOME_FILES, name)) return true;
-	const lower = abs.toLowerCase();
-	const home = h.toLowerCase();
-	if (SECRET_HOME_PLACES.some((p) => within(lower, `${home}/${p}`.toLowerCase()))) return true;
+	const lower = foldFileName(abs);
+	const home = foldFileName(h);
+	if (SECRET_HOME_PLACES.some((p) => within(lower, `${home}/${foldFileName(p)}`))) return true;
 	if (within(lower, `${home}/.cloudflared`) && !CLOUDFLARED_NOT_SECRET.test(name)) return true;
-	if (within(lower, home) && listed(BROWSER_SECRETS, name.toLowerCase())) return true;
+	if (within(lower, home) && listed(BROWSER_SECRETS, foldFileName(name))) return true;
 	return env && ENV_FILE.test(name) && !ctx.roots.some((r) => within(abs, r)) && !ctx.temp.some((t) => within(abs, t));
 }
 
@@ -689,8 +689,22 @@ function normalize(p: string): string {
 
 const parentOf = (p: string): string => (p === "/" ? "/" : normalize(`${p}/..`));
 const within = (p: string, dir: string): boolean => dir === "/" || p === dir || p.startsWith(`${dir}/`);
+/**
+ * A path as a file system that does not tell case apart compares it (macOS's APFS by default, Windows): Unicode's full
+ * case mappings both ways, so `ſ` (long s) is `s`, `K` (Kelvin) is `k`, `ß` and `ẞ` are `ss`, a final `ς` is `σ`, and a
+ * decomposed accent is the composed one; APFS opens the same file under each of these spellings, which `toLowerCase`
+ * alone does not see (#352). The Files tab judges names that look like secrets with it too (`server/files.ts`).
+ */
+export function foldFileName(path: string): string {
+	return path
+		.toLowerCase()
+		.toUpperCase()
+		.toLowerCase()
+		.replace(/\u03c2/g, "\u03c3")
+		.normalize("NFC");
+}
 /** `p` as a protected or secret place is compared: without case where file names have none (`RiskContext.caseless`). */
-const folded = (p: string, ctx: Pick<RiskContext, "caseless">): string => (ctx.caseless ? p.toLowerCase() : p);
+const folded = (p: string, ctx: Pick<RiskContext, "caseless">): string => (ctx.caseless ? foldFileName(p) : p);
 
 /**
  * A Windows path in the view every path is compared in there: `/` for `\`, the drive as the first folder (`C:\x` is `/c/x`,
@@ -704,7 +718,14 @@ function windowsView(p: string): string {
 	else if (/^[A-Za-z]:/.test(s))
 		s = `/${s[0]}/${s.slice(2)}`; // `C:x`: relative to the drive's folder, taken as its root
 	else if (s.startsWith("//")) s = `/unc/${s.slice(2)}`;
-	return s.toLowerCase();
+	// NTFS compares names by its table of upper-case letters (Unicode's simple mappings): `ſ` is `S` there too (#352), but `ß`
+	// stays `ß` and accents are not composed, so `foldFileName` (APFS) would join names NTFS keeps apart.
+	return Array.from(s, (c) => {
+		const upper = c.toUpperCase();
+		return upper.length === c.length ? upper : c;
+	})
+		.join("")
+		.toLowerCase();
 }
 
 /** `ctx` with its places in the Windows view (see `windowsView`), once; a POSIX context as it is. */
@@ -747,7 +768,10 @@ function isProtected(abs: string, ctx: RiskContext): boolean {
 	const path = folded(abs, ctx);
 	if (path.split("/").some((s) => listed(PROTECTED_SEGMENTS, s))) return true;
 	if (ctx.protect.some((d) => d !== "" && within(path, folded(d, ctx)))) return true;
-	if ((ctx.caseless ? LAUNCH_DIR_CASELESS : LAUNCH_DIR).test(abs) || (ctx.windows && STARTUP_DIR.test(abs)))
+	if (
+		(ctx.caseless ? LAUNCH_DIR_CASELESS : LAUNCH_DIR).test(folded(abs, ctx)) ||
+		(ctx.windows && STARTUP_DIR.test(abs))
+	)
 		return true;
 	const home = folded(normalize(ctx.home), ctx);
 	return parentOf(path) === home && listed(PROTECTED_HOME_FILES, path.slice(path.lastIndexOf("/") + 1));

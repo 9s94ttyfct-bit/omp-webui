@@ -5,6 +5,7 @@ import {
 	classifyCode,
 	classifyShell,
 	classifyToolCall,
+	foldFileName,
 	isProtectedPath,
 	type RiskContext,
 } from "../../shared/remote-risk.ts";
@@ -685,6 +686,32 @@ describe("where file names have no case (a Mac), a protected or secret place is 
 		expect(isProtectedPath("/USERS/me/.ZSHRC", { home: "/Users/me", protect: [], caseless: true })).toBe(true);
 		expect(isProtectedPath("/Users/me/.SSH/id_rsa", { home: "/Users/me", protect: [] })).toBe(false);
 		expect(shell("cat ~/.SSH/id_ed25519")).toEqual([]);
+	});
+
+	// APFS folds as Unicode's full case mappings do: `ſ` (long s) is `s`, `K` (Kelvin) is `k`, a decomposed accent the
+	// composed one; `toLowerCase` alone keeps `ſ` and `K` as they are (#352).
+	test.each<[string, string, RiskKind[]]>([
+		["cat ~/.ſsh/id_rsa", "cat ~/.ssh/id_rsa", ["secret_read"]],
+		["base64 < ~/.aws/credentialſ", "base64 < ~/.aws/credentials", ["secret_read"]],
+		["cat ~/Library/\u212Aeychains/login.keychain-db", "cat ~/Library/Keychains/login.keychain-db", ["secret_read"]],
+		["echo x >> ~/.zſhrc", "echo x >> ~/.zshrc", ["protected"]],
+		["cp a.plist ~/Library/LaunchAgentſ/x.plist", "cp a.plist ~/Library/LaunchAgents/x.plist", ["protected"]],
+	])("%s is %s, as APFS opens it", (spelled, plain, kinds) => {
+		expect(on(plain)).toEqual(kinds);
+		expect(on(spelled)).toEqual(kinds);
+	});
+
+	test("the read tool and isProtectedPath fold `ſ` too", () => {
+		expect(classifyToolCall("read", { path: "/Users/me/.ſsh/id_rsa" }, mac)?.kinds).toEqual(["secret_read"]);
+		expect(isProtectedPath("/Users/me/.ſsh/id_rsa", { home: "/Users/me", protect: [], caseless: true })).toBe(true);
+	});
+
+	test("foldFileName gives each spelling APFS opens as one file the same text", () => {
+		expect(foldFileName("ſecrets.yml")).toBe("secrets.yml");
+		expect(foldFileName("\u212Aeychains")).toBe("keychains");
+		expect(foldFileName("Straße")).toBe(foldFileName("STRASSE"));
+		expect(foldFileName("Cafe\u0301")).toBe(foldFileName("CAFÉ"));
+		expect(foldFileName("café")).not.toBe(foldFileName("cafe"));
 	});
 });
 

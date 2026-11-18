@@ -1153,6 +1153,18 @@ describe("a page that is not this computer's (guarded)", () => {
 			expect(isSecretLooking(path), path).toBe(true);
 	});
 
+	test("a name spelt as APFS opens the secret under it is one too: `ſ` (long s), `K` (Kelvin) (#352)", () => {
+		for (const path of [
+			"ſecrets.yml",
+			"credentialſ.json",
+			"deploy/id_rſa",
+			"x.keyſtore",
+			".ſsh/config",
+			".\u212Aube/config",
+		])
+			expect(isSecretLooking(path), path).toBe(true);
+	});
+
 	test("a path as Windows writes it (`node:path` relative there) is looked at part by part too (#54)", () => {
 		for (const [root, file] of [
 			["C:\\proj", "C:\\proj\\config\\credentials.json"],

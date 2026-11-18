@@ -165,6 +165,8 @@ describe("Windows: tool calls name Windows paths", () => {
 	test("the file transfer's protected places, as the server asks on Windows", () => {
 		const places = { home: "C:\\Users\\Me", protect: ["C:\\Users\\Me\\.omp-webui"], windows: true };
 		expect(isProtectedPath("c:\\users\\me\\.SSH\\config", places)).toBe(true);
+		// NTFS's table of upper-case letters makes `ſ` an `S` (#352).
+		expect(isProtectedPath("c:\\users\\me\\.ſsh\\config", places)).toBe(true);
 		expect(isProtectedPath("C:\\Users\\Me\\.omp-webui\\token", places)).toBe(true);
 		expect(isProtectedPath("C:\\Users\\Me\\Documents\\x.txt", places)).toBe(false);
 	});

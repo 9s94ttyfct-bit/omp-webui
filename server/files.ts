@@ -2,6 +2,7 @@ import { existsSync, realpathSync, statSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { foldFileName } from "../shared/remote-risk.ts";
 import { platform } from "./platform/index.ts";
 
 /**
@@ -119,7 +120,7 @@ const ENV_TEMPLATE = /\.(?:example|sample|template|dist|defaults)$/;
  * it elsewhere is looked at as parts too, which refuses no less).
  */
 export function isSecretLooking(rel: string): boolean {
-	const parts = rel.toLowerCase().split(/[/\\]/).filter(Boolean);
+	const parts = foldFileName(rel).split(/[/\\]/).filter(Boolean);
 	for (const [i, part] of parts.entries()) {
 		if (SECRET_DIRS.includes(part)) return true;
 		if (part === ".git" && parts[i + 1] === "config") return true;
