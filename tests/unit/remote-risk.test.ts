@@ -1751,3 +1751,52 @@ describe("eval's own shell: a python cell's !cmd line and the prelude's sh(cmd) 
 		expect(evalJs(code)).toEqual([]);
 	});
 });
+
+describe("the session's tools an eval cell calls, and the prelude's write(), are judged as those tools (#224)", () => {
+	const evalJs = (code: string) => call("eval", { language: "js", code })?.kinds ?? [];
+	const evalPy = (code: string) => call("eval", { language: "py", code })?.kinds ?? [];
+
+	test.each<[string, RiskKind[]]>([
+		['await tool.write({ path: "/Users/me/.zshrc", content: "x" })', ["protected"]],
+		['await tool["write"]({ path: "/Users/me/.zshrc", content: "x" })', ["protected"]],
+		['await tool.edit({ input: "[/Users/me/.bashrc#ABCD]\\nREM" })', ["protected"]],
+		['await write("/Users/me/Documents/report.txt", "")', ["write_outside"]],
+		['await tool.ast_edit({ ops: [{ pat: "a", out: "b" }], path: "/Users/me/other" })', ["write_outside"]],
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: a program's source, handed to the classifier as text
+		['await tool.write({ path: "/Users/me/notes.txt", content: `a\n${x}` })', ["write_outside"]],
+		['await tool.write({ path: p, content: "x" })', ["dynamic_command"]],
+		["await tool.write(opts)", ["dynamic_command"]],
+		['await tool[name]({ path: "/work/proj/x" })', ["dynamic_command"]],
+		["await tool.bash({ command: cmd })", ["dynamic_command"]],
+		["await tool.edit({ input: patch })", ["dynamic_command"]],
+		["const path = q; await tool.write({ path, content: 'x' })", ["dynamic_command"]],
+	])("js %j", (code, kinds) => {
+		expect(evalJs(code)).toEqual(kinds);
+	});
+
+	test.each<[string, RiskKind[]]>([
+		['write("/Users/me/.zshrc", "alias ls=x")', ["protected"]],
+		['await tool.write({"path": "/Users/me/.zshrc", "content": "x"})', ["protected"]],
+		['await tool.write(path="/Users/me/.zshrc", content="x")', ["protected"]],
+		["import os\nwrite(os.path.join(os.environ['HOME'], 'x'), 'y')", ["write_outside"]],
+	])("py %j", (code, kinds) => {
+		expect(evalPy(code)).toEqual(kinds);
+	});
+
+	test.each([
+		'await tool.write({ path: "/work/proj/out.txt", content: data })',
+		'await tool.write({ path: "notes/x.md", content: "hello world" })',
+		"await write('out.txt', text)",
+		"await tool.read({ path: p })",
+		"await tool.web_search({ query: q })",
+		'await tool.write({ path: "/tmp/x.json", content: JSON.stringify(v) })',
+	])("js %j runs unasked", (code) => {
+		expect(evalJs(code)).toEqual([]);
+	});
+	test.each(['f.write("x")', "write(out_path, data)", "sys.stdout.write(line)", "def write(self, x):\n    pass"])(
+		"py %j runs unasked",
+		(code) => {
+			expect(evalPy(code)).toEqual([]);
+		},
+	);
+});

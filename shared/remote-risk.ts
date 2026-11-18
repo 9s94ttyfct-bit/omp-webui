@@ -3431,6 +3431,7 @@ class Scan {
 		}
 		for (const argv of argvLists(code)) this.script(argv, cwd, depth);
 		for (const kind of codeKinds(code, this.ctx)) this.add(kind);
+		this.toolCalls(code);
 	}
 }
 
