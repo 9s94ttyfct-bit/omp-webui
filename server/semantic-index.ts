@@ -35,9 +35,11 @@ export interface SemanticProgress {
 }
 
 export type SemanticJob =
-	| { t: "open"; dbPath: string; ftsPath: string }
+	| { t: "open"; dbPath: string; ftsPath: string; paused: boolean }
 	| { t: "endpoint"; id: number; endpoint: Endpoint | null; error?: string }
 	| { t: "search"; id: number; q: string; max: number; endpoint: Endpoint }
+	/** A conversation is working (`on`): nothing is embedded until none is; what waits is embedded then. */
+	| { t: "pause"; on: boolean }
 	| { t: "close"; done: Int32Array<SharedArrayBuffer> };
 
 export type SemanticReply =
@@ -63,6 +65,8 @@ export interface SemanticIndexOptions {
 	spawn?: () => Worker;
 	/** How long a search may take once the server is up (its query is embedded, every vector scored). */
 	searchDeadlineMs?: number;
+	/** A conversation works when it starts (`pause`). */
+	paused?: boolean;
 }
 
 const CLOSE_WAIT_MS = 2000;
@@ -79,13 +83,25 @@ export class SemanticIndex {
 	/** The worker holds the server (it is embedding): let go when it says so, or when it is gone. */
 	private holding = false;
 	private closed = false;
+	private paused = false;
 
 	constructor(private readonly opts: SemanticIndexOptions) {
+		this.paused = opts.paused ?? false;
 		this.start();
 	}
 
 	get progress(): SemanticProgress {
 		return this.latest;
+	}
+
+	/**
+	 * Hold the indexing while a conversation works (`on`), so that the model is not loaded beside an agent at work; it
+	 * carries on, with what was written meanwhile, once none does. A search is answered either way.
+	 */
+	pause(on: boolean): void {
+		if (on === this.paused) return;
+		this.paused = on;
+		this.worker?.postMessage({ t: "pause", on } satisfies SemanticJob);
 	}
 
 	/** The `max` conversations closest to `q`, best first: one passage each. */
@@ -136,7 +152,12 @@ export class SemanticIndex {
 		};
 		worker.addEventListener("error", (event) => died(`The semantic index worker failed: ${event.message}`));
 		worker.addEventListener("close", () => died("The semantic index worker stopped"));
-		worker.postMessage({ t: "open", dbPath: this.opts.dbPath, ftsPath: this.opts.ftsPath } satisfies SemanticJob);
+		worker.postMessage({
+			t: "open",
+			dbPath: this.opts.dbPath,
+			ftsPath: this.opts.ftsPath,
+			paused: this.paused,
+		} satisfies SemanticJob);
 		this.worker = worker;
 		return worker;
 	}

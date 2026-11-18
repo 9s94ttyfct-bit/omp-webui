@@ -199,7 +199,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	settingsSemanticDownloading: "正在下载：{done} / {total}",
 	settingsSemanticIndexing: "正在建立索引：{done} / {total} 条消息",
 	settingsSemanticIndexed:
-		"已为 {total} 条消息建立索引。新消息分批加入（每 50 条、每 10 分钟或搜索之后），所以聊天时模型不会一直占着内存；模型最后一次使用后 1 分钟就会卸载。",
+		"已为 {total} 条消息建立索引。新消息在没有对话工作时才加入，所以建索引不会在智能体工作时加载模型。模型最后一次使用后 1 分钟就会卸载（搜索也会加载它）。",
 	settingsSemanticDevice: "模型运行在 {device} 上。",
 	settingsSemanticCpu: "没有找到 GPU：模型在处理器上运行。",
 	settingsSemanticDisk: "占用磁盘 {size}。",

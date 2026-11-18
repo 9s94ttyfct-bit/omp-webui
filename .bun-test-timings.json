@@ -28,7 +28,7 @@
     "tests/contract/preset-agent-models.test.ts": 17737,
     "tests/contract/approval.test.ts": 17236,
     "tests/contract/remote-ai-live.test.ts": 16358,
-    "tests/unit/semantic-index.test.ts": 16294,
+    "tests/unit/semantic-index.test.ts": 16234,
     "tests/contract/guided-goal.test.ts": 15717,
     "tests/contract/guided-goal-approval.test.ts": 15702,
     "tests/contract/usage-reset-wait.test.ts": 15380,

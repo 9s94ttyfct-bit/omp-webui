@@ -149,13 +149,14 @@ test("finds a conversation by what it is about, keeps its vectors, and forgets w
 	expect(await second.search("orchard", 10)).toEqual([]);
 }, 30_000);
 
-test("a new message waits for a batch instead of loading the model, and a search embeds it", async () => {
+test("nothing is embedded while a conversation works; what was written meanwhile is, once none does", async () => {
 	const lib = library({ music: TEXTS.music, cars: TEXTS.cars });
 	const fts = await store(lib.sessions, lib.data);
 	const index = semantic(lib.data, fts.searchDbPath);
 	await until(() => index.progress.total === 2 && index.progress.indexed === 2 && !index.progress.running);
 
-	// Said in the music conversation now: the full-text index has it, the model is not asked for it.
+	// A conversation works, and says something new: the full-text index has it, the model is not asked for it.
+	index.pause(true);
 	const line = {
 		type: "message",
 		id: "m-new",
@@ -170,9 +171,12 @@ test("a new message waits for a batch instead of loading the model, and a search
 	await Bun.sleep(6000); // more than one look at the full-text index
 	expect(index.progress.indexed).toBe(2);
 	expect(ensured).toBe(asked);
-
-	// A search loads the model anyway: what waited is embedded right after it, and found by the next one.
+	// A search is answered all the same, from what is indexed.
 	expect(filesOf(await index.search("fruit", 10))).toEqual([]);
-	await until(() => index.progress.indexed === 3);
+	expect(index.progress.indexed).toBe(2);
+
+	// The conversation stops: what it wrote is embedded at once, and found.
+	index.pause(false);
+	await until(() => index.progress.indexed === 3, 3000);
 	expect(filesOf(await index.search("fruit", 10))).toEqual([lib.files.music]);
 }, 30_000);

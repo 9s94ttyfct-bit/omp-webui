@@ -938,7 +938,10 @@ sleepDetector.start();
  * is open) and must not hold the Mac awake for hours (`awakeWorking` in `server/sleep.ts`).
  */
 setInterval(() => {
-	keepAwake.setCount(workingIds(pool.list()).length > 0);
+	const working = workingIds(pool.list()).length > 0;
+	keepAwake.setCount(working);
+	// Semantic search embeds nothing while a conversation works (the model is not loaded beside an agent at work).
+	semanticReady?.setWorking(working);
 }, 1000).unref();
 
 /** Settings › Start at login, for the launcher (see `LoginStart`). */
@@ -1188,6 +1191,8 @@ function migrateService(): Promise<MigrateService> {
  * it carries on with an install or an index the last run did not finish. Off, nothing of it is loaded.
  */
 let semanticLoading: Promise<SemanticService> | null = null;
+/** The service once it is made: told every second whether a conversation works. */
+let semanticReady: SemanticService | null = null;
 function semanticService(): Promise<SemanticService> {
 	semanticLoading ??= (async () => {
 		const { SemanticService } = await import("./semantic/service.ts");
@@ -1196,9 +1201,12 @@ function semanticService(): Promise<SemanticService> {
 			ftsPath: store.searchDbPath,
 			describe: (files) => store.describe(files),
 		});
+		service.setWorking(workingIds(pool.list()).length > 0);
+		semanticReady = service;
 		await service.resume();
 		return service;
 	})().catch((e: unknown) => {
+		semanticReady = null;
 		semanticLoading = null;
 		throw e;
 	});

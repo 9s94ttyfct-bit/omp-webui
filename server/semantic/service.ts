@@ -64,6 +64,8 @@ export class SemanticService {
 	private installRun: Promise<unknown> | null = null;
 	private runtime: (SemanticRuntime & { stop(): void; stopped?(): Promise<void> }) | null = null;
 	private index: SemanticIndex | null = null;
+	/** A conversation is working (`setWorking`). */
+	private working = false;
 	private trouble: string | null = null;
 	private disk: { at: number; bytes: number } | null = null;
 
@@ -108,6 +110,15 @@ export class SemanticService {
 		this.trouble = null;
 		this.disk = null;
 		rmSync(this.dir, { recursive: true, force: true });
+	}
+
+	/**
+	 * Whether a conversation is working now (the server looks every second): the indexing waits while one is, so that the
+	 * model is not loaded beside an agent at work, and takes up what was written meanwhile once none is.
+	 */
+	setWorking(on: boolean): void {
+		this.working = on;
+		this.index?.pause(on);
 	}
 
 	/** The server is stopping: the index closed, `llama-server` stopped; what is on stays on. */
@@ -178,6 +189,7 @@ export class SemanticService {
 				this.trouble = message;
 			},
 			...(this.deps.spawnWorker ? { spawn: this.deps.spawnWorker } : {}),
+			paused: this.working,
 		});
 		void this.detectDevice(ready.server);
 	}
