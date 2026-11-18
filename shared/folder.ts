@@ -63,6 +63,12 @@ export interface FolderFound {
 /** What a file opens as in the panel. */
 export type FolderView = "code" | "markdown" | "svg";
 
+/**
+ * The encoding a text file was read in when it is not UTF-8, by `TextDecoder`'s name (#284): UTF-16 with its byte order
+ * mark, GB18030 (a Chinese text saved as GBK) or Windows-1252 (Latin-1 with accents). Such a file is shown, not edited.
+ */
+export type FolderTextEncoding = "utf-16le" | "utf-16be" | "gb18030" | "windows-1252";
+
 interface FolderFileBase {
 	path: string;
 	/** Size in bytes. */
@@ -80,6 +86,8 @@ export type FolderFile =
 			text: string;
 			truncated: boolean;
 			view: FolderView;
+			/** Absent for UTF-8: the encoding the server read the text in (`FolderTextEncoding`), which the panel names. */
+			encoding?: FolderTextEncoding;
 			/**
 			 * What the bytes read were: their SHA-256 (hex). It changes whenever the content does and never otherwise (a file
 			 * touched with the same text has the same one), so a save names the one it was made from and the server can tell

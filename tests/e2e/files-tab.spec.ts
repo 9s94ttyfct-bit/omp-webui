@@ -468,6 +468,18 @@ test.describe("the preview", () => {
 		await expect(preview.getByTestId("file-code")).toContainText("request handled in 12ms");
 	});
 
+	test("a text in GBK is shown in that encoding, and says so (#284)", async ({ page }) => {
+		// "你好，世界。" in GBK, as Notepad on Chinese Windows saves it.
+		writeFileSync(
+			join(proj, "gbk-notes.txt"),
+			new Uint8Array([0xc4, 0xe3, 0xba, 0xc3, 0xa3, 0xac, 0xca, 0xc0, 0xbd, 0xe7, 0xa1, 0xa3, 0x0a]),
+		);
+		await openFiles(page);
+		const preview = await openFile(page, "gbk-notes.txt");
+		await expect(preview.getByTestId("file-encoding")).toContainText("Read as GB18030 (GBK), not UTF-8");
+		await expect(preview.getByTestId("file-code")).toContainText("你好，世界。");
+	});
+
 	test("a file that is gone says so, and Back still works", async ({ page }) => {
 		writeFileSync(join(proj, "short-lived.txt"), "x");
 		await openFiles(page);

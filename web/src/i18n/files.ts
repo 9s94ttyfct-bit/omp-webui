@@ -57,6 +57,7 @@ export const en = {
 	fileGone: "This file is no longer there.",
 	truncatedFile: "Showing the first {shown} of {size}.",
 	renderSkipped: "Too large to render: shown as source.",
+	otherEncoding: "Read as {encoding}, not UTF-8: shown, not edited here.",
 	imageSize: "{w} × {h}",
 
 	docOnePage: "1 page",

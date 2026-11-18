@@ -1,4 +1,4 @@
-import { FOLDER_LIMITS, type FolderFile } from "@shared/folder.ts";
+import { FOLDER_LIMITS, type FolderFile, type FolderTextEncoding } from "@shared/folder.ts";
 import { FileQuestion, FileX } from "lucide-react";
 import { Fragment, lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "../../i18n/index.ts";
@@ -29,6 +29,13 @@ const MAX_NUMBERED_LINES = 20_000;
 export const MAX_RENDER_CHARS = 300_000;
 /** A file that has been read again at least this long ago is not read again for a change (a file written in a stream). */
 const REREAD_MS = 800;
+/** How an encoding is written for the person (#284). */
+const ENCODING_NAMES: Record<FolderTextEncoding, string> = {
+	"utf-16le": "UTF-16LE",
+	"utf-16be": "UTF-16BE",
+	gb18030: "GB18030 (GBK)",
+	"windows-1252": "Windows-1252 (Latin-1)",
+};
 
 export type Loaded =
 	| { state: "loading" }
@@ -232,6 +239,14 @@ export function FileNotices({ file, source }: { file: FolderFile | null; source:
 					data-testid="file-truncated"
 				>
 					{t("files.truncatedFile", { shown: fmtBytes(FOLDER_LIMITS.textBytes), size: fmtBytes(file.size) })}
+				</div>
+			) : null}
+			{file.kind === "text" && file.encoding ? (
+				<div
+					className="shrink-0 border-b border-border bg-bg-soft px-3 py-1.5 text-xs text-muted"
+					data-testid="file-encoding"
+				>
+					{t("files.otherEncoding", { encoding: ENCODING_NAMES[file.encoding] })}
 				</div>
 			) : null}
 			{file.kind === "text" && file.view === "markdown" && !source && file.text.length > MAX_RENDER_CHARS ? (

@@ -13,6 +13,7 @@ import {
 	type FolderFound,
 	type FolderListing,
 	type FolderMatch,
+	type FolderTextEncoding,
 	type FolderView,
 	IMAGE_TYPES,
 	mixesLoneCr,
@@ -334,25 +335,73 @@ export async function findFiles(root: string, query: string, opts: ListOptions):
 }
 
 const decoder = new TextDecoder("utf-8");
+const gb18030 = new TextDecoder("gb18030", { fatal: true });
 
 /**
- * Whether the start of a file is not text: a NUL byte, or so many control bytes or bytes that are not UTF-8 that it is
- * data (an archive, an executable, a font) and not words in some encoding. A text in another encoding than UTF-8 (GBK,
- * Latin-1) is shown as what UTF-8 makes of it unless most of it is not valid.
+ * Which encoding the start of a file reads as text in, or null when it is not text (#284):
+ * - UTF-16 when it starts with that encoding's byte order mark (Windows PowerShell 5's `>` and `Out-File`, `reg export`);
+ * - otherwise a NUL byte, or more than a tenth of control bytes, is data (an archive, an executable, a font);
+ * - UTF-8 when it is valid (a character cut at the sample's end aside);
+ * - GB18030 (a Chinese text saved as GBK, Notepad's default on Chinese Windows) when every byte above ASCII is in a pair
+ *   that encoding reads and most pairs have a second byte above ASCII too, as its Chinese characters do;
+ * - UTF-8 still when some of it is UTF-8 beyond ASCII and at most a tenth is not (a file with a few bad bytes);
+ * - Windows-1252 (Latin-1 with accents) when at most three tenths of the bytes are above ASCII;
+ * - and null for the rest.
  */
-export function looksBinary(sample: Uint8Array): boolean {
-	if (sample.length === 0) return false;
+export function textEncoding(sample: Uint8Array): "utf-8" | FolderTextEncoding | null {
+	if (sample.length >= 2 && sample[0] === 0xff && sample[1] === 0xfe) return "utf-16le";
+	if (sample.length >= 2 && sample[0] === 0xfe && sample[1] === 0xff) return "utf-16be";
 	let controls = 0;
+	let high = 0;
 	for (const byte of sample) {
-		if (byte === 0) return true;
+		if (byte === 0) return null;
 		// Tab, newline, form feed, carriage return and escape (colour codes in a log) are text.
 		if (byte < 32 && byte !== 9 && byte !== 10 && byte !== 12 && byte !== 13 && byte !== 27) controls++;
+		if (byte >= 0x80) high++;
 	}
-	if (controls / sample.length > 0.1) return true;
+	if (controls / Math.max(1, sample.length) > 0.1) return null;
+	if (high === 0) return "utf-8";
 	const text = decoder.decode(sample);
 	let invalid = 0;
-	for (const ch of text) if (ch === "\uFFFD") invalid++;
-	return invalid / Math.max(1, text.length) > 0.1;
+	let wide = false;
+	for (const ch of text) {
+		if (ch === "\uFFFD") invalid++;
+		else if (ch.charCodeAt(0) >= 0x80) wide = true;
+	}
+	if (invalid === 0 || (invalid === 1 && text.endsWith("\uFFFD"))) return "utf-8";
+	if (readsAsGb18030(sample)) return "gb18030";
+	if (wide && invalid / text.length <= 0.1) return "utf-8";
+	return high / sample.length <= 0.3 ? "windows-1252" : null;
+}
+
+/** See `textEncoding`: each byte above ASCII starts a pair GB18030 reads, and most pairs are two such bytes. */
+function readsAsGb18030(sample: Uint8Array): boolean {
+	let pairs = 0;
+	let wide = 0;
+	let end = sample.length;
+	for (let i = 0; i < sample.length; i++) {
+		if (sample[i] < 0x80) continue;
+		// A pair cut by the sample's end.
+		if (i + 1 === sample.length) {
+			end = i;
+			break;
+		}
+		pairs++;
+		if (sample[i + 1] >= 0x80) wide++;
+		i++;
+	}
+	if (wide * 2 <= pairs) return false;
+	try {
+		gb18030.decode(sample.subarray(0, end));
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/** Whether the start of a file is not text in any encoding the Files tab reads (`textEncoding`). */
+export function looksBinary(sample: Uint8Array): boolean {
+	return textEncoding(sample) === null;
 }
 
 /** What a file of this name opens as: Markdown and SVG are rendered (with their source one click away), the rest is code. */
@@ -452,9 +501,11 @@ export async function readFolderFile(
 		const { bytesRead } = await handle.read(buffer, 0, want, 0);
 		await stillThere(file.abs, opts.hooks);
 		const bytes = buffer.subarray(0, bytesRead);
-		if (looksBinary(bytes.subarray(0, SNIFF_BYTES))) return { ...base, kind: "binary" };
+		const encoding = textEncoding(bytes.subarray(0, SNIFF_BYTES));
+		if (encoding === null) return { ...base, kind: "binary" };
 		const truncated = size > FOLDER_LIMITS.textBytes;
-		let text = decoder.decode(bytes);
+		// UTF-16's decoder drops its byte order mark itself.
+		let text = (encoding === "utf-8" ? decoder : new TextDecoder(encoding)).decode(bytes);
 		// A private key is a private key whatever the file is called (`server.key`, `notes.txt`).
 		if (opts.guarded === true && holdsPrivateKey(text)) throw new FolderError(SECRET_REFUSAL, 403);
 		// A character cut by the limit decodes as the replacement character: it is not the file's.
@@ -467,6 +518,7 @@ export async function readFolderFile(
 			text,
 			truncated,
 			view: viewOf(name),
+			...(encoding === "utf-8" ? {} : { encoding }),
 			etag: createHash("sha256").update(bytes).digest("hex"),
 			// Whole, and bytes that are the text's own (a file in another encoding does not come back from a save as it was),
 			// with line endings a save can write back (#351).

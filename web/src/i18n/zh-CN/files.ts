@@ -58,6 +58,7 @@ export const zh: Record<keyof typeof en, string> = {
 	fileGone: "此文件已不存在。",
 	truncatedFile: "仅显示 {size} 中的前 {shown}。",
 	renderSkipped: "太大，无法渲染：已显示源码。",
+	otherEncoding: "按 {encoding} 读取，不是 UTF-8：只显示，不能在这里编辑。",
 	imageSize: "{w} × {h}",
 
 	docOnePage: "1 页",

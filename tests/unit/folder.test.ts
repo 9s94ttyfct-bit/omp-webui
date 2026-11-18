@@ -358,7 +358,7 @@ describe("text and binary", () => {
 		expect(looksBinary(new TextEncoder().encode("日本語のテキスト，中文，العربية, русский"))).toBe(false);
 		expect(looksBinary(new Uint8Array([0x68, 0x69, 0x00, 0x21]))).toBe(true);
 		expect(looksBinary(new Uint8Array(Array.from({ length: 100 }, (_, i) => (i % 2 ? 0x01 : 0x41))))).toBe(true);
-		// A GBK or Latin-1 file: bytes that are not UTF-8, more than a tenth of the text.
+		// Bytes no encoding here reads as text (0xff starts no GB18030 pair, and is most of it).
 		expect(looksBinary(new Uint8Array(Array.from({ length: 100 }, () => 0xff)))).toBe(true);
 		// A PNG, an ELF and a zip start with a NUL or high bytes within the first words.
 		expect(looksBinary(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]))).toBe(true);
@@ -407,6 +407,40 @@ describe("text and binary", () => {
 		write("bom.txt", new Uint8Array([0xef, 0xbb, 0xbf, 0x68, 0x69]));
 		const file = await readFolderFile(root, "bom.txt", false);
 		expect(file.kind === "text" && file.text).toBe("hi");
+	});
+
+	test("a text in GBK, Latin-1 or UTF-16 with its byte order mark is read in that encoding, named, and not editable (#284)", async () => {
+		// "你好，世界。\n第二行：中文文本。\n" in GBK, as Notepad on Chinese Windows saves it.
+		const gbk = new Uint8Array([
+			0xc4, 0xe3, 0xba, 0xc3, 0xa3, 0xac, 0xca, 0xc0, 0xbd, 0xe7, 0xa1, 0xa3, 0x0a, 0xb5, 0xda, 0xb6, 0xfe, 0xd0, 0xd0,
+			0xa3, 0xba, 0xd6, 0xd0, 0xce, 0xc4, 0xce, 0xc4, 0xb1, 0xbe, 0xa1, 0xa3, 0x0a,
+		]);
+		const latin = "Résumé: café, déjà vu, crème brûlée, élève à côté.\n";
+		const cases: [string, Uint8Array, string, string][] = [
+			["gbk.txt", gbk, "你好，世界。\n第二行：中文文本。\n", "gb18030"],
+			["latin1.txt", new Uint8Array(Buffer.from(latin, "latin1")), latin, "windows-1252"],
+			[
+				"u16.txt",
+				new Uint8Array(Buffer.from("\ufeffhello from powershell\r\n", "utf16le")),
+				"hello from powershell\r\n",
+				"utf-16le",
+			],
+			["u16be.txt", new Uint8Array(Buffer.from("\ufeffhi\n", "utf16le").swap16()), "hi\n", "utf-16be"],
+		];
+		for (const [name, bytes, text, encoding] of cases) {
+			expect(looksBinary(bytes), name).toBe(false);
+			write(name, bytes);
+			expect(await readFolderFile(root, name, false), name).toMatchObject({
+				kind: "text",
+				text,
+				encoding,
+				editable: false,
+			});
+		}
+		// UTF-8 is named by nothing, and stays editable.
+		const utf8 = await readFolderFile(root, "src/app.ts", false);
+		expect(utf8).toMatchObject({ kind: "text", editable: true });
+		expect("encoding" in utf8).toBe(false);
 	});
 
 	test("binary data, and an image the panel cannot show, are named by their size alone", async () => {

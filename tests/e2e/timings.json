@@ -673,6 +673,7 @@
 		"files-tab.spec.ts › the preview › a file is told by its name when its extension says nothing (Dockerfile)": 2.2,
 		"files-tab.spec.ts › the preview › a file that is gone says so, and Back still works": 2.9,
 		"files-tab.spec.ts › the preview › a large file shows its first megabyte and says so": 2.2,
+		"files-tab.spec.ts › the preview › a text in GBK is shown in that encoding, and says so (#284)": 2.2,
 		"files-tab.spec.ts › the preview › an image is shown, with its size; an SVG is drawn and has a source": 2.4,
 		"files-tab.spec.ts › the preview › code is highlighted by the app's own highlighter, line by line, and read only": 2.3,
 		"files-tab.spec.ts › the preview › copies the path of the file, whole": 2.2,
