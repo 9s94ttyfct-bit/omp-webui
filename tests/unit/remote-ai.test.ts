@@ -45,6 +45,8 @@ interface Hooks extends RemoteAiHooks {
 	withdrawn: string[];
 	/** The conversations a page from the tunnel is attached to. */
 	remote: Set<string>;
+	/** Who drives each conversation from a page signed in through Access. */
+	driver: Map<string, { email: string }>;
 }
 
 /** What a test of the AI help holds: the service, the fake program it runs, what the server was asked to do, what the pages were told. */
@@ -77,6 +79,8 @@ function world(check?: string): World {
 			hooks.withdrawn.push(liveId);
 		},
 		heldRemotely: (liveId) => hooks.remote.has(liveId),
+		driver: new Map(),
+		drivenBy: (liveId) => hooks.driver.get(liveId) ?? null,
 	};
 	const service = new RemoteService({
 		dataDir: join(dir, "data"),
@@ -290,6 +294,29 @@ describe("who may use it", () => {
 
 		w.hooks.remote.delete(liveId);
 		expect(await call(w, REMOTE_AI_TOOL.status, {}, liveId)).not.toHaveProperty("isError");
+	});
+
+	test("driven from a page signed in through Access, it saves nothing and does not stop what would shut that page out (#363)", async () => {
+		const w = world();
+		const liveId = await startConversation(w);
+		w.service.store.patch({ hostname: HOST, team: "my-team", aud: AUD, emails: ["me@example.com"] });
+		w.hooks.driver.set(liveId, { email: "me@example.com" });
+		for (const [name, args] of [
+			[REMOTE_AI_TOOL.save, { emails: ["someone-else@example.com"] }],
+			[REMOTE_AI_TOOL.save, { team: "other-team" }],
+			[REMOTE_AI_TOOL.stop, {}],
+		] as const) {
+			const answer = await call(w, name, args, liveId);
+			expect(answer, JSON.stringify(args)).toMatchObject({ isError: true });
+			expect(answer.text).toContain("Settings › Remote access");
+		}
+		expect(w.service.store.read()).toMatchObject({ team: "my-team", emails: ["me@example.com"] });
+		// What still lets that page in is the agent's to save; and driven from this computer, the rest is too.
+		expect(
+			await call(w, REMOTE_AI_TOOL.save, { emails: ["me@example.com", "someone-else@example.com"] }, liveId),
+		).not.toHaveProperty("isError");
+		w.hooks.driver.delete(liveId);
+		expect(await call(w, REMOTE_AI_TOOL.save, { team: "other-team" }, liveId)).not.toHaveProperty("isError");
 	});
 
 	test("the agent cannot turn the help on: no tool does it, and the settings that are the person's are refused by `save`", async () => {

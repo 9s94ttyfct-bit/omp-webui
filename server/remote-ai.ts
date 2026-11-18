@@ -6,6 +6,7 @@ import type { LiveAttached } from "../shared/protocol.ts";
 import {
 	missingRemoteSettings,
 	parseRemoteConfigPatch,
+	type RemoteConfig,
 	RemoteConfigError,
 	type RemoteSnapshot,
 	withoutLinks,
@@ -53,6 +54,8 @@ export interface RemoteAiHooks {
 	withdraw(liveId: string): Promise<void>;
 	/** Whether a page that is not the person's own (one that holds only the token) has been on conversation `liveId`. */
 	heldRemotely(liveId: string): boolean;
+	/** The Access identity of the page signed in through Cloudflare Access whose message drives conversation `liveId`, if one does. */
+	drivenBy?(liveId: string): { email: string } | null;
 }
 
 /** Where the files of the AI-help conversations are: its folder, and the file the switch is kept in. */
@@ -286,7 +289,7 @@ export class RemoteAi implements HostToolServer {
 		if (refused !== null) return { text: refused, isError: true };
 		if (call.signal.aborted) return { text: "The call was cancelled.", isError: true };
 		try {
-			return { text: await this.run(call.name, call.args) };
+			return { text: await this.run(call.name, call.args, call.liveId) };
 		} catch (e) {
 			// What the card would say: the refusal of a value, or of a step, in words that tell what to do.
 			if (e instanceof TunnelError || e instanceof RemoteConfigError)
@@ -299,7 +302,7 @@ export class RemoteAi implements HostToolServer {
 		}
 	}
 
-	private async run(name: string, args: unknown): Promise<string> {
+	private async run(name: string, args: unknown, liveId: string): Promise<string> {
 		const done = async (what: string, act: Promise<unknown>) => {
 			await act;
 			return `${what}\n${describeRemote(this.service.snapshot())}`;
@@ -318,17 +321,34 @@ export class RemoteAi implements HostToolServer {
 				await this.service.login();
 				return `The Cloudflare login has started. The person finishes it in their browser, with the link shown in Settings › Remote access (and as a notice in the app). It is done when the status says cloudflareLogin.signedIn is true; wait for them to say they signed in, then read the status.`;
 			}
-			case REMOTE_AI_TOOL.save:
-				return done("Saved.", this.service.saveConfig(this.settingsOf(args)));
+			case REMOTE_AI_TOOL.save: {
+				const patch = this.settingsOf(args);
+				this.refuseLockOut(patch, liveId);
+				return done("Saved.", this.service.saveConfig(patch));
+			}
 			case REMOTE_AI_TOOL.setup:
 				return done("The tunnel is set up.", this.service.setup());
 			case REMOTE_AI_TOOL.start:
 				return done("The tunnel is starting; remote access is on.", this.service.start());
 			case REMOTE_AI_TOOL.stop:
+				this.refuseLockOut("stop", liveId);
 				return done("The tunnel is stopped; remote access is off.", this.service.stop());
 			default:
 				throw new TunnelError(`There is no tool named ${name} for remote access`, 404);
 		}
+	}
+
+	/**
+	 * A change that would shut out the page signed in through Access that drives this conversation is not the agent's to make
+	 * (#363): the person makes it on the card, which asks them first.
+	 */
+	private refuseLockOut(change: Partial<RemoteConfig> | "stop", liveId: string): void {
+		const who = this.hooks?.drivenBy?.(liveId) ?? null;
+		const lock = who ? this.service.locksOut(change, who) : null;
+		if (lock)
+			throw new RemoteConfigError(
+				`${lock} Do not do this: tell the person, who can make the change in Settings › Remote access, which asks them first.`,
+			);
 	}
 
 	/**

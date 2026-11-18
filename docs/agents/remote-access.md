@@ -40,6 +40,8 @@ The default permission mode of new conversations (Settings › Permissions, `POS
 
 A `remote.json` that cannot be trusted (not JSON, or one value this version refuses) means remote access off with every switch for other pages at its most restrictive (no shell, no file transfer, risky commands confirmed): the server enforces that, the card shows it with a warning saying why the file was not read, and the next save starts from it, keeping the old file as `remote.json.damaged` (#367).
 
+A change from a page signed in through Access that would shut that page out (its email leaves the list, the hostname, team or AUD changes, remote access is turned off or the tunnel stopped) is not made until the person confirms it on the card (*Save anyway* / *Stop anyway*); the AI help, driven from such a page, refuses it and leaves it to the card (#363). This computer's page is never asked.
+
 **Share these settings with another computer**: **Export settings** saves `omp-webui-remote-access.json` holding only team, AUD and emails (no hostname, tunnel or credentials); **Import settings…** fills the form from such a file (max 64 KB, max 200 emails, version 1) and the user then adds this computer's hostname and saves. One Access application with a wildcard domain can serve several computers.
 
 ### What a remote page can and cannot do
@@ -94,12 +96,12 @@ The environment variable `OMP_WEBUI_REMOTE_CONFIG` overrides the path of `remote
 | Route | Methods | Access | Purpose |
 |---|---|---|---|
 | `/api/remote` | GET | owner-only | Snapshot: `config`, tunnel `status` (`off`, `starting`, `connected`, `error` + message), `installed`, `loggedIn`, `url`, `loginUrl` (while a login is pending), `ai` (`enabled`, conversations holding the tools). |
-| `/api/remote/config` | POST | owner-only | Save a partial config (`enabled`, `hostname`, `team`, `aud`, `emails`, `autostart`, `confirmRisky`, `fileTransfer`, `remoteShell`); an invalid value refuses the whole change (400); `tunnelId`/`tunnelName` are ignored. `enabled: false` also stops the tunnel. |
+| `/api/remote/config` | POST | owner-only | Save a partial config (`enabled`, `hostname`, `team`, `aud`, `emails`, `autostart`, `confirmRisky`, `fileTransfer`, `remoteShell`); an invalid value refuses the whole change (400); `tunnelId`/`tunnelName` are ignored. `enabled: false` also stops the tunnel. From a page signed in through Access, a change that would shut that page out (its email leaves `emails`, `hostname`/`team`/`aud` change, `enabled: false`) answers `409` `{ error, code: "locksOut" }` unless the body has `confirm: true` (#363). |
 | `/api/remote/install` | POST | owner-only | Install cloudflared: Homebrew on macOS, Cloudflare's checked build from GitHub on Linux and Windows. |
 | `/api/remote/login` | POST | owner-only | Start `cloudflared tunnel login`; returns the snapshot plus `loginUrl`. |
 | `/api/remote/setup` | POST | owner-only | Create the tunnel (if none) and route the hostname's DNS to it. |
 | `/api/remote/start` | POST | owner-only | Enable remote access and start the tunnel. |
-| `/api/remote/stop` | POST | owner-only | Disable remote access and stop the tunnel. |
+| `/api/remote/stop` | POST | owner-only | Disable remote access and stop the tunnel. From a page signed in through Access: `409` `locksOut` unless `{ confirm: true }` (#363). |
 | `/api/remote/check` | POST | owner-only | Check the public address from outside; returns `{ url, verdict, status, message }`. 400 if no hostname. |
 | `/api/remote/ai` | POST | owner-only | Body `{ enabled: true\|false }`: turn the AI help switch on or off. |
 | `/api/remote/ai/start` | POST | owner-only | Start a "Set up with AI" conversation holding the remote-access tools. |

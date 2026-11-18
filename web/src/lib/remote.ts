@@ -1,5 +1,11 @@
 import type { LiveAttached } from "@shared/protocol.ts";
-import type { RemoteConfig, RemoteLogin, RemoteSnapshot, RemoteStatus } from "@shared/remote.ts";
+import {
+	REMOTE_LOCKS_OUT,
+	type RemoteConfig,
+	type RemoteLogin,
+	type RemoteSnapshot,
+	type RemoteStatus,
+} from "@shared/remote.ts";
 import type { RemoteCheck } from "@shared/remote-ai.ts";
 import { create } from "zustand";
 
@@ -17,9 +23,19 @@ export class RemoteError extends Error {
 	constructor(
 		message: string,
 		readonly status: number,
+		readonly code?: string,
 	) {
 		super(message);
 	}
+}
+
+/** A change the server makes only once the person confirms it: it would shut this page out (#363). */
+export interface RemoteLockOut {
+	action: "config" | "stop";
+	/** What the server said, naming the address and the reason. */
+	message: string;
+	/** What is sent again, with `confirm: true`, when the person goes ahead. */
+	body: Record<string, unknown>;
 }
 
 interface RemoteStore {
@@ -35,6 +51,8 @@ interface RemoteStore {
 	error: string | null;
 	/** What the last check of the public address found; null before one. */
 	check: RemoteCheck | null;
+	/** A change waiting for the person's confirmation, because it would shut this page out (#363). */
+	lockOut: RemoteLockOut | null;
 }
 
 export const useRemote = create<RemoteStore>(() => ({
@@ -44,6 +62,7 @@ export const useRemote = create<RemoteStore>(() => ({
 	busy: null,
 	error: null,
 	check: null,
+	lockOut: null,
 }));
 
 /**
@@ -92,7 +111,7 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
 				},
 	);
 	const data = await res.json().catch(() => ({}));
-	if (!res.ok) throw new RemoteError(data.error ?? res.statusText, res.status);
+	if (!res.ok) throw new RemoteError(data.error ?? res.statusText, res.status, data.code);
 	return data as T;
 }
 
@@ -121,6 +140,30 @@ function snapshotAction(name: string, path: string): Promise<RemoteSnapshot | nu
 	});
 }
 
+const GUARDED_PATH: Record<RemoteLockOut["action"], string> = {
+	config: "/api/remote/config",
+	stop: "/api/remote/stop",
+};
+
+/**
+ * A change that may shut this page out (a page signed in through Access): the server refuses it with `REMOTE_LOCKS_OUT`
+ * until the person confirms it (#363). The card then asks (`lockOut`), and `confirmLockOut` sends it again with
+ * `confirm: true`.
+ */
+function guarded(action: RemoteLockOut["action"], body: Record<string, unknown>): Promise<RemoteSnapshot | null> {
+	return act(action, async () => {
+		try {
+			const snapshot = await request<RemoteSnapshot>(GUARDED_PATH[action], body);
+			setRemoteSnapshot(snapshot);
+			return snapshot;
+		} catch (e) {
+			if (!(e instanceof RemoteError) || e.code !== REMOTE_LOCKS_OUT) throw e;
+			useRemote.setState({ lockOut: { action, message: e.message, body } });
+			return null;
+		}
+	});
+}
+
 export const remoteApi = {
 	/** The first call of the card: whatever it answers, the card stops waiting. */
 	async load(): Promise<void> {
@@ -134,13 +177,7 @@ export const remoteApi = {
 	},
 
 	/** Change the settings: the fields that are given, and only those. */
-	async setConfig(patch: Partial<RemoteConfig>): Promise<RemoteSnapshot | null> {
-		return act("config", async () => {
-			const snapshot = await request<RemoteSnapshot>("/api/remote/config", patch);
-			setRemoteSnapshot(snapshot);
-			return snapshot;
-		});
-	},
+	setConfig: (patch: Partial<RemoteConfig>) => guarded("config", patch),
 
 	/** Put `cloudflared` on this machine (Homebrew on macOS, Cloudflare's own build elsewhere). Long: the card holds the button until it has ended. */
 	install: () => snapshotAction("install", "/api/remote/install"),
@@ -164,8 +201,21 @@ export const remoteApi = {
 	/** Start the tunnel (this turns remote access on); the server says what is missing when it cannot. */
 	start: () => snapshotAction("start", "/api/remote/start"),
 
-	/** Stop the tunnel; remote access stays turned on. */
-	stop: () => snapshotAction("stop", "/api/remote/stop"),
+	/** Stop the tunnel; this turns remote access off. */
+	stop: () => guarded("stop", {}),
+
+	/** Go ahead with the change that would shut this page out (`lockOut`): the person said so. */
+	confirmLockOut(): Promise<RemoteSnapshot | null> {
+		const pending = useRemote.getState().lockOut;
+		if (!pending) return Promise.resolve(null);
+		useRemote.setState({ lockOut: null });
+		return guarded(pending.action, { ...pending.body, confirm: true });
+	},
+
+	/** Leave the change that would shut this page out unmade. */
+	cancelLockOut(): void {
+		useRemote.setState({ lockOut: null });
+	},
 
 	/** Look at the public address from outside; what was found is kept for the card to show. */
 	async check(): Promise<RemoteCheck | null> {

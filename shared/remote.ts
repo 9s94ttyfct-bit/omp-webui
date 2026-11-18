@@ -116,6 +116,13 @@ export const UNTRUSTED_REMOTE_CONFIG: RemoteConfig = {
 export const REMOTE_SHELL_OFF = "Shells are off for remote pages (Settings › Remote access, on the computer itself)";
 
 /**
+ * The `code` of a change of remote access refused because it would shut out the page signed in through Access that asks
+ * for it (#363): its email leaves the list, the hostname, team or AUD changes, or remote access goes off. The card asks the
+ * person, then sends the same change with `confirm: true`.
+ */
+export const REMOTE_LOCKS_OUT = "locksOut";
+
+/**
  * Whether remote access is on. It is off unless the person turned it on *and* everything the tunnel needs is
  * there: a half-filled setting is not a way in.
  */

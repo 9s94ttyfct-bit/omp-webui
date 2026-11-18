@@ -2,6 +2,8 @@ import { dirname, join } from "node:path";
 import { isRecord } from "../shared/guards.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import {
+	asciiLower,
+	REMOTE_LOCKS_OUT,
 	isRemoteOn,
 	parseRemoteConfigPatch,
 	type RemoteConfig,
@@ -48,7 +50,12 @@ export interface RemoteOptions {
 
 const json = (data: unknown, status = 200) =>
 	new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
-const fail = (error: string, status: number) => json({ error }, status);
+const fail = (error: string, status: number, code?: string) => json(code ? { error, code } : { error }, status);
+
+/** Who a request through Cloudflare Access is (`RemoteIdentity`): the address it signed in with. */
+export interface Requester {
+	email: string;
+}
 
 /** The API, the tunnel and the settings it changes. */
 export class RemoteService {
@@ -147,6 +154,31 @@ export class RemoteService {
 		return this.snapshot();
 	}
 
+	/**
+	 * Why `change` (a patch of the settings, or `stop`) would shut out `who`, the page signed in through Access that asks for
+	 * it, or null when it would not (#363): from its next request on, the server would no longer let it in, and only this
+	 * computer could undo it. Asked before such a change from the card or from the AI help a remote page drives.
+	 */
+	locksOut(change: Partial<RemoteConfig> | "stop", who: Requester): string | null {
+		const now = this.store.read();
+		if (change === "stop" || (change.enabled === false && now.enabled))
+			return `This would turn remote access off, and ${who.email} came in through it: only this computer could turn it on again.`;
+		const next = { ...now, ...change };
+		const why =
+			next.hostname !== now.hostname
+				? "the hostname changes"
+				: next.team !== now.team
+					? "the team changes"
+					: next.aud !== now.aud
+						? "the AUD changes"
+						: !next.emails.includes(asciiLower(who.email))
+							? `${who.email} is not among the allowed addresses`
+							: null;
+		return why === null
+			? null
+			: `This would shut out ${who.email}, who asks for it (${why}): only this computer, or a page the new settings let in, could change it back.`;
+	}
+
 	/** Look at the public address from outside (see `checkAddress`). */
 	async check(): Promise<RemoteCheck> {
 		const { hostname, team } = this.store.read();
@@ -182,14 +214,15 @@ export class RemoteService {
 	/**
 	 * The answer to `req` when it is one for `/api/remote*`; null when it is not. `owner`: the request is from the person's
 	 * own page (`isOwnerPage`: this computer's, or one signed in through Cloudflare Access), the only one that manages remote
-	 * access, whatever address the server listens on.
+	 * access, whatever address the server listens on. `who`: the Access identity of a request that came in through it (null
+	 * for this computer's page): a change that would shut it out is refused (`REMOTE_LOCKS_OUT`) unless it says `confirm: true`.
 	 */
-	async handle(req: Request, url: URL, owner: boolean): Promise<Response | null> {
+	async handle(req: Request, url: URL, owner: boolean, who: Requester | null = null): Promise<Response | null> {
 		const path = url.pathname;
 		if (path !== "/api/remote" && !path.startsWith("/api/remote/")) return null;
 		if (!owner) return fail("Remote access is managed from your own page only", 403);
 		try {
-			return await this.answer(req, path);
+			return await this.answer(req, path, who);
 		} catch (e) {
 			if (e instanceof TunnelError) return fail(e.message, e.status);
 			if (e instanceof RemoteConfigError) return fail(e.message, 400);
@@ -197,12 +230,18 @@ export class RemoteService {
 		}
 	}
 
-	private async answer(req: Request, path: string): Promise<Response> {
+	private async answer(req: Request, path: string, who: Requester | null): Promise<Response> {
 		if (path === "/api/remote") return req.method === "GET" ? json(this.snapshot()) : fail("GET required", 405);
 		if (req.method !== "POST") return fail("POST required", 405);
 		switch (path) {
-			case "/api/remote/config":
-				return json(await this.saveConfig(parseRemoteConfigPatch(await req.json().catch(() => null))));
+			case "/api/remote/config": {
+				const body: unknown = await req.json().catch(() => null);
+				const { confirm, ...fields } = isRecord(body) ? body : { confirm: undefined };
+				const patch = parseRemoteConfigPatch(isRecord(body) ? fields : body);
+				const lock = who && confirm !== true ? this.locksOut(patch, who) : null;
+				if (lock) return fail(lock, 409, REMOTE_LOCKS_OUT);
+				return json(await this.saveConfig(patch));
+			}
 			case "/api/remote/install":
 				return json(await this.install());
 			case "/api/remote/login":
@@ -211,8 +250,12 @@ export class RemoteService {
 				return json(await this.setup());
 			case "/api/remote/start":
 				return json(await this.start());
-			case "/api/remote/stop":
+			case "/api/remote/stop": {
+				const body: unknown = await req.json().catch(() => null);
+				const lock = who && !(isRecord(body) && body.confirm === true) ? this.locksOut("stop", who) : null;
+				if (lock) return fail(lock, 409, REMOTE_LOCKS_OUT);
 				return json(await this.stop());
+			}
 			case "/api/remote/check":
 				return json(await this.check());
 			case "/api/remote/ai": {

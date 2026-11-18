@@ -178,7 +178,7 @@ export function RemoteSettings() {
 	const t = useT();
 	const toast = useApp((s) => s.toast);
 	const refused = useApp((s) => s.meta !== null && !ownerPage(s.meta));
-	const { snapshot, loaded, loginUrl, busy, error, check } = useRemote();
+	const { snapshot, loaded, loginUrl, busy, error, check, lockOut } = useRemote();
 	const [draft, setDraft] = useState<Draft | null>(null);
 	/** The switches as they were left by the last click, until the server has them (the box follows the click at once). */
 	const [chosen, setChosen] = useState<{
@@ -244,6 +244,15 @@ export function RemoteSettings() {
 			emails: emailsOf(form.emails),
 		});
 		if (done) {
+			setDraft(null);
+			toast("success", t("remote.saveDone"));
+		}
+	};
+	/** The person goes ahead with a change that shuts this page out (#363): a save is then done as any other. */
+	const confirmLockOut = async () => {
+		const action = lockOut?.action;
+		const done = await remoteApi.confirmLockOut();
+		if (done && action === "config") {
 			setDraft(null);
 			toast("success", t("remote.saveDone"));
 		}
@@ -317,6 +326,34 @@ export function RemoteSettings() {
 					<CircleAlert size={14} className="mt-px shrink-0" />
 					{t("remote.untrusted", { why: snapshot.untrusted })}
 				</p>
+			) : null}
+
+			{lockOut ? (
+				<div
+					className="mt-2 rounded-xl border border-warning bg-warning/10 p-3 text-sm"
+					role="alertdialog"
+					aria-labelledby="remote-lockout-text"
+					data-testid="remote-lockout"
+				>
+					<p id="remote-lockout-text" className="flex items-start gap-1.5">
+						<CircleAlert size={14} className="mt-1 shrink-0 text-warning" />
+						{t(lockOut.action === "stop" ? "remote.lockOutStop" : "remote.lockOutSave")}
+					</p>
+					<p className="mt-1 text-xs text-muted">{lockOut.message}</p>
+					<div className="mt-2 flex gap-2">
+						<Button
+							variant="outline"
+							data-testid="remote-lockout-confirm"
+							disabled={busy !== null}
+							onClick={() => void confirmLockOut()}
+						>
+							{t(lockOut.action === "stop" ? "remote.lockOutStopAnyway" : "remote.lockOutSaveAnyway")}
+						</Button>
+						<Button variant="primary" data-testid="remote-lockout-cancel" onClick={() => remoteApi.cancelLockOut()}>
+							{t("remote.lockOutCancel")}
+						</Button>
+					</div>
+				</div>
 			) : null}
 
 			<div className="mt-3 rounded-xl border border-border bg-bg-soft p-3" data-testid="remote-ai">

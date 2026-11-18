@@ -222,13 +222,16 @@ export class LazyRemote {
 		return chain.auth.verify(req);
 	}
 
-	/** The answer of a request for `/api/remote*` (`owner`: from the person's own page); null when it is not one. */
-	async handle(req: Request, url: URL, owner: boolean): Promise<Response | null> {
+	/**
+	 * The answer of a request for `/api/remote*` (`owner`: from the person's own page; `who`: its Access identity, null for
+	 * this computer's page); null when it is not one.
+	 */
+	async handle(req: Request, url: URL, owner: boolean, who: { email: string } | null): Promise<Response | null> {
 		// The path is checked before the chain is loaded: a request for anything else must not load it.
 		const path = url.pathname;
 		if (path !== "/api/remote" && !path.startsWith("/api/remote/")) return null;
 		const chain = await this.load();
-		return chain.service.handle(req, url, owner);
+		return chain.service.handle(req, url, owner, who);
 	}
 
 	/** The settings as the card shows them (the chain is loaded for them, as for the card). */

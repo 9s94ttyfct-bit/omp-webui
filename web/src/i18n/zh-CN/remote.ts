@@ -100,6 +100,12 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	saveDone: "设置已保存",
 	untrusted:
 		"设置文件无法读取（{why}）。在再次保存之前，远程访问是关闭的，不是你本人的页面没有终端、没有文件传输，高风险命令也要先确认；这里显示的就是这些值。下一次修改会把旧文件保留为 remote.json.damaged。",
+	lockOutSave:
+		"保存这些设置会把这个页面挡在外面：从它的下一个请求起，这台电脑不会再让它进来，只有电脑本身（或新设置允许的页面）才能改回去。",
+	lockOutStop: "停止隧道会关闭远程访问，而这个页面正是通过它进来的：只有电脑本身才能再次打开。",
+	lockOutSaveAnyway: "仍然保存",
+	lockOutStopAnyway: "仍然停止",
+	lockOutCancel: "取消",
 
 	transferTitle: "把这些设置分享给另一台电脑",
 	transferHint:

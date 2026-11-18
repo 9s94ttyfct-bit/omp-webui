@@ -101,6 +101,13 @@ export const en = {
 	saveDone: "Settings saved",
 	untrusted:
 		"The settings file could not be read ({why}). Until it is saved again, remote access is off and pages that are not your own get no shell, no file transfer and are asked about risky commands; that is what is shown here. The next change keeps the old file as remote.json.damaged.",
+	lockOutSave:
+		"Saving this would shut this page out: from its next request on, this computer would no longer let it in, and only the computer itself (or a page the new settings let in) could change it back.",
+	lockOutStop:
+		"Stopping the tunnel turns remote access off, and this page came in through it: only the computer itself could turn it on again.",
+	lockOutSaveAnyway: "Save anyway",
+	lockOutStopAnyway: "Stop anyway",
+	lockOutCancel: "Cancel",
 
 	// Export and import of the settings a second computer shares (team, AUD, allowed addresses)
 	transferTitle: "Share these settings with another computer",

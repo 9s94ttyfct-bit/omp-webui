@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { REMOTE_SHELL_OFF } from "../../shared/remote.ts";
-import { type AccessKey, type Jwks, makeKey, startJwks } from "../support/access-jwt.ts";
+import { REMOTE_LOCKS_OUT, REMOTE_SHELL_OFF } from "../../shared/remote.ts";
+import { type AccessKey, EMAIL, type Jwks, makeKey, startJwks } from "../support/access-jwt.ts";
 import { pollUntil } from "../support/poll.ts";
 import { rejectionOf } from "../support/rejection.ts";
 import { proxiedClient, type RemoteClient, remoteClient, remoteSettings } from "../support/remote-client.ts";
@@ -231,5 +231,50 @@ test("a page that is not the person's own runs no slash command omp runs itself 
 	} finally {
 		remote.close();
 		await setRemoteShell(true);
+	}
+}, 60_000);
+
+test("a page signed in through Access is asked before a change of the settings that would shut it out, and is shut out once it confirms; this computer's page is not asked (#363)", async () => {
+	const post = (client: Pick<RemoteClient, "fetch">, path: string, body: unknown) =>
+		client.fetch(
+			path,
+			{ method: "POST", headers: { "x-omp-webui": "1", "content-type": "application/json" } },
+			JSON.stringify(body),
+		);
+	const saved = () => JSON.parse(readFileSync(settingsFile, "utf8")) as Record<string, unknown>;
+	try {
+		for (const [path, body] of [
+			["/api/remote/config", { emails: ["someone-else@example.test"] }],
+			["/api/remote/config", { team: "another-team" }],
+			["/api/remote/config", { hostname: "other.example.test" }],
+			["/api/remote/stop", {}],
+		] as const) {
+			const res = await post(signedIn, path, body);
+			expect(res.status, JSON.stringify(body)).toBe(409);
+			expect(((await res.json()) as { code: string }).code).toBe(REMOTE_LOCKS_OUT);
+		}
+		expect(saved()).toMatchObject({ enabled: true, emails: [EMAIL], team: "acme" });
+		// What still lets it in is saved as before.
+		const kept = await post(signedIn, "/api/remote/config", { emails: [EMAIL, "someone-else@example.test"] });
+		expect(kept.status).toBe(200);
+		expect((await signedIn.fetch("/api/meta")).status).toBe(200);
+		// Confirmed, the change is made, and the page is out.
+		const confirmed = await post(signedIn, "/api/remote/config", {
+			emails: ["someone-else@example.test"],
+			confirm: true,
+		});
+		expect(confirmed.status).toBe(200);
+		expect(saved()).toMatchObject({ emails: ["someone-else@example.test"] });
+		expect((await signedIn.fetch("/api/meta")).status).toBe(403);
+		// This computer's page is never asked: no page of its own comes in through Access.
+		const local = await fetch(`${s.url}/api/remote/config`, {
+			method: "POST",
+			headers: { "x-omp-webui-token": s.accessToken, "x-omp-webui": "1", "content-type": "application/json" },
+			body: JSON.stringify({ emails: [EMAIL] }),
+		});
+		expect(local.status).toBe(200);
+		expect((await signedIn.fetch("/api/meta")).status).toBe(200);
+	} finally {
+		writeFileSync(settingsFile, JSON.stringify(remoteSettings()));
 	}
 }, 60_000);

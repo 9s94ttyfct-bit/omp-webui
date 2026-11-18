@@ -737,6 +737,21 @@ function heldRemotely(liveId: string): boolean {
 		[...sockets].some((ws) => !isOwnerPage(ws.data.remote, ws.data.local) && ws.data.attached.has(liveId))
 	);
 }
+/**
+ * The Access identity of the page signed in through Cloudflare Access whose message drives conversation `liveId` now, by
+ * live id: what the AI help may not shut out without the person's confirmation on the card (#363). A message from this
+ * computer's page takes it away; it ends with the process.
+ */
+const remoteDriver = new Map<string, RemoteIdentity>();
+/** Who drives conversation `liveId` from a page signed in through Access, if a page does. */
+function drivenBy(liveId: string): RemoteIdentity | null {
+	return remoteDriver.get(liveId) ?? null;
+}
+/** A message that drives conversation `liveId` came from `remote` (null: a page on this computer, or one holding only the token). */
+function noteDriver(liveId: string, remote: RemoteIdentity | null): void {
+	if (remote) remoteDriver.set(liveId, remote);
+	else remoteDriver.delete(liveId);
+}
 const remoteAuth = new LazyRemote(
 	cfg.dataDir,
 	broadcastAll,
@@ -748,6 +763,8 @@ const remoteAuth = new LazyRemote(
 		withdraw: (liveId) => pool.get(liveId)?.serveHostTools(null) ?? Promise.resolve(),
 		// A page that is not the person's own could answer omp's approval prompts on the conversation: its tools are refused while one is.
 		heldRemotely,
+		// Whose page signed in through Access drives it: a save or a stop that would shut that page out is refused (#363).
+		drivenBy,
 	},
 	// Shells for remote pages turned off: the terminals they have open end now, not when their pages next close; and every
 	// gate is told whether such a page's turn is locked (`Live.syncRisk`), as it is of "Confirm risky commands".
@@ -1081,7 +1098,10 @@ function pushService(): Promise<PushHub> {
 	return pushLoading;
 }
 pool.onAnnounce((info) => {
-	if (info.exited) remoteTouched.delete(info.liveId);
+	if (info.exited) {
+		remoteTouched.delete(info.liveId);
+		remoteDriver.delete(info.liveId);
+	}
 	broadcastAll({ t: "live", info });
 	shellEvents.note(info);
 	pushHub?.note(info);
@@ -2459,6 +2479,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				if (refusal) return fail(refusal, 403);
 				if (!fromOwner(req)) remoteTouched.add(live.info.liveId);
 				else remoteTouched.delete(live.info.liveId);
+				noteDriver(live.info.liveId, remoteOf.get(req) ?? null);
 				// A paused conversation is continued first, as the composer does.
 				if (live.info.pausedAt !== null) await live.resume();
 				// The turn the answer starts is not told the question still waits (#694); `finally` tells it again if not sent.
@@ -2776,7 +2797,8 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 	}
 	if (p === "/api/browser" || p.startsWith("/api/browser/"))
 		return browser.handle(req, url, { remote: remoteOf.get(req) ?? null, local: onThisComputer.has(req) });
-	const remoteAnswer = await remoteAuth.handle(req, url, fromOwner(req));
+	// Who a request through Access is: a change of the settings that would shut that page out is asked about first (#363).
+	const remoteAnswer = await remoteAuth.handle(req, url, fromOwner(req), remoteOf.get(req) ?? null);
 	if (remoteAnswer) return remoteAnswer;
 	// A Mac's sign-in is taken from this computer's own requests only (`onThisComputer`: never one through the tunnel).
 	const macsAnswer = await savedMacs.handle(req, url, fromOwner(req), onThisComputer.has(req));
@@ -3033,6 +3055,7 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 				const refusal = turnRefusal(live, !ws.data.local, owner);
 				if (refusal) return reply({ t: "reply", req: msg.req, ok: false, error: refusal });
 			}
+			if (drivesTurn(msg.command)) noteDriver(live.info.liveId, ws.data.remote);
 			touch(live);
 			// A new chat started in a project is put there with its first message (`projectOfNewChat`).
 			const project = projectOfNewChat.get(live.info.liveId);
