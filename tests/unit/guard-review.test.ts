@@ -493,6 +493,23 @@ describe("one review", () => {
 		expect(out.usage.cost).toBeCloseTo(0.51, 9);
 	});
 
+	test("a provider error's log path is not passed on: no file of omp's in the dialog or the refusal (#408)", async () => {
+		const { ask } = script({
+			one: said("", {
+				stopReason: "error",
+				errorMessage:
+					"400 model not found (type=invalid_request_error) raw-http-request=/Users/jdoe/.omp/logs/http-400-requests/1795018461303-19areoimj7s7x.json",
+			}),
+			two: new Error("401 bad key raw-http-request=C:\\Users\\jdoe\\.omp\\logs\\http-401-requests\\1.json; try again"),
+		});
+		const out = await review([a, b], [], prompt, ask, options);
+		expect(out.verdict).toBe("unavailable");
+		expect(out.reason).toContain("a/one: 400 model not found (type=invalid_request_error)");
+		expect(out.reason).toContain("b/two: 401 bad key; try again");
+		expect(out.reason).not.toContain("raw-http-request");
+		expect(out.reason).not.toContain("jdoe");
+	});
+
 	test("an aborted or errored stop is a failure whatever its text says", async () => {
 		for (const stopReason of ["error", "aborted"]) {
 			const { ask } = script({ one: said('{"decision":"allow"}', { stopReason }) });

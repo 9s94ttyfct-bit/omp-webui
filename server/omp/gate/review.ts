@@ -367,7 +367,17 @@ export interface ReviewOptions {
 /** The least time worth starting another request with. */
 const MIN_ATTEMPT_MS = 2_000;
 
-const sentence = (text: string): string => text.replace(/\s+/g, " ").trim().slice(0, 300);
+/**
+ * A reviewer's failure as one short line. omp ends a provider's error with where it logged the request
+ * (`raw-http-request=<absolute path>`): a file of this computer's, which the dialog shows to every page that is open, a remote
+ * one too, and the agent is told. Any `name=<absolute path>` is left out (#408).
+ */
+const sentence = (text: string): string =>
+	text
+		.replace(/\s*\b[\w-]+=(?:\/|[A-Za-z]:\\)[^\s;,]*/g, "")
+		.replace(/\s+/g, " ")
+		.trim()
+		.slice(0, 300);
 
 /**
  * Ask the reviewers in order until one gives a verdict. A model that fails, is slow or answers with anything but a clear
