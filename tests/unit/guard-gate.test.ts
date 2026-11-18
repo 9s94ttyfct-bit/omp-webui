@@ -36,6 +36,8 @@ interface Sent {
 	apiKey?: string;
 	headers?: Record<string, string>;
 	maxTokens?: number;
+	maxHttpAttempts?: number;
+	maxRetryDelayMs?: number;
 }
 let sent: Sent[] = [];
 /** What the model library answers for a model id (a message), or throws. */
@@ -55,7 +57,13 @@ const library = {
 	completeSimple: async (
 		model: { id: string },
 		context: { systemPrompt: string; messages: { content: string }[] },
-		options: { apiKey?: string; headers?: Record<string, string>; maxTokens?: number },
+		options: {
+			apiKey?: string;
+			headers?: Record<string, string>;
+			maxTokens?: number;
+			maxHttpAttempts?: number;
+			maxRetryDelayMs?: number;
+		},
 	) => {
 		sent.push({
 			model: model.id,
@@ -64,6 +72,8 @@ const library = {
 			apiKey: options.apiKey,
 			headers: options.headers,
 			maxTokens: options.maxTokens,
+			maxHttpAttempts: options.maxHttpAttempts,
+			maxRetryDelayMs: options.maxRetryDelayMs,
 		});
 		const answer = answers[model.id];
 		if (!answer) throw new Error(`no answer scripted for ${model.id}`);
@@ -253,6 +263,9 @@ describe("reviewer mode", () => {
 		expect(sent).toHaveLength(1);
 		expect(sent[0]).toMatchObject({ model: "gpt-reviewer", apiKey: "key-openai", headers: { "x-test": "1" } });
 		expect(sent[0].maxTokens).toBeGreaterThan(0);
+		// One request, no retries of omp's own: a reviewer whose provider fails is passed over at once, not after the whole
+		// attempt of backoff (#403).
+		expect(sent[0]).toMatchObject({ maxHttpAttempts: 1, maxRetryDelayMs: 0 });
 		// What it was told: the exact command, the agent's stated purpose, what was said lately, as data.
 		expect(sent[0].user).toContain("rm -rf");
 		expect(sent[0].user).toContain("remove the old docs folder");

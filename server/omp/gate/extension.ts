@@ -113,7 +113,14 @@ interface AiModule {
 	completeSimple(
 		model: ModelLike,
 		context: { systemPrompt: string; messages: { role: "user"; content: string; timestamp: number }[] },
-		options: { apiKey?: string; headers?: Record<string, string>; maxTokens?: number; signal?: AbortSignal },
+		options: {
+			apiKey?: string;
+			headers?: Record<string, string>;
+			maxTokens?: number;
+			signal?: AbortSignal;
+			maxHttpAttempts?: number;
+			maxRetryDelayMs?: number;
+		},
 	): Promise<{
 		content?: unknown;
 		usage?: unknown;
@@ -299,7 +306,17 @@ function askWith(ctx: Context): Ask {
 		const message = await library.completeSimple(
 			model,
 			{ systemPrompt: system, messages: [{ role: "user", content: user, timestamp: Date.now() }] },
-			{ apiKey: auth.apiKey, headers: auth.headers, maxTokens: MAX_ANSWER_TOKENS, signal },
+			{
+				apiKey: auth.apiKey,
+				headers: auth.headers,
+				maxTokens: MAX_ANSWER_TOKENS,
+				signal,
+				// One request: omp's own retries with backoff (a provider answering 5xx) would hold the call for the whole attempt
+				// before the chain moves on (#403). A failing reviewer is passed over at once, with its own error; the attempt's
+				// time only bounds one that is slow to answer.
+				maxHttpAttempts: 1,
+				maxRetryDelayMs: 0,
+			},
 		);
 		return {
 			text: textOfAnswer(message.content),
