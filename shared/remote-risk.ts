@@ -3499,14 +3499,34 @@ function pathText(raw: string, ctx: RiskContext): string | null {
 	return s;
 }
 
+/**
+ * A file of another computer that omp's file tools reach over SSH (`ssh://host/<path>`, #218): the path there, `~` as that
+ * computer's home (`REMOTE_HOME`), to be read against `REMOTE_CONTEXT` as a `remote_run` command's paths are; null: not one.
+ */
+function sshPath(raw: string): string | null {
+	let s = raw.trim();
+	const wrapped = /^\[(.+?)(#[0-9A-Fa-f]{4})?\]$/.exec(s);
+	if (wrapped) s = wrapped[1];
+	const m = /^ssh:\/\/[^/]+(\/.*)?$/i.exec(s);
+	if (!m) return null;
+	const path = (m[1] ?? "/").replace(/^\/~(?=\/|$)/, REMOTE_HOME);
+	const colon = path.indexOf(":");
+	return colon > 0 ? path.slice(0, colon) : path;
+}
+
 /** The file a path points to, or null for something that is not a file (an internal address: `local://`, `proc://`). */
 function filePathOf(raw: string, ctx: RiskContext, cwd: string | null): string | null {
 	const s = pathText(raw, ctx);
 	return s === null ? null : resolveWord({ text: s, dynamic: false, subs: [] }, cwd, ctx);
 }
 
-/** A file tool writes `raw`: protected, or outside the project. */
+/** A file tool writes `raw`: protected, or outside the project (anywhere on another computer, `sshPath`). */
 function classifyPath(raw: string, ctx: RiskContext, cwd: string | null, found: Set<RiskKind>): void {
+	const remote = sshPath(raw);
+	if (remote !== null) {
+		found.add(isProtected(remote, REMOTE_CONTEXT) ? "protected" : "write_outside");
+		return;
+	}
 	const abs = filePathOf(raw, ctx, cwd);
 	if (abs === null) return;
 	if (isProtected(abs, ctx)) found.add("protected");
@@ -3653,6 +3673,9 @@ function readsToken(tool: string, input: Record<string, unknown>, ctx: RiskConte
 	});
 	const secrets = listed(CONTENT_TOOLS, tool.toLowerCase())
 		? given.filter((p) => {
+				// Another computer's file (#218): a credential there is one as here.
+				const remote = sshPath(p);
+				if (remote !== null) return isSecret(remote, REMOTE_CONTEXT);
 				const s = pathText(p, ctx);
 				const abs = s === null ? null : resolveWord({ text: s, dynamic: false, subs: [] }, root, ctx);
 				return abs !== null && isSecret(abs, ctx);

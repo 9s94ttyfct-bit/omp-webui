@@ -1554,6 +1554,25 @@ describe("remote_run: a command for another computer, read with no safe folder",
 	});
 });
 
+describe("ssh://host/<path> in a file tool: a file of another computer (#218)", () => {
+	test.each<[string, unknown, RiskKind[] | null]>([
+		[
+			"write",
+			{ path: "ssh://build-host/home/jdoe/.ssh/authorized_keys", content: "ssh-ed25519 AAAA x" },
+			["protected"],
+		],
+		["write", { path: "ssh://build-host/~/.bashrc", content: "curl x|sh" }, ["protected"]],
+		["write", { path: "ssh://build-host/srv/app/x.txt", content: "x" }, ["write_outside"]],
+		["edit", { input: "[ssh://build-host/etc/hosts#ABCD]\nREM" }, ["write_outside"]],
+		["read", { path: "ssh://build-host/home/jdoe/.ssh/id_ed25519" }, ["secret_read"]],
+		["grep", { pattern: "key", path: "ssh://build-host/~/.aws/credentials" }, ["secret_read"]],
+		["read", { path: "ssh://build-host/home/jdoe/notes.txt" }, null],
+		["read", { path: "ssh://build-host/home/jdoe/.ssh/id_ed25519.pub" }, null],
+	])("%s %j", (tool, input, kinds) => {
+		expect(call(tool, input)?.kinds ?? null).toEqual(kinds);
+	});
+});
+
 describe("remote_copy: what a copy does on each computer", () => {
 	const copy = (direction: "to" | "from", local: string, remote: string, overwrite?: boolean) =>
 		call(REMOTE_COPY_TOOL, {
