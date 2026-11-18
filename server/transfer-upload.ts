@@ -1,7 +1,7 @@
 import { createHash, type Hash, randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import { chmod, copyFile, link, lstat, mkdir, open, readdir, realpath, rename, unlink } from "node:fs/promises";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { isRecord } from "../shared/guards.ts";
 import { type ExistsFailure, isHiddenName, type UploadProgress, type UploadSaved } from "../shared/transfer.ts";
 import { isSecretLooking } from "./files.ts";
@@ -243,7 +243,7 @@ export class Uploads {
 			if (guarded && (isHiddenName(raw, true) || isHiddenName(use, true)))
 				throw new TransferError("A hidden folder is not written into", 403, "hidden");
 			rels.push(use);
-			if (guarded && startsPrograms(rels))
+			if (guarded && (startsPrograms(rels) || startsPrograms(join(abs, use).split(sep))))
 				throw new TransferError("That is a place nothing is written into unasked", 403, "protected");
 			if (guarded && isSecretLooking(rels.join("/")))
 				throw new TransferError("This looks like a secret: nothing is sent into it", 403, "secret");
@@ -290,7 +290,7 @@ export class Uploads {
 		const exists = q.get("exists");
 		if (exists !== null && exists !== "keep") throw new TransferError("exists can only be keep", 400, "badRequest");
 		const replace = q.get("replace");
-		const root = await conversationRoot(ctx, q.get("live"), q.get("file"));
+		const root = await conversationRoot(ctx, q.get("live"), q.get("file"), env);
 		trace.root = root;
 		trace.path = `${q.get("dir") ?? ""}/${given}`.slice(0, 4096);
 		// The person's own page (`owner`) writes where it likes inside the folder, but for the app's own data; any other page
@@ -304,7 +304,7 @@ export class Uploads {
 			);
 		const parts = await viaFolder(async () => partsOf(q.get("dir") ?? ""));
 		if (parts.length > 32) throw new TransferError("That folder is too deep", 400, "badRequest");
-		if (guarded && startsPrograms(parts))
+		if (guarded && startsPrograms([...root.split(sep), ...parts]))
 			throw new TransferError("That is a place nothing is written into unasked", 403, "protected");
 		// Before a folder is made: not in a folder an omp-webui keeps its data in, nor a protected place.
 		const planned = join(root, ...parts);

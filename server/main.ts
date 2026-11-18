@@ -1604,8 +1604,21 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		case "/api/files": {
 			// Loaded on the first request (see `folder-lazy.ts`): nobody completes a file name until they type an `@`.
 			const { suggestFiles } = await import("./files.ts");
-			// A page that is not the person's own is offered what its Files tab shows (see `ListOptions.guarded`).
-			return json(await suggestFiles(q.get("cwd") ?? "", q.get("q") ?? "", { guarded: !fromOwner(req) }));
+			const cwd = q.get("cwd") ?? "";
+			const guarded = !fromOwner(req);
+			// A page that is not the person's own is offered what its Files tab shows (see `ListOptions.guarded`): nothing of
+			// a folder its Files tab is kept out of (`guardedRootRefusal`, #219).
+			if (guarded) {
+				const { guardedRootRefusal } = await import("./transfer-core.ts");
+				let real: string | null = null;
+				try {
+					real = realpathSync(resolve(cwd));
+				} catch {
+					// not there: `suggestFiles` answers it
+				}
+				if (real !== null && guardedRootRefusal(real, transferEnv(req, peer))) return json([]);
+			}
+			return json(await suggestFiles(cwd, q.get("q") ?? "", { guarded }));
 		}
 		case "/api/dirs": {
 			// Loaded on the first request: the folder picker is used a few times in a person's life.

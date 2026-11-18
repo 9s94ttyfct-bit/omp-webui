@@ -83,7 +83,8 @@ export async function placeRefusal(
 		);
 	const named = await viaFolder(async () => partsOf(rel));
 	const real = relative(root, file.abs).split(sep);
-	if (guarded && (startsPrograms(named) || startsPrograms(real)))
+	// The real path whole, not only below the folder: a conversation in a repository's `.git` is one (#219).
+	if (guarded && (startsPrograms(named) || startsPrograms(file.abs.split(sep))))
 		return new TransferError("That is a place nothing is written into unasked", 403, "protected");
 	if (guarded && (isSecretLooking(named.join("/")) || isSecretLooking(real.join("/"))))
 		return new TransferError("This looks like a secret: nothing is written into it", 403, "secret");
@@ -215,7 +216,7 @@ export async function editFile(
 ): Promise<Response> {
 	requireUpload(env);
 	const save = await saveOf(req);
-	const root = await conversationRoot(ctx, save.live, save.file);
+	const root = await conversationRoot(ctx, save.live, save.file, env);
 	trace.root = root;
 	trace.path = save.path.slice(0, 4096);
 	const target = await viaFolder(() => resolveFor(root, save.path, !env.owner));

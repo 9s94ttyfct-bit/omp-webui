@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs";
 import { statfs } from "node:fs/promises";
-import { relative } from "node:path";
+import { relative, sep } from "node:path";
 import { isProtectedPath } from "../shared/remote-risk.ts";
 import {
 	ERROR_HEADER,
@@ -11,7 +11,7 @@ import {
 	type TransferKind,
 } from "../shared/transfer.ts";
 import { isSecretLooking } from "./files.ts";
-import { FolderError, inside, partsOf, type Resolved, resolveFor, rootOf } from "./folder.ts";
+import { FolderError, guardedRefusal, inside, partsOf, type Resolved, resolveFor, rootOf } from "./folder.ts";
 import { platformId } from "./platform/capabilities.ts";
 import type { TransferLog } from "./transfer-log.ts";
 
@@ -151,6 +151,7 @@ export function fromFolder(e: FolderError): TransferError {
 		case 403:
 			if (/secret/i.test(e.message)) return new TransferError(e.message, 403, "secret");
 			if (/hidden/i.test(e.message)) return new TransferError(e.message, 403, "hidden");
+			if (/place nothing/i.test(e.message)) return new TransferError(e.message, 403, "protected");
 			if (/permission/i.test(e.message)) return new TransferError(e.message, 403, "refused");
 			return new TransferError(e.message, 403, "outside");
 		default:
@@ -186,15 +187,40 @@ export function requireUpload(env: TransferEnv): void {
 	);
 }
 
-/** The real folder of the conversation the request names: 404 when it names none, or its folder is gone. */
+/**
+ * Why a page that is not the person's own is kept out of a conversation's folder `root` altogether (#219), or null. The
+ * folder is that page's own choice (a new conversation starts anywhere), so the rules it is held to inside the folder
+ * (nothing hidden by default, nothing that looks like a secret, no protected place) are held for the folder itself too:
+ * judged on its path from the home folder (`~/.config/gh`, `~/.ssh`, a repository's `.git` are hidden on the way down),
+ * and a protected place (omp's agent folder, the app's data) wherever it is.
+ */
+export function guardedRootRefusal(root: string, env: Pick<TransferEnv, "home" | "protect">): FolderError | null {
+	const home = realHome(env.home);
+	if (root !== home && inside(home, root)) {
+		const refusal = guardedRefusal(home, `${relative(home, root).split(sep).join("/")}/`);
+		if (refusal) return refusal;
+	}
+	if (isProtectedPath(root, { home, protect: env.protect, windows: platformId === "win32" }))
+		return new FolderError("This is a place nothing is shown to a page that is not on this computer", 403);
+	return null;
+}
+
+/**
+ * The real folder of the conversation the request names: 404 when it names none, or its folder is gone; 403 for a page
+ * that is not the person's own when the folder is one it is kept out of (`guardedRootRefusal`).
+ */
 export async function conversationRoot(
 	ctx: TransferContext,
 	live: string | null,
 	file: string | null,
+	env: TransferEnv,
 ): Promise<string> {
 	const cwd = await ctx.cwdOf(live, file);
 	if (!cwd) throw new TransferError("Unknown conversation", 404, "notFound");
-	return viaFolder(() => rootOf(cwd));
+	const root = await viaFolder(() => rootOf(cwd));
+	const refusal = env.owner ? null : guardedRootRefusal(root, env);
+	if (refusal) throw fromFolder(refusal);
+	return root;
 }
 
 const homes = new Map<string, string>();
@@ -216,10 +242,17 @@ export function realHome(home: string): string {
 /** Whether the conversation's folder is the home folder or holds it: a page there is shown what the Files tab shows, and no more. */
 export const holdsHome = (root: string, env: TransferEnv): boolean => inside(root, realHome(env.home));
 
-/** Where CI runs what it finds on a push: the Files tab lists it, a page never writes below it (an upload, nor a save). */
+/**
+ * Where what is written runs as a program: what CI runs on a push (`.github/workflows`, `.github/actions`) and a git
+ * repository's own folder (`.git`: its `config` and hooks run commands at the person's next `git status`). The Files tab
+ * lists them; a page that is not the person's own never writes below them (an upload, nor a save). Looked for anywhere in
+ * `parts`, so that the conversation's folder being one of them (`proj/.git`) counts as well (#219).
+ */
 export function startsPrograms(parts: readonly string[]): boolean {
-	const [first, second] = parts.map((p) => p.toLowerCase());
-	return first === ".github" && (second === "workflows" || second === "actions");
+	const lower = parts.map((p) => p.toLowerCase());
+	return lower.some(
+		(p, i) => p === ".git" || (p === ".github" && (lower[i + 1] === "workflows" || lower[i + 1] === "actions")),
+	);
 }
 
 /** Whether `abs` (a real path) is a place nothing is carried out of or into unasked. */

@@ -304,7 +304,7 @@ export async function planArchive(
 ): Promise<Response> {
 	requireDownload(env);
 	const body = await asked(req);
-	const root = await conversationRoot(ctx, body.live, body.file);
+	const root = await conversationRoot(ctx, body.live, body.file, env);
 	trace.root = root;
 	trace.path = body.path.slice(0, 4096);
 	const home = holdsHome(root, env);

@@ -1,4 +1,5 @@
 import { type FSWatcher, statSync, watch } from "node:fs";
+import { homedir } from "node:os";
 import type { FileDiff, FolderChanges } from "../shared/changes.ts";
 import { FOLDER_LIMITS } from "../shared/folder.ts";
 import { changesAnswer, diffAnswer } from "./changes-routes.ts";
@@ -20,7 +21,7 @@ import { mayEdit } from "./folder-write.ts";
 import type { GitMarks } from "./git-marks.ts";
 import { platform } from "./platform/index.ts";
 import type { DesktopOps } from "./platform/types.ts";
-import type { TransferEnv } from "./transfer-core.ts";
+import { guardedRootRefusal, type TransferEnv } from "./transfer-core.ts";
 
 /**
  * `/api/folder/*`: the Files tab's reads of the folder a conversation works in, and the actions that hand a file or a
@@ -122,8 +123,13 @@ export async function handleFolder(req: Request, url: URL, ctx: FolderContext): 
 		const cwd = await ctx.cwdOf(live, file);
 		if (!cwd) return fail("Unknown conversation", 404);
 		const root = await rootOf(cwd);
-		// A page that is not the person's own is shown no more than the conversation shows it (see `ListOptions.guarded`).
+		// A page that is not the person's own is shown no more than the conversation shows it (see `ListOptions.guarded`),
+		// and nothing of a folder it is kept out of altogether (`guardedRootRefusal`, #219).
 		const guarded = !ctx.owner;
+		if (guarded) {
+			const refusal = guardedRootRefusal(root, ctx.env?.() ?? { home: homedir(), protect: [] });
+			if (refusal) throw refusal;
+		}
 		switch (route) {
 			case "list": {
 				const marks = await ctx.marks(root, q.get("fresh") === "1");

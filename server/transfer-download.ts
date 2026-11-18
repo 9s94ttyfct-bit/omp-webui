@@ -188,7 +188,7 @@ export async function download(
 	// What was asked for is written down even when the setting says no (a refusal is in the log with who asked and for what).
 	trace.path = (q.get("path") ?? "").slice(0, 4096);
 	requireDownload(env);
-	const root = await conversationRoot(ctx, q.get("live"), q.get("file"));
+	const root = await conversationRoot(ctx, q.get("live"), q.get("file"), env);
 	trace.root = root;
 	const file = await resolveDownload(root, q.get("path") ?? "", env, holdsHome(root, env));
 	return send(req, file, env, trace, deps);
