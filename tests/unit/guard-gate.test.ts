@@ -116,6 +116,8 @@ interface Loaded {
 	log: string;
 	word(over: Partial<GuardWord>, extra?: Record<string, unknown>): void;
 	decisions(): GuardDecision[];
+	/** What the gate does as the process exits: the questions still open are written down as not answered (#406). */
+	endOpen(): void;
 }
 
 async function load(
@@ -138,9 +140,13 @@ async function load(
 	const saved = process.argv;
 	process.argv = ["omp", "--config", overlay];
 	let handler: Handler | undefined;
+	let endOpen = (): void => {};
 	try {
-		const mod: { default: (pi: unknown) => void } = await import(`${path}?${Math.random()}`);
+		const mod: { default: (pi: unknown) => void; endOpenQuestions: () => void } = await import(
+			`${path}?${Math.random()}`
+		);
 		mod.default({ on: (_event: string, h: Handler) => (handler = h) });
+		endOpen = mod.endOpenQuestions;
 	} finally {
 		process.argv = saved;
 	}
@@ -152,7 +158,7 @@ async function load(
 					.filter(Boolean)
 					.map((l) => parseDecision(JSON.parse(l)) as GuardDecision)
 			: [];
-	return { handler, data, overlay, log, word: write, decisions };
+	return { handler, data, overlay, log, word: write, decisions, endOpen };
 }
 
 interface Model {
@@ -179,6 +185,10 @@ function context(opts: {
 	models?: Model[];
 	roles?: Record<string, Model>;
 	answer?: string | undefined;
+	/** The dialog is never answered: the process ends while it is open. */
+	hang?: boolean;
+	/** The dialog is rejected, as omp rejects every open question when it shuts down. */
+	reject?: boolean;
 	branch?: unknown[];
 	usageSink?: Record<string, unknown>[];
 	noAuth?: boolean;
@@ -197,6 +207,8 @@ function context(opts: {
 		ui: {
 			select: async (title: string, options: string[]) => {
 				asked.push({ title, options });
+				if (opts.hang) return new Promise<never>(() => {});
+				if (opts.reject) throw new Error("RPC mode shutting down");
 				return opts.answer;
 			},
 		},
@@ -514,6 +526,49 @@ describe("reviewer mode", () => {
 		expect(g.decisions().at(-1)?.reason).toBe(
 			"The reviewer (openai/gpt-reviewer) denied it: It pipes a remote script to a shell. The person denied it.",
 		);
+	});
+
+	test("a question still open when the process ends is written down as not answered, with the reviewer's denial (#406)", async () => {
+		answers["gpt-reviewer"] = DENY;
+		const g = await load({ askWhenDenied: true, page: true });
+		const { ctx, asked } = context({ cwd: scratch(), hang: true });
+		void g.handler(RISKY, ctx);
+		for (let i = 0; i < 100 && asked.length === 0; i++) await Bun.sleep(5);
+		expect(asked).toHaveLength(1);
+		expect(g.decisions()).toEqual([]);
+		// The conversation is closed (or the server quits) before the person answers: omp exits.
+		g.endOpen();
+		const [d] = g.decisions();
+		expect(d).toMatchObject({ verdict: "deny", by: "person", model: "openai/gpt-reviewer" });
+		expect(d.reason).toContain("it deletes files outside the project");
+		expect(d.reason).toContain("The conversation ended before the person answered.");
+		// Written once.
+		g.endOpen();
+		expect(g.decisions()).toHaveLength(1);
+	});
+
+	test("a question answered is not written down again as the process ends (#406)", async () => {
+		answers["gpt-reviewer"] = DENY;
+		const g = await load({ askWhenDenied: true, page: true });
+		const { ctx } = context({ cwd: scratch(), answer: RISK_DENY });
+		await g.handler(RISKY, ctx);
+		g.endOpen();
+		expect(g.decisions()).toHaveLength(1);
+		expect(g.decisions()[0].reason).toContain("The person denied it.");
+	});
+
+	test("a question omp rejects as it shuts down refuses the call and is written down as not answered (#406)", async () => {
+		answers["gpt-reviewer"] = DENY;
+		const g = await load({ askWhenDenied: true, page: true });
+		const { ctx, asked } = context({ cwd: scratch(), reject: true });
+		const verdict = await g.handler(RISKY, ctx);
+		expect(asked).toHaveLength(1);
+		expect(verdict).toMatchObject({ block: true });
+		const [d] = g.decisions();
+		expect(d).toMatchObject({ verdict: "deny", by: "person" });
+		expect(d.reason).toContain("The conversation ended before the person answered.");
+		g.endOpen();
+		expect(g.decisions()).toHaveLength(1);
 	});
 
 	test("with the setting off, for a subagent, or with nobody to see the question, a reviewer's denial is final (#747)", async () => {

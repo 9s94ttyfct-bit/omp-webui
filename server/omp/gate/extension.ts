@@ -484,6 +484,19 @@ function decide(
 }
 
 /**
+ * The questions put to the person that are not answered yet, each with what writes it down as not answered. A conversation
+ * closed (or a server quitting) while one is open ends omp with the dialog still waiting: without this the call, and a
+ * reviewer's denial that came before it, would leave no trace in the guard's log (#406).
+ */
+const openQuestions = new Set<() => void>();
+let exitHooked = false;
+
+/** Write every question still open down as not answered: what omp's exit runs (exported for the tests). */
+export function endOpenQuestions(): void {
+	for (const end of [...openQuestions]) end();
+}
+
+/**
  * Ask the person, as the confirmation of #608 does, and write the answer down as theirs. `denied`: the reviewer's denial
  * they are asked to overrule, which the dialog names apart from the call (#753), and the record and the agent are told the
  * answer was given over. `unavailable`: no reviewer could be reached, which the dialog names apart from the call too (#764).
@@ -496,11 +509,31 @@ async function askPerson(
 ) {
 	const { event, ctx, risk } = frame;
 	const title = riskTitle(event.toolName, risk.kinds, risk.detail, { by: "guard", denied, unavailable });
-	const answer = await ctx.ui.select(title, [RISK_ALLOW, RISK_DENY]);
 	const why = risk.kinds.join(", ");
 	const before = denied
 		? `The reviewer (${denied.model}) denied it: ${endSentence(denied.reason) || "no reason given."} `
 		: "";
+	const unanswered = (): void => {
+		openQuestions.delete(unanswered);
+		decide(frame, "deny", "person", `${before}The conversation ended before the person answered.`, extra);
+	};
+	openQuestions.add(unanswered);
+	if (!exitHooked) {
+		exitHooked = true;
+		// Synchronous, as `exit` handlers must be: `decide` appends to the log with `appendFileSync`.
+		process.once("exit", endOpenQuestions);
+	}
+	let answer: string | undefined;
+	let ended = false;
+	try {
+		answer = await ctx.ui.select(title, [RISK_ALLOW, RISK_DENY]);
+	} catch {
+		// omp rejects every open question as it shuts down (a closed conversation's stdin ends): the call is refused, and
+		// written down as not answered, as the exit hook does for an omp that ends with no such rejection.
+		ended = true;
+	} finally {
+		openQuestions.delete(unanswered);
+	}
 	if (answer === RISK_ALLOW) {
 		decide(frame, "allow", "person", `${before}The person allowed it.`, extra);
 		return undefined;
@@ -509,7 +542,13 @@ async function askPerson(
 		frame,
 		"deny",
 		"person",
-		`${before}${answer === RISK_DENY ? "The person denied it." : "The person did not answer."}`,
+		`${before}${
+			ended
+				? "The conversation ended before the person answered."
+				: answer === RISK_DENY
+					? "The person denied it."
+					: "The person did not answer."
+		}`,
 		extra,
 	);
 	return refuse(
