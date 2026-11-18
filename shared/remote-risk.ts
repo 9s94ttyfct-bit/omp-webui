@@ -1581,6 +1581,8 @@ const JUDGED_KEYS = table(
 	"direction",
 	"overwrite",
 );
+/** What a `debug` call is judged by besides (#217): what it does, the program it launches and its arguments, where it evaluates. */
+const DEBUG_KEYS = table("action", "program", "args", "context");
 /**
  * A session tool called by an `eval` cell: `tool.write(…)`, `tool["write"](…)`, `tool[name](…)` (the name in group 1 or 2;
  * a computed one is read up to 200 characters, so that many `tool[` on a long line stay linear).
@@ -3539,7 +3541,9 @@ class Scan {
 				input === UNKNOWN ||
 				(record !== null &&
 					Object.entries(record).some(
-						([k, v]) => hasUnknown(v) && (listed(JUDGED_KEYS, k) || (k === "content" && behind)),
+						([k, v]) =>
+							hasUnknown(v) &&
+							(listed(JUDGED_KEYS, k) || (k === "content" && behind) || (tool === "debug" && listed(DEBUG_KEYS, k))),
 					));
 			if (unseen && !listed(READ_ONLY_TOOLS, tool) && !listed(REMOTE_TOOLS_READING, tool)) this.add("dynamic_command");
 			if (input !== UNKNOWN)
@@ -3892,6 +3896,26 @@ function classify(tool: string, input: Record<string, unknown>, ctx: RiskContext
 	}
 	// `remote_copy`: a file or a folder carried between this computer and another (see `copyRisk`).
 	if (name === REMOTE_COPY) return copyRisk(input, ctx, root);
+	// omp's `debug` (#217): `launch` runs its `program` with `args`, read as that command line (an argv, as `subprocess.run([…])`
+	// is). What `attach` reaches, a `custom_request`, and what the debugger's own prompt runs (`evaluate` in `repl`, omp's
+	// default context: lldb's `platform shell …`, gdb's `shell …`) cannot be read.
+	if (name === "debug") {
+		const { action } = input;
+		if (
+			action === "attach" ||
+			action === "custom_request" ||
+			(action === "evaluate" && (input.context ?? "repl") === "repl")
+		)
+			return { kinds: ["dynamic_command"], detail: `Tool: ${tool}\n${safeJson(input)}` };
+		if (action !== "launch" || !isString(input.program)) return null;
+		const words = [input.program, ...(Array.isArray(input.args) ? input.args : [])];
+		const line = words.map((w) => (isString(w) ? `'${w.replace(/'/g, `'\\''`)}'` : '"$X"')).join(" ");
+		const start = isString(input.cwd) && root !== null ? (filePathOf(input.cwd, ctx, root) ?? root) : root;
+		const kinds = classifyShell(line, ctx, start);
+		if (kinds.length === 0) return null;
+		const where = isString(input.cwd) ? `${RISK_IN} ${oneLine(input.cwd)}\n` : "";
+		return { kinds, detail: `${where}${RISK_COMMAND} ${line}` };
+	}
 	// `bash`, and any other tool that is handed a shell command (an MCP server's `execute_shell_command`).
 	if (isString(input.command) && name !== "write") {
 		const start = isString(input.cwd) && root !== null ? (filePathOf(input.cwd, ctx, root) ?? root) : root;
