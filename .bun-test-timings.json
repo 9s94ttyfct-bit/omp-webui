@@ -345,6 +345,7 @@
     "tests/unit/semantic-install.test.ts": 86,
     "tests/unit/store-changes.test.ts": 85,
     "tests/unit/usage-numbers.test.ts": 84,
+    "tests/unit/semantic-service.test.ts": 83,
     "tests/unit/subagent-concurrency.test.ts": 83,
     "tests/unit/update-release.test.ts": 78,
     "tests/unit/select.test.tsx": 76,

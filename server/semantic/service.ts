@@ -60,6 +60,8 @@ export class SemanticService {
 	private failure: SemanticFailure | undefined;
 	private download: { received: number; total: number } | undefined;
 	private installing: AbortController | null = null;
+	/** The install under way, settled or not: turning off waits for it (an unpack is a `tar` that a signal does not stop). */
+	private installRun: Promise<unknown> | null = null;
 	private runtime: (SemanticRuntime & { stop(): void; stopped?(): Promise<void> }) | null = null;
 	private index: SemanticIndex | null = null;
 	private trouble: string | null = null;
@@ -91,6 +93,9 @@ export class SemanticService {
 	async turnOff(): Promise<void> {
 		this.installing?.abort();
 		this.installing = null;
+		// Nothing of an install may land in the folder after it is deleted (an unpack moving its build in).
+		await this.installRun?.catch(() => {});
+		this.installRun = null;
 		this.index?.close();
 		this.index = null;
 		const runtime = this.runtime;
@@ -125,12 +130,14 @@ export class SemanticService {
 		const abort = new AbortController();
 		this.installing = abort;
 		this.download = { received: 0, total: 0 };
-		void (this.deps.install ?? install)(this.dir, {
+		const run = (this.deps.install ?? install)(this.dir, {
 			signal: abort.signal,
 			onProgress: (received, total) => {
 				this.download = { received, total };
 			},
-		}).then(
+		});
+		this.installRun = run;
+		void run.then(
 			(done) => {
 				if (this.installing !== abort) return;
 				this.installing = null;

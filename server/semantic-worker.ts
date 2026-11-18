@@ -405,15 +405,21 @@ async function search(q: string, max: number, endpoint: Endpoint): Promise<RawSe
 	const fts = openFts();
 	if (!fts) return [];
 	try {
+		// One read of the full-text index: a file whose rows were dropped and written again since its vectors were made (its
+		// epoch moved; the next pass embeds it again) holds other text under the same row ids, which this score is not for.
+		fts.run("BEGIN");
 		const hits: RawSemanticHit[] = [];
 		for (const [fid, { score: s, i }] of top) {
-			const file = fts.query<{ file: string }, [number]>("SELECT file FROM files WHERE fid = ?").get(fid)?.file;
+			const now = fts
+				.query<{ file: string; epoch: number }, [number]>("SELECT file, epoch FROM files WHERE fid = ?")
+				.get(fid);
 			const row = fts
 				.query<{ text: string; entry_id: string; role: string; ts: string }, [number]>(
 					"SELECT text, entry_id, role, ts FROM fts WHERE rowid = ?",
 				)
 				.get(msgs[i] as number);
-			if (!file || file.includes("\0") || !row) continue;
+			if (!now || now.epoch !== own.get(fid)?.epoch || now.file.includes("\0") || !row) continue;
+			const file = now.file;
 			const start = starts[i] as number;
 			const snippet = row.text
 				.slice(start, start + SNIPPET_CHARS * 2)
@@ -424,6 +430,7 @@ async function search(q: string, max: number, endpoint: Endpoint): Promise<RawSe
 		}
 		return hits;
 	} finally {
+		if (fts.inTransaction) fts.run("COMMIT");
 		fts.close();
 	}
 }
