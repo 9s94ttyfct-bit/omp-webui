@@ -60,6 +60,7 @@ export const en = {
 	errRefused: "Not used: .omp-webui/uploads in the conversation's folder is a link or not a folder.",
 	errStalled: "The file stopped arriving, so it was not saved",
 	errWrite: "The server could not write “{name}” into the conversation's folder.",
+	errDiskFull: "“{name}” was not saved: the disk of the computer it goes to is (nearly) full.",
 	errBadRequest: "The server refused “{name}”.",
 	errNoConversation:
 		"The conversation has not started yet, so there is nowhere to send “{name}”. Try again in a moment.",

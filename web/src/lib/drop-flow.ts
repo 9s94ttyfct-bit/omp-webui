@@ -255,6 +255,8 @@ export function uploadFailureText(
 			return t("drop.errRefused");
 		case "stalled":
 			return t("drop.errStalled");
+		case "diskFull":
+			return t("drop.errDiskFull", { name });
 		case "write":
 			return t("drop.errWrite", { name });
 		case "badRequest":

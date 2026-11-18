@@ -3,6 +3,7 @@ import { type FileHandle, lstat, mkdir, open, readdir, realpath, unlink } from "
 import { basename, dirname, join, resolve } from "node:path";
 import { UPLOAD_DIR, UPLOAD_LIMITS, type UploadCode, type UploadFailure, type UploadResult } from "../shared/upload.ts";
 import { FolderError, inside, rootOf } from "./folder.ts";
+import { DEFAULT_LIMITS, diskSpace, type Limits, leavesRoom } from "./transfer-core.ts";
 
 /**
  * `POST /api/upload?live=…&file=…&name=…` (body: the file's bytes): save a file the page holds into the folder the
@@ -29,7 +30,7 @@ const json = (data: unknown, status = 200) =>
 export class UploadError extends Error {
 	constructor(
 		message: string,
-		readonly status: 400 | 403 | 404 | 408 | 413 | 500,
+		readonly status: 400 | 403 | 404 | 408 | 413 | 500 | 507,
 		readonly code: UploadCode,
 		readonly limit?: number,
 	) {
@@ -46,6 +47,10 @@ export interface UploadContext {
 	now?: () => Date;
 	/** Other limits (tests use small ones); `stallMs` is how long a body may take to send its next piece. */
 	limits?: Partial<Record<"fileBytes" | "folderBytes" | "counted" | "stallMs", number>>;
+	/** What the disk keeps free, as the Files tab's upload keeps it (`leavesRoom`; `OMP_WEBUI_TRANSFER_RESERVE_BYTES` sets it). */
+	reserve?: Partial<Pick<Limits, "reserveBytes" | "reservePercent">>;
+	/** What the disk holds free and in all at a path (tests give a small one). */
+	statfs?: (path: string) => Promise<{ free: number; total: number }>;
 }
 
 /** The longest file name saved, in bytes: well inside what any file system takes (255), with room for ` (999)`. */
@@ -254,11 +259,21 @@ export async function nextPiece(reader: ReadableStreamDefaultReader<Uint8Array>,
 	}
 }
 
-/** The request's body written to `handle`: at most `fileBytes` of it, and at most `room` more than the folder of uploads (`folderBytes` big) already holds. Returns how many bytes. */
+/** How many bytes are written between two looks at the free space of the disk. */
+const SPACE_LOOK_BYTES = 4 * 1024 * 1024;
+
+const diskFull = () => new UploadError("There is not enough room on the disk", 507, "diskFull");
+
+/**
+ * The request's body written to `handle`: at most `fileBytes` of it, and at most `room` more than the folder of uploads
+ * (`folderBytes` big) already holds; the disk is looked at again every `SPACE_LOOK_BYTES` (another upload may be filling
+ * it) and must keep its reserve. Returns how many bytes.
+ */
 async function writeBody(
 	req: Request,
 	handle: FileHandle,
 	limits: { fileBytes: number; room: number; folderBytes: number; stallMs: number },
+	keepsReserve: (more: number) => Promise<boolean>,
 ): Promise<number> {
 	if (!req.body) return 0;
 	const reader = req.body.getReader();
@@ -268,6 +283,9 @@ async function writeBody(
 			const { done, value } = await nextPiece(reader, limits.stallMs);
 			if (done) return received;
 			received += value.byteLength;
+			if (Math.floor(received / SPACE_LOOK_BYTES) > Math.floor((received - value.byteLength) / SPACE_LOOK_BYTES)) {
+				if (!(await keepsReserve(value.byteLength))) throw diskFull();
+			}
 			if (received > limits.fileBytes)
 				throw new UploadError("The file is too large", 413, "tooLarge", limits.fileBytes);
 			if (received > limits.room)
@@ -322,14 +340,18 @@ async function save(req: Request, url: URL, ctx: UploadContext): Promise<UploadR
 		if (used.bytes + (declared ?? 0) > folderBytes)
 			throw new UploadError("The folder of uploads is full", 413, "quota", folderBytes);
 		const dir = await ensureDir(root, [...base, uploadDate((ctx.now ?? (() => new Date()))())]);
+		// The disk keeps what the Files tab's upload leaves it (#343): looked at before the file is made, and while it is written.
+		const reserve = { ...DEFAULT_LIMITS, ...ctx.reserve };
+		const keepsReserve = async (more: number) => leavesRoom(await (ctx.statfs ?? diskSpace)(dir), more, reserve);
+		if (!(await keepsReserve(declared ?? 0))) throw diskFull();
 		const made = await createUnique(dir, safeName(given));
 		try {
-			const bytes = await writeBody(req, made.handle, {
-				fileBytes,
-				room: folderBytes - used.bytes,
-				folderBytes,
-				stallMs,
-			});
+			const bytes = await writeBody(
+				req,
+				made.handle,
+				{ fileBytes, room: folderBytes - used.bytes, folderBytes, stallMs },
+				keepsReserve,
+			);
 			await made.handle.close();
 			return { path: made.path, name: made.name, bytes };
 		} catch (e) {
@@ -356,7 +378,10 @@ export async function handleUpload(req: Request, url: URL, ctx: UploadContext): 
 				e.status,
 			);
 		}
-		if (typeof (e as NodeJS.ErrnoException).code === "string") {
+		const code = (e as NodeJS.ErrnoException).code;
+		if (code === "ENOSPC" || code === "EDQUOT")
+			return json({ error: "The disk is full", code: "diskFull" } satisfies UploadFailure, 507);
+		if (typeof code === "string") {
 			// What the system said is for the log: its message names a path.
 			console.error("omp-webui: upload failed:", e);
 			return json({ error: "The file could not be written", code: "write" } satisfies UploadFailure, 500);

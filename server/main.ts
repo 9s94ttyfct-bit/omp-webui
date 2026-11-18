@@ -2708,7 +2708,11 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		// Loaded on the first upload: a page that never sends a file does not have its code in memory.
 		const { handleUpload } = await import("./upload.ts");
 		// Every omp-webui's data folder, this one's first: the app's is in Application Support, the web version's in `~/.omp-webui`.
-		return handleUpload(req, url, { cwdOf: conversationCwd, dataDirs: [cfg.dataDir, ...knownDataDirs()] });
+		return handleUpload(req, url, {
+			cwdOf: conversationCwd,
+			dataDirs: [cfg.dataDir, ...knownDataDirs()],
+			reserve: reserveFromEnv(process.env.OMP_WEBUI_TRANSFER_RESERVE_BYTES),
+		});
 	}
 	if (p === "/api/model-config" || p.startsWith("/api/model-config/")) return handleModelConfig(req, url, cfg);
 	if (p === "/api/plugins" || p.startsWith("/api/plugins/")) {

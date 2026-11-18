@@ -39,6 +39,8 @@ export type UploadCode =
 	| "refused"
 	| "stalled"
 	| "badRequest"
+	/** Saving it would leave the disk with less than it keeps free (the Files tab's reserve: 1 GiB / 5 %), or the disk is full. */
+	| "diskFull"
 	| "write";
 
 /** What an upload answers: where the file is now. */

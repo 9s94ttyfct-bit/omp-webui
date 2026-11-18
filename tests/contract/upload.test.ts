@@ -78,6 +78,8 @@ async function send(cwd: string | null, o: Sent, ctx: Partial<UploadContext> = {
 		cwdOf: async () => cwd,
 		dataDirs: [DATA],
 		now: () => NOW,
+		// A disk with room for anything: what a test saves does not depend on how full the disk it runs on is.
+		statfs: async () => ({ free: 2 ** 50, total: 2 ** 51 }),
 		...ctx,
 	});
 	const body = (await res.json()) as UploadResult & Failure;
@@ -526,6 +528,33 @@ describe("limits", () => {
 			{ limits: { fileBytes: 5, folderBytes: 8 } },
 		);
 		expect(body.code).toBe("tooLarge");
+	});
+
+	test("the disk keeps its reserve: a file that would take it is refused before it is made, or stopped while it is written (#343)", async () => {
+		const w = world();
+		const MiB = 1024 * 1024;
+		const reserve = { reserveBytes: 2 * MiB, reservePercent: 0 };
+		// 3 MiB free: a declared 2 MiB would leave 1 MiB of the 2 kept free.
+		const small = { statfs: async () => ({ free: 3 * MiB, total: 100 * MiB }), reserve };
+		const declared = await send(
+			w.proj,
+			{ name: "wide.bin", body: "x".repeat(2 * MiB), headers: { "content-length": String(2 * MiB) } },
+			small,
+		);
+		expect(declared.status).toBe(507);
+		expect(declared.body).toMatchObject({ code: "diskFull" });
+		expect(existsSync(join(w.today, "wide.bin"))).toBe(false);
+		// A body that says nothing of its length: the disk is looked at again as it is written (another upload filled it).
+		let looks = 0;
+		const filling = { statfs: async () => ({ free: looks++ === 0 ? 10 * MiB : MiB, total: 100 * MiB }), reserve };
+		const piece = "y".repeat(4 * MiB);
+		const grows = await send(w.proj, { name: "grows.bin", body: streamOf(piece, piece) }, filling);
+		expect(grows.status).toBe(507);
+		expect(grows.body).toMatchObject({ code: "diskFull" });
+		expect(names(w.today)).toEqual([]);
+		// Room enough: saved.
+		const roomy = { statfs: async () => ({ free: 100 * MiB, total: 100 * MiB }), reserve };
+		expect((await send(w.proj, { name: "fits.bin", body: piece }, roomy)).status).toBe(200);
 	});
 });
 

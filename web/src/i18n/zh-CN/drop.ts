@@ -51,6 +51,7 @@ export const zh: Record<keyof typeof en, string> = {
 	errRefused: "未使用：对话文件夹里的 .omp-webui/uploads 是链接，或者不是文件夹。",
 	errStalled: "文件传输中断，未保存",
 	errWrite: "服务器无法把“{name}”写入对话所在的文件夹。",
+	errDiskFull: "“{name}”没有保存：目标电脑的磁盘（几乎）已满。",
 	errBadRequest: "服务器拒绝了“{name}”。",
 	errNoConversation: "对话还没有开始，没有地方可以放“{name}”。请稍后再试。",
 	errFolderNoPath:
