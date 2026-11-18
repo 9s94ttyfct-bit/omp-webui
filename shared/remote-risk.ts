@@ -2511,6 +2511,9 @@ class Scan {
 			// `export PAGER=…`, #221): read as one.
 			const held = k < head || assigns ? COMMAND_VARIABLE.exec(w.text) : null;
 			if (held) this.script(held[1].replace(/^\|{1,2}/, ""), cwd, depth + 1);
+			// `npm_config_global=true npm install x`: npm's `-g` set in its environment (#252).
+			if ((k < head || assigns) && cmd && /^npm_config_global=(?:true|1)$/i.test(w.text))
+				this.install(cmd.name, splitArgs(cmd.args).operands, ["--global"]);
 		});
 		return cmd ? this.command(cmd, simple.body, cwd, depth) : cwd;
 	}
@@ -3401,9 +3404,16 @@ class Scan {
 
 	private install(name: string, operands: Word[], opts: string[]): void {
 		const verb = operands[0]?.text ?? "";
+		const sub = operands[1]?.text ?? "";
 		if (name === "brew" && /^(install|reinstall|uninstall|remove|upgrade|tap|untap|link|unlink|cleanup)$/.test(verb))
 			this.add("global_install");
-		const global = hasLong(opts, "--global") || opts.includes("-g") || verb === "global";
+		// npm's own spelling of `-g` too (`--location=global`, `--location global`, #252).
+		const global =
+			hasLong(opts, "--global") ||
+			opts.includes("-g") ||
+			verb === "global" ||
+			opts.includes("--location=global") ||
+			(opts.includes("--location") && sub === "global");
 		if (
 			(name === "npm" || name === "pnpm" || name === "yarn" || name === "bun") &&
 			global &&
@@ -3411,6 +3421,24 @@ class Scan {
 		)
 			this.add("global_install");
 		if ((name === "cargo" || name === "pipx") && verb === "install") this.add("global_install");
+		// What puts programs on every shell's `PATH` or changes the system's software (#252): `go install`, `uv tool install`, a
+		// pip install for the user or past the system's protection, `gem install`, `deno install -g`, corepack's shims, the App
+		// Store's and the system's updates.
+		const pipInstall =
+			(/^pip[\d.]*$/.test(name) && verb === "install") ||
+			(/^python[\d.]*$/.test(name) && verb === "pip" && sub === "install");
+		if (
+			(name === "go" && verb === "install") ||
+			(name === "uv" && verb === "tool" && /^(?:install|upgrade|uninstall)$/.test(sub)) ||
+			(name === "uv" && verb === "pip" && hasLong(opts, "--system")) ||
+			(pipInstall && hasLong(opts, "--user", "--break-system-packages")) ||
+			(name === "gem" && /^(?:install|uninstall|update)$/.test(verb)) ||
+			(name === "deno" && verb === "install" && (opts.includes("-g") || hasLong(opts, "--global"))) ||
+			(name === "corepack" && /^(?:enable|disable)$/.test(verb)) ||
+			(name === "mas" && /^(?:install|uninstall|upgrade|purchase)$/.test(verb)) ||
+			(name === "softwareupdate" && (hasShort(opts, "i") || hasLong(opts, "--install", "--install-rosetta")))
+		)
+			this.add("global_install");
 	}
 
 	/**

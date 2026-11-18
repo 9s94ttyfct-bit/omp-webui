@@ -2406,3 +2406,35 @@ describe("putting code or work out in public is publish (#283)", () => {
 		expect(shell(command)).toEqual([]);
 	});
 });
+
+describe("npm's other spellings of -g and the global installs of other tools are global_install (#252)", () => {
+	test.each([
+		"npm i --location=global x",
+		"npm install --location global x",
+		"npm_config_global=true npm install x",
+		"env npm_config_global=true npm i x",
+		"go install example.com/x@latest",
+		"uv tool install x",
+		"gem install x",
+		"pip install --user x",
+		"pip3 install --break-system-packages x",
+		"python3 -m pip install --user x",
+		"deno install -g -A https://example.com/x.ts",
+		"corepack enable",
+		"mas install 497799835",
+		"softwareupdate -ia",
+	])("%s", (command) => {
+		expect(shell(command)).toContain("global_install");
+	});
+
+	test.each([
+		"npm install x",
+		"npm i --location=project x",
+		"pip install -r requirements.txt",
+		"go build ./...",
+		"softwareupdate -l",
+		"uv tool run ruff",
+	])("%s is not asked about", (command) => {
+		expect(shell(command)).toEqual([]);
+	});
+});
