@@ -42,7 +42,13 @@ describe("the line ending a text is saved with", () => {
 	});
 
 	test("what the editor holds as lines is written back as the file had them, byte for byte", () => {
-		for (const text of ["one\r\ntwo\r\n\r\nthree", "one\ntwo\n\nthree\n", "single line", "trailing\r\n"]) {
+		for (const text of [
+			"one\r\ntwo\r\n\r\nthree",
+			"one\ntwo\n\nthree\n",
+			"single line",
+			"trailing\r\n",
+			"id,name\r1,Ann\r2,Bob\r",
+		]) {
 			const doc = EditorState.create({ doc: text }).doc;
 			expect(doc.sliceString(0, doc.length, eolOf(text))).toBe(text);
 		}
