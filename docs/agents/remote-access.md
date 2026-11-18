@@ -34,6 +34,8 @@ With shells off, such a page also installs and turns on no code omp runs (#209):
 
 Slash commands omp runs itself are held the same way (#213): such a page may never send `/export <path>`, and with shells off only the built-in commands that show or tune the conversation (`/model`, `/compact`, `/retry`, `/rename`, `/tools`, `/context`, `/mcp list`, …; `TOKEN_PAGE_COMMANDS` in `server/main.ts`) reach omp; `/mcp add`, `/plugins`, `/marketplace add`, `/ssh add`, `/memory`, `/share`, `/move` and extension or custom commands are refused. Skills and prompt files still go to the model, whose turn the gate holds.
 
+Deleting a conversation together with its folder (the Trash) is the same (#368): unless File transfer is *full*, such a page is offered no folder to move and its picks are refused; it may still delete the conversation alone.
+
 **Share these settings with another computer**: **Export settings** saves `omp-webui-remote-access.json` holding only team, AUD and emails (no hostname, tunnel or credentials); **Import settings…** fills the form from such a file (max 64 KB, max 200 emails, version 1) and the user then adds this computer's hostname and saves. One Access application with a wildcard domain can serve several computers.
 
 ### What a remote page can and cannot do

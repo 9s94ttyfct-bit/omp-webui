@@ -9,7 +9,7 @@ import { factsOf, noticeLang, working } from "../shared/attention.ts";
 import { chatProjectOfScope } from "../shared/chat-projects.ts";
 import { CI_SCOPES } from "../shared/ci.ts";
 import { compactAtOf } from "../shared/compact-at.ts";
-import { type TrashPick, trashPicksOf } from "../shared/delete-cleanup.ts";
+import { type DeletePreviewAnswer, type TrashPick, trashPicksOf } from "../shared/delete-cleanup.ts";
 import { type ErrorInfo, errorInfoOf } from "../shared/error-info.ts";
 import { ISSUE_FILTERS } from "../shared/github.ts";
 import {
@@ -1386,6 +1386,14 @@ const remoteOf = new WeakMap<Request, RemoteIdentity>();
 /** Whether the request is from the person's own page (`isOwnerPage`): this computer's, or one signed in through Access. */
 const fromOwner = (req: Request): boolean => isOwnerPage(remoteOf.get(req) ?? null, onThisComputer.has(req));
 
+/**
+ * Whether the request may move a conversation's folders to the Trash with it: a page that is not the person's own changes
+ * no file on this computer unless Settings › Remote access › File transfer lets it send files here, as an upload (#368).
+ */
+const mayTrash = (req: Request): boolean => fromOwner(req) || remoteAuth.fileTransfer() === "full";
+const TRASH_REFUSED =
+	"Moving folders to the Trash is for this computer's own pages, or a page that may send files here (Settings › Remote access › File transfer)";
+
 /** What a page that is not the person's own (`isOwnerPage`) is told when it asks to change the guard, the guidance or the app. */
 const GUARD_NOT_HERE =
 	"The guard is changed on the computer omp-webui runs on, or from a page signed in through Cloudflare Access";
@@ -2548,6 +2556,8 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				if (!file) return fail("Unknown session file", 404);
 				targets.push({ file, cwd: (await sessionTarget(file)).cwd });
 			}
+			// A page that is not the person's own changes no file here unless it may send files (#368): it is offered nothing.
+			if (!mayTrash(req)) return json({ trash: false, previews: [] } satisfies DeletePreviewAnswer);
 			const answer = await deleteCleanup.preview(targets);
 			// Each preview under the name the page gave its conversation.
 			answer.previews.forEach((preview, i) => {
@@ -2563,6 +2573,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			if (!file) return fail("Unknown session file", 404);
 			const picks = trashPicksOf(body.trash);
 			if (picks === null) return fail("trash must be a list of the paths the preview gave");
+			if (picks.length && !mayTrash(req)) return fail(TRASH_REFUSED, 403);
 			const target = await sessionTarget(file);
 			let startedInstead: string | null = null;
 			try {
@@ -2661,6 +2672,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				const file = store.resolveSessionPath(requested);
 				if (file && listed.length) picks.set(file, listed);
 			}
+			if (picks.size && !mayTrash(req)) return fail(TRASH_REFUSED, 403);
 			for (const requested of body.files as string[]) {
 				const file = store.resolveSessionPath(requested);
 				if (!file) {

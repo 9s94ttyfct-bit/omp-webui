@@ -16,6 +16,7 @@ import { dirname, join } from "node:path";
 import type { DeletePreviewAnswer, TrashPick, TrashResult } from "../../shared/delete-cleanup.ts";
 import { writeSimpleSession } from "../support/fixtures.ts";
 import { pollUntil } from "../support/poll.ts";
+import { proxiedClient } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 
 /**
@@ -33,10 +34,17 @@ writeFileSync(
 	`#!/bin/sh\ncase "$1" in *refuse-me*) echo "no room in the Trash" >&2; exit 3;; esac\nmv "$1" "${bin_trash}/$(basename "$1")-$$"\n`,
 );
 chmodSync(bin, 0o755);
+/** Settings › Remote access: only File transfer, which a page that holds only the token is held to. */
+const remoteConfig = join(root, "remote.json");
+writeFileSync(remoteConfig, "{}");
 
 let s: TestServer;
 beforeAll(async () => {
-	s = await startTestServer(0, { OMP_WEBUI_TRASH_COMMAND: bin }, { login: false });
+	s = await startTestServer(
+		0,
+		{ OMP_WEBUI_TRASH_COMMAND: bin, OMP_WEBUI_REMOTE_CONFIG: remoteConfig },
+		{ login: false },
+	);
 }, 60_000);
 afterAll(async () => {
 	await s?.stop();
@@ -214,4 +222,41 @@ test("a Trash command that fails leaves the folder and says why; the conversatio
 	expect(done.body.trashed?.notMoved).toEqual([{ path: folder, error: "no room in the Trash" }]);
 	expect(existsSync(file)).toBe(false);
 	expect(existsSync(folder)).toBe(true);
+}, 60_000);
+
+test("a page that holds only the token is offered nothing and moves nothing to the Trash unless it may send files here (#368)", async () => {
+	const { file, folder } = conversationInFolder("token-page");
+	const [p] = (await preview([file])).body.previews;
+	const picks = [pickOf(p.folder as TrashPick)];
+	const phone = proxiedClient(s);
+	const asPhone = (path: string, body: unknown) =>
+		phone.fetch(
+			path,
+			{ method: "POST", headers: { "x-omp-webui": "1", "content-type": "application/json" } },
+			JSON.stringify(body),
+		);
+	writeFileSync(remoteConfig, JSON.stringify({ fileTransfer: "off" }));
+	try {
+		await pollUntil(
+			async () =>
+				((await (await asPhone("/api/session/delete-preview", { files: [file] })).json()) as DeletePreviewAnswer)
+					.trash === false,
+			"the token page to be offered nothing",
+		);
+		for (const [path, body] of [
+			["/api/session/delete", { file, trash: picks }],
+			["/api/sessions/delete", { files: [file], trash: { [file]: picks } }],
+		] as const) {
+			const res = await asPhone(path, body);
+			expect(res.status, path).toBe(403);
+		}
+		// Refused before anything happened: the conversation is still there, and so is its folder.
+		expect(existsSync(file)).toBe(true);
+		expect(existsSync(folder)).toBe(true);
+		// Without the folder ticked, the conversation itself is still the page's to delete.
+		expect((await asPhone("/api/session/delete", { file, trash: [] })).status).toBe(200);
+		expect(existsSync(folder)).toBe(true);
+	} finally {
+		writeFileSync(remoteConfig, "{}");
+	}
 }, 60_000);
