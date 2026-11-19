@@ -439,6 +439,21 @@ describe("the team's keys", () => {
 		expect(await w.remote.verify(w.request(await sign(key, w.claims())))).not.toBeNull();
 	});
 
+	test("held while they cannot be read again, but not for longer than a day after the last read (#373)", async () => {
+		const w = world();
+		expect(await w.remote.verify(w.request(await sign(key, w.claims())))).not.toBeNull();
+		// The endpoint breaks (an outage, or someone keeping it from being read): a withdrawn key would stay trusted.
+		jwks.mode = "error";
+		w.clock.now += 23 * 60 * MINUTE;
+		expect(await w.remote.verify(w.request(await sign(key, w.claims())))).not.toBeNull();
+		w.clock.now += 2 * 60 * MINUTE;
+		expect(await w.remote.verify(w.request(await sign(key, w.claims())))).toBeNull();
+		// Once the keys can be read again, a key the team still publishes is trusted again.
+		jwks.mode = "ok";
+		w.clock.now += MINUTE + 1;
+		expect(await w.remote.verify(w.request(await sign(key, w.claims())))).not.toBeNull();
+	});
+
 	test("that never answer do not hold the request longer than the timeout", async () => {
 		const w = world(GOOD, { fetchTimeoutMs: 150 });
 		jwks.mode = "hang";

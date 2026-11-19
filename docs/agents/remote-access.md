@@ -42,6 +42,8 @@ A `remote.json` that cannot be trusted (not JSON, or one value this version refu
 
 A change from a page signed in through Access that would shut that page out (its email leaves the list, the hostname, team or AUD changes, remote access is turned off or the tunnel stopped) is not made until the person confirms it on the card (*Save anyway* / *Stop anyway*); the AI help, driven from such a page, refuses it and leaves it to the card (#363). This computer's page is never asked.
 
+The team's Access keys are read again at least hourly; while they cannot be read (Cloudflare unreachable), the ones held keep serving for at most a day after the last read that worked, then no sign-in is trusted until a read works again (#373).
+
 **Share these settings with another computer**: **Export settings** saves `omp-webui-remote-access.json` holding only team, AUD and emails (no hostname, tunnel or credentials); **Import settings…** fills the form from such a file (max 64 KB, max 200 emails, version 1) and the user then adds this computer's hostname and saves. One Access application with a wildcard domain can serve several computers.
 
 ### What a remote page can and cannot do

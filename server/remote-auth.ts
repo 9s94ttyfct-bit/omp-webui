@@ -18,8 +18,14 @@ import { asciiLower, isRemoteOn, parseRemoteConfig, type RemoteConfig, RemoteCon
 const SKEW_SECONDS = 60;
 /** The keys are read again for a `kid` they do not hold, and at most this often however many requests ask. */
 const REFRESH_MIN_MS = 60_000;
-/** Keys older than this are read again (a key withdrawn since must not be trusted for ever). */
+/** Keys older than this are read again: a key withdrawn since must not be trusted for long. */
 const KEYS_MAX_AGE_MS = 60 * 60_000;
+/**
+ * While the keys cannot be read again (Cloudflare unreachable), the ones held keep serving the people signed in, for this
+ * long after they were read; past it, no token is trusted until a read succeeds (#373): a withdrawn key is not trusted for
+ * as long as somebody can keep the read failing.
+ */
+const KEYS_STALE_MS = 24 * 60 * 60_000;
 const FETCH_TIMEOUT_MS = 5000;
 const MAX_KEYS_BYTES = 1024 * 1024;
 const MAX_TOKEN_CHARS = 16 * 1024;
@@ -236,7 +242,9 @@ export class RemoteAuth {
 			});
 			await this.reading;
 		}
-		// Whatever is held now, a key kept from before a read that failed included.
+		// Whatever is held now, a key kept from before a read that failed included, unless that read is a day old (#373).
+		// Each read that fails says so in the log (`read`).
+		if (this.now() - set.fetchedAt > KEYS_STALE_MS) return null;
 		return set.keys.get(kid) ?? null;
 	}
 
