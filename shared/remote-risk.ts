@@ -153,6 +153,13 @@ const PROTECTED_HOME_PLACES = [
 ];
 /** Program folders before the system's on `PATH` that the person can write (Homebrew's, `/usr/local`'s, #265). */
 const PATH_DIRS = ["/usr/local/bin", "/usr/local/sbin", "/opt/homebrew/bin", "/opt/homebrew/sbin"];
+/**
+ * A project's files that make a program run later as the person, outside any guard, as a project's `.omp` does (#261): a
+ * repository's hooks (at the next `git commit`, `checkout`, `push`) and its config (`core.fsmonitor` runs at every `git
+ * status`), direnv's `.envrc` (at every `cd` into the folder), VS Code's `.vscode/tasks.json` (`runOn: folderOpen`). Compared
+ * in the folded view where names have no case.
+ */
+const RUNS_LATER = /\/\.git\/(?:hooks(?:\/|$)|config$)|\/\.envrc$|\/\.vscode\/tasks\.json$/;
 
 /** Programs that only read what they are given: naming a protected place to one of them is not a change. */
 const READING_PROGRAMS = table(
@@ -795,6 +802,7 @@ function isProtected(abs: string, ctx: RiskContext): boolean {
 	const path = folded(abs, ctx);
 	if (path.split("/").some((s) => listed(PROTECTED_SEGMENTS, s))) return true;
 	if (ctx.protect.some((d) => d !== "" && within(path, folded(d, ctx)))) return true;
+	if (RUNS_LATER.test(path)) return true;
 	if (
 		(ctx.caseless ? LAUNCH_DIR_CASELESS : LAUNCH_DIR).test(folded(abs, ctx)) ||
 		(ctx.windows && STARTUP_DIR.test(abs))
@@ -3328,6 +3336,9 @@ class Scan {
 		const [key, value] = named[0]?.text === "set" ? named.slice(1) : named;
 		if (key === undefined || value === undefined || hasLong(opts, "--unset", "--unset-all")) return;
 		const command = /^alias\./i.test(key.text) ? value.text.startsWith("!") : GIT_COMMAND_KEY.test(key.text);
+		// A setting that names a program, in any file (#261): `--local` (the repository's `.git/config`) as `--global`, and
+		// `core.hooksPath`, the folder whose programs git runs as hooks.
+		if (command || /^core\.hookspath$/i.test(key.text)) this.add("protected");
 		if (!command) return;
 		this.add("dynamic_command");
 		this.gitSetting(key.text, value.text, cwd, depth);
