@@ -155,6 +155,8 @@ export function whyText(why: NoAttach): string {
 			return t("drop.whyFolder");
 		case "document":
 			return t("drop.whyDocument");
+		case "oldOffice":
+			return t("drop.whyOldOffice");
 		case "binary":
 			return t("drop.whyBinary");
 		case "tooLarge":

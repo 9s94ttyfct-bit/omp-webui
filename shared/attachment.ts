@@ -78,7 +78,7 @@ export function serializeChoices(choices: DropChoices): string | null {
 }
 
 /** Why an item cannot be attached; the page words it. */
-export type NoAttach = "folder" | "document" | "binary" | "tooLarge" | "documentTooLarge";
+export type NoAttach = "folder" | "document" | "oldOffice" | "binary" | "tooLarge" | "documentTooLarge";
 
 export interface DropFileInfo {
 	name: string;
@@ -95,33 +95,40 @@ export interface Classified {
 	attach: true | NoAttach;
 }
 
-/** What omp's `read` tool converts to text from a path (`CONVERTIBLE_EXTENSIONS`); a message carries only two of them. */
+/**
+ * What omp's `read` tool turns into text from a path (`CONVERTIBLE_EXTENSIONS`: `.pdf .docx .pptx .xlsx .epub`) and
+ * `.rtf`, which it reads as the text it is; a message carries only two of them.
+ */
 const DOCUMENT_EXTENSIONS: Readonly<Record<string, true>> = {
 	pdf: true,
-	doc: true,
 	docx: true,
-	ppt: true,
 	pptx: true,
-	xls: true,
 	xlsx: true,
 	rtf: true,
 	epub: true,
 };
 
-/** Whether a file name is one of those: PDF, Word, PowerPoint, Excel, RTF and EPUB. */
+/** The old binary Office formats: omp's `read` refuses them as binary files, from a path as much as anywhere (#313). */
+const OLD_OFFICE_EXTENSIONS: Readonly<Record<string, true>> = { doc: true, ppt: true, xls: true };
+
+/** Whether a file name is one of those: PDF, Word, PowerPoint, Excel (the new formats), RTF and EPUB. */
 export const isDocumentName = (name: string): boolean => Object.hasOwn(DOCUMENT_EXTENSIONS, extensionOf(name));
+
+/** Whether a file name is an old `.doc`, `.ppt` or `.xls`, which nothing here or in omp can read. */
+export const isOldOfficeName = (name: string): boolean => Object.hasOwn(OLD_OFFICE_EXTENSIONS, extensionOf(name));
 
 /**
  * What a file is. `looksText` is what `looksLikeText` made of its first bytes: names say little (`Makefile`, `.env`,
  * `notes`), and a file that is not text cannot be put into a message whatever it is called. A document by name is one
  * whatever it holds (an `.rtf` is text, but its markup is not what to hand a model); of those only a PDF and a `.docx` are
- * read for the message, and the rest are paths.
+ * read for the message, and the rest are paths. An old `.doc`, `.ppt` or `.xls` is neither: omp cannot read it from a path.
  */
 export function classify(file: DropFileInfo, looksText: boolean): Classified {
 	if (file.directory) return { kind: "folder", attach: "folder" };
 	if (documentTypeOf(file.name)) {
 		return { kind: "document", attach: file.size > DOCUMENT_LIMITS.fileBytes ? "documentTooLarge" : true };
 	}
+	if (isOldOfficeName(file.name)) return { kind: "other", attach: "oldOffice" };
 	if (isDocumentName(file.name)) return { kind: "other", attach: "document" };
 	const svg = file.type === "image/svg+xml" || extensionOf(file.name) === "svg";
 	if (file.type.startsWith("image/") && !svg) return { kind: "image", attach: true };

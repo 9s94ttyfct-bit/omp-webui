@@ -28,7 +28,9 @@ export const zh: Record<keyof typeof en, string> = {
 	whyFolder: "文件夹不能作为附件，请插入它的路径。",
 	whyFolderNoPath: "文件夹不能作为附件，而且只有这台 Mac 上的应用知道文件夹在哪里。请拖入其中的文件，或输入 @。",
 	whyDocument:
-		"只有 PDF 和 Word（.docx）文档可以作为附件。这类文档（旧版 .doc、Excel、PowerPoint……）由 omp 通过路径读取。",
+		"只有 PDF 和 Word（.docx）文档可以作为附件。其他文档（PowerPoint、Excel、EPUB、RTF）由 omp 通过路径读取。",
+	whyOldOffice:
+		"旧版 .doc、.xls 或 .ppt 是二进制文件，omp 即使通过路径也读不了。请另存为 .docx、.xlsx 或 .pptx 后再拖入。",
 	whyDocumentTooLarge: "超过了可读取文档的上限 {limit}。请插入它的路径：omp 会读取需要的部分。",
 	whyBinary: "只有 UTF-8 文本、图片以及 PDF 或 Word（.docx）文档可以作为附件；其他文件由 omp 通过路径打开。",
 	whyTooLarge: "超过了一条消息能放入的 {limit}。请插入它的路径：omp 会读取需要的部分。",

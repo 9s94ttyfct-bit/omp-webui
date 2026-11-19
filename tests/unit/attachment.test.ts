@@ -10,6 +10,7 @@ import {
 	hasMention,
 	hasTextFiles,
 	isDocumentName,
+	isOldOfficeName,
 	joinMessage,
 	looksLikeText,
 	parseChoices,
@@ -88,14 +89,29 @@ describe("classify", () => {
 		expect(classify(file("a.pdf", { size: 0 }), false)).toEqual({ kind: "document", attach: true });
 	});
 
-	test("the other documents omp reads from a path are a path only: an old .doc cannot be attached", () => {
-		for (const name of ["a.doc", "a.ppt", "a.pptx", "a.xls", "a.xlsx", "a.rtf", "a.epub"]) {
+	test("the other documents omp reads from a path are a path only", () => {
+		for (const name of ["a.pptx", "a.xlsx", "a.rtf", "a.epub"]) {
 			expect(classify(file(name, { type: "application/octet-stream" }), false), name).toEqual({
 				kind: "other",
 				attach: "document",
 			});
 			expect(classify(file(name), true), `${name} that looks like text`).toEqual({ kind: "other", attach: "document" });
 		}
+	});
+
+	test("an old .doc, .xls or .ppt cannot be attached, and is not promised to be read from a path (#313)", () => {
+		for (const name of ["a.doc", "a.ppt", "a.xls", "A.DOC"]) {
+			expect(classify(file(name, { type: "application/octet-stream" }), false), name).toEqual({
+				kind: "other",
+				attach: "oldOffice",
+			});
+			expect(classify(file(name), true), `${name} that looks like text`).toEqual({
+				kind: "other",
+				attach: "oldOffice",
+			});
+		}
+		expect(isOldOfficeName("a.docx")).toBe(false);
+		expect(isDocumentName("a.doc")).toBe(false);
 	});
 
 	test("a name that only ends in a document's letters is not a document", () => {

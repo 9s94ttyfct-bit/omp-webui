@@ -34,7 +34,9 @@ export const en = {
 	whyFolderNoPath:
 		"A folder can't be attached, and only the app on this Mac can tell where one is. Drop the files in it, or type @.",
 	whyDocument:
-		"Only PDF and Word (.docx) documents can be attached. omp reads this kind of document (an old .doc, Excel, PowerPoint…) from a path.",
+		"Only PDF and Word (.docx) documents can be attached. omp reads other documents (PowerPoint, Excel, EPUB, RTF) from a path.",
+	whyOldOffice:
+		"An old .doc, .xls or .ppt file is binary and omp cannot read it, even from a path. Save it as .docx, .xlsx or .pptx and drop that.",
 	whyDocumentTooLarge: "Over the {limit} a document can be to be read. Insert its path: omp reads what it needs.",
 	whyBinary:
 		"Only UTF-8 text, images and PDF or Word (.docx) documents can be attached; omp opens other files from a path.",
