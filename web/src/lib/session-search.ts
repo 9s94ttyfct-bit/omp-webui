@@ -17,8 +17,6 @@ export interface SessionFilters {
 	/** The folder whose conversations to list (a conversation's `cwd`), or `all`. */
 	folder: string;
 	range: DateRange;
-	/** Whether archived conversations are the ones listed (the sidebar's archive view). */
-	archived: boolean;
 }
 
 /** What the sidebar's list is drawn from once its search bar (a chunk of its own) has had its say. */
@@ -170,7 +168,7 @@ const WHOLE_BONUS = 1000;
 /**
  * The conversations `filters` names, in the order they are shown: with a query, best match first and the most
  * recently changed of equal matches next; without one, the order they come in (the server's: newest first, which the
- * sidebar groups by date). `archived` and `project` filter whatever the query does.
+ * sidebar groups by date). Only `folder`, `range` and the query filter; the archive view is listed by its caller.
  */
 export function rankSessions(
 	sessions: readonly SessionSummary[],

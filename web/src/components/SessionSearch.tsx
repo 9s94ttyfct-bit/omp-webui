@@ -61,7 +61,7 @@ export function SessionSearch({
 		if (shownFolder !== folder) setFolder(shownFolder);
 	}, [shownFolder, folder]);
 	const ranked = useMemo(
-		() => rankSessions(sessions, { query: filter, folder: shownFolder, range, archived: false }, now),
+		() => rankSessions(sessions, { query: filter, folder: shownFolder, range }, now),
 		[sessions, filter, shownFolder, range, now],
 	);
 	const searching = filter.trim() !== "";
@@ -127,7 +127,7 @@ export function SessionSearch({
 	const current = found && found.query === query && [...query].length >= CONTENT_MIN ? found : null;
 	/** The conversations the filters keep whatever was typed: a content match outside them is not listed. */
 	const scope = useMemo(
-		() => rankSessions(sessions, { query: "", folder: shownFolder, range, archived: false }, now).map((r) => r.session),
+		() => rankSessions(sessions, { query: "", folder: shownFolder, range }, now).map((r) => r.session),
 		[sessions, shownFolder, range, now],
 	);
 	const content = useMemo(

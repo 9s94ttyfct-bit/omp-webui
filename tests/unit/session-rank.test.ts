@@ -52,7 +52,6 @@ const filters = (o: Partial<SessionFilters> = {}): SessionFilters => ({
 	query: "",
 	folder: "all",
 	range: "all",
-	archived: false,
 	...o,
 });
 
@@ -163,7 +162,7 @@ describe("what the filter field keeps", () => {
 	});
 });
 
-describe("the project, the date range and the archive", () => {
+describe("the project and the date range", () => {
 	test("the project filter keeps its folder only", () => {
 		const all = [
 			session(1, { project: "alpha", cwd: "/work/alpha" }),
@@ -201,12 +200,6 @@ describe("the project, the date range and the archive", () => {
 	test("the range and the query are one filter: a match outside it is not listed", () => {
 		const all = [session(1, { title: "Deploy", daysAgo: 20 }), session(2, { title: "Deploy", daysAgo: 1 })];
 		expect(titles(rankSessions(all, filters({ query: "deploy", range: "week" }), NOW))).toEqual(["Deploy"]);
-	});
-
-	test("the archive filter is the caller's: the ranking does not read the archive itself", () => {
-		// Which conversations are archived is the sidebar's set, not the summary's; the ranking is given what to list.
-		const all = [session(1), session(2)];
-		expect(titles(rankSessions(all, filters({ archived: true }), NOW))).toHaveLength(2);
 	});
 });
 
