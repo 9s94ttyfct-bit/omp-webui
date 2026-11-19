@@ -166,6 +166,9 @@ const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v)
  *
  * `window` is the range the page asked for (#714), and bounds the guard's requests as it bounds every other figure of the
  * answer; without one, the answer's own first and last request do (omp's 24 hours).
+ *
+ * From omp 19 on, a `model_usage` entry is a side channel (`bySideChannel`) and no longer a request of the agent type it
+ * was written under: the types hold turns only, so there is nothing to take the guard's requests out of.
  */
 export function withGuardBucket(
 	body: string,
@@ -214,10 +217,11 @@ export function withGuardBucket(
 		put("totalCacheWriteTokens", r.cacheWrite);
 		put("totalCost", r.cost);
 	};
+	const sideChannels = Array.isArray(stats.bySideChannel);
 	const changed = new Set<Bucket>([guard]);
 	for (const r of inWindow) {
 		add(guard, r, 1);
-		const from = byAgentType.find((b) => (b.agentType ?? "main") === r.kind);
+		const from = sideChannels ? undefined : byAgentType.find((b) => (b.agentType ?? "main") === r.kind);
 		if (from) {
 			add(from, r, -1);
 			changed.add(from);

@@ -95,9 +95,11 @@ test.skipIf(!omp)(
 		const ompBy = Object.fromEntries(
 			(JSON.parse(out).byAgentType as { agentType: string; totalRequests: number }[]).map((b) => [b.agentType, b]),
 		);
-		// omp counted g1 with the main agent's two messages, and sg1 with the subagent's one; g2 is in none.
-		expect(ompBy.main?.totalRequests).toBe(3);
-		expect(ompBy.subagent?.totalRequests).toBe(2);
+		// Before omp 19, omp counted g1 with the main agent's two messages, and sg1 with the subagent's one; g2 is in none.
+		// From 19 on a model_usage entry is a side channel of its own (`bySideChannel`), and the types hold turns only.
+		const sideChannels = Array.isArray(JSON.parse(out).bySideChannel);
+		expect(ompBy.main?.totalRequests).toBe(sideChannels ? 2 : 3);
+		expect(ompBy.subagent?.totalRequests).toBe(sideChannels ? 1 : 2);
 
 		const dbPath = statsDbPath(agentDir, { HOME: home }, home);
 		const moved = JSON.parse(await addGuardUsage(out, join(agentDir, "sessions"), undefined, dbPath));
