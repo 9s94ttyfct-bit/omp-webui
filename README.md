@@ -41,7 +41,7 @@ The app is signed with a self-signed certificate, not notarized; the command lif
 
 **Linux package** (x64 or arm64): download `omp-webui-vX.Y.Z-linux-x64.tar.gz` or `omp-webui-vX.Y.Z-linux-arm64.tar.gz` from the [latest release](../../releases/latest), then `tar xzf` it, `cd omp-webui-linux-<arch>` and run `./install.sh`. It installs for your user only: the program in `~/.local/share/omp-webui`, an `omp-webui` command in `~/.local/bin` and an entry in the applications menu. Started from either, it starts the server and opens the page in your default browser; its terminal window stays open while it runs, and closing it stops omp-webui. On first start the page offers to install [omp](https://omp.sh) if it is missing. It does not update itself: Settings › Updates says when a release is out; quit omp-webui and install the new package the same way. `./install.sh --uninstall` removes it; your data (`~/.omp-webui`) is kept either way.
 
-**From source**, for development (any system with [Bun](https://bun.sh) ≥ 1.3 and `omp` on `PATH`):
+**From source**, for development (any system with [Bun](https://bun.sh) ≥ 1.4 and `omp` on `PATH`):
 
 ```sh
 bun install

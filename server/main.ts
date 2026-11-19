@@ -1,3 +1,5 @@
+// A Bun older than the one that runs omp-webui from source is refused first, by name (`bun-version.ts`).
+import "./bun-floor.ts";
 // `omp-webui-server --ompw-relay …` is a relay (see omp/relay.ts), not a server: it never gets past this import.
 import "./omp/relay-main.ts";
 import { timingSafeEqual } from "node:crypto";
