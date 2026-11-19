@@ -2646,3 +2646,22 @@ describe("a here-string's substitutions are read: a download handed to a shell t
 		expect(shell('cat <<< "$(sudo id)"')).toContain("privilege");
 	});
 });
+
+describe("tar -C is the folder the names are read from or put in, not the archive (#418)", () => {
+	test.each<[string, RiskKind[]]>([
+		["tar -C ~ -czf /tmp/x.tgz Documents", []],
+		["tar -czf /tmp/x.tgz -C ~ Documents", []],
+		["tar --directory ~/x -cf /tmp/x.tar .", []],
+		["tar -C ~ -tzf /tmp/x.tgz", []],
+		["tar -C ~ -czf /tmp/x.tgz .", ["secret_read"]],
+		["tar -C ~ -czf /tmp/x.tgz .ssh/id_ed25519", ["protected", "secret_read"]],
+		["bsdtar -C ~ -czf /tmp/x.tgz .", ["secret_read"]],
+		["bsdtar -C ~ -czf /tmp/x.tgz Documents", []],
+		["tar -C ~ -czf ~/x.tgz Documents", ["write_outside"]],
+		["tar -C ~ -xzf /tmp/x.tgz", ["write_outside"]],
+		["tar xzf /tmp/x.tgz -C ~/Documents", ["write_outside"]],
+		["tar -C build -czf dist.tgz .", []],
+	])("%s", (command, kinds) => {
+		expect(shell(command)).toEqual(kinds);
+	});
+});

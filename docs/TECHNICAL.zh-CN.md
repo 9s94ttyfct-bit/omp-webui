@@ -452,6 +452,8 @@ bun run start          # http://127.0.0.1:7878
 
 **here-string 里的替换**（#417）在命令之前运行，会当作命令来读（`cat <<< "$(rm -rf ~/x)"` 算在文件夹之外删除）。它们打印出的内容是命令的输入，所以用这种方式交给 shell 或解释器的下载内容（`bash <<< "$(curl …)"`、`python3 <<< "$(wget -qO- …)"`）算 `remote_exec`，和 `bash < <(curl …)` 一样；`bash <<< "$CMD"` 仍算 `dynamic_command`。
 
+**`tar -C <文件夹>`**（#418，也包括 `--directory` 和 `bsdtar`）是放入或读取那些名字的文件夹，不是归档文件：在那里解包（`tar -C ~/x -xzf a.tgz`）算写入它，但创建、列出或追加只从它读取，所以 `tar -C ~ -czf /tmp/x.tgz Documents` 只写 `/tmp/x.tgz`，后面的名字从那个文件夹里读（`tar -C ~ -czf /tmp/x.tgz .` 算 `secret_read`，和 `tar czf /tmp/x.tgz ~` 一样）。
+
 **不需要 `sudo` 的 macOS 安全开关**（#256）和 `csrutil` 一样算 `system`：`xattr -d com.apple.quarantine`（去掉下载文件的 Gatekeeper 检查）、`defaults write … LSQuarantine`（以后所有下载都不再检查）、`tccutil reset`（重置这个人的隐私授权）、`spctl --master-disable`/`--global-disable`/`--disable`、`systemsetup -set…`、`networksetup -set…`（代理、DNS）、`fdesetup disable`。读取它们（`spctl --status`、`fdesetup status`、`networksetup -list…`）不算。
 
 **其他工具的设置**（#253）和 `git config --global` 一样算 `protected`：`npm config set`/`delete`/`edit` 和 `npm set`（`script-shell` 会在每次 `npm run` 时运行，`registry` 会把以后的每次安装都转走）、`pnpm config set`、`yarn config set`、`pip config set`/`unset`/`edit`、`gh config set`（`editor` 是 gh 会启动的程序）。项目自己的设置（`npm config set … --location=project`、`pip config --site`）和读取（`get`、`list`）不算。

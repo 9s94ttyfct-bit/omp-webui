@@ -2984,12 +2984,17 @@ class Scan {
 			case "zip":
 				if (hasShort(opts, "r") || hasLong(opts, "--recurse-paths")) sources = operands;
 				break;
-			case "tar": {
-				// `tar czf - ~`, `tar -czf x ~`, `tar --create …`: what it is given goes into the archive.
-				const first = args[0]?.text ?? "";
-				if (hasShort(opts, "c") || hasLong(opts, "--create") || (!first.startsWith("-") && first.includes("c")))
-					sources = operands;
-				break;
+			case "tar":
+			case "bsdtar": {
+				// `tar czf - ~`, `tar -czf x ~`, `tar --create …`: what it is given goes into the archive, from `-C`'s folder (#418).
+				const t = this.tarLayout(args, opts, operands, cwd);
+				return (
+					t.create &&
+					t.members.some((w) => {
+						const abs = resolveWord(w, t.from, this.ctx);
+						return abs !== null && (isSecret(abs, this.ctx) || holdsSecret(abs, this.ctx, true));
+					})
+				);
 			}
 			case "find":
 				// `find ~ … -exec cat {} \;`: the places it starts from, read by what it runs.
@@ -3094,32 +3099,46 @@ class Scan {
 		}
 	}
 
-	private tar(args: Word[], opts: string[], operands: Word[], cwd: string | null, depth: number): void {
-		// What GNU tar runs (#221): the compressor (`-I`, `--use-compress-program`), what each member is piped to, the scripts
-		// run between volumes, the remote shell, and a checkpoint's `exec=` action.
+	/**
+	 * What a `tar` (or `bsdtar`) command line is made of (#418): the programs its options run, the folders `-C` names, the
+	 * archive, and the members, the names it puts in or takes out, which are relative to the last `-C` folder (`from`). `create`:
+	 * it reads the members into an archive (`c`); `reads`: `-C` is only where it reads them from (`c`, `t`, `d`, `u`, `r`, `A`).
+	 */
+	private tarLayout(args: Word[], opts: string[], operands: Word[], cwd: string | null) {
 		const commands = optionValues(
 			args,
 			["-I", "-F"],
 			["--use-compress-program", "--to-command", "--info-script", "--new-volume-script", "--rsh-command"],
 		);
-		for (const v of commands) this.script(v.text, cwd, depth + 1);
+		const directories = optionValues(args, ["-C"], ["--directory"]);
+		const files = optionValues(args, ["-f"], ["--file"]);
+		const named = operands.filter((o) => !commands.includes(o) && !directories.includes(o) && !files.includes(o));
+		// `tar xzf a.tgz` (the first operand holds the options) and `tar -xzf a.tgz`.
+		const old = named[0] && /^[cxtuAdrf][A-Za-z0-9]*$/.test(named[0].text) ? named[0].text : "";
+		const cluster = old || opts.filter((o) => /^-[^-]/.test(o)).join("");
+		const rest = old ? named.slice(1) : named;
+		const archive = files[0] ?? (cluster.includes("f") ? rest[0] : undefined);
+		const create = cluster.includes("c") || hasLong(opts, "--create");
+		const reads =
+			/[ctduAr]/.test(cluster) ||
+			hasLong(opts, "--create", "--list", "--diff", "--compare", "--update", "--append", "--concatenate");
+		const from = directories.length > 0 ? resolveWord(directories[directories.length - 1], cwd, this.ctx) : cwd;
+		return { commands, directories, archive, members: rest.filter((o) => o !== archive), from, create, reads };
+	}
+
+	private tar(args: Word[], opts: string[], operands: Word[], cwd: string | null, depth: number): void {
+		// What GNU tar runs (#221): the compressor (`-I`, `--use-compress-program`), what each member is piped to, the scripts
+		// run between volumes, the remote shell, and a checkpoint's `exec=` action.
+		const t = this.tarLayout(args, opts, operands, cwd);
+		for (const v of t.commands) this.script(v.text, cwd, depth + 1);
 		for (const v of optionValues(args, [], ["--checkpoint-action"]))
 			if (v.text.startsWith("exec=")) this.script(v.text.slice(5), cwd, depth + 1);
-		// `tar xzf a.tgz` (the first operand holds the options) and `tar -xzf a.tgz`.
-		const old = operands[0] && /^[cxtuAdrf][A-Za-z0-9]*$/.test(operands[0].text) ? operands[0].text : "";
-		const cluster = old || opts.filter((o) => /^-[^-]/.test(o)).join("");
-		const directories = optionValues(args, ["-C"], ["--directory"]);
-		for (const d of directories) this.write(d, cwd);
-		if (!cluster.includes("c") && !hasLong(opts, "--create")) return;
-		const files = optionValues(args, ["-f"], ["--file"]);
-		const archive = files[0] ?? (cluster.includes("f") ? (old ? operands[1] : operands[0]) : undefined);
-		if (archive && archive.text !== "-") this.write(archive, cwd);
+		// `-C` is where it unpacks; where it creates, lists or appends, only where it reads the names from (#418).
+		if (!t.reads) for (const d of t.directories) this.write(d, cwd);
+		if (!t.create) return;
+		if (t.archive && t.archive.text !== "-") this.write(t.archive, cwd);
 		// `--remove-files` deletes what it put in the archive (#227), as `rsync --remove-source-files` does; `-C` is where they are.
-		if (!hasLong(opts, "--remove-files")) return;
-		const values = [...commands, ...directories, ...files, archive];
-		const from = directories.length > 0 ? resolveWord(directories[directories.length - 1], cwd, this.ctx) : cwd;
-		for (const source of operands.slice(old ? 1 : 0))
-			if (!values.includes(source)) this.delete(source, from, true, true, true);
+		if (hasLong(opts, "--remove-files")) for (const source of t.members) this.delete(source, t.from, true, true, true);
 	}
 
 	/**
