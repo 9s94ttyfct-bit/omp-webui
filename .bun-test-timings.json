@@ -269,6 +269,7 @@
     "tests/unit/git-worktrees.test.ts": 634,
     "tests/unit/stop-subagent-follow.test.ts": 629,
     "tests/contract/remote-shell.test.ts": 604,
+    "tests/unit/macos-navigation.test.ts": 603,
     "tests/unit/pty-shell.test.ts": 601,
     "tests/unit/cleanup-scan.test.ts": 587,
     "tests/unit/approval.test.ts": 577,
