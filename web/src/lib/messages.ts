@@ -64,6 +64,8 @@ export interface AgentMessage {
 	code?: string;
 	output?: string;
 	exitCode?: number;
+	/** `bashExecution`/`pythonExecution`: run with `!!` (`$$`), kept out of the model's context. */
+	excludeFromContext?: boolean;
 	customType?: string;
 	display?: boolean;
 	summary?: string;

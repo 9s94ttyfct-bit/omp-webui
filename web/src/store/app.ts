@@ -1302,20 +1302,33 @@ function noteBashStarted(liveId: string, frame: OmpFrame): void {
 }
 
 /**
- * Run a user `!command` without blocking. That it runs is the server's word, not this page's: a `!command` is the
- * conversation's, so the server says when one starts and when omp answers it (`bash_started`, `bash_ended`) to every page
- * that listens, which then shows it with its Stop; this page sends it and settles what comes of it in the background
- * (the transcript refreshes and a non-zero exit is reported). omp runs commands side by side, so one sent while another
- * runs does not wait for it.
+ * Run a user `!command` without blocking: `line` is what was typed, `!command` or `!!command`. As in omp's terminal, `!` shares
+ * the run with the model and `!!` keeps it out of the model's context (`excludeFromContext`; the server refuses it for an omp
+ * that cannot). That it runs is the server's word, not this page's: a `!command` is the conversation's, so the server says when
+ * one starts and when omp answers it (`bash_started`, `bash_ended`) to every page that listens, which then shows it with its
+ * Stop; this page sends it and settles what comes of it in the background (the transcript refreshes and a non-zero exit is
+ * reported). omp runs commands side by side, so one sent while another runs does not wait for it.
  */
-export function runBash(liveId: string, command: string): void {
+export function runBash(liveId: string, line: string): void {
 	const { toast } = useApp.getState();
+	const exclude = line[1] === "!";
 	void socket
-		.rpc<{ exitCode?: number; cancelled?: boolean }>(liveId, { type: "bash", command })
+		.rpc<{ exitCode?: number; cancelled?: boolean }>(liveId, {
+			type: "bash",
+			command: line.slice(exclude ? 2 : 1).trim(),
+			excludeFromContext: exclude || undefined,
+		})
 		.then((r) => {
 			if (r?.exitCode && !r.cancelled) toast("warning", t("chat.toastCommandExited", { code: r.exitCode }));
 		})
-		.catch((e) => toast("error", (e as Error).message))
+		.catch((e) =>
+			toast(
+				"error",
+				e instanceof ReplyError && e.code === "bashExcludeUnsupported"
+					? t("errors.bashExcludeUnsupported")
+					: (e as Error).message,
+			),
+		)
 		.finally(() => {
 			void refreshEntries(liveId);
 			maybeDetach(liveId);

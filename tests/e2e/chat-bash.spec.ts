@@ -74,3 +74,27 @@ test("two commands running at once are two cards, and Stop on either cancels the
 	await page.waitForTimeout(1000);
 	await expect(page.getByText(/^never-printed-(one|two)$/)).toHaveCount(0);
 });
+
+test("a !!command runs the command after the two !s and keeps the run out of the model's context, as omp's terminal does", async ({
+	page,
+}) => {
+	ownSession(0x3051, "Bash exclude probe");
+	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
+	const tap = await tapSocket(page);
+	await page.goto("/");
+	await startLive(page, tap, "Bash exclude probe", "bash-exclude-probe");
+	const bashBefore = tap.commands("bash").length;
+	const composer = page.getByTestId("composer");
+
+	await composer.fill("!!echo kept-out-marker");
+	await composer.press("Enter");
+	await expect(page.getByText("kept-out-marker", { exact: true })).toBeVisible({ timeout: 15_000 });
+	// The command is what follows `!!`, sent with omp's `excludeFromContext` (#305), not `!echo …`, which bash cannot run.
+	expect(tap.commands("bash").slice(bashBefore)).toEqual([
+		expect.objectContaining({ command: "echo kept-out-marker", excludeFromContext: true }),
+	]);
+	await expect(page.getByText(/Command exited with/)).toHaveCount(0);
+	// omp recorded the run as one kept out of the context, and it is recalled as it was typed.
+	await composer.press("ArrowUp");
+	await expect(composer).toHaveValue("!!echo kept-out-marker");
+});

@@ -80,6 +80,8 @@ export const zh: Record<keyof typeof en, string> = {
 	paused: "这个对话已暂停；请先点“继续”再进行操作。",
 	pausedRetryDue:
 		"这个对话已暂停，而 omp 正在等待重试失败的那一轮，这次等待已经结束：为这个操作运行 omp 会开始重试那一轮。请点“继续”，让它重试。",
+	bashExcludeUnsupported:
+		"这个 omp 不能把命令留在对话之外（!!）；omp 18.18.1 及以后的版本可以。用 ! 运行它会把输出分享给模型。",
 
 	sessionFolderGone: "这个对话原来所在的文件夹 {folder} 已不存在。",
 	sessionFolderUnknown: "这个对话的文件没有记录它所在的文件夹。",

@@ -309,6 +309,7 @@
     "tests/unit/search-stale.test.ts": 266,
     "tests/unit/compat-table.test.ts": 262,
     "tests/unit/compact-step-extension.test.ts": 260,
+    "tests/contract/bash-exclude.test.ts": 258,
     "tests/unit/md-editor.test.ts": 253,
     "tests/unit/live-command-running.test.ts": 244,
     "tests/contract/hung-omp.test.ts": 237,

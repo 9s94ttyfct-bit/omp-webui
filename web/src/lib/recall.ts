@@ -29,7 +29,7 @@ const sentFold = new Fold<SessionEntry, { list: string[] }>(
 			let text = "";
 			// Messages omp wrote on its own (reminders, injected context) carry another attribution.
 			if (m.role === "user" && m.attribution !== "agent") text = textOf(m).trim();
-			else if (m.role === "bashExecution" && m.command) text = `!${m.command}`;
+			else if (m.role === "bashExecution" && m.command) text = `${m.excludeFromContext ? "!!" : "!"}${m.command}`;
 			if (text && text !== list.at(-1)) list = [...list, text];
 		}
 		return list === sent.list ? sent : { list };

@@ -77,6 +77,8 @@ export const ERROR_CODES = [
 	// A paused conversation that omp may not be run for (server/live.ts).
 	"paused",
 	"pausedRetryDue",
+	// A `!!command` for an omp that cannot keep a run out of the model's context (server/live.ts, #305).
+	"bashExcludeUnsupported",
 	// A conversation that cannot be resumed where it ran (server/live.ts): `folder` is the one it recorded, `nearest` the closest that exists.
 	"sessionFolderGone",
 	"sessionFolderUnknown",

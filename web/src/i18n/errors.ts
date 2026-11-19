@@ -91,6 +91,10 @@ export const en = {
 	pausedRetryDue:
 		"This conversation is paused while omp waits to retry a failed turn, and that wait is over: running omp for this would start the retried turn. Resume it to let it retry.",
 
+	// A `!!command` for an omp that cannot keep a run out of the model's context
+	bashExcludeUnsupported:
+		"This omp cannot keep a command out of the conversation (!!); omp 18.18.1 or later can. Use ! to run it and share its output.",
+
 	// A conversation that cannot be resumed where it ran
 	sessionFolderGone: "This conversation ran in {folder}, which no longer exists.",
 	sessionFolderUnknown: "This conversation's file does not say which folder it ran in.",

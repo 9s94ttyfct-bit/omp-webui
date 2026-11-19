@@ -110,7 +110,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	composerFiles: "文件",
 	composerRemoveImage: "移除 {name}",
 	composerMessage: "消息",
-	composerPlaceholder: "给 omp 发消息…（/ 调出命令，! 执行 bash）",
+	composerPlaceholder: "给 omp 发消息…（/ 调出命令，! 执行 bash，!! 执行但不进上下文）",
 	composerPlaceholderQueue: "排队一条后续消息…（{keys} 立即引导）",
 	composerPlaceholderQueueBare: "排队一条后续消息…",
 	composerPlaceholderApproval: "给 omp 发消息…（发送会拒绝批准）",

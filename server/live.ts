@@ -3710,6 +3710,12 @@ export class Live {
 		if (this.shifts > 0) await this.signalling;
 		// Only a look at the process leaves it as a new chat can use it; any other command, even a setting, uses it.
 		const type = String(command.type);
+		// `!!command`: omp that did not say it can keep a run out of the model's context would run it and share it.
+		if (type === "bash" && command.excludeFromContext === true && this.client.bashExcludeFromContext === false)
+			throw new CodedError(
+				"This omp cannot keep a command out of the conversation (!!); omp 18.18.1 or later can. Use ! to run it and share its output.",
+				"bashExcludeUnsupported",
+			);
 		if (!(/^(get_|predict_word)/.test(type) || (type === "goal" && command.op === "get"))) this.untouched = false;
 		// omp's own `/modelpreset switch` writes the preset's roles to the global config, for every conversation. Typed
 		// into this one it is this conversation's switch (see `setModelPreset`), answered as omp answers a command.

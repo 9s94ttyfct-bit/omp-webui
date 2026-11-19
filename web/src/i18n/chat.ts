@@ -26,7 +26,7 @@ export const en = {
 	composerFiles: "Files",
 	composerRemoveImage: "Remove {name}",
 	composerMessage: "Message",
-	composerPlaceholder: "Message omp… (/ for commands, ! for bash)",
+	composerPlaceholder: "Message omp… (/ for commands, ! for bash, !! for bash kept out of context)",
 	composerPlaceholderQueue: "Queue a follow-up… ({keys} to steer now)",
 	composerPlaceholderQueueBare: "Queue a follow-up…",
 	composerPlaceholderApproval: "Message omp… (sending it denies the approval)",

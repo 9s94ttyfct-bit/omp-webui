@@ -55,7 +55,7 @@ test("Settings switches the interface to Chinese across key surfaces, and the ch
 	await sidebar.getByText("Fixture alpha: zebra protocol").click();
 	await expect(page.getByTestId("composer")).toHaveAttribute(
 		"placeholder",
-		zh(chat, "Message omp… (/ for commands, ! for bash)"),
+		zh(chat, "Message omp… (/ for commands, ! for bash, !! for bash kept out of context)"),
 	);
 
 	// Back to English.

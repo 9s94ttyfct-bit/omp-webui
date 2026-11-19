@@ -391,7 +391,8 @@ function pathCarry(path: Path, from: number, withPrompts: boolean): { carry: str
 			if (wantsPrompt) {
 				let sent = "";
 				if (m.role === "user" && m.attribution !== "agent") sent = textOf(m).trim();
-				else if (m.role === "bashExecution" && m.command) sent = `!${String(m.command)}`;
+				else if (m.role === "bashExecution" && m.command)
+					sent = `${m.excludeFromContext ? "!!" : "!"}${String(m.command)}`;
 				if (sent && sent !== prompts.at(-1)) prompts.push(sent);
 			}
 		} else if (type === "mode_change") {

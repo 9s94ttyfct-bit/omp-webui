@@ -187,6 +187,11 @@ export class RpcClient {
 	private stdinError: RpcError | null = null;
 	/** close() was called: the process is on its way out and must not be handed new work. */
 	closing = false;
+	/**
+	 * omp's `ready` frame said `bash` takes `excludeFromContext` (omp 18.18.1 on): the terminal's `!!`, a run kept out of the
+	 * model's context. Null when no ready frame was seen here (an adopted omp said it to the server that started it).
+	 */
+	bashExcludeFromContext: boolean | null = null;
 	readonly ready: Promise<void>;
 	/** omp's process id is known (a relay has started it; at once for a process of our own). Rejects when it never was. */
 	readonly started: Promise<void>;
@@ -535,6 +540,7 @@ export class RpcClient {
 
 	private dispatch(frame: OmpFrame): void {
 		if (frame.type === "ready") {
+			this.bashExcludeFromContext = frame.supportsBashExcludeFromContext === true;
 			const maxR = Number(frame.maxReassembledFrameBytes);
 			if (maxR > 0) this.maxReassembled = maxR;
 			const versions = Array.isArray(frame.supportedProtocolVersions) ? frame.supportedProtocolVersions : [];

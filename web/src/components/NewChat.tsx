@@ -618,7 +618,7 @@ export function NewChat({ cwd: openedIn, project }: { cwd?: string; project?: st
 			if (command && imgs.length === 0 && !withFiles) {
 				// Runs in the background (omp replies when it exits); the chat shows it with a Stop.
 				open();
-				runBash(target, text.slice(1).trim());
+				runBash(target, text);
 				return true;
 			}
 			// Prompts are acknowledged as soon as omp accepts them: switch only then, so a

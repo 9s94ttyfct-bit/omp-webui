@@ -989,8 +989,8 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 				const withFiles = hasTextFiles(text);
 				if (text.startsWith("!") && !images.length && !withFiles) {
 					await alignLeaf(id);
-					// Runs in the background: the composer stays usable and Stop cancels it.
-					runBash(id, text.slice(1).trim());
+					// Runs in the background: the composer stays usable and Stop cancels it. `!!` keeps it out of the context.
+					runBash(id, text);
 					return;
 				}
 				const imgs = images.map(({ type, data, mimeType }) => ({ type, data, mimeType }));

@@ -11,7 +11,7 @@ settings: quick-prompts, drop
 ### Sending
 
 - **Enter** sends. While omp is working, Enter queues the message as a follow-up (sent when the turn ends); a queued message can be edited or removed until omp takes it. **⌘Enter / Ctrl+Enter** steers: the message reaches the agent now. **Shift+Enter** is a new line. **Esc** stops omp (press twice: the first Esc asks). All rebindable except Shift+Enter and Esc (see the shortcuts topic).
-- A message starting with `/` runs as an omp slash command (autocomplete lists omp's commands); one starting with `!` runs as a shell command (`!bash`).
+- A message starting with `/` runs as an omp slash command (autocomplete lists omp's commands); one starting with `!` runs as a shell command (`!bash`) whose run omp shares with the model, and one starting with `!!` runs the rest as a command kept out of the model's context, as omp's terminal does (RPC `bash` with `excludeFromContext: true`). An omp whose `ready` frame did not say `supportsBashExcludeFromContext` (before 18.18.1) gets no `!!` run: the page says *This omp cannot keep a command out of the conversation (!!)…*.
 - `@` opens file-mention completion of paths under the conversation's folder; omp reads a mentioned file into the prompt itself.
 - Word prediction: ghost text from omp's `predict_word`; Tab accepts with a space, → without. If omp's prompt history database lacks its `history` table, Settings shows that prediction is unavailable.
 - A paused conversation's box says *Paused. Press Enter to resume and send, or use Resume*; the *Pause conversation* button freezes the conversation (see session-controls).
