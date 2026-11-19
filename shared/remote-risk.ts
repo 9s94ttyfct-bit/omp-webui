@@ -942,6 +942,8 @@ interface Simple {
 	words: Word[];
 	redirects: Redirect[];
 	body: string | null;
+	/** The word of a here-string (`<<< "$(curl …)"`), whose substitutions run before the command does (#417). */
+	here?: Word;
 }
 
 const emptyWord = (): Word => ({ text: "", dynamic: false, subs: [] });
@@ -1099,8 +1101,10 @@ function parseScript(src: string, vars: Readonly<Record<string, string>>): Simpl
 		if (word === null) return;
 		if (redirect === "<<" || redirect === "<<-")
 			heredocs.push({ into: cur, delimiter: word.text, strip: redirect === "<<-" });
-		else if (redirect === "<<<") cur.body = word.text;
-		else if (redirect !== null) cur.redirects.push({ op: redirect, target: word });
+		else if (redirect === "<<<") {
+			cur.body = word.text;
+			cur.here = word;
+		} else if (redirect !== null) cur.redirects.push({ op: redirect, target: word });
 		else cur.words.push(word);
 		redirect = null;
 		word = null;
@@ -2526,6 +2530,16 @@ class Scan {
 				else this.dynamicCommand();
 			}
 		}
+		// A here-string's substitutions run first (`cat <<< "$(rm -rf ~)"`), and what they print is the command's input: a download
+		// handed to a shell or an interpreter that way (`bash <<< "$(curl …)"`) is `remote_exec`, as `bash < <(curl …)` is (#417).
+		let body = simple.body;
+		if (simple.here) {
+			for (const sub of simple.here.subs) this.script(sub, cwd, depth + 1);
+			if (cmd && runsPipedCode(cmd) && simple.here.subs.some((s) => mentions(s, FETCHERS, knownVars(this.ctx)))) {
+				this.add("remote_exec");
+				body = null;
+			}
+		}
 		// The words that are assignments: those before the command word, and what `export`, `env`, `declare` … are given.
 		const head = simple.words.findIndex((w) => !listed(RESERVED, w.text) && !ASSIGNMENT.test(w.text));
 		const assigns = head < 0 || /^(?:export|env|declare|typeset|local|readonly)$/.test(simple.words[head].text);
@@ -2540,7 +2554,7 @@ class Scan {
 			if ((k < head || assigns) && cmd && /^npm_config_global=(?:true|1)$/i.test(w.text))
 				this.install(cmd.name, splitArgs(cmd.args).operands, ["--global"]);
 		});
-		return cmd ? this.command(cmd, simple.body, cwd, depth) : cwd;
+		return cmd ? this.command(cmd, body, cwd, depth) : cwd;
 	}
 
 	private command(cmd: Command, body: string | null, cwd: string | null, depth: number): string | null {

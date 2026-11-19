@@ -450,6 +450,8 @@ bun run start          # http://127.0.0.1:7878
 
 **解释器的输入和名字**（#412、#413）。`<` 后面的进程替换是命令的输入，和用管道接进去一样：`bash < <(curl …)`、`python3 < <(curl …)` 算 `remote_exec`，`bash < <(echo …)` 算 `dynamic_command`。作为参数交给脚本的进程替换是脚本要读的文件：`bash x.sh <(curl …)` 不询问，和 `python3 x.py <(curl …)` 一样。带版本号的解释器名字也认得（`python3.12`、`pypy3.10`、`perl5.36`、`ruby3.3`），所以 `curl … | python3.12` 算 `remote_exec`，`python3.12 -c '…'` 的代码也照常读。
 
+**here-string 里的替换**（#417）在命令之前运行，会当作命令来读（`cat <<< "$(rm -rf ~/x)"` 算在文件夹之外删除）。它们打印出的内容是命令的输入，所以用这种方式交给 shell 或解释器的下载内容（`bash <<< "$(curl …)"`、`python3 <<< "$(wget -qO- …)"`）算 `remote_exec`，和 `bash < <(curl …)` 一样；`bash <<< "$CMD"` 仍算 `dynamic_command`。
+
 **不需要 `sudo` 的 macOS 安全开关**（#256）和 `csrutil` 一样算 `system`：`xattr -d com.apple.quarantine`（去掉下载文件的 Gatekeeper 检查）、`defaults write … LSQuarantine`（以后所有下载都不再检查）、`tccutil reset`（重置这个人的隐私授权）、`spctl --master-disable`/`--global-disable`/`--disable`、`systemsetup -set…`、`networksetup -set…`（代理、DNS）、`fdesetup disable`。读取它们（`spctl --status`、`fdesetup status`、`networksetup -list…`）不算。
 
 **其他工具的设置**（#253）和 `git config --global` 一样算 `protected`：`npm config set`/`delete`/`edit` 和 `npm set`（`script-shell` 会在每次 `npm run` 时运行，`registry` 会把以后的每次安装都转走）、`pnpm config set`、`yarn config set`、`pip config set`/`unset`/`edit`、`gh config set`（`editor` 是 gh 会启动的程序）。项目自己的设置（`npm config set … --location=project`、`pip config --site`）和读取（`get`、`list`）不算。
