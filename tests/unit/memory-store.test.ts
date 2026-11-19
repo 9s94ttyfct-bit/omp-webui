@@ -425,6 +425,33 @@ describe("listing", () => {
 		});
 	});
 
+	// #279
+	test("a word with a capital non-ASCII letter is found, typed in any case, in the text, the folder and the reason", () => {
+		const fx = memoryFixture();
+		fx.bank("default", {
+			working: [
+				{ id: "u1", content: "Über die Äpfel in München", timestamp: "2026-10-12T09:00:00.000Z" },
+				{ id: "u2", content: "Привет Мир", timestamp: "2026-10-11T09:00:00.000Z" },
+				{
+					id: "u3",
+					content: "no letters of note",
+					timestamp: "2026-10-10T09:00:00.000Z",
+					metadata: { cwd: "/home/Ärzte", context: "Ärger im Büro" },
+				},
+			],
+		}).close();
+		const ids = (q: string) => listMemories(fx.layout, ALL({ q }), NOW).items.map((i) => i.id);
+		for (const q of ["Über", "über", "ÜBER", "Äpfel", "äpfel"]) expect(ids(q), q).toEqual(["u1"]);
+		for (const q of ["Привет", "привет", "ПРИВЕТ", "мир"]) expect(ids(q), q).toEqual(["u2"]);
+		expect(ids("Ärzte")).toEqual(["u3"]);
+		expect(ids("ärger")).toEqual(["u3"]);
+		expect(ids("München")).toEqual(["u1"]);
+		expect(ids("Übermorgen")).toEqual([]);
+		// The counts and the page follow the same search.
+		const page = listMemories(fx.layout, ALL({ q: "über", limit: 1 }), NOW);
+		expect([page.total, page.items.length]).toEqual([1, 1]);
+	});
+
 	test("a page is a slice of the newest-first list; the total is of all pages", () => {
 		const fx = memoryFixture();
 		const rows = Array.from({ length: 12 }, (_, i) => ({

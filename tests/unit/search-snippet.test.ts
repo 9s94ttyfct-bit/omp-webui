@@ -33,6 +33,7 @@ test("a text's own marker characters cannot make a mark of their own, and astral
 	expect(shortSnippet("𠮷a", "a", 1, 2)).toBe(`𠮷${mark("a")}`);
 });
 
-test("only A-Z fold, as in SQLite's lower(): the scan chose its rows with it", () => {
-	expect(shortSnippet("Éa éa", "éa", 1, 5)).toBe(`Éa ${mark("éa")}`);
+test("case folds for every script, not A-Z only (#229)", () => {
+	expect(shortSnippet("Éa éa", "éa", 1, 5)).toBe(`${mark("Éa")} ${mark("éa")}`);
+	expect(shortSnippet("Привет ПР пр", "пр", 1, 12)).toBe(`${mark("Пр")}ивет ${mark("ПР")} ${mark("пр")}`);
 });

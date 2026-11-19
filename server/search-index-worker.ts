@@ -667,17 +667,42 @@ function termsOf(req: SearchRequest): string[] {
 /** An FTS5 query that matches every term as a phrase of its own (FTS5 ANDs adjacent phrases). */
 const ftsQuery = (terms: readonly string[]): string => terms.map((t) => `"${t.replaceAll('"', '""')}"`).join(" ");
 
+/**
+ * Every way a short term (one or two characters) can be cased, each character as it is, in lower case and in upper case:
+ * what a scan asks for, since SQLite's `lower()` folds A-Z only (#229). At most three forms of a character, nine of two.
+ */
+function caseForms(term: string): string[] {
+	let forms = [""];
+	for (const ch of term) {
+		const cases = [...new Set([ch, ch.toLowerCase(), ch.toUpperCase()])];
+		forms = forms.flatMap((f) => cases.map((c) => f + c));
+	}
+	return [...new Set(forms)];
+}
+
 function search(req: SearchRequest): RawHit[] {
 	const terms = termsOf(req);
 	const q = terms[0] as string;
 	const only = req.file === undefined ? null : (states.get(req.file) ?? null);
 	if (req.file !== undefined && !only) return [];
-	// Trigram FTS needs ≥3 characters in every term; a shorter one makes the whole search an unranked substring scan.
-	const ranked = terms.every((t) => [...t].length >= 3);
+	// Trigram FTS needs ≥3 characters in a term. The terms that have them are searched by the index and ranked; a shorter one
+	// is a substring scan of what they leave (of every row when there is none, newest first: with nothing to rank by, the
+	// order is recency, #354). The scan folds case for every script: SQLite's `lower()` folds A-Z only, so each case a short
+	// term can be written in is asked for (#229).
+	const long = terms.filter((t) => [...t].length >= 3);
+	const short = terms.filter((t) => [...t].length < 3);
+	const ranked = long.length > 0;
 	const range: [number, number] | [] = only ? [firstRowId(only.fid), firstRowId(only.fid + 1)] : [];
 	type Match = { rid: number; fid: number; total: number };
 	const where = only ? "AND rowid >= ? AND rowid < ?" : "";
-	const scan = terms.map(() => "instr(lower(text), lower(?)) > 0").join(" AND ");
+	const forms: string[][] = short.map((t) => caseForms(t));
+	const scan = forms.map((f) => `(${f.map(() => "instr(text, ?) > 0").join(" OR ")})`).join(" AND ");
+	const scanParams: string[] = forms.flat();
+	// The first place any case of the first term is found in the text (1-based), for the snippet of a scan (only when every
+	// term is short: a long first term would have too many cases, and its snippet comes from the index).
+	const variants = ranked ? [] : caseForms(q);
+	const found = variants.map((_, i) => `coalesce(nullif(instr(text, ?${i + 1}), 0), 1000000000)`);
+	const firstAt = `max(1, ${found.length > 1 ? `min(${found.join(", ")})` : (found[0] ?? "1")} - ${SHORT_BEFORE})`;
 	const matches = ranked
 		? db
 				.query<Match, (string | number)[]>(
@@ -685,20 +710,20 @@ function search(req: SearchRequest): RawHit[] {
 						SELECT rowid AS rid, rowid >> 24 AS fid, rank AS r,
 							row_number() OVER (PARTITION BY rowid >> 24 ORDER BY rank, rowid) AS n,
 							count(*) OVER (PARTITION BY rowid >> 24) AS total
-						FROM fts WHERE fts MATCH ? ${where}
+						FROM fts WHERE fts MATCH ? ${scan ? `AND ${scan}` : ""} ${where}
 					) SELECT rid, fid, total FROM m WHERE n <= ? ORDER BY r, rid`,
 				)
-				.all(ftsQuery(terms), ...range, req.cap)
+				.all(ftsQuery(long), ...scanParams, ...range, req.cap)
 		: db
 				.query<Match, (string | number)[]>(
 					`WITH m AS (
-						SELECT rowid AS rid, rowid >> 24 AS fid,
-							row_number() OVER (PARTITION BY rowid >> 24 ORDER BY rowid) AS n,
+						SELECT rowid AS rid, rowid >> 24 AS fid, ts AS t,
+							row_number() OVER (PARTITION BY rowid >> 24 ORDER BY ts DESC, rowid) AS n,
 							count(*) OVER (PARTITION BY rowid >> 24) AS total
 						FROM fts WHERE ${scan} ${where}
-					) SELECT rid, fid, total FROM m WHERE n <= ? ORDER BY rid`,
+					) SELECT rid, fid, total FROM m WHERE n <= ? ORDER BY t DESC, rid`,
 				)
-				.all(...terms, ...range, req.cap);
+				.all(...scanParams, ...range, req.cap);
 
 	// Matches arrive best-first, so grouping by first appearance orders conversations by their best hit.
 	const groups = new Map<number, Match[]>();
@@ -726,12 +751,12 @@ function search(req: SearchRequest): RawHit[] {
 				.query<Snip, [string, string]>(
 					`SELECT rowid AS rid, entry_id, role, ts, snippet(fts, 0, '${SNIPPET_OPEN}', '${SNIPPET_CLOSE}', '…', 24) AS snippet FROM fts WHERE fts MATCH ?1 AND rowid IN (SELECT value FROM json_each(?2))`,
 				)
-				.all(ftsQuery(terms), rids)
+				.all(ftsQuery(long), rids)
 		: db
-				.query<Snip & { start: number; total: number }, [string, string]>(
-					`SELECT rowid AS rid, entry_id, role, ts, substr(text, max(1, instr(lower(text), lower(?1)) - ${SHORT_BEFORE}), ${SHORT_LENGTH}) AS snippet, max(1, instr(lower(text), lower(?1)) - ${SHORT_BEFORE}) AS start, length(text) AS total FROM fts WHERE rowid IN (SELECT value FROM json_each(?2))`,
+				.query<Snip & { start: number; total: number }, (string | number)[]>(
+					`SELECT rowid AS rid, entry_id, role, ts, substr(text, ${firstAt}, ${SHORT_LENGTH}) AS snippet, ${firstAt} AS start, length(text) AS total FROM fts WHERE rowid IN (SELECT value FROM json_each(?${variants.length + 1}))`,
 				)
-				.all(q, rids)
+				.all(...variants, rids)
 				.map(({ start, total, ...row }) => ({ ...row, snippet: shortSnippet(row.snippet, q, start, total) }));
 	const byRid = new Map(rows.map((r) => [r.rid, r]));
 	const hits: RawHit[] = [];

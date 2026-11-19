@@ -10,11 +10,8 @@ export const SNIPPET_CLOSE = "\u0003";
 export const SHORT_BEFORE = 40;
 export const SHORT_LENGTH = 120;
 
-/**
- * What SQLite's `lower()` does: A-Z only. The scan chose its rows with it (`instr(lower(text), lower(?))`), so the
- * snippet finds the matches the same way, and the indices of the text stay those of its lower-case.
- */
-const asciiLower = (s: string): string => s.replace(/[A-Z]/g, (c) => String.fromCharCode(c.charCodeAt(0) | 32));
+/** The query as a pattern that matches it in any case, for every script: `lower()` of SQLite folds A-Z only (#229). */
+const caseInsensitive = (query: string): RegExp => new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu");
 
 /**
  * The snippet of a hit of a short query: the `SHORT_LENGTH` characters of text that start `SHORT_BEFORE` before the
@@ -23,13 +20,14 @@ const asciiLower = (s: string): string => s.replace(/[A-Z]/g, (c) => String.from
  */
 export function shortSnippet(window: string, query: string, start: number, total: number): string {
 	const text = window.replaceAll(SNIPPET_OPEN, "").replaceAll(SNIPPET_CLOSE, "");
-	const haystack = asciiLower(text);
-	const needle = asciiLower(query);
 	let out = "";
 	let at = 0;
-	for (let i = haystack.indexOf(needle); needle && i >= 0; i = haystack.indexOf(needle, at)) {
-		out += `${text.slice(at, i)}${SNIPPET_OPEN}${text.slice(i, i + needle.length)}${SNIPPET_CLOSE}`;
-		at = i + needle.length;
+	if (query !== "") {
+		for (const m of text.matchAll(caseInsensitive(query))) {
+			if (m[0] === "") continue;
+			out += `${text.slice(at, m.index)}${SNIPPET_OPEN}${m[0]}${SNIPPET_CLOSE}`;
+			at = m.index + m[0].length;
+		}
 	}
 	out += text.slice(at);
 	const reachesEnd = start - 1 + [...window].length >= total;

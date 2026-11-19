@@ -193,3 +193,43 @@ describe("a limit on the characters skipped between letters", () => {
 		expect(fuzzyMatch("theme", sentence, {})).toEqual(fuzzyMatch("theme", sentence));
 	});
 });
+
+// #400
+describe("letters that a mark or a part of a syllable makes another letter", () => {
+	test("kana with a voiced mark are not the plain kana", () => {
+		expect(fuzzyMatch("か", "がっこう")).toBeNull();
+		expect(fuzzyMatch("が", "か")).toBeNull();
+		expect(fuzzyMatch("は", "ばなな")).toBeNull();
+		expect(fuzzyMatch("が", "がっこう")).not.toBeNull();
+		expect(fuzzyMatch("ぱ", "ぱん")).not.toBeNull();
+	});
+
+	test("a Hangul syllable is one letter: 하 is not found in 한국어, 한 is found in it", () => {
+		expect(fuzzyMatch("하", "한국어 문서")).toBeNull();
+		expect(fuzzyMatch("가", "각")).toBeNull();
+		expect(fuzzyMatch("한", "한국어 문서")).not.toBeNull();
+		expect(fuzzyMatch("한", "한")?.positions).toEqual([0]);
+	});
+
+	test("a syllable scores as one character, not one for each of its jamo", () => {
+		expect(fuzzyMatch("한", "한")?.score).toBeLessThan(40);
+	});
+
+	test("full-width Latin and ligatures are the letters they stand for", () => {
+		expect(fuzzyMatch("abc", "ａｂｃ")?.positions).toEqual([0, 1, 2]);
+		expect(fuzzyMatch("ＡＢＣ", "abc")).not.toBeNull();
+		expect(fuzzyMatch("file", "ﬁle")).not.toBeNull();
+	});
+
+	test("accents of Latin, Greek and Cyrillic still fold, written as one code point or two", () => {
+		expect(fuzzyMatch("cafe", "Café")).not.toBeNull();
+		expect(fuzzyMatch("cafe", "Cafe\u0301")).not.toBeNull();
+		expect(fuzzyMatch("ελλαδα", "Ελλάδα")).not.toBeNull();
+		expect(fuzzyMatch("еж", "Ёж")).not.toBeNull();
+	});
+
+	test("a decomposed voiced kana is its own, the composed one found by itself", () => {
+		expect(fuzzyMatch("か", "か\u3099")).not.toBeNull();
+		expect(fuzzyMatch("か", "が")).toBeNull();
+	});
+});

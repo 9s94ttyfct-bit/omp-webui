@@ -449,8 +449,39 @@ interface ListRow {
 	superseded_by: string | null;
 }
 
+/**
+ * Whether a search has a letter that has a case and is not ASCII (`Über`, `Привет`): SQLite's `lower()` folds A-Z only, so
+ * the text of such a search is folded in JavaScript (`idsMatching`), not by the SQL (#279).
+ */
+const needsUnicodeFold = (q: string): boolean => [...q].some((c) => c > "\x7f" && c.toLowerCase() !== c.toUpperCase());
+
+/** The ids of the rows of `table` that a search with a cased non-ASCII letter matches: in the text, the context or folder, or the id. */
+function idsMatching(db: Database, table: string, cols: Set<string>, q: string): string[] {
+	const needle = q.toLowerCase();
+	const meta = cols.has("metadata_json")
+		? `CASE WHEN json_valid(metadata_json) THEN COALESCE(json_extract(metadata_json, '$.context'), '') || ' ' || COALESCE(json_extract(metadata_json, '$.cwd'), '') ELSE '' END`
+		: "''";
+	return db
+		.query<{ id: string; content: string | null; meta: string }, []>(
+			`SELECT id, content, ${meta} AS meta FROM ${table}`,
+		)
+		.all()
+		.filter(
+			(r) =>
+				String(r.id).includes(q) ||
+				(r.content ?? "").toLowerCase().includes(needle) ||
+				r.meta.toLowerCase().includes(needle),
+		)
+		.map((r) => String(r.id));
+}
+
 /** The filters of a list, as the SQL of one table: the search, whether retired ones count, and (for the list) the kind. */
-function conditions(cols: Set<string>, query: MemoryQuery, kind: "any" | "note" | "conversation"): string[] {
+function conditions(
+	cols: Set<string>,
+	query: MemoryQuery,
+	kind: "any" | "note" | "conversation",
+	byIds: boolean,
+): string[] {
 	const out: string[] = [];
 	if (cols.has("valid_until") && cols.has("superseded_by")) {
 		const retired = "(superseded_by IS NOT NULL OR (valid_until IS NOT NULL AND valid_until <= $now))";
@@ -459,7 +490,9 @@ function conditions(cols: Set<string>, query: MemoryQuery, kind: "any" | "note" 
 	} else if (query.retired === "retired") {
 		out.push("0");
 	}
-	if (query.q !== "") {
+	if (query.q !== "" && byIds) {
+		out.push("id IN (SELECT value FROM json_each($matches))");
+	} else if (query.q !== "") {
 		const parts = ["instr(lower(content), $q) > 0", "instr(id, $raw) > 0"];
 		if (cols.has("metadata_json")) {
 			parts.push(
@@ -474,11 +507,19 @@ function conditions(cols: Set<string>, query: MemoryQuery, kind: "any" | "note" 
 	return out;
 }
 
-function listParams(query: MemoryQuery, now: string, withLimit?: number): Record<string, string | number> {
+function listParams(
+	query: MemoryQuery,
+	now: string,
+	withLimit?: number,
+	ids?: readonly string[],
+): Record<string, string | number> {
 	const params: Record<string, string | number> = { $now: now, $conv: SOURCE_CONVERSATION };
 	if (query.q !== "") {
-		params.$q = query.q.toLowerCase();
-		params.$raw = query.q;
+		if (ids) params.$matches = JSON.stringify(ids);
+		else {
+			params.$q = query.q.toLowerCase();
+			params.$raw = query.q;
+		}
 	}
 	if (withLimit !== undefined) {
 		params.$limit = withLimit;
@@ -533,11 +574,13 @@ export function listMemories(layout: MemoryLayout, query: MemoryQuery, now = new
 	const unreadable: string[] = [];
 	const items: MemoryItem[] = [];
 	const take = query.limit + query.offset;
+	const unicode = query.q !== "" && needsUnicodeFold(query.q);
 	for (const file of banks) {
 		try {
 			withRead(file.path, (db) => {
 				if (hasTable(db, "working_memory")) {
 					const cols = columnsOf(db, "working_memory");
+					const ids = unicode ? idsMatching(db, "working_memory", cols, query.q) : undefined;
 					// A layout with no `source` has no conversation excerpts to tell apart: all are notes.
 					const noteIf = cols.has("source") ? "source IS NOT $conv" : "1";
 					const conversationIf = cols.has("source") ? "source IS $conv" : "0";
@@ -545,9 +588,9 @@ export function listMemories(layout: MemoryLayout, query: MemoryQuery, now = new
 						.query<{ note: number; conversation: number }, [Record<string, string | number>]>(
 							`SELECT COALESCE(SUM(CASE WHEN ${noteIf} THEN 1 ELSE 0 END), 0) AS note,
 							        COALESCE(SUM(CASE WHEN ${conversationIf} THEN 1 ELSE 0 END), 0) AS conversation
-							 FROM working_memory${where(conditions(cols, query, "any"))}`,
+							 FROM working_memory${where(conditions(cols, query, "any", ids !== undefined))}`,
 						)
-						.get(listParams(query, now));
+						.get(listParams(query, now, undefined, ids));
 					counts.note += sums?.note ?? 0;
 					counts.conversation += sums?.conversation ?? 0;
 					const kind = wantNote && wantConversation ? "any" : wantNote ? "note" : "conversation";
@@ -555,29 +598,30 @@ export function listMemories(layout: MemoryLayout, query: MemoryQuery, now = new
 						const rows = db
 							.query<ListRow, [Record<string, string | number>]>(
 								`SELECT id, substr(content, 1, $head) AS head, length(content) AS len, ${WORKING_LIST.map((c) => col(cols, c)).join(", ")}
-								 FROM working_memory${where(conditions(cols, query, kind))}
+								 FROM working_memory${where(conditions(cols, query, kind, ids !== undefined))}
 								 ORDER BY COALESCE(timestamp, created_at) DESC, id LIMIT $limit`,
 							)
-							.all(listParams(query, now, take));
+							.all(listParams(query, now, take, ids));
 						for (const r of rows) items.push(itemOf(r, "working", file, now));
 					}
 				}
 				if (hasTable(db, "episodic_memory")) {
 					const cols = columnsOf(db, "episodic_memory");
+					const ids = unicode ? idsMatching(db, "episodic_memory", cols, query.q) : undefined;
 					const n = db
 						.query<{ n: number }, [Record<string, string | number>]>(
-							`SELECT COUNT(*) AS n FROM episodic_memory${where(conditions(cols, query, "any"))}`,
+							`SELECT COUNT(*) AS n FROM episodic_memory${where(conditions(cols, query, "any", ids !== undefined))}`,
 						)
-						.get(listParams(query, now));
+						.get(listParams(query, now, undefined, ids));
 					counts.consolidated += n?.n ?? 0;
 					if (wantConsolidated) {
 						const rows = db
 							.query<ListRow, [Record<string, string | number>]>(
 								`SELECT id, substr(content, 1, $head) AS head, length(content) AS len, ${EPISODIC_LIST.map((c) => col(cols, c)).join(", ")}
-								 FROM episodic_memory${where(conditions(cols, query, "any"))}
+								 FROM episodic_memory${where(conditions(cols, query, "any", ids !== undefined))}
 								 ORDER BY COALESCE(timestamp, created_at) DESC, id LIMIT $limit`,
 							)
-							.all(listParams(query, now, take));
+							.all(listParams(query, now, take, ids));
 						for (const r of rows) items.push(itemOf(r, "episodic", file, now));
 					}
 				}

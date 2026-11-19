@@ -107,3 +107,90 @@ test("a short query's hits are the same conversations and messages a longer one 
 	expect(await entries("斑马")).toEqual(await entries("斑马协议"));
 	expect(await entries("ze")).toEqual(await entries("zebra"));
 });
+
+// #229 and #354: a query with a word under three characters is a scan; it folds case for every script, and with nothing to rank by
+// it lists the newest first.
+test("a short word does not make the long ones case-sensitive for accented, Cyrillic and Greek letters (#229)", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "ompw-search-case-"));
+	try {
+		const folder = join(dir, "sessions", "-tmp-case");
+		mkdirSync(folder, { recursive: true });
+		const stamp = new Date(Date.UTC(2026, 0, 8)).toISOString();
+		const id = "01a00000-0000-7000-8000-0000000000c1";
+		const lines = [
+			{ type: "session", version: 3, id, timestamp: stamp, cwd: "/tmp/case" },
+			...["Der ÄRGER im Büro ist gross, ok", "Привет мир, ПРИВЕТ"].map((text, i) => ({
+				type: "message",
+				id: `c${i}`,
+				parentId: i ? `c${i - 1}` : null,
+				timestamp: stamp,
+				message: { role: "user", content: [{ type: "text", text }] },
+			})),
+		];
+		writeFileSync(
+			join(folder, `2026-01-08T00-00-00-000Z_${id}.jsonl`),
+			`${lines.map((l) => JSON.stringify(l)).join("\n")}\n`,
+		);
+		const s = new SessionStore(join(dir, "sessions"), join(dir, "index.db"));
+		try {
+			await s.indexed();
+			const count = async (q: string, words: boolean) =>
+				(await s.searchResult(q, 10, undefined, { words })).hits.length;
+			expect(await count("ärger", false)).toBe(1);
+			// A word of two characters beside it: the long one is no longer case-sensitive.
+			expect(await count("ärger ok", true)).toBe(1);
+			expect(await count("ÄRGER ok", true)).toBe(1);
+			expect(await count("äR", false)).toBe(1);
+			expect(await count("ÄR", false)).toBe(1);
+			expect(await count("пр", false)).toBe(1);
+			expect(await count("Пр", false)).toBe(1);
+			const [hit] = (await s.searchResult("пр", 10, undefined, { words: false })).hits;
+			expect(parts(hit?.snippet ?? "").marked.map((m) => m.toLowerCase())).toEqual(["пр", "пр"]);
+		} finally {
+			s.close();
+		}
+	} finally {
+		removeScratch(dir);
+	}
+});
+
+test("a query of one- and two-character words lists the newest conversation first, also when it was indexed last (#354)", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "ompw-search-recent-"));
+	try {
+		const folder = join(dir, "sessions", "-tmp-recent");
+		mkdirSync(folder, { recursive: true });
+		const write = (n: number, day: number, text: string): string => {
+			const id = `01a00000-0000-7000-8000-0000000000d${n}`;
+			const stamp = new Date(Date.UTC(2026, 0, day)).toISOString();
+			const lines = [
+				{ type: "session", version: 3, id, timestamp: stamp, cwd: "/tmp/recent" },
+				{
+					type: "message",
+					id: `r${n}`,
+					parentId: null,
+					timestamp: stamp,
+					message: { role: "user", content: [{ type: "text", text }] },
+				},
+			];
+			const file = join(folder, `2026-01-${String(day).padStart(2, "0")}T00-00-00-000Z_${id}.jsonl`);
+			writeFileSync(file, `${lines.map((l) => JSON.stringify(l)).join("\n")}\n`);
+			return file;
+		};
+		const older = [1, 2, 3].map((n) => write(n, 10 + n, `旧的第${n}次测试`));
+		const s = new SessionStore(join(dir, "sessions"), join(dir, "index.db"));
+		try {
+			await s.indexed();
+			// Begun after the library was first indexed: the highest file number, the newest time.
+			const today = write(9, 28, "今天的测试为什么失败了");
+			await s.refresh(true);
+			await s.indexed();
+			const files = (await s.searchResult("测试", 50, undefined, { words: false })).hits.map((h) => h.file);
+			expect(files[0]).toBe(today);
+			expect(files.slice(1)).toEqual([...older].reverse());
+		} finally {
+			s.close();
+		}
+	} finally {
+		removeScratch(dir);
+	}
+});

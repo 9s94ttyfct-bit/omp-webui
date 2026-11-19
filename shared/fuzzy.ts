@@ -47,23 +47,41 @@ interface Folded {
 }
 
 const MARKS = /\p{M}/gu;
+const MARK = /^\p{M}/u;
+/**
+ * Letters whose combining marks are accents of the letter, not letters themselves: Latin, Greek, Cyrillic, Arabic, Hebrew
+ * and Armenian. In kana (voiced marks), Hangul (jamo) and the Indic scripts (vowel signs) a mark or a part of a syllable
+ * makes another letter, so those are kept as they are (#400).
+ */
+const ACCENTED =
+	/^[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Armenian}]/u;
 const LOWER = /\p{Ll}|\p{Nd}/u;
 const UPPER = /\p{Lu}/u;
 
 /**
- * The text as it is compared: lowercased and stripped of diacritics, keeping the index and the word starts of the
- * original, so that what matched can be shown in the text a person reads.
+ * The text as it is compared: lowercased, its width and ligature forms written as the letters they stand for (`ａｂｃ`,
+ * `ﬁ`), and stripped of diacritics where those are accents (`é` is `e`, but `が` stays `が` and `한` stays `한`), keeping the
+ * index and the word starts of the original, so that what matched can be shown in the text a person reads.
  */
 function fold(text: string): Folded {
 	const out: Folded = { text: "", chars: [], at: [], start: [] };
 	let afterSeparator = true;
 	let previous = "";
+	// Whether the last letter's combining marks are accents (the letter is of a script that has them).
+	let accented = false;
 	for (let i = 0; i < text.length; ) {
 		const code = text.codePointAt(i) ?? 0;
 		const char = String.fromCodePoint(code);
 		const width = char.length;
-		// A letter with a diacritic written as two code points (`e` + combining acute) folds to the letter alone.
-		const base = char.normalize("NFD").replace(MARKS, "").toLowerCase();
+		let base: string;
+		if (MARK.test(char)) {
+			// A diacritic written as its own code point (`e` + combining acute) folds away after a letter that has them.
+			base = accented ? "" : char;
+		} else {
+			const compat = char.normalize("NFKC");
+			accented = ACCENTED.test(compat);
+			base = (accented ? compat.normalize("NFD").replace(MARKS, "") : compat).toLowerCase();
+		}
 		const startsWord = afterSeparator || (LOWER.test(previous) && UPPER.test(char));
 		for (const one of base) {
 			out.text += one;
