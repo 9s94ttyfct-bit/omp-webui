@@ -94,6 +94,36 @@ describe("RpcClient", () => {
 		c.close();
 	});
 
+	test("a progress frame reaches the server without omp's execution trace, whole or reassembled from chunks (#337)", async () => {
+		const frames: OmpFrame[] = [];
+		const { c } = start(
+			`
+      if (cmd.type === "negotiate_protocol") out({ id: cmd.id, type: "response", command: cmd.type, success: true });
+      if (cmd.type === "go") {
+        const trace = Array.from({ length: 200 }, (_, i) => ({ k: "simple", argv: ["echo", "line " + i], ns: i }));
+        const update = (n) => ({ type: "tool_execution_update", toolCallId: "t" + n, partialResult: { content: [{ type: "text", text: "out " + n }], details: { trace } } });
+        out(update(1));
+        chunked(update(2), "c2", 3);
+        out({ type: "tool_execution_end", toolCallId: "t3", result: { details: { trace } } });
+        out({ id: cmd.id, type: "response", command: "go", success: true });
+      }
+    `,
+			frames,
+		);
+		await c.ready;
+		await c.call({ type: "go" });
+		const [one, two, end] = frames.filter((f) => f.type.startsWith("tool_execution"));
+		for (const f of [one, two]) {
+			const partial = f?.partialResult as { content: unknown; details: Record<string, unknown> };
+			expect(partial.details).toEqual({});
+			expect(partial.content).toEqual([{ type: "text", text: expect.stringContaining("out ") }]);
+		}
+		// The finished call's result is the saved one: it keeps what omp wrote.
+		const finished = end?.result as { details: { trace: unknown[] } };
+		expect(finished.details.trace).toHaveLength(200);
+		c.close();
+	});
+
 	test.skipIf(!has.notWindowsYet)("failure responses reject call() with omp's error code", async () => {
 		const { c } = start(`
       if (cmd.type === "negotiate_protocol") out({ id: cmd.id, type: "response", command: cmd.type, success: true });

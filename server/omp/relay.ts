@@ -1,5 +1,6 @@
 import { rmSync } from "node:fs";
 import { platform } from "../platform/index.ts";
+import { trimLines } from "./frame-trim.ts";
 import { Backlog } from "./relay-backlog.ts";
 import {
 	type ExitInfo,
@@ -263,7 +264,7 @@ export async function runRelay(args: string[]): Promise<never> {
 	});
 
 	const pumpStdout = async (stream: ReadableStream<Uint8Array>): Promise<void> => {
-		for await (const lines of wholeLines(stream)) await link.deliver(FROM_RELAY.stdout, lines);
+		for await (const lines of wholeLines(stream)) await link.deliver(FROM_RELAY.stdout, trimLines(lines));
 	};
 
 	const pumpStderr = async (stream: ReadableStream<Uint8Array>): Promise<void> => {

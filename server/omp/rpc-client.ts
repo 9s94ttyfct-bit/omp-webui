@@ -2,6 +2,7 @@ import { isRecord } from "../../shared/guards.ts";
 import type { OmpFrame } from "../../shared/protocol.ts";
 import { childEnv } from "../env.ts";
 import { platform } from "../platform/index.ts";
+import { dropTrace } from "./frame-trim.ts";
 import { RelayProc } from "./relay-client.ts";
 
 /**
@@ -539,6 +540,8 @@ export class RpcClient {
 	}
 
 	private dispatch(frame: OmpFrame): void {
+		// Whole frames only (a chunked one is dispatched once it is reassembled): the trace would reach every page (#337).
+		dropTrace(frame);
 		if (frame.type === "ready") {
 			this.bashExcludeFromContext = frame.supportsBashExcludeFromContext === true;
 			const maxR = Number(frame.maxReassembledFrameBytes);
