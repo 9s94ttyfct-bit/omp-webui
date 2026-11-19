@@ -67,6 +67,10 @@ case "$new_requirement" in
 *) bad="${bad:+$bad, }requirement" ;;
 esac
 [ -n "$old_requirement" ] && [ "$old_requirement" = "$new_requirement" ] || bad="${bad:+$bad, }requirement"
+# The text compared above is what each signer declared, which anyone can copy into an ad-hoc signature: the staged copy's
+# signature is tested against the installed app's requirement, which only the holder of that certificate's key can meet (#276).
+[ -n "$old_requirement" ] && codesign --verify --deep --strict -R="${old_requirement#designated => }" "$staged" ||
+	bad="${bad:+$bad, }requirement"
 if [ -n "$bad" ]; then
 	log "the staged app is not fit to install ($bad)"
 	fail verify

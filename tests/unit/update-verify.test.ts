@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import pkg from "../../package.json";
 import { capabilities } from "../../server/platform/capabilities.ts";
 import { designatedRequirementOf, leafOf, refusalOf } from "../../server/update/verify.ts";
@@ -100,6 +100,28 @@ test.skipIf(!mac)("an app signed ad hoc is refused: its requirement is its own h
 		},
 	});
 });
+
+test.skipIf(!mac)(
+	"an app signed ad hoc that declares the running app's requirement is refused: the signature is tested against it (#276)",
+	async () => {
+		const mine = (await designatedRequirementOf(fixtures.running)) as string;
+		// Anyone can read the requirement off a published release and write it into a signature made with no certificate.
+		const forgedDir = join(fixtures.dir, "forged");
+		mkdirSync(forgedDir, { recursive: true });
+		const forged = join(forgedDir, basename(app("good")));
+		cpSync(app("good"), forged, { recursive: true });
+		const signed = Bun.spawnSync(["codesign", "--force", "--sign", "-", `-r=${mine}`, forged], { stderr: "pipe" });
+		expect(signed.exitCode, signed.stderr.toString()).toBe(0);
+		// It is intact and declares exactly what the running app does…
+		expect(Bun.spawnSync(["codesign", "--verify", "--deep", "--strict", forged]).exitCode).toBe(0);
+		expect(await designatedRequirementOf(forged)).toBe(mine);
+		// …and is refused all the same.
+		expect(await refusalOf(forged, expecting())).toEqual({
+			code: "requirement",
+			params: { expected: leafOf(mine) as string, found: "ad hoc" },
+		});
+	},
+);
 
 test.skipIf(!mac)(
 	"a running app that is signed ad hoc has nothing to hold a download against: nothing is accepted",

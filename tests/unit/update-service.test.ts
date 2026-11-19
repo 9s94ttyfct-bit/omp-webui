@@ -825,6 +825,29 @@ test.skipIf(!mac)(
 );
 
 test.skipIf(!mac)(
+	"a staged copy signed ad hoc that declares the installed app's requirement is refused by the helper: it is tested against it (#276)",
+	async () => {
+		const w = world({
+			onSignal: (x) => {
+				const staged = `${x.bundle}.updating`;
+				const shown = Bun.spawnSync(["codesign", "-d", "-r-", x.bundle]).stdout.toString();
+				const declared = shown.split("\n").find((line) => line.startsWith("designated =>")) as string;
+				// The same text, written into a signature made with no certificate: what anybody without the key can do.
+				Bun.spawnSync(["codesign", "--force", "--sign", "-", `-r=${declared}`, staged]);
+				process.kill(x.app.pid, "SIGKILL");
+			},
+		});
+		await install(w, "good");
+		await helperEnded(w);
+		expect(result(w)).toMatchObject({ ok: false, problem: "verify" });
+		expect(w.launches()).toEqual([pkg.version]);
+		expect(versionOf(w.bundle)).toBe(pkg.version);
+		expect(readdirSync(w.installDir)).toEqual(["omp-webui.app"]);
+	},
+	120_000,
+);
+
+test.skipIf(!mac)(
 	"a folder that stopped being writable between the stage and the swap leaves the old app in place and running again",
 	async () => {
 		const w = world({

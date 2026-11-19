@@ -11,7 +11,9 @@ import { detailOf } from "./steps.ts";
  * is. The last is what macOS keeps the app's permissions by (#456): the designated requirement names the bundle identifier
  * and the signing certificate, and an ad-hoc signature's is the build's own hash, which never matches anything else. It is
  * also what makes the download worth trusting: anyone can publish a file under a release's name, only the holder of the
- * certificate's key can sign it so that this requirement holds.
+ * certificate's key can sign it so that this requirement holds. The requirement a signature declares is text its signer
+ * wrote, which anyone can copy (`codesign -r`): the download's signature is tested against the running app's requirement
+ * (`codesign -R`), not only compared with it (#276).
  *
  * Every refusal says what was wrong; nothing is installed after one.
  */
@@ -95,5 +97,24 @@ export async function refusalOf(app: string, expected: Expectation): Promise<Ref
 		const found = theirLeaf === null ? "ad hoc" : theirLeaf === mineLeaf ? "another requirement" : theirLeaf;
 		return { code: "requirement", params: { expected: mineLeaf, found } };
 	}
+	// The same text proves nothing by itself: an ad-hoc signature can declare it. Only a signature made with the running
+	// app's certificate satisfies it.
+	if (!(await satisfies(app, mine))) {
+		const found = (await isAdHoc(app)) ? "ad hoc" : "another certificate";
+		return { code: "requirement", params: { expected: mineLeaf, found } };
+	}
 	return null;
+}
+
+/** Whether the signature at `app` (and the code it seals) satisfies `requirement` (`designated => …`), tested by `codesign`. */
+async function satisfies(app: string, requirement: string): Promise<boolean> {
+	const test = `-R=${requirement.replace(/^designated => /, "")}`;
+	const r = await run(["/usr/bin/codesign", "--verify", "--deep", "--strict", test, app], { timeoutMs: COMMAND_MS });
+	return r.code === 0;
+}
+
+/** Whether the signature at `app` is ad hoc: made with no certificate (`Signature=adhoc`). */
+async function isAdHoc(app: string): Promise<boolean> {
+	const r = await run(["/usr/bin/codesign", "-dvv", app], { timeoutMs: COMMAND_MS });
+	return /^Signature=adhoc$/m.test(`${r.stdout}\n${r.stderr}`);
 }
