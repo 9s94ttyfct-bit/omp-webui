@@ -19,6 +19,7 @@ import { en } from "../../i18n/files.ts";
 import { registerStrings, useT } from "../../i18n/index.ts";
 import { type EntryRow, visibleOpen, visibleRows } from "../../lib/files-rows.ts";
 import { type FolderScope, folder } from "../../lib/folder-api.ts";
+import { useImeGuard } from "../../lib/ime.ts";
 import { targetFolder } from "../../lib/transfer-plan.ts";
 import { socket } from "../../lib/ws.ts";
 import { useApp } from "../../store/app.ts";
@@ -222,6 +223,7 @@ function Toolbar({
 	guarded,
 	activeId,
 	onFilterKey,
+	onFilterCompositionEnd,
 	onRefresh,
 	onOpenFolder,
 	filterRef,
@@ -235,6 +237,7 @@ function Toolbar({
 	guarded: boolean;
 	activeId: string | undefined;
 	onFilterKey: (e: KeyboardEvent<HTMLInputElement>) => void;
+	onFilterCompositionEnd: (e: { timeStamp: number }) => void;
 	onRefresh: () => void;
 	/** Open the conversation's folder in Finder; absent when this page may not (a page that is not on this Mac). */
 	onOpenFolder: (() => void) | undefined;
@@ -272,6 +275,7 @@ function Toolbar({
 					value={filter}
 					onChange={(e) => setFilter(scope, e.target.value)}
 					onKeyDown={onFilterKey}
+					onCompositionEnd={onFilterCompositionEnd}
 					className="h-7 w-full min-w-0 rounded-lg border border-border bg-surface pr-7 pl-7 text-sm outline-none placeholder:text-faint focus:border-faint [&::-webkit-search-cancel-button]:hidden"
 				/>
 				{filter ? (
@@ -469,6 +473,8 @@ function FilesPane({
 	getTurns: () => TurnSource;
 }) {
 	const t = useT();
+	// The Enter that picks an input method's word (WebKit sends it after the composition ended) opens no file.
+	const ime = useImeGuard();
 	const scope = useMemo<FolderScope>(() => ({ live: liveId, file }), [liveId, file]);
 	const key = keyOf(scope);
 	const view = useChanges((s) => uiOf(s, key).view);
@@ -509,7 +515,7 @@ function FilesPane({
 		} else if (e.key === "ArrowUp" && count) {
 			e.preventDefault();
 			setActive((i) => Math.max(0, i - 1));
-		} else if (e.key === "Enter" && found?.matches[active]) {
+		} else if (e.key === "Enter" && !ime.imeKey(e) && found?.matches[active]) {
 			e.preventDefault();
 			byKeyboard.current = true;
 			select(scope, found.matches[active].path);
@@ -645,6 +651,7 @@ function FilesPane({
 				guarded={root?.guarded ?? false}
 				activeId={filtering && found?.matches.length ? `files-hit-${active}` : undefined}
 				onFilterKey={onFilterKey}
+				onFilterCompositionEnd={ime.onCompositionEnd}
 				onRefresh={refresh}
 				onOpenFolder={root?.local && !root.guarded ? () => openInFinder("") : undefined}
 				filterRef={filterRef}

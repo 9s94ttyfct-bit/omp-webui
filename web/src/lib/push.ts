@@ -10,6 +10,7 @@ import {
 import { t, useLang } from "../i18n/index.ts";
 import { ApiError } from "./api.ts";
 import { setNotifications } from "./attention.ts";
+import { httpText } from "./http-text.ts";
 import { pushDevice, rememberPushDevice } from "./push-presence.ts";
 import { inShell } from "./shell-notify.ts";
 
@@ -50,7 +51,7 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
 	});
 	const answer: { error?: unknown; code?: string } = await res.json().catch(() => ({}));
 	if (res.ok) return answer as T;
-	throw new ApiError(typeof answer.error === "string" ? answer.error : res.statusText, res.status, answer.code);
+	throw new ApiError(typeof answer.error === "string" ? answer.error : httpText(res), res.status, answer.code);
 }
 
 export const pushApi = {

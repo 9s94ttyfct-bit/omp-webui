@@ -6,6 +6,7 @@
 
 import "../i18n/later.ts";
 import { t } from "../i18n/index.ts";
+import { httpText } from "./http-text.ts";
 
 /** What the switch shows: `approval` is on, waiting for the person in macOS's System Settings. */
 export type LoginStartState = "on" | "off" | "approval";
@@ -44,7 +45,7 @@ async function server(on?: boolean): Promise<LoginStartAnswer | null> {
 	).catch(() => null);
 	const data = (await res?.json().catch(() => null)) as { available?: unknown; on?: unknown; error?: unknown } | null;
 	if (!res) return null;
-	if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : res.statusText);
+	if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : httpText(res));
 	return data?.available === true ? { state: data.on === true ? "on" : "off" } : null;
 }
 

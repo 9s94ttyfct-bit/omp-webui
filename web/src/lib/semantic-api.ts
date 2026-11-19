@@ -1,5 +1,6 @@
 import type { SemanticHit, SemanticStatus } from "@shared/semantic.ts";
 import { post } from "./api.ts";
+import { httpText } from "./http-text.ts";
 
 /**
  * Semantic search (`shared/semantic.ts`): its state, its switch, and a search. Loaded only by the settings card and on the
@@ -9,7 +10,7 @@ import { post } from "./api.ts";
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
 	const res = await fetch(path, { signal });
 	const body = await res.json().catch(() => ({}));
-	if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : res.statusText);
+	if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : httpText(res));
 	return body as T;
 }
 

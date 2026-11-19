@@ -95,10 +95,13 @@ test("a dialog that was settled while the page was away is gone once the server 
 	expect(live().needsInput).toBe(false);
 });
 
+// The same dialog text again is one toast with a count (#357), so what the page showed is the sum of the counts.
+const toastsShown = () => useApp.getState().toasts.reduce((n, o) => n + (o.count ?? 1), 0);
+
 test("a dialog that still waits stays, and one that came while the page was away is shown, without a second toast for the first", async () => {
 	frame(dialog("d1"));
 	frame(dialog("d2"));
-	expect(useApp.getState().toasts).toHaveLength(2);
+	expect(toastsShown()).toBe(2);
 	await attachLive("L1");
 	// d2 was answered meanwhile; d1 is replayed, and d3 was raised meanwhile.
 	frame(dialog("d1"));
@@ -107,7 +110,7 @@ test("a dialog that still waits stays, and one that came while the page was away
 	expect(live().uiRequests.map((r) => r.id)).toEqual(["d1", "d3"]);
 	expect(live().needsInput).toBe(true);
 	// Only d3 is news: the page did not drop d1 and ask for it again.
-	expect(useApp.getState().toasts).toHaveLength(3);
+	expect(toastsShown()).toBe(3);
 });
 
 test("a message whose increments were missed is shown whole once the server replays the message in flight", async () => {

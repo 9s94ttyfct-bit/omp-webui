@@ -1,4 +1,5 @@
 import type { WorktreeList } from "@shared/git.ts";
+import { httpText } from "./http-text.ts";
 
 /**
  * The repository's worktrees (`/api/git/worktrees`, #698). A plain ask is answered from what the server kept a moment ago;
@@ -9,7 +10,7 @@ export async function loadWorktrees(cwd: string, fresh: boolean, signal?: AbortS
 		signal,
 		...(fresh ? { method: "POST", headers: { "x-omp-webui": "1" } } : {}),
 	});
-	const body = await res.json().catch(() => ({ error: res.statusText }));
-	if (!res.ok) throw new Error(body.error ?? res.statusText);
+	const body = await res.json().catch(() => ({ error: httpText(res) }));
+	if (!res.ok) throw new Error(body.error ?? httpText(res));
 	return body as WorktreeList;
 }

@@ -1,6 +1,7 @@
 import { PREF, type PrefKey } from "@shared/prefs.ts";
 import { type Lang, showLang } from "../i18n/index.ts";
 import { useApp } from "../store/app.ts";
+import { followStoredNotify } from "./attention.ts";
 import { reloadStoredWidths } from "./panel-widths.ts";
 import { onPrefsChanged, receiveSnapshot, refreshPrefs } from "./prefs.ts";
 import { paintPalette, paintTheme, storedPalette, storedTheme } from "./theme.ts";
@@ -28,6 +29,7 @@ function show(keys: PrefKey[]): void {
 			showLang(lang as Lang).catch((e) => useApp.getState().toast("error", (e as Error).message));
 	}
 	if (keys.includes(PREF.sidebarWidth) || keys.includes(PREF.panelWidth)) reloadStoredWidths();
+	if (keys.includes(PREF.notify)) followStoredNotify();
 	if (keys.includes(PREF.keepThinking)) {
 		useApp.setState({ keepThinkingOpen: localStorage.getItem(PREF.keepThinking) === "on" });
 	}

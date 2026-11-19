@@ -26,6 +26,7 @@ import type { UsageRange } from "@shared/usage-range.ts";
 import type { ModelInfo } from "../store/live.ts";
 import { type Answer, answerOf } from "./answer.ts";
 import { isBlobHash } from "./blob.ts";
+import { httpText } from "./http-text.ts";
 import { saveBlob } from "./save.ts";
 
 export class ApiError extends Error {
@@ -40,8 +41,8 @@ export class ApiError extends Error {
 }
 
 async function fail(res: Response): Promise<never> {
-	const body = await res.json().catch(() => ({ error: res.statusText }));
-	throw new ApiError(body.error ?? res.statusText, res.status, body.code, body.params);
+	const body = await res.json().catch(() => ({ error: httpText(res) }));
+	throw new ApiError(body.error ?? httpText(res), res.status, body.code, body.params);
 }
 
 async function get<T>(path: string): Promise<T> {
@@ -384,7 +385,7 @@ export const api = {
 
 export async function downloadExport(file: string): Promise<void> {
 	const res = await fetch(api.exportUrl(file), { method: "POST", headers: { "x-omp-webui": "1" } });
-	if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.statusText);
+	if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? httpText(res));
 	const blob = await res.blob();
 	const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "session.html";
 	saveBlob(blob, name);
@@ -395,7 +396,7 @@ export async function blobBase64(hash: string): Promise<string> {
 	// A reference is put in an address only if it is a sha256: see `lib/blob.ts`.
 	if (!isBlobHash(hash)) throw new ApiError("Not a stored image", 400);
 	const res = await fetch(api.blobUrl(hash));
-	if (!res.ok) throw new ApiError((await res.json().catch(() => ({}))).error ?? res.statusText, res.status);
+	if (!res.ok) throw new ApiError((await res.json().catch(() => ({}))).error ?? httpText(res), res.status);
 	const bytes = new Uint8Array(await res.arrayBuffer());
 	let bin = "";
 	for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
@@ -409,7 +410,7 @@ export async function post<T>(path: string, body: unknown): Promise<T> {
 		body: JSON.stringify(body),
 	});
 	const data = await res.json().catch(() => ({}));
-	if (!res.ok) throw new Error(data.error ?? res.statusText);
+	if (!res.ok) throw new Error(data.error ?? httpText(res));
 	return data as T;
 }
 

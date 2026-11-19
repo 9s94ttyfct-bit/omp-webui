@@ -107,3 +107,18 @@ test("paused banner: Esc that belongs to an IME does not stop the command", asyn
 	await expect(page.getByTestId("paused-banner")).toHaveCount(0);
 	expect(tap.commands("abort_bash")).toHaveLength(1);
 });
+
+test("Settings search: the Enter that confirms a composition opens no result; a later Enter does (#280)", async ({
+	page,
+}) => {
+	await page.goto("/#/settings/app");
+	const field = page.getByTestId("settings-search-input");
+	await field.fill("browser");
+	await expect(page.locator('[data-testid="settings-search-result"][data-entry="browser"]')).toBeVisible();
+	await webkitConfirm(field);
+	await page.waitForTimeout(300);
+	// The choice marks the setting it goes to; the IME's Enter chose nothing.
+	await expect(page.locator('[data-marked="true"]')).toHaveCount(0);
+	await field.press("Enter");
+	await expect(page.locator('[data-marked="true"]').first()).toBeVisible();
+});

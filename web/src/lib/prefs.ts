@@ -73,8 +73,12 @@ const keeps = (key: PrefKey): boolean => told === null || told[key] !== undefine
 
 /** Remember a preference (null forgets it): in localStorage now, on the server shortly (if the server keeps it for this page). */
 export function setPref(key: PrefKey, value: string | null): void {
-	if (value === null) localStorage.removeItem(key);
-	else localStorage.setItem(key, value);
+	try {
+		if (value === null) localStorage.removeItem(key);
+		else localStorage.setItem(key, value);
+	} catch {
+		// The origin's storage is full or refused: the choice is still the page's (its callers go on) and still sent to the server.
+	}
 	if (!keeps(key)) return;
 	pending.set(key, value);
 	if (started && timer === undefined) {
@@ -100,7 +104,11 @@ function markIfCurrent(snapshot: PrefsSnapshot): void {
 		pending.size === 0 &&
 		PREF_KEYS.every((k) => snapshot.values[k] === undefined || localStorage.getItem(k) === snapshot.values[k])
 	) {
-		localStorage.setItem(PREFS_SYNC_KEY, syncMarker(snapshot));
+		try {
+			localStorage.setItem(PREFS_SYNC_KEY, syncMarker(snapshot));
+		} catch {
+			// Full: the next visit takes the server's word, as it does without the marker.
+		}
 	}
 }
 

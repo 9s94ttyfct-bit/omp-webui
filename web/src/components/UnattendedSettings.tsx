@@ -4,7 +4,7 @@ import { RotateCcw } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { useT } from "../i18n/index.ts";
 import { ownerPage } from "../lib/api.ts";
-import { setPref } from "../lib/prefs.ts";
+import { onPrefsChanged, setPref } from "../lib/prefs.ts";
 import { questionsApi } from "../lib/questions-api.ts";
 import { useQuestionsStrings } from "../lib/questions-strings.ts";
 import { useApp } from "../store/app.ts";
@@ -29,6 +29,13 @@ export function UnattendedSettings() {
 	const [notice, setNotice] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [byDefault, setByDefault] = useState(() => localStorage.getItem(PREF.unattended) === "on");
+	useEffect(
+		() =>
+			onPrefsChanged((keys) => {
+				if (keys.includes(PREF.unattended)) setByDefault(localStorage.getItem(PREF.unattended) === "on");
+			}),
+		[],
+	);
 	const field = useId();
 	useEffect(() => {
 		let live = true;

@@ -2,6 +2,7 @@ import type { LiveInfo } from "@shared/protocol.ts";
 import type { QuotaFloorSettings } from "@shared/quota-floor.ts";
 import { useApp } from "../store/app.ts";
 import { withInfo } from "../store/live.ts";
+import { httpText } from "./http-text.ts";
 import { socket } from "./ws.ts";
 
 /**
@@ -12,7 +13,7 @@ import { socket } from "./ws.ts";
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(path, init);
 	const body = await res.json().catch(() => ({}));
-	if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : res.statusText);
+	if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : httpText(res));
 	return body as T;
 }
 

@@ -1,6 +1,7 @@
 import type { ChatProjectsAnswer } from "@shared/chat-projects.ts";
 import { useApp } from "../store/app.ts";
 import { ApiError } from "./api.ts";
+import { httpText } from "./http-text.ts";
 import { shareProjects, shareStrings } from "./share.ts";
 
 /**
@@ -18,7 +19,7 @@ async function change(path: string, body: Record<string, unknown>): Promise<Chat
 	});
 	const answer = await res.json().catch(() => ({}));
 	if (!res.ok) {
-		const message = typeof answer.error === "string" ? answer.error : res.statusText;
+		const message = typeof answer.error === "string" ? answer.error : httpText(res);
 		throw new ApiError(message, res.status, answer.code, answer.params);
 	}
 	const done = answer as ChatProjectsAnswer;

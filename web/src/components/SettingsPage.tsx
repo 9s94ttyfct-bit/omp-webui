@@ -208,6 +208,7 @@ export function SettingsPage() {
 	/** The working conversation whose Close is being asked about (#388): omp cuts its turn when it is closed. */
 	const [closing, setClosing] = useState<{ liveId: string; name: string } | null>(null);
 	const [autoTitle, setAutoTitle] = useState(autoTitleEnabled);
+	useEffect(() => onPrefsChanged((keys) => keys.includes(PREF.autoTitle) && setAutoTitle(autoTitleEnabled())), []);
 	const notify = useNotify();
 	// The macOS app shows notifications through the shell, and macOS (System Settings) is where they are allowed.
 	const app = inShell();

@@ -6,6 +6,7 @@ import { useT } from "../../i18n/index.ts";
 import { type DocumentError, readDocx } from "../../lib/document-text.ts";
 import { fmtBytes } from "../../lib/files-rows.ts";
 import { type FolderScope, folder } from "../../lib/folder-api.ts";
+import { httpText } from "../../lib/http-text.ts";
 import type { drawPage, layText } from "../../lib/pdf.ts";
 import { cx, Empty, Spinner } from "../ui.tsx";
 import "./pdf-text-layer.css";
@@ -36,7 +37,7 @@ export default function DocumentView({ scope, file }: { scope: FolderScope; file
 			.then(async (res) => {
 				if (!res.ok) {
 					const body: { error?: string } = await res.json().catch(() => ({}));
-					throw new Error(body.error ?? res.statusText);
+					throw new Error(body.error ?? httpText(res));
 				}
 				return new Uint8Array(await res.arrayBuffer());
 			})

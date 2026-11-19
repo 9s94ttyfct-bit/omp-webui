@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { randomId } from "./random-id.ts";
 
 /**
  * A window popped out for a conversation's browser (BrowserFull.tsx) says that it is open to the app's other pages of the
@@ -60,7 +61,7 @@ let channel: BroadcastChannel | null | undefined;
 const presence = new WindowPresence();
 const listeners = new Set<() => void>();
 /** This window's own id, made when it first announces itself. */
-const windowId = crypto.randomUUID();
+const windowId = randomId();
 /** The conversation whose browser this window shows, when it is one popped out for it. */
 let shown: string | null = null;
 

@@ -285,6 +285,12 @@ Every image is generated from the real UI by `bun run screenshots`, in the light
   - **Palette** (#357): a conversation expanded with “N more in this conversation” lists at most 200 of its hits; when more match, a line under them says how many are not listed and to narrow the search.
   - **Repeated notices** (#382): the same toast (same level, text and button) while it is still up is that toast once more, with a count (×N), the newest again and with its time starting over, not another toast behind it.
   - **Numbers and times in the page's language** (#410): whole numbers (token counts, sizes, request counts), the Guard log's time, “Checked at” in omp settings and a usage limit's reset time follow the language chosen in Settings, not the browser's.
+  - **A page on plain http on the network** (#246): ids the page makes itself (an attached picture or file, the browser's window) no longer use `crypto.randomUUID`, which only a secure context has, so attaching, the draft given back after a failed send and the Browser tab work on a page opened at `http://<address>:7878`.
+  - **Older browsers** (#269): the page is built for Safari and iOS 16.4, Chrome 111 and Firefox 114; `Promise.withResolvers` (Safari 17.4, Chrome 119, Firefox 121) is added at start where it is missing, so the page lists conversations on an iPhone that stays on iOS 16.
+  - **Errors through the tunnel** (#244): a failed answer that is not the server's own JSON (Cloudflare's error page) is described by its status (`HTTP 502`) when there is no status text, as over HTTP/2 and HTTP/3 there never is; the page's errors no longer read “Could not load sessions: ”.
+  - **Full browser storage** (#242): the commands' kept output (`ompw.commandOutput`) is bounded by size, 500,000 characters in all with the oldest conversation first, besides the counts; and a setting chosen while the origin's storage is full still applies and is still sent to the server instead of throwing.
+  - **Settings changed in another window** (#239): Notifications, Automatic titles and Unattended by default follow a change made in another window or tab (`onPrefsChanged`), so a switch that was turned off elsewhere shows Off and stops notifying here.
+  - **Input-method Enter** (#280): the Enter that confirms a composition (WebKit sends it as `keyCode` 229 after `compositionend`) no longer opens a Settings search result, a file found by the Files filter or saves a guidance name that was being typed (`useImeGuard`).
 
 ## Install
 

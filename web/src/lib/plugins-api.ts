@@ -14,6 +14,7 @@ import type {
 	SkillsData,
 	UpdatesState,
 } from "@shared/plugins.ts";
+import { httpText } from "./http-text.ts";
 
 /**
  * `/api/plugins*`: omp's plugins, read and changed with omp's own CLI on the computer omp-webui runs on (see
@@ -23,7 +24,7 @@ import type {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(path, init);
 	const body: unknown = await res.json().catch(() => ({}));
-	if (!res.ok) throw new Error(isRecord(body) && typeof body.error === "string" ? body.error : res.statusText);
+	if (!res.ok) throw new Error(isRecord(body) && typeof body.error === "string" ? body.error : httpText(res));
 	return body as T;
 }
 

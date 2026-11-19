@@ -16,6 +16,7 @@ import {
 	TextCursorInput,
 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { httpText } from "../lib/http-text.ts";
 import "../i18n/later.ts";
 import { type MessageKey, registerStrings, type Translate, useT } from "../i18n/index.ts";
 import { en } from "../i18n/issues.ts";
@@ -46,7 +47,7 @@ async function ask<T>(path: string, body: unknown): Promise<IssuesAnswer<T>> {
 		body: JSON.stringify(body),
 	});
 	const data = await res.json().catch(() => ({}));
-	if (!res.ok) return { ok: false, problem: "failed", message: data.error ?? res.statusText };
+	if (!res.ok) return { ok: false, problem: "failed", message: data.error ?? httpText(res) };
 	return data as IssuesAnswer<T>;
 }
 

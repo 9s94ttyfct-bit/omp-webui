@@ -17,6 +17,7 @@ import { t } from "../i18n/index.ts";
 import { useApp } from "../store/app.ts";
 import type { LiveState, ModelInfo } from "../store/live.ts";
 import { api } from "./api.ts";
+import { httpText } from "./http-text.ts";
 import { modelLabel, type StartConfig, selectedThinking } from "./models.ts";
 import { useMode } from "./offline.ts";
 import type { SavedSettings } from "./session-settings.ts";
@@ -48,8 +49,8 @@ export async function request(path: string, body?: unknown): Promise<ModelConfig
 					body: JSON.stringify(body),
 				},
 	);
-	const data = await res.json().catch(() => ({ error: res.statusText }));
-	if (!res.ok) throw new ConfigRequestError(data.error ?? res.statusText, res.status);
+	const data = await res.json().catch(() => ({ error: httpText(res) }));
+	if (!res.ok) throw new ConfigRequestError(data.error ?? httpText(res), res.status);
 	return data;
 }
 

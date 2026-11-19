@@ -1,6 +1,7 @@
 import type { ErrorParams } from "@shared/error-info.ts";
 import type { AppUpdateState, UpdateInstallRequest, UpdateSnapshot } from "@shared/update.ts";
 import { create } from "zustand";
+import { httpText } from "../lib/http-text.ts";
 
 /**
  * The app's own updates as the page sees them (#571): whether a newer release exists, and the install the server is
@@ -61,7 +62,7 @@ async function request(path: string, body?: unknown): Promise<UpdateSnapshot> {
 				},
 	);
 	const data = await res.json().catch(() => ({}));
-	if (!res.ok) throw new AppUpdateRequestError(data.error ?? res.statusText, res.status, data.code, data.params);
+	if (!res.ok) throw new AppUpdateRequestError(data.error ?? httpText(res), res.status, data.code, data.params);
 	setAppUpdateSnapshot(data);
 	return data;
 }

@@ -8,6 +8,7 @@ import {
 import type { MessageKey, Vars } from "../i18n/index.ts";
 import { ApiError } from "./api.ts";
 import { errorText } from "./error-text.ts";
+import { httpText } from "./http-text.ts";
 
 /** A project folder the server did not make: why, in the server's own terms (`problem`), for the page to word. */
 export class ProjectRefused extends Error {
@@ -27,7 +28,7 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
 	});
 	const answer = await res.json().catch(() => ({}));
 	if (res.ok) return answer as T;
-	const message = typeof answer.error === "string" ? answer.error : res.statusText;
+	const message = typeof answer.error === "string" ? answer.error : httpText(res);
 	if (isProjectProblem(answer.problem)) throw new ProjectRefused(message, answer.problem);
 	// A folder that cannot be chosen is told with the codes the folder picker has (`dirNotFound`, …).
 	throw new ApiError(message, res.status, answer.code, answer.params);

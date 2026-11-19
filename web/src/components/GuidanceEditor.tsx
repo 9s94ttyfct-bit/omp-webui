@@ -17,6 +17,7 @@ import { ownerPage } from "../lib/api.ts";
 import { GuidanceApiError, guidanceApi, nameProblemText, refusalText } from "../lib/guidance-api.ts";
 import { templateName } from "../lib/guidance-names.ts";
 import { useGuidanceStrings } from "../lib/guidance-strings.ts";
+import { useImeGuard } from "../lib/ime.ts";
 import { onPrefsChanged } from "../lib/prefs.ts";
 import { useApp } from "../store/app.ts";
 import { LoadError } from "./LoadError.tsx";
@@ -81,6 +82,8 @@ function ReasonButton({
  */
 export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: string | null }) {
 	const t = useT();
+	// The Enter that picks an input method's word (WebKit sends it after the composition ended) does not save a name.
+	const ime = useImeGuard();
 	const ready = useGuidanceStrings();
 	const owner = useApp((s) => (s.meta ? ownerPage(s.meta) : true));
 	// The running conversation's guidance as the live frames keep it; a closed one's is what the server kept.
@@ -416,11 +419,13 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 										value={renaming}
 										disabled={busy}
 										onFocus={(e) => e.currentTarget.select()}
+										onCompositionEnd={ime.onCompositionEnd}
 										onChange={(e) => {
 											setRenaming(e.target.value);
 											setRenameError(null);
 										}}
 										onKeyDown={(e) => {
+											if (e.key === "Enter" && ime.imeKey(e)) return;
 											if (e.key === "Enter") {
 												e.preventDefault();
 												void rename();

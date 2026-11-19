@@ -4,6 +4,7 @@ import type { InstallOptionId, OmpSnapshot, OmpState } from "@shared/omp-install
 import { PREF } from "@shared/prefs.ts";
 import type { ServerMessage } from "@shared/protocol.ts";
 import { create } from "zustand";
+import { httpText } from "../lib/http-text.ts";
 import { setPref } from "../lib/prefs.ts";
 import type { ModelInfo } from "./live.ts";
 
@@ -88,7 +89,7 @@ async function request(path: string, body?: unknown): Promise<OmpSnapshot> {
 				},
 	);
 	const data = await res.json().catch(() => ({}));
-	if (!res.ok) throw new OmpRequestError(data.error ?? res.statusText, data.code, data.params);
+	if (!res.ok) throw new OmpRequestError(data.error ?? httpText(res), data.code, data.params);
 	setOmpSnapshot(data);
 	return data;
 }
@@ -109,7 +110,7 @@ export const ompApi = {
 	async models(): Promise<ModelInfo[]> {
 		const res = await fetch("/api/models?force=1", { method: "POST", headers: { "x-omp-webui": "1" } });
 		const data = await res.json().catch(() => ({}));
-		if (!res.ok) throw new Error(data.error ?? res.statusText);
+		if (!res.ok) throw new Error(data.error ?? httpText(res));
 		return data;
 	},
 };

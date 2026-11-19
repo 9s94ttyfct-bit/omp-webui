@@ -13,6 +13,7 @@ import { t } from "../i18n/index.ts";
 import { useApp } from "../store/app.ts";
 import { ApiError } from "./api.ts";
 import { errorText } from "./error-text.ts";
+import { httpText } from "./http-text.ts";
 import { modeSuperseded } from "./offline-format.ts";
 import { socket } from "./ws.ts";
 
@@ -25,7 +26,7 @@ import { socket } from "./ws.ts";
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(path, init);
 	const data = await res.json().catch(() => ({}));
-	if (!res.ok) throw new ApiError(data.error ?? res.statusText, res.status, data.code, data.params);
+	if (!res.ok) throw new ApiError(data.error ?? httpText(res), res.status, data.code, data.params);
 	return data as T;
 }
 

@@ -1,5 +1,6 @@
 import type { LiveUnattended, Question, QuestionList, UnattendedSettings } from "@shared/unattended.ts";
 import { useApp } from "../store/app.ts";
+import { httpText } from "./http-text.ts";
 
 /**
  * The routes of unattended mode (#646): the questions the agents filed, the answers, what the agent is told, and one
@@ -8,7 +9,7 @@ import { useApp } from "../store/app.ts";
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(path, init);
 	const body = await res.json().catch(() => ({}));
-	if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : res.statusText);
+	if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : httpText(res));
 	return body as T;
 }
 

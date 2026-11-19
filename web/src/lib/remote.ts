@@ -1,6 +1,7 @@
 import type { RemoteSnapshot, RemoteStatus } from "@shared/remote.ts";
 import type { RemoteCheck } from "@shared/remote-ai.ts";
 import { create } from "zustand";
+import { httpText } from "./http-text.ts";
 
 /**
  * Remote access (Cloudflare Tunnel + Access), as the page sees it: what the server says about the tunnel, and the
@@ -104,7 +105,7 @@ export async function request<T>(path: string, body?: unknown): Promise<T> {
 				},
 	);
 	const data = await res.json().catch(() => ({}));
-	if (!res.ok) throw new RemoteError(data.error ?? res.statusText, res.status, data.code);
+	if (!res.ok) throw new RemoteError(data.error ?? httpText(res), res.status, data.code);
 	return data as T;
 }
 

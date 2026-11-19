@@ -19,6 +19,7 @@ import {
 import type { DropRequest } from "../lib/drop-items.ts";
 import { readChoices, rememberChoices } from "../lib/drop-prefs.ts";
 import { run, type UploadRow } from "../lib/drop-run.ts";
+import { randomId } from "../lib/random-id.ts";
 import "../lib/drop-strings.ts";
 import { attachedBytes, prepareImage } from "../lib/images.ts";
 import { type UploadScope, uploadFile } from "../lib/upload.ts";
@@ -110,9 +111,9 @@ export default function DropChoice({
 					data: img.data,
 					mimeType: img.mimeType,
 					name: img.name,
-					id: crypto.randomUUID(),
+					id: randomId(),
 				})),
-				files: result.files.map((file) => ({ type: "text" as const, ...file, id: crypto.randomUUID() })),
+				files: result.files.map((file) => ({ type: "text" as const, ...file, id: randomId() })),
 			});
 		}
 		if (result.paths.length) now.onInsert(result.paths.map(pathText).join("\n"));

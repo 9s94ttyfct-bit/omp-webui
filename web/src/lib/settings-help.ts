@@ -3,6 +3,7 @@ import type { SettingsChange, SettingsHelpState } from "@shared/settings-help.ts
 import { t } from "../i18n/index.ts";
 import { attachLive, useApp } from "../store/app.ts";
 import { setSettingsHelpState } from "../store/settings-help.ts";
+import { httpText } from "./http-text.ts";
 import "./settings-help-strings.ts";
 import { socket } from "./ws.ts";
 
@@ -33,7 +34,7 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
 				},
 	);
 	const data = (await res.json().catch(() => ({}))) as T & { error?: string; state?: SettingsHelpState };
-	if (!res.ok) throw new SettingsHelpRequestError(data.error ?? res.statusText, res.status);
+	if (!res.ok) throw new SettingsHelpRequestError(data.error ?? httpText(res), res.status);
 	return data;
 }
 

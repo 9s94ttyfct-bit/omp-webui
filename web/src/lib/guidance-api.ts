@@ -9,6 +9,7 @@ import {
 } from "@shared/model-guidance.ts";
 import type { Translate } from "../i18n/index.ts";
 import { useApp } from "../store/app.ts";
+import { httpText } from "./http-text.ts";
 
 /**
  * `/api/model-guidance*` (#641): the templates the person saved, and what one conversation carries. Every route reads for
@@ -47,7 +48,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	const body = await res.json().catch(() => ({}));
 	if (!res.ok)
 		throw new GuidanceApiError(
-			typeof body.error === "string" ? body.error : res.statusText,
+			typeof body.error === "string" ? body.error : httpText(res),
 			typeof body.problem === "string" ? (body.problem as GuidanceProblem) : null,
 		);
 	return body as T;

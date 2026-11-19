@@ -7,6 +7,7 @@ import "./index.css";
 import { startDraftPersistence } from "./lib/drafts.ts";
 import { guardDrops } from "./lib/drop-guard.ts";
 import { restartEarlyAnimations } from "./lib/early-animations.ts";
+import { installPolyfills } from "./lib/polyfills.ts";
 import { startPrefsSync } from "./lib/prefs.ts";
 import { startLivePrefs } from "./lib/prefs-live.ts";
 import { keepRangeFill } from "./lib/range-fill.ts";
@@ -14,6 +15,8 @@ import { reloadOnPreloadError } from "./lib/reload.ts";
 import { followSystemTheme, paintTheme } from "./lib/theme.ts";
 import { startApp, useApp } from "./store/app.ts";
 
+// Before any request: the oldest browsers the page is built for lack some runtime APIs it calls.
+installPolyfills();
 // A tab left open across an upgrade asks for chunks the new build no longer has: fetch the new build, once.
 window.addEventListener("vite:preloadError", () => reloadOnPreloadError());
 // Theme "System" follows the OS appearance while the app is open (index.html only reads it before first paint).

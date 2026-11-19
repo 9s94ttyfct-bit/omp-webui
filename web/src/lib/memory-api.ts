@@ -12,6 +12,7 @@ import {
 	queryString,
 } from "@shared/memory.ts";
 import { type MessageKey, t } from "../i18n/index.ts";
+import { httpText } from "./http-text.ts";
 
 /** `/api/memory*`: omp's long-term memory. Every route answers 403 to a page that came through the tunnel. */
 
@@ -57,7 +58,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	const body = (await res.json().catch(() => ({}))) as { error?: unknown; code?: unknown };
 	if (!res.ok) {
 		const code = (MEMORY_ERROR_CODES as readonly unknown[]).includes(body.code) ? (body.code as MemoryErrorCode) : null;
-		throw new MemoryApiError(typeof body.error === "string" ? body.error : res.statusText, code, res.status);
+		throw new MemoryApiError(typeof body.error === "string" ? body.error : httpText(res), code, res.status);
 	}
 	return body as T;
 }

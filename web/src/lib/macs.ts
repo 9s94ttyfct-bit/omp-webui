@@ -9,6 +9,7 @@ import {
 } from "@shared/macs.ts";
 import { create } from "zustand";
 import type { MessageKey } from "../i18n/index.ts";
+import { httpText } from "./http-text.ts";
 
 /**
  * The sidebar's machine switcher (#628): which Mac a choice opens and how, what is known of each, and adding one.
@@ -136,7 +137,7 @@ export async function addSavedMac(input: { name: string; address: string }): Pro
 	});
 	if (res.ok) return;
 	const body: unknown = await res.json().catch(() => null);
-	const said = isRecord(body) && typeof body.error === "string" ? body.error : res.statusText;
+	const said = isRecord(body) && typeof body.error === "string" ? body.error : httpText(res);
 	throw new MacsError(said, isRecord(body) ? problemOf(body.problem) : null);
 }
 

@@ -1,6 +1,7 @@
 import type { LoadedCommand, LoadedData, LoadedMcpServer, LoadedTool } from "@shared/loaded.ts";
 import { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
+import { httpText } from "./http-text.ts";
 
 /** Where `/api/loaded` is asked: the conversation's running process, else its saved file. */
 export interface LoadedTarget {
@@ -23,7 +24,7 @@ export async function fetchLoaded(target: LoadedTarget): Promise<LoadedData> {
 	if (target.file) query.set("file", target.file);
 	const res = await fetch(`/api/loaded?${query}`);
 	const body = await res.json().catch(() => ({}));
-	if (!res.ok) throw new Error(body.error ?? res.statusText);
+	if (!res.ok) throw new Error(body.error ?? httpText(res));
 	return body as LoadedData;
 }
 

@@ -2,6 +2,7 @@ import { Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
+import { useImeGuard } from "../lib/ime.ts";
 import { SETTINGS_PAGE_LABEL } from "../lib/settings-page-labels.ts";
 import { pageOfElement } from "../lib/settings-pages.ts";
 import { flattenSettings, type SettingGroup, type SettingHit, searchSettings } from "../lib/settings-search.ts";
@@ -26,6 +27,8 @@ function pageName(entry: SettingHit["entry"], t: ReturnType<typeof useT>): strin
  */
 export function SettingsSearch({ onGo }: { onGo: (entry: SettingHit["entry"]) => void }) {
 	const t = useT();
+	// The Enter that picks an input method's word (WebKit sends it after the composition ended) opens no result.
+	const ime = useImeGuard();
 	const [query, setQuery] = useState("");
 	/**
 	 * The result the person chose (arrow keys, a pointer moving over it, a result they went to), by the entry's id; "" is
@@ -106,7 +109,7 @@ export function SettingsSearch({ onGo }: { onGo: (entry: SettingHit["entry"]) =>
 		if (e.key === "ArrowUp") return move(at < 0 ? count - 1 : at - 1);
 		if (e.key === "Home") return move(0);
 		if (e.key === "End") return move(count - 1);
-		if (e.key === "Enter" && activeHit) {
+		if (e.key === "Enter" && activeHit && !ime.imeKey(e)) {
 			e.preventDefault();
 			go(activeHit);
 		}
@@ -134,6 +137,7 @@ export function SettingsSearch({ onGo }: { onGo: (entry: SettingHit["entry"]) =>
 						setChosen("");
 					}}
 					onKeyDown={onKeyDown}
+					onCompositionEnd={ime.onCompositionEnd}
 					// The field is what a person comes to Settings' top for; the browser's own search box would find the label,
 					// not the setting, so the field is the page's.
 					// The field has its own clear button (below): the browser's blue × beside it was a second one.

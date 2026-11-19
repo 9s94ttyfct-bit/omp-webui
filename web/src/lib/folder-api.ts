@@ -1,6 +1,7 @@
 import type { FileDiff, FolderChanges } from "@shared/changes.ts";
 import type { FolderFile, FolderFound, FolderListing } from "@shared/folder.ts";
 import { ApiError } from "./api.ts";
+import { httpText } from "./http-text.ts";
 
 /**
  * The Files tab's requests (`/api/folder/*`, see server/folder-routes.ts). A request names the conversation, never a
@@ -26,8 +27,8 @@ function query(scope: FolderScope, extra: Record<string, string> = {}): string {
 
 async function read<T>(res: Response): Promise<T> {
 	if (!res.ok) {
-		const body = await res.json().catch(() => ({ error: res.statusText }));
-		throw new ApiError(body.error ?? res.statusText, res.status, body.code, body.params);
+		const body = await res.json().catch(() => ({ error: httpText(res) }));
+		throw new ApiError(body.error ?? httpText(res), res.status, body.code, body.params);
 	}
 	return res.json();
 }

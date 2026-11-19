@@ -16,6 +16,12 @@ const MAX_FILES = 40;
 const MAX_NOTES = 30;
 /** Characters of one note: a command that printed more is cut, as a terminal would scroll it away. */
 const MAX_TEXT = 20_000;
+/**
+ * Characters of everything kept, in all: the oldest files go first. The origin's whole localStorage is about 5 million
+ * characters (Chrome), which the page's own settings share: notes bounded only by counts could fill it, after which
+ * choosing a theme or any setting failed.
+ */
+export const MAX_TOTAL = 500_000;
 
 /** The part of `Storage` this needs: tests give it a Map. */
 export interface NoteStorage {
@@ -75,8 +81,17 @@ export function saveCommandNotes(file: string, notes: CommandNote[], storage: No
 		.slice(-MAX_NOTES)
 		.map((n): Saved => ({ at: n.at, after: n.after, text: n.text.slice(0, MAX_TEXT) }));
 	if (mine.length > 0) rows.push([file, mine]);
+	const kept = rows.slice(-MAX_FILES);
+	let json = JSON.stringify(kept);
+	// Over the total: the oldest file goes, then (when only this one is left) its oldest note.
+	while (json.length > MAX_TOTAL && kept.length > 0) {
+		const notes = kept[0]?.[1] ?? [];
+		if (kept.length > 1 || notes.length <= 1) kept.shift();
+		else notes.shift();
+		json = JSON.stringify(kept);
+	}
 	try {
-		storage.setItem(KEY, JSON.stringify(rows.slice(-MAX_FILES)));
+		storage.setItem(KEY, json);
 	} catch {
 		// Storage is full or refused: these are a convenience, and the page shows them for as long as it runs.
 	}

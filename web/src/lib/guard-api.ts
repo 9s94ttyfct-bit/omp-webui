@@ -11,13 +11,14 @@ import type { GuardDefaults, GuardRules, Threshold } from "@shared/guard-policy.
 import type { RiskKind } from "@shared/risk-confirm.ts";
 import { useApp } from "../store/app.ts";
 import { onGuardMessage, useGuard } from "../store/guard.ts";
+import { httpText } from "./http-text.ts";
 
 /** `/api/guard*`: the settings, what the person tuned, the log of the decisions and the benchmark. Every route answers 403 to a page that came through the tunnel. */
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(path, init);
 	const body = await res.json().catch(() => ({}));
-	if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : res.statusText);
+	if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : httpText(res));
 	return body as T;
 }
 

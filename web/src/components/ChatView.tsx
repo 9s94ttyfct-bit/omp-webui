@@ -60,6 +60,7 @@ import { messageOf, type PromptImage, promptImages, roleOf, textOf } from "../li
 import { useModelCatalog, useStartConfig } from "../lib/model-config.ts";
 import { namedFrom, selectedThinking } from "../lib/models.ts";
 import { providersUsed } from "../lib/quota.ts";
+import { randomId } from "../lib/random-id.ts";
 import { placeAnchor, type Reading, readAnchor, registerReader } from "../lib/reading.ts";
 import { promptsOf } from "../lib/recall.ts";
 import { interruptedTail, retryableTail } from "../lib/retry.ts";
@@ -557,8 +558,8 @@ function toDraft(text: string, images: PromptImage[]): ComposerDraft {
 	const { typed, files } = userParts(text);
 	return {
 		text: typed,
-		images: images.map((img) => ({ ...img, name: "image", id: crypto.randomUUID() })),
-		files: files.map(({ name, bytes, text }) => ({ type: "text", name, bytes, text, id: crypto.randomUUID() })),
+		images: images.map((img) => ({ ...img, name: "image", id: randomId() })),
+		files: files.map(({ name, bytes, text }) => ({ type: "text", name, bytes, text, id: randomId() })),
 		nonce: Date.now(),
 	};
 }

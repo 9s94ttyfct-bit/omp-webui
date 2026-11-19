@@ -1,5 +1,6 @@
 import type { BrowserState } from "@shared/browser.ts";
 import { create } from "zustand";
+import { httpText } from "../lib/http-text.ts";
 
 /**
  * The built-in browser's install state as the page sees it (docs/agents/browser.md): what is installed, the newest version,
@@ -45,7 +46,7 @@ async function request(path: string, post: boolean): Promise<BrowserState> {
 	);
 	const data = await res.json().catch(() => ({}));
 	// What a refused request says is shown as it is.
-	if (!res.ok) throw new Error(data.error ?? res.statusText);
+	if (!res.ok) throw new Error(data.error ?? httpText(res));
 	onBrowserState(data as BrowserState);
 	return data as BrowserState;
 }

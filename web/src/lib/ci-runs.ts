@@ -1,6 +1,7 @@
 import { CI_SCOPES, type CiAnswer, type CiBadge, type CiJob, type CiRun, type CiScope, ciBadge } from "@shared/ci.ts";
 import { PREF } from "@shared/prefs.ts";
 import { useEffect, useState } from "react";
+import { httpText } from "./http-text.ts";
 import "../i18n/later.ts";
 import { t } from "../i18n/index.ts";
 import { useNotify, windowInUse } from "./attention.ts";
@@ -21,7 +22,7 @@ async function post<T>(path: string, body: unknown): Promise<CiAnswer<T>> {
 		body: JSON.stringify(body),
 	});
 	const data = await res.json().catch(() => ({}));
-	if (!res.ok) return { ok: false, problem: "failed", message: data.error ?? res.statusText, nextMs: 60_000 };
+	if (!res.ok) return { ok: false, problem: "failed", message: data.error ?? httpText(res), nextMs: 60_000 };
 	return data as CiAnswer<T>;
 }
 

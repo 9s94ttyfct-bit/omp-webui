@@ -85,6 +85,11 @@ export const useNotify = create<NotifyState>(() => ({
 	permission: inShell() ? "default" : browserPermission(),
 }));
 
+/** `ompw.notify` was changed in another window (`lib/prefs.ts` took it into localStorage): this page follows it (#239). */
+export function followStoredNotify(): void {
+	useNotify.setState({ enabled: localStorage.getItem(PREF.notify) === "on" });
+}
+
 /**
  * Turn notifications on or off. Turning them on asks for permission the first time (the browser, or macOS through the app
  * shell, shows its own prompt); without it they stay off.
