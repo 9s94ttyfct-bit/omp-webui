@@ -1079,14 +1079,15 @@ export class Live {
 	/**
 	 * End this conversation's omp (a user's Close, "Quit and end"). A paused omp runs again to read its closed stdin
 	 * and exit, which is all an idle one needs. One that was working when it was paused (a turn, a command, a question it
-	 * is waiting on) ignores a closed stdin until it is done, and would carry on, unattended, from where the user stopped
-	 * it: it is stopped (`LivePool.shutdown` does the same for what is working). One that waits to retry a failed turn is
-	 * not let run at all: its sleep runs to a deadline that goes on while it is frozen, so a wait that is over (or ends
-	 * while omp handles its SIGTERM) starts the retried turn the moment omp runs, before a closed stdin or a SIGTERM is
-	 * heard of. It is killed frozen, and what it left frozen is ended with it (`endRemnants`, as for an omp killed while
-	 * paused). A conversation that was not paused closes as it always did, and is left to finish its turn; opening its
-	 * file again waits for that and is refused if it takes too long (`LivePool.ended`): never a second omp on a file one
-	 * still writes.
+	 * is waiting on) is stopped rather than let run to read it (an older omp ignored a closed stdin until its turn was
+	 * done, and would have carried on, unattended, from where the user stopped it; `LivePool.shutdown` does the same for
+	 * what is working). One that waits to retry a failed turn is not let run at all: its sleep runs to a deadline that
+	 * goes on while it is frozen, so a wait that is over (or ends while omp handles its SIGTERM) starts the retried turn
+	 * the moment omp runs, before a closed stdin or a SIGTERM is heard of. It is killed frozen, and what it left frozen is
+	 * ended with it (`endRemnants`, as for an omp killed while paused). A conversation that was not paused has its stdin
+	 * closed: omp 18.22 aborts a turn it is in (the reply and a running tool are cut) and exits within a second or so, which
+	 * is why the page asks before it closes one that works (#388). Opening its file again waits until it has ended and is
+	 * refused if that takes too long (`LivePool.ended`): never a second omp on a file one still writes.
 	 *
 	 * `why` says why the server ended it, and the page is told (#472): an end the user asked for and one the server
 	 * decided on are not the same as an omp that ended on its own.
@@ -4757,8 +4758,8 @@ export class LivePool {
 
 	/**
 	 * Wait for the omp of each of `lives`, closed, to end. It writes its session file until it has, and a second omp on
-	 * that file makes omp save the history as a branch file of its own. One still running after `finishMs` (a turn left to
-	 * finish when the user closed the conversation, an omp that does not answer its closed stdin) is refused, not raced.
+	 * that file makes omp save the history as a branch file of its own. One still running after `finishMs` (an omp that
+	 * does not answer its closed stdin; an older omp finished its turn first, omp 18.22 aborts it) is refused, not raced.
 	 */
 	private async ended(lives: Live[]): Promise<void> {
 		let timer: NodeJS.Timeout | undefined;

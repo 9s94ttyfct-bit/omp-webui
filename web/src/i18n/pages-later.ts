@@ -293,6 +293,9 @@ export const en = {
 	settingsPausedNote:
 		"A paused conversation stays frozen in the background when you quit, with its tools, and can be resumed after you open the app again. Close it to end it.",
 	settingsCloseProcess: "Close {name}",
+	settingsCloseWorkingTitle: "Close {name} while it works?",
+	settingsCloseWorkingBody:
+		"Closing it stops its turn now: the reply being written and any tool that runs are cut, as Stop does, and omp ends. The conversation is kept, and you can open it again.",
 	settingsOmpVersion: "omp version: {v}",
 	settingsWebVersion: "Web UI version: {v}",
 	settingsAgentDir: "Agent dir: {v}",

@@ -28,6 +28,7 @@ import { autoTitleEnabled, closeLive, useApp } from "../store/app.ts";
 import { Accounts } from "./Accounts.tsx";
 import { AnimationSettings } from "./AnimationSettings.tsx";
 import { ApprovalSettings } from "./ApprovalSettings.tsx";
+import { CloseWorkingDialog } from "./CloseWorkingDialog.tsx";
 import { CompactAtSettings } from "./CompactAtSettings.tsx";
 import { CompactWhereSettings } from "./CompactWhereSettings.tsx";
 import { DropSettings } from "./DropSettings.tsx";
@@ -204,6 +205,8 @@ export function SettingsPage() {
 		() => Object.values(infos).map((info) => ({ info, streaming: working[info.liveId] })),
 		[infos, working],
 	);
+	/** The working conversation whose Close is being asked about (#388): omp cuts its turn when it is closed. */
+	const [closing, setClosing] = useState<{ liveId: string; name: string } | null>(null);
 	const [autoTitle, setAutoTitle] = useState(autoTitleEnabled);
 	const notify = useNotify();
 	// The macOS app shows notifications through the shell, and macOS (System Settings) is where they are allowed.
@@ -628,7 +631,14 @@ export function SettingsPage() {
 														<span className="text-faint">pid {l.info.pid}</span>
 													</span>
 													{/* A button that looks like one: as plain text, Close read as part of the row's status. */}
-													<Button size="sm" onClick={() => closeLive(l.info.liveId)}>
+													<Button
+														size="sm"
+														onClick={() =>
+															(l.streaming || l.info.asking) && !l.info.pausedAt
+																? setClosing({ liveId: l.info.liveId, name })
+																: closeLive(l.info.liveId)
+														}
+													>
 														<span className="sr-only">{t("pages.settingsCloseProcess", { name })}</span>
 														<span aria-hidden>{t("common.close")}</span>
 													</Button>
@@ -644,6 +654,11 @@ export function SettingsPage() {
 										{t("pages.settingsPausedNote")}
 									</p>
 								) : null}
+								<CloseWorkingDialog
+									name={closing?.name ?? null}
+									onClose={() => setClosing(null)}
+									onConfirm={() => closing && closeLive(closing.liveId)}
+								/>
 							</section>
 							{meta ? (
 								<section className="space-y-1 rounded-2xl border border-border bg-surface p-4 text-xs text-muted">

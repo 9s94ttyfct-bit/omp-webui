@@ -304,6 +304,9 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	settingsPausedNote:
 		"已暂停的对话在你退出应用后会连同它的工具一起在后台保持冻结，重新打开应用后即可继续。点“关闭”可结束它。",
 	settingsCloseProcess: "关闭 {name}",
+	settingsCloseWorkingTitle: "在 {name} 工作时关闭它？",
+	settingsCloseWorkingBody:
+		"关闭会立刻停止它的这一轮：正在写的回复和正在运行的工具都会中断（和“停止”一样），omp 随之结束。对话会保留，你可以再次打开它。",
 	settingsOmpVersion: "omp 版本：{v}",
 	settingsWebVersion: "Web UI 版本：{v}",
 	settingsAgentDir: "代理目录：{v}",

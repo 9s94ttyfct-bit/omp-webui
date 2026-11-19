@@ -23,8 +23,9 @@ import {
  * where it stopped. If omp itself ends while held (killed), what it left frozen in its process group has nobody to
  * resume it: the relay ends that too.
  *
- * A closed pipe ends an idle omp, but one that is working ignores it until its turn is over, and a server that is
- * gone (killed, out of memory, crashed) cannot stop it: it would go on in the user's folder with nobody to see it.
+ * A closed pipe ends an idle omp (and omp 18.22 aborts a turn on it and ends), but an older omp that was working ignored it
+ * until its turn was over, and a server that is gone (killed, out of memory, crashed) cannot stop that: it would go on in
+ * the user's folder with nobody to see it.
  * So an omp that is still running ORPHAN_GRACE_MS after its server's connection ended, with no server back and
  * the conversation not held, is stopped, together with what it started.
  *
@@ -312,8 +313,9 @@ export async function runRelay(args: string[]): Promise<never> {
 	};
 
 	/**
-	 * The server's connection ended while omp was not held (see `detach`). A closed stdin ends an idle omp at once; one that
-	 * is working would carry on with nobody to see it, so what is still running when ORPHAN_GRACE_MS is over is stopped,
+	 * The server's connection ended while omp was not held (see `detach`). A closed stdin ends an idle omp at once (and omp
+	 * 18.22 aborts a turn on it); one that carries on (an older omp finishing its turn) would do so with nobody to see it, so
+	 * what is still running when ORPHAN_GRACE_MS is over is stopped,
 	 * unless a server has connected again or the conversation was held meanwhile.
 	 */
 	const orphaned = async (): Promise<void> => {
