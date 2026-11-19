@@ -2,6 +2,7 @@ import type { SessionEntry } from "@shared/protocol.ts";
 import { toolChanges } from "./diff.ts";
 import { blocks, messageOf, type ToolResults } from "./messages.ts";
 import { isPrompt, isUserCommand } from "./turns.ts";
+import { isInternalUrl } from "./xdev.ts";
 
 /**
  * Which files omp's `edit` and `write` calls changed in each turn of a conversation, for the Changes view's "By turn" list.
@@ -73,7 +74,9 @@ export function turnEdits(entries: readonly SessionEntry[], results: ToolResults
 			const result = results.get(b.id);
 			if (!result || result.isError) continue;
 			for (const f of toolChanges(b.name, b.arguments, result.details).files) {
-				if (!f.path) continue;
+				// A `write` to one of omp's internal URLs is no file of the folder: `xd://lsp` is a tool call (omp 18.22's
+				// mounted devices), `agent://…` a message.
+				if (!f.path || isInternalUrl(f.path)) continue;
 				const path = f.move ?? f.path;
 				const known = turn.files.find((x) => x.path === path);
 				if (known) continue;

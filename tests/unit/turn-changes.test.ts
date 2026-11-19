@@ -81,6 +81,26 @@ describe("what each turn of a conversation changed", () => {
 		]);
 	});
 
+	test("a write to one of omp's internal URLs (xd://lsp, agent://…) changed no file of the folder (#312)", () => {
+		const entries = [
+			msg("u1", null, { role: "user", content: "plan it" }),
+			assistant(
+				"a1",
+				"u1",
+				call("c1", "write", { path: "xd://lsp", content: '{"action":"diagnostics","file":"a.ts"}' }),
+				call("c2", "write", { path: "agent://Main", content: "done" }),
+				call("c3", "write", { path: "src/a.ts" }),
+			),
+			result("r1", "a1", "c1", { xdev: { tool: "lsp", mode: "execute" } }),
+			result("r2", "r1", "c2", {}),
+			result("r3", "r2", "c3", { path: "src/a.ts" }),
+			msg("u2", "r3", { role: "user", content: "only a tool" }),
+			assistant("a2", "u2", call("c4", "write", { path: "xd://mcp__github_search_issues", content: "{}" })),
+			result("r4", "a2", "c4", { xdev: { tool: "mcp__github_search_issues", mode: "execute" } }),
+		];
+		expect(turns(entries)).toEqual([{ id: "u1", number: 1, label: "plan it", files: [{ path: "src/a.ts" }] }]);
+	});
+
 	test("a long first line of a prompt is cut to a label", () => {
 		const entries = [
 			msg("u1", null, { role: "user", content: `\n  ${"x".repeat(200)}\nsecond line` }),

@@ -37,6 +37,7 @@ import { rememberToolChoice, toolChoice } from "../lib/tool-choice.ts";
 import { atEnd, outputTail, toolOpen } from "../lib/tool-open.ts";
 import { timerWanted, toolStartedAt, toolTimer } from "../lib/tool-time.ts";
 import { useToolTimerMode } from "../lib/tool-timer.ts";
+import { deviceCallOf } from "../lib/xdev.ts";
 import { useGuard } from "../store/guard.ts";
 import type { ToolExec } from "../store/live.ts";
 import { TaskAssignments } from "./Assignment.tsx";
@@ -179,7 +180,6 @@ export function ToolCard({
 	// Open while the tool runs (its output streams in) and folded when it is done, like a thinking block; a click wins.
 	const [chosen, setChosen] = useState<boolean | null>(() => toolChoice(id));
 	const [showRaw, setShowRaw] = useState(false);
-	const Icon = ICONS[name] ?? Wrench;
 	const running = !result && !!exec && !exec.done;
 	// A call that has no result and is not over: running, or about to start. Frozen while the conversation is paused.
 	const unfinished = !result && !exec?.done;
@@ -187,7 +187,6 @@ export function ToolCard({
 	const open = toolOpen(chosen, running || frozen);
 	const isError = result?.isError ?? exec?.isError ?? false;
 	const live = exec?.result ?? exec?.partial;
-	const summary = argSummary(args) || exec?.intent || "";
 	// A call that has neither result nor live record is about to start (between the model's call and the tool's first frame), unless nothing is running any more.
 	const unanswered = !result && !exec;
 	const pending = unanswered && !idle;
@@ -207,7 +206,17 @@ export function ToolCard({
 		: typeof live === "object" && live !== null && "details" in live
 			? live.details
 			: undefined;
-	const view = useMemo(() => (FILE_TOOLS[name] ? fileViewOf(name, args, details) : null), [name, args, details]);
+	// A `write` to `xd://<tool>` (omp 18.22's mounted devices: MCP tools, lsp, ast_edit…) is a call of that tool with the
+	// arguments it wrote, not a file written: its card is that tool's, with its output.
+	const device = useMemo(() => deviceCallOf(name, args, details), [name, args, details]);
+	const shown = device ? device.tool : name;
+	const shownArgs = device ? device.args : args;
+	const Icon = ICONS[shown] ?? Wrench;
+	const summary = argSummary(shownArgs) || exec?.intent || "";
+	const view = useMemo(
+		() => (FILE_TOOLS[name] && !device ? fileViewOf(name, args, details) : null),
+		[name, args, details, device],
+	);
 	const images = useMemo(
 		() =>
 			imagesOf(
@@ -231,16 +240,16 @@ export function ToolCard({
 	// Arguments that are one line the header already shows whole (`bash` with only its command, `read` with only its path)
 	// would say it again as JSON above the output; such a card shows the output alone.
 	const argsInHeader = useMemo(() => {
-		if (!args || typeof args !== "object") return false;
-		const values = Object.values(args as Record<string, unknown>);
+		if (!shownArgs || typeof shownArgs !== "object") return false;
+		const values = Object.values(shownArgs as Record<string, unknown>);
 		return values.length === 1 && typeof values[0] === "string" && values[0].trim() === summary;
-	}, [args, summary]);
+	}, [shownArgs, summary]);
 	// Only a card that shows the raw text builds it: a folded one (or one showing a diff) costs nothing per streamed update.
 	const showsArgs = open && (!(structured || assigned || argsInHeader) || showRaw);
 	const showsOutput = open && (!structured || showRaw);
 	const output = !showsOutput ? "" : result ? textOf(result) : resultText(live);
 	const argsSection = showsArgs ? (
-		<Section title={t("chat.toolArguments")} text={JSON.stringify(args ?? {}, null, 2)} />
+		<Section title={t("chat.toolArguments")} text={JSON.stringify(shownArgs ?? {}, null, 2)} />
 	) : null;
 	const outputSection = output ? (
 		<Section
@@ -282,7 +291,7 @@ export function ToolCard({
 			>
 				<ChevronRight size={14} className={cx("shrink-0 text-faint transition-transform", open && "rotate-90")} />
 				<Icon size={15} className="shrink-0 text-muted" />
-				<span className="shrink-0 font-medium">{name}</span>
+				<span className="shrink-0 font-medium">{shown}</span>
 				{view && firstPath ? (
 					<>
 						<span className="flex min-w-0 max-w-[75%] shrink items-baseline gap-1.5">

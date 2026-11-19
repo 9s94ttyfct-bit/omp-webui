@@ -84,6 +84,34 @@ describe("a task card", () => {
 	});
 });
 
+describe("a write to xd://<tool> (omp 18.22's mounted devices)", () => {
+	test("is drawn as a call of that tool with its arguments and output, not as a file written (#312)", () => {
+		const args = { path: "xd://lsp", content: '{"action":"diagnostics","file":"a.ts"}' };
+		const html = draw(
+			createElement(ToolCard, {
+				id: "xd-1",
+				name: "write",
+				args,
+				exec: {
+					...RUNNING,
+					toolCallId: "xd-1",
+					toolName: "write",
+					args,
+					partial: {
+						content: [{ type: "text", text: "a.ts: No language server found" }],
+						details: { xdev: { tool: "lsp", mode: "execute", args: { action: "diagnostics", file: "a.ts" } } },
+					},
+				},
+			}),
+		);
+		expect(html).toContain('font-medium">lsp</span>');
+		expect(html).toContain("&quot;action&quot;: &quot;diagnostics&quot;");
+		expect(html).toContain("a.ts: No language server found");
+		// Not a file's numbered listing under "Content".
+		expect(html).not.toContain(">Content<");
+	});
+});
+
 /** The spinner of a running call (`Spinner` in `ui.tsx`). */
 const SPINNING = "animate-spin";
 const INTERRUPTED = 'data-testid="tool-interrupted"';
