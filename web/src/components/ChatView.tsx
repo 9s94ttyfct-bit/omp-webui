@@ -764,20 +764,24 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 	);
 	// A queued compact ended (see `LiveInfo.compactEnded`): the compaction is in the transcript now, and this page says how it went.
 	// What it finds when it mounts, or when it moves to another conversation, ended before it looked and is not said again.
+	// It is read from the process shown, ended too: one that ends on its own gives back what was held behind its compact (#398).
 	const compactEnded = live?.info.compactEnded;
+	const shownLiveId = live?.info.liveId ?? null;
 	const endedSeen = useRef<{ liveId: string | null; at: number | undefined } | null>(null);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: `compactEnded` is read through its `at`.
 	useEffect(() => {
 		const at = compactEnded?.at;
 		const seen = endedSeen.current;
-		endedSeen.current = { liveId, at };
-		if (!liveId || !compactEnded || seen?.liveId !== liveId || seen.at === at) return;
-		void refreshEntries(liveId);
-		void refreshState(liveId);
+		endedSeen.current = { liveId: shownLiveId, at };
+		if (!shownLiveId || !compactEnded || seen?.liveId !== shownLiveId || seen.at === at) return;
+		if (liveId) {
+			void refreshEntries(liveId);
+			void refreshState(liveId);
+		}
 		void import("../lib/queued-compact.ts").then((m) =>
 			m.noteQueuedCompactEnd(compactEnded, toast, (text, images) => giveBack(toDraft(text, images))),
 		);
-	}, [liveId, compactEnded?.at, toast, giveBack]);
+	}, [shownLiveId, liveId, compactEnded?.at, toast, giveBack]);
 	// A tool approval waits: a message typed now denies it, and the composer says so before the user sends one.
 	const approvalPending = Boolean(live?.uiRequests.some(isApproval));
 	/** Any request omp waits on: it is on the screen above the composer, which is what the bottom block makes room for. */

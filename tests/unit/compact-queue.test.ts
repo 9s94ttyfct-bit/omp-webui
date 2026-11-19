@@ -251,6 +251,16 @@ test("Stop drops the request and gives the held messages back, and the turn that
 	expect(w.ended).toEqual([]);
 });
 
+test("a process that ends on its own gives the held messages back, and sends nothing (#398)", async () => {
+	const w = world({ followUps: [{ message: "queued one", images: [PICTURE] }] });
+	await w.queue.queue(undefined);
+	await w.queue.intercept({ type: "prompt", message: "queued two", streamingBehavior: "followUp" }, {});
+	expect(w.queue.gone()).toEqual([{ message: "queued one", images: [PICTURE] }, { message: "queued two" }]);
+	expect(w.queue.info).toBeUndefined();
+	expect(w.queue.gone()).toEqual([]);
+	expect(w.types()).toEqual(["get_state", "remove_queued_message"]);
+});
+
 test("Stop while the follow-ups are being taken out of omp's queue still gives every one of them back", async () => {
 	const w = world({ followUps: [{ message: "first" }, { message: "second" }] });
 	const removing = Promise.withResolvers<void>();

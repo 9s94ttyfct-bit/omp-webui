@@ -298,11 +298,16 @@ export class CompactQueue {
 		this.host.changed();
 	}
 
-	/** The process is gone: what waited is gone with it, and the pages are told by its end, not by a change. */
-	gone(): void {
+	/**
+	 * The process is gone: the compact that waited is gone with it, and the pages are told by its end, not by a change. The
+	 * messages held behind it are returned, for the person to have back (#398): they reached no omp and are in no file.
+	 */
+	gone(): HeldPrompt[] {
+		const held = this.state?.held ?? [];
 		this.state = null;
 		this.armed = null;
 		this.dialogs.clear();
+		return held;
 	}
 
 	/** The process runs again (a resume): a compact that could not be sent while it was frozen is sent if the turn is over. */

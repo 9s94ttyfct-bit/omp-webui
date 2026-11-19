@@ -1645,7 +1645,10 @@ export class Live {
 				this.info.pausedAt = null;
 				this.pendingUI.clear();
 				this.held.clear();
-				this.compactQueue.gone();
+				// What the person sent behind a queued compact reached no omp: it goes back to them, as a Stop's would (#398).
+				const returned = this.compactQueue.gone();
+				if (returned.length > 0)
+					this.info.compactEnded = { at: Date.now(), ok: false, error: "the omp process ended", returned };
 				delete this.info.compactQueued;
 				// Nothing waits for a slot in a process that ended.
 				this.queuedSubagents.end();
