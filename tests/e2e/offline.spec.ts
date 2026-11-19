@@ -478,7 +478,7 @@ test("Settings › Mode: the local backend is oMLX, Ollama or LM Studio, each wi
 		// The address of the server is all it takes.
 		await address.fill(ollama.url);
 		await address.blur();
-		await expect(status).toContainText(`Ollama at ${ollama.url} serves 1 models.`);
+		await expect(status).toContainText(`Ollama at ${ollama.url} serves 1 model.`);
 		await expect(page.getByTestId("backend-error")).toHaveCount(0);
 		await expect(source).toContainText("Set here");
 		await chooseOption(page.getByTestId("offline-model"), "ollama/stub-ollama-model");
