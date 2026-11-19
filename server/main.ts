@@ -3499,10 +3499,11 @@ async function route(req: Request, srv: Bun.Server<SocketData>): Promise<Respons
 				return busy;
 			}
 			if (e instanceof BadRequest) return fail(e.message, 400);
-			// What went wrong is for the log: the person's own page is told it too, any other page only that it failed (the
-			// message can hold a path of this computer). Not the query, which may hold the token.
+			// What went wrong is for the log: a page on this computer is told it too, any other page (a signed-in one on the
+			// network or through the tunnel included) only that it failed, since the message can hold a path of this computer.
+			// Not the query, which may hold the token.
 			console.error(`omp-webui: ${req.method} ${url.pathname} failed:`, e);
-			return fail(fromOwner(req) ? (e as Error).message : "Internal server error", 500);
+			return fail(onThisComputer.has(req) ? (e as Error).message : "Internal server error", 500);
 		}
 	}
 	// Static SPA from the Vite build.
