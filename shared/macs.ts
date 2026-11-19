@@ -11,7 +11,7 @@ import { asciiLower } from "./remote.ts";
  *
  * The rules for a name and an address are the macOS app's (`macos/remotemacs.swift`: `parseRemoteName`, `parseRemoteAddress`),
  * written again here: the app reads a file this server writes and the other way round, so what one accepts the other must too
- * (`tests/support/mac-vectors.json` holds the cases both are held to).
+ * (`tests/support/mac-vectors.ts` holds the cases both are held to).
  */
 
 /** The most Macs a list holds. */

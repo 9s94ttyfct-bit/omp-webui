@@ -448,14 +448,14 @@ async function main(): Promise<void> {
 		"server/omp/relay-client.ts",
 		"server/omp/relay-main.ts",
 		"server/omp/relay-backlog.ts",
-		"server/omp/process-tree.ts",
+		"server/platform",
 		"server/update/helper.sh",
 	];
 	const differing = (await git("diff", "--name-only", oldRef, "--", ...parkedFiles)).split("\n").filter(Boolean);
 	note(
 		differing.length
 			? `differ from ${oldRef}: ${differing.join(", ")}`
-			: `parked.ts, the relay files, process-tree.ts and helper.sh are identical to ${oldRef}`,
+			: `parked.ts, the relay files, server/platform (the process trees) and helper.sh are identical to ${oldRef}`,
 	);
 	const oldProtocol = (await import(join(root, "src-old", "server/omp/relay-protocol.ts"))) as typeof protocol; // the old ref's own, not this checkout's
 	const table = (p: typeof protocol) =>

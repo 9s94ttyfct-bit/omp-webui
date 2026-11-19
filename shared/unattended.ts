@@ -20,7 +20,7 @@ import { isRecord } from "./guards.ts";
  *   it works, waking it when it is idle or closed).
  */
 
-/** What follows the settings overlay's file name in the file that holds the instruction (`server/omp/unattended/session.ts`). */
+/** What follows the settings overlay's file name in the file that holds the instruction (`server/omp/approval.ts` writes it, `server/omp/unattended/service.ts` reads it). */
 export const UNATTENDED_SUFFIX = ".unattended.md";
 
 /** The tool the agent files a question with. */

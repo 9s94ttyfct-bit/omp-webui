@@ -96,7 +96,7 @@ export type NoticeLang = (typeof LANGS)[number];
 
 /**
  * The words of a notification, in the interface languages: the same as `chat.notifyAsking`, `notifyFinished`,
- * `untitledSession` and `newConversation` of the page (`tests/unit/attention-text.test.ts` holds the two to each other),
+ * `untitledSession` and `newConversation` of the page (`tests/unit/attention-shared.test.ts` holds the two to each other),
  * for the server, which has no page's strings to ask.
  */
 export const NOTICE_TEXT: Record<NoticeLang, { asking: string; finished: string; untitled: string; fresh: string }> = {
