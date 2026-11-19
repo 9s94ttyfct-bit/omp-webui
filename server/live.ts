@@ -108,7 +108,7 @@ import { RESTART_FILE_ENV } from "./omp/restart/extension.ts";
 import type { Resumed } from "./omp/resumed.ts";
 import { RpcClient, type RpcLaunch, type RpcResponse } from "./omp/rpc-client.ts";
 import { QUICK_MS } from "./omp/run.ts";
-import { UNATTENDED_FILE_ENV, UNATTENDED_LOADED_SUFFIX } from "./omp/unattended/extension.ts";
+import { UNATTENDED_FILE_ENV, UNATTENDED_LOADED_SUFFIX, UNATTENDED_STATUS_KEY } from "./omp/unattended/extension.ts";
 import type { FileResult } from "./omp/unattended/questions.ts";
 import type { UnattendedHooks } from "./omp/unattended/service.ts";
 import { UNAVAILABLE } from "./platform/capabilities.ts";
@@ -2268,6 +2268,15 @@ export class Live {
 		if (this.quota?.onFrame(frame)) return;
 		// Likewise the dialog the compact-between-steps extension holds a step boundary in (#651): the queue sends the compact, or lets go.
 		if (frame.type === "extension_ui_request" && this.compactQueue.frame(frame)) return;
+		// What the unattended extension tells of a call of `file_question` or a form `ask` is taken here; no page is shown it (#309).
+		if (
+			frame.type === "extension_ui_request" &&
+			frame.method === "setStatus" &&
+			frame.statusKey === UNATTENDED_STATUS_KEY
+		) {
+			this.noteDispatchedQuestion(frame);
+			return;
+		}
 		if (mayRewriteEntries(frame)) this.info.revision = (this.info.revision ?? 0) + 1;
 		this.writing.note(frame);
 		this.running.note(frame);
@@ -3148,6 +3157,31 @@ export class Live {
 		// The instruction asks for a title; a call without one has no question to show, and the person is told so (#650).
 		const draft = draftOfToolArgs(frame.args) ?? EMPTY_DRAFT;
 		this.fileQuestions("tool", [draft], String(frame.toolCallId ?? ""));
+	}
+
+	/**
+	 * The extension told what was called (`UNATTENDED_STATUS_KEY`): a `file_question`, or an `ask` of a form it stopped, however
+	 * it was made. A `write` to `xd://file_question` and a `tool.file_question(…)` in an `eval` cell show in omp's frames as the
+	 * outer tool's, with nothing of the inner call (#309), but the extension sees every dispatch. It is filed once: the call's id
+	 * is the key, and a call made straight is filed from omp's own frames too, with the same id.
+	 */
+	private noteDispatchedQuestion(frame: OmpFrame): void {
+		if (!this.unattendedCarried) return;
+		let told: unknown;
+		try {
+			told = JSON.parse(String(frame.statusText ?? ""));
+		} catch {
+			return;
+		}
+		if (!isRecord(told) || told.v !== 1 || typeof told.call !== "string" || !told.call) return;
+		if (told.source === "tool") {
+			this.fileQuestions("tool", [draftOfToolArgs(told.args) ?? EMPTY_DRAFT], told.call);
+		} else if (told.source === "ask" && typeof told.html === "string") {
+			const questions = formQuestions(told.html);
+			const drafts = draftsOfAsk(questions);
+			if (drafts.length < Math.max(1, questions.length)) drafts.push(EMPTY_DRAFT);
+			this.fileQuestions("ask", drafts, told.call);
+		}
 	}
 
 	/** Keep the form of the main agent's `ask` call that starts, until it ends (`recordFormAsk`). */

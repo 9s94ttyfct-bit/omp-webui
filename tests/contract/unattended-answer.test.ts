@@ -175,6 +175,48 @@ test("an answer to an idle conversation is a message that starts its next turn; 
 	c.ws.close();
 }, 120_000);
 
+test("a question the agent files through a write to xd://file_question or a tool call in an eval cell is filed, once (#309)", async () => {
+	const c = await conversation();
+	const titles = ["Which queue?", "Which cache?", "Which broker?"];
+	const calls = [
+		{
+			name: "write",
+			args: { path: `xd://${UNATTENDED_TOOL}`, content: JSON.stringify({ title: titles[0], context: "c" }) },
+		},
+		{
+			name: "eval",
+			args: {
+				language: "js",
+				code: `return await tool.${UNATTENDED_TOOL}({ title: ${JSON.stringify(titles[1])}, context: "c" })`,
+			},
+		},
+		{ name: UNATTENDED_TOOL, args: { title: titles[2], context: "c" } },
+	];
+	for (const call of calls) {
+		plan.call = call;
+		await turn(c, `DISPATCHED-309-${++seq}`);
+	}
+	const filedTitles = (await list()).questions.map((q) => q.question);
+	for (const title of titles) expect(filedTitles.filter((t) => t === title)).toEqual([title]);
+	c.ws.close();
+}, 180_000);
+
+test("the form of an ask written to xd://ask is filed as questions for the person (#309)", async () => {
+	const c = await conversation();
+	plan.call = {
+		name: "write",
+		args: {
+			path: "xd://ask",
+			content: JSON.stringify({
+				html: '<form><fieldset><legend>Which region for 309?</legend><label><input type="radio" name="region" value="eu"> eu</label><label><input type="radio" name="region" value="us"> us</label></fieldset></form>',
+			}),
+		},
+	};
+	await turn(c, `FORM-309-${++seq}`);
+	expect((await list()).questions.some((q) => q.question.includes("Which region for 309?"))).toBe(true);
+	c.ws.close();
+}, 120_000);
+
 test("an answer to a conversation that is working is queued behind its turn", async () => {
 	const c = await conversation();
 	const q = await filed(c, "Which port?", []);

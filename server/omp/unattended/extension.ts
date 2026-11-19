@@ -52,6 +52,9 @@ export const FILE_QUESTION_RESULT =
 /** The heading the block is put under when the person's text carries none. */
 const HEADING = "## Unattended mode";
 
+/** The status the extension tells the server a call of `file_question` or an `ask` of a form with (`server/live.ts` takes it). */
+export const UNATTENDED_STATUS_KEY = "omp-webui-unattended-question";
+
 /** What omp passes a `before_agent_start` handler, as far as this reads it. */
 interface BeforeAgentStart {
 	systemPrompt?: unknown;
@@ -60,11 +63,13 @@ interface BeforeAgentStart {
 /** The session of the agent whose turn it is: `main`, or `sub` for a task subagent (and an advisor). */
 interface Context {
 	agent?: { kind?: string };
+	ui?: { setStatus?(key: string, text: string | undefined): void };
 }
 
 /** What omp passes a `tool_call` handler, as far as this reads it. */
 interface ToolCall {
 	toolName?: unknown;
+	toolCallId?: unknown;
 	input?: unknown;
 }
 
@@ -200,13 +205,34 @@ export default function unattended(pi: Pi): void {
 		return { systemPrompt: [...blocks, block] };
 	});
 	// While the mode is on, the main agent's `ask` of a form is not shown to anybody: it returns what `file_question` does,
-	// and the server files the form as questions for the person (`server/live.ts`, which reads the main agent's frames).
-	// Read at the call, so a switch counts at once. omp says a stopped call to the model as a failed one, with these words.
-	// Another agent's call (a headless fork that keeps `ask` only for its prompt cache) is left to omp, which refuses it.
+	// and the server files the form as questions for the person (`server/live.ts`). Read at the call, so a switch counts at
+	// once. omp says a stopped call to the model as a failed one, with these words. Another agent's call (a headless fork that
+	// keeps `ask` only for its prompt cache) is left to omp, which refuses it.
+	//
+	// This handler sees every dispatch of both tools, which the server's own reading of omp's frames does not: a call made
+	// through a `write` to `xd://file_question` or a `tool.file_question(…)` in an `eval` cell shows in the frames as the outer
+	// tool's, with no name or arguments of the inner one (#309). So it tells the server what was called, in a status that the
+	// server takes (`UNATTENDED_STATUS_KEY`), and the server files it once whichever way it learns of it (by the call's id).
 	pi.on("tool_call", (event, ctx) => {
 		const kind = ctx?.agent?.kind;
-		if ((kind !== undefined && kind !== "main") || !isFormAsk(event) || instructionNow() === "") return undefined;
-		return { block: true, reason: FILE_QUESTION_RESULT };
+		if (kind !== undefined && kind !== "main") return undefined;
+		const form = isFormAsk(event);
+		if ((!form && event?.toolName !== FILE_QUESTION_TOOL) || instructionNow() === "") return undefined;
+		try {
+			ctx?.ui?.setStatus?.(
+				UNATTENDED_STATUS_KEY,
+				JSON.stringify({
+					v: 1,
+					call: String(event?.toolCallId ?? ""),
+					...(form
+						? { source: "ask", html: (event.input as { html: string }).html }
+						: { source: "tool", args: event?.input }),
+				}),
+			);
+		} catch {
+			// Not told: the call is still filed from omp's own frames when it was made straight, as before.
+		}
+		return form ? { block: true, reason: FILE_QUESTION_RESULT } : undefined;
 	});
 	// Said last, once the handler is in: the server calls the mode live on the strength of this note, and not of the command line.
 	if (!file) return;
