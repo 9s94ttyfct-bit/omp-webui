@@ -20,11 +20,17 @@ export const semanticApi = {
 	set: (on: boolean) => post<SemanticStatus>(`/api/semantic/${on ? "on" : "off"}`, {}),
 	/**
 	 * The conversations closest to `query` by what they are about, one passage of each, with the query they answer; none
-	 * while it is off, when it does not answer, or when it was asked again meanwhile (`signal`). Never fails.
+	 * while it is off, when it does not answer, or when it was asked again meanwhile (`signal`). Never fails. A `folder` (a
+	 * conversation's `cwd`) and `since` (ms) limit the search to the conversations in it and active since then, before the
+	 * `limit` closest are taken (#211).
 	 */
-	related: (query: string, limit: number, signal: AbortSignal) =>
-		get<SemanticHit[]>(`/api/semantic/search?q=${encodeURIComponent(query)}&conversations=${limit}`, signal).then(
+	related: (query: string, limit: number, signal: AbortSignal, scope: { folder?: string; since?: number } = {}) => {
+		const params = new URLSearchParams({ q: query, conversations: String(limit) });
+		if (scope.folder !== undefined) params.set("folder", scope.folder);
+		if (scope.since !== undefined) params.set("since", String(scope.since));
+		return get<SemanticHit[]>(`/api/semantic/search?${params}`, signal).then(
 			(hits) => ({ query, hits }),
 			() => ({ query, hits: [] as SemanticHit[] }),
-		),
+		);
+	},
 };

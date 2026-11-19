@@ -26,15 +26,16 @@ import { gpuDevice, Runtime, reapOrphan } from "./runtime.ts";
  *   GET  /api/semantic          the status
  *   POST /api/semantic/on       turn it on (the person's own page)
  *   POST /api/semantic/off      turn it off and delete everything it downloaded and made (the person's own page)
- *   GET  /api/semantic/search?q&conversations=N   the N conversations closest to `q`, one passage each
+ *   GET  /api/semantic/search?q&conversations=N[&folder=<cwd>][&since=<ms>]   the N conversations closest to `q`, one passage
+ *   each; with `folder` and `since`, of the conversations in that folder and active since then (chosen before the N are taken)
  */
 
 export interface SemanticDeps {
 	dataDir: string;
 	/** The full-text index's file, which the semantic index reads the messages from. */
 	ftsPath: string;
-	/** The title and folder of a conversation, or null when the session list has no such file (it was deleted). */
-	describe(files: string[]): Promise<Map<string, { title: string | null; cwd: string }>>;
+	/** The title, folder and last activity of a conversation, or null when the session list has no such file (it was deleted). */
+	describe(files: string[]): Promise<Map<string, { title: string | null; cwd: string; modifiedAt: number }>>;
 	/** A test's: what installs, and the runtime and worker it uses. */
 	install?: (dir: string, opts: InstallOptions) => Promise<Installed>;
 	runtime?: (installed: Installed, dir: string) => SemanticRuntime & { stop(): void; stopped?(): Promise<void> };
@@ -258,17 +259,30 @@ export class SemanticService {
 		return out;
 	}
 
-	/** The `max` conversations closest to `q`; nothing while it is not on. */
-	async search(q: string, max: number, signal?: AbortSignal): Promise<SemanticHit[]> {
+	/**
+	 * The `max` conversations closest to `q`; nothing while it is not on. With a `scope` (the sidebar's folder and date
+	 * range) they are the closest of the conversations inside it: the index is asked for as many as it holds to give, and
+	 * the ones outside are left out before the `max` are taken, not after (#211).
+	 */
+	async search(
+		q: string,
+		max: number,
+		signal?: AbortSignal,
+		scope: { folder?: string; since?: number } = {},
+	): Promise<SemanticHit[]> {
 		const query = q.trim().slice(0, MAX_QUERY);
 		if (!query || !this.index) return [];
-		const raw: RawSemanticHit[] = await this.index.search(query, max, signal);
+		const scoped = scope.folder !== undefined || scope.since !== undefined;
+		const raw: RawSemanticHit[] = await this.index.search(query, scoped ? MAX_CONVERSATIONS : max, signal);
 		const known = await this.deps.describe(raw.map((h) => h.file));
 		const hits: SemanticHit[] = [];
 		for (const h of raw) {
 			const s = known.get(h.file);
 			if (!s) continue;
+			if (scope.folder !== undefined && s.cwd !== scope.folder) continue;
+			if (scope.since !== undefined && s.modifiedAt < scope.since) continue;
 			hits.push({ ...h, title: s.title, cwd: s.cwd });
+			if (hits.length >= max) break;
 		}
 		return hits;
 	}
@@ -279,8 +293,15 @@ export class SemanticService {
 		if (p === "/api/semantic/search" && req.method === "GET") {
 			const asked = Number(url.searchParams.get("conversations") ?? 30);
 			const max = Number.isFinite(asked) ? Math.min(Math.max(Math.trunc(asked), 1), MAX_CONVERSATIONS) : 30;
+			const folder = url.searchParams.get("folder") ?? undefined;
+			const since = url.searchParams.has("since") ? Number(url.searchParams.get("since")) : undefined;
 			try {
-				return json(await this.search(url.searchParams.get("q") ?? "", max, req.signal));
+				return json(
+					await this.search(url.searchParams.get("q") ?? "", max, req.signal, {
+						folder,
+						since: since !== undefined && Number.isFinite(since) ? since : undefined,
+					}),
+				);
 			} catch (e) {
 				if (req.signal.aborted) return json([]);
 				return json({ error: e instanceof Error ? e.message : String(e) }, 503);

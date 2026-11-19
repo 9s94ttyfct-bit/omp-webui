@@ -1062,13 +1062,15 @@ export class SessionStore {
 		return { title: s?.title ?? s?.preview ?? null, cwd: s?.cwd ?? "" };
 	}
 
-	/** The name and folder of each of `files` the session list has (a conversation deleted since is not in the answer). */
-	async describe(files: readonly string[]): Promise<Map<string, { title: string | null; cwd: string }>> {
+	/** The name, folder and last activity of each of `files` the session list has (a conversation deleted since is not in the answer). */
+	async describe(
+		files: readonly string[],
+	): Promise<Map<string, { title: string | null; cwd: string; modifiedAt: number }>> {
 		await this.refresh();
-		const out = new Map<string, { title: string | null; cwd: string }>();
+		const out = new Map<string, { title: string | null; cwd: string; modifiedAt: number }>();
 		for (const file of files) {
 			const s = this.summaries.get(file);
-			if (s) out.set(file, this.labelOf(s));
+			if (s) out.set(file, { ...this.labelOf(s), modifiedAt: s.modifiedAt });
 		}
 		return out;
 	}

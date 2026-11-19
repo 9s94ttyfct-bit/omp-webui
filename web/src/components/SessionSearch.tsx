@@ -3,12 +3,24 @@ import type { SemanticHit } from "@shared/semantic.ts";
 import { type RefObject, useEffect, useMemo, useState } from "react";
 import { useT } from "../i18n/index.ts";
 import { api } from "../lib/api.ts";
-import { contentMatches, type DateRange, pageOf, rankSessions, type SearchResults } from "../lib/session-search.ts";
+import {
+	contentMatches,
+	type DateRange,
+	pageOf,
+	rangeStart,
+	rankSessions,
+	type SearchResults,
+} from "../lib/session-search.ts";
 import { FolderFilter } from "./FolderFilter.tsx";
 import { RangeFilter } from "./RangeFilter.tsx";
 
 /** How many conversations one ask for content matches is for, and what "More results" adds (#717). */
 const CONTENT_PAGE = 30;
+/**
+ * How many related conversations are asked for: more than are shown (`CONTENT_PAGE`), since the ones already listed above
+ * by name or by their words are taken out of them (#211).
+ */
+const RELATED_ASKED = 60;
 /** The most conversations a page may cover: one past it is asked for too, and the server answers at most its maximum. */
 const CONTENT_LAST = SEARCH_LIMIT_MAX - 1;
 /** The shortest query asked of the messages: one character is in nearly every one of them. */
@@ -109,20 +121,32 @@ export function SessionSearch({
 	// What the conversations are about (semantic search, when it is on): asked beside the words, a page of conversations; a
 	// server where it is off answers nothing at once. Its answer may take a moment more (the model may have to start), and
 	// the list does not wait for it: the Related group comes when it does. Its code is loaded on the first search.
-	const [semantic, setSemantic] = useState<{ query: string; hits: SemanticHit[] } | null>(null);
+	const [semantic, setSemantic] = useState<{ query: string; scope: string; hits: SemanticHit[] } | null>(null);
+	/** The folder and date range the semantic ask was made for: a different one is another ask (#211). */
+	const scopeKey = `${shownFolder}\n${range}`;
 	useEffect(() => {
 		if ([...query].length < CONTENT_MIN) return;
 		const stop = new AbortController();
 		const timer = setTimeout(() => {
+			// Chosen in the server before the closest are taken: a folder or a range does not leave Related with what the
+			// closest of every folder and date happen to hold of it.
+			const since = rangeStart(range, Date.now());
+			const scope = {
+				...(shownFolder !== "all" ? { folder: shownFolder } : {}),
+				...(since !== null ? { since } : {}),
+			};
 			import("../lib/semantic-api.ts")
-				.then(({ semanticApi }) => semanticApi.related(query, CONTENT_PAGE, stop.signal))
-				.then(setSemantic, () => {});
+				.then(({ semanticApi }) => semanticApi.related(query, RELATED_ASKED, stop.signal, scope))
+				.then(
+					(answer) => setSemantic({ ...answer, scope: scopeKey }),
+					() => {},
+				);
 		}, CONTENT_DEBOUNCE_MS);
 		return () => {
 			clearTimeout(timer);
 			stop.abort();
 		};
-	}, [query]);
+	}, [query, range, shownFolder, scopeKey]);
 	/** The answer for what is typed now: one for an earlier query is not this one's (the list would jump). */
 	const current = found && found.query === query && [...query].length >= CONTENT_MIN ? found : null;
 	/** The conversations the filters keep whatever was typed: a content match outside them is not listed. */
@@ -138,17 +162,16 @@ export function SessionSearch({
 		[current, scope, ranked],
 	);
 	/** Semantic search's conversations that are not listed above already (by name, or by what was said in them). */
-	const related = useMemo(
-		() =>
-			semantic?.query === query
-				? contentMatches(
-						semantic.hits,
-						scope,
-						new Set([...ranked.map((r) => r.session.file), ...content.sessions.map((s) => s.file)]),
-					)
-				: { sessions: [], hits: new Map() },
-		[semantic, query, scope, ranked, content],
-	);
+	const related = useMemo(() => {
+		if (semantic?.query !== query || semantic.scope !== scopeKey) return { sessions: [], hits: new Map() };
+		const all = contentMatches(
+			semantic.hits,
+			scope,
+			new Set([...ranked.map((r) => r.session.file), ...content.sessions.map((s) => s.file)]),
+		);
+		// More were asked for than are shown, to make up for those listed above already.
+		return { sessions: all.sessions.slice(0, CONTENT_PAGE), hits: all.hits };
+	}, [semantic, query, scopeKey, scope, ranked, content]);
 	const listed = ranked.length + content.sessions.length + related.sessions.length;
 	/** The server found more conversations than were asked for: "More results" asks for the next page. */
 	const more = current?.more === true;
