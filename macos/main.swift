@@ -588,7 +588,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 			case .ready(let port):
 				self.origin = URL(string: "http://127.0.0.1:\(port)")
 				self.refreshLanguage()
-				self.shellEvents.connect(to: self.origin)
+				// Read at once, also when the restarted server took the same port (#376).
+				self.shellEvents.serverStarted(at: self.origin)
 				self.browserLink.connect(to: self.origin)
 				// The other Macs' sign-ins, for running commands there: a server that was just started holds none.
 				if #available(macOS 14.0, *) { self.remote.signIns.serverStarted() }

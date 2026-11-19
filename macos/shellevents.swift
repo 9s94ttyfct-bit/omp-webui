@@ -166,6 +166,14 @@ final class ShellEventStream: NSObject, URLSessionDataDelegate {
 		if origin != nil { start() }
 	}
 
+	/// The server at `origin` has just started (the supervisor's `.ready`, after a restart too): read it now. A restarted server
+	/// usually takes the same port, so `connect` would change nothing, and the stream would wait out the pause it began while the
+	/// server was down (up to 10 s): the new server keeps notices only once an app has read it, so a conversation that asked or
+	/// finished in that pause was never notified (#376).
+	func serverStarted(at origin: URL?) {
+		if origin != nil && origin == self.origin { reconnect() } else { connect(to: origin) }
+	}
+
 	func stop() {
 		retry?.cancel()
 		retry = nil

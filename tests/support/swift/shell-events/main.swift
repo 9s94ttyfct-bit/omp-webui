@@ -7,8 +7,10 @@ import Foundation
 //   pure     how a line is read, how the pieces of a response are cut into lines, and the request the app makes
 //   stream   the messages one `ShellEventStream` hands over, in order, as it follows server `a` (which ends the response, so it
 //            reads again), then `b` (a server at another address), is refused by `refused` (and tries again), and is stopped
+//   restart  a stream whose server (`restarting`) ended its response and that waits a long pause to read again: what `connect`
+//            and then `serverStarted` at the same address do (the app's `.ready` after a restart on the same port, #376)
 //
-//   harness <a> <b> <refused> <closing>      the servers' origins (`closing`: a stream that is closed for good reads it)
+//   harness <a> <b> <refused> <closing> <restarting>      the servers' origins (`closing`: a stream that is closed for good reads it)
 
 /// `main.swift` of the app names the app (quit.swift's words say it).
 let appName = "omp-webui"
@@ -145,6 +147,23 @@ func stream() -> [String: Any] {
 	]
 }
 
-let report: [String: Any] = ["pure": pure(), "stream": stream()]
+func restart() -> [String: Any] {
+	let restarting = URL(string: CommandLine.arguments[5])!
+	var heard: [[String: Any]] = []
+	let reader = ShellEventStream(token: "tok", language: { .en }, retryDelay: { _ in 30 }) { heard.append(plain($0)) }
+	reader.connect(to: restarting)
+	// The response ends (the server went away): the next try waits 30 s.
+	spin(10) { heard.count >= 1 }
+	spin(0.3)
+	reader.connect(to: restarting)
+	spin(0.5)
+	let afterConnect = heard.count
+	reader.serverStarted(at: restarting)
+	spin(10) { heard.count > afterConnect }
+	reader.stop()
+	return ["heard": heard, "afterConnect": afterConnect]
+}
+
+let report: [String: Any] = ["pure": pure(), "stream": stream(), "restart": restart()]
 print(json(report))
 exit(0)

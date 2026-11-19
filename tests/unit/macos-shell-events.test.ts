@@ -79,6 +79,12 @@ const a = serve((n) =>
 const b = serve(() => ({ lines: ['{"t":"state","working":5,"asking":4,"epoch":"E2"}'], keepOpen: true }));
 const refused = serve(() => new Response("Forbidden", { status: 403 }));
 const closing = serve(() => ({ lines: ['{"t":"state","working":2,"asking":0,"epoch":"E3"}'], keepOpen: true }));
+// The first response ends (the server stopped); the next request is answered by its new run, at the same address.
+const restarting = serve((n) =>
+	n === 1
+		? { lines: ['{"t":"state","working":1,"asking":0,"epoch":"OLD"}'], keepOpen: false }
+		: { lines: ['{"t":"state","working":0,"asking":1,"epoch":"NEW"}'], keepOpen: true },
+);
 
 interface Report {
 	pure: {
@@ -106,6 +112,7 @@ interface Report {
 		/** A second stream, closed for good once it heard `closing`, then let go of. */
 		closed: { heard: number; freed: boolean };
 	};
+	restart: { heard: Record<string, unknown>[]; afterConnect: number };
 }
 
 let report: Report;
@@ -127,7 +134,7 @@ beforeAll(async () => {
 		{ stdout: "pipe", stderr: "pipe" },
 	);
 	if (built.exitCode !== 0) throw new Error(`swiftc failed:\n${built.stderr.toString()}`);
-	const run = Bun.spawn([harness, a.origin, b.origin, refused.origin, closing.origin], {
+	const run = Bun.spawn([harness, a.origin, b.origin, refused.origin, closing.origin, restarting.origin], {
 		stdout: "pipe",
 		stderr: "pipe",
 	});
@@ -324,3 +331,13 @@ test.skipIf(!mac)(
 		expect(report.stream.closed.freed).toBe(true);
 	},
 );
+
+test.skipIf(!mac)("a server that started again at the same address is read at once, not after the pause (#376)", () => {
+	// `connect` to the address it reads already does nothing: the next try waits its pause (30 s here).
+	expect(report.restart.afterConnect).toBe(1);
+	// `serverStarted` (the app's `.ready`) reads the new run now.
+	expect(report.restart.heard.map((m) => m.epoch)).toEqual(["OLD", "NEW"]);
+	expect(restarting.seen.requests.length).toBe(2);
+	// It says where it was, so that a server of the same run could send what it missed.
+	expect(new URL(restarting.seen.requests[1].url).searchParams.get("epoch")).toBe("OLD");
+});
