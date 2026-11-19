@@ -105,7 +105,8 @@ export async function walkFolder(root: string, limits: TarLimits): Promise<Walke
 			const path = rel === "" ? name : `${rel}/${name}`;
 			const st = await lstat(join(root, path));
 			const mode = st.mode & 0o777;
-			const mtime = Math.floor(st.mtimeMs / 1000);
+			// A time before 1970 is written as 1970: a tar header holds an unsigned octal number (#365).
+			const mtime = Math.max(0, Math.floor(st.mtimeMs / 1000));
 			if (out.entries.length >= limits.maxEntries)
 				throw new RemoteCopyError(`More than ${limits.maxEntries} files and folders to copy`, "tooLarge");
 			if (st.isSymbolicLink()) {

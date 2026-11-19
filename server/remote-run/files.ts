@@ -187,7 +187,7 @@ export class RemoteFiles {
 				"cache-control": "no-store",
 				[COPY_HEADERS.path]: encodeURIComponent(abs),
 				[COPY_HEADERS.mode]: (st.mode & 0o777).toString(8),
-				[COPY_HEADERS.mtime]: String(Math.floor(st.mtimeMs / 1000)),
+				[COPY_HEADERS.mtime]: String(Math.max(0, Math.floor(st.mtimeMs / 1000))),
 			};
 			let body: ReadableStream<Uint8Array>;
 			let files: number;
@@ -270,6 +270,9 @@ export class RemoteFiles {
 			if (kind === "file" ? size !== bytes : size < bytes || size > bytes + REMOTE_COPY_MAX_ENTRIES * 2048)
 				throw new RemoteCopyError("size does not fit bytes", "badRequest");
 			const overwrite = q.get("overwrite") === "1";
+			// Read with the other parameters: a refusal after the parent folders and the staged file were made would leave them (#365).
+			const mode = wholeOf(q, "mode", 8);
+			const mtime = wholeOf(q, "mtime");
 			await checkTarget(abs, overwrite, this.o.places);
 			// Room first: a copy that is refused for it makes no folder.
 			await ensureRoom(dirname(abs), this.#owed() + size, this.o.reserve, this.o.spaceOf);
@@ -301,8 +304,8 @@ export class RemoteFiles {
 				size,
 				received: 0,
 				bytes,
-				mode: wholeOf(q, "mode", 8),
-				mtime: wholeOf(q, "mtime"),
+				mode,
+				mtime,
 				staged,
 				made,
 				handle,

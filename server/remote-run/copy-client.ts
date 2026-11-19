@@ -228,7 +228,8 @@ async function upload(
 		bytes: String(bytes),
 		overwrite: o.overwrite ? "1" : "0",
 		mode: (st.mode & 0o777).toString(8),
-		mtime: String(Math.floor(st.mtimeMs / 1000)),
+		// A time before 1970 is carried as 1970: the other computer takes whole numbers of seconds only (#365).
+		mtime: String(Math.max(0, Math.floor(st.mtimeMs / 1000))),
 	});
 	const begun: unknown = await (await ask(`${REMOTE_COPY_ROUTE}?${q}`, { method: "POST" })).json();
 	if (!isRecord(begun) || typeof begun.id !== "string" || !/^[0-9a-f]{32}$/.test(begun.id))

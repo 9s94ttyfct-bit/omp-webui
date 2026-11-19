@@ -9,6 +9,7 @@ import {
 	readlinkSync,
 	symlinkSync,
 	truncateSync,
+	utimesSync,
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -279,6 +280,50 @@ describe("a folder", () => {
 		expect(readlinkSync(join(local.proj, "site2/sub/latest"))).toBe("deeper/data.bin");
 		expect(staged(local.proj)).toEqual([]);
 		expect(staged(join(fake.home, "www"))).toEqual([]);
+	});
+
+	test("a file dated before 1970, and a folder holding one, go both ways, as 1970 (#365)", async () => {
+		const fake = fakeRemote();
+		const local = here();
+		const old = new Date("1965-07-04T00:00:00Z");
+		writeFileSync(join(local.proj, "old.txt"), "old\n");
+		utimesSync(join(local.proj, "old.txt"), old, old);
+		mkdirSync(join(local.proj, "site"));
+		writeFileSync(join(local.proj, "site", "old.txt"), "old\n");
+		writeFileSync(join(local.proj, "site", "new.txt"), "new\n");
+		utimesSync(join(local.proj, "site", "old.txt"), old, old);
+		await copy(fake, local, { direction: "to", local: join(local.proj, "old.txt"), remote: "~/in/old.txt" });
+		await copy(fake, local, { direction: "to", local: join(local.proj, "site"), remote: "~/in/site" });
+		expect(readFileSync(join(fake.home, "in/site/old.txt"), "utf8")).toBe("old\n");
+		expect(readFileSync(join(fake.home, "in/old.txt"), "utf8")).toBe("old\n");
+		utimesSync(join(fake.home, "in/old.txt"), old, old);
+		utimesSync(join(fake.home, "in/site/old.txt"), old, old);
+		await copy(fake, local, { direction: "from", local: join(local.proj, "back-old.txt"), remote: "~/in/old.txt" });
+		await copy(fake, local, { direction: "from", local: join(local.proj, "back-site"), remote: "~/in/site" });
+		expect(readFileSync(join(local.proj, "back-old.txt"), "utf8")).toBe("old\n");
+		expect(readFileSync(join(local.proj, "back-site/old.txt"), "utf8")).toBe("old\n");
+		expect(staged(join(fake.home, "in"))).toEqual([]);
+	});
+
+	test("a request whose mode or time is refused leaves no folder and no hidden file at the other computer (#365)", async () => {
+		const fake = fakeRemote();
+		const target = join(fake.home, "new-dir", "sub", "f.txt");
+		for (const bad of [{ mode: "9" }, { mtime: "12x" }]) {
+			const q = new URLSearchParams({
+				kind: "file",
+				size: "3",
+				bytes: "3",
+				overwrite: "0",
+				mode: "644",
+				mtime: "1",
+				...bad,
+				path: target,
+			});
+			const url = new URL(`${fake.origin}${REMOTE_COPY_ROUTE}?${q}`);
+			const res = await fake.files.handle(new Request(url, { method: "POST" }), url, WHO);
+			expect(res.status, JSON.stringify(bad)).toBe(400);
+			expect(existsSync(join(fake.home, "new-dir")), JSON.stringify(bad)).toBe(false);
+		}
 	});
 });
 
