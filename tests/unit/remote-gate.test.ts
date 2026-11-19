@@ -538,15 +538,18 @@ test("the server reads the setting from the settings file, whether or not remote
 	expect(remote.settings()).toBeNull();
 	writeFileSync(file, JSON.stringify({ confirmRisky: false, team: "x" }));
 	expect(remote.confirmRisky()).toBe(false);
-	// A file from before the setting: off. One that cannot be trusted: off.
+	// A file from before the setting: off. One that cannot be trusted: on, as in every other switch it means the most
+	// restrictive (`UNTRUSTED_REMOTE_CONFIG`, #367).
 	writeFileSync(file, JSON.stringify({ team: "x", hostname: "omp.example.com" }));
 	expect(remote.confirmRisky()).toBe(false);
 	writeFileSync(file, JSON.stringify({ confirmRisky: true }));
 	expect(remote.confirmRisky()).toBe(true);
 	writeFileSync(file, "{");
-	expect(remote.confirmRisky()).toBe(false);
+	expect(remote.confirmRisky()).toBe(true);
+	writeFileSync(file, JSON.stringify({ confirmRisky: false, fileTransfer: "sometimes" }));
+	expect(remote.confirmRisky()).toBe(true);
 	writeFileSync(file, JSON.stringify({ confirmRisky: "yes" }));
-	expect(remote.confirmRisky()).toBe(false);
+	expect(remote.confirmRisky()).toBe(true);
 	rmSync(file);
 	expect(remote.confirmRisky()).toBe(false);
 });
