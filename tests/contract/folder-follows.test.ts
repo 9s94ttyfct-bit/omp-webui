@@ -245,3 +245,45 @@ test.skipIf(!has.notWindowsYet)(
 	},
 	90_000,
 );
+
+/** The sidebar's archive: `POST /api/archive` sets it, `GET` reads it (a list of session files). */
+const archive = async (files?: string[]): Promise<string[]> => {
+	const res = await fetch(`${s.url}/api/archive`, {
+		method: files ? "POST" : "GET",
+		headers: { "x-omp-webui-token": s.accessToken, "x-omp-webui": "1", "content-type": "application/json" },
+		...(files ? { body: JSON.stringify({ files, archived: true }) } : {}),
+	});
+	return (await res.json()) as string[];
+};
+
+test("an archived conversation moved by /move typed in the composer, or by Change folder, stays archived in its new file (#230)", async () => {
+	const ws = await connect(s);
+	const typed = writeSimpleSession(s.agentDir, 0x2300, "Archived and moved by /move", undefined, s.work);
+	const changed = writeSimpleSession(s.agentDir, 0x2301, "Archived and moved by Change folder", undefined, s.work);
+	await archive([typed, changed]);
+
+	const there = project("archived-typed");
+	const live = await request<LiveInfo>(ws, { t: "open", target: { kind: "resume", sessionFile: typed, model: HAIKU } });
+	await request(ws, { t: "rpc", liveId: live.liveId, command: { type: "prompt", message: `/move ${there}` } });
+	await pollUntil(async () => (await listing(ws, live.liveId))?.cwd === there, "the conversation's new folder");
+	const movedTo = (await listing(ws, live.liveId))?.sessionFile as string;
+	expect(movedTo).not.toBe(typed);
+	let list = await archive();
+	expect(list).toContain(movedTo);
+	expect(list).not.toContain(typed);
+
+	// A new session is another conversation: the archived one stays archived, and the new one is not.
+	await request(ws, { t: "rpc", liveId: live.liveId, command: { type: "new_session" } });
+	const fresh = (await listing(ws, live.liveId))?.sessionFile;
+	list = await archive();
+	expect(list).toContain(movedTo);
+	if (fresh) expect(list).not.toContain(fresh);
+	await request(ws, { t: "close", liveId: live.liveId });
+
+	const r = await move({ file: changed, folder: project("archived-changed") });
+	expect(r.status).toBe(200);
+	list = await archive();
+	expect(list).toContain(r.body.file as string);
+	expect(list).not.toContain(changed);
+	ws.close();
+}, 90_000);

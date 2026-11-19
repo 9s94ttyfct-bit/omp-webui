@@ -654,6 +654,14 @@ const remoteRun = new RemoteRun<Live>({
 	reserve: reserveFromEnv(process.env.OMP_WEBUI_TRANSFER_RESERVE_BYTES),
 });
 pool.remoteRun = remoteRun;
+// The archive is kept by file: a conversation moved to another file (`/move`, `/wt`, Change folder) stays archived (#230).
+pool.archive = {
+	moved(from, to) {
+		if (!archived.list().includes(from)) return;
+		archived.set([from], false);
+		archived.set([to], true);
+	},
+};
 // Side questions (the Ask tab) on the model the person chose for them (`ompw.btwModel`): the server answers those in a process of its own.
 const sideQuestions = new BtwForks({
 	bin: () => cfg.ompBin,
@@ -2695,11 +2703,6 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 						return pool.open({ kind: "resume", sessionFile: from as string, folder: staging }, cwdOfSessionFile);
 					},
 				});
-				// The sidebar's own list is kept by file: an archived conversation stays archived in its new file.
-				if (from && moved.file && moved.file !== from && archived.list().includes(from)) {
-					archived.set([from], false);
-					archived.set([moved.file], true);
-				}
 				await store.refresh(true);
 				return json(moved);
 			} catch (e) {

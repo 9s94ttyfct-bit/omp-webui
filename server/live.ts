@@ -203,10 +203,15 @@ interface StateSnapshot {
 	goal?: unknown;
 }
 
-/** The session file a conversation was in and the one omp says it is in now (null: none yet): they differ when it moved. */
+/**
+ * The session file a conversation was in and the one omp says it is in now (null: none yet): they differ when it moved.
+ * `same`: omp's session id did not change, so it is the same conversation in another file (`/move`, `/wt`), not another one
+ * (`new_session`, `fork`, `branch`, `handoff`) that leaves the first where it was.
+ */
 interface SessionMove {
 	from: string | null;
 	to: string | null;
+	same: boolean;
 }
 
 /** What a request to omp is for. */
@@ -1744,7 +1749,7 @@ export class Live {
 			if (answer.success) taken.move = this.takeState(answer.data);
 		});
 		if (!r.success || !taken.move) return;
-		const { from, to } = taken.move;
+		const { from, to, same } = taken.move;
 		if (from !== to) {
 			// The conversation moved to another session file (branch, fork, a new session): what belongs to the
 			// conversation, not to this process, goes along: the mode the user picked and an interview in progress.
@@ -1755,6 +1760,7 @@ export class Live {
 			if (from && to) this.pool.carryConcurrency(from, to);
 			if (from && to) this.pool.carryAdvisor(from, to);
 			if (from && to) this.pool.remoteRun?.moved(from, to);
+			if (from && to && same) this.pool.archive?.moved(from, to);
 			if (from && to) this.pool.carryGuidance(from, to);
 			if (from && to) this.pool.carryUnattended(from, to);
 			if (from && to) this.pool.carryLaunchMode(from, to);
@@ -1778,6 +1784,7 @@ export class Live {
 		}
 		const s = data as StateSnapshot;
 		const from = this.info.sessionFile;
+		const fromId = this.info.sessionId;
 		// omp 18.12 reports the file of a relative `--session-dir` relative to the folder it runs in (18.14 reports it absolute).
 		this.info.sessionFile = s.sessionFile ? sessionKey(resolve(this.info.cwd, s.sessionFile)) : null;
 		this.info.sessionId = s.sessionId ?? null;
@@ -1792,7 +1799,7 @@ export class Live {
 		}
 		// The goal is in goal mode's state (`{ enabled, mode, goal }`): what omp holds, whatever frames came before.
 		if ("goal" in s) this.goal = heldGoal(isRecord(s.goal) ? s.goal.goal : null);
-		return { from, to: this.info.sessionFile };
+		return { from, to: this.info.sessionFile, same: fromId !== null && fromId === this.info.sessionId };
 	}
 
 	/**
@@ -4144,6 +4151,8 @@ export class LivePool {
 	 * conversation has the tool.
 	 */
 	remoteRun: RemoteRunHooks | null = null;
+	/** The sidebar's archive, kept by session file (#230): a conversation omp moved to another file stays archived there. */
+	archive: { moved(from: string, to: string): void } | null = null;
 
 	/** The server learned its address, or the browser was installed: every conversation's overlay names its endpoint again. */
 	async syncBrowser(): Promise<void> {
