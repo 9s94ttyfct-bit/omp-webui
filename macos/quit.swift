@@ -53,15 +53,19 @@ struct ShellState: Equatable {
 }
 
 /// What is running that a quit would touch: conversations that are working (`/api/lives`), ones that are paused, ones that
-/// wait out a provider's usage limit, and the kind of omp install or update that is running (`/api/omp`), if any.
+/// wait out a provider's usage limit, ones held at the person's quota floor, and the kind of omp install or update that is
+/// running (`/api/omp`), if any.
 struct Conversations: Equatable {
 	var working = 0
 	var paused = 0
 	var waiting = 0
+	var held = 0
 	var job: String?
 
 	/// Something a quit stops, or leaves in the background, that the person should be told of.
-	var needsWarning: Bool { working > 0 || paused > 0 || waiting > 0 || job != nil }
+	var needsWarning: Bool { working > 0 || kept > 0 || job != nil }
+	/// The conversations the server keeps across its end (`Live.kept`): a quit leaves them in the background.
+	var kept: Int { paused + waiting + held }
 }
 
 /// Everything a quit decides by, as the server answered it. A server that did not answer is `reachable == false`, with
@@ -80,10 +84,14 @@ struct QuitContext: Equatable {
 func conversations(lives: Any?, omp: Any?) -> Conversations {
 	var counts = Conversations()
 	for live in (lives as? [[String: Any]] ?? []) where (live["exited"] as? Bool) != true {
-		// A wait the server keeps across its end (`Live.kept`): a usage-limit wait whose turn has not started.
+		// A wait the server keeps across its end (`Live.kept`): a usage-limit wait whose turn has not started, or a hold at
+		// the quota floor. A held conversation's turn is open (omp waits in the floor's dialog), so it is also `busy`: it is
+		// counted before that, or the question would say a quit stops it while the server parks it in the background.
 		let retry = live["retry"] as? [String: Any]
+		let hold = (live["quotaHold"] as? [String: Any])?["state"] as? String
 		if live["pausedAt"] is NSNumber { counts.paused += 1 }
 		else if (retry?["usageLimit"] as? Bool) == true && (retry?["resumed"] as? Bool) == false { counts.waiting += 1 }
+		else if hold == "held" { counts.held += 1 }
 		else if (live["busy"] as? Bool) == true { counts.working += 1 }
 	}
 	if let state = (omp as? [String: Any])?["state"] as? [String: Any],
@@ -213,6 +221,7 @@ private struct Words {
 	let pausedOrWaiting: (Int) -> String
 	let paused: (Int) -> String
 	let waiting: (Int) -> String
+	let held: (Int) -> String
 	let nothing: String
 	/// "Quit anyway? Quitting stops them.", the sentence of the question that only asks whether to quit.
 	let quitAnywayQuestion: (Int) -> String
@@ -222,6 +231,7 @@ private struct Words {
 	/// `lead`: something else was said before, so the subject is named.
 	let pausedStays: (_ n: Int, _ lead: Bool) -> String
 	let waitingStays: (_ n: Int, _ lead: Bool) -> String
+	let heldStays: (_ n: Int, _ lead: Bool) -> String
 	let background: (_ remote: Bool) -> String
 	let runInBackground: String
 	let cancel: String
@@ -244,6 +254,7 @@ private func words(_ language: ShellLanguage) -> Words {
 			pausedOrWaiting: { "\($0) conversations are paused or waiting" },
 			paused: { $0 == 1 ? "1 conversation is paused" : "\($0) conversations are paused" },
 			waiting: { $0 == 1 ? "1 conversation is waiting for a usage limit" : "\($0) conversations are waiting for a usage limit" },
+			held: { $0 == 1 ? "1 conversation is waiting for the quota to reset" : "\($0) conversations are waiting for the quota to reset" },
 			nothing: "Quit \(appName)?",
 			quitAnywayQuestion: { "Quit anyway? Quitting stops \($0 == 1 ? "it" : "them")." },
 			quitStops: { "Quitting stops \($0 == 1 ? "it" : "them")." },
@@ -257,6 +268,10 @@ private func words(_ language: ShellLanguage) -> Words {
 			waitingStays: { n, lead in
 				let stays = lead ? (n == 1 ? "The waiting conversation stays" : "The waiting conversations stay") : (n == 1 ? "It stays" : "They stay")
 				return "\(stays) in the background, where omp retries the turn by itself when the usage limit resets; \(appName) shows how it went when you open it again."
+			},
+			heldStays: { n, lead in
+				let stays = lead ? (n == 1 ? "The conversation held at your quota floor stays" : "The conversations held at your quota floor stay") : (n == 1 ? "It stays" : "They stay")
+				return "\(stays) in the background and \(n == 1 ? "goes on by itself" : "go on by themselves") when the provider's quota window resets; \(appName) shows how it went when you open it again."
 			},
 			background: {
 				"Run in Background closes the window but keeps \(appName) running, so your conversations carry on\($0 ? " and remote access stays on" : ""). Click the \(appName) icon in the menu bar to open the window again."
@@ -272,12 +287,14 @@ private func words(_ language: ShellLanguage) -> Words {
 			pausedOrWaiting: { "有 \($0) 个对话已暂停或在等待" },
 			paused: { "有 \($0) 个对话已暂停" },
 			waiting: { "有 \($0) 个对话在等待用量上限重置" },
+			held: { "有 \($0) 个对话在等待额度重置" },
 			nothing: "退出 \(appName)？",
 			quitAnywayQuestion: { _ in "仍要退出吗？退出会停止它们。" },
 			quitStops: { _ in "退出会停止它们。" },
 			jobStays: { "退出不会中断\($0 ? "安装" : "更新")：它会在后台继续完成，下次打开 \(appName) 时会显示结果。" },
 			pausedStays: { _, _ in "已暂停的对话会连同它的工具一起在后台保持冻结，重新打开 \(appName) 后从停下的地方继续。" },
 			waitingStays: { _, _ in "在等待的对话会留在后台，用量上限重置时 omp 会自动重试这一轮；重新打开 \(appName) 后会显示结果。" },
+			heldStays: { _, _ in "停在额度下限的对话会留在后台，服务商的额度窗口重置后自动继续；重新打开 \(appName) 后会显示结果。" },
 			background: {
 				"“在后台运行”会关闭窗口，但 \(appName) 继续运行，对话照常进行\($0 ? "，远程访问也保持开启" : "")。点击菜单栏里的 \(appName) 图标即可重新打开窗口。"
 			},
@@ -292,14 +309,15 @@ private func words(_ language: ShellLanguage) -> Words {
 /// or leaves something).
 ///
 /// A quit stops the working conversations; the paused ones stay frozen in the background and continue after the next launch
-/// unless the person ends them, and the waiting ones stay there running, so that omp retries the turn at the reset; a running
-/// install or update is not stopped (it does not depend on the server) and is picked up again at the next launch. Without
-/// a background to run in, Cancel is the default while anything is working or running; otherwise Quit is. With one, Run in
-/// Background is.
+/// unless the person ends them, and the waiting ones (a usage limit, or the person's quota floor) stay there running, so that
+/// omp goes on at the reset; a running install or update is not stopped (it does not depend on the server) and is picked up
+/// again at the next launch. Without a background to run in, Cancel is the default while anything is working or running;
+/// otherwise Quit is. With one, Run in Background is.
 func quitDialog(_ context: QuitContext, offersBackground: Bool) -> QuitDialog {
 	let w = words(context.language)
 	let counts = context.running
-	let working = counts.working, paused = counts.paused, waiting = counts.waiting
+	let working = counts.working, paused = counts.paused, waiting = counts.waiting, held = counts.held
+	let kept = counts.kept
 	var lines: [String] = []
 	if offersBackground { lines.append(w.background(context.remote)) }
 	var message: String
@@ -310,18 +328,21 @@ func quitDialog(_ context: QuitContext, offersBackground: Bool) -> QuitDialog {
 		lines.append(offersBackground ? w.quitStops(working) : w.quitAnywayQuestion(working))
 	} else if let job = counts.job {
 		message = job == "install" ? w.install : w.update
-	} else if paused > 0 && waiting > 0 {
-		message = w.pausedOrWaiting(paused + waiting)
+	} else if [paused, waiting, held].filter({ $0 > 0 }).count > 1 {
+		message = w.pausedOrWaiting(kept)
 	} else if paused > 0 {
 		message = w.paused(paused)
 	} else if waiting > 0 {
 		message = w.waiting(waiting)
+	} else if held > 0 {
+		message = w.held(held)
 	} else {
 		message = w.nothing
 	}
 	if let job = counts.job { lines.append(w.jobStays(job == "install")) }
 	if paused > 0 { lines.append(w.pausedStays(paused, working > 0 || counts.job != nil)) }
 	if waiting > 0 { lines.append(w.waitingStays(waiting, working > 0 || counts.job != nil || paused > 0)) }
+	if held > 0 { lines.append(w.heldStays(held, working > 0 || counts.job != nil || paused > 0 || waiting > 0)) }
 
 	var buttons: [QuitDialog.Button] = []
 	let quit = QuitDialog.Button(title: working > 0 ? w.quitAnyway : w.quit, choice: .quit, destructive: working > 0)
@@ -333,11 +354,11 @@ func quitDialog(_ context: QuitContext, offersBackground: Bool) -> QuitDialog {
 	} else {
 		buttons = [.init(title: w.quit, choice: .quit), cancel]
 	}
-	if paused > 0 || waiting > 0 {
-		let kept = paused + waiting
+	if kept > 0 {
+		// A hold at the quota floor is a wait too ("Waiting for the quota to reset", as the page says): Quit and End Waiting.
 		buttons.append(
 			.init(
-				title: kept == 1 ? w.endIt : waiting == 0 ? w.endPaused : paused == 0 ? w.endWaiting : w.endThem,
+				title: kept == 1 ? w.endIt : paused == kept ? w.endPaused : paused == 0 ? w.endWaiting : w.endThem,
 				choice: .quitEndingKept, destructive: true))
 	}
 	return QuitDialog(

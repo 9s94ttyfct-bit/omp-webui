@@ -24,6 +24,7 @@ interface Context {
 	working: number;
 	paused: number;
 	waiting: number;
+	held: number;
 	job: string | null;
 	reachable: boolean;
 	remote: boolean;
@@ -83,6 +84,10 @@ test.skipIf(!mac)("the server's answers say what is running, what is chosen and 
 	expect([c.paused.working, c.paused.paused, c.paused.waiting]).toEqual([0, 1, 0]);
 	expect([c.waiting.working, c.waiting.paused, c.waiting.waiting]).toEqual([0, 0, 1]);
 	expect([c.resumedWait.working, c.resumedWait.waiting]).toEqual([1, 0]);
+	// A hold at the quota floor is kept by the server across its end (`Live.kept`), though its open turn makes it busy: it is
+	// held, not working (#372). One that is only armed (the request in flight finishes first) still works.
+	expect([c.held.working, c.held.held]).toEqual([0, 1]);
+	expect([c.armed.working, c.armed.held]).toEqual([1, 0]);
 	// An install or update counts while it runs, not after it ended.
 	expect(c.job.job).toBe("install");
 	expect(c.jobEnded.job).toBeNull();
@@ -193,6 +198,28 @@ test.skipIf(!mac)(
 		expect(report.dialogs["en/update/background"].message).toBe("omp is being updated");
 	},
 );
+
+test.skipIf(!mac)("a conversation held at the quota floor is told to stay, and a quit can end it (#372)", () => {
+	const held = report.dialogs["en/oneHeld/background"];
+	expect(held.message).toBe("1 conversation is waiting for the quota to reset");
+	expect(held.detail).toContain(
+		"It stays in the background and goes on by itself when the provider's quota window resets",
+	);
+	expect(held.detail).not.toContain("Quitting stops");
+	expect(titles(held)).toEqual(["Run in Background", "Cancel", "Quit", "Quit and End It"]);
+	expect(held.informational).toBe(true);
+	expect(titles(report.dialogs["en/oneHeld/quitOnly"])).toEqual(["Quit", "Cancel", "Quit and End It"]);
+	expect(titles(report.dialogs["en/manyHeld/background"]).at(-1)).toBe("Quit and End Waiting");
+	const mixed = report.dialogs["en/pausedAndHeld/background"];
+	expect(mixed.message).toBe("2 conversations are paused or waiting");
+	expect(titles(mixed).at(-1)).toBe("Quit and End Them");
+	expect(mixed.detail).toContain("The conversation held at your quota floor stays in the background");
+	const working = report.dialogs["en/workingAndHeld/quitOnly"];
+	expect(working.detail).toStartWith("Quit anyway? Quitting stops it. The conversation held at your quota floor stays");
+	expect(titles(working)).toEqual(["Cancel", "Quit Anyway", "Quit and End It"]);
+	expect(report.warnings.oneHeld).toBe(true);
+	expect(report.dialogs["zh/oneHeld/background"].message).toBe("有 1 个对话在等待额度重置");
+});
 
 test.skipIf(!mac)("the question that only asks whether to quit is what it always was, with no box to tick", () => {
 	const working = report.dialogs["en/manyWorking/quitOnly"];

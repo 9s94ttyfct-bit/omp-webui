@@ -28,6 +28,9 @@ let answers: [String: Any] = [
 	"paused": [["pausedAt": 1_000, "busy": true]],
 	"waiting": [["retry": ["usageLimit": true, "resumed": false]]],
 	"resumedWait": [["retry": ["usageLimit": true, "resumed": true], "busy": true]],
+	// Held at the quota floor: its turn is open, so the server lists it busy; one only armed (not yet held) works on.
+	"held": [["busy": true, "holding": "asking", "quotaHold": ["state": "held"]]],
+	"armed": [["busy": true, "quotaHold": ["state": "armed"]]],
 ]
 
 func context(
@@ -35,7 +38,7 @@ func context(
 ) -> [String: Any] {
 	let c = quitContext(lives: lives, omp: omp, prefs: prefs, remote: remote, preferredLanguages: preferred)
 	return [
-		"working": c.running.working, "paused": c.running.paused, "waiting": c.running.waiting,
+		"working": c.running.working, "paused": c.running.paused, "waiting": c.running.waiting, "held": c.running.held,
 		"job": c.running.job ?? NSNull(), "reachable": c.reachable, "remote": c.remote,
 		"action": c.action.rawValue, "language": c.language == .zh ? "zh" : "en",
 	]
@@ -50,6 +53,8 @@ let contexts: [String: Any] = [
 	"paused": context(lives: answers["paused"]),
 	"waiting": context(lives: answers["waiting"]),
 	"resumedWait": context(lives: answers["resumedWait"]),
+	"held": context(lives: answers["held"]),
+	"armed": context(lives: answers["armed"]),
 	"job": context(lives: [], omp: ["state": ["job": ["state": "running", "kind": "install"]]]),
 	"jobEnded": context(lives: [], omp: ["state": ["job": ["state": "done", "kind": "install"]]]),
 	"remoteConnected": context(lives: [], remote: ["status": ["state": "connected"]]),
@@ -90,8 +95,8 @@ func shown(_ dialog: QuitDialog) -> [String: Any] {
 	]
 }
 
-func counts(_ working: Int = 0, _ paused: Int = 0, _ waiting: Int = 0, job: String? = nil) -> Conversations {
-	Conversations(working: working, paused: paused, waiting: waiting, job: job)
+func counts(_ working: Int = 0, _ paused: Int = 0, _ waiting: Int = 0, held: Int = 0, job: String? = nil) -> Conversations {
+	Conversations(working: working, paused: paused, waiting: waiting, held: held, job: job)
 }
 
 let situations: [(String, Conversations, Bool)] = [
@@ -103,6 +108,10 @@ let situations: [(String, Conversations, Bool)] = [
 	("manyPaused", counts(0, 2), false),
 	("oneWaiting", counts(0, 0, 1), false),
 	("pausedAndWaiting", counts(0, 1, 1), false),
+	("oneHeld", counts(held: 1), false),
+	("manyHeld", counts(held: 2), false),
+	("pausedAndHeld", counts(0, 1, held: 1), false),
+	("workingAndHeld", counts(1, held: 1), false),
 	("install", counts(job: "install"), false),
 	("update", counts(job: "update"), false),
 	("workingPausedWaitingInstall", counts(2, 1, 1, job: "install"), false),
