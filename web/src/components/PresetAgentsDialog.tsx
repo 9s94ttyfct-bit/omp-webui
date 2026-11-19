@@ -25,8 +25,11 @@ registerStrings("presetAgents", en);
 /** How long a name we let a person add may be; omp checks no agent name, so one already in the config is kept as it is. */
 const AGENT_NAME_MAX = 48;
 
-/** The agents omp ships (`omp agents unpack` writes them out): offered by name when adding a subagent. */
-const BUNDLED_AGENTS = ["reviewer", "scout", "seance", "security-reviewer", "sonic", "task"];
+/**
+ * The agents omp ships (`omp agents unpack --json` lists them; 18.22: these five, `seance` gone since 18.20.3): offered by
+ * name when adding a subagent. A name not listed may still be typed (a person's own agents).
+ */
+const BUNDLED_AGENTS = ["reviewer", "scout", "security-reviewer", "sonic", "task"];
 
 export interface AgentRow {
 	agent: string;

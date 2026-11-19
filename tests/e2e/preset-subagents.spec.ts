@@ -127,6 +127,11 @@ test("Settings › Presets: a preset's subagent models are edited in a dialog an
 	await dialog.getByTestId("add-agent").click();
 	const agent = (name: string) => dialog.locator(`[data-testid="agent-row"][data-agent="${name}"]`);
 	await expect(agent("reviewer")).toBeVisible();
+	// The names suggested are the agents omp ships, less those in the list (omp 18.20.3 removed `seance`).
+	const suggested = await dialog
+		.locator("datalist option")
+		.evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+	expect(suggested).toEqual(["scout", "security-reviewer", "sonic", "task"]);
 	await dialog.getByTestId("new-agent").fill("reviewer");
 	await dialog.getByTestId("add-agent").click();
 	await expect(dialog).toContainText("That subagent is already in the list.");
