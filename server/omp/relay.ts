@@ -334,7 +334,7 @@ export async function runRelay(args: string[]): Promise<never> {
 	}, FIRST_CLIENT_MS);
 
 	try {
-		omp = Bun.spawn([bin, ...ompArgs], {
+		omp = Bun.spawn(platform.shell.launchArgv([bin, ...ompArgs]), {
 			cwd: process.cwd(),
 			env: process.env,
 			stdin: "pipe",

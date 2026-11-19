@@ -87,6 +87,11 @@ export interface ShellOps {
 	loginEnvArgv(shell: string, marker: string): string[] | null;
 	/** `command` run so that the files it (and what it starts) writes are this user's alone (`umask 077`). */
 	privateArgv(command: string[]): string[];
+	/**
+	 * `command` as it is to be started. On Windows an npm shim (`omp.cmd`) is replaced by what it runs (Bun refuses a `.cmd`
+	 * given an argument with a cmd.exe metacharacter); elsewhere the command is as it is.
+	 */
+	launchArgv(command: string[]): string[];
 	/** `command` run so that its exit status is written to `statusFile` when it is over; null where the server must write it. */
 	jobArgv(statusFile: string, command: string[]): string[] | null;
 	/**

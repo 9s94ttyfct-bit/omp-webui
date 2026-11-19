@@ -236,3 +236,47 @@ test("OMP_BIN written the way Windows allows is a path: forward slashes, and a p
 	// One that is not there is still ignored.
 	expect(find("C:/Tools/gone/omp.exe")).toBeNull();
 });
+
+/** What npm writes for a global package on Windows (`cmd-shim`'s template), for a script that bun runs. */
+const NPM_SHIM = [
+	"@ECHO off",
+	"GOTO start",
+	":find_dp0",
+	"SET dp0=%~dp0",
+	"EXIT /b",
+	":start",
+	"SETLOCAL",
+	"CALL :find_dp0",
+	"",
+	'IF EXIST "%dp0%\\bun.exe" (',
+	'  SET "_prog=%dp0%\\bun.exe"',
+	") ELSE (",
+	'  SET "_prog=bun"',
+	"  SET PATHEXT=%PATHEXT:;.JS;=;%",
+	")",
+	"",
+	'endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@oh-my-pi\\pi-coding-agent\\src\\cli.ts" %*',
+	"",
+].join("\r\n");
+
+test("Windows: npm's omp.cmd is npm's omp, and bun's omp.exe (a stub with an omp.bunx beside it) is bun's, not omp's installer (#288)", () => {
+	const h = home();
+	const shim = join(h, "AppData", "Roaming", "npm", "omp.cmd");
+	mkdirSync(join(shim, ".."), { recursive: true });
+	writeFileSync(shim, NPM_SHIM);
+	expect(detectInstall(shim)).toMatchObject({ method: "npm", updatable: true });
+
+	const stub = join(h, ".bun", "bin", "omp.exe");
+	mkdirSync(join(stub, ".."), { recursive: true });
+	writeFileSync(stub, Buffer.from("4d5a9000", "hex"));
+	// Alone it is a native executable: omp's standalone binary.
+	expect(detectInstall(stub).method).toBe("installer");
+	writeFileSync(join(h, ".bun", "bin", "omp.bunx"), "target");
+	expect(detectInstall(stub)).toMatchObject({ method: "bun", updatable: true });
+
+	// A .cmd that is no npm shim says nothing about where omp came from.
+	const other = join(h, "tools", "omp.cmd");
+	mkdirSync(join(other, ".."), { recursive: true });
+	writeFileSync(other, "@echo off\r\nomp-real.exe %*\r\n");
+	expect(detectInstall(other)).toMatchObject({ method: "unknown", updatable: false });
+});

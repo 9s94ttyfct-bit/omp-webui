@@ -1,8 +1,9 @@
-import { statfsSync, statSync } from "node:fs";
+import { readFileSync, statfsSync, statSync } from "node:fs";
 import { arch, freemem, release, totalmem } from "node:os";
 import { delimiter, extname, join, win32 as windowsPath } from "node:path";
 import type { DiskMount, PsRow } from "../host-parse.ts";
 import { capabilitiesFor } from "./capabilities.ts";
+import { launchArgv } from "./cmd-shim.ts";
 import { probe, treesOf } from "./system.ts";
 import type { CommandOps, LoginItemOps, Platform, ProcessEntry, ProcessOps, ShellOps, SystemDeps } from "./types.ts";
 
@@ -258,6 +259,19 @@ function shell(deps: SystemDeps, find: CommandOps): ShellOps {
 		loginEnvArgv: () => null,
 		// Files under the user's profile inherit an ACL that is the user's own: there is no umask to set.
 		privateArgv: (command) => command,
+		// npm's `omp.cmd` is a shim Bun will not start with an argument that has a cmd.exe metacharacter (#296): what it runs is.
+		launchArgv: (command) =>
+			launchArgv(
+				command,
+				(path) => {
+					try {
+						return readFileSync(path, "utf8");
+					} catch {
+						return null;
+					}
+				},
+				isFile,
+			),
 		// No `/bin/sh` to write the status: the server writes it when the job ends (and a job does not outlive it).
 		jobArgv: () => null,
 		// omp's PowerShell installer, its standalone binary (`-Binary`: its default installs through bun when bun is there,

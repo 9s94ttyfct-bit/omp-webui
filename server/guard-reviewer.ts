@@ -6,6 +6,7 @@ import { childEnv } from "./env.ts";
 import { type Answer, type Ask, labelOf, type ModelLike, type Models, NO_USAGE } from "./omp/gate/review.ts";
 import { readKeys } from "./omp/model-config.ts";
 import { availableModels } from "./omp/models.ts";
+import { platform } from "./platform/index.ts";
 
 /**
  * The reviewer as the server can reach it, for the benchmark (`guard-bench.ts`). The gate asks a model from inside omp, with
@@ -143,13 +144,16 @@ export function reviewerArgs(model: ModelLike, system: string, user: string, cwd
 /** Ask one model through `omp -p`. A signal that aborts ends the process. */
 export function ompAsk(bin: string, cwd: string = tmpdir(), env: Record<string, string | undefined> = {}): Ask {
 	return async (model, system, user, signal): Promise<Answer> => {
-		const proc = Bun.spawn([bin, ...reviewerArgs(model, system, user, cwd, quietOverlay())], {
-			stdin: "ignore",
-			stdout: "pipe",
-			stderr: "pipe",
-			env: childEnv(env),
-			signal,
-		});
+		const proc = Bun.spawn(
+			platform.shell.launchArgv([bin, ...reviewerArgs(model, system, user, cwd, quietOverlay())]),
+			{
+				stdin: "ignore",
+				stdout: "pipe",
+				stderr: "pipe",
+				env: childEnv(env),
+				signal,
+			},
+		);
 		const [out, err, code] = await Promise.all([
 			new Response(proc.stdout).text(),
 			new Response(proc.stderr).text(),

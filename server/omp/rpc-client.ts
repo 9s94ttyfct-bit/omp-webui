@@ -211,7 +211,7 @@ export class RpcClient {
 		const via = opts.via ?? { kind: "direct" };
 		this.idPrefix = via.kind === "adopt" ? `a${Date.now().toString(36)}-` : "w";
 		if (via.kind === "direct") {
-			const command = [opts.bin, "--mode", opts.mode ?? "rpc-ui", ...opts.args];
+			const command = platform.shell.launchArgv([opts.bin, "--mode", opts.mode ?? "rpc-ui", ...opts.args]);
 			this.proc = Bun.spawn(opts.private ? platform.shell.privateArgv(command) : command, {
 				cwd: opts.cwd,
 				env: childEnv(opts.env),

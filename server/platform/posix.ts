@@ -162,6 +162,7 @@ export function posixShell(deps: SystemDeps): ShellOps {
 		// The marker first: the start-up files may print what they like before it.
 		loginEnvArgv: (shell, marker) => [shell, "-ilc", `printf %s ${marker}; /usr/bin/env -0`],
 		privateArgv: (command) => ["/bin/sh", "-c", 'umask 077; exec "$@"', "omp-webui", ...command],
+		launchArgv: (command) => command,
 		jobArgv: (statusFile, command) => ["/bin/sh", "-c", JOB_WRAPPER, "sh", statusFile, ...command],
 		installer: () => ({
 			argv: ["/bin/sh", "-c", INSTALLER_SCRIPT],

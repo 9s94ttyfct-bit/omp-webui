@@ -1,8 +1,9 @@
-import { closeSync, openSync, readFileSync, readSync, realpathSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import nodePath, { delimiter, dirname, join, sep } from "node:path";
+import nodePath, { basename, delimiter, dirname, join, sep, win32 as windowsPath } from "node:path";
 import type { InstallMethod, InstallOption, InstallOptionId, OmpInstall } from "../../shared/omp-install.ts";
 import { childEnv } from "../env.ts";
+import { parseCmdShim, shimScript } from "../platform/cmd-shim.ts";
 import { platform } from "../platform/index.ts";
 import type { CommandOps } from "../platform/types.ts";
 import { run } from "./run.ts";
@@ -123,12 +124,35 @@ function managerName(realPath: string): string | null {
 }
 
 /**
+ * Where the package an npm shim (`omp.cmd`, Windows) launches is: the script its command line runs, with `/` for `\`. npm
+ * writes a plain file there, not a link into `node_modules`, so the shim's own path says nothing of it (#288).
+ */
+function shimTarget(shim: string): string | null {
+	try {
+		const command = parseCmdShim(readFileSync(shim, "utf8"), windowsPath.dirname(shim), existsSync);
+		const script = command ? shimScript(command) : null;
+		return script ? script.replaceAll("\\", "/") : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Whether `path` is bun's launcher for a global package on Windows: a copy of bun's stub, `omp.exe`, with the package it
+ * starts named in an `omp.bunx` beside it. It is a native executable but not omp's standalone binary (#288).
+ */
+function isBunStub(path: string): boolean {
+	return /\.exe$/i.test(path) && existsSync(join(dirname(path), `${basename(path).slice(0, -4)}.bunx`));
+}
+
+/**
  * How the omp at `bin` was installed, from where its file really is — the way `omp update` itself decides what
  * to update with (`resolveUpdateMethod` in omp's `cli/update-cli.ts`), minus the questions that need a package
  * manager to answer: Homebrew keeps its files in a `Cellar`, mise in `installs` (its `shims` point at mise itself),
  * Nix in the store, and a global npm or bun package is a launcher inside a `node_modules`. Bun keeps its global
  * packages in `install/global/node_modules`; any other `node_modules` is npm's (or a Node version manager's).
- * A native executable anywhere else is omp's standalone binary, which is what its installer leaves.
+ * A native executable anywhere else is omp's standalone binary, which is what its installer leaves. On Windows npm's
+ * launcher is a `.cmd` shim, read for the package it runs, and bun's is a stub `.exe` with a `.bunx` beside it.
  */
 export function detectInstall(bin: string): OmpInstall {
 	let realPath = bin;
@@ -138,8 +162,10 @@ export function detectInstall(bin: string): OmpInstall {
 		// A launcher that cannot be resolved is classified by the path it was found at.
 	}
 	const managedBy = managerName(realPath);
+	// An npm shim is classified by the package it runs, which is where the layout of a global package is seen.
+	const shim = /\.(cmd|bat)$/i.test(realPath) ? shimTarget(realPath) : null;
 	const posix = (p: string) => p.split(sep).join("/");
-	const real = posix(realPath);
+	const real = shim ?? posix(realPath);
 	const asFound = posix(bin);
 	let method: InstallMethod;
 	if (managedBy) method = "managed";
@@ -147,6 +173,7 @@ export function detectInstall(bin: string): OmpInstall {
 	else if (/\/(Cellar|Caskroom)\//.test(real)) method = "homebrew";
 	else if (/\/mise\/(installs|shims)\//.test(real) || /\/mise\/shims\//.test(asFound)) method = "mise";
 	else if (real.includes("/node_modules/")) method = real.includes("/install/global/node_modules/") ? "bun" : "npm";
+	else if (isBunStub(realPath)) method = "bun";
 	else if (isNativeExecutable(realPath)) method = "installer";
 	else method = "unknown";
 	return { method, managedBy, realPath, updatable: method !== "nix" && method !== "managed" && method !== "unknown" };

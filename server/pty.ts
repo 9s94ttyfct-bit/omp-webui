@@ -264,7 +264,7 @@ export class PtyManager {
 				TERM: "xterm-256color",
 				COLORTERM: "truecolor",
 			});
-			const argv = shell ? (inFront?.argv ?? login) : [this.bin, ...args];
+			const argv = shell ? (inFront?.argv ?? login) : platform.shell.launchArgv([this.bin, ...args]);
 			if (terminalOptions) {
 				proc = Bun.spawn(argv, {
 					cwd: dir,

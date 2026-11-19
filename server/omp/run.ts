@@ -101,7 +101,7 @@ async function readTold(stream: ReadableStream<Uint8Array>, onText: (text: strin
  * The answer does not wait for the pipes after a kill: a child's own children may hold them open.
  */
 export async function run(argv: string[], opts: RunOptions): Promise<Ran> {
-	const proc = Bun.spawn(argv, {
+	const proc = Bun.spawn(platform.shell.launchArgv(argv), {
 		cwd: opts.cwd,
 		env: childEnv(opts.env, opts.base),
 		stdin: "ignore",
