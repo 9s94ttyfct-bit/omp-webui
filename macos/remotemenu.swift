@@ -309,7 +309,7 @@ final class RemoteMacsController: NSObject, NSMenuDelegate, NSMenuItemValidation
 				self?.signIns.listChanged()
 				// A window that was open when the team became known still has the Mac's own store, which holds its sign-in.
 				guard mac.storeId != mac.storeIdentifier else { return done(names) }
-				WKWebsiteDataStore.fetchAllDataStoreIdentifiers { stores in
+				fetchDataStoreIdentifiers { stores in
 					DispatchQueue.main.async {
 						guard stores.contains(mac.storeId) else { return done(names) }
 						WKWebsiteDataStore(forIdentifier: mac.storeId).removeData(
@@ -347,7 +347,7 @@ final class RemoteMacsController: NSObject, NSMenuDelegate, NSMenuItemValidation
 				if let error { return done(.failure(.store(error))) }
 				// The store the Mac shares with others stays: what it put in it does not.
 				guard !removing.contains(mac.storeIdentifier) else { return done(.success(())) }
-				WKWebsiteDataStore.fetchAllDataStoreIdentifiers { ids in
+				fetchDataStoreIdentifiers { ids in
 					DispatchQueue.main.async {
 						// A Mac that was never opened has put nothing anywhere.
 						guard ids.contains(mac.storeIdentifier) else { return done(.success(())) }
@@ -369,7 +369,7 @@ final class RemoteMacsController: NSObject, NSMenuDelegate, NSMenuItemValidation
 	}
 
 	private func removeStore(_ id: UUID, attempts: Int, done: @escaping (Error?) -> Void) {
-		WKWebsiteDataStore.fetchAllDataStoreIdentifiers { [weak self] ids in
+		fetchDataStoreIdentifiers { [weak self] ids in
 			DispatchQueue.main.async {
 				// A Mac that was never opened has no store.
 				guard ids.contains(id) else { return done(nil) }

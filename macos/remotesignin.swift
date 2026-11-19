@@ -18,6 +18,19 @@ import WebKit
 /// 2 minutes.
 func signInRetryDelay(_ failures: Int) -> TimeInterval { min(2 * pow(2, Double(failures - 1)), 120) }
 
+/// The identifiers of the data stores that exist (`WKWebsiteDataStore.fetchAllDataStoreIdentifiers`, which answers off the main
+/// thread), asked from the main thread. Every read of that list goes through here. WebKit is set up first: the list is answered
+/// through WebKit's main run loop, which does not exist until something in the process has used WebKit, and asked before that,
+/// the answer crashes the process. The app asks at launch for a Mac whose notifications are on, before any web view is made
+/// (0.27.0 crashed at every launch). Making a data store sets WebKit up; a non-persistent one writes nothing.
+@available(macOS 14.0, *)
+func fetchDataStoreIdentifiers(_ done: @escaping ([UUID]) -> Void) {
+	_ = webKitSetUp
+	WKWebsiteDataStore.fetchAllDataStoreIdentifiers(done)
+}
+
+private let webKitSetUp: Void = { _ = WKWebsiteDataStore.nonPersistent() }()
+
 /// What the server was last handed for a Mac.
 enum HandedSignIn: Equatable {
 	/// Nothing: the server holds no sign-in of the Mac (what a server that has just started holds of every Mac).
@@ -131,7 +144,7 @@ final class RemoteSignIns: NSObject, WKHTTPCookieStoreObserver {
 		let macs = list.list.macs
 		known = macs
 		handed = handed.filter { id, _ in macs.contains { $0.id == id } }
-		WKWebsiteDataStore.fetchAllDataStoreIdentifiers { [weak self] existing in
+		fetchDataStoreIdentifiers { [weak self] existing in
 			DispatchQueue.main.async {
 				guard let self else { return }
 				// The list as it is now: a Mac forgotten meanwhile has a store that is about to be deleted.

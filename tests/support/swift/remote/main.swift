@@ -1773,4 +1773,13 @@ if mode == "pure" {
 	removeRules()
 } else if mode == "notify" {
 	print(json(notifyRun()))
+} else if mode == "cold" {
+	// Nothing in the process has used WebKit yet: the app at launch, where the Macs menu is built and a Mac whose notifications
+	// are on has its sign-in read at once.
+	let mac = RemoteMac(
+		id: UUID(), name: "Mac A", host: "omp.invalid", team: "myteam", storeId: UUID(), added: Date(), lastConnected: nil)
+	var lists: [[HTTPCookie]]?
+	RemoteNotifier.storedCookies(mac) { lists = $0 }
+	runLoop(until: { lists != nil }, seconds: 20)
+	print(json(["answered": lists != nil, "stores": lists?.count ?? -1]))
 }

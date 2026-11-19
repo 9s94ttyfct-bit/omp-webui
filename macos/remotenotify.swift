@@ -145,7 +145,7 @@ final class RemoteNotifier {
 	/// was kept signs in with, #375), in that order. Only stores that exist are opened: opening one makes it. Each is made for this
 	/// one read and let go of after it: one kept would stand in the way of deleting it when the Mac is forgotten.
 	static func storedCookies(_ mac: RemoteMac, _ done: @escaping ([[HTTPCookie]]) -> Void) {
-		WKWebsiteDataStore.fetchAllDataStoreIdentifiers { existing in
+		fetchDataStoreIdentifiers { existing in
 			DispatchQueue.main.async {
 				let ids = mac.signInStores.filter(existing.contains)
 				var lists = [[HTTPCookie]](repeating: [], count: ids.count)

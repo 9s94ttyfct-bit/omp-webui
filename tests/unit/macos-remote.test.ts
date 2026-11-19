@@ -1519,3 +1519,14 @@ test.skipIf(!mac)(
 		expect(out.signInDelays).toEqual([2, 4, 8, 64, 120, 120]);
 	},
 );
+
+test.skipIf(!windowServer)(
+	"a Mac's sign-in is read when nothing in the app has used WebKit yet: as at launch, with a Mac's notifications on",
+	async () => {
+		// WebKit answers the list of data stores on a run loop of its own that exists only once WebKit was set up: read first, it
+		// crashed the app at every launch (0.27.0).
+		const out = JSON.parse(await run(["cold"])) as { answered: boolean; stores: number };
+		// A Mac never opened has no store: there is nothing to read, and that is the answer.
+		expect(out).toEqual({ answered: true, stores: 0 });
+	},
+);
