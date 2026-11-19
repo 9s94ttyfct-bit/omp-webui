@@ -15,16 +15,23 @@ export interface WorkFacts {
 	streaming: boolean;
 	/** A turn of an active goal ended and the next one has not begun: the run is not over (`LiveInfo.continuing`). */
 	continuing: boolean;
+	/** A `!command` a page sent runs, which is no turn of omp's (`LiveInfo.commandRunning`, #389). */
+	commandRunning?: boolean;
 }
 
-/** omp is at work on the conversation: a turn is running, or a goal run is between two of its turns. */
-export function working(s: Pick<WorkFacts, "streaming" | "continuing">): boolean {
-	return s.streaming || s.continuing;
+/** omp is at work on the conversation: a turn is running, a goal run is between two of its turns, or a `!command` runs. */
+export function working(s: Pick<WorkFacts, "streaming" | "continuing" | "commandRunning">): boolean {
+	return s.streaming || s.continuing || s.commandRunning === true;
 }
 
-/** What the server says of a process (`LiveInfo`): the same three things, `asking` being the dialog. */
-export function factsOf(info: Pick<LiveInfo, "streaming" | "asking" | "continuing">): WorkFacts {
-	return { needsInput: info.asking === true, streaming: info.streaming, continuing: info.continuing === true };
+/** What the server says of a process (`LiveInfo`): the same things, `asking` being the dialog. */
+export function factsOf(info: Pick<LiveInfo, "streaming" | "asking" | "continuing" | "commandRunning">): WorkFacts {
+	return {
+		needsInput: info.asking === true,
+		streaming: info.streaming,
+		continuing: info.continuing === true,
+		...(info.commandRunning === true ? { commandRunning: true } : {}),
+	};
 }
 
 export type AttentionKind = "asking" | "finished";
@@ -78,7 +85,7 @@ export interface WorkCounts {
  * neither; one that waits for an answer counts as waiting, not as working, though its turn is still open.
  */
 export function workCounts(
-	infos: Iterable<Pick<LiveInfo, "exited" | "pausedAt" | "streaming" | "asking" | "continuing">>,
+	infos: Iterable<Pick<LiveInfo, "exited" | "pausedAt" | "streaming" | "asking" | "continuing" | "commandRunning">>,
 ): WorkCounts {
 	const counts: WorkCounts = { working: 0, asking: 0 };
 	for (const info of infos) {

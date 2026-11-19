@@ -137,6 +137,11 @@ export interface LiveInfo {
 	 */
 	continuing?: boolean;
 	/**
+	 * A `!command` a page sent runs (#389): omp starts no turn for it, so `streaming` is false, yet the conversation works
+	 * (`shared/attention.ts` `working`). Absent otherwise.
+	 */
+	commandRunning?: boolean;
+	/**
 	 * When the turn that runs began (server clock), absent between turns. A page that attached after the turn began has
 	 * no clock of its own for it (`web/src/store/turn-clock.ts` takes its marks from the frames it hears), and without this
 	 * would count the time worked up to the last saved entry only: two pages would show two figures for one turn (#587).

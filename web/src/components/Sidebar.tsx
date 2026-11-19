@@ -101,7 +101,7 @@ export function liveDotsOf(lives: Record<string, LiveState>): Record<string, Liv
 				? "needsInput"
 				: l.info.quotaHold?.state === "held"
 					? "quotaHeld"
-					: working(l)
+					: working(l) || l.info.commandRunning === true
 						? "running"
 						: "open";
 	}

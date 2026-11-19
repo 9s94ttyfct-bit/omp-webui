@@ -9,7 +9,10 @@ import type { SleepThen } from "../shared/sleep.ts";
  * difference between them.
  */
 export interface AwakeFacts
-	extends Pick<LiveInfo, "exited" | "pausedAt" | "streaming" | "asking" | "continuing" | "retry" | "quotaHold"> {}
+	extends Pick<
+		LiveInfo,
+		"exited" | "pausedAt" | "streaming" | "asking" | "continuing" | "commandRunning" | "retry" | "quotaHold"
+	> {}
 
 /**
  * The conversations that hold the Mac from idle sleep, and that a sleep interrupted — which is not the same as what the

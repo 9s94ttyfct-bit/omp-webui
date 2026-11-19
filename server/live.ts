@@ -1663,6 +1663,7 @@ export class Live {
 				delete this.info.turnStartedAt;
 				delete this.info.asking;
 				delete this.info.continuing;
+				delete this.info.commandRunning;
 				// A process that ended has no sleep to be told of: the note and its watch go with it (#647).
 				delete this.info.slept;
 				// What it said of a restart is the process's: the conversation's next process says its own.
@@ -3150,6 +3151,19 @@ export class Live {
 		}
 	}
 
+	/**
+	 * Say in the process's info whether a `!command` of a page runs (#389): omp starts no turn for it, so `streaming` stays
+	 * false, and without this the sidebar's dot, the menu bar's count, keep-awake and the Finished notification took the
+	 * conversation for idle while delete and move refused it as working. Every page is told when it changes.
+	 */
+	private noteCommandRunning(): void {
+		const running = this.held.bashRunning;
+		if (running === (this.info.commandRunning === true)) return;
+		if (running) this.info.commandRunning = true;
+		else delete this.info.commandRunning;
+		this.pool.announce(this);
+	}
+
 	/** What the conversation said of a question it could not keep is done with (#650): nothing is announced when there was none. */
 	private clearQuestionDropped(): void {
 		if (!this.info.questionDropped) return;
@@ -3704,7 +3718,10 @@ export class Live {
 			// A `!command` is the conversation's, whichever page sent it: every page that listens is told it runs, and when it ends
 			// (omp answers it when the command exits, or `abort_bash` ends it), so that Stop is on each of them.
 			const bash = type === "bash" && typeof command.command === "string" ? this.held.startBash(command.command) : null;
-			if (bash) this.broadcast({ t: "frame", liveId: this.info.liveId, frame: bash });
+			if (bash) {
+				this.broadcast({ t: "frame", liveId: this.info.liveId, frame: bash });
+				this.noteCommandRunning();
+			}
 			try {
 				// omp's `set_host_tools` replaces its whole set: what the server serves goes along with the page's. The page's list
 				// is the server's copy from the moment it is sent (#392): a serve that crosses this command carries it, and omp,
@@ -3746,6 +3763,7 @@ export class Live {
 				this.lastActivity = Date.now();
 				const ended = bash ? this.held.endBash(String(bash.id)) : null;
 				if (ended) this.broadcast({ t: "frame", liveId: this.info.liveId, frame: ended });
+				if (bash) this.noteCommandRunning();
 			}
 		};
 		if (this.info.pausedAt === null) return send();
