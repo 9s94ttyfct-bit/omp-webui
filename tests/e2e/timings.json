@@ -514,6 +514,7 @@
 		"cli-phone.spec.ts › phone › opening a command folds the list; its help, the command line and Run are on the same screen": 1.6,
 		"cli-phone.spec.ts › phone › running a command brings its output into view when it was below the screen": 0.9,
 		"cli-phone.spec.ts › phone › the commands list is folded behind a row above the rest; Run and the command line fit the screen": 1.3,
+		"close-working.spec.ts › Close on a working conversation asks first: Cancel keeps it, the dialog's Close closes it": 3.8,
 		"compact-at.spec.ts › Settings sets omp's own point in omp's own configuration, keeps it across a load, and Default takes it away": 19.2,
 		"compact-at.spec.ts › a conversation's point is a share, kept when the page is loaded again, and Default restores omp's configuration": 15.5,
 		"compact-at.spec.ts › the row is in Simplified Chinese, says what it does there, and its choice is kept": 10.5,

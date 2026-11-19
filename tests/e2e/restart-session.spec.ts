@@ -85,9 +85,12 @@ test("Force restart in This session ends the turn and the process, and the page 
 		await page.getByTestId("session-controls").click();
 		const restart = page.getByTestId("session-restart");
 		await restart.getByTestId("session-restart-button").click();
-		// It asks once before it cuts anything off; Cancel leaves everything as it was.
+		// The question takes the keyboard on its safe answer, so a screen reader reads it (#266).
+		await expect(restart.getByTestId("session-restart-cancel")).toBeFocused();
+		// It asks once before it cuts anything off; Cancel leaves everything as it was, and the keyboard goes back to Restart.
 		await restart.getByTestId("session-restart-cancel").click();
 		await expect(restart.getByTestId("session-restart-confirm")).toHaveCount(0);
+		await expect(restart.getByTestId("session-restart-button")).toBeFocused();
 		expect(await world.liveOf(file)).toBe(liveId);
 		await restart.getByTestId("session-restart-button").click();
 		await restart.getByTestId("session-restart-yes").click();

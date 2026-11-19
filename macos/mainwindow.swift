@@ -15,8 +15,11 @@ struct PageMemory: Equatable {
 let longestDrafts = 32 << 20
 let longestHash = 4096
 
-/// What the page is asked, as one script: its drafts as the page wrote them, and where it is.
-let pageMemoryScript = "JSON.stringify({ drafts: sessionStorage.getItem('ompw.drafts'), hash: location.hash })"
+/// What the page is asked, as one script: its drafts as the page wrote them, and where it is. The page writes its drafts
+/// out first (`ompwFlushDrafts`, web/src/lib/drafts.ts): it mirrors them only 400 ms after a change, and a window that
+/// closes now would lose what was typed since.
+let pageMemoryScript =
+	"(window.ompwFlushDrafts && window.ompwFlushDrafts(), JSON.stringify({ drafts: sessionStorage.getItem('ompw.drafts'), hash: location.hash }))"
 
 /// The memory in a page's answer to `pageMemoryScript`, or nil for any other answer. An address that is not an in-page
 /// address (`#…`, no control characters, not too long) is not kept: it is appended to the app's own URL.

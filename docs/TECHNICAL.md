@@ -292,6 +292,8 @@ Every image is generated from the real UI by `bun run screenshots`, in the light
   - **Full browser storage** (#242): the commands' kept output (`ompw.commandOutput`) is bounded by size, 500,000 characters in all with the oldest conversation first, besides the counts; and a setting chosen while the origin's storage is full still applies and is still sent to the server instead of throwing.
   - **Settings changed in another window** (#239): Notifications, Automatic titles and Unattended by default follow a change made in another window or tab (`onPrefsChanged`), so a switch that was turned off elsewhere shows Off and stops notifying here.
   - **Input-method Enter** (#280): the Enter that confirms a composition (WebKit sends it as `keyCode` 229 after `compositionend`) no longer opens a Settings search result, a file found by the Files filter or saves a guidance name that was being typed (`useImeGuard`).
+  - **Drafts that no longer fit** (#395, #399): when the drafts' mirror in session storage cannot be written as a whole, the drafts that are not huge are written without their pictures, and if nothing fits the old mirror is removed, so a reload does not bring back a message that was sent since; the macOS app has the page write the mirror (`window.ompwFlushDrafts`) before it reads it on closing the window, so what was typed in the last 400 ms is carried over.
+  - **Keyboard on inline questions** (#266): the questions that replace a button (This session › *Restart*, the isolation's *Restart now*, Semantic search › *Turn off*) take the keyboard on *Cancel*, the safe answer, and give it back to the button when they close (`useConfirmFocus`); Semantic search's question is named for screen readers.
 
 ## Install
 

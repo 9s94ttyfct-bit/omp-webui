@@ -4,6 +4,7 @@ import { lazy, Suspense, useEffect, useId, useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
 import { api, ownerPage } from "../lib/api.ts";
+import { useConfirmFocus } from "../lib/confirm-focus.ts";
 import { errorText } from "../lib/error-text.ts";
 import { forceRestart } from "../lib/force-restart.ts";
 import { socket } from "../lib/ws.ts";
@@ -33,6 +34,7 @@ export default function SessionIsolation({ liveId, className }: { liveId: string
 	const [busy, setBusy] = useState(false);
 	// Restart now asks once, as the panel's own Restart: it ends what the conversation started (background jobs, dev servers).
 	const [confirming, setConfirming] = useState(false);
+	const opener = useConfirmFocus<HTMLButtonElement>(confirming);
 	const infoId = useId();
 	const [infoOpen, setInfoOpen] = useState(false);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: `asked` moves after a flip: the folder is read again.
@@ -133,12 +135,20 @@ export default function SessionIsolation({ liveId, className }: { liveId: string
 									>
 										{t("panel.controlsRestartYes")}
 									</Button>
-									<Button size="sm" type="button" disabled={busy} onClick={() => setConfirming(false)}>
+									<Button
+										size="sm"
+										type="button"
+										// The question takes the keyboard on its safe answer, so it is read.
+										autoFocus
+										disabled={busy}
+										onClick={() => setConfirming(false)}
+									>
 										{t("common.cancel")}
 									</Button>
 								</>
 							) : (
 								<Button
+									ref={opener}
 									size="sm"
 									type="button"
 									disabled={busy || !info.sessionFile}

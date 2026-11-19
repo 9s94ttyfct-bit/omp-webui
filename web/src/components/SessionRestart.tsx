@@ -2,6 +2,7 @@ import { RotateCcw } from "lucide-react";
 import { useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
+import { useConfirmFocus } from "../lib/confirm-focus.ts";
 import { errorText } from "../lib/error-text.ts";
 import { forceRestart } from "../lib/force-restart.ts";
 import { useApp } from "../store/app.ts";
@@ -18,6 +19,7 @@ export default function SessionRestart({ liveId }: { liveId: string }) {
 	const toast = useApp((s) => s.toast);
 	const info = useApp((s) => s.lives[liveId]?.info);
 	const [confirming, setConfirming] = useState(false);
+	const opener = useConfirmFocus<HTMLButtonElement>(confirming);
 	const [busy, setBusy] = useState(false);
 	if (!info) return null;
 	const paused = Boolean(info.pausedAt);
@@ -45,6 +47,7 @@ export default function SessionRestart({ liveId }: { liveId: string }) {
 				<div className="text-sm font-semibold">{t("panel.controlsRestartTitle")}</div>
 				{confirming ? null : (
 					<Button
+						ref={opener}
 						size="sm"
 						type="button"
 						disabled={busy || paused || !info.sessionFile}
@@ -82,6 +85,8 @@ export default function SessionRestart({ liveId }: { liveId: string }) {
 					<Button
 						size="sm"
 						type="button"
+						// The question takes the keyboard on its safe answer, so it is read; Cancel hands it back to Restart.
+						autoFocus
 						disabled={busy}
 						data-testid="session-restart-cancel"
 						onClick={() => setConfirming(false)}

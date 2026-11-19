@@ -9,6 +9,7 @@ import {
 	moveDraft,
 	PERSIST_DELAY_MS,
 	readDraft,
+	startDraftPersistence,
 } from "../../web/src/lib/drafts.ts";
 
 /** Unsent composer contents are kept per conversation, up to a limit, and follow a conversation to its file. */
@@ -292,4 +293,52 @@ test("attached files share the mirror's cap with pictures: newest first, one by 
 	reload(full, ["size/full"]);
 	expect(readDraft("size/full")).toEqual(text("words survive"));
 	forgetDraft("size/full");
+});
+
+test("a mirror that no longer fits does not keep an old one: a message that was sent is not brought back (#395)", () => {
+	const storage = tabStorage(300_000);
+	hydrateDrafts(storage);
+	keepDraft("stale/a", text("Delete the staging database and recreate it"));
+	flushDrafts();
+	// A is sent, and another conversation's box holds a paste that fits no storage, beside a small draft.
+	forgetDraft("stale/a");
+	keepDraft("stale/b", text("x".repeat(400_000)));
+	keepDraft("stale/c", text("small one"));
+	flushDrafts();
+	reload(storage, ["stale/a", "stale/b", "stale/c"]);
+	expect(readDraft("stale/a")).toBeUndefined();
+	expect(readDraft("stale/b")).toBeUndefined();
+	expect(readDraft("stale/c")?.text).toBe("small one");
+	for (const k of ["stale/b", "stale/c"]) forgetDraft(k);
+
+	// Nothing fits at all: the old mirror goes.
+	const none = tabStorage(10);
+	none.data.set("ompw.drafts", JSON.stringify([["stale/d", text("old")]]));
+	hydrateDrafts(none);
+	forgetDraft("stale/d");
+	keepDraft("stale/e", text("a longer text than the storage holds"));
+	flushDrafts();
+	expect(none.data.has("ompw.drafts")).toBe(false);
+	forgetDraft("stale/e");
+});
+
+test("the page gives the macOS app a way to have the mirror written before it reads it (#399)", () => {
+	const storage = tabStorage();
+	const g = globalThis as Record<string, unknown>;
+	const before = { window: g.window, document: g.document };
+	const win: Record<string, unknown> = { sessionStorage: storage, addEventListener: () => {} };
+	g.window = win;
+	g.document = { addEventListener: () => {}, visibilityState: "visible" };
+	try {
+		startDraftPersistence();
+		keepDraft("app/a", text("typed a moment ago"));
+		// The write is 400 ms away; the app's script runs now.
+		expect(storage.data.size).toBe(0);
+		(win.ompwFlushDrafts as () => void)();
+		expect(storage.data.get("ompw.drafts")).toContain("typed a moment ago");
+	} finally {
+		g.window = before.window;
+		g.document = before.document;
+		forgetDraft("app/a");
+	}
 });

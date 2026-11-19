@@ -1,7 +1,8 @@
 import type { SemanticFailure, SemanticStatus } from "@shared/semantic.ts";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import "../i18n/later.ts";
 import { type MessageKey, useT } from "../i18n/index.ts";
+import { useConfirmFocus } from "../lib/confirm-focus.ts";
 import { fmtInt } from "../lib/format.ts";
 import { fmtMem } from "../lib/host-rows.ts";
 import { semanticApi } from "../lib/semantic-api.ts";
@@ -34,6 +35,8 @@ export function SemanticSearchSettings() {
 	const [status, setStatus] = useState<SemanticStatus | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [confirming, setConfirming] = useState(false);
+	const opener = useConfirmFocus<HTMLButtonElement>(confirming);
+	const questionId = useId();
 	// Why the state could not be read (until it can be), and the number of the read Try again starts.
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const [attempt, setAttempt] = useState(0);
@@ -78,8 +81,12 @@ export function SemanticSearchSettings() {
 	const off = (
 		<div className="mt-3 space-y-2" data-testid="semantic-off-area">
 			{confirming ? (
-				<div className="space-y-2 rounded-lg border border-border p-3 text-sm" role="alertdialog">
-					<p>{t("pages.settingsSemanticOffConfirm", { size: disk ?? size })}</p>
+				<div
+					className="space-y-2 rounded-lg border border-border p-3 text-sm"
+					role="alertdialog"
+					aria-labelledby={questionId}
+				>
+					<p id={questionId}>{t("pages.settingsSemanticOffConfirm", { size: disk ?? size })}</p>
 					<div className="flex gap-2">
 						<Button
 							size="sm"
@@ -91,13 +98,14 @@ export function SemanticSearchSettings() {
 							{busy ? <Spinner size={12} /> : null}
 							{t("pages.settingsSemanticOffYes")}
 						</Button>
-						<Button size="sm" disabled={busy} onClick={() => setConfirming(false)}>
+						<Button size="sm" autoFocus disabled={busy} onClick={() => setConfirming(false)}>
 							{t("common.cancel")}
 						</Button>
 					</div>
 				</div>
 			) : (
 				<Button
+					ref={opener}
 					size="sm"
 					disabled={!status?.canChange || busy}
 					data-testid="semantic-off"

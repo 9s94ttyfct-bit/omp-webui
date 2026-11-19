@@ -21,6 +21,8 @@ const STORAGE_KEY = "ompw.drafts";
  * not fit is mirrored without them, and the files that do not fit are left out one by one.
  */
 export const MAX_PERSISTED_IMAGE_CHARS = 1_500_000;
+/** A draft whose text is longer than this is left out of a mirror that does not fit as a whole (a huge paste). */
+const SMALL_DRAFT_CHARS = 100_000;
 
 /** How long after the last change the mirror is written: typing changes the draft on every key. */
 export const PERSIST_DELAY_MS = 400;
@@ -128,10 +130,21 @@ export function flushDrafts(): void {
 		if (all.length) store.setItem(STORAGE_KEY, JSON.stringify(all));
 		else store.removeItem(STORAGE_KEY);
 	} catch {
+		const textOnly = all.map(([key, d]): [string, Draft] => [key, { text: d.text, images: [] }]);
+		// Full even for the text of every draft (one conversation's message box holds a huge paste): the drafts that are not
+		// huge still go, and if nothing can be written the old mirror goes, not to bring back a message that was sent since.
+		for (const draftsToKeep of [textOnly, textOnly.filter(([, d]) => d.text.length <= SMALL_DRAFT_CHARS)]) {
+			try {
+				store.setItem(STORAGE_KEY, JSON.stringify(draftsToKeep));
+				return;
+			} catch {
+				// Does not fit either: the next, smaller set.
+			}
+		}
 		try {
-			store.setItem(STORAGE_KEY, JSON.stringify(all.map(([key, d]) => [key, { text: d.text, images: [] }])));
+			store.removeItem(STORAGE_KEY);
 		} catch {
-			// Full or blocked even for the text alone: not worth more than the drafts in memory.
+			// Blocked: the drafts live on in memory.
 		}
 	}
 }
@@ -211,6 +224,9 @@ export function startDraftPersistence(): void {
 		return;
 	}
 	window.addEventListener("pagehide", flushDrafts);
+	// The macOS app asks for the mirror when its window closes, while the page is still visible and may be up to
+	// PERSIST_DELAY_MS behind: it has the page write first (`pageMemoryScript`, macos/mainwindow.swift).
+	(window as { ompwFlushDrafts?: () => void }).ompwFlushDrafts = flushDrafts;
 	document.addEventListener("visibilitychange", () => {
 		if (document.visibilityState === "hidden") flushDrafts();
 	});
