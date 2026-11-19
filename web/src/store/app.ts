@@ -478,6 +478,20 @@ const UNKNOWN_EXIT: ExitInfo = { code: null, stderr: "", by: "unknown" };
 function markExited(liveId: string, exited: ExitReport | null): void {
 	clearTurnClock(liveId);
 	setBash(liveId, () => []);
+	// A conversation shown by its file (opened from the list) shows the process that runs it. When that one ends, the view is
+	// pointed at it, as a view that named it from the start is, so that how it ended, the reply it was streaming and what was
+	// queued stay on screen rather than going with the process (#397).
+	const { view, lives, setView } = useApp.getState();
+	const ending = lives[liveId];
+	if (
+		view.kind === "chat" &&
+		!view.liveId &&
+		view.file !== null &&
+		ending &&
+		!ending.info.exited &&
+		ending.info.sessionFile === view.file
+	)
+		setView({ ...view, liveId }, { replace: true });
 	patchLive(liveId, (s) => {
 		// A report that does not say who ended the process is read as an end whose cause the server does not know,
 		// not as one of omp's own (#515).
