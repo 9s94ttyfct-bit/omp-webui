@@ -79,6 +79,29 @@ function sameDraft(a: Draft, b: Draft): boolean {
 }
 
 /**
+ * The draft after the config went from `base` to `next` while it was being edited: a role the person has changed (added,
+ * removed or given another model) keeps their edit, every other role and the default thinking level take `next`. A draft
+ * without edits becomes `next`.
+ */
+export function followConfig(draft: Draft, base: Draft, next: Draft): Draft {
+	const asMap = (rows: Row[]) => new Map(rows.map((r) => [r.role, r.selector]));
+	const mine = asMap(draft.rows);
+	const was = asMap(base.rows);
+	const now = asMap(next.rows);
+	const out = new Map(mine);
+	for (const role of new Set([...was.keys(), ...now.keys()])) {
+		if (mine.get(role) !== was.get(role)) continue;
+		const value = now.get(role);
+		if (value === undefined) out.delete(role);
+		else out.set(role, value);
+	}
+	return {
+		rows: rowsOfRoles(Object.fromEntries(out)),
+		thinking: draft.thinking === base.thinking ? next.thinking : draft.thinking,
+	};
+}
+
+/**
  * The editable part shared by the roles card and a preset's Edit dialog: the default thinking level, one row per role (its
  * model and the thinking level of its own) and the way to add a role. Controlled: the caller keeps the draft.
  */
@@ -275,11 +298,13 @@ export function ModelRolesEditor({
 	const aligned = useRef(draft);
 	const [busy, setBusy] = useState(false);
 
-	// Follow the config when it changes (a preset was applied, the terminal edited it), unless there are unsaved edits.
+	// Follow the config when it changes (a preset was applied, the terminal or another window edited it): the rows the person
+	// has not touched take the new value, so a Save sends what is there now and not the old values of rows they left alone.
 	useEffect(() => {
 		const next = draftOf(config);
-		if (sameDraft(next, aligned.current)) return;
-		setDraft((d) => (sameDraft(d, aligned.current) ? next : d));
+		const base = aligned.current;
+		if (sameDraft(next, base)) return;
+		setDraft((d) => followConfig(d, base, next));
 		aligned.current = next;
 	}, [config]);
 

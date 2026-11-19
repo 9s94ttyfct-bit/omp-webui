@@ -620,6 +620,22 @@ const ACTIONS: Record<string, Action> = {
 			const presets = await readPresets(cfg);
 			const entry = entryOf(presets, name);
 			if (!isRecord(entry)) throw new ConfigError(`Preset “${name}” can't be changed: it is not a mapping`, 409);
+			// The dialog says what the preset was when it opened: an edit of a preset that was changed since (another window's
+			// Edit, the subagent models, the terminal) would put back the values the person never looked at (#329).
+			if (body.base !== undefined) {
+				const now = parsePresetEntry(entry);
+				const seen = {
+					roles: typeof now === "string" ? {} : now.roles,
+					defaultThinkingLevel: typeof now === "string" ? null : (now.defaultThinkingLevel ?? null),
+					agentModelOverrides: typeof now === "string" ? {} : (now.agentModelOverrides ?? {}),
+				};
+				if (!jsonEqual(seen, body.base)) {
+					throw new ConfigError(
+						`Preset “${name}” was changed elsewhere since this dialog opened: close it and open it again to see what is there now`,
+						409,
+					);
+				}
+			}
 			// The three keys the dialog edits are replaced where they stand (or dropped, or added at the end); every other
 			// key of the entry, known to us or not, is carried over exactly as it is.
 			const edited: Record<string, unknown> = {};

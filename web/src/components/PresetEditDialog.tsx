@@ -55,6 +55,11 @@ export function PresetEditDialog({
 				roles: Object.fromEntries(roles.map((r) => [r.role, r.selector])),
 				defaultThinkingLevel: thinking === "" ? null : thinking,
 				agentModelOverrides: Object.fromEntries(agents.map((r) => [r.agent, r.selector])),
+				base: {
+					roles: Object.fromEntries(stored.roles.map((r) => [r.role, r.selector])),
+					defaultThinkingLevel: stored.thinking === "" ? null : stored.thinking,
+					agentModelOverrides: Object.fromEntries(stored.agents.map((r) => [r.agent, r.selector])),
+				},
 			});
 			toast("success", t("presets.editSaved", { name: preset.name }));
 			onClose();

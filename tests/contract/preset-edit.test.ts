@@ -198,3 +198,36 @@ test("a preset's name, a role named __proto__ and a quirky entry survive an edit
 	expect(Object.keys(entry.modelRoles as object)).toEqual(["default", "__proto__"]);
 	ompStillReads();
 }, 120_000);
+
+test("an edit made from a preset that was changed since the dialog opened is refused, and one made from its current state is not (#329)", async () => {
+	reset();
+	setStored("modelPresets", { target: { modelRoles: ROLES, agentModelOverrides: { reviewer: HAIKU } } });
+	const opened = {
+		roles: ROLES,
+		defaultThinkingLevel: null,
+		agentModelOverrides: { reviewer: HAIKU },
+	};
+	// Another window sets a subagent model while the dialog is open.
+	expect((await post("preset/agents", { name: "target", agentModelOverrides: { reviewer: SONNET } })).status).toBe(200);
+	const stale = await post("preset/edit", {
+		name: "target",
+		roles: { default: HAIKU },
+		defaultThinkingLevel: "low",
+		agentModelOverrides: { reviewer: HAIKU },
+		base: opened,
+	});
+	expect(stale.status).toBe(409);
+	expect(stale.body.error).toMatch(/changed elsewhere/);
+	// Nothing was written.
+	expect(storedPresets().target).toEqual({ modelRoles: ROLES, agentModelOverrides: { reviewer: SONNET } });
+
+	const current = await post("preset/edit", {
+		name: "target",
+		roles: { default: HAIKU },
+		defaultThinkingLevel: "low",
+		agentModelOverrides: { reviewer: SONNET },
+		base: { ...opened, agentModelOverrides: { reviewer: SONNET } },
+	});
+	expect(current.status).toBe(200);
+	expect(storedPresets().target).toMatchObject({ modelRoles: { default: HAIKU }, defaultThinkingLevel: "low" });
+}, 120_000);

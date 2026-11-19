@@ -15,7 +15,8 @@ export const presetActions = {
 		request("/api/model-config/preset/agents", { name, agentModelOverrides }).then(wrote),
 	/**
 	 * Rewrites one preset's roles, default thinking level (null: the preset sets none) and subagent models in one write; the
-	 * rest of its entry is kept.
+	 * rest of its entry is kept. `base` is the preset as the dialog opened on it: the server refuses (409) when the preset is
+	 * not that any more, so an edit never puts back what another window changed meanwhile.
 	 */
 	edit: (
 		name: string,
@@ -23,6 +24,11 @@ export const presetActions = {
 			roles: Record<string, string>;
 			defaultThinkingLevel: string | null;
 			agentModelOverrides: Record<string, string>;
+			base?: {
+				roles: Record<string, string>;
+				defaultThinkingLevel: string | null;
+				agentModelOverrides: Record<string, string>;
+			};
 		},
 	) => request("/api/model-config/preset/edit", { name, ...edit }).then(wrote),
 };
