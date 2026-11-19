@@ -272,6 +272,7 @@ omp-webui 是 [omp](https://omp.sh) 编程代理的网页界面，也是一个 m
   - **Linux 上的 `BROWSER`**（#297）：启动器不再自己读取 `BROWSER`，而是用 `xdg-open` 打开页面，由它按自己的语法处理（用 `:` 分隔的程序列表，含 `%s` 的项是命令行）。测试用 `OMPW_TEST_BROWSER` 指定它们的浏览器程序。
   - **卸载 Linux 安装包**（#292）：`./install.sh --uninstall` 还会删除“登录时启动”的条目（`${XDG_CONFIG_HOME:-~/.config}/autostart/omp-webui.desktop`），前提是它的 `Exec` 行启动的就是被卸载的程序；启动另一份 omp-webui 的条目保持原样。
   - **Windows 上的 `OMP_BIN`**（#294）：`OMP_BIN` 是绝对路径，或含有 `/` 或 `\` 时就当作路径（`C:/Tools/omp/omp.exe` 以前被当作名字去查找，永远找不到）；不带扩展名的路径（`C:\Tools\omp\omp`）会像 Windows 运行它那样找到旁边的 `.exe`。
+  - **API 失败**（#245）：`/api/*` 路由里意外的异常会写入日志（`omp-webui: POST /api/… failed:` 加上错误；绝不写查询串，里面可能有令牌），并以 500 回答；本人的页面能看到它的原话，其他页面只看到“Internal server error”（原话里可能有这台电脑的路径）。POST 的请求体不是 JSON 对象（不是 JSON、`null`、数组、字符串）时，凡是读请求体的路由都回答 400，而不是带着解析器原话的 500；`/api/cli/help` 对不是命令名的参数回答 400；`/api/auth` 收到 `null` 视为没有令牌。
 
 ## 安装
 

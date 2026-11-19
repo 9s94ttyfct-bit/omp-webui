@@ -90,7 +90,7 @@ import { createModeApi, ModeService } from "./offline/index.ts";
 import { readAdvisorDefault } from "./omp/advisor.ts";
 import { ApprovalStore, sessionKey } from "./omp/approval.ts";
 import { BtwForks, sweepForkDir } from "./omp/btw-fork.ts";
-import { cliHelp, cliInventory, ompVersion, resetCliInventory } from "./omp/cli.ts";
+import { cliHelp, cliInventory, isCommandName, ompVersion, resetCliInventory } from "./omp/cli.ts";
 import { configureCompactAt, readCompactDefaults } from "./omp/compact-at.ts";
 import { CompactStepService } from "./omp/compact-step/service.ts";
 import { ConfigRead } from "./omp/config-read.ts";
@@ -1258,6 +1258,16 @@ const json = (data: unknown, status = 200) =>
 		headers: { "content-type": "application/json" },
 	});
 const fail = (error: string, status = 400, info?: ErrorInfo) => json({ error, ...info }, status);
+
+/** A request a route cannot read: `route` answers it 400, with these words. */
+class BadRequest extends Error {}
+
+/** The JSON object a POST sent. An unreadable body, or one that is not an object, is a 400, not a 500 with the parser's words. */
+async function bodyObject<T extends Record<string, unknown> = Record<string, unknown>>(req: Request): Promise<T> {
+	const body: unknown = await req.json().catch(() => null);
+	if (!isRecord(body)) throw new BadRequest("A JSON object is expected");
+	return body as T;
+}
 const modeApi = createModeApi(modes, { json, fail });
 
 /**
@@ -1750,7 +1760,9 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		case "/api/cli":
 			return json(await cliInventory(cfg.ompBin));
 		case "/api/cli/help":
-			return json(await cliHelp(cfg.ompBin, q.get("cmd") ?? ""));
+			return isCommandName(q.get("cmd") ?? "")
+				? json(await cliHelp(cfg.ompBin, q.get("cmd") ?? ""))
+				: fail("A command name is expected: one word, or two", 400);
 		case "/api/files": {
 			// Loaded on the first request (see `folder-lazy.ts`): nobody completes a file name until they type an `@`.
 			const { suggestFiles } = await import("./files.ts");
@@ -2148,7 +2160,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			return json(pageSnapshot(uiPrefs.snapshot(), onThisComputer.has(req)));
 		case "/api/pins":
 			if (req.method === "POST") {
-				const body = (await req.json()) as { file?: unknown; pinned?: unknown };
+				const body = await bodyObject<{ file?: unknown; pinned?: unknown }>(req);
 				const file = typeof body.file === "string" ? store.resolveSessionPath(body.file) : null;
 				if (!file) return fail("Unknown session file", 404);
 				try {
@@ -2160,7 +2172,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			return json(await pins.list());
 		case "/api/favorite-models":
 			if (req.method === "POST") {
-				const body = (await req.json()) as { model?: unknown; on?: unknown };
+				const body = await bodyObject<{ model?: unknown; on?: unknown }>(req);
 				// `provider/model-id`, as omp names models.
 				if (typeof body.model !== "string" || !/^[^\s/]+\/\S+$/.test(body.model) || body.model.length > 200)
 					return fail("Bad model id");
@@ -2172,7 +2184,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			if (req.method === "POST") {
 				// Every later conversation of the person's starts in it: theirs to lower, not a page's that holds only the token (#228).
 				if (!fromOwner(req)) return fail(APPROVAL_NOT_HERE, 403);
-				const body = (await req.json()) as { mode?: unknown };
+				const body = await bodyObject<{ mode?: unknown }>(req);
 				if (body.mode !== null && !isApprovalMode(body.mode)) return fail("Bad approval mode");
 				const refused = body.mode === null ? null : modeTooNew(body.mode);
 				if (refused) return fail(refused);
@@ -2317,7 +2329,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			// POST changes it as `omp config set` does, and the answer is what `omp config get` says now, with the
 			// choice made for the conversation in `?file=` (null: it follows omp's).
 			if (req.method === "POST") {
-				const body = (await req.json()) as { enabled?: unknown };
+				const body = await bodyObject<{ enabled?: unknown }>(req);
 				if (typeof body.enabled !== "boolean") return fail("Bad value");
 				try {
 					await approval.configureUsageWait(body.enabled);
@@ -2333,7 +2345,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		case "/api/usage-reset-wait/session": {
 			// One conversation's own choice (`enabled` null: omp's setting again). Its file need not be written yet.
 			if (req.method !== "POST") return fail("POST required", 405);
-			const body = (await req.json()) as { file?: unknown; enabled?: unknown };
+			const body = await bodyObject<{ file?: unknown; enabled?: unknown }>(req);
 			const key = typeof body.file === "string" ? conversationKey(body.file) : null;
 			if (!key) return fail("Unknown session file", 404);
 			if (body.enabled !== null && typeof body.enabled !== "boolean") return fail("Bad value");
@@ -2610,7 +2622,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		case "/api/session/delete-preview": {
 			// What the delete dialogs offer to move to the Trash with the conversations (`DeleteCleanup.preview`): nothing moves.
 			if (req.method !== "POST") return fail("POST required", 405);
-			const body = (await req.json()) as { files?: unknown };
+			const body = await bodyObject<{ files?: unknown }>(req);
 			if (!Array.isArray(body.files) || !body.files.every((f) => typeof f === "string")) return fail("files required");
 			const targets: CleanupTarget[] = [];
 			for (const requested of body.files as string[]) {
@@ -2630,7 +2642,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		case "/api/session/rename":
 		case "/api/session/delete": {
 			if (req.method !== "POST") return fail("POST required", 405);
-			const body = (await req.json()) as { file?: unknown; title?: unknown; trash?: unknown };
+			const body = await bodyObject<{ file?: unknown; title?: unknown; trash?: unknown }>(req);
 			const file = typeof body.file === "string" ? store.resolveSessionPath(body.file) : null;
 			if (!file) return fail("Unknown session file", 404);
 			const picks = trashPicksOf(body.trash);
@@ -2716,7 +2728,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			// Bulk delete through omp, one session at a time; reports per-file failures. What was ticked to go to the Trash
 			// (`trash`: the paths of each conversation, by its file) moves once every delete is done (`DeleteCleanup.moveAfter`).
 			if (req.method !== "POST") return fail("POST required", 405);
-			const body = (await req.json()) as { files?: unknown; trash?: unknown };
+			const body = await bodyObject<{ files?: unknown; trash?: unknown }>(req);
 			if (!Array.isArray(body.files) || !body.files.every((f) => typeof f === "string")) return fail("files required");
 			const trashBody = (body.trash ?? {}) as Record<string, unknown>;
 			if (typeof trashBody !== "object" || trashBody === null || Array.isArray(trashBody))
@@ -2760,7 +2772,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		}
 		case "/api/archive":
 			if (req.method === "POST") {
-				const body = (await req.json()) as { files?: unknown; archived?: unknown };
+				const body = await bodyObject<{ files?: unknown; archived?: unknown }>(req);
 				if (!Array.isArray(body.files)) return fail("files required");
 				const files = body.files.map((f) => (typeof f === "string" ? store.resolveSessionPath(f) : null));
 				if (files.some((f) => !f)) return fail("Unknown session file", 404);
@@ -2780,7 +2792,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			// picker lists them to every page; nothing on disk is changed.
 			if (p === "/api/chat-projects" && req.method !== "POST") return json(await chatProjects.list());
 			if (req.method !== "POST") return fail("POST required", 405);
-			const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+			const body = await bodyObject(req);
 			const id = typeof body.id === "string" ? body.id : "";
 			const name = typeof body.name === "string" ? body.name : "";
 			// A folder that is not a string is none; one that is a string the store checks.
@@ -3424,8 +3436,9 @@ async function route(req: Request, srv: Bun.Server<SocketData>): Promise<Respons
 		});
 	}
 	if (url.pathname === "/api/auth" && req.method === "POST") {
-		const body = (await req.json().catch(() => ({}))) as { token?: unknown };
-		if (!auth.matches(typeof body.token === "string" ? body.token : null)) return fail("Invalid token", 401);
+		const body: unknown = await req.json().catch(() => null);
+		if (!auth.matches(isRecord(body) && typeof body.token === "string" ? body.token : null))
+			return fail("Invalid token", 401);
 		return new Response(JSON.stringify({ ok: true }), {
 			headers: { "content-type": "application/json", "set-cookie": auth.cookieHeader(viaTunnel(req)) },
 		});
@@ -3485,7 +3498,11 @@ async function route(req: Request, srv: Bun.Server<SocketData>): Promise<Respons
 				busy.headers.set("retry-after", "1");
 				return busy;
 			}
-			return fail((e as Error).message, 500);
+			if (e instanceof BadRequest) return fail(e.message, 400);
+			// What went wrong is for the log: the person's own page is told it too, any other page only that it failed (the
+			// message can hold a path of this computer). Not the query, which may hold the token.
+			console.error(`omp-webui: ${req.method} ${url.pathname} failed:`, e);
+			return fail(fromOwner(req) ? (e as Error).message : "Internal server error", 500);
 		}
 	}
 	// Static SPA from the Vite build.

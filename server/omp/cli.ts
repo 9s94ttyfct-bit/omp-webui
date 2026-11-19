@@ -87,8 +87,11 @@ export async function cliInventory(bin: string, timeoutMs = QUICK_MS): Promise<C
 	return value;
 }
 
+/** What omp's help takes as a command: one word, or two (`plugin install`). */
+export const isCommandName = (command: string): boolean => /^[a-z][\w-]*( [a-z][\w-]*)?$/i.test(command);
+
 export async function cliHelp(bin: string, command: string, timeoutMs = QUICK_MS): Promise<CliHelp> {
-	if (!/^[a-z][\w-]*( [a-z][\w-]*)?$/i.test(command)) throw new Error(`Invalid command name: ${command}`);
+	if (!isCommandName(command)) throw new Error(`Invalid command name: ${command}`);
 	const raw = await runHelp(bin, [...command.split(" "), "--help"], timeoutMs);
 	const s = sections(raw);
 	const pre = (s.get("_preamble") ?? []).map((l) => l.trim()).filter(Boolean);
