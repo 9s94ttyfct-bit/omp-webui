@@ -8,6 +8,7 @@ import { capabilities } from "../../server/platform/capabilities.ts";
 import type { OmpFrame } from "../../shared/protocol.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
 import { rejectionOf } from "../support/rejection.ts";
+import { restoreEnv } from "../support/restore-env.ts";
 
 /** The idle reaper and "open in terminal" never close an omp that is busy (real omp, no model calls). */
 
@@ -29,7 +30,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
 	await pool?.shutdown();
-	process.env = saved;
+	restoreEnv(saved);
 	rmSync(root, { recursive: true, force: true });
 });
 

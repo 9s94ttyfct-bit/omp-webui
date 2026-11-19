@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { GitReport } from "../../shared/git.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
+import { restoreEnv } from "../support/restore-env.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 
 /**
@@ -58,7 +59,7 @@ beforeAll(async () => {
 afterAll(async () => {
 	await withGh?.stop();
 	await withoutGh?.stop();
-	process.env = saved;
+	restoreEnv(saved);
 	rmSync(root, { recursive: true, force: true });
 });
 

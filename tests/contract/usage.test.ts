@@ -6,6 +6,7 @@ import { isProviderId, providerUsage } from "../../server/omp/usage.ts";
 import { remainingFraction } from "../../shared/quota.ts";
 import { isolatedEnv } from "../support/omp-env.ts";
 import { rejectionOf } from "../support/rejection.ts";
+import { restoreEnv } from "../support/restore-env.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 
 /** `omp usage --json`, the quota pill's source: shape the web UI relies on (no model calls). */
@@ -19,7 +20,7 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => {
 	await s?.stop();
-	process.env = saved;
+	restoreEnv(saved);
 	rmSync(root, { recursive: true, force: true });
 });
 

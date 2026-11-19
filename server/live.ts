@@ -2731,8 +2731,9 @@ export class Live {
 	 * (`effectiveGuard`), whether somebody will see a question to the person (a page is open on the conversation, or the
 	 * macOS app runs in the background and will tell them: `GuardHooks.reachable`), where decisions are written down, and
 	 * the app's own files, which no reviewer is asked about. Absent where the app has no guard. While the conversation is
-	 * unattended a reviewer's denial is final, as it was before #747: putting it to the person would hold the turn until they
-	 * come back, and unattended mode answers no dialog of the guard's (#752).
+	 * unattended a reviewer's denial is final, as it was before #747, and so is "no reviewer could be reached" (#405): putting
+	 * either to the person would hold the turn until they come back, and unattended mode answers no dialog of the guard's
+	 * (#752). The call is refused with why, and the agent goes on with other work.
 	 */
 	private guardWord(): GuardWord | undefined {
 		const hooks = this.pool.gate?.guard;
@@ -2741,11 +2742,12 @@ export class Live {
 		// What the person tuned goes to every gate whatever the conversation chose of the mode: a conversation's own choice is the mode,
 		// the reviewer and the switch, never the rules or a category's setting.
 		const rules = hooks.rules?.() ?? {};
+		const unattended = Boolean(this.pool.unattended && this.unattendedOn);
 		return {
 			mode: config.mode,
 			reviewers: reviewerSelectors(config.reviewer),
-			askWhenUnavailable: config.askWhenUnavailable,
-			askWhenDenied: config.askWhenDenied && !(this.pool.unattended && this.unattendedOn),
+			askWhenUnavailable: config.askWhenUnavailable && !unattended,
+			askWhenDenied: config.askWhenDenied && !unattended,
 			page: this.subscribers.size > 0 || hooks.reachable?.() === true,
 			log: hooks.log,
 			own: [...hooks.own, dirname(this.risk.file)],

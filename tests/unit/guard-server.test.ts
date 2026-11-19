@@ -531,20 +531,25 @@ describe("what a process's gate is told", () => {
 		expect(word()?.page).toBe(false);
 	});
 
-	test("while the conversation is unattended a reviewer's denial is not put to the person: its turn does not wait (#752)", async () => {
-		const { open, word, pool, dir } = setup(() => ({ ...DEFAULT_GUARD_CONFIG, askWhenDenied: true }));
+	test("while the conversation is unattended neither a reviewer's denial nor a missing reviewer is put to the person: its turn does not wait (#752, #405)", async () => {
+		const { open, word, pool, dir } = setup(() => ({
+			...DEFAULT_GUARD_CONFIG,
+			askWhenDenied: true,
+			askWhenUnavailable: true,
+		}));
 		pool.unattended = new UnattendedService(dir);
 		const live = await open();
 		// A page is open: the person would be asked.
 		live.subscribers.add({ send: () => {} });
 		pool.announce(live);
-		expect(word()).toMatchObject({ page: true, askWhenDenied: true });
-		// Unattended: the denial is final, whatever the setting; the page is still said to be there.
+		expect(word()).toMatchObject({ page: true, askWhenDenied: true, askWhenUnavailable: true });
+		// Unattended: the denial and the refusal for want of a reviewer are final, whatever the settings; the page is still
+		// said to be there.
 		live.setUnattended(true);
-		expect(word()).toMatchObject({ page: true, askWhenDenied: false });
-		// And back: the setting decides again.
+		expect(word()).toMatchObject({ page: true, askWhenDenied: false, askWhenUnavailable: false });
+		// And back: the settings decide again.
 		live.setUnattended(false);
-		expect(word()).toMatchObject({ page: true, askWhenDenied: true });
+		expect(word()).toMatchObject({ page: true, askWhenDenied: true, askWhenUnavailable: true });
 	});
 
 	test("the macOS app in the background is somebody to ask when no page is open: it is said to the gate, and so is its leaving", async () => {
