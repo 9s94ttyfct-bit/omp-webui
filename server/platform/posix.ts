@@ -2,9 +2,11 @@ import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { userInfo } from "node:os";
 import { join } from "node:path";
 import { parsePs } from "../host-parse.ts";
-import { PS_MS } from "../omp/run.ts";
 import { parsePidPairs, probe, treesOf } from "./system.ts";
 import type { CommandOps, HostOps, ProcessOps, ShellOps, SystemDeps } from "./types.ts";
+
+/** How long a listing of processes may take: `ps` answers in tens of milliseconds, even with a thousand processes. */
+const PS_MS = 10_000;
 
 /**
  * What macOS and Linux share: process groups and signals, `ps`, `/bin/sh`, a login shell. `darwin.ts` and `linux.ts`

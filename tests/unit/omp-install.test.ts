@@ -2,12 +2,13 @@
 import { afterAll, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 import {
 	detectInstall,
 	findOmp,
 	installCommand,
 	installOptions,
+	isOmpPath,
 	jobEnv,
 	searchDirs,
 } from "../../server/omp/install.ts";
@@ -207,4 +208,31 @@ test("an install runs with the directories omp's installers use on its PATH, and
 	expect(env.PATH).toBe(["/usr/bin", join(h, ".local", "bin"), join(h, ".bun", "bin")].join(":"));
 	expect(env.OMP_WEBUI_TOKEN).toBeUndefined();
 	expect(env.OMP_WEBUI_PORT).toBeUndefined();
+});
+
+test("OMP_BIN written the way Windows allows is a path: forward slashes, and a path without its extension (#294)", () => {
+	// The files Windows would have, and its adapter's lookup: a name is tried with each extension; `/` and `\` alike.
+	const files = new Set(["C:\\Tools\\omp\\omp.exe"]);
+	const norm = (p: string) => p.replaceAll("/", "\\");
+	const ops = {
+		which: (name: string, dirs: string[]) => {
+			for (const dir of dirs)
+				for (const n of [name, `${name}.exe`]) if (files.has(norm(`${dir}\\${n}`))) return `${dir}\\${n}`;
+			return null;
+		},
+		isExecutable: (path: string) => files.has(norm(path)),
+	};
+	const find = (configured: string) => findOmp({ PATH: "" }, configured, home(), ops, win32);
+	expect(isOmpPath("C:/Tools/omp/omp.exe", win32)).toBe(true);
+	expect(isOmpPath("C:\\Tools\\omp\\omp.exe", win32)).toBe(true);
+	expect(isOmpPath("omp", win32)).toBe(false);
+	expect(isOmpPath("my-omp", win32)).toBe(false);
+	// Taken for a name, a path with `/` was looked up under every search folder and never found.
+	expect(find("C:/Tools/omp/omp.exe")).toBe("C:/Tools/omp/omp.exe");
+	expect(find("C:\\Tools\\omp\\omp.exe")).toBe("C:\\Tools\\omp\\omp.exe");
+	// A path without its extension names the `.exe` beside it, as Windows runs it.
+	expect(norm(find("C:\\Tools\\omp\\omp") ?? "")).toBe("C:\\Tools\\omp\\omp.exe");
+	expect(norm(find("C:/Tools/omp/omp") ?? "")).toBe("C:\\Tools\\omp\\omp.exe");
+	// One that is not there is still ignored.
+	expect(find("C:/Tools/gone/omp.exe")).toBeNull();
 });

@@ -1,9 +1,10 @@
 import { closeSync, openSync, readFileSync, readSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter, dirname, join, sep } from "node:path";
+import nodePath, { delimiter, dirname, join, sep } from "node:path";
 import type { InstallMethod, InstallOption, InstallOptionId, OmpInstall } from "../../shared/omp-install.ts";
 import { childEnv } from "../env.ts";
 import { platform } from "../platform/index.ts";
+import type { CommandOps } from "../platform/types.ts";
 import { run } from "./run.ts";
 
 /**
@@ -36,14 +37,33 @@ export function searchDirs(env: Env = process.env, home: string = homedir()): st
 }
 
 /**
- * The omp to run. `configured` is `OMP_BIN`: a path, or a name looked up like `omp`; one that cannot be run is
- * ignored in favour of the search, so a stale setting does not leave the app without omp.
+ * Whether `OMP_BIN` is a path and not a name to look up: it is absolute, or it has a folder in it. Windows takes `/` as a
+ * separator as well as `\` (`C:/Tools/omp/omp.exe`), which the system's own `sep` alone does not say.
  */
-export function findOmp(env: Env = process.env, configured?: string, home: string = homedir()): string | null {
+export function isOmpPath(configured: string, paths: typeof nodePath = nodePath): boolean {
+	return paths.isAbsolute(configured) || configured.includes("/") || configured.includes(paths.sep);
+}
+
+/**
+ * The omp to run. `configured` is `OMP_BIN`: a path, or a name looked up like `omp`; one that cannot be run is
+ * ignored in favour of the search, so a stale setting does not leave the app without omp. A path without its extension
+ * (Windows runs `C:\Tools\omp\omp` as `omp.exe`) is looked up beside itself the way a name is.
+ */
+export function findOmp(
+	env: Env = process.env,
+	configured?: string,
+	home: string = homedir(),
+	commands: Pick<CommandOps, "which" | "isExecutable"> = platform.commands,
+	paths: typeof nodePath = nodePath,
+): string | null {
 	const dirs = searchDirs(env, home);
-	const { which, isExecutable } = platform.commands;
+	const { which, isExecutable } = commands;
 	if (configured && configured !== "omp") {
-		const explicit = configured.includes(sep) ? configured : which(configured, dirs);
+		const explicit = isOmpPath(configured, paths)
+			? isExecutable(configured)
+				? configured
+				: which(paths.basename(configured), [paths.dirname(configured)])
+			: which(configured, dirs);
 		if (explicit && isExecutable(explicit)) return explicit;
 	}
 	return which("omp", dirs);

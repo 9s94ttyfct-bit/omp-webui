@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
-import { run } from "../omp/run.ts";
 import type { ProcessEntry, SystemDeps } from "./types.ts";
 
 /** The system itself: what every adapter runs on unless a test hands it another (`platformFor(id, deps)`). */
 export const systemDeps: SystemDeps = {
-	run: (argv, opts) => run(argv, opts),
+	// Loaded when a command is run, not when this module is: `run` asks `platform`, which is made from these deps.
+	run: async (argv, opts) => (await import("../omp/run.ts")).run(argv, opts),
 	runSync(argv) {
 		try {
 			const r = Bun.spawnSync(argv, { stdout: "pipe", stderr: "ignore" });

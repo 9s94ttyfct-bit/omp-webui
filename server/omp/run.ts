@@ -11,9 +11,6 @@ import { platform } from "../platform/index.ts";
 /** A start-up of omp or a read of its settings: `omp --version` and `omp config get` answer in well under a second. */
 export const QUICK_MS = 20_000;
 
-/** How long a listing of processes may take: `ps` answers in tens of milliseconds, even with a thousand processes. */
-export const PS_MS = 10_000;
-
 /** A command that did not finish within its limit; it has been killed. */
 export class RunTimeout extends Error {}
 
