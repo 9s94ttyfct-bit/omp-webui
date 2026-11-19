@@ -97,6 +97,7 @@ export const en = {
 	jobRunning: "Running…",
 	jobDone: "Done",
 	jobFailed: "Failed",
+	jobGone: "The server restarted while this change was running: its result is unknown. The list below is read again.",
 	jobDismiss: "Dismiss",
 	jobOutput: "What omp printed",
 	reloaded: "Reloaded its plugins: {names}",

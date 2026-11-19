@@ -37,6 +37,8 @@ export interface RunOptions {
 	maxBytes?: number;
 	/** Told what the command prints as it prints it (stdout and stderr alike), for a page that shows its progress. */
 	onOutput?: (text: string) => void;
+	/** When it aborts the command is killed (with what it started): the server stopping must not leave it running on. */
+	signal?: AbortSignal;
 }
 
 /** What a command with a `maxBytes` limit keeps of its stderr. */
@@ -108,6 +110,9 @@ export async function run(argv: string[], opts: RunOptions): Promise<Ran> {
 		// A process group of its own: the kill reaches what the command started.
 		...platform.proc.groupSpawn,
 	});
+	const kill = () => platform.proc.signalChild(proc, "SIGKILL");
+	if (opts.signal?.aborted) kill();
+	else opts.signal?.addEventListener("abort", kill, { once: true });
 	let timer: NodeJS.Timeout | undefined;
 	const expired = new Promise<never>((_, reject) => {
 		timer = setTimeout(() => {
@@ -147,6 +152,7 @@ export async function run(argv: string[], opts: RunOptions): Promise<Ran> {
 		return await Promise.race([finished, expired]);
 	} finally {
 		clearTimeout(timer);
+		opts.signal?.removeEventListener("abort", kill);
 	}
 }
 

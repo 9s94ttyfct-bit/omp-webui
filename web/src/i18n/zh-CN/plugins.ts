@@ -88,6 +88,7 @@ export const zh: Record<keyof typeof en, string> = {
 	jobRunning: "正在运行…",
 	jobDone: "完成",
 	jobFailed: "失败",
+	jobGone: "这项更改运行时服务器重启了，结果未知。下面的列表已重新读取。",
 	jobDismiss: "关闭",
 	jobOutput: "omp 的输出",
 	reloaded: "已重新加载插件：{names}",

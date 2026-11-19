@@ -175,3 +175,35 @@ test("a sidebar layout saved with Commands & terminal shows Plugins in its place
 	await expect(page.getByTestId("nav-plugins")).toHaveCount(1);
 	await expect(page.getByTestId("nav-cli")).toHaveCount(0);
 });
+
+test("a change whose job the restarted server no longer knows ends as failed and frees the controls", async ({
+	page,
+}) => {
+	const job = {
+		id: "0123456789abcdef",
+		action: "install",
+		command: "omp plugin install example-plugin",
+		state: "running",
+		output: "",
+		error: null,
+		startedAt: Date.now(),
+		endedAt: null,
+		reloads: [],
+	};
+	await page.route("**/api/plugins/jobs", (route) =>
+		route.request().method() === "POST" ? route.fulfill({ json: { job } }) : route.fallback(),
+	);
+	// What a restarted server answers for a job that only the old one knew.
+	await page.route(`**/api/plugins/jobs/${job.id}`, (route) =>
+		route.fulfill({ status: 404, json: { error: "No such job" } }),
+	);
+	await page.goto("/#/plugins");
+	await page.getByTestId("plugins-tab-discover").click();
+	await page.getByTestId("manual-spec").fill("example-plugin");
+	await page.getByTestId("manual-install").click();
+	const outcome = page.getByTestId("plugins-outcome");
+	await expect(outcome).toHaveAttribute("data-state", "failed");
+	await expect(page.getByTestId("plugins-outcome-error")).toContainText("server restarted");
+	await page.getByTestId("manual-spec").fill("another-plugin");
+	await expect(page.getByTestId("manual-install")).toBeEnabled();
+});

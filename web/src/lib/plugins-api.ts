@@ -21,10 +21,24 @@ import { httpText } from "./http-text.ts";
  * `server/omp/plugins.ts`). Every request names the folder omp runs in (`cwd`; none: the home folder).
  */
 
+/** A request the server answered with a failure: `status` tells a job it no longer has (404) from a passing fault. */
+export class PluginsHttpError extends Error {
+	constructor(
+		message: string,
+		readonly status: number,
+	) {
+		super(message);
+	}
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(path, init);
 	const body: unknown = await res.json().catch(() => ({}));
-	if (!res.ok) throw new Error(isRecord(body) && typeof body.error === "string" ? body.error : httpText(res));
+	if (!res.ok)
+		throw new PluginsHttpError(
+			isRecord(body) && typeof body.error === "string" ? body.error : httpText(res),
+			res.status,
+		);
 	return body as T;
 }
 

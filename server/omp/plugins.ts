@@ -407,6 +407,17 @@ function failure(stdout: string, stderr: string, args: string[], code: number): 
 	return said ? said.slice(-2000) : `omp ${args.join(" ")} exited with code ${code}`;
 }
 
+/**
+ * Aborted when the server stops: the omp commands it started end with it. An install left running would go on beside the
+ * next server, which has no record of it and would accept another change next to it (#321).
+ */
+const shutdownSignal = new AbortController();
+
+/** The server is stopping: end every omp command a plugin change or read has running. */
+export function stopPluginCommands(): void {
+	shutdownSignal.abort();
+}
+
 async function cli(
 	bin: string,
 	args: string[],
@@ -416,7 +427,13 @@ async function cli(
 ): Promise<string> {
 	let ran: Ran;
 	try {
-		ran = await run([bin, ...args], { cwd, env: { NO_COLOR: "1", FORCE_COLOR: "0" }, timeoutMs, onOutput });
+		ran = await run([bin, ...args], {
+			cwd,
+			env: { NO_COLOR: "1", FORCE_COLOR: "0" },
+			timeoutMs,
+			onOutput,
+			signal: shutdownSignal.signal,
+		});
 	} catch (e) {
 		if (e instanceof RunTimeout)
 			throw new PluginsError(`omp ${args.slice(0, 3).join(" ")} did not finish in time`, 504);

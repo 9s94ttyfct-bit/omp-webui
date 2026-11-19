@@ -48,7 +48,7 @@ import {
 import { useShallow } from "zustand/react/shallow";
 import { type MessageKey, registerStrings, type Translate, useT } from "../i18n/index.ts";
 import { en } from "../i18n/plugins.ts";
-import { type JobRequest, pluginsApi } from "../lib/plugins-api.ts";
+import { type JobRequest, PluginsHttpError, pluginsApi } from "../lib/plugins-api.ts";
 import { useApp } from "../store/app.ts";
 import { LoadError } from "./LoadError.tsx";
 import { Confirm, FilterSelect, facets, SCOPE_KEY, ScopePicker, Section, WebLinks } from "./plugins/parts.tsx";
@@ -157,8 +157,16 @@ export function PluginsPage() {
 						refreshUpdates();
 					}
 				})
-				.catch(() => {
-					if (!gone) timer = setTimeout(poll, JOB_POLL_MS * 4);
+				.catch((e: unknown) => {
+					if (gone) return;
+					// The server no longer has the job (it restarted, and ended omp's command with it): polling would never end.
+					if (e instanceof PluginsHttpError && e.status === 404) {
+						setOutcome({ error: t("plugins.jobGone") });
+						load();
+						refreshUpdates();
+						return;
+					}
+					timer = setTimeout(poll, JOB_POLL_MS * 4);
 				});
 		};
 		timer = setTimeout(poll, JOB_POLL_MS);
@@ -166,7 +174,7 @@ export function PluginsPage() {
 			gone = true;
 			clearTimeout(timer);
 		};
-	}, [jobId, load, refreshUpdates]);
+	}, [jobId, load, refreshUpdates, t]);
 	// A page opened while a change runs (in another tab) follows it.
 	useEffect(() => {
 		pluginsApi
