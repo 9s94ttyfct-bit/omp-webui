@@ -17,12 +17,16 @@ import { connect, request } from "../support/ws.ts";
 let server: TestServer;
 let backend: StubScripted;
 
-/** The main agent reads `hello.txt` for every prompt; its other requests (titles) get a text. */
+/**
+ * The main agent reads `hello.txt` for every prompt, or runs `echo probe-ran` for one that says "Run the probe"; its other
+ * requests (titles) get a text.
+ */
 const script = (req: { text: string; tools: string[] }): ScriptedTurn => {
 	if (!req.tools.includes("read")) return { text: "A title" };
 	const messages = JSON.parse(req.text) as { role?: string }[];
-	return messages.at(-1)?.role === "tool"
-		? { text: "Read it." }
+	if (messages.at(-1)?.role === "tool") return { text: "Done." };
+	return JSON.stringify(messages.at(-1)).includes("Run the probe")
+		? { call: { name: "bash", args: { command: "echo probe-ran" } } }
 		: { call: { name: "read", args: { path: "hello.txt" } } };
 };
 
@@ -91,6 +95,44 @@ test("Ask and remember puts omp in the mode that asks before a file read; Ask ev
 	await request(ws, { t: "approval_mode", liveId: live.liveId, mode: "always-ask-cached" });
 	await read();
 	expect(asked).toHaveLength(2);
+
+	await request(ws, { t: "close", liveId: live.liveId });
+	ws.close();
+}, 120_000);
+
+test("a mode chosen while the conversation is paused is in force for the first turn after Resume (#407)", async () => {
+	const ws = await connect(server);
+	const live = await request<LiveInfo>(ws, {
+		t: "open",
+		target: { kind: "new", cwd: server.work, approvalMode: "yolo" },
+	});
+	const frames = watchFrames(ws, live.liveId);
+	const asked: string[] = [];
+	ws.addEventListener("message", (ev) => {
+		const m = JSON.parse(String(ev.data));
+		const f = m.t === "frame" && m.liveId === live.liveId ? m.frame : null;
+		if (f?.type !== "extension_ui_request" || f.method !== "select") return;
+		asked.push(String(f.title));
+		const value = (f.options as string[]).find((o) => o === "Approve Once") ?? "Approve";
+		ws.send(JSON.stringify({ t: "ui_response", liveId: live.liveId, response: { id: f.id, value } }));
+	});
+	const run = async () => {
+		const settled = frames.after("agent_end");
+		await request(ws, { t: "rpc", liveId: live.liveId, command: { type: "prompt", message: "Run the probe" } });
+		await settled;
+	};
+	await run();
+	expect(asked).toEqual([]);
+
+	await request(ws, { t: "pause", liveId: live.liveId });
+	await request(ws, { t: "approval_mode", liveId: live.liveId, mode: "always-ask" });
+	// A real wait, as a person's: omp's reload of the file it was told of before it froze is due well before the resume,
+	// which is when a resume that does not give it its moment again loses the change.
+	await Bun.sleep(2000);
+	// Resumed and sent at once, as the composer does.
+	await request(ws, { t: "resume", liveId: live.liveId });
+	await run();
+	expect(asked).toHaveLength(1);
 
 	await request(ws, { t: "close", liveId: live.liveId });
 	ws.close();

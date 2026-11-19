@@ -1047,6 +1047,9 @@ export class Live {
 		const pid = this.info.pid;
 		if (pid === null || this.info.pausedAt === null) return;
 		await this.continueTree(pid);
+		// What was written to its settings overlay while it was frozen is reloaded only now: the resume waits for that, so the
+		// first turn after it runs under the settings the person chose while it was paused (#407).
+		await this.overlay?.caughtUp(this.info.pausedAt);
 		// omp ended while the system was asked: its exit has let go of the pause.
 		if (this.info.pausedAt === null) return;
 		this.info.pausedAt = null;
