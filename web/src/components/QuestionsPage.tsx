@@ -383,6 +383,7 @@ function DroppedLine({ drops }: { drops: QuestionDrop[] }) {
 /** The line for each reason a question could not be kept (#650). */
 const DROPPED_TEXT: Record<QuestionDropWhy, MessageKey> = {
 	full: "questions.droppedFull",
+	listFull: "questions.droppedListFull",
 	empty: "questions.droppedEmpty",
 	unwritable: "questions.droppedUnwritable",
 };

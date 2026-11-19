@@ -283,10 +283,13 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	noteApprovalDenied: "已拒绝 {tools}：你改为发送了消息。",
 	toastQuestionDropped: "代理记录的一个问题没能保存。对话里写了原因。",
 	noteQuestionDroppedFull: "有个问题没能保存：问题列表已满",
+	noteQuestionDroppedListFull: "有个问题没能保存：所有对话共用的问题列表已满",
 	noteQuestionDroppedEmpty: "有个问题没能保存：它没有文字",
 	noteQuestionDroppedUnwritable: "有个问题没能保存：无法写入问题列表",
 	noteQuestionDroppedWhat: "内容是：{question}",
 	noteQuestionDroppedFullWhy: "这个对话已有 60 个待回答的问题。先回答或忽略一些，再让代理重新记录。",
+	noteQuestionDroppedListFullWhy:
+		"应用保存的 200 个问题（所有对话合计）都还待回答。先回答或忽略一些，再让代理重新记录。",
 	noteQuestionDroppedEmptyWhy: "代理记录时没写问题那一行，所以没有能给你看的内容。它已继续做其余的事。",
 	noteQuestionDroppedUnwritableWhy:
 		"无法把问题列表写入应用的数据文件夹（磁盘满了吗，还是文件夹是只读的？）。它已继续做其余的事。",

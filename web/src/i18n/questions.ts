@@ -56,6 +56,7 @@ export const en = {
 	openCount: "{n} open",
 	// Questions that could not be kept (#650), under the conversation they came from
 	droppedFull: "A question was not kept: this conversation has 60 open already.",
+	droppedListFull: "A question was not kept: all 200 questions kept are open.",
 	droppedEmpty: "A question was not kept: it had no text.",
 	droppedUnwritable: "A question was not kept: the list could not be written to the app's data folder.",
 	droppedCount: "{n} questions were lost in all.",

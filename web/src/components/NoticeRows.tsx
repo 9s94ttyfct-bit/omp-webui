@@ -459,12 +459,14 @@ export function QuestionDroppedNote({ note }: { note: QuestionDropNote }) {
 /** A question unattended mode could not keep (#650): the line, and why it was not kept. */
 export const DROPPED_TITLE: Record<QuestionDropWhy, MessageKey> = {
 	full: "chat.noteQuestionDroppedFull",
+	listFull: "chat.noteQuestionDroppedListFull",
 	empty: "chat.noteQuestionDroppedEmpty",
 	unwritable: "chat.noteQuestionDroppedUnwritable",
 };
 
 export const DROPPED_WHY: Record<QuestionDropWhy, MessageKey> = {
 	full: "chat.noteQuestionDroppedFullWhy",
+	listFull: "chat.noteQuestionDroppedListFullWhy",
 	empty: "chat.noteQuestionDroppedEmptyWhy",
 	unwritable: "chat.noteQuestionDroppedUnwritableWhy",
 };

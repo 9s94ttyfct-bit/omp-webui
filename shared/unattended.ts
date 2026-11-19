@@ -38,7 +38,10 @@ export const QUESTION_LIMITS = {
 	label: 200,
 	description: 400,
 	answer: 6_000,
-	/** What the server keeps in all, settled ones included: the oldest settled go first, then the oldest open. */
+	/**
+	 * What the server keeps in all, settled ones included: the oldest settled go first. Open questions are never put out to
+	 * make room (#384): a question filed while all of these are open is not kept, and is recorded as dropped (`listFull`).
+	 */
 	kept: 200,
 	/** The most a conversation may have open: a runaway agent cannot fill the list with its own. */
 	openPerConversation: 60,
@@ -113,8 +116,11 @@ export interface QuestionCounts {
 	byConversation: Record<string, number>;
 }
 
-/** Why a question could not be kept: the conversation has `openPerConversation` open already, it had no text, or the list could not be written. */
-export const QUESTION_DROP_WHYS = ["full", "empty", "unwritable"] as const;
+/**
+ * Why a question could not be kept: the conversation has `openPerConversation` open already, every one of the `kept` the
+ * list holds is open (`listFull`, #384), it had no text, or the list could not be written.
+ */
+export const QUESTION_DROP_WHYS = ["full", "listFull", "empty", "unwritable"] as const;
 export type QuestionDropWhy = (typeof QUESTION_DROP_WHYS)[number];
 
 /**

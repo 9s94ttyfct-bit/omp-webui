@@ -3099,6 +3099,8 @@ export class Live {
 			if (filed.why === "duplicate") continue;
 			if (filed.why === "full")
 				console.warn(`omp-webui: ${this.info.liveId} has too many open questions; one was not filed`);
+			if (filed.why === "listFull")
+				console.warn(`omp-webui: every question kept is open; one of ${this.info.liveId} was not filed`);
 			// The same question failing the same way is in the list already, and the conversation says it once.
 			if (filed.drop) this.noteQuestionDropped(filed.why, filed.drop.question);
 		}

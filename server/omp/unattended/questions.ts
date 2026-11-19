@@ -59,12 +59,13 @@ const SOURCES: Record<QuestionSource, true> = { tool: true, ask: true };
 
 /**
  * What a filed question is, or why it was not: `empty` (no text), `duplicate` (the same call, or the same open question), `full`
- * (the conversation has its `openPerConversation` open), `unwritable` (the list could not be written to the data folder).
- * `drop` is the entry the list now holds for it, null when the same question already failed the same way.
+ * (the conversation has its `openPerConversation` open), `listFull` (every one of the `kept` the list holds is open, #384),
+ * `unwritable` (the list could not be written to the data folder). `drop` is the entry the list now holds for it, null when
+ * the same question already failed the same way.
  */
 export type FileResult =
 	| { ok: true; question: Question }
-	| { ok: false; why: "empty" | "duplicate" | "full" | "unwritable"; drop?: QuestionDrop };
+	| { ok: false; why: "empty" | "duplicate" | "full" | "listFull" | "unwritable"; drop?: QuestionDrop };
 
 /** A change the store refuses (an id it does not hold, a question already settled). */
 export class QuestionError extends Error {
@@ -333,6 +334,11 @@ export class QuestionStore {
 			const drop = this.recordDrop(from.session, "full", draft.question);
 			return { ok: false, why: "full", ...(drop ? { drop } : {}) };
 		}
+		// The list is all open questions: one is not put out for this one (#384), it would vanish with no answer and no word.
+		if (this.questions.filter((q) => q.state === "open").length >= QUESTION_LIMITS.kept) {
+			const drop = this.recordDrop(from.session, "listFull", draft.question);
+			return { ok: false, why: "listFull", ...(drop ? { drop } : {}) };
+		}
 		const q: Question = {
 			id: `q${this.now().toString(36)}${Math.trunc(Math.random() * 1e8).toString(36)}`,
 			session: from.session,
@@ -367,7 +373,7 @@ export class QuestionStore {
 		return { ok: true, question: structuredClone(q) };
 	}
 
-	/** Over `kept`: the oldest settled go first, then (only when all are open) the oldest open. */
+	/** Over `kept`: the oldest settled go first. Open ones never do; `file` refuses a question when all `kept` are open. */
 	private trim(): void {
 		while (this.questions.length > QUESTION_LIMITS.kept) {
 			let victim = -1;
@@ -378,15 +384,6 @@ export class QuestionStore {
 				if (when < at) {
 					at = when;
 					victim = i;
-				}
-			}
-			if (victim < 0) {
-				at = Number.POSITIVE_INFINITY;
-				for (const [i, q] of this.questions.entries()) {
-					if (q.askedAt < at) {
-						at = q.askedAt;
-						victim = i;
-					}
 				}
 			}
 			if (victim < 0) return;

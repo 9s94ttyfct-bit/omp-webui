@@ -313,23 +313,27 @@ describe("the question store", () => {
 		expect(store.answer(filed.question.id, { options: [], text: "Postgres" }).state).toBe("answered");
 	});
 
-	test("over the limit the oldest settled go first, and only when all are open the oldest open one", () => {
+	test("over the limit the oldest settled go first; with all open a new one is refused as listFull, none is put out (#384)", () => {
 		const store = new QuestionStore(dir(), clock());
 		const sessions = (i: number) => ({ ...from, session: `/sessions/s${Math.floor(i / 50)}.jsonl` });
 		for (let i = 0; i < QUESTION_LIMITS.kept; i++) store.file(sessions(i), "tool", draft(`Q${i}`), `c${i}`);
 		expect(store.list().questions).toHaveLength(QUESTION_LIMITS.kept);
-		// All open: the 201st pushes the oldest open one out.
-		store.file(sessions(QUESTION_LIMITS.kept), "tool", draft("newest"), "cn");
+		// All open: the 201st is not kept, and is recorded as dropped; another conversation's oldest open one stays.
+		const refused = store.file(sessions(QUESTION_LIMITS.kept), "tool", draft("newest"), "cn");
+		expect(refused).toMatchObject({ ok: false, why: "listFull", drop: { why: "listFull", question: "newest" } });
 		let all = store.list().questions.map((q) => q.question);
 		expect(all).toHaveLength(QUESTION_LIMITS.kept);
-		expect(all).not.toContain("Q0");
-		expect(all).toContain("Q1");
-		// Q5 is answered: it is the one to go, not the older open Q1.
+		expect(all).toContain("Q0");
+		expect(all).not.toContain("newest");
+		expect(store.list().dropped).toMatchObject([{ why: "listFull", question: "newest" }]);
+		// Q5 is answered: it is the one to go when the next one comes.
 		store.answer(store.list().questions.find((q) => q.question === "Q5")?.id, { options: [], text: "ok" });
-		store.file(sessions(QUESTION_LIMITS.kept + 1), "tool", draft("newer"), "cm");
+		expect(store.file(sessions(QUESTION_LIMITS.kept + 1), "tool", draft("newer"), "cm").ok).toBe(true);
 		all = store.list().questions.map((q) => q.question);
+		expect(all).toHaveLength(QUESTION_LIMITS.kept);
 		expect(all).not.toContain("Q5");
-		expect(all).toContain("Q1");
+		expect(all).toContain("Q0");
+		expect(all).toContain("newer");
 	});
 
 	test("answering and dismissing settle a question once; the list puts the open ones first", () => {

@@ -49,6 +49,7 @@ export const zh: Record<keyof typeof en, string> = {
 	openCount: "{n} 个待回答",
 	// 没能保存的问题（#650），显示在它来自的对话下面
 	droppedFull: "有个问题没能保存：这个对话已有 60 个待回答。",
+	droppedListFull: "有个问题没能保存：保存的 200 个问题都还待回答。",
 	droppedEmpty: "有个问题没能保存：它没有文字。",
 	droppedUnwritable: "有个问题没能保存：无法把问题列表写入应用的数据文件夹。",
 	droppedCount: "一共丢了 {n} 个问题。",

@@ -266,11 +266,14 @@ export const en = {
 	noteApprovalDenied: "Denied {tools}: you sent a message instead.",
 	toastQuestionDropped: "A question the agent filed could not be kept. The conversation says why.",
 	noteQuestionDroppedFull: "A question was not kept: the list is full",
+	noteQuestionDroppedListFull: "A question was not kept: the list of questions is full",
 	noteQuestionDroppedEmpty: "A question was not kept: it had no text",
 	noteQuestionDroppedUnwritable: "A question was not kept: the list could not be saved",
 	noteQuestionDroppedWhat: "It was: {question}",
 	noteQuestionDroppedFullWhy:
 		"This conversation already has 60 open questions. Answer or dismiss some, and ask the agent to file it again.",
+	noteQuestionDroppedListFullWhy:
+		"All 200 questions the app keeps are open, across your conversations. Answer or dismiss some, and ask the agent to file it again.",
 	noteQuestionDroppedEmptyWhy:
 		"The agent filed it without a question line, so there was nothing to show you. It went on with the rest of the work.",
 	noteQuestionDroppedUnwritableWhy:
