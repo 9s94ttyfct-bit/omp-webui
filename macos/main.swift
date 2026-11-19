@@ -126,10 +126,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 	var shellLanguage: ShellLanguage { ShellLanguage(stored: storedLanguage, preferred: Locale.preferredLanguages) }
 
 	/// The person changed the page's language (from any page, also while the app was away): what the app shows in it now is
-	/// shown in the new one (#377); a menu that is open shows it at once.
+	/// shown in the new one (#377); a menu that is open shows it at once. The menu bar is built again in it (#232).
 	func languageChanged() {
 		background?.status.languageChanged()
 		if #available(macOS 14.0, *) { (remoteMacs as? RemoteMacsController)?.languageChanged() }
+		buildMenu()
 	}
 
 	@available(macOS 14.0, *)
@@ -180,7 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 				alert.informativeText = self.scrubbed(detail)
 				if let window = self.window { alert.beginSheetModal(for: window) } else { alert.runModal() }
 			}
-		})
+		}, language: { [unowned self] in self.shellLanguage })
 
 	func applicationWillFinishLaunching(_ notification: Notification) {
 		// One window, never a tab bar: this keeps "Show Tab Bar" and "Show All Tabs" out of the View menu.
@@ -618,8 +619,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 				if let web = self.webView, let url = self.takePageURL() { web.load(URLRequest(url: url)) }
 				// The pop-outs are pages of the old server too: at another port, they follow it (#378).
 				if let previous, let origin = self.origin { self.popOuts.serverMoved(from: previous, to: origin) }
-			case .failed(let title, let detail):
-				self.fail(title, detail)
+			case .failed(let failure):
+				self.fail(failure)
 			}
 		}
 		self.supervisor = supervisor
@@ -662,15 +663,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 	}
 
 	/// The server stopped for good (see `ServerSupervisor`), or could not be started.
-	func fail(_ title: String, _ detail: String) {
+	func fail(_ failure: ServerFailure) {
 		serverGone = true
 		// The app may be running without a window (see `runInBackground`): the alert must be seen, not wait behind other apps.
 		NSApp.activate(ignoringOtherApps: true)
+		let language = shellLanguage
+		let (title, detail) = failure.words(language)
 		let alert = NSAlert()
 		alert.messageText = title
 		alert.informativeText = scrubbed(detail)
 		alert.alertStyle = .critical
-		alert.addButton(withTitle: "Quit")
+		alert.addButton(withTitle: language == .zh ? "退出" : "Quit")
 		alert.runModal()
 		quitFromRunLoop()
 	}
@@ -764,14 +767,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 		return (window, web)
 	}
 
+	/// The menu bar, in the page's language: built at launch, and again when the language changes (#232).
 	func buildMenu() {
-		// The Macs menu: the other Macs this app opens a window onto (macOS 14 and later; before it there is no such menu).
+		// The Macs menu: the other Macs this app opens a window onto (macOS 14 and later; before it there is no such menu). An
+		// item is in one menu at a time: it leaves the menu bar it was in before it goes into the new one.
 		var macs: NSMenuItem?
-		if #available(macOS 14.0, *) { macs = remote.menuItem }
-		let main = appMainMenu(appName: appName, reload: #selector(reload), macs: macs)
+		if #available(macOS 14.0, *) {
+			macs = remote.menuItem
+			remote.menuItem.menu?.removeItem(remote.menuItem)
+		}
+		let main = appMainMenu(appName: appName, reload: #selector(reload), macs: macs, language: shellLanguage)
 		// From macOS 14 the Window menu also lists the windows by their titles, which is how a window onto another Mac is found
 		// by its name; before it the menu is what it was.
-		if #available(macOS 14.0, *) { NSApp.windowsMenu = main.items.first { $0.submenu?.title == "Window" }?.submenu }
+		if #available(macOS 14.0, *) { NSApp.windowsMenu = main.items.first { $0.identifier == windowMenuIdentifier }?.submenu }
 		NSApp.mainMenu = main
 	}
 
@@ -834,19 +842,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 		panel.beginSheetModal(for: window) { r in completionHandler(r == .OK ? panel.urls : nil) }
 	}
 
+	/// The page's `alert()` and `confirm()`: its words are in the page's language, and so are the buttons (#232).
 	func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
 		guard let window = webView.window else { return completionHandler() }
 		let a = NSAlert()
 		a.messageText = message
+		a.addButton(withTitle: shellLanguage == .zh ? "好" : "OK")
 		a.beginSheetModal(for: window) { _ in completionHandler() }
 	}
 
 	func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
 		guard let window = webView.window else { return completionHandler(false) }
+		let zh = shellLanguage == .zh
 		let a = NSAlert()
 		a.messageText = message
-		a.addButton(withTitle: "OK")
-		a.addButton(withTitle: "Cancel")
+		a.addButton(withTitle: zh ? "好" : "OK")
+		// Escape answers Cancel in either language: AppKit only knows the English "Cancel" by its title.
+		a.addButton(withTitle: zh ? "取消" : "Cancel").keyEquivalent = "\u{1b}"
 		a.beginSheetModal(for: window) { r in completionHandler(r == .alertFirstButtonReturn) }
 	}
 

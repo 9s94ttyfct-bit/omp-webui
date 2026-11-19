@@ -31,6 +31,8 @@ async function build(output: string, ...flags: string[]): Promise<boolean> {
 			"5",
 			join(here, "../../macos/server.swift"),
 			join(here, "../../macos/serveroutput.swift"),
+			// `ShellLanguage`: what a failure says is in the page's language.
+			join(here, "../../macos/quit.swift"),
 			join(here, "../support/swift/supervisor/main.swift"),
 			"-o",
 			output,
@@ -191,3 +193,13 @@ test.skipIf(!tsan)(
 	},
 	180_000,
 );
+
+test.skipIf(!mac)("the alert of a server that is gone is worded in the page's language (#232)", async () => {
+	const { report } = await run(harness, "words");
+	expect(report["en/notStarted"]).toEqual(["Could not start the omp-webui server", "R"]);
+	expect(report["en/exited"]).toEqual(["The omp-webui server stopped", "Exit code 3.\n\nL"]);
+	expect(report["en/killed"]).toEqual(["The omp-webui server stopped", "Killed by signal 9.\n\nL"]);
+	expect(report["zh/notStarted"]).toEqual(["无法启动 omp-webui 服务器", "R"]);
+	expect(report["zh/exited"]).toEqual(["omp-webui 服务器已停止", "退出码 3。\n\nL"]);
+	expect(report["zh/killed"]).toEqual(["omp-webui 服务器已停止", "被信号 9 终止。\n\nL"]);
+});

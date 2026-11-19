@@ -3,7 +3,8 @@ import WebKit
 
 // The harness of tests/unit/macos-no-zoom.test.ts: whether the page in the app's web views can be zoomed. Prints one JSON object.
 //
-//   harness menu       every key of the app's menu bar (`appMainMenu`, macos/appmenu.swift); no window server needed
+//   harness menu       every key of the app's menu bar (`appMainMenu`, macos/appmenu.swift), in English and in Chinese; no
+//                      window server needed
 //   harness gestures   a pinch and a smart zoom (a two-finger double tap) on a web view set up by `prepareWebView`
 //                      (macos/webview.swift), and on the control: a web view that allows magnification, as the app's did
 //   harness keys       ⌘= ⌘- ⌘0 typed into a text field of a page in a web view set up by `prepareWebView`
@@ -100,26 +101,35 @@ let page = """
 	</script></body>
 	"""
 
+/// quit.swift (`ShellLanguage`) words things with the app's name, which the app's main.swift defines.
+let appName = "omp-webui"
+
 _ = NSApplication.shared
 NSApp.setActivationPolicy(.prohibited)
 var report: [String: Any] = [:]
 switch CommandLine.arguments.dropFirst().first ?? "" {
 case "menu":
-	let main = appMainMenu(appName: "omp-webui", reload: NSSelectorFromString("reload"), macs: nil)
-	var keys: [[String: Any]] = []
-	var menus: [String: [String]] = [:]
-	for top in main.items {
-		guard let menu = top.submenu else { continue }
-		menus[menu.title] = menu.items.filter { !$0.isSeparatorItem }.map(\.title)
-		for item in menu.items where !item.keyEquivalent.isEmpty {
-			let mods = item.keyEquivalentModifierMask
-			keys.append([
-				"menu": menu.title, "title": item.title, "key": item.keyEquivalent, "command": mods.contains(.command),
-				"shift": mods.contains(.shift), "option": mods.contains(.option), "control": mods.contains(.control),
-			])
+	func read(_ language: ShellLanguage) -> [String: Any] {
+		let main = appMainMenu(appName: "omp-webui", reload: NSSelectorFromString("reload"), macs: nil, language: language)
+		var keys: [[String: Any]] = []
+		var menus: [String: [String]] = [:]
+		for top in main.items {
+			guard let menu = top.submenu else { continue }
+			menus[menu.title] = menu.items.filter { !$0.isSeparatorItem }.map(\.title)
+			for item in menu.items where !item.keyEquivalent.isEmpty {
+				let mods = item.keyEquivalentModifierMask
+				keys.append([
+					"menu": menu.title, "title": item.title, "key": item.keyEquivalent, "command": mods.contains(.command),
+					"shift": mods.contains(.shift), "option": mods.contains(.option), "control": mods.contains(.control),
+				])
+			}
 		}
+		// The Window menu is found by its item's identifier, not by a title that is the language's.
+		let window = main.items.first { $0.identifier == windowMenuIdentifier }?.submenu?.title ?? ""
+		return ["menus": menus, "keys": keys, "window": window]
 	}
-	report = ["menus": menus, "keys": keys]
+	report = read(.en)
+	report["zh"] = read(.zh)
 case "gestures":
 	let (app, appWindow) = loadedWebView(page, prepare: prepareWebView)
 	let (control, controlWindow) = loadedWebView(page) { $0.allowsMagnification = true }

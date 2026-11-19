@@ -643,7 +643,7 @@ final class RemoteMacSession: NSObject {
 				alert.informativeText = detail
 				alert.beginSheetModal(for: anchor)
 			}
-		})
+		}, language: language)
 
 	/// The window a sheet of this Mac hangs from.
 	var anchorWindow: NSWindow? {

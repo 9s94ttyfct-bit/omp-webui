@@ -27,7 +27,7 @@ final class ServerSupervisor {
 		/// The server printed its ready line and listens on `port`: once per start, so again after every restart.
 		case ready(port: Int)
 		/// The server stopped and will not be started again (or could not be started at all).
-		case failed(title: String, detail: String)
+		case failed(ServerFailure)
 	}
 
 	/// One process, from its start to the last of its output. Confined to the supervisor's queue.
@@ -117,7 +117,7 @@ final class ServerSupervisor {
 			self.run = run
 		} catch {
 			run.pipe.fileHandleForReading.readabilityHandler = nil
-			emit(.failed(title: "Could not start the omp-webui server", detail: error.localizedDescription))
+			emit(.failed(.notStarted(reason: error.localizedDescription)))
 		}
 	}
 
@@ -169,10 +169,10 @@ final class ServerSupervisor {
 		guard !stopping else { return }
 		let now = ProcessInfo.processInfo.systemUptime
 		stops = stops.filter { now - $0 < window } + [now]
-		let how = run.signaled ? "Killed by signal \(run.status)." : "Exit code \(run.status)."
 		if stops.count > maxRestarts {
-			emit(.failed(title: "The omp-webui server stopped", detail: "\(how)\n\n\(log)"))
+			emit(.failed(.stopped(status: run.status, signaled: run.signaled, log: log)))
 		} else {
+			let how = run.signaled ? "killed by signal \(run.status)" : "exit code \(run.status)"
 			NSLog("omp-webui: the server stopped (\(how)) and is started again")
 			queue.asyncAfter(deadline: .now() + restartDelay) { self.spawn() }
 		}
@@ -186,5 +186,25 @@ final class ServerSupervisor {
 
 	private func emit(_ event: Event) {
 		events.async { self.handler(event) }
+	}
+}
+
+/// Why the server is gone for good, as the app tells the person: in the page's language (#232), so the one alert met when the
+/// app cannot work at all is not the one English thing on a Chinese setup.
+enum ServerFailure: Equatable {
+	/// It could not be started at all; `reason`: the system's.
+	case notStarted(reason: String)
+	/// It kept stopping: how it ended the last time (the exit code, or the signal that killed it), and the last of what it printed.
+	case stopped(status: Int32, signaled: Bool, log: String)
+
+	func words(_ language: ShellLanguage) -> (title: String, detail: String) {
+		let zh = language == .zh
+		switch self {
+		case .notStarted(let reason):
+			return (zh ? "无法启动 omp-webui 服务器" : "Could not start the omp-webui server", reason)
+		case .stopped(let status, let signaled, let log):
+			let how = signaled ? (zh ? "被信号 \(status) 终止。" : "Killed by signal \(status).") : (zh ? "退出码 \(status)。" : "Exit code \(status).")
+			return (zh ? "omp-webui 服务器已停止" : "The omp-webui server stopped", "\(how)\n\n\(log)")
+		}
 	}
 }

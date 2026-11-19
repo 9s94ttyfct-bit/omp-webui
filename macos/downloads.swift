@@ -19,13 +19,21 @@ final class DownloadSaver: NSObject, WKDownloadDelegate {
 	private let choose: Choose
 	private let saved: (URL) -> Void
 	private let failed: (_ title: String, _ detail: String) -> Void
+	/// The language of the alerts' titles: the page's (#232).
+	private let language: () -> ShellLanguage
 	private var saving: [ObjectIdentifier: Saving] = [:]
 
-	init(choose: @escaping Choose, saved: @escaping (URL) -> Void, failed: @escaping (_ title: String, _ detail: String) -> Void) {
+	init(
+		choose: @escaping Choose, saved: @escaping (URL) -> Void, failed: @escaping (_ title: String, _ detail: String) -> Void,
+		language: @escaping () -> ShellLanguage
+	) {
 		self.choose = choose
 		self.saved = saved
 		self.failed = failed
+		self.language = language
 	}
+
+	private func words(en: String, zh: String) -> String { language() == .zh ? zh : en }
 
 	func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
 		choose(suggestedFilename) { [weak self] url in
@@ -39,7 +47,8 @@ final class DownloadSaver: NSObject, WKDownloadDelegate {
 					try fileManager.moveItem(at: url, to: aside)
 					previous = aside
 				} catch {
-					self.failed("Could not replace “\(url.lastPathComponent)”", error.localizedDescription)
+					let name = url.lastPathComponent
+					self.failed(self.words(en: "Could not replace “\(name)”", zh: "无法替换“\(name)”"), error.localizedDescription)
 					return completionHandler(nil)
 				}
 			}
@@ -58,13 +67,14 @@ final class DownloadSaver: NSObject, WKDownloadDelegate {
 		guard let saving = saving.removeValue(forKey: ObjectIdentifier(download)) else {
 			// No destination yet: the user closed the save sheet, which cancels the download. Anything else is news.
 			let cancelled = (error as NSError).domain == NSURLErrorDomain && (error as NSError).code == NSURLErrorCancelled
-			if !cancelled { failed("The download failed", error.localizedDescription) }
+			if !cancelled { failed(words(en: "The download failed", zh: "下载失败"), error.localizedDescription) }
 			return
 		}
 		let fileManager = FileManager.default
 		// What WebKit began writing is not a file worth keeping; the one that was there before is.
 		try? fileManager.removeItem(at: saving.url)
 		if let previous = saving.previous { try? fileManager.moveItem(at: previous, to: saving.url) }
-		failed("Could not save “\(saving.url.lastPathComponent)”", error.localizedDescription)
+		let name = saving.url.lastPathComponent
+		failed(words(en: "Could not save “\(name)”", zh: "无法保存“\(name)”"), error.localizedDescription)
 	}
 }

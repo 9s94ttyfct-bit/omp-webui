@@ -14,6 +14,10 @@ import Foundation
 //   harness stop-stubborn        a server that ignores SIGTERM is killed at the deadline, the main thread stays free
 //   harness stop-control         the blocking stop the shell had before: the main thread is not free
 //   harness stop-while-restarting   a stop between a stop of the server and its restart: no restart follows
+//   harness words                what the failures say, in English and in Chinese (#232)
+
+/// quit.swift (`ShellLanguage`) words things with the app's name, which the app's main.swift defines.
+let appName = "omp-webui"
 
 func shell(_ script: String) -> ServerSupervisor.Launch {
 	ServerSupervisor.Launch(
@@ -29,8 +33,8 @@ func lines(_ name: String) -> [String] {
 	((try? String(contentsOfFile: scratchFile(name), encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
 }
 
-/// What the supervisor reports, in order, as text (`ready:<port>`, `failed:<title>|<detail>`), under a lock: the harness
-/// thread reads it while the main queue appends.
+/// What the supervisor reports, in order, as text (`ready:<port>`, `failed:<title>|<detail>`, worded in English), under a lock:
+/// the harness thread reads it while the main queue appends.
 final class Log {
 	private let lock = NSLock()
 	private var items: [String] = []
@@ -50,7 +54,9 @@ func supervise(_ launch: ServerSupervisor.Launch, maxRestarts: Int = 3, within: 
 	ServerSupervisor(launch: launch, maxRestarts: maxRestarts, within: within, restartDelay: restartDelay) { event in
 		switch event {
 		case .ready(let port): log.add("ready:\(port)")
-		case .failed(let title, let detail): log.add("failed:\(title)|\(detail)")
+		case .failed(let failure):
+			let (title, detail) = failure.words(.en)
+			log.add("failed:\(title)|\(detail)")
 		}
 	}
 }
@@ -271,6 +277,20 @@ func stopWhileRestarting() -> [String: Any] {
 	return ["starts": lines("stop-restarting.txt").count, "stopSeconds": seconds]
 }
 
+func failureWords() -> [String: Any] {
+	var out: [String: Any] = [:]
+	for (tag, language) in [("en", ShellLanguage.en), ("zh", ShellLanguage.zh)] {
+		for (name, failure) in [
+			("notStarted", ServerFailure.notStarted(reason: "R")), ("exited", .stopped(status: 3, signaled: false, log: "L")),
+			("killed", .stopped(status: 9, signaled: true, log: "L")),
+		] {
+			let (title, detail) = failure.words(language)
+			out["\(tag)/\(name)"] = [title, detail]
+		}
+	}
+	return out
+}
+
 let scenario = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : ""
 let runs = CommandLine.arguments.count > 2 ? Int(CommandLine.arguments[2]) ?? 200 : 200
 let busy = CommandLine.arguments.contains("busy")
@@ -288,6 +308,7 @@ DispatchQueue.global().async {
 	case "stop-stubborn": report = stop(kind: "stubborn")
 	case "stop-control": report = stop(kind: "control")
 	case "stop-while-restarting": report = stopWhileRestarting()
+	case "words": report = failureWords()
 	default:
 		FileHandle.standardError.write(Data("unknown scenario \(scenario)\n".utf8))
 		exit(2)

@@ -32,6 +32,8 @@ beforeAll(() => {
 			"-swift-version",
 			"5",
 			join(here, "../../macos/appmenu.swift"),
+			// `ShellLanguage`: the menu is worded in the page's language.
+			join(here, "../../macos/quit.swift"),
 			join(here, "../../macos/webview.swift"),
 			join(here, "../support/swift/nozoom/main.swift"),
 			"-o",
@@ -73,6 +75,20 @@ test.skipIf(!mac)("the menu bar has no zoom command: ⌘= ⌘+ ⌘- ⌘0 are no 
 	const edit = keys.filter((k) => k.menu === "Edit").map((k) => `${k.shift ? "⇧" : ""}⌘${k.key}`);
 	expect(edit).toEqual(["⌘z", "⇧⌘z", "⌘x", "⌘c", "⌘v", "⌘a"]);
 	expect(keys.find((k) => k.title === "Reload")).toMatchObject({ key: "r", command: true });
+});
+
+test.skipIf(!mac)("the menu bar is worded in the page's language, with the same keys (#232)", async () => {
+	type Read = { menus: Record<string, string[]>; keys: MenuKey[]; window: string };
+	const en = await run<Read & { zh: Read }>("menu");
+	const zh = en.zh;
+	expect(en.window).toBe("Window");
+	expect(zh.window).toBe("窗口");
+	expect(zh.menus["omp-webui"]).toEqual(["关于 omp-webui", "隐藏 omp-webui", "隐藏其他", "全部显示", "退出 omp-webui"]);
+	expect(zh.menus.编辑).toEqual(["撤销", "重做", "剪切", "拷贝", "粘贴", "全选"]);
+	expect(zh.menus.显示).toEqual(["重新载入", "进入全屏幕"]);
+	expect(zh.menus.窗口).toEqual(["最小化", "关闭"]);
+	// The same shortcuts, item for item: only the words differ.
+	expect(zh.keys.map(({ menu, title, ...key }) => key)).toEqual(en.keys.map(({ menu, title, ...key }) => key));
 });
 
 interface Zoomed {
