@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Answer, ModelLike } from "../../server/omp/gate/review.ts";
 import {
@@ -11,17 +11,10 @@ import {
 	type SourceText,
 } from "../../server/omp/guidance/conflict.ts";
 import { type ConflictCheckDeps, GuidanceConflictCheck } from "../../server/omp/guidance/conflict-check.ts";
-import {
-	type ContextFileRules,
-	contextFileCandidates,
-	contextFiles,
-	labelOf,
-	memorySources,
-	standaloneWalk,
-} from "../../server/omp/guidance/conflict-sources.ts";
+import { contextSources, labelOf, levelOf, memorySources } from "../../server/omp/guidance/conflict-sources.ts";
+import { repoRuleFiles } from "../../server/omp/guidance/loaded-context.ts";
 import { applyChange, CONFLICT_LIMITS, lineDiff } from "../../shared/guidance-conflict.ts";
 import type { MemoryItem } from "../../shared/memory.ts";
-import { has } from "../support/needs.ts";
 import { tempDir } from "../support/temp-dirs.ts";
 
 /**
@@ -313,70 +306,84 @@ describe("the cache", () => {
 });
 
 describe("the context files of a folder", () => {
-	const world = () => {
+	const PROMPT = [
+		"# Identity\n\nYou are an agent.",
+		[
+			"<project-context>",
+			"<repo-rules>",
+			"MUST follow these context files for all tasks:",
+			'<file path="/h/.omp/agent/AGENTS.md">',
+			"USER-NATIVE marker",
+			"</file>",
+			'<file path="~/work/repo/AGENTS.md">',
+			"REPO-AGENTS marker. Read IMPORTED-TEXT marker: always use tabs",
+			"</file>",
+			"</repo-rules>",
+			"</project-context>",
+		].join("\n"),
+	];
+
+	test("the files are the ones in omp's <repo-rules>, with the text the agent sees and ~ made absolute", () => {
+		const files = repoRuleFiles(PROMPT, "/h");
+		expect(files).toEqual([
+			{ path: "/h/.omp/agent/AGENTS.md", text: "USER-NATIVE marker" },
+			{ path: "/h/work/repo/AGENTS.md", text: "REPO-AGENTS marker. Read IMPORTED-TEXT marker: always use tabs" },
+		]);
+		expect(repoRuleFiles(PROMPT.join("\n\n"), "/h")).toEqual(files);
+	});
+
+	test("a prompt with no rules, or none that is text, has no files", () => {
+		expect(repoRuleFiles("# Identity\n\nNo context files.")).toEqual([]);
+		expect(repoRuleFiles(undefined)).toEqual([]);
+		expect(repoRuleFiles([1, null])).toEqual([]);
+	});
+
+	test("a file is the person's own or the project's by where it is", () => {
+		const home = "/h";
+		const cwd = "/h/work/repo/pkg";
+		expect(levelOf("/h/work/repo/pkg/AGENTS.md", cwd, home)).toBe("project");
+		expect(levelOf("/h/work/repo/AGENTS.md", cwd, home)).toBe("project");
+		expect(levelOf("/h/work/repo/pkg/.omp/AGENTS.md", cwd, home)).toBe("project");
+		expect(levelOf("/h/.omp/agent/AGENTS.md", cwd, home)).toBe("user");
+		expect(levelOf("/h/.claude/CLAUDE.md", cwd, home)).toBe("user");
+		expect(levelOf("/h/.codex/AGENTS.md", cwd, home)).toBe("user");
+		expect(levelOf("/h/AGENTS.md", cwd, home)).toBe("project");
+	});
+
+	test("sources are the files that say something, once each, labelled, and editable only as they are on the disk", async () => {
 		const root = realpathSync(tempDir("ompw-gc-"));
 		const home = join(root, "home");
 		const repo = join(home, "code", "repo");
 		const cwd = join(repo, "pkg");
-		const agentDir = join(home, ".omp", "agent");
-		for (const dir of [cwd, agentDir, join(repo, ".git"), join(home, ".claude"), join(cwd, ".omp")])
-			mkdirSync(dir, { recursive: true });
-		const rules: ContextFileRules = { home, agentDir, disabled: [], extra: [] };
-		return { root, home, repo, cwd, agentDir, rules };
-	};
-
-	test("the walk goes up to the home folder from a repository in it, and stops at a repository outside it", () => {
-		const home = "/h";
-		expect(standaloneWalk("/h/code/repo/pkg", home, "/h/code/repo")).toEqual([
-			"/h/code/repo/pkg",
-			"/h/code/repo",
-			"/h/code",
-		]);
-		expect(standaloneWalk("/h/notes/a", home, null)).toEqual(["/h/notes/a", "/h/notes", "/h"]);
-		expect(standaloneWalk("/srv/repo/x", home, "/srv/repo")).toEqual(["/srv/repo/x", "/srv/repo"]);
-		expect(standaloneWalk("/srv/plain/x", home, null)).toEqual(["/srv/plain/x", "/srv/plain", "/srv"]);
-		expect(standaloneWalk("/h/.config/tool", home, null)).toEqual(["/h/.config/tool", "/h"]);
-	});
-
-	test("a provider turned off in omp is not read, and extra names are", () => {
-		const { cwd, rules } = world();
-		const all = contextFileCandidates(cwd, rules).map((f) => f.path);
-		expect(all).toContain(join(cwd, "AGENTS.md"));
-		expect(all).toContain(join(cwd, "CLAUDE.md"));
-		const without = contextFileCandidates(cwd, {
-			...rules,
-			disabled: ["claude-md", "claude"],
-			extra: ["RULES.md"],
-		}).map((f) => f.path);
-		expect(without.some((p) => p.endsWith("CLAUDE.md"))).toBe(false);
-		expect(without).toContain(join(cwd, "RULES.md"));
-	});
-
-	test.skipIf(!has.notWindowsYet)(
-		"the files that exist, read once each, labelled, and editable as the callback says",
-		async () => {
-			const { home, repo, cwd, agentDir, rules } = world();
-			writeFileSync(join(cwd, "AGENTS.md"), "Reply in Chinese.\n");
-			writeFileSync(join(repo, "AGENTS.md"), "Repository rules.\n");
-			writeFileSync(join(cwd, "CLAUDE.md"), "   \n");
-			symlinkSync(join(cwd, "AGENTS.md"), join(cwd, ".omp", "AGENTS.md"));
-			writeFileSync(join(agentDir, "AGENTS.md"), "The person's own rules.\n");
-			writeFileSync(join(home, ".claude", "CLAUDE.md"), "Claude's rules.\n");
-			const asked: string[] = [];
-			const found = await contextFiles(cwd, rules, async (abs) => {
+		mkdirSync(cwd, { recursive: true });
+		writeFileSync(join(cwd, "AGENTS.md"), "Reply in Chinese.\n");
+		writeFileSync(join(repo, "AGENTS.md"), "Read @docs/x.md\n");
+		const asked: string[] = [];
+		const found = await contextSources(
+			[
+				{ path: join(cwd, "AGENTS.md"), text: "Reply in Chinese." },
+				// Its import is replaced by the imported text: it is no longer what the file holds.
+				{ path: join(repo, "AGENTS.md"), text: "Read IMPORTED: always use tabs" },
+				{ path: join(cwd, "AGENTS.md"), text: "Reply in Chinese." },
+				{ path: join(home, ".omp", "agent", "AGENTS.md"), text: "   \n" },
+				{ path: join(home, ".omp", "agent", "RULES.md"), text: "The person's own rules." },
+			],
+			cwd,
+			home,
+			async (abs) => {
 				asked.push(abs);
 				return abs.startsWith(cwd) ? abs.slice(cwd.length + 1) : null;
-			});
-			expect(found.map((f) => [f.id, f.label, f.level, f.rel])).toEqual([
-				["f1", "AGENTS.md", "project", "AGENTS.md"],
-				["f2", "~/code/repo/AGENTS.md", "project", null],
-				["f3", "~/.omp/agent/AGENTS.md", "user", null],
-				["f4", "~/.claude/CLAUDE.md", "user", null],
-			]);
-			expect(found[0].text).toBe("Reply in Chinese.\n");
-			expect(labelOf("/elsewhere/AGENTS.md", cwd, home)).toBe("/elsewhere/AGENTS.md");
-		},
-	);
+			},
+		);
+		expect(found.map((f) => [f.id, f.label, f.level, f.rel])).toEqual([
+			["f1", "AGENTS.md", "project", "AGENTS.md"],
+			["f2", "~/code/repo/AGENTS.md", "project", null],
+			["f3", "~/.omp/agent/RULES.md", "user", null],
+		]);
+		expect(found[1].text).toBe("Read IMPORTED: always use tabs");
+		expect(asked).toEqual([join(cwd, "AGENTS.md")]);
+		expect(labelOf("/elsewhere/AGENTS.md", cwd, home)).toBe("/elsewhere/AGENTS.md");
+	});
 
 	test("memories become sources by bank and id, at most the limit", () => {
 		const item = (n: number): MemoryItem => ({

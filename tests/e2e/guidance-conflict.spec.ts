@@ -59,6 +59,8 @@ test.beforeAll(async () => {
 	project = join(dir, "project");
 	mkdirSync(join(project, ".git"), { recursive: true });
 	const fake = writeFakeOmp(dir, {
+		// What the check reads the context files from: omp's own list, in its system prompt (#308).
+		repoRules: true,
 		models: [{ provider: "fake", id: "checker", cost: { output: 1 } }],
 		settings: { modelRoles: { smol: "fake/checker" } },
 		review: {

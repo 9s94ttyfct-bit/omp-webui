@@ -8,9 +8,9 @@ import { mayEdit } from "../../folder-write.ts";
 import type { ReviewerSource } from "../../guard-reviewer.ts";
 import type { TransferEnv } from "../../transfer-core.ts";
 import { chooseReviewers } from "../gate/review.ts";
-import { readKeys } from "../model-config.ts";
 import { GuidanceConflictCheck } from "./conflict-check.ts";
-import { contextFiles, memorySources } from "./conflict-sources.ts";
+import { contextSources, memorySources } from "./conflict-sources.ts";
+import { loadedContextFiles } from "./loaded-context.ts";
 
 /**
  * The guidance conflict check with the server's own parts (`conflict-check.ts` is the check; this is where it reads from):
@@ -19,14 +19,16 @@ import { contextFiles, memorySources } from "./conflict-sources.ts";
  *   by the gate's rule as the guard's benchmark chooses it (`chooseReviewers`): the reviewer set in the guard's settings,
  *   else omp's `reviewer` role, else its `smol`, `slow` and `default` roles in that order, else the cheapest model signed
  *   in. No agent's model is given, so none is passed over for its family. The first two are tried.
- * - The files: what omp loads for the folder (`conflict-sources.ts`), with omp's `disabledProviders` and
- *   `contextFiles.extra` read in that folder (its project settings count). A file the Files tab may write (`mayEdit`, as
- *   a page on this computer) is one a change may be proposed for, by its path in the conversation's folder.
+ * - The files: what omp says it gives the agent in that folder (`loaded-context.ts`: a short-lived omp started there, whose
+ *   system prompt lists them with their `@` imports expanded, #308), so that omp's settings, its choice of one file per
+ *   provider and depth and its opt-in providers are its own. A file the Files tab may write (`mayEdit`, as a page on this
+ *   computer) is one a change may be proposed for, by its path in the conversation's folder.
  * - The memories: what the Memory page reads (`MemoryService.forFolder`).
  */
 
 export interface ConflictServerDeps {
 	ompBin: string;
+	/** omp's agent folder (`~/.omp/agent`): the probe that lists the context files is given a copy of it without its `mcp.json`. */
 	agentDir: string;
 	/** Every folder an omp-webui keeps its data in, and the places nothing is written (as `TransferEnv` has them). */
 	dataDirs: readonly string[];
@@ -38,10 +40,6 @@ export interface ConflictServerDeps {
 	enabled(): boolean;
 	memories(cwd: string, limit: number): Promise<MemoryItem[]>;
 }
-
-const CONFIG_MS = 15_000;
-
-const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : []);
 
 export function serverConflictCheck(deps: ConflictServerDeps): GuidanceConflictCheck {
 	const home = homedir();
@@ -62,17 +60,8 @@ export function serverConflictCheck(deps: ConflictServerDeps): GuidanceConflictC
 		ask: deps.reviewer.ask,
 		async files(cwd) {
 			const root = await rootOf(cwd);
-			// omp's settings as that folder has them; unreadable, every provider is on and there are no extra names.
-			const config = await readKeys(deps.ompBin, cwd, ["disabledProviders", "contextFiles.extra"], {}, CONFIG_MS).catch(
-				() => ({}) as Record<string, unknown>,
-			);
-			const rules = {
-				home,
-				agentDir: deps.agentDir,
-				disabled: strings(config.disabledProviders),
-				extra: strings(config["contextFiles.extra"]),
-			};
-			return contextFiles(cwd, rules, async (abs) => {
+			const loaded = await loadedContextFiles(deps.ompBin, cwd, deps.agentDir);
+			return contextSources(loaded, cwd, home, async (abs) => {
 				// The file's place as the Files tab names it: its folder's real path, inside the conversation's folder.
 				const dir = await realpath(dirname(abs)).catch(() => null);
 				if (!dir || !inside(root, dir)) return null;

@@ -38,6 +38,8 @@ export interface FakeOmpOptions {
 	streaming?: boolean;
 	/** What `get_state` reports besides the session file and the streaming flag (the system prompt, the tools). */
 	state?: Record<string, unknown>;
+	/** `get_state` lists the AGENTS.md of the folder the process runs in as the `<repo-rules>` of its system prompt, as omp does. */
+	repoRules?: boolean;
 	/** The models `get_available_models` lists (the guard's benchmark chooses its reviewer among them). */
 	models?: { provider: string; id: string; api?: string; cost?: { input?: number; output?: number } }[];
 	/** What `omp config list` and `omp config get` say (`modelRoles`, `retry.fallbackChains`…), by key. */
@@ -198,7 +200,13 @@ for await (const chunk of Bun.stdin.stream()) {
     if (builtin && builtin.afterMs === undefined) out({ type: "command_output", text: builtin.text });
     if (builtin && builtin.afterMs !== undefined) setTimeout(() => out({ type: "command_output", text: builtin.text }), builtin.afterMs);
     // omp answers set_cache_warming with the mode the process runs in, and get_entries with the conversation's entries (none yet).
-    const data = builtin ? { agentInvoked: false } : cmd.type === "get_state" ? { ...(options.state ?? {}), ...reported, sessionFile, sessionId: "fake", isStreaming: Boolean(options.streaming) } : cmd.type === "get_subagents" ? { subagents } : cmd.type === "get_entries" ? { entries: [], leafId: null } : cmd.type === "set_cache_warming" ? { mode: cmd.mode } : cmd.type === "set_model" ? reported.model : {};
+    const repoRules = () => {
+      // What omp's system prompt says of the context files: the folder's AGENTS.md, as a <file> of <repo-rules>.
+      const file = require("node:path").join(process.cwd(), "AGENTS.md");
+      if (!require("node:fs").existsSync(file)) return {};
+      return { systemPrompt: ["<repo-rules>\\nMUST follow these context files for all tasks:\\n<file path=\\"" + file + "\\">\\n" + require("node:fs").readFileSync(file, "utf8") + "\\n</file>\\n</repo-rules>"] };
+    };
+    const data = builtin ? { agentInvoked: false } : cmd.type === "get_state" ? { ...(options.state ?? {}), ...(options.repoRules ? repoRules() : {}), ...reported, sessionFile, sessionId: "fake", isStreaming: Boolean(options.streaming) } : cmd.type === "get_subagents" ? { subagents } : cmd.type === "get_entries" ? { entries: [], leafId: null } : cmd.type === "set_cache_warming" ? { mode: cmd.mode } : cmd.type === "set_model" ? reported.model : {};
     const reply = { id: cmd.id, type: "response", command: cmd.type, success: true, data };
     if (options.spawnOn === cmd.type) Bun.spawn(sleeper(600), { stdio: ["ignore", "ignore", "ignore"] });
     const late = (options.delay ?? {})[cmd.type];
