@@ -114,7 +114,7 @@ let remoteNameLimit = 60
 /// name the server saved as another one's could then be dropped by the app's list when it reads the file.
 func foldedName(_ name: String) -> String {
 	var letters = String.UnicodeScalarView()
-	for scalar in name.decomposedStringWithCompatibilityMapping.unicodeScalars where !foldedAwayCategories.contains(scalar.properties.generalCategory) {
+	for scalar in name.decomposedStringWithCompatibilityMapping.unicodeScalars where !foldedAwayCategories.contains(scalar.properties.generalCategory) || keepsMark(scalar) {
 		letters.append(scalar)
 	}
 	var folded = String.UnicodeScalarView()
@@ -126,6 +126,16 @@ func foldedName(_ name: String) -> String {
 
 /// The marks: what NFKD leaves of an accent (general category M, as `\p{M}` is in the server's fold).
 private let foldedAwayCategories: Set<Unicode.GeneralCategory> = [.nonspacingMark, .spacingMark, .enclosingMark]
+
+/// The marks that are letters, not accents (#402), kept by the fold as the server's `KEPT_MARKS` keeps them: the voiced marks of kana
+/// (U+3099, U+309A), the tone marks of Hangul (U+302E, U+302F), every mark in the blocks of the Indic scripts, Thai, Lao, Tibetan and
+/// Myanmar (U+0900–U+109F) and of Khmer (U+1780–U+17FF).
+private func keepsMark(_ scalar: Unicode.Scalar) -> Bool {
+	switch scalar.value {
+	case 0x0900...0x109F, 0x1780...0x17FF, 0x302E...0x302F, 0x3099...0x309A: return true
+	default: return false
+	}
+}
 
 private let forbiddenCategories: Set<Unicode.GeneralCategory> = [
 	.control, .format, .lineSeparator, .paragraphSeparator, .privateUse, .surrogate, .unassigned,

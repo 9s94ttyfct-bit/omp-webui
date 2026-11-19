@@ -122,6 +122,10 @@ export const NAME_SAME: readonly (readonly [string, string])[] = [
 	["İstanbul", "istanbul"],
 	["Å", "A\u030A"],
 	["💻 Studio", "💻 STUDIO"],
+	// The same kana, composed and decomposed, in full width and half width.
+	["が", "か\u3099"],
+	["ｶﾞ", "ガ"],
+	["कि", "क\u093F"],
 ];
 
 /** Names that are two names: no fold of one is the fold of the other, on either side. */
@@ -133,4 +137,13 @@ export const NAME_DIFFERENT: readonly (readonly [string, string])[] = [
 	["日", "本"],
 	["Studio", "Studios"],
 	["💻 Studio", "Studio"],
+	// Marks that are letters (#402): the voiced marks of kana, the vowel signs of Indic scripts.
+	["かっこう", "がっこう"],
+	["さけ", "ざけ"],
+	["は", "ぱ"],
+	["ひ", "び"],
+	["कि", "का"],
+	["किताब", "कताब"],
+	["கு", "க"],
+	["ไม้", "ไม"],
 ];
