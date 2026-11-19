@@ -1,3 +1,4 @@
+import "../i18n/later.ts";
 import type { MessageKey } from "../i18n/index.ts";
 
 /** The roles omp knows, in the order they are listed, with their names. Others are listed after them by id. */

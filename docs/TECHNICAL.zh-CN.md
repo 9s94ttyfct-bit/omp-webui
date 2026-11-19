@@ -305,6 +305,8 @@ omp-webui 是 [omp](https://omp.sh) 编程代理的网页界面，也是一个 m
   - **bash 的进度帧**（#337）：omp 18.22 在每个 `bash` 进度帧里重复的执行轨迹（`partialResult.details.trace`）在服务器第一次读到这个帧时就丢弃（`dropTrace`），中继在为还没连上的服务器保存一行之前也会丢弃（`trimLines`）；完成后的调用保留它的轨迹。以前一个 1000 行的循环，输出只有 9 KB，却要给每个正在看的页面发 195 MB。
   - **文本里的密钥，只用一个检测器**（#338）：`shared/secret-forms.ts` 放着所有在文字中找密钥的地方共用的形式：已知格式的令牌、私钥、`Bearer <令牌>`、`scheme://user:password@host` 里的密码、指明密钥的参数的值（`--password x`）、`password = x` / `pwd=x` / `…_secret_access_key = x` 这样的赋值，以及 `the password is x`。不带登录信息的导出会在代理文件夹的 Markdown 文件里把它们清空（并计数，所以计划里会说这个文件有密钥），错误报告的文字最后也会过一遍，记忆页面则会对它们发出警告；以前 AGENTS.md 里的数据库 URL、`--password` 参数或 AWS 密钥行，导出时被当作干净的。占位符（`${DB_PASSWORD}`、`<your-password>`）、参数后面的一个普通词、名称下很短的值，以及 `PWD=/文件夹`，都不会被当成密钥。
   - **从源码运行的 Bun**（#306）：最低版本是 Bun 1.4.0（README、`engines.bun`、`server/bun-version.ts`），`server/main.ts` 一开始就会拒绝更旧的 Bun，并说明需要哪个版本。Bun 1.3 只能启动一次服务器，之后每次启动都会因 `source is not defined` 失败，原因是它的转译缓存把没有展开 `source(...)` 宏的模块留了下来。
+  - **自动恢复**（#383）：omp 的 `autoResume` 会让不带参数的 `omp` 打开该文件夹里最新的对话。服务器启动的每个 omp 所带的 `--config` 覆盖文件（`server/omp/overlay.ts`）现在写着 `autoResume: false`，所以“新对话”、它预热的备用进程和辅助对话都是真正新的对话，不再是那一个（或者在它已打开时，一份把全部历史随第一条提示词发给模型的副本）。终端里不带参数的 `omp`（没有 `--resume`、`-c`、子命令、打印模式或目标；`autoResumeFolder`）在 `omp config get autoResume` 对它的文件夹说开着时，按 `-c` 同样处理：先关掉服务器自己在该文件夹最新对话上的 omp，对话就不会再裂成两个文件。
+  - **上下文翻页之后的引导式目标**（#339）：访谈消息是用户最新的一条消息，omp 在上下文翻页之后会把它原样再发一次（不会再发目标模式的上下文）。现在这条消息自己说明：目标已经在进行时（`goal get`），设置已经结束，模型接着做那个目标，不再重新访谈。
 
 ## 安装
 

@@ -115,9 +115,9 @@ export const FIXTURE_FILES = {
  * Write one short conversation (a prompt and a reply) in the fixture project, for specs
  * that delete or otherwise consume sessions without touching the shared fixtures.
  * `n` (0–255) makes the file name and session id unique, and orders the sidebar: it lists by
- * mtime, so each file is stamped `now + n` seconds (writes in one tick would otherwise tie).
- * Returns the file path. `cwd`: the folder the conversation worked in (the fixture project by default). `when`: the
- * conversation's time in seconds since the epoch (default: now plus `n`); the sidebar dates a conversation by its newest message.
+ * mtime, so each file is stamped a second after the previous `n` (writes in one tick would otherwise tie), all within the
+ * last four minutes. Returns the file path. `cwd`: the folder the conversation worked in (the fixture project by default).
+ * `when`: the conversation's time in seconds since the epoch; the sidebar dates a conversation by its newest message.
  */
 export function writeSimpleSession(
 	agentDir: string,
@@ -130,9 +130,10 @@ export function writeSimpleSession(
 	const hex = n.toString(16).padStart(2, "0");
 	const id = `01a00000-0000-7000-8000-0000000099${hex}`;
 	const file = join(agentDir, "sessions", FIXTURE_BUCKET, `2026-01-07T00-${hex}-00-000Z_${id}.jsonl`);
-	// The conversation is dated by its newest message (#359) and ordered by it, so its messages are stamped `now + n`
-	// seconds: a conversation just written is today's, and files written in one tick do not tie.
-	const at = when ?? Date.now() / 1000 + n;
+	// The conversation is dated by its newest message (#359) and ordered by it, so its messages are stamped `n` seconds
+	// after 256 s ago: a conversation just written is today's, files written in one tick do not tie, and none is in the
+	// future, which omp's statistics (Usage & cost) leave out.
+	const at = when ?? Date.now() / 1000 - 256 + n;
 	const stamp = new Date(at * 1000).toISOString();
 	write(
 		file,
