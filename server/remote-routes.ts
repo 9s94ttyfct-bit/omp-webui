@@ -3,9 +3,9 @@ import { isRecord } from "../shared/guards.ts";
 import type { ServerMessage } from "../shared/protocol.ts";
 import {
 	asciiLower,
-	REMOTE_LOCKS_OUT,
 	isRemoteOn,
 	parseRemoteConfigPatch,
+	REMOTE_LOCKS_OUT,
 	type RemoteConfig,
 	RemoteConfigError,
 	type RemoteLogin,
