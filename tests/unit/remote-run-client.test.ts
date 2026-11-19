@@ -68,7 +68,18 @@ function hangUp(proc: Bun.Subprocess | undefined): void {
 	}
 }
 
-function fakeRemote(o: { jwt?: string; os?: string; shell?: string[]; env?: Record<string, string> } = {}): Fake {
+function fakeRemote(
+	o: {
+		jwt?: string;
+		os?: string;
+		shell?: string[];
+		env?: Record<string, string>;
+		/** The server runs with `OMP_WEBUI_AUTH=off`: no cookie is given, none is asked for. */
+		authOff?: boolean;
+		/** The page gives no cookie but the API still asks for one. */
+		noCookie?: boolean;
+	} = {},
+): Fake {
 	const jwt = o.jwt ?? JWT;
 	const fake: Fake = { origin: "", frames: [], shells: [], token: "tok-1", printed: "", stop: () => {} };
 	type Data = { terminals: Map<string, { terminal: Bun.Terminal; proc: Bun.Subprocess }> };
@@ -86,11 +97,14 @@ function fakeRemote(o: { jwt?: string; os?: string; shell?: string[]; env?: Reco
 				});
 			if (url.pathname === "/")
 				return new Response("<!doctype html>", {
-					headers: { "set-cookie": `ompw_token=${fake.token}; Path=/; HttpOnly; Secure; SameSite=Strict` },
+					headers:
+						o.authOff || o.noCookie
+							? {}
+							: { "set-cookie": `ompw_token=${fake.token}; Path=/; HttpOnly; Secure; SameSite=Strict` },
 				});
 			const origin = req.headers.get("origin");
 			if (origin !== null && origin !== fake.origin) return new Response("Forbidden", { status: 403 });
-			if (cookies.ompw_token !== fake.token) return new Response("Unauthorized", { status: 401 });
+			if (!o.authOff && cookies.ompw_token !== fake.token) return new Response("Unauthorized", { status: 401 });
 			if (url.pathname === "/api/diagnostics") return Response.json({ os: o.os ?? "linux 6.1.0 (x64)", mode: "full" });
 			if (url.pathname === "/ws") {
 				if (origin !== fake.origin) return new Response("Forbidden", { status: 403 });
@@ -332,6 +346,15 @@ describe("runRemote", () => {
 		expect((await run(fake, { command: "echo one" })).output).toBe("one\n");
 		fake.token = "tok-2";
 		expect((await run(fake, { command: "echo two" })).output).toBe("two\n");
+	});
+
+	test("a computer whose server runs with the token off gives no cookie and needs none: the Access sign-in alone is enough (#371)", async () => {
+		const fake = fakeRemote({ authOff: true });
+		expect((await run(fake, { command: "echo open" })).output).toBe("open\n");
+		// And one that gives no cookie while it needs one is not signed in, as before.
+		const needs = fakeRemote({ noCookie: true });
+		await expect(run(needs, { command: "echo x" })).rejects.toBeInstanceOf(RemoteNotSignedIn);
+		expect(needs.frames).toEqual([]);
 	});
 });
 

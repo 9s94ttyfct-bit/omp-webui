@@ -78,7 +78,11 @@ function httpSignal(signal: AbortSignal): AbortSignal {
 	return AbortSignal.any([signal, AbortSignal.timeout(HTTP_TIMEOUT_MS)]);
 }
 
-/** The remote server's cookie for the page signed in with `jwt`: the one held, or a new one (`fresh`). */
+/**
+ * The remote server's cookie for the page signed in with `jwt`: the one held, or a new one (`fresh`). A computer whose server
+ * runs with `OMP_WEBUI_AUTH=off` gives no cookie and needs none: the answer is "" (no `ompw_token` is sent), and whether the
+ * Access sign-in holds is left to what `/api/diagnostics` says (#371).
+ */
 async function appToken(origin: string, jwt: string, fresh: boolean, signal: AbortSignal): Promise<string> {
 	const held = appTokens.get(origin);
 	if (held !== undefined && !fresh) return held;
@@ -88,17 +92,15 @@ async function appToken(origin: string, jwt: string, fresh: boolean, signal: Abo
 		signal: httpSignal(signal),
 	});
 	await res.body?.cancel();
-	const token =
-		res.status === 200
-			? res.headers
-					.getSetCookie()
-					.map((c) => /^ompw_token=([^;]*)/.exec(c)?.[1])
-					.find((v) => v !== undefined && v !== "")
-			: undefined;
-	if (token === undefined) {
+	if (res.status !== 200) {
 		appTokens.delete(origin);
 		throw new RemoteNotSignedIn(`${origin} answered ${res.status} without letting this server in`);
 	}
+	const token =
+		res.headers
+			.getSetCookie()
+			.map((c) => /^ompw_token=([^;]*)/.exec(c)?.[1])
+			.find((v) => v !== undefined && v !== "") ?? "";
 	appTokens.set(origin, token);
 	return token;
 }
@@ -119,7 +121,8 @@ async function systemOf(origin: string, cookie: string, signal: AbortSignal): Pr
 	return isRecord(body) && typeof body.os === "string" ? body.os : "";
 }
 
-const cookieOf = (jwt: string, token: string) => `CF_Authorization=${jwt}; ompw_token=${token}`;
+const cookieOf = (jwt: string, token: string) =>
+	token === "" ? `CF_Authorization=${jwt}` : `CF_Authorization=${jwt}; ompw_token=${token}`;
 
 /**
  * The `Cookie` header that lets this server in on the computer at `origin` as the page signed in with `jwt` would be (steps 1
