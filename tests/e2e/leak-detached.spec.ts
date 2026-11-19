@@ -131,8 +131,11 @@ test("the page keeps no detached DOM nodes or listeners as conversations and vie
 		await page.waitForTimeout(300);
 	};
 
-	// The first rounds warm the page up (the chunks are loaded, the conversation is read); what is measured is what
+	// The first rounds warm the page up (the chunks are loaded, the conversation is read, the search's pieces are built): four
+	// of them, since a measure taken after two still counted ten listeners the third and fourth left. What is measured is what
 	// happens after that: the same actions must not leave more behind.
+	await round();
+	await round();
 	await round();
 	await round();
 	const warm = await counts(page, cdp, inFlight);

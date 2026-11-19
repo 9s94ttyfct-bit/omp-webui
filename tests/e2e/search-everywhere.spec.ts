@@ -86,7 +86,7 @@ test.describe("conversations", () => {
 		const rows = page.getByTestId("session-item");
 		await expect(rows.first()).toContainText("Fixture alpha");
 		// A search shows a ranked list: no date headings cut it up.
-		await expect(page.getByTestId("session-search-status")).toContainText(/\d+ matches/);
+		await expect(page.getByTestId("session-search-status")).toContainText(/\d+\s+match(?:es)?/);
 
 		// A match that is only the letters in order is listed and not marked: scattered letters read as noise (N1).
 		await expect(rows.first().locator("mark")).toHaveCount(0);

@@ -178,6 +178,13 @@ export async function loadedContextFiles(
 	} finally {
 		client.close();
 		client.kill("SIGTERM");
-		if (shadow) rmSync(shadow, { recursive: true, force: true });
+		if (shadow) {
+			try {
+				// Windows keeps a folder busy while the process that had it open is still ending.
+				rmSync(shadow, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+			} catch {
+				// Left in the temp folder: it holds links, not copies, and the system's clean-up takes it.
+			}
+		}
 	}
 }
