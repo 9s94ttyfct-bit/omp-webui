@@ -52,6 +52,8 @@ interface Cached {
 	providers?: string[];
 	/** How long the agent worked in it (#692); undefined for a row kept by a version that did not count it (read again when asked). */
 	activeMs?: number;
+	/** The `stopReason` of its last assistant message, null when it has none (or a prompt came after it); undefined for a row kept by a version that did not keep it (read again when asked). */
+	stop?: string | null;
 	/** Where this read stopped, kept in memory only: a transcript read for the first time in this process is read whole. */
 	fold?: { upto: number; tail: string; state: UsageFold };
 }
@@ -65,6 +67,7 @@ interface Row {
 	usage: string;
 	providers: string | null;
 	active: number | null;
+	stop: string | null;
 }
 
 export class SubagentIndex {
@@ -91,12 +94,13 @@ export class SubagentIndex {
 		const columns = db.query<{ name: string }, []>("PRAGMA table_info(subagent_usage)").all();
 		if (!columns.some((c) => c.name === "providers")) db.run("ALTER TABLE subagent_usage ADD COLUMN providers TEXT");
 		if (!columns.some((c) => c.name === "active")) db.run("ALTER TABLE subagent_usage ADD COLUMN active REAL");
+		if (!columns.some((c) => c.name === "stop")) db.run("ALTER TABLE subagent_usage ADD COLUMN stop TEXT");
 		this.save = db.prepare(
-			"INSERT OR REPLACE INTO subagent_usage (file, owner, mtime, size, started, usage, providers, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			"INSERT OR REPLACE INTO subagent_usage (file, owner, mtime, size, started, usage, providers, active, stop) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		);
 		this.drop = db.prepare("DELETE FROM subagent_usage WHERE file = ?");
 		for (const r of db
-			.query<Row, []>("SELECT file, owner, mtime, size, started, usage, providers, active FROM subagent_usage")
+			.query<Row, []>("SELECT file, owner, mtime, size, started, usage, providers, active, stop FROM subagent_usage")
 			.all()) {
 			const usage: unknown = JSON.parse(r.usage);
 			// What an older version summed from malformed usage is not a total: that file is read again.
@@ -111,6 +115,8 @@ export class SubagentIndex {
 				startedAt: r.started,
 				usage,
 				providers: providersOf(r.providers),
+				// An empty text is a transcript with no assistant message (or one a prompt followed); null is a row from before.
+				stop: r.stop === null ? undefined : r.stop || null,
 				activeMs: typeof r.active === "number" && Number.isFinite(r.active) ? r.active : undefined,
 			});
 		}
@@ -154,7 +160,11 @@ export class SubagentIndex {
 				continue;
 			}
 			let c = this.cache.get(path);
-			if (c?.mtimeMs !== st.mtimeMs || c.size !== st.size || (providers && (!c.providers || c.activeMs === undefined)))
+			if (
+				c?.mtimeMs !== st.mtimeMs ||
+				c.size !== st.size ||
+				(providers && (!c.providers || c.activeMs === undefined || c.stop === undefined))
+			)
 				c = (await this.read(path, sessionFile, st)) ?? undefined;
 			if (!c) continue;
 			const of = {
@@ -167,7 +177,7 @@ export class SubagentIndex {
 				activeMs: c.activeMs ?? 0,
 			};
 			if (f.advisor) advisors.push({ id: f.id, agent: f.agent, ...of });
-			else subagents.push({ id: f.id, ...of });
+			else subagents.push({ id: f.id, ...of, stopReason: c.stop ?? null });
 		}
 		for (const path of [...(this.byOwner.get(sessionFile) ?? [])]) if (!found.has(path)) this.forget(path);
 		// Transcripts written in the same clock tick have the same time: their ids keep the order the same on every
@@ -238,6 +248,7 @@ export class SubagentIndex {
 				usage: state.usage,
 				providers: [...state.providers],
 				activeMs: activeMsOf(state),
+				stop: state.stop,
 				fold: { upto, tail: open.windowHash(upto), state },
 			};
 			this.forget(path);
@@ -251,6 +262,7 @@ export class SubagentIndex {
 				JSON.stringify(c.usage),
 				JSON.stringify(c.providers),
 				c.activeMs ?? null,
+				c.stop ?? "",
 			);
 			return c;
 		} finally {
@@ -286,6 +298,9 @@ function advisorName(file: string): string | null {
 	return file.slice("__advisor.".length, -".jsonl".length) || "default";
 }
 
+/** The file omp keeps a conversation's tool-call and file-change journal in, in the same directory as the transcripts. */
+const CHANGE_JOURNAL = "changes.jsonl";
+
 /**
  * The transcripts under `sessionFile`'s artifacts directory, as path → what they are, following each subagent's own
  * directory. `agent` is the subagent whose directory this is (empty for the session's).
@@ -310,6 +325,9 @@ function collect(sessionFile: string, into: Map<string, Found>, depth: number, a
 			continue;
 		}
 		if (it.name.startsWith("__")) continue;
+		// omp's own change journal (one call/change line per tool use), written beside the transcripts since omp 18.22: it
+		// has no session header and no messages, and is no agent (#332).
+		if (it.name === CHANGE_JOURNAL) continue;
 		const id = it.name.slice(0, -".jsonl".length);
 		into.set(path, { id, agent: "", advisor: false });
 		collect(path, into, depth + 1, id);

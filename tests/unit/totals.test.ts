@@ -24,6 +24,7 @@ const file = (id: string, n: number, activeMs = 0): SubagentFile => ({
 	usage: usage(n),
 	providers: [],
 	activeMs,
+	stopReason: "stop",
 });
 const live = (id: string, status: string, extra: Partial<SubagentState> = {}): SubagentState => ({
 	id,

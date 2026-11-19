@@ -133,6 +133,8 @@ export interface ActiveClock {
 export interface UsageFold extends Omit<TranscriptUsage, "activeMs"> {
 	sawHeader: boolean;
 	clock: ActiveClock;
+	/** The `stopReason` of the last assistant message (`error`, `aborted`, `stop`…); null before one, and again once a prompt follows it. */
+	stop: string | null;
 }
 
 export function newUsageFold(): UsageFold {
@@ -142,6 +144,7 @@ export function newUsageFold(): UsageFold {
 		providers: [],
 		sawHeader: false,
 		clock: { total: 0, start: null, end: 0 },
+		stop: null,
 	};
 }
 
@@ -159,6 +162,7 @@ export function copyUsageFold(fold: UsageFold): UsageFold {
 		providers: [...fold.providers],
 		sawHeader: fold.sawHeader,
 		clock: { ...fold.clock },
+		stop: fold.stop,
 	};
 }
 
@@ -183,7 +187,7 @@ function lineStamp(line: string): number {
  * agent's behalf), so every one begins a turn; any other entry moves the turn's end on to its time.
  */
 export function foldUsageLine(fold: UsageFold, line: string): void {
-	const mentionsUsage = line.includes('"usage"');
+	const mentionsUsage = line.includes('"usage"') || line.includes('"stopReason"');
 	const mayPrompt = line.includes('"role":"user"');
 	if (fold.sawHeader && !mentionsUsage && !mayPrompt) {
 		const at = lineStamp(line);
@@ -211,6 +215,7 @@ export function foldUsageLine(fold: UsageFold, line: string): void {
 	const clock = fold.clock;
 	if (m?.role === "user") {
 		if (clock.start !== null) clock.total += Math.max(0, clock.end - clock.start);
+		fold.stop = null;
 		clock.start = Number.isFinite(at) ? at : null;
 		clock.end = clock.start ?? 0;
 		return;
@@ -223,6 +228,7 @@ export function foldUsageLine(fold: UsageFold, line: string): void {
 	}
 	if (m?.role !== "assistant") return;
 	addUsage(fold.usage, m.usage);
+	fold.stop = typeof m.stopReason === "string" ? m.stopReason : null;
 	if (m.usage) addProvider(fold.providers, m.provider);
 }
 
@@ -248,6 +254,8 @@ export interface MessageView {
 	usage?: RawUsage;
 	provider?: string;
 	model?: string;
+	/** An assistant message's end: `stop`, `toolUse`, `error` (the request failed), `aborted`… */
+	stopReason?: string;
 	attribution?: string;
 }
 

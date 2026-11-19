@@ -76,6 +76,52 @@ describe("listing", () => {
 		expect(list.find((s) => s.id === "Beta")?.modifiedAt).toBe(2_000_000);
 	});
 
+	test("omp's change journal beside the transcripts is no subagent (#332)", async () => {
+		transcript(join(artifacts(), "Scout.jsonl"), { calls: [1], mtime: 2000 });
+		mkdirSync(artifacts(), { recursive: true });
+		writeFileSync(
+			join(artifacts(), "changes.jsonl"),
+			`${JSON.stringify({ type: "call", agent: "Main", tool: "bash", start: 1, label: "echo hi", end: 2 })}\n`,
+		);
+		const list = await new SubagentIndex().list(session());
+		expect(list.map((s) => s.id)).toEqual(["Scout"]);
+	});
+
+	test("says how a transcript ends: its last assistant message's stop reason, none again once a prompt follows (#336)", async () => {
+		const message = (id: string, role: string, stopReason?: string) => ({
+			type: "message",
+			id,
+			parentId: null,
+			timestamp: "2026-01-05T10:00:00.000Z",
+			message:
+				role === "assistant"
+					? { role, content: [{ type: "text", text: "x" }], usage: usage(1), ...(stopReason ? { stopReason } : {}) }
+					: { role, content: [{ type: "text", text: "go" }] },
+		});
+		const write = (name: string, entries: unknown[]) => {
+			mkdirSync(artifacts(), { recursive: true });
+			writeFileSync(
+				join(artifacts(), `${name}.jsonl`),
+				[{ type: "session", version: 3, id: name, timestamp: "2026-01-05T10:00:00.000Z", cwd: "/x" }, ...entries]
+					.map((e) => JSON.stringify(e))
+					.join("\n"),
+			);
+		};
+		write("Failed", [message("a", "user"), message("b", "assistant", "error")]);
+		write("Stopped", [message("a", "user"), message("b", "assistant", "aborted")]);
+		write("Done", [message("a", "user"), message("b", "assistant", "toolUse"), message("c", "assistant", "stop")]);
+		write("Revived", [message("a", "user"), message("b", "assistant", "error"), message("c", "user")]);
+		write("Empty", []);
+		const list = await new SubagentIndex().list(session());
+		expect(Object.fromEntries(list.map((s) => [s.id, s.stopReason]))).toEqual({
+			Failed: "error",
+			Stopped: "aborted",
+			Done: "stop",
+			Revived: null,
+			Empty: null,
+		});
+	});
+
 	test("transcripts of the same modification time are listed by name, whatever order the directory gives", async () => {
 		const names = Array.from({ length: 24 }, (_, i) => `Agent${String.fromCharCode(97 + ((i * 7) % 24))}${i}`);
 		for (const name of names) transcript(join(artifacts(), `${name}.jsonl`), { calls: [1], mtime: 2000 });

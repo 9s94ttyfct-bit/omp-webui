@@ -71,6 +71,13 @@ function row(id: string, from: Partial<AgentRow> & { status: string }): AgentRow
 	};
 }
 
+/** What a subagent whose omp is not running is called, by how its transcript ends: a failed or stopped one is not "completed" (#336). */
+function endOf(f: SubagentFile): string {
+	if (f.stopReason === "error") return "failed";
+	if (f.stopReason === "aborted") return "aborted";
+	return "completed";
+}
+
 /**
  * Every subagent a conversation has: its transcripts (all finished, as far as the disk can tell) overlaid with
  * what the live process says, running ones first with the newest start at the top, then the ones omp has queued (`queued`,
@@ -84,7 +91,7 @@ export function agentRows(
 ): AgentRow[] {
 	const rows = new Map<string, AgentRow>();
 	for (const f of files ?? []) {
-		rows.set(f.id, row(f.id, { status: "completed", file: f.file, stat: f, startedAt: f.startedAt }));
+		rows.set(f.id, row(f.id, { status: endOf(f), file: f.file, stat: f, startedAt: f.startedAt }));
 	}
 	for (const s of Object.values(live ?? {})) {
 		const cur = rows.get(s.id);

@@ -41,6 +41,24 @@ const file = (id: string, modifiedAt: number, n = 1, startedAt = modifiedAt - 10
 	usage: usage(n),
 	providers: [],
 	activeMs: 0,
+	stopReason: "stop",
+});
+
+test("a subagent of a conversation that is not running is failed or stopped as its transcript ends, completed otherwise (#336)", () => {
+	const ended = (id: string, stopReason: string | null): SubagentFile => ({ ...file(id, 1000), stopReason });
+	const rows = agentRows(
+		[ended("Ok", "stop"), ended("Bad", "error"), ended("Cut", "aborted"), ended("None", null)],
+		undefined,
+	);
+	expect(Object.fromEntries(rows.map((r) => [r.id, r.status]))).toEqual({
+		Ok: "completed",
+		Bad: "failed",
+		Cut: "aborted",
+		None: "completed",
+	});
+	// What omp says of a subagent that is running is what counts, whatever the transcript's last entry was.
+	const [again] = agentRows([ended("Bad", "error")], { Bad: live("Bad", "running") });
+	expect(again?.status).toBe("running");
 });
 
 const live = (id: string, status: string, extra: Partial<SubagentState> = {}): SubagentState => ({

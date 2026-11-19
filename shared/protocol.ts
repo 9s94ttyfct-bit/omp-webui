@@ -881,6 +881,11 @@ export interface SubagentFile {
 	providers: string[];
 	/** How long it worked (#692): each of its turns from its prompt to its last entry before the next, summed. */
 	activeMs: number;
+	/**
+	 * How its transcript ends: the `stopReason` of its last assistant message (`stop`, `error`, `aborted`…), null when it has none or a
+	 * prompt came after it. A subagent whose omp is not running has no other state to show (#336).
+	 */
+	stopReason: string | null;
 }
 
 export interface SessionEntry {
