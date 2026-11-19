@@ -338,6 +338,11 @@ export interface ImportNote {
 export interface ImportStatus {
 	state: ImportState;
 	name: string;
+	/**
+	 * Whose import this is: the page that began it sends it with every piece, so that a page which replaced the import
+	 * (`replace`) is not undone by the one it replaced (#319). Other pages read it only to tell their own from another's.
+	 */
+	owner: string;
 	/** Bytes of the archive received so far, and its size. */
 	received: number;
 	size: number;
@@ -369,9 +374,12 @@ export const MIGRATE_API = {
 	exportFile: "/api/migrate/export/file",
 	/** POST: forget the finished export and delete its archive. */
 	exportDiscard: "/api/migrate/export/discard",
-	/** POST `{ name, size }` → `ImportStatus`. */
+	/**
+	 * POST `{ name, size, replace? }` → `ImportStatus`. Refused with `migrateExists` (409) while an import is uploading, locked,
+	 * being checked or ready, unless `replace` is true: another window's upload is not thrown away by choosing a file here.
+	 */
 	importBegin: "/api/migrate/import/begin",
-	/** POST raw bytes, `?offset=<where this piece goes>` → `ImportStatus`. */
+	/** POST raw bytes, `?offset=<where this piece goes>&owner=<the status's owner>` → `ImportStatus`; refused (`migrateReplaced`) for an import that was replaced. */
 	importChunk: "/api/migrate/import/chunk",
 	/** POST: check the archive (manifest, every checksum), then compare it with this Mac → `ImportStatus` with a preview. */
 	importVerify: "/api/migrate/import/verify",
@@ -381,7 +389,7 @@ export const MIGRATE_API = {
 	importApply: "/api/migrate/import/apply",
 	/** POST: put back what a failed import changed, and remove what it made. */
 	importRestore: "/api/migrate/import/restore",
-	/** POST: drop the uploaded archive (before or after the import). */
+	/** POST `{ owner? }`: drop the uploaded archive (before or after the import); given an owner, only that owner's import. */
 	importDiscard: "/api/migrate/import/discard",
 } as const;
 

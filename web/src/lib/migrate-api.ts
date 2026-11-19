@@ -51,13 +51,14 @@ const post = <T>(path: string, body?: unknown) =>
 /** One piece of the archive, sent with XMLHttpRequest because `fetch` cannot say how much of a request body has gone. */
 function sendPiece(
 	offset: number,
+	owner: string,
 	piece: Blob,
 	onSent: (bytes: number) => void,
 	signal: AbortSignal,
 ): Promise<ImportStatus> {
 	const { promise, resolve, reject } = Promise.withResolvers<ImportStatus>();
 	const xhr = new XMLHttpRequest();
-	xhr.open("POST", `${MIGRATE_API.importChunk}?offset=${offset}`);
+	xhr.open("POST", `${MIGRATE_API.importChunk}?offset=${offset}&owner=${encodeURIComponent(owner)}`);
 	xhr.setRequestHeader("x-omp-webui", "1");
 	xhr.setRequestHeader("content-type", "application/octet-stream");
 	xhr.upload.onprogress = (e) => onSent(e.loaded);
@@ -88,21 +89,26 @@ export const migrateApi = {
 	startExport: (req: ExportRequest) => post<ExportStatus>(MIGRATE_API.export, req),
 	cancelExport: () => post<unknown>(MIGRATE_API.exportCancel),
 	discardExport: () => post<unknown>(MIGRATE_API.exportDiscard),
-	beginImport: (file: { name: string; size: number }) => post<ImportStatus>(MIGRATE_API.importBegin, file),
+	/** `replace`: throw away an import another window has under way (without it the server refuses, `migrateExists`). */
+	beginImport: (file: { name: string; size: number; replace?: boolean }) =>
+		post<ImportStatus>(MIGRATE_API.importBegin, file),
 	verifyImport: () => post<ImportStatus>(MIGRATE_API.importVerify),
 	unlockImport: (password: string) =>
 		post<ImportStatus>(MIGRATE_API.importUnlock, { password } satisfies ImportUnlockRequest),
 	applyImport: (req: ImportRequest) => post<ImportStatus>(MIGRATE_API.importApply, req),
 	restoreImport: () => post<ImportStatus>(MIGRATE_API.importRestore),
-	discardImport: () => post<unknown>(MIGRATE_API.importDiscard),
+	/** `owner`: drop the import only if it is still that one's (a page that was replaced must not drop the other's). */
+	discardImport: (owner?: string) =>
+		post<unknown>(MIGRATE_API.importDiscard, owner === undefined ? undefined : { owner }),
 
 	/**
-	 * Send `file` in pieces of `MIGRATE_CHUNK_BYTES`, each at the offset it goes to. `onSent` is told how many bytes of the
+	 * Send `file` in pieces of `MIGRATE_CHUNK_BYTES`, each at the offset it goes to, for the import `owner` began. `onSent` is told how many bytes of the
 	 * file have gone (inside a piece as well, so the bar moves while a piece is on its way); `onStatus` gets each answer.
 	 * Rejects with an `AbortError` when `signal` is aborted.
 	 */
 	async upload(
 		file: File,
+		owner: string,
 		onSent: (bytes: number) => void,
 		onStatus: (status: ImportStatus) => void,
 		signal: AbortSignal,
@@ -110,7 +116,7 @@ export const migrateApi = {
 		let last: ImportStatus | null = null;
 		for (let offset = 0; offset < file.size; offset += MIGRATE_CHUNK_BYTES) {
 			const end = Math.min(offset + MIGRATE_CHUNK_BYTES, file.size);
-			last = await sendPiece(offset, file.slice(offset, end), (n) => onSent(offset + n), signal);
+			last = await sendPiece(offset, owner, file.slice(offset, end), (n) => onSent(offset + n), signal);
 			onStatus(last);
 			onSent(end);
 		}

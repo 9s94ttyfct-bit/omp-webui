@@ -104,6 +104,8 @@ export const ERROR_CODES = [
 	"migrateNewerFormat",
 	"migrateNotReady",
 	"migrateUpload",
+	"migrateExists",
+	"migrateReplaced",
 	"migrateNoCredentials",
 	"migrateRunning",
 	"migrateTooLarge",

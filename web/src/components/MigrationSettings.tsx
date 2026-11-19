@@ -1082,6 +1082,8 @@ export function MigrationSettings() {
 	/** Bytes of the file this page has sent so far; null when this page is not uploading. */
 	const [sent, setSent] = useState<number | null>(null);
 	const upload = useRef<AbortController | null>(null);
+	/** The owner id the server gave the import this page began: sent with every piece and with this page's own discard. */
+	const owner = useRef<string | null>(null);
 
 	const loadPlan = useCallback(async () => {
 		setPlanLoading(true);
@@ -1108,8 +1110,13 @@ export function MigrationSettings() {
 		);
 	}, [refused, loadPlan]);
 
-	// Ask again only while the server is working: nothing runs otherwise.
-	const working = ex?.state === "running" || im?.state === "verifying" || im?.state === "applying";
+	// Ask again only while the server is working, or while another window (or one that stopped) is uploading: nothing
+	// else changes without this page.
+	const working =
+		ex?.state === "running" ||
+		im?.state === "verifying" ||
+		im?.state === "applying" ||
+		(im?.state === "uploading" && sent === null);
 	useEffect(() => {
 		if (!working || refused) return;
 		let stopped = false;
@@ -1180,9 +1187,11 @@ export function MigrationSettings() {
 	};
 
 	const forgetImport = async () => {
+		// This page's own upload is dropped only while it is still this page's: another window may have replaced it.
+		const own = upload.current ? owner.current : null;
 		upload.current?.abort();
 		try {
-			await migrateApi.discardImport();
+			await migrateApi.discardImport(own ?? undefined);
 		} catch {
 			// Nothing left to drop.
 		}
@@ -1190,20 +1199,34 @@ export function MigrationSettings() {
 		setSent(null);
 		setImportProblem(null);
 	};
-	const startImport = async (file: File) => {
+	/** What another window has under way is shown, never dropped: this page's own work ended without it. */
+	const showOthersImport = async () => {
+		const s = await migrateApi.state().catch(() => null);
+		if (s) setIm(s.import);
+	};
+	/** `replace`: throw away the import another window has under way (the person said so). */
+	const startImport = async (file: File, replace = false) => {
 		const controller = new AbortController();
 		upload.current = controller;
+		owner.current = null;
 		setImportProblem(null);
 		setSent(0);
 		try {
-			setIm(await migrateApi.beginImport({ name: file.name, size: file.size }));
-			await migrateApi.upload(file, setSent, setIm, controller.signal);
+			const begun = await migrateApi.beginImport({ name: file.name, size: file.size, replace });
+			owner.current = begun.owner;
+			setIm(begun);
+			await migrateApi.upload(file, begun.owner, setSent, setIm, controller.signal);
 			setIm(await migrateApi.verifyImport());
 		} catch (e) {
 			if (e instanceof DOMException && e.name === "AbortError") return;
+			const code = (e as { code?: string }).code;
+			if (code === "migrateExists" || code === "migrateReplaced") {
+				await showOthersImport();
+				return;
+			}
 			setImportProblem(problemOf(e));
-			// What was uploaded so far is of no use to a person who has to start again.
-			await migrateApi.discardImport().catch(() => {});
+			// What was uploaded so far is of no use to a person who has to start again (only if it is still this page's).
+			if (owner.current) await migrateApi.discardImport(owner.current).catch(() => {});
 			setIm(null);
 		} finally {
 			if (upload.current === controller) upload.current = null;
@@ -1336,10 +1359,18 @@ export function MigrationSettings() {
 							</Button>
 						</div>
 					) : (
+						// Uploading, and not from this page: another window is sending it, or the page that was has gone. The
+						// progress is read again while it runs; dropping it is offered only after saying whose it is (#319).
 						<div className="space-y-2" data-testid="migrate-interrupted">
-							<Warning>{t("migrate.interrupted")}</Warning>
+							<ProgressView
+								label={t("migrate.importProgress")}
+								phase={t("migrate.phaseUpload")}
+								done={im.received}
+								total={im.size}
+							/>
+							<Warning>{t("migrate.uploadElsewhere")}</Warning>
 							<Button data-testid="migrate-start-again" onClick={() => void forgetImport()}>
-								{t("migrate.startAgain")}
+								{t("migrate.uploadDiscard")}
 							</Button>
 						</div>
 					)

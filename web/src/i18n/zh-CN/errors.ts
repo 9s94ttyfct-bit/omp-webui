@@ -110,6 +110,8 @@ export const zh: Record<keyof typeof en, string> = {
 		"这个文件由更新的 omp-webui 生成（格式 {format}；当前版本最高读取到 {supported}）。请更新这个应用后重试。",
 	migrateNotReady: "文件还没有检查过。",
 	migrateUpload: "上传没有从中断的位置继续。请重新开始。",
+	migrateExists: "另一个窗口正在导入文件。请到那个窗口继续，或在这里的导入卡片中替换它。",
+	migrateReplaced: "这次导入已在另一个窗口中被替换，所以这里的上传已停止。",
 	migrateNoCredentials: "这个文件不含登录信息。",
 	migrateRunning: "正在导入并写入文件。请在导入结束后再打开对话。",
 	migrateTooLarge: "文件里的 {file} 声称比实际存放的内容大得多，不可能是这个应用生成的文件。没有改动任何内容。",

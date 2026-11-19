@@ -66,7 +66,8 @@ function errorOf(e: unknown): MigrateErrorInfo {
 
 function statusOf(e: unknown): number {
 	const code = errorInfoOf(e)?.code;
-	if (code === "migrateBusy" || code === "migrateWorking") return 409;
+	if (code === "migrateBusy" || code === "migrateWorking" || code === "migrateExists" || code === "migrateReplaced")
+		return 409;
 	return code ? 400 : 500;
 }
 
@@ -110,6 +111,8 @@ interface Incoming {
 export class MigrateService {
 	private exp: { status: ExportStatus; abort: AbortController; file: string | null } | null = null;
 	private imp: Incoming | null = null;
+	/** The begin that is under way (or the last one): the next waits for it. */
+	private beginning: Promise<void> = Promise.resolve();
 
 	constructor(private readonly deps: MigrateDeps) {}
 
@@ -263,10 +266,30 @@ export class MigrateService {
 
 	// ------------------------------------------------------------------ import
 
-	async begin(name: string, size: number): Promise<ImportStatus> {
+	/**
+	 * Start an import of a file of `size` bytes. An import that is uploading, locked, being checked or ready belongs to a
+	 * window that is working with it: another window's choosing a file does not throw it away (`migrateExists`) unless it
+	 * says `replace` (#319). One that has ended (done or failed) is replaced as it always was.
+	 */
+	begin(name: string, size: number, replace = false): Promise<ImportStatus> {
+		// One begin at a time: it awaits (dropping the old import, making the file) between looking at the import and
+		// setting the new one, and two begins that looked together would both pass the check and overwrite each other.
+		const turn = this.beginning.then(() => this.start(name, size, replace));
+		this.beginning = turn.then(
+			() => {},
+			() => {},
+		);
+		return turn;
+	}
+
+	private async start(name: string, size: number, replace: boolean): Promise<ImportStatus> {
 		if (this.running) throw new CodedError("Another export or import is running", "migrateBusy");
 		if (!Number.isInteger(size) || size < 22 || size > MAX_ARCHIVE) {
 			throw new CodedError("This is not an omp-webui migration archive", "migrateNotArchive");
+		}
+		const held = this.imp?.status.state;
+		if (held && held !== "done" && held !== "failed" && !replace) {
+			throw new CodedError("An import is under way in another window", "migrateExists");
 		}
 		await this.discardImport();
 		const file = join(this.dir, `incoming-${randomBytes(6).toString("hex")}.ompw`);
@@ -275,6 +298,7 @@ export class MigrateService {
 		const status: ImportStatus = {
 			state: "uploading",
 			name: name.slice(0, 255),
+			owner: randomBytes(8).toString("hex"),
 			received: 0,
 			size,
 			progress: idle(),
@@ -293,9 +317,11 @@ export class MigrateService {
 	}
 
 	/** One piece of the archive, which goes at `offset` (a piece sent again replaces what it had written). */
-	async chunk(offset: number, body: ReadableStream<Uint8Array> | null): Promise<ImportStatus> {
+	async chunk(offset: number, owner: string, body: ReadableStream<Uint8Array> | null): Promise<ImportStatus> {
 		const imp = this.imp;
 		if (imp?.status.state !== "uploading") throw new CodedError("There is no upload under way", "migrateUpload");
+		if (imp.status.owner !== owner)
+			throw new CodedError("This import was replaced from another window", "migrateReplaced");
 		// One piece at a time: pieces that overlap would write over each other.
 		const run = imp.upload.then(async () => {
 			const { status } = imp;
@@ -496,9 +522,11 @@ export class MigrateService {
 		return imp.status;
 	}
 
-	async discardImport(): Promise<void> {
+	/** Drop the import. Given an `owner`, only that owner's: a page that was replaced does not drop the one that replaced it. */
+	async discardImport(owner?: string): Promise<void> {
 		const imp = this.imp;
 		if (!imp) return;
+		if (owner !== undefined && imp.status.owner !== owner) return;
 		if (imp.status.state === "applying") throw new CodedError("The import is being written", "migrateBusy");
 		imp.abort.abort();
 		await imp.upload;
@@ -576,11 +604,15 @@ export class MigrateService {
 				case MIGRATE_API.importBegin: {
 					if (!post) return fail("POST required", 405);
 					const body = await read();
-					return json(await this.begin(typeof body.name === "string" ? body.name : "", Number(body.size)));
+					return json(
+						await this.begin(typeof body.name === "string" ? body.name : "", Number(body.size), body.replace === true),
+					);
 				}
 				case MIGRATE_API.importChunk:
 					if (!post) return fail("POST required", 405);
-					return json(await this.chunk(Number(url.searchParams.get("offset")), req.body));
+					return json(
+						await this.chunk(Number(url.searchParams.get("offset")), url.searchParams.get("owner") ?? "", req.body),
+					);
 				case MIGRATE_API.importVerify:
 					if (!post) return fail("POST required", 405);
 					return json(this.verify());
@@ -604,10 +636,12 @@ export class MigrateService {
 				case MIGRATE_API.importRestore:
 					if (!post) return fail("POST required", 405);
 					return json(await this.restore());
-				case MIGRATE_API.importDiscard:
+				case MIGRATE_API.importDiscard: {
 					if (!post) return fail("POST required", 405);
-					await this.discardImport();
+					const body = await read();
+					await this.discardImport(typeof body.owner === "string" ? body.owner : undefined);
 					return json(this.state());
+				}
 				default:
 					return fail("Not found", 404);
 			}

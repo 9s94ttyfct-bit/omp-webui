@@ -127,6 +127,9 @@ export const en = {
 		"This file was made by a newer omp-webui (format {format}; this one reads up to {supported}). Update this app and try again.",
 	migrateNotReady: "The file has not been checked yet.",
 	migrateUpload: "The upload does not continue where it stopped. Start again.",
+	migrateExists:
+		"A file is already being imported in another window. Open that window, or replace it from this page's import card.",
+	migrateReplaced: "This import was replaced from another window, so this upload stopped.",
 	migrateNoCredentials: "This file holds no logins.",
 	migrateRunning: "An import is writing files. Open the conversation again when it has finished.",
 	migrateTooLarge:

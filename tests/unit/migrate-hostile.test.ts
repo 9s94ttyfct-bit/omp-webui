@@ -406,8 +406,8 @@ describe("an import that fails halfway can be undone", () => {
 			...over,
 		});
 		const bytes = readFileSync(file);
-		await svc.begin("moved.ompw", bytes.length);
-		await svc.chunk(0, new Blob([bytes]).stream());
+		const begun = await svc.begin("moved.ompw", bytes.length);
+		await svc.chunk(0, begun.owner, new Blob([bytes]).stream());
 		svc.verify();
 		await pollUntil(() => svc.state().import?.state !== "verifying", "the archive to be checked");
 		expect(svc.state().import?.state).toBe("ready");

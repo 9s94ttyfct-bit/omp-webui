@@ -128,8 +128,9 @@ export const en = {
 	chooseFile: "Choose a file…",
 	importProgress: "Import progress",
 	uploadCancel: "Cancel the upload",
-	interrupted: "The upload stopped before the whole file arrived. Start again.",
-	startAgain: "Start again",
+	uploadElsewhere:
+		"This file is being uploaded from another window, or that upload stopped. Its progress is shown here as it grows.",
+	uploadDiscard: "Discard it and start again",
 	chooseOther: "Choose another file",
 	unlockTitle: "This file is encrypted",
 	unlockHint:

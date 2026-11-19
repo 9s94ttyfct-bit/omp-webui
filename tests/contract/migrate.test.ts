@@ -340,7 +340,7 @@ describe("logins", () => {
 		});
 		expect(begun.status).toBe(200);
 		const send = (offset: number, bytes: number) =>
-			call<ImportStatus>(c, `/api/migrate/import/chunk?offset=${offset}`, {
+			call<ImportStatus>(c, `/api/migrate/import/chunk?offset=${offset}&owner=${begun.body.owner}`, {
 				method: "POST",
 				headers: { "content-type": "application/octet-stream" },
 				body: new Uint8Array(bytes),
@@ -351,6 +351,55 @@ describe("logins", () => {
 		// A piece sent again from where it began replaces what was there.
 		expect(((await send(0, 70)).body as ImportStatus).received).toBe(70);
 		expect((await call(c, "/api/migrate/import/verify", { method: "POST" })).body.code).toBe("migrateUpload");
+		await discardImport(c);
+	});
+
+	test("a window that chooses a file does not throw away another window's upload, unless it says so (#319)", async () => {
+		const begin = (replace?: boolean) =>
+			call<ImportStatus>(c, "/api/migrate/import/begin", {
+				method: "POST",
+				body: JSON.stringify({ name: "x.ompw", size: 100, ...(replace ? { replace } : {}) }),
+			});
+		const piece = (owner: string, bytes: number) =>
+			call<ImportStatus>(c, `/api/migrate/import/chunk?offset=0&owner=${owner}`, {
+				method: "POST",
+				headers: { "content-type": "application/octet-stream" },
+				body: new Uint8Array(bytes),
+			});
+		const first = (await begin()).body.owner;
+		expect((await piece(first, 40)).status).toBe(200);
+
+		// A second window's begin is refused, and the first one's upload goes on where it was.
+		const refused = await begin();
+		expect(refused.status).toBe(409);
+		expect(refused.body.code).toBe("migrateExists");
+		expect(((await piece(first, 50)).body as ImportStatus).received).toBe(50);
+
+		// Asked to replace, it is let through; the replaced window's pieces are refused and its discard drops nothing.
+		const second = (await begin(true)).body.owner;
+		expect(second).not.toBe(first);
+		const late = await piece(first, 10);
+		expect(late.status).toBe(409);
+		expect(late.body.code).toBe("migrateReplaced");
+		await call(c, "/api/migrate/import/discard", { method: "POST", body: JSON.stringify({ owner: first }) });
+		expect(((await state(c)).body.import as ImportStatus).owner).toBe(second);
+
+		// The owner's own discard does drop it.
+		await call(c, "/api/migrate/import/discard", { method: "POST", body: JSON.stringify({ owner: second }) });
+		expect((await state(c)).body.import).toBeNull();
+	});
+
+	test("two windows that choose a file at the same moment: one begins, the other is refused (#319)", async () => {
+		const begin = () =>
+			call<ImportStatus>(c, "/api/migrate/import/begin", {
+				method: "POST",
+				body: JSON.stringify({ name: "x.ompw", size: 100 }),
+			});
+		const answers = await Promise.all([begin(), begin(), begin()]);
+		expect(answers.map((a) => a.status).sort()).toEqual([200, 409, 409]);
+		const winner = answers.find((a) => a.status === 200)?.body.owner;
+		expect(winner).toBeString();
+		expect(((await state(c)).body.import as ImportStatus).owner).toBe(winner as string);
 		await discardImport(c);
 	});
 });

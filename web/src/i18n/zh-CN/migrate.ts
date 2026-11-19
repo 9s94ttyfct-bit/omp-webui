@@ -120,8 +120,8 @@ export const zh: Record<keyof typeof en, string> = {
 	chooseFile: "选择文件…",
 	importProgress: "导入进度",
 	uploadCancel: "取消上传",
-	interrupted: "上传在文件完整到达之前中断了，请重新开始。",
-	startAgain: "重新开始",
+	uploadElsewhere: "这个文件正在另一个窗口中上传，或者那次上传已经中断。这里会随上传进度更新。",
+	uploadDiscard: "丢弃它并重新开始",
 	chooseOther: "选择其他文件",
 	unlockTitle: "这个文件是加密的",
 	unlockHint:

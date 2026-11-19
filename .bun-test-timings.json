@@ -337,6 +337,7 @@
     "tests/unit/host-sampler.test.ts": 129,
     "tests/unit/tool-card.test.ts": 127,
     "tests/unit/usage-cache.test.ts": 126,
+    "tests/unit/run-abort.test.ts": 115,
     "tests/unit/plugin-facets.test.ts": 112,
     "tests/unit/link-target.test.ts": 111,
     "tests/unit/model-recent.test.ts": 111,

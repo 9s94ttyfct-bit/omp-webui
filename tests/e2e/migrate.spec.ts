@@ -95,6 +95,7 @@ function exportStatus(over: Partial<ExportStatus>): ExportStatus {
 const PREVIEW_STATUS: ImportStatus = {
 	state: "ready",
 	name: FILE.name,
+	owner: "0123456789abcdef",
 	received: FILE.bytes,
 	size: FILE.bytes,
 	progress: { phase: "verify", doneBytes: 0, totalBytes: 0, doneFiles: 0, totalFiles: 0, current: "" },
@@ -697,6 +698,34 @@ test("a locked file can be dropped for another one", async ({ page }) => {
 	await openSettings(page);
 	await page.getByTestId("migrate-discard").click();
 	await expect(page.getByTestId("migrate-locked")).toHaveCount(0);
+	await expect(page.getByTestId("migrate-file")).toBeAttached();
+	expect(calls(fake, "POST", MIGRATE_API.importDiscard)).toHaveLength(1);
+});
+
+test("an upload another window is sending is followed, not offered as a broken one, and dropping it is a choice (#319)", async ({
+	page,
+}) => {
+	const sending = (received: number): ImportStatus => ({
+		state: "uploading",
+		name: FILE.name,
+		owner: "another-window",
+		received,
+		size: 100 * MB,
+		progress: { phase: "verify", doneBytes: 0, totalBytes: 0, doneFiles: 0, totalFiles: 0, current: "" },
+		startedAt: Date.now(),
+	});
+	const fake = await fakeMigrate(page, { import: sending(25 * MB) });
+	await openSettings(page);
+	const bar = page.getByRole("progressbar", { name: en.importProgress });
+	await expect(bar).toHaveAttribute("aria-valuenow", "25");
+	await expect(page.getByTestId("migrate-interrupted")).toContainText(en.uploadElsewhere);
+	// The other window goes on sending: this page's bar follows without a reload.
+	fake.state = { ...fake.state, import: sending(50 * MB) };
+	await expect(bar).toHaveAttribute("aria-valuenow", "50", { timeout: 5000 });
+	// Nothing was dropped by looking at it.
+	expect(calls(fake, "POST", MIGRATE_API.importDiscard)).toHaveLength(0);
+
+	await page.getByTestId("migrate-start-again").click();
 	await expect(page.getByTestId("migrate-file")).toBeAttached();
 	expect(calls(fake, "POST", MIGRATE_API.importDiscard)).toHaveLength(1);
 });

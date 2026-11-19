@@ -74,7 +74,7 @@ export async function uploadAndVerify(s: TestServer, file: string, piece = 64 * 
 	const begun = await post<ImportStatus>(s, MIGRATE_API.importBegin, { name: "moved.ompw", size: statSync(file).size });
 	if (begun.status !== 200) throw new Error(`begin refused: ${begun.status} ${JSON.stringify(begun.body)}`);
 	for (let offset = 0; offset < bytes.length; offset += piece) {
-		const sent = await call<ImportStatus>(s, `${MIGRATE_API.importChunk}?offset=${offset}`, {
+		const sent = await call<ImportStatus>(s, `${MIGRATE_API.importChunk}?offset=${offset}&owner=${begun.body.owner}`, {
 			method: "POST",
 			headers: { "content-type": "application/octet-stream" },
 			body: bytes.subarray(offset, offset + piece),
