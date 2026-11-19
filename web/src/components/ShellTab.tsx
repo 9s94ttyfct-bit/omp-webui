@@ -18,6 +18,7 @@ import {
 } from "../lib/shell-terminals.ts";
 import { bufferText, makeXterm } from "../lib/xterm-view.ts";
 import { useApp } from "../store/app.ts";
+import { TerminalKeys, TerminalLeaveHint, TerminalReaderSwitch, useTerminalAccess } from "./TerminalKeys.tsx";
 import { Button } from "./ui.tsx";
 
 const STATUS_KEYS = {
@@ -62,6 +63,7 @@ export function ShellTab({
 	const termRef = useRef<XTerm | null>(null);
 	const [state, setState] = useState<ShellState>({ ptyId: null, status: "starting" });
 	const { done: copied, copy } = useCopy();
+	const access = useTerminalAccess(termRef);
 	useEffect(() => {
 		const el = host.current;
 		if (!el || !allowed) return;
@@ -84,12 +86,14 @@ export function ShellTab({
 				const line = endLine(event.state);
 				// In italics, not dimmed (as `Terminal`'s own lines): dim text on the terminal's ground is about 3:1.
 				if (line) term.write(`\r\n\x1b[3m${line}\x1b[0m\r\n`);
-				if (event.state.status === "running") term.focus();
+				// The screen is not given the keyboard here: a tab that is merely opened must not take it (#277). The person
+				// clicks or types into it, and Ctrl+F6 gives it back.
 			}
 			last = event.state.status;
 		});
 		// ⌘K, as in Terminal.app. It is the Terminal's while the screen has the keyboard: the page's own ⌘K (search) is not.
-		term.attachCustomKeyEventHandler((e) => {
+		// Ctrl+F6 leaves the screen, which keeps every other key, Tab and Esc included (`useTerminalAccess`).
+		const unwire = access.wire(term, el, (e) => {
 			if (e.type !== "keydown" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.key.toLowerCase() !== "k")
 				return true;
 			e.preventDefault();
@@ -97,15 +101,16 @@ export function ShellTab({
 			clearShell(conversation);
 			return false;
 		});
-		const input = term.onData((data) => shellInput(conversation, data));
+		const input = term.onData((data) => shellInput(conversation, access.typed(data)));
 		void ensureShell(conversation, cwd, term.cols, term.rows);
 		return () => {
+			unwire();
 			input.dispose();
 			unfollow();
 			stop();
 			termRef.current = null;
 		};
-	}, [conversation, liveKey, cwd, allowed]);
+	}, [conversation, liveKey, cwd, allowed, access.wire, access.typed]);
 	if (!allowed)
 		return (
 			<p className="p-3 text-xs text-muted" data-testid="shell-tab-off">
@@ -119,7 +124,10 @@ export function ShellTab({
 	return (
 		<div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-code" data-testid="shell-tab">
 			{/* Wraps: on a phone the buttons go to a second row rather than past the panel's edge. */}
-			<div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-border px-2 py-1 font-mono text-xs text-muted">
+			<div
+				ref={access.toolbar}
+				className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-border px-2 py-1 font-mono text-xs text-muted"
+			>
 				<span className="min-w-0 flex-1 basis-24 truncate" title={cwd}>
 					{cwd ?? "~"}
 				</span>
@@ -155,8 +163,16 @@ export function ShellTab({
 				>
 					{copied ? <Check size={12} /> : <Copy size={12} />} {t("pages.termCopyOutput")}
 				</Button>
+				<TerminalReaderSwitch reader={access.reader} onReader={access.setReader} />
+				<TerminalLeaveHint inside={access.inside} />
 			</div>
 			<div ref={host} className="min-h-0 flex-1 p-1.5" data-testid="shell-screen" />
+			<TerminalKeys
+				term={termRef.current}
+				send={(data) => shellInput(conversation, access.typed(data))}
+				ctrl={access.ctrl}
+				onCtrl={access.setCtrl}
+			/>
 		</div>
 	);
 }

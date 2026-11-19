@@ -1,6 +1,8 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
+import { t as translate } from "../i18n/index.ts";
+import { screenReaderMode } from "./terminal-keys.ts";
 import { terminalLinkHandler } from "./terminal-links.ts";
 import { followTerminalTheme, terminalTheme } from "./terminal-theme.ts";
 
@@ -21,6 +23,8 @@ export function makeXterm(
 		cursorBlink: true,
 		convertEol: false,
 		theme: terminalTheme(),
+		// What the shell prints is exposed to a screen reader only when the person asked for it (#289): it costs on every write.
+		screenReaderMode: screenReaderMode(),
 		// Links the output prints open in the browser, in the macOS app as well (see `terminal-links.ts`).
 		linkHandler: terminalLinkHandler({
 			ask: (message) => confirm(message),
@@ -30,6 +34,8 @@ export function makeXterm(
 	const fit = new FitAddon();
 	term.loadAddon(fit);
 	term.open(el);
+	// The input says how the keyboard leaves it: the screen keeps every key (#277).
+	term.textarea?.setAttribute("aria-label", translate("pages.termInputLabel"));
 	fit.fit();
 	const ro = new ResizeObserver(() => {
 		// A screen that is not drawn (its tab hidden) has no size to fit to.

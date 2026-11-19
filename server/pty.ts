@@ -243,17 +243,17 @@ export class PtyManager {
 			this.remember(session, text);
 			session.owner?.send({ t: "pty_data", ptyId: id, data: text });
 		};
-		const terminal = lines
+		const terminalOptions = lines
 			? null
-			: new Bun.Terminal({
+			: {
 					cols: Math.max(20, cols | 0),
 					rows: Math.max(5, rows | 0),
-					data: (_t, data) => output(dec.decode(data, { stream: true })),
-				});
+					data: (_t: Bun.Terminal, data: Uint8Array) => output(dec.decode(data, { stream: true })),
+				};
 		let proc: Bun.Subprocess;
 		let io: PtySession["io"];
 		let streams: Promise<unknown> = Promise.resolve();
-		try {
+		{
 			const isolation = envFor(dir, process.env.PATH ?? "");
 			const login = platform.shell.interactive();
 			// A login shell's startup files move a `PATH` prefix behind the system's (`path_helper`): it is put back after them.
@@ -265,16 +265,21 @@ export class PtyManager {
 				COLORTERM: "truecolor",
 			});
 			const argv = shell ? (inFront?.argv ?? login) : [this.bin, ...args];
-			if (terminal) {
+			if (terminalOptions) {
 				proc = Bun.spawn(argv, {
 					cwd: dir,
-					terminal,
+					// Made with the process (not a `Bun.Terminal` made first and passed in): only then do zsh and the programs it
+					// starts get the terminal as their controlling terminal. A zsh on a passed-in terminal has none, so Ctrl-C reaches
+					// no program (`ps` shows its terminal as `??`) and a command that does not end cannot be interrupted (#369).
+					terminal: terminalOptions,
 					env,
 					// A session of its own, with this terminal as its controlling terminal: without it the process stays in the
 					// server's process group, with no terminal of its own, so a shell has no job control and hangs up its group
 					// when it is hung up (bash): the server itself. Windows has no sessions (and `detached` means something else).
 					detached: platform.id !== "win32",
 				});
+				const terminal = proc.terminal;
+				if (!terminal) throw new Error("the terminal could not be opened");
 				io = {
 					write: (data) => terminal.write(data),
 					resize: (c, r) => terminal.resize(c, r),
@@ -310,10 +315,6 @@ export class PtyManager {
 					},
 				};
 			}
-		} catch (e) {
-			// No process will ever end to close it: its descriptors would stay open for as long as the server runs.
-			terminal?.close();
-			throw e;
 		}
 		session = {
 			id,

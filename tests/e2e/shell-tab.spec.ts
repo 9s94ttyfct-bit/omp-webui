@@ -161,7 +161,7 @@ test.describe("on a phone", () => {
 		const shell = page.getByTestId("shell-tab");
 		await expect(shell).toBeVisible();
 		const edge = await boxOf(shell);
-		for (const id of ["shell-restart", "shell-clear", "shell-copy"]) {
+		for (const id of ["shell-restart", "shell-clear", "shell-copy", "terminal-reader"]) {
 			const button = shell.getByTestId(id);
 			// A label that wraps spills out of the fixed-height button; one on a single line ran past the panel's edge.
 			expect(
@@ -171,5 +171,88 @@ test.describe("on a phone", () => {
 			const b = await boxOf(button);
 			expect(b.x + b.width, `${id} is inside the panel`).toBeLessThanOrEqual(edge.x + edge.width);
 		}
+	});
+});
+
+test("opening the tab does not take the keyboard; Ctrl+F6 gives it back, and the screen says so (#277)", async ({
+	page,
+}) => {
+	await openTerminal(page);
+	await expect(page.getByTestId("shell-status")).toHaveText("running", { timeout: 15_000 });
+	const input = page.locator(".xterm-helper-textarea");
+	await expect(input).not.toBeFocused();
+	await expect(input).toHaveAttribute("aria-label", /Ctrl\+F6 leaves the terminal/);
+	await expect(page.getByTestId("terminal-leave-hint")).toHaveCount(0);
+
+	await screen(page).click();
+	await expect(input).toBeFocused();
+	await expect(page.getByTestId("terminal-leave-hint")).toHaveText("Ctrl+F6 leaves the terminal");
+	// Tab and Esc are the shell's: the screen keeps them.
+	await page.keyboard.press("Tab");
+	await expect(input).toBeFocused();
+	await page.keyboard.press("Control+F6");
+	await expect(page.getByTestId("shell-restart")).toBeFocused();
+	await expect(page.getByTestId("terminal-leave-hint")).toHaveCount(0);
+	// And Tab goes on from there, to the page's other controls.
+	await page.keyboard.press("Tab");
+	await expect(page.getByTestId("shell-clear")).toBeFocused();
+});
+
+test("screen reader mode exposes what the shell prints, and is remembered (#289)", async ({ page }) => {
+	await openTerminal(page);
+	await expect(page.getByTestId("shell-status")).toHaveText("running", { timeout: 15_000 });
+	await expect(page.locator(".xterm-accessibility")).toHaveCount(0);
+	const toggle = page.getByTestId("terminal-reader");
+	await expect(toggle).toHaveAttribute("aria-pressed", "false");
+	await toggle.click();
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
+	await typeLine(page, "echo READ-ALOUD=$((20+22))");
+	await expect(page.locator(".xterm-accessibility")).toContainText("READ-ALOUD=42");
+	expect(await page.evaluate(() => localStorage.getItem("ompw.termScreenReader"))).toBe("on");
+	// A terminal opened later starts with it.
+	await openTerminal(page);
+	await expect(page.getByTestId("terminal-reader")).toHaveAttribute("aria-pressed", "true");
+});
+
+test.describe("on a phone, the keys its keyboard lacks", () => {
+	const { defaultBrowserType: _browser, ...pixel } = devices["Pixel 5"];
+	test.use({ ...pixel, viewport: { width: 390, height: 844 } });
+
+	test("Ctrl-C interrupts a running command and Ctrl turns the next letter into a control key (#369)", async ({
+		page,
+	}) => {
+		await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
+		await page.goto(`${s.url}/?token=${s.accessToken}`);
+		await page.getByRole("button", { name: "Show sidebar" }).click();
+		const item = page.locator('[data-testid="session-item"]', { hasText: TITLE });
+		await expect(item).toHaveCount(1, { timeout: 30_000 });
+		await item.click();
+		await page.getByTestId("toggle-panel").click();
+		await tab(page, /^Terminal/).click();
+		await expect(page.getByTestId("shell-status")).toHaveText("running", { timeout: 15_000 });
+		await expect(page.getByTestId("terminal-keys")).toBeVisible();
+
+		// A command that does not end: Ctrl-C ends it, and the shell takes the next line at once.
+		// The shell has finished starting (the user's own startup files can take a while: a Ctrl-C before that flushes the
+		// typed line), and the command has begun: it printed what only its running prints.
+		await typeLine(page, "echo READY=$((1+1))");
+		await expect(screen(page)).toContainText("READY=2");
+		await typeLine(page, "echo STARTED-$((3+3)); sleep 60");
+		await expect(screen(page)).toContainText("STARTED-6");
+		await page.getByTestId("terminal-key-ctrlc").tap();
+		await typeLine(page, "echo AFTER-INTERRUPT=$((7*6))");
+		await expect(screen(page)).toContainText("AFTER-INTERRUPT=42");
+
+		// Ctrl is one-shot: the next letter typed is Ctrl+L, which clears the screen, and the one after is a letter again.
+		await typeLine(page, "echo BEFORE-CLEAR=1");
+		await expect(screen(page)).toContainText("BEFORE-CLEAR=1");
+		const ctrl = page.getByTestId("terminal-key-ctrl");
+		await ctrl.tap();
+		await expect(ctrl).toHaveAttribute("aria-pressed", "true");
+		await page.keyboard.type("l");
+		await expect(ctrl).toHaveAttribute("aria-pressed", "false");
+		await expect(screen(page)).not.toContainText("BEFORE-CLEAR=1");
+		await typeLine(page, "echo l-IS-A-LETTER=$((1+1))");
+		await expect(screen(page)).toContainText("l-IS-A-LETTER=2");
 	});
 });

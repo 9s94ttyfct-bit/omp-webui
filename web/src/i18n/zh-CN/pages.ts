@@ -406,6 +406,15 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	termCopyOutput: "复制输出",
 	termShowAnswer: "显示输入的内容",
 	termHideAnswer: "隐藏输入的内容",
+	termKeysLabel: "屏幕键盘没有的按键",
+	termKeyUp: "上箭头",
+	termKeyDown: "下箭头",
+	termKeyLeft: "左箭头",
+	termKeyRight: "右箭头",
+	termLeaveHint: "Ctrl+F6 离开终端",
+	termInputLabel: "终端输入。Ctrl+F6 离开终端。",
+	termScreenReader: "读屏软件",
+	termScreenReaderTip: "让读屏软件能读出终端的输出。不用读屏软件就保持关闭：每打印一行都要多做一些工作。",
 
 	// Accounts
 	accTitle: "账号",

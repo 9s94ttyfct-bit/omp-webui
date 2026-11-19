@@ -8,6 +8,7 @@ import { useCopy } from "../lib/clipboard.ts";
 import { errorText } from "../lib/error-text.ts";
 import { socket } from "../lib/ws.ts";
 import { bufferText, makeXterm } from "../lib/xterm-view.ts";
+import { TerminalKeys, TerminalLeaveHint, TerminalReaderSwitch, useTerminalAccess } from "./TerminalKeys.tsx";
 import { Button } from "./ui.tsx";
 
 const STATUS_KEYS = {
@@ -45,6 +46,9 @@ export function Terminal({
 	const termRef = useRef<XTerm | null>(null);
 	const [status, setStatus] = useState<{ key: keyof typeof STATUS_KEYS; code?: string }>({ key: "starting" });
 	const { done: copied, copy } = useCopy();
+	const access = useTerminalAccess(termRef);
+	/** What the screen sends to the process: the touch keys and the typed text both go through it. */
+	const typing = useRef<((data: string) => void) | null>(null);
 	/** For `lines`: the line omp printed last and has not ended (its question), and how an answer is sent. */
 	const [question, setQuestion] = useState("");
 	const [answer, setAnswer] = useState("");
@@ -132,10 +136,17 @@ export function Terminal({
 			});
 		// Answered from the field under it (`lines`): keys typed into the terminal itself would go nowhere.
 		if (lines) term.options.disableStdin = true;
-		const input = lines ? null : term.onData((data) => ptyId && socket.post({ t: "pty_input", ptyId, data }));
+		// Ctrl+F6 leaves the screen, which keeps every other key, Tab and Esc included (`useTerminalAccess`).
+		const unwire = access.wire(term, el);
+		typing.current = (data) => {
+			if (ptyId) socket.post({ t: "pty_input", ptyId, data });
+		};
+		const input = lines ? null : term.onData((data) => typing.current?.(access.typed(data)));
 		return () => {
 			disposed = true;
 			send.current = null;
+			unwire();
+			typing.current = null;
 			input?.dispose();
 			off();
 			offStatus();
@@ -143,12 +154,16 @@ export function Terminal({
 			stop();
 			termRef.current = null;
 		};
-	}, [args, cwd, attach, onExit, lines]);
+	}, [args, cwd, attach, onExit, lines, access.wire, access.typed]);
 	return (
 		<div className="flex h-full flex-col overflow-hidden rounded-xl border border-border bg-code">
-			<div className="flex items-center gap-2 border-b border-border px-3 py-1.5 font-mono text-xs text-muted">
-				<span className="truncate">$ omp {args.join(" ")}</span>
-				<span className="ml-auto" data-testid="terminal-status">
+			<div
+				ref={access.toolbar}
+				className="flex items-center gap-2 border-b border-border px-3 py-1.5 font-mono text-xs text-muted"
+			>
+				<span className="min-w-0 flex-1 truncate">$ omp {args.join(" ")}</span>
+				<TerminalLeaveHint inside={access.inside} />
+				<span data-testid="terminal-status">
 					{status.key === "exited"
 						? t(STATUS_KEYS.exited, { code: status.code ?? "" }).trim()
 						: t(STATUS_KEYS[status.key])}
@@ -165,8 +180,17 @@ export function Terminal({
 				>
 					{copied ? <Check size={12} /> : <Copy size={12} />} {t("pages.termCopyOutput")}
 				</button>
+				<TerminalReaderSwitch reader={access.reader} onReader={access.setReader} />
 			</div>
 			<div ref={host} className="min-h-0 flex-1 p-2" data-testid="terminal" />
+			{lines ? null : (
+				<TerminalKeys
+					term={termRef.current}
+					send={(data) => typing.current?.(access.typed(data))}
+					ctrl={access.ctrl}
+					onCtrl={access.setCtrl}
+				/>
+			)}
 			{lines ? (
 				<form
 					className="flex gap-2 border-t border-border p-2"

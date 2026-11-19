@@ -153,6 +153,28 @@ test.skipIf(!zsh)(
 	},
 );
 
+test("Ctrl-C reaches the command a shell is running: the shell has the terminal as its controlling terminal (#425)", async () => {
+	const dir = realpathSync(mkdtempSync(join(tmpdir(), "ompw-shell-")));
+	const ptys = new PtyManager("/bin/echo");
+	const page = watched();
+	try {
+		const id = ptys.open(page.owner, [], dir, 80, 24, { shell: true });
+		// The shell's own startup can take a while, and a Ctrl-C typed before it ends flushes what was typed: wait for it.
+		ptys.input(page.owner, id, "echo READY=$((1+1))\r");
+		await pollUntil(() => page.text().includes("READY=2"), "the shell to be ready", 20_000);
+		ptys.input(page.owner, id, "echo STARTED-$((3+3)); sleep 60\r");
+		await pollUntil(() => page.text().includes("STARTED-6"), "the command to start", 10_000);
+		ptys.input(page.owner, id, "\x03");
+		ptys.input(page.owner, id, "echo AFTER-$((7*6))\r");
+		await pollUntil(() => page.text().includes("AFTER-42"), "the shell to take a line after Ctrl-C", 10_000);
+		ptys.input(page.owner, id, "exit\r");
+		await pollUntil(page.exited, "the shell to end", 10_000);
+	} finally {
+		ptys.killAll();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 test("a shell takes no arguments", () => {
 	const ptys = new PtyManager("/bin/echo");
 	expect(() => ptys.open(watched().owner, ["-c", "id"], undefined, 80, 24, { shell: true })).toThrow("no arguments");

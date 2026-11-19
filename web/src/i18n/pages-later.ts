@@ -396,6 +396,19 @@ export const en = {
 	termCopyOutput: "Copy output",
 	termShowAnswer: "Show what is typed",
 	termHideAnswer: "Hide what is typed",
+	// The keys a touch screen's keyboard lacks, as a row under a terminal (#369).
+	termKeysLabel: "Keys the on-screen keyboard lacks",
+	termKeyUp: "Up arrow",
+	termKeyDown: "Down arrow",
+	termKeyLeft: "Left arrow",
+	termKeyRight: "Right arrow",
+	// A terminal keeps every key, Tab and Esc included, so the page says how the keyboard leaves it (#277).
+	termLeaveHint: "Ctrl+F6 leaves the terminal",
+	termInputLabel: "Terminal input. Ctrl+F6 leaves the terminal.",
+	// Screen reader mode (#289): xterm.js exposes the output to a screen reader only when asked, at a cost on every line.
+	termScreenReader: "Screen reader",
+	termScreenReaderTip:
+		"Make the terminal's output readable by a screen reader. Leave it off if you do not use one: it costs work on every line printed.",
 
 	// Accounts
 	accTitle: "Accounts",
