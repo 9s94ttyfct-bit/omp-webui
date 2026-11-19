@@ -7,6 +7,8 @@ import Foundation
 //
 //   harness            followOutput, as the shell uses it
 //   harness control    the handler the shell used to have: it never removes itself at the end of the file
+//   harness split      a server whose one line comes in two writes cut inside a character (#379)
+//   harness cuts       `UTF8Pieces` alone: a line cut into two pieces at every byte, then fed one byte at a time
 
 func cpuSeconds() -> Double {
 	var usage = rusage()
@@ -15,10 +17,38 @@ func cpuSeconds() -> Double {
 	return seconds(usage.ru_utime) + seconds(usage.ru_stime)
 }
 
+/// A line with characters of two, three and four bytes, as a path in a Chinese stack trace has.
+let sample = "错误: 无法打开 /tmp/项目/a.ts é 😀"
+
+if CommandLine.arguments.contains("cuts") {
+	let bytes = Data(sample.utf8)
+	var wrong: [Int] = []
+	for cut in 0...bytes.count {
+		let pieces = UTF8Pieces()
+		let text = pieces.decode(bytes.prefix(cut)) + pieces.decode(bytes.suffix(from: cut)) + pieces.finish()
+		if text != sample { wrong.append(cut) }
+	}
+	let bytewise = UTF8Pieces()
+	var one = bytes.map { bytewise.decode(Data([$0])) }.joined()
+	one += bytewise.finish()
+	// A character that never completes still reads as U+FFFD at the end, as it did.
+	let unfinished = UTF8Pieces()
+	let cutShort = unfinished.decode(Data("ab".utf8) + Data([0xE9, 0x94])) + unfinished.finish()
+	let report: [String: Any] = ["wrongCuts": wrong, "bytewise": one == sample, "cutShort": cutShort]
+	print(String(decoding: try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]), as: UTF8.self))
+	exit(0)
+}
+
 let control = CommandLine.arguments.contains("control")
+let split = CommandLine.arguments.contains("split")
 let p = Process()
 p.executableURL = URL(fileURLWithPath: "/bin/sh")
-p.arguments = ["-c", "echo OMPW_READY '{\"port\":1}'; echo boom >&2; exit 1"]
+if split {
+	// The first write ends after the first byte of 误 (E8 AF AF); the pause makes the rest a second read.
+	p.arguments = ["-c", "printf '\\351\\224\\231\\350'; sleep 0.3; printf '\\257\\257: x\\n'"]
+} else {
+	p.arguments = ["-c", "echo OMPW_READY '{\"port\":1}'; echo boom >&2; exit 1"]
+}
 let out = Pipe()
 p.standardOutput = out
 p.standardError = out

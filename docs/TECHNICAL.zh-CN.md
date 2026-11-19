@@ -277,6 +277,7 @@ omp-webui 是 [omp](https://omp.sh) 编程代理的网页界面，也是一个 m
   - **以 `write xd://<工具>` 方式进行的工具调用**（#312）：omp 18.22 把 `lsp`、`ast_edit`、`debug` 以及每个 MCP 服务器的工具作为挂载设备运行，调用方式是 `write { path: "xd://<工具>", content: <JSON 参数> }`。“更改 › 按轮次”不再把这样的调用（以及写入其他内部 URL 的 `write`，例如 `agent://…`）列为改动的文件（`xd:/lsp`）；工具卡片把它画成 `details.xdev.tool` 的调用，显示 `details.xdev.args` 和输出（`web/src/lib/xdev.ts`），而不是一次文件写入、把 JSON 当成文件内容。
   - **报告里的电脑名称**（#247）：`sanitize(text, home, user, hosts)` 还会去掉这台电脑的名称和隧道的主机名，并按形状去掉任何 `*.local` 名称以及私有、链路本地、唯一本地地址（10/8、172.16/12、192.168/16、169.254/16、`fe80::`、`fc00::/7`），分别显示为 `[host]` 和 `[ip]`。`/api/diagnostics` 只对本人的页面（这台电脑上的页面，或经 Cloudflare Access 登录的页面）返回 `hosts`，其他页面得到空列表：`os.hostname()`、`Platform.computerNames()`（macOS 用 `scutil --get` 取 `ComputerName`、`LocalHostName`、`HostName`；Linux 和 Windows 除主机名外没有）以及远程设置里的公开主机名。每个名称也按第一段匹配（`Janes-Mac.local` → `Janes-Mac`），短于 3 个字符或是 `localhost` 的除外。
   - **停在额度下限的对话与退出问题**（#372）：macOS 应用的退出问题把停在额度下限的对话（`/api/lives` 里 `quotaHold.state` 为 `held`）算作服务器结束后仍保留的对话（`Live.kept`），而不是仍在工作的对话：它会说“有 1 个对话在等待额度重置”，说明它会留在后台、服务商的额度窗口重置后自动继续，并提供“退出并结束它”/“退出并结束在等待的”（`POST /api/lives/end-kept`）。以前它那一轮仍然开着，被算作在工作，问题说退出会停止它，而服务器其实把它留在了后台。
+  - **服务器输出里被两次读取切开的字符**（#379）：macOS 应用用 `UTF8Pieces`（`macos/serveroutput.swift`）解码服务器的输出：一次管道读取在字符中间结束时，它先留着这个字符的前几个字节，等下一次读取补全，所以“omp-webui 服务器已停止”提示里的非 ASCII 路径或消息不再在读取结束的地方显示 �。
 
 ## 安装
 

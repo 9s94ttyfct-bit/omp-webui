@@ -66,3 +66,20 @@ test.skipIf(!mac)("the handler the shell had before spins a core after the serve
 	// the fixed handler's share is asserted, as an upper bound.
 	expect(report.callsInQuietSecond).toBeGreaterThan(10_000);
 });
+
+test.skipIf(!mac)("a character cut between two reads of the server's output reads whole (#379)", () => {
+	expect(run("split").text).toBe("错误: x\n");
+	// The control decodes each read on its own, as the shell did: the cut character reads as U+FFFD.
+	const control = run("split", "control").text;
+	expect(control).toStartWith("错\uFFFD");
+	expect(control).not.toContain("误");
+});
+
+test.skipIf(!mac)("the decoder reads a line cut at any byte, or fed a byte at a time, as the whole line", () => {
+	const r = Bun.spawnSync([harness, "cuts"], { stdout: "pipe", stderr: "pipe" });
+	expect(r.exitCode).toBe(0);
+	const report = JSON.parse(r.stdout.toString()) as { wrongCuts: number[]; bytewise: boolean; cutShort: string };
+	expect(report.wrongCuts).toEqual([]);
+	expect(report.bytewise).toBe(true);
+	expect(report.cutShort).toBe("ab\uFFFD");
+});
