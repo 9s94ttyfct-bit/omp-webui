@@ -1,6 +1,15 @@
 // needs: relay
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ApprovalStore, ProcessOverlay, removeOverlayFiles } from "../../server/omp/approval.ts";
@@ -83,6 +92,24 @@ test("records come back oldest pause first; files that are not records are remov
 	store.remove("L1");
 	expect(store.list().map((r) => r.liveId)).toEqual(["L2"]);
 });
+
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+	"a record that cannot be read now is kept, not removed as if it were not a record (#237)",
+	() => {
+		const data = scratch();
+		const store = new ParkedStore(data);
+		store.save(record("L1", 10));
+		const file = join(data, "parked", "L1.json");
+		chmodSync(file, 0o000);
+		try {
+			expect(store.list()).toEqual([]);
+			expect(existsSync(file)).toBe(true);
+		} finally {
+			chmodSync(file, 0o600);
+		}
+		expect(store.list().map((r) => r.liveId)).toEqual(["L1"]);
+	},
+);
 
 test("a record of version 1 names its mode online or offline: it comes back as Full, or Light on a local server", () => {
 	const data = scratch();

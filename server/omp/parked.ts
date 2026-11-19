@@ -376,12 +376,14 @@ export class ParkedStore {
 		for (const name of names) {
 			if (!name.endsWith(".json")) continue;
 			const path = join(this.dir, name);
-			let record: ParkedRecord | "other" | null = null;
+			let text: string;
 			try {
-				record = parse(readFileSync(path, "utf8"));
+				text = readFileSync(path, "utf8");
 			} catch {
-				// unreadable: treated as not a record
+				// A read that fails says nothing about the content (EMFILE, EACCES, EIO): the record stays for the next look (#237).
+				continue;
 			}
+			const record = parse(text);
 			if (record === "other") continue;
 			if (record) records.push(record);
 			else rmSync(path, { force: true });
