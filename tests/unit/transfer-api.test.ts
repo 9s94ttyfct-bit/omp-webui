@@ -163,7 +163,12 @@ describe("uploading one file", () => {
 		const got = await uploadOne(scope, item(10), { signal: signal() }, transport);
 		expect(got.name).toBe("report.bin");
 		expect(seen).toHaveLength(1);
-		expect(seen[0]?.params).toEqual({ dir: "", name: "report.bin", size: 10 });
+		expect(seen[0]?.params).toEqual({
+			dir: "",
+			name: "report.bin",
+			size: 10,
+			key: expect.stringMatching(/^[0-9a-f]{32}$/),
+		});
 		expect(seen[0]?.bytes).toBe(10);
 	});
 
@@ -516,5 +521,26 @@ describe("a batch", () => {
 	test("limits the page knows are the contract's", () => {
 		expect(TRANSFER_LIMITS.uploadFiles).toBe(5000);
 		expect(TRANSFER_LIMITS.pieceBytes).toBe(8 * MiB);
+	});
+});
+
+// #241
+describe("the key of an attempt", () => {
+	test("the URL carries it on a first piece only", () => {
+		const key = "ab".repeat(16);
+		expect(uploadUrl(scope, { dir: "", name: "x", size: 3, key })).toContain(`&key=${key}`);
+		expect(uploadUrl(scope, { dir: "", name: "x", size: 20, id: "u1", offset: 8, key })).not.toContain("key=");
+	});
+
+	test("a first piece sent again carries the key of the try; another try has another", async () => {
+		// The answer to the first piece is lost: it is sent again.
+		const lost = fake([json(0, {}), json(200, saved("a.bin", 3))]);
+		await uploadOne(scope, item(3, "a.bin"), { signal: signal(), sleep: noSleep }, lost.transport);
+		const keys = lost.seen.map((s) => s.params.key);
+		expect(keys[0]).toMatch(/^[0-9a-f]{32}$/);
+		expect(new Set(keys).size).toBe(1);
+		const next = fake([json(200, saved("a.bin", 3))]);
+		await uploadOne(scope, item(3, "a.bin"), { signal: signal(), sleep: noSleep }, next.transport);
+		expect(next.seen[0]?.params.key).not.toBe(keys[0]);
 	});
 });

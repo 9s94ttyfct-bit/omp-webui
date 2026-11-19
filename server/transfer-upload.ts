@@ -81,6 +81,8 @@ interface Upload {
 	release: () => void;
 	/** The page is not the person's own: a file that holds a private key is not replaced (#349). */
 	guarded: boolean;
+	/** What the page called this attempt (`key`): a file finished is answered again to the same one (#241). */
+	key: string | null;
 }
 
 export interface UploadDeps {
@@ -141,6 +143,16 @@ function whole(q: URLSearchParams, key: string): number {
 	return Number(v);
 }
 
+/** The `key` of an attempt: 32 hex digits the page made up for one file (#241); null when it is none. */
+function keyOf(q: URLSearchParams): string | null {
+	const key = q.get("key");
+	return key !== null && /^[0-9a-f]{32}$/.test(key) ? key : null;
+}
+
+/** How long, and how many, finished files are remembered by their attempt's key. */
+const FINISHED_MS = 10 * 60 * 1000;
+const FINISHED_MAX = 256;
+
 /** What the request says its body weighs; null when it does not say. */
 function declaredLength(req: Request): number | null {
 	const header = req.headers.get("content-length");
@@ -153,6 +165,8 @@ export class Uploads {
 	#declared = 0;
 	readonly #swept = new Set<string>();
 	readonly #sweeping = new Set<Promise<void>>();
+	/** Files saved lately by the `key` of the attempt that sent them, with the answer given (#241). */
+	readonly #finished = new Map<string, { size: number; saved: UploadSaved; at: number }>();
 
 	constructor(private readonly deps: UploadDeps) {}
 
@@ -172,6 +186,16 @@ export class Uploads {
 			throw new TransferError("That upload is not known any more: send the file again", 404, "gone");
 		u.touched = this.deps.now();
 		return u;
+	}
+
+	/** A file that was saved is remembered for a while by who sent it and the `key` of the attempt (#241). */
+	#remember(who: string, key: string, size: number, saved: UploadSaved): void {
+		this.#finished.set(`${who}:${key}`, { size, saved, at: this.deps.now() });
+		// Oldest first: the table stays small however many files are sent.
+		for (const k of this.#finished.keys()) {
+			if (this.#finished.size <= FINISHED_MAX) break;
+			this.#finished.delete(k);
+		}
 	}
 
 	#log(
@@ -208,6 +232,7 @@ export class Uploads {
 		for (const u of [...this.#byId.values()]) {
 			if (!u.busy && now - u.touched > this.deps.limits.idleMs) await this.#drop(u, "expired");
 		}
+		for (const [k, f] of this.#finished) if (now - f.at >= FINISHED_MS) this.#finished.delete(k);
 	}
 
 	/** The server is going away: what was staged is removed. */
@@ -241,6 +266,12 @@ export class Uploads {
 		if (size > this.deps.limits.uploadBytes)
 			throw new TransferError("The file is too large", 413, "tooLarge", { limit: this.deps.limits.uploadBytes });
 		const fresh = q.get("id") === null;
+		if (fresh) {
+			// The file was saved by an earlier try of this very attempt whose answer did not arrive: that answer is given again.
+			const key = keyOf(q);
+			const before = key === null ? undefined : this.#finished.get(`${env.who}:${key}`);
+			if (before && before.size === size && this.deps.now() - before.at < FINISHED_MS) return json(before.saved);
+		}
 		const u = fresh ? await this.#begin(q, ctx, env, trace, size) : this.#find(q.get("id"), env);
 		if (u.busy)
 			throw new TransferError("A piece of that file is being received", 429, "busy", {}, { "retry-after": "1" });
@@ -432,6 +463,7 @@ export class Uploads {
 				started: this.deps.now(),
 				release: give,
 				guarded,
+				key: keyOf(q),
 			};
 			this.#byId.set(u.id, u);
 			kept = true;
@@ -575,6 +607,7 @@ export class Uploads {
 				path: saved.path,
 				...(saved.replaced ? { replaced: true } : {}),
 			});
+			if (u.key !== null) this.#remember(u.who, u.key, u.size, saved);
 			return json(saved);
 		} catch (e) {
 			await this.#drop(u);

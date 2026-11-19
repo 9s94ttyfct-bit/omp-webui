@@ -508,6 +508,27 @@ describe("an upload", () => {
 		expect(() => readFileSync(join(proj, "given-up.bin"))).toThrow();
 	});
 
+	// #241
+	test("a file sent again under the key of an attempt that was saved is answered with what was saved, not as a name taken", async () => {
+		const key = "0123456789abcdef0123456789abcdef";
+		const first = await up(here, "again-key.txt", "hello", { key });
+		const saved = (await first.json()) as UploadSaved;
+		expect(saved).toMatchObject({ done: true, name: "again-key.txt", bytes: 5 });
+		// The answer did not reach the page: it begins the file over under the same key.
+		const again = await up(here, "again-key.txt", "hello", { key });
+		expect(again.status).toBe(200);
+		expect(await again.json()).toEqual(saved);
+		// One file.
+		expect(readFileSync(join(proj, "again-key.txt"), "utf8")).toBe("hello");
+		expect(readdirSync(proj).filter((f) => f.startsWith("again-key"))).toEqual(["again-key.txt"]);
+		// Another key is another attempt: the name is taken.
+		const other = await up(here, "again-key.txt", "hello", { key: "f".repeat(32) });
+		expect(await failure(other)).toMatchObject({ status: 409, code: "exists" });
+		// A key of the same attempt for a file of another size is not it.
+		const sized = await up(here, "again-key.txt", "hello!", { key });
+		expect(await failure(sized)).toMatchObject({ status: 409, code: "exists" });
+	});
+
 	test("a disk with less free than the reserve is 507 before anything is written (the test servers keep none: #8)", async () => {
 		// The reserve set past what any disk holds: the server's own check of its disk, with nothing stood in for it.
 		const full = await startTestServer(0, { OMP_WEBUI_TRANSFER_RESERVE_BYTES: String(2 ** 53) }, { login: false });

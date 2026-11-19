@@ -29,6 +29,8 @@ The **Files** tab of a conversation's side panel shows the folder the conversati
 
 Every download, ZIP, upload and save that ended or was refused by a rule is logged (who asked: the Access email, `local`, or `net:<address>`).
 
+A file whose last answer is lost on the way back (a flaky link through the tunnel) is not a second file (#241): the page names each try at a file with a random `key` (32 hex digits, sent on the first piece only), and for ten minutes (at most 256 files) the server answers a first piece with the same key, asker and size again with what it saved (`200`, the same `{ done, path, name, … }`) instead of `409 exists`. A start over after `gone` carries the same key.
+
 ## Where it is
 
 - Side panel of a conversation › **Files** tab. The **Transfer files** button opens the transfer dialog.

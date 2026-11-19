@@ -191,11 +191,22 @@ export interface PieceParams {
 	offset?: number;
 	exists?: "keep";
 	replace?: string;
+	/**
+	 * What this attempt at the file is called, on a piece that begins it (no `id`): the server answers the same key again with
+	 * what it saved, so that a first piece or a start over after a lost answer is not a second file (#241).
+	 */
+	key?: string;
+}
+
+/** 32 hex digits that name one try at a file; `crypto.getRandomValues` is in a page on plain http too (`randomUUID` is not). */
+function attemptKey(): string {
+	return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 export function uploadUrl(scope: FolderScope, p: PieceParams): string {
 	const parts = [...scopeParts(scope), `dir=${enc(p.dir)}`, `name=${enc(p.name)}`, `size=${p.size}`];
 	if (p.id !== undefined) parts.push(`id=${enc(p.id)}`, `offset=${p.offset ?? 0}`);
+	else if (p.key !== undefined) parts.push(`key=${enc(p.key)}`);
 	if (p.exists) parts.push("exists=keep");
 	if (p.replace !== undefined) parts.push(`replace=${enc(p.replace)}`);
 	return `/api/folder/upload?${parts.join("&")}`;
@@ -420,6 +431,8 @@ export async function uploadOne(
 	let received = 0;
 	let restarted = false;
 	let failures = 0;
+	// Named once for the whole try, so that a first piece sent again, or the file begun over, never makes a second file (#241).
+	const key = attemptKey();
 	const settle = (e: unknown): never => {
 		if (isAbort(e) && id !== undefined) void transport.cancel(id);
 		throw e;
@@ -431,7 +444,7 @@ export async function uploadOne(
 			dir: item.dir,
 			name: item.name,
 			size: item.size,
-			...(id === undefined ? {} : { id, offset }),
+			...(id === undefined ? { key } : { id, offset }),
 			...(options.exists ? { exists: options.exists } : {}),
 			...(options.replace === undefined ? {} : { replace: options.replace }),
 		};
