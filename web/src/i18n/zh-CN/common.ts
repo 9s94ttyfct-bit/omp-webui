@@ -17,6 +17,7 @@ export const zh: Record<keyof typeof en, string> = {
 	showLess: "收起",
 	connectionLost: "连接已断开",
 	noAnswer: "服务器 {s} 秒内没有响应",
+	messageTooLarge: "这条消息太大，无法发送（{size} MiB；上限是 {limit} MiB）。请缩短内容或少附几张图片。",
 	badReply: "无法读取服务器的回复",
 	durMs: "{n}毫秒",
 	durSec: "{s}秒",

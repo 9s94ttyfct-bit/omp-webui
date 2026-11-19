@@ -12,6 +12,8 @@ export const en = {
 	language: "Language",
 	connectionLost: "Connection lost",
 	noAnswer: "No answer from the server in {s} s",
+	messageTooLarge:
+		"This message is too large to send ({size} MiB; the limit is {limit} MiB). Shorten it or attach fewer images.",
 	badReply: "The server's answer could not be read",
 	/** The arrows at the edges of a row that scrolls sideways. */
 	scrollLeft: "Scroll left",

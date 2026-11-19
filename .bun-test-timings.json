@@ -372,6 +372,7 @@
     "tests/unit/search.test.ts": 68,
     "tests/unit/btw-fork.test.ts": 63,
     "tests/unit/pty-hangup.test.ts": 63,
+    "tests/unit/socket-oversize.test.ts": 63,
     "tests/unit/agent-docs-tool.test.ts": 61,
     "tests/unit/password-generate.test.ts": 59,
     "tests/unit/saved-macs.test.ts": 55,

@@ -1,5 +1,5 @@
 import type { ErrorParams } from "@shared/error-info.ts";
-import type { ClientMessage, ServerMessage } from "@shared/protocol.ts";
+import { type ClientMessage, MAX_WS_MESSAGE_BYTES, type ServerMessage } from "@shared/protocol.ts";
 import { ReplyAssembler } from "@shared/reply-parts.ts";
 import { t } from "../i18n/index.ts";
 import { FrameBatcher } from "./frame-batch.ts";
@@ -25,6 +25,16 @@ export const REPLY_MS = 45_000;
 const OPEN_MS = 120_000;
 /** The close code with which the server ends a remote page's socket once its Cloudflare Access token has expired. */
 const ACCESS_EXPIRED_CLOSE = 4401;
+
+/**
+ * The size in bytes of `text` as the server counts it when it is over `MAX_WS_MESSAGE_BYTES`, else null. A character is at
+ * most 3 bytes, so only a text that could be over is measured.
+ */
+export function oversize(text: string): number | null {
+	if (text.length * 3 <= MAX_WS_MESSAGE_BYTES) return null;
+	const bytes = new TextEncoder().encode(text).byteLength;
+	return bytes > MAX_WS_MESSAGE_BYTES ? bytes : null;
+}
 
 /** The omp commands a click's answer is waited for: they reply as soon as omp has taken them. */
 const QUICK_COMMANDS = /^(get_|set_|predict_word|abort|cancel_subagent$|remove_queued_message$|fork$|branch$|goal$)/;
@@ -289,15 +299,17 @@ export class Socket {
 		return () => this.listeners.delete(fn);
 	}
 
-	private raw(msg: ClientMessage, req?: string): void {
-		const text = JSON.stringify(msg);
+	private raw(text: string, req?: string): void {
 		if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(text);
 		else this.queue.push({ text, req });
 	}
 
 	/** Fire-and-forget message (no reply expected). */
 	post(msg: Exclude<ClientMessage, { req: string }>): void {
-		this.raw(msg);
+		const text = JSON.stringify(msg);
+		// The server closes the whole socket on a message over its limit, and every request on it fails with it.
+		if (oversize(text) !== null) return;
+		this.raw(text);
 	}
 
 	/**
@@ -325,6 +337,20 @@ export class Socket {
 			}, ms);
 		};
 		const asked = bound.ack !== undefined && msg.t === "rpc";
+		const text = JSON.stringify({ ...msg, ...(asked ? { ack: true } : {}), req });
+		// Over the server's limit the whole socket would be closed (code 1009), not just this message: the person is told
+		// what is too large, and the other requests on the page go on (#381).
+		const bytes = oversize(text);
+		if (bytes !== null) {
+			const mib = (n: number) => (n / 1024 / 1024).toFixed(1);
+			reject(
+				new ReplyError(
+					t("common.messageTooLarge", { size: mib(bytes), limit: mib(MAX_WS_MESSAGE_BYTES) }),
+					"too-large",
+				),
+			);
+			return promise;
+		}
 		if (asked) {
 			entry.acked = () => {
 				entry.handedOver = true;
@@ -335,7 +361,7 @@ export class Socket {
 		entry.progress = () => wait(waiting);
 		wait(asked ? (bound.ack ?? null) : bound.reply);
 		this.pending.set(req, entry);
-		this.raw({ ...msg, ...(asked ? { ack: true } : {}), req } as ClientMessage, req);
+		this.raw(text, req);
 		return promise;
 	}
 
