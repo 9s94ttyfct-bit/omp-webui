@@ -76,6 +76,8 @@ Other stored values: the engines' files and profiles are in `browser/` of the se
 
 The five POST routes answer 403 with `problem: "browserNotHere"` to any other page. With CEF only `/api/browser/clear` is there; the other four answer 404. The Browser tab talks over its own WebSocket, `/ws/browser` (same sign-in as the page's socket): the page list, console entries, JPEG frames, the conversation's downloads (with whether the page is on this computer, where the file is) and `download_reveal_failed` (`owner`, the conversation it was asked in, which a tab that watches another one since ignores; `gone`: the file is not there any more, otherwise it could not be looked at or Finder did not show it) from the server; watch, open, close, navigate, size, fit (the Mac app's own view), input, `download_cancel` and `download_reveal` (Show in Finder, only from the person's own page: this computer's, or one signed in through Cloudflare Access) from the page.
 
+The tab's socket gives up on a dead connection as the page's main socket does: one that has not opened within 10 s, or that nothing has been heard on for 20 s and whose `ping` (answered at once with `pong`, outside the tab's command queue) is not answered within 10 s, is closed and opened again, and the tab's last `watch` and `fit` are sent on the new one; a tab that becomes visible again looks at once.
+
 The browser's own endpoints, outside `/api`:
 
 | Endpoint | Kind | Access | Purpose |
