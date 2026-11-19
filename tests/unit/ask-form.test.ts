@@ -41,6 +41,35 @@ test("a field with no words is asked by its placeholder, then its name; an optio
 	]);
 });
 
+test("a group with no legend or label is asked by the paragraph right before it, which leaves the shared header (#385)", () => {
+	const html = `<form>
+  <p>Sessions live in memory and are lost on restart.</p>
+  <p>Which session store should we use?</p>
+  <label><input type="radio" name="store" value="sqlite" checked> SQLite: one file, no new service</label>
+  <label><input type="radio" name="store" value="redis"> Redis: shared across instances, needs ops</label>
+  <p>Should old sessions be migrated?</p>
+  <label><input type="radio" name="migrate" value="yes"> Yes</label>
+  <label><input type="radio" name="migrate" value="no" checked> No</label>
+  <input name="zip">
+</form>`;
+	const header = "Sessions live in memory and are lost on restart.";
+	expect(formQuestions(html)).toEqual([
+		{
+			question: "Which session store should we use?",
+			header,
+			options: [{ label: "SQLite: one file, no new service" }, { label: "Redis: shared across instances, needs ops" }],
+			recommended: 0,
+		},
+		{
+			question: "Should old sessions be migrated?",
+			header,
+			options: [{ label: "Yes" }, { label: "No" }],
+			recommended: 1,
+		},
+		{ question: "zip", header, options: [] },
+	]);
+});
+
 test("a form's text inside a label or legend is the field's, and markup that runs is not read", () => {
 	const html = `<form><script>alert(1)</script><fieldset><legend><p>Pick</p></legend>
 <label><input type="radio" name="a" value="1"> <span>One</span></label></fieldset></form>`;

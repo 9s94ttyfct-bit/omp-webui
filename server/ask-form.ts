@@ -4,10 +4,11 @@
  * Bun's `HTMLRewriter`, which parses and runs nothing; only text and a few attributes are taken.
  *
  * Every named field is one question, in the order the form has them (a group of radios or checkboxes of one name is one):
- * its words are the group's `<legend>`, else its `<label>`, else its name; a choice's options are its options' labels, the
- * one checked or selected is the recommended one (of a single choice), and a group of checkboxes or a `<select multiple>`
- * takes several. What the form says around its fields (paragraphs, list items, code, headings, table rows) is each
- * question's context.
+ * its words are the group's `<legend>`, else its `<label>`, else the last paragraph (any block) that ends between the
+ * previous field and this one's first control (the `ask` tool tells the model to put a question "in a `<p>` right before
+ * the group", #385), else its placeholder, else its name; a choice's options are its options' labels, the one checked or
+ * selected is the recommended one (of a single choice), and a group of checkboxes or a `<select multiple>` takes several.
+ * What else the form says around its fields (paragraphs, list items, code, headings, table rows) is each question's context.
  */
 
 /** One question of a form, in the shape of an old `ask` dialog's (`draftsOfAsk` reads it). */
@@ -27,6 +28,8 @@ interface Field {
 	legend: string;
 	label: string;
 	placeholder: string;
+	/** The paragraph that came right before it (an index into the form's text), its question when it has no words of its own. */
+	lead?: number;
 	options: { label: string; checked: boolean }[];
 }
 
@@ -79,11 +82,15 @@ export function formQuestions(html: string): FormQuestion[] {
 	const stack: Open[] = [];
 	let legend = "";
 	let select: Field | null = null;
+	/** How much of the form's text there was when the last field began: only what ends after it can lead the next. */
+	let textAtField = 0;
 
 	const fieldOf = (name: string, choice: boolean, multi: boolean): Field => {
 		let field = fields.get(name);
 		if (!field) {
 			field = { name, choice, multi, legend, label: "", placeholder: "", options: [] };
+			if (context.length > textAtField) field.lead = context.length - 1;
+			textAtField = context.length;
 			fields.set(name, field);
 		}
 		return field;
@@ -173,12 +180,19 @@ export function formQuestions(html: string): FormQuestion[] {
 		else target.field.label ||= text;
 	}
 
-	const header = context.join("\n");
+	// A field with no words of its own is asked by the paragraph before it, which is then its own and not every question's.
+	const words = new Map<Field, string>();
+	const led = new Set<number>();
+	for (const field of fields.values()) {
+		const own = field.choice ? field.legend || field.label : field.label || field.legend;
+		if (!own && field.lead !== undefined) led.add(field.lead);
+		words.set(field, own || (field.lead !== undefined ? context[field.lead] : "") || field.placeholder || field.name);
+	}
+	const header = context.filter((_, i) => !led.has(i)).join("\n");
 	return [...fields.values()].map((field) => {
 		const options = field.options.filter((o) => o.label !== "");
-		const words = field.choice ? field.legend || field.label : field.label || field.legend;
 		const out: FormQuestion = {
-			question: words || field.placeholder || field.name,
+			question: words.get(field) ?? field.name,
 			header,
 			options: options.map((o) => ({ label: o.label })),
 		};
