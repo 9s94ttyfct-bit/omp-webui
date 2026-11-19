@@ -177,7 +177,7 @@ let relaunchSample: [String: String] = [
 	"HOME": "/tmp/home", "PI_CODING_AGENT_DIR": "/tmp/agent", "OMP_BIN": "/tmp/omp",
 	"OMP_WEBUI_TOKEN": "secret", "OMP_WEBUI_PARENT_PID": "42", "OMP_WEBUI_DIST": "/tmp/dist", "OMP_WEBUI_AUTO_PORT": "1",
 	"OMP_WEBUI_LOGIN_SHELL": "/bin/zsh", "OMP_WEBUI_APP_BUNDLE": "/x.app", "PATH": "/usr/bin", "OMP_WEBUI": "1",
-	"XOMP_WEBUI_PORT": "1",
+	"XOMP_WEBUI_PORT": "1", "OMP_WEBUI_BROWSER_ENGINE": "cef", "OMP_WEBUI_CEF_STARTED": "0",
 ]
 
 func next(_ index: Int) {

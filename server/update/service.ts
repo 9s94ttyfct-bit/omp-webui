@@ -177,11 +177,14 @@ interface HelperRun {
 
 /**
  * What the relaunched app takes from the environment of this one, besides what its shell sets itself (the token, the
- * parent, the dist folder…): where its data and omp are, and the settings of a test or a developer. `open` starts an app
- * with none of the caller's environment, and a copy started with another data dir or home would come back with the real one.
+ * parent, the dist folder, the browser engine and whether CEF started…): where its data and omp are, and the settings of a
+ * test or a developer. `open` starts an app with none of the caller's environment, and a copy started with another data dir
+ * or home would come back with the real one. What the shell sets is not forwarded: the next app's own `OMP_WEBUI_CEF_STARTED=0`
+ * (the browser was off when it started) told every server after it that CEF had not started, so turning the browser on asked
+ * for a restart that never cleared (#290).
  */
 const RELAUNCH_ENV =
-	/^(OMP_WEBUI_(?!TOKEN$|PARENT_PID$|DIST$|AUTO_PORT$|LOGIN_SHELL$|APP_BUNDLE$)\w+|HOME|PI_CODING_AGENT_DIR|OMP_BIN)$/;
+	/^(OMP_WEBUI_(?!TOKEN$|PARENT_PID$|DIST$|AUTO_PORT$|LOGIN_SHELL$|APP_BUNDLE$|BROWSER_ENGINE$|CEF_STARTED$)\w+|HOME|PI_CODING_AGENT_DIR|OMP_BIN)$/;
 
 /** The command that starts the app at `bundle` the way a person's click would, with what it must be started with (`RELAUNCH_ENV`). */
 export function relaunchCommand(bundle: string, env: Record<string, string | undefined>): string[] {

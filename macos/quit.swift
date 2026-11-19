@@ -383,9 +383,10 @@ func quitFromRunLoop() {
 /// What the app takes from this one's environment when it opens itself again (the restart for the browser), the names the
 /// server's relaunch after an update forwards (`RELAUNCH_ENV`, server/update/service.ts): where its data and omp are, and the
 /// settings of a test or a developer. `open` starts an app with none of the caller's environment, and a copy started on
-/// another data folder came back on the real one (#21).
+/// another data folder came back on the real one (#21). What the shell sets for its server itself is not taken (#290).
 private let relaunchEnvironment = try! NSRegularExpression(
-	pattern: "^(OMP_WEBUI_(?!TOKEN$|PARENT_PID$|DIST$|AUTO_PORT$|LOGIN_SHELL$|APP_BUNDLE$)\\w+|HOME|PI_CODING_AGENT_DIR|OMP_BIN)$")
+	pattern:
+		"^(OMP_WEBUI_(?!TOKEN$|PARENT_PID$|DIST$|AUTO_PORT$|LOGIN_SHELL$|APP_BUNDLE$|BROWSER_ENGINE$|CEF_STARTED$)\\w+|HOME|PI_CODING_AGENT_DIR|OMP_BIN)$")
 
 /// The command that starts the app at `bundle` again, with what it was started with from `environment`
 /// (`relaunchEnvironment`), as the server's `relaunchCommand` does after an update; and as a new instance (`-n`): the old

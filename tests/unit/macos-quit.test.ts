@@ -300,6 +300,8 @@ test.skipIf(!mac)(
 			PATH: "/usr/bin",
 			OMP_WEBUI: "1",
 			XOMP_WEBUI_PORT: "1",
+			OMP_WEBUI_BROWSER_ENGINE: "cef",
+			OMP_WEBUI_CEF_STARTED: "0",
 		};
 		const pairs = (command: string[]) => command.filter((_, i) => command[i - 1] === "--env").sort();
 		const server = relaunchCommand("/Applications/omp-webui.app", env);
@@ -308,6 +310,8 @@ test.skipIf(!mac)(
 		expect(report.relaunch.at(-1)).toBe("/Applications/omp-webui.app");
 		expect(pairs(report.relaunch)).toEqual(pairs(server));
 		expect(pairs(report.relaunch)).toContain("OMP_WEBUI_DATA_DIR=/tmp/data dir");
+		// What the shell sets for its server itself is its own to set again: a stale CEF_STARTED=0 stuck for good (#290).
+		expect(pairs(report.relaunch).filter((p) => /BROWSER_ENGINE|CEF_STARTED/.test(p))).toEqual([]);
 	},
 );
 

@@ -894,6 +894,9 @@ test("what the relaunched app is started with: where its data and omp are, never
 		OMP_WEBUI_AUTO_PORT: "1",
 		OMP_WEBUI_LOGIN_SHELL: "/bin/zsh",
 		OMP_WEBUI_APP_BUNDLE: "/Applications/omp-webui.app",
+		// Set by the shell for its own server; a forwarded "0" told every later server CEF had not started (#290).
+		OMP_WEBUI_BROWSER_ENGINE: "cef",
+		OMP_WEBUI_CEF_STARTED: "0",
 		PATH: "/usr/bin",
 		SHELL: "/bin/zsh",
 		SOMETHING: "else",

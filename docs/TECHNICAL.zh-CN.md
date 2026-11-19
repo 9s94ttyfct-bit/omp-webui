@@ -278,6 +278,7 @@ omp-webui 是 [omp](https://omp.sh) 编程代理的网页界面，也是一个 m
   - **报告里的电脑名称**（#247）：`sanitize(text, home, user, hosts)` 还会去掉这台电脑的名称和隧道的主机名，并按形状去掉任何 `*.local` 名称以及私有、链路本地、唯一本地地址（10/8、172.16/12、192.168/16、169.254/16、`fe80::`、`fc00::/7`），分别显示为 `[host]` 和 `[ip]`。`/api/diagnostics` 只对本人的页面（这台电脑上的页面，或经 Cloudflare Access 登录的页面）返回 `hosts`，其他页面得到空列表：`os.hostname()`、`Platform.computerNames()`（macOS 用 `scutil --get` 取 `ComputerName`、`LocalHostName`、`HostName`；Linux 和 Windows 除主机名外没有）以及远程设置里的公开主机名。每个名称也按第一段匹配（`Janes-Mac.local` → `Janes-Mac`），短于 3 个字符或是 `localhost` 的除外。
   - **停在额度下限的对话与退出问题**（#372）：macOS 应用的退出问题把停在额度下限的对话（`/api/lives` 里 `quotaHold.state` 为 `held`）算作服务器结束后仍保留的对话（`Live.kept`），而不是仍在工作的对话：它会说“有 1 个对话在等待额度重置”，说明它会留在后台、服务商的额度窗口重置后自动继续，并提供“退出并结束它”/“退出并结束在等待的”（`POST /api/lives/end-kept`）。以前它那一轮仍然开着，被算作在工作，问题说退出会停止它，而服务器其实把它留在了后台。
   - **服务器输出里被两次读取切开的字符**（#379）：macOS 应用用 `UTF8Pieces`（`macos/serveroutput.swift`）解码服务器的输出：一次管道读取在字符中间结束时，它先留着这个字符的前几个字节，等下一次读取补全，所以“omp-webui 服务器已停止”提示里的非 ASCII 路径或消息不再在读取结束的地方显示 �。
+  - **更新后浏览器一直提示“需要重启”**（#290）：应用的重新启动（服务器在更新后的重新启动 `RELAUNCH_ENV`，以及应用为浏览器做的重新启动 `relaunchEnvironment`）不再转发 `OMP_WEBUI_CEF_STARTED` 和 `OMP_WEBUI_BROWSER_ENGINE`，这两个变量由应用自己为服务器设置；应用启动了 CEF 时，也会删掉继承来的 `OMP_WEBUI_CEF_STARTED`。以前在浏览器关闭时更新的应用会把 `OMP_WEBUI_CEF_STARTED=0` 带到之后的每一次启动，于是打开浏览器时提示的重启永远消除不了。
 
 ## 安装
 
