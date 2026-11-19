@@ -1620,7 +1620,8 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				// The other Macs this one knows, for the sidebar's machine switcher: what a page needs to open one and nothing of the app's own,
 				// and until when this server holds each one's sign-in (for `remote_run`; never the sign-in itself).
 				macs: savedMacs.listed(),
-				// How many questions wait for the person (#646): the sidebar's badge is there from the first look.
+				// How many questions wait for the person (#646), there from the first look: the conversation's Questions tab and the
+				// composer's "N open" chip read `byConversation`, the Questions page refreshes on `rev`.
 				questions: unattendedMode.questions.counts(),
 				// What the system the server runs on lets it do (`shared/platform.ts`): the page shows what a flag turns off (the
 				// Sleep card without `keepAwake`, the Remote access card without `remoteAccess`) rather than asking which OS it is.

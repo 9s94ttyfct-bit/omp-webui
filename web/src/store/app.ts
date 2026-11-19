@@ -1646,7 +1646,8 @@ export function onServer(msg: ServerMessage): void {
 			return;
 		}
 		case "questions":
-			// Unattended mode's counts (#646), as the sidebar's badge shows them.
+			// Unattended mode's counts (#646): the conversation's Questions tab and composer chip read `byConversation`, the
+			// Questions page refreshes on `rev`.
 			useApp.setState((s) => (s.meta ? { meta: { ...s.meta, questions: msg.counts } } : s));
 			return;
 		case "favorite_models":
