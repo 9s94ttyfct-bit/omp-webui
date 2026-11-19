@@ -110,12 +110,12 @@ import { collectLoaded } from "./omp/loaded.ts";
 import { importLoginEnv } from "./omp/login-env.ts";
 import { handleModelConfig } from "./omp/model-config.ts";
 import { availableModels } from "./omp/models.ts";
-import { writeOverlay } from "./omp/overlay.ts";
+import { autoResumeIn, writeOverlay } from "./omp/overlay.ts";
 import { QuotaFloorService } from "./omp/quota-floor/service.ts";
 import { FloorError } from "./omp/quota-floor/store.ts";
 import { RestartCoordinator } from "./omp/restart/coordinator.ts";
 import { RestartService } from "./omp/restart/install.ts";
-import { resumedSessions } from "./omp/resumed.ts";
+import { autoResumeFolder, resumedSessions } from "./omp/resumed.ts";
 import { configureConcurrency, readConcurrencyDefault } from "./omp/subagent-concurrency.ts";
 import { QuestionError } from "./omp/unattended/questions.ts";
 import { UnattendedService } from "./omp/unattended/service.ts";
@@ -3287,7 +3287,14 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
 			// A terminal's omp would write the same files an import is writing.
 			if (!shell && importWriting) throw heldByImport();
 			// `omp -c`, `--resume <session>` … in the terminal: free the session from our own omp first.
-			if (!shell) for (const resumed of resumedSessions(msg.args, terminalDir(msg.cwd))) await pool.release(resumed);
+			if (!shell) {
+				const dir = terminalDir(msg.cwd);
+				const resumes = resumedSessions(msg.args, dir);
+				// A plain `omp` with omp's `autoResume` on opens the folder's newest conversation (#383).
+				const plain = autoResumeFolder(msg.args, dir);
+				if (plain && (await autoResumeIn(cfg.ompBin, plain))) resumes.push({ by: "folder", cwd: plain });
+				for (const resumed of resumes) await pool.release(resumed);
+			}
 			// Its page may have gone while that waited: nobody would ever feed, resize or end a terminal made for it now.
 			if (ws.data.closed) return;
 			const id = ptys.open(ws.data.sub, msg.args, msg.cwd, msg.cols, msg.rows, {

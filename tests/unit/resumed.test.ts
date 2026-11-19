@@ -1,6 +1,6 @@
 // needs: posixPaths
 import { expect, test } from "bun:test";
-import { resumedSessions } from "../../server/omp/resumed.ts";
+import { autoResumeFolder, resumedSessions } from "../../server/omp/resumed.ts";
 
 /**
  * Which conversations a terminal's `omp` opens again: every form omp 18.12 takes (`-c`, `--continue`, `-r <x>`,
@@ -55,4 +55,24 @@ test("a line that opens no old conversation resumes nothing", () => {
 test("words that are not text are never taken for a flag's value", () => {
 	// What a page sends is checked later (`PtyManager.open`); here it only must not throw.
 	expect(resumedSessions(["-r", 5] as unknown as string[], CWD)).toEqual([{ by: "folder", cwd: CWD }]);
+});
+
+test("with omp's autoResume on, a plain interactive start opens the newest conversation of its folder (#383)", () => {
+	for (const args of [[], ["--model", "x"], ["Fix the build"], ["--cwd=/elsewhere"]])
+		expect(autoResumeFolder(args, CWD)).toBe(args[0] === "--cwd=/elsewhere" ? "/elsewhere" : CWD);
+	expect(autoResumeFolder(["--cwd", "sub"], CWD)).toBe(`${CWD}/sub`);
+});
+
+test("a line that names its conversation, runs a command, prints or starts a goal is not an autoResume start", () => {
+	for (const args of [
+		["-c"],
+		["--resume", "01a1"],
+		["config", "list"],
+		["-p", "hello"],
+		["--print", "hello"],
+		["--no-session"],
+		["--goal=ship it"],
+		["--version"],
+	])
+		expect(autoResumeFolder(args, CWD)).toBeNull();
 });

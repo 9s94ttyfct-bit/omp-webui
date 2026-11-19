@@ -223,6 +223,7 @@
     "tests/contract/relay-sweep.test.ts": 1171,
     "tests/unit/rpc-client.test.ts": 1132,
     "tests/contract/linux-install.test.ts": 1131,
+    "tests/contract/auto-resume.test.ts": 1100,
     "tests/unit/model-config-read.test.ts": 1095,
     "tests/unit/macos-window-frame.test.ts": 1091,
     "tests/contract/gh-runs.test.ts": 1079,
