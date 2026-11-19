@@ -331,6 +331,27 @@ test("a dismissed question leaves the open list and sends nothing", async () => 
 	c.ws.close();
 }, 120_000);
 
+test("a question whose answer is on its way is not dismissed: the answer is sent and the list says answered (#393)", async () => {
+	const c = await conversation();
+	const q = await filed(c, "Which port?", ["8080", "9090"]);
+	// Closed, so the answer starts a new omp first: the dismiss comes while it is being sent.
+	await request(c.ws, { t: "close", liveId: c.live.liveId });
+	await pollUntil(async () => {
+		const lives = await request<LiveInfo[]>(c.ws, { t: "list_lives" });
+		return !lives.some((l) => l.liveId === c.live.liveId && !l.exited);
+	}, "the conversation to be closed");
+	const answered = answerOf(q, { options: ["8080"] });
+	// A real moment: the window is the server's own start of omp (hundreds of ms), and nothing outside marks its start.
+	await Bun.sleep(30);
+	const dismissed = await post("/api/questions/dismiss", { id: q.id });
+	expect(dismissed.status).toBe(409);
+	expect(await dismissed.json()).toEqual({ error: "That question is being answered" });
+	expect((await answered).status).toBe(200);
+	expect((await list()).questions.find((x) => x.id === q.id)?.state).toBe("answered");
+	await requestWith('Answer to your question \\"Which port?\\"');
+	c.ws.close();
+}, 180_000);
+
 test("a remote page reads the list and answers under the rules of every remote message", async () => {
 	const c = await conversation();
 	const q = await filed(c, "Which queue?", ["sqs", "nats"]);

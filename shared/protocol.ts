@@ -12,6 +12,7 @@ import type { CompactAt } from "./compact-at.ts";
 import type { CompactEnded, CompactQueued, CompactWhere } from "./compact-queue.ts";
 import type { ErrorInfo, ErrorParams } from "./error-info.ts";
 import type { ExitReport } from "./exit.ts";
+import type { FolderWatchRequest } from "./folder.ts";
 import type { Goal } from "./goal.ts";
 import type { GuardConfig, GuardDecision, GuardOverride, LiveGuard } from "./guard.ts";
 import type { GuardRules } from "./guard-policy.ts";
@@ -508,7 +509,7 @@ export type ClientMessage =
 	 * `folder_changed` when something in one changes. Replaces the earlier set of this page; an empty one (the tab closed)
 	 * watches nothing. A conversation is named as `GET /api/folder/*` names one.
 	 */
-	| { t: "folder_watch"; live?: string; file?: string; dirs: string[] }
+	| ({ t: "folder_watch" } & FolderWatchRequest)
 	/**
 	 * Whether this page shows the host's load (the sidebar's indicator, the Host tab), and is to be told each look.
 	 * `detail`: this page shows the graphs of the load (the sidebar's popover, the Host tab), not only the line of figures
@@ -762,16 +763,6 @@ export interface FamilyDocument {
  * cut before an assistant message: a tool call and its results are never apart.
  */
 export type FamilyViewKind = "tail" | "before" | "after" | "around" | "stats";
-
-/** The request parameters of a view, besides `file` and `view`. */
-export interface FamilyViewParams {
-	/** The entry `before`, `after` and `around` start from. */
-	at?: string;
-	/** The entry the path leads to; the file's last entry when absent. */
-	leaf?: string;
-	/** At most this many entries (the server's own budget when absent; bounded by it: a test narrows it). */
-	limit?: number;
-}
 
 /**
  * What a window of the history says besides its entries. `earlier` and `later` are what the cursors are made of: the next

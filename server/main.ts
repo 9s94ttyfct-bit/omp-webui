@@ -2533,11 +2533,14 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			}
 		}
 		case "/api/questions/dismiss": {
-			// The person has no answer for it: nothing is sent to the conversation, and the question leaves the open list.
+			// The person has no answer for it: nothing is sent to the conversation, and the question leaves the open list. One
+			// whose answer is on its way is not dismissed (#393): the conversation would have the answer and the list say none.
 			if (req.method !== "POST") return fail("POST required", 405);
 			const body = (await req.json().catch(() => null)) as unknown;
+			const id = isRecord(body) ? body.id : undefined;
+			if (typeof id === "string" && answering.has(id)) return fail("That question is being answered", 409);
 			try {
-				return json({ question: unattendedMode.questions.dismiss(isRecord(body) ? body.id : undefined) });
+				return json({ question: unattendedMode.questions.dismiss(id) });
 			} catch (e) {
 				if (e instanceof QuestionError) return fail(e.message, e.problem === "unknown" ? 404 : 409);
 				throw e;

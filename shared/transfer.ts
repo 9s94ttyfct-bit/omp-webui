@@ -184,12 +184,6 @@ export interface ArchiveSkipped {
 	hidden: number;
 }
 
-/** 413 on `POST /api/folder/archive`: what the walk counted before it passed a limit. */
-export interface ArchiveTooLarge extends TransferFailure {
-	code: "tooLarge" | "tooMany";
-	counted: { files: number; bytes: number };
-}
-
 /** Where an upload stands: the answer to a piece that did not finish the file, and to `upload/state`. */
 export interface UploadProgress {
 	id: string;

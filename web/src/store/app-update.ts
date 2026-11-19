@@ -1,5 +1,5 @@
 import type { ErrorParams } from "@shared/error-info.ts";
-import type { AppUpdateState, UpdateSnapshot } from "@shared/update.ts";
+import type { AppUpdateState, UpdateInstallRequest, UpdateSnapshot } from "@shared/update.ts";
 import { create } from "zustand";
 
 /**
@@ -72,7 +72,8 @@ export const appUpdateApi = {
 	/** Look at GitHub now (the server answers from what it knows while rate limited, or within ten seconds of its last look). */
 	check: () => request("/api/update/check", {}),
 	/** Install `tag`, the release the user was shown; `anyway`: the user was told which conversations are replying and went on. */
-	install: (tag: string, anyway = false) => request("/api/update/install", anyway ? { tag, anyway } : { tag }),
+	install: (tag: string, anyway = false) =>
+		request("/api/update/install", (anyway ? { tag, anyway } : { tag }) satisfies UpdateInstallRequest),
 	/** Stop a download or a check of it. */
 	cancel: () => request("/api/update/cancel", {}),
 	/** Put away the failure and the outcome that are shown. */

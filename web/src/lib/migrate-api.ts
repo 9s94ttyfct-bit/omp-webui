@@ -3,6 +3,7 @@ import {
 	type ExportStatus,
 	type ImportRequest,
 	type ImportStatus,
+	type ImportUnlockRequest,
 	MIGRATE_API,
 	MIGRATE_CHUNK_BYTES,
 	type MigratePlan,
@@ -89,7 +90,8 @@ export const migrateApi = {
 	discardExport: () => post<unknown>(MIGRATE_API.exportDiscard),
 	beginImport: (file: { name: string; size: number }) => post<ImportStatus>(MIGRATE_API.importBegin, file),
 	verifyImport: () => post<ImportStatus>(MIGRATE_API.importVerify),
-	unlockImport: (password: string) => post<ImportStatus>(MIGRATE_API.importUnlock, { password }),
+	unlockImport: (password: string) =>
+		post<ImportStatus>(MIGRATE_API.importUnlock, { password } satisfies ImportUnlockRequest),
 	applyImport: (req: ImportRequest) => post<ImportStatus>(MIGRATE_API.importApply, req),
 	restoreImport: () => post<ImportStatus>(MIGRATE_API.importRestore),
 	discardImport: () => post<unknown>(MIGRATE_API.importDiscard),
