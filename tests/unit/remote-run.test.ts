@@ -16,21 +16,21 @@ import {
 
 /**
  * The line `remote_run` types into a remote computer's login shell, and how what the shell prints is read back: run here
- * through real shells (`sh`, `bash`, `zsh` where there is one), so that what is asserted is what a shell does with it.
+ * through real shells (`sh`, `bash`, `zsh`, `dash`, `ksh` where there is one), so that what is asserted is what a shell does with it.
  */
 
 const NONCE = "a1b2c3d4e5f6";
 const scratch = mkdtempSync(join(tmpdir(), "ompw-remote-run-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-const SHELLS = ["/bin/sh", "/bin/bash", "/bin/zsh"].filter((s) => Bun.file(s).size > 0);
+const SHELLS = ["/bin/sh", "/bin/bash", "/bin/zsh", "/bin/dash", "/bin/ksh"].filter((s) => Bun.file(s).size > 0);
 
 /** What a shell prints for the line, as the pty would carry it (stdout and stderr together), and its parse. */
 function run(shell: string, command: string, cwd: string | null) {
 	const line = remoteRunLine(command, cwd, NONCE);
 	const out = Bun.spawnSync([shell, "-c", `exec 2>&1; ${line.slice(0, -1)}`], {
 		cwd: scratch,
-		env: { ...process.env, HOME: scratch },
+		env: { ...process.env, HOME: scratch, SHELL: shell },
 		stdin: "ignore",
 	});
 	const raw = out.stdout.toString();
@@ -45,13 +45,34 @@ describe("remoteRunLine", () => {
 		expect(line.slice(0, -1)).not.toMatch(/[\r\n]/);
 	});
 
-	test("its markers are spelled apart, so the shell's echo of the line never reads as one", () => {
+	test("its markers are not in the typed line, so the shell's echo of the line never reads as one", () => {
 		const line = remoteRunLine("true", null, NONCE);
 		expect(line).not.toContain(`B${NONCE}X`);
 		expect(line).not.toContain(`E${NONCE}X`);
-		expect(line).toContain(`"B${NONCE}""X"`);
-		expect(line).toContain(`"E${NONCE}""X"`);
+		expect(line).not.toContain(NONCE);
 	});
+
+	// #243: the line is read by the login shell itself, whatever language it is: only a pipeline of two simple commands.
+	test("holds no syntax that only some shells read the same way", () => {
+		const line = remoteRunLine("echo $HOME; (x)", "/a b", NONCE).slice(0, -1);
+		expect(line).toMatch(/^ printf %s '[A-Za-z0-9+/=]+' \| base64 -d \| \/bin\/sh$/);
+	});
+
+	for (const login of ["/usr/bin/fish", "/opt/homebrew/bin/fish", "/usr/local/bin/fish", "/opt/homebrew/bin/nu"]) {
+		if (!Bun.file(login).size) continue;
+		test(`typed into ${login}, as its login shell reads it: the command runs and ends`, () => {
+			const line = remoteRunLine("echo 'a b' \"$HOME\"; exit 4", scratch, NONCE);
+			const out = Bun.spawnSync([login, "-c", `${line.slice(0, -1)} 2>&1`], {
+				env: { ...process.env, HOME: scratch, SHELL: login },
+				stdin: "ignore",
+			});
+			expect(parseRemoteRun(out.stdout.toString(), NONCE)).toEqual({
+				done: true,
+				output: `a b ${scratch}\n`,
+				exitCode: 4,
+			});
+		});
+	}
 
 	for (const shell of SHELLS) {
 		describe(shell, () => {

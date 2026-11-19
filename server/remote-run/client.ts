@@ -169,6 +169,7 @@ export async function runRemote(o: RemoteRunOptions): Promise<RemoteRunResult> {
 function shell(o: RemoteRunOptions, origin: string, cookie: string, started: number): Promise<RemoteRunResult> {
 	const nonce = randomBytes(12).toString("hex");
 	const begin = `B${nonce}X`;
+	const endMark = `E${nonce}X`;
 	// Bun's WebSocket takes request headers (`Bun.WebSocketOptions`); the DOM's constructor type, also in scope, does not.
 	const options: Bun.WebSocketOptions = { headers: { cookie, origin } };
 	const ws = new WebSocket(`${origin.replace(/^http/, "ws")}/ws`, options as unknown as string[]);
@@ -176,6 +177,8 @@ function shell(o: RemoteRunOptions, origin: string, cookie: string, started: num
 	let ptyId: string | null = null;
 	let typed = false;
 	let raw = "";
+	let sawEnd = false;
+	let scanTail = "";
 	let trimmed = false;
 	let settled = false;
 	const timers: Timer[] = [];
@@ -254,13 +257,20 @@ function shell(o: RemoteRunOptions, origin: string, cookie: string, started: num
 		}
 		if (ptyId === null || msg.ptyId !== ptyId) return;
 		if (msg.t === "pty_data" && typeof msg.data === "string") {
+			// Only the new text (and the end marker's length before it, for a marker split between two messages) is searched
+			// for the end marker: the marker is printed by one `printf` and never has an escape inside, and the typed line holds
+			// none of it. `raw` is not touched for it (a search would flatten the whole string each time), and is read in full
+			// (`parseRemoteRun`) only once the marker has come, not after every message (#364).
+			const fresh = scanTail + msg.data;
+			scanTail = fresh.slice(-(endMark.length - 1));
 			raw += msg.data;
+			if (!sawEnd && fresh.includes(endMark)) sawEnd = true;
 			if (raw.length > RAW_MAX && raw.includes(begin)) {
 				raw = `${begin}\n${raw.slice(-RAW_KEEP)}`;
 				trimmed = true;
 			}
 			if (!typed) type();
-			else if (parseRemoteRun(raw, nonce).done) finish("done");
+			else if (sawEnd && parseRemoteRun(raw, nonce).done) finish("done");
 			return;
 		}
 		if (msg.t === "pty_exit") finish("ended");

@@ -603,6 +603,10 @@ bun run start          # http://127.0.0.1:7878
 
 **`remote_copy` 的时间和拒绝**（#365）。早于 1970 年的文件或文件夹时间在两端都按 1970 年带过去（`copy-client.ts`、`files.ts`、`tar.ts`）：tar 头里是无符号八进制数，接收的路由也只接受数字，所以过去一个旧文件就会让整个复制被拒绝。接收路由会和其他参数一起先读取并检查 `mode` 和 `mtime`，再去做 `checkTarget`、上层文件夹和隐藏的 `.ompw-copy-<hex>` 文件，所以被拒绝的请求不会在那里留下任何东西。
 
+**输入的那一行与 shell 无关**（#243）。`remote_run` 向另一台电脑的登录 shell 输入一行：` printf %s '<一段 /bin/sh 脚本的 base64>' | base64 -d | /bin/sh`，fish、nushell、bash、zsh 等读它的方式一致（以前的那行用了 `( )`、`$( )` 和 `$?`，fish 不认）。脚本自己挑命令运行所在的 shell（登录 shell 的 `$SHELL` 是 sh、bash、zsh、dash、ksh 或 ash 时用它，否则用 `/bin/sh`），打印开始标记，在不接收输入的子 shell 里执行 `cd -- <cwd> && <shell> -c 'eval …'`，再打印带退出码的结束标记。标记也在 base64 里，所以终端对这一行的回显里不会出现标记（`shared/remote-run.ts`；`tests/unit/remote-run.test.ts` 用 sh、bash、zsh、dash、ksh 跑这一行，装了 fish 或 nushell 时也跑它们）。
+
+**输出只读一次**（#364）。`remote_run` 对每条新的终端消息（连同它前面一个结束标记长度的文字）只找结束标记，整段文字只在标记到来或调用结束时读取并去掉转义一次；它最多保留终端文字的 4 MiB（超过就只留最后 1 MiB，结果标为已截断）。以前输出几 MB 的命令会让服务器的 CPU 满载好几分钟，并撞上时间限制（`tests/unit/remote-run-client.test.ts`）。
+
 **关了令牌的那台电脑**（#371）。`remote_run` 和 `remote_copy` 先对另一台的服务器做 `GET /` 来拿它的 `ompw_token` cookie；以 `OMP_WEBUI_AUTH=off` 运行的服务器既不发这个 cookie，也不需要它。这时返回 200 但没有 cookie，就当作“不需要令牌”：此后只发送 Access 的 cookie，由 `/api/diagnostics` 决定这个登录是否有效（需要 cookie 却没给的服务器在那里回答 401，调用照旧说“未登录”）。对方没有做出的拒绝，不会让这台 Mac 清掉已有的登录。
 
 **读不到的团队公钥**（#373）。Cloudflare Access 的公钥再也读不到时（Cloudflare 无法访问，或有人一直让读取失败），已缓存的公钥在上一次成功读取后最多再用一天；之后在下一次读取成功之前，不信任任何令牌。这样，一个已经撤下的公钥不会因为读取一直失败而被永远信任。每次失败的读取都会写进日志。

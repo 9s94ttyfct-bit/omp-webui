@@ -37,29 +37,40 @@ export const REMOTE_RUN_HISTORY_OFF = " unset HISTFILE; set +o history 2>/dev/nu
 /**
  * The line that runs the command, typed into the remote login shell after `REMOTE_RUN_HISTORY_OFF`, ending in a carriage
  * return (the Enter key). It starts with a space too (kept out of the history of a shell that ignores such lines, even where
- * that first line could not turn it off), and:
+ * that first line could not turn it off), and holds only what every login shell reads the same way, fish and nushell
+ * included (#243): `printf %s '<base64>' | base64 -d | /bin/sh`, with no `( )`, `$( )`, `$?` or `;` of its own. The script
+ * handed to `/bin/sh` is in base64, so nothing of it is typed (a line break typed would be Enter) and the terminal's echo of
+ * the line holds none of the markers. The script:
  *
+ *   - picks the shell the command runs in: the login shell's own (`$SHELL`) when it is sh, bash, zsh, dash, ksh or ash, else
+ *     `/bin/sh` (fish, nushell and the like read another language);
  *   - prints `B<nonce>X` on a line of its own: where the command's output begins;
  *   - in a subshell whose input is `/dev/null` (the command gets no input, and an `exit` in it ends the command, not the
  *     shell), enters `cwd` (`cd --`, so a folder that does not exist fails with the shell's own error and a non-zero status,
  *     and never runs the command in another one) and then runs the command, carried in base64 and handed to `eval` as it
- *     was given: any quote, `$`, heredoc, line break or non-ASCII text in it reaches the shell untouched, and nothing of it
- *     is typed (a line break typed would be Enter);
+ *     was given: any quote, `$`, heredoc, line break or non-ASCII text in it reaches the shell untouched;
  *   - prints `E<nonce>X <exit status>` on a line of its own, after a line break of its own (the command's output need not
  *     end with one: `parseRemoteRun` takes that one away again).
  *
- * The markers are written `"B<nonce>""X"` in the line: the terminal echoes what is typed as it was typed, so the echo never
- * holds `B<nonce>X`, which only the shell's `printf` prints. `cwd` must be one line (see `parseRemoteRunArgs`).
+ * The login shell still sets up the environment (`PATH` and the rest) that the shell of the command inherits; its aliases and
+ * functions are not carried over. `cwd` must be one line (see `parseRemoteRunArgs`).
  */
 export function remoteRunLine(command: string, cwd: string | null, nonce: string): string {
-	const begin = `"B${nonce}""X"`;
-	const end = `"E${nonce}""X"`;
-	// Base64 of the UTF-8 bytes, without Node's `Buffer`: the pages read this module too.
+	const script = [
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: shell code, not a template
+		"s=${SHELL:-/bin/sh}; case ${s##*/} in bash|zsh|ksh|dash|ash|sh) ;; *) s=/bin/sh;; esac",
+		`printf '%s\\n' B${nonce}X`,
+		`( ${cwd === null ? "" : `cd -- ${quoted(cwd)} && `}"$s" -c 'eval "$(printf %s "$1" | base64 -d)"' sh '${base64(command)}' ) </dev/null`,
+		`printf '\\n%s %s\\n' E${nonce}X "$?"`,
+	].join("\n");
+	return ` printf %s '${base64(script)}' | base64 -d | /bin/sh\r`;
+}
+
+/** Base64 of the UTF-8 bytes of `text`, without Node's `Buffer`: the pages read this module too. */
+function base64(text: string): string {
 	let bytes = "";
-	for (const byte of new TextEncoder().encode(command)) bytes += String.fromCharCode(byte);
-	const run = `eval "$(printf %s '${btoa(bytes)}' | base64 -d)"`;
-	const body = cwd === null ? run : `cd -- ${quoted(cwd)} && ${run}`;
-	return ` printf '%s\\n' ${begin}; ( ${body} ) </dev/null; printf '\\n%s %s\\n' ${end} "$?"\r`;
+	for (const byte of new TextEncoder().encode(text)) bytes += String.fromCharCode(byte);
+	return btoa(bytes);
 }
 
 /**

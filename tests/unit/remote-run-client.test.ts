@@ -329,6 +329,20 @@ describe("runRemote", () => {
 		expect(r.output.endsWith("a\nend\n")).toBe(true);
 	});
 
+	// #364: the terminal's text was read again, whole, after every message: a command printing megabytes timed out.
+	test("megabytes of output with an escape on every line end in seconds, not at the time limit", async () => {
+		const fake = fakeRemote();
+		const started = Date.now();
+		const r = await run(fake, {
+			command: "yes \"$(printf '\\033[1mline of output\\033[0m')\" | head -n 400000; echo end",
+			timeoutMs: 20_000,
+		});
+		expect(r).toMatchObject({ exitCode: 0, timedOut: false, cut: true });
+		expect(r.output.endsWith("line of output\nend\n")).toBe(true);
+		expect(r.output).not.toContain("\u001b");
+		expect(Date.now() - started).toBeLessThan(15_000);
+	}, 30_000);
+
 	test("a sign-in Access does not take (a redirect) is RemoteNotSignedIn, and no shell is opened", async () => {
 		const fake = fakeRemote({ jwt: jwtOf(Math.floor(Date.now() / 1000) + 60) });
 		await expect(run(fake, { command: "echo x" })).rejects.toBeInstanceOf(RemoteNotSignedIn);
