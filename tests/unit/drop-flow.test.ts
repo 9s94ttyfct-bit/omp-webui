@@ -668,6 +668,6 @@ describe("describe: the whole of a file is looked at, and its mentions are notic
 	test("a mention in a file that cannot be attached is nothing to tell", async () => {
 		Reflect.deleteProperty(globalThis, "window");
 		const entries = await describeEntries(request([new File(["@/etc/hosts"], "r.doc")]));
-		expect(entries[0]).toMatchObject({ mentions: false, info: { attach: "document" } });
+		expect(entries[0]).toMatchObject({ mentions: false, info: { attach: "oldOffice" } });
 	});
 });

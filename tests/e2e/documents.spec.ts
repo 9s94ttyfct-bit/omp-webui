@@ -222,7 +222,9 @@ test.describe("attached to a message", () => {
 			.setInputFiles({ name: "old.doc", mimeType: "application/msword", buffer: OLE });
 		await expect(page.getByTestId("drop-row")).toHaveAttribute("data-kind", "other");
 		await expect(page.getByTestId("drop-attach")).toBeDisabled();
-		await expect(page.getByTestId("drop-why")).toContainText("Only PDF and Word (.docx) documents can be attached");
+		await expect(page.getByTestId("drop-why")).toContainText(
+			"An old .doc, .xls or .ppt file is binary and omp cannot read it",
+		);
 		await page.keyboard.press("Escape");
 	});
 

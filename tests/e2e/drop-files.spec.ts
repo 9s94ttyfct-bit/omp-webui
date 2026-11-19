@@ -157,7 +157,9 @@ test("an old Word file cannot be attached: the choice says so, and Insert path i
 	await expect(choice(page)).toBeVisible();
 	await expect(page.getByTestId("drop-row")).toHaveAttribute("data-kind", "other");
 	await expect(page.getByTestId("drop-attach")).toBeDisabled();
-	await expect(page.getByTestId("drop-why")).toContainText("Only PDF and Word (.docx) documents can be attached");
+	await expect(page.getByTestId("drop-why")).toContainText(
+		"An old .doc, .xls or .ppt file is binary and omp cannot read it",
+	);
 	await expect(page.getByTestId("drop-path")).toBeFocused();
 	await page.keyboard.press("Escape");
 });
@@ -266,7 +268,7 @@ test("the choice is in Chinese", async ({ page }) => {
 	await expect(page.getByTestId("drop-remember").locator("xpath=..")).toContainText("记住对文本文件的选择");
 	await page.keyboard.press("Escape");
 	await dropOnComposer(page, [DOC]);
-	await expect(page.getByTestId("drop-why")).toContainText("只有 PDF 和 Word（.docx）文档可以作为附件");
+	await expect(page.getByTestId("drop-why")).toContainText("旧版 .doc、.xls 或 .ppt 是二进制文件");
 	await page.keyboard.press("Escape");
 });
 
