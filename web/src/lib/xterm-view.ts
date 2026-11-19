@@ -1,6 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
+import "../i18n/later.ts";
 import { t as translate } from "../i18n/index.ts";
 import { screenReaderMode } from "./terminal-keys.ts";
 import { terminalLinkHandler } from "./terminal-links.ts";

@@ -58,6 +58,8 @@ export type ScreenClientMessage =
 	 *  room in device pixels. `frames: false`: the console only (the Mac app's own view draws the page). */
 	| { t: "watch"; owner: string; targetId: string | null; panel: Size; frames?: boolean }
 	| { t: "unwatch" }
+	/** Answered at once with `pong`: how the tab tells a socket that is silent from one that is dead. */
+	| { t: "ping" }
 	/** A new page for the conversation (the person's "New page"). */
 	| { t: "open"; owner: string; url: string }
 	| { t: "close"; targetId: string }
@@ -122,7 +124,9 @@ export type ScreenServerMessage =
 	| { t: "downloads"; owner: string; downloads: BrowserDownload[]; local: boolean }
 	/** A finished download of `owner` this tab asked to show in Finder could not be: `gone` when its file is not there any
 	 *  more (moved or deleted), otherwise Finder did not show it. */
-	| { t: "download_reveal_failed"; owner: string; id: string; gone: boolean };
+	| { t: "download_reveal_failed"; owner: string; id: string; gone: boolean }
+	/** The answer to `ping`. */
+	| { t: "pong" };
 
 /** What precedes a frame's JPEG. `w`/`h`: the page's layout size in CSS pixels the frame shows. */
 export interface FrameHeader {

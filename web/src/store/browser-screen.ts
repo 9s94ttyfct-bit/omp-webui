@@ -9,6 +9,7 @@ import {
 } from "@shared/browser-protocol.ts";
 import { create } from "zustand";
 import { t } from "../i18n/index.ts";
+import { CONNECT_MS, PONG_MS, QUIET_MS } from "../lib/ws.ts";
 import { useApp } from "./app.ts";
 
 /**
@@ -21,6 +22,8 @@ import { useApp } from "./app.ts";
 const CONSOLE_KEPT = 200;
 /** How long after a closed socket it is opened again. */
 const RECONNECT_MS = 1000;
+/** How often the socket is looked at while a Browser tab is shown. */
+const LOOK_MS = 5000;
 /** No conversation's downloads (none told yet). */
 const NO_DOWNLOADS: ScreenStore["downloads"] = { owner: null, list: [], local: false };
 
@@ -58,6 +61,48 @@ let lastWatch: Extract<ScreenClientMessage, { t: "watch" }> | null = null;
 /** The pages drawn by the Mac app's own view, and their room (`fit`): said again, after the watch, on a new connection. */
 const fits = new Map<string, Extract<ScreenClientMessage, { t: "fit" }>>();
 const frameListeners = new Set<(frame: Frame) => void>();
+/** When something last came in on the socket (`Date.now()`), a frame included. */
+let heard = 0;
+/** When the socket was last asked something it must answer (0: not while it has been heard from since). */
+let asked = 0;
+let looking: ReturnType<typeof setInterval> | undefined;
+
+/**
+ * A socket can be dead without saying so (a path that drops what it carries, a laptop that woke up elsewhere): nothing
+ * then arrives and nothing closes it, and the tab keeps its last picture for good. So one that has not opened within
+ * `CONNECT_MS` is given up on, and one nothing has been heard on for `QUIET_MS` is asked something the server answers at
+ * once, and given up on when `PONG_MS` pass without anything coming in. It is then opened again, as if it had closed.
+ */
+function look(): void {
+	const socket = ws;
+	if (!socket) return;
+	const now = Date.now();
+	if (socket.readyState === WebSocket.CONNECTING) {
+		if (now - heard >= CONNECT_MS) ended(socket);
+		return;
+	}
+	if (socket.readyState !== WebSocket.OPEN || now - heard < QUIET_MS) return;
+	if (asked === 0) {
+		asked = now;
+		socket.send(JSON.stringify({ t: "ping" } satisfies ScreenClientMessage));
+	} else if (now - asked >= PONG_MS) ended(socket);
+}
+
+/** The socket is over, closed or given up on: the list the server sends on the next connection is the first one again. */
+function ended(socket: WebSocket): void {
+	if (ws !== socket) return;
+	ws = null;
+	socket.onclose = null;
+	socket.onmessage = null;
+	socket.close();
+	// What changed meanwhile is not news.
+	useScreen.setState({ downloads: NO_DOWNLOADS });
+	if (holders > 0) retry = setTimeout(open, RECONNECT_MS);
+}
+
+function onVisible(): void {
+	if (document.visibilityState === "visible") look();
+}
 
 function open(): void {
 	clearTimeout(retry);
@@ -65,7 +110,10 @@ function open(): void {
 	const socket = new WebSocket(`${proto}://${location.host}/ws/browser`);
 	socket.binaryType = "arraybuffer";
 	ws = socket;
+	heard = Date.now();
+	asked = 0;
 	socket.onopen = () => {
+		heard = Date.now();
 		if (lastWatch) {
 			// A new connection is told the page's console from the start: the list starts over.
 			const shown = lastWatch.targetId;
@@ -75,6 +123,8 @@ function open(): void {
 		for (const fit of fits.values()) socket.send(JSON.stringify(fit));
 	};
 	socket.onmessage = (e) => {
+		heard = Date.now();
+		asked = 0;
 		if (e.data instanceof ArrayBuffer) {
 			const frame = decodeFrame(new Uint8Array(e.data));
 			for (const fn of frameListeners) fn(frame);
@@ -88,13 +138,7 @@ function open(): void {
 		}
 		received(msg);
 	};
-	socket.onclose = () => {
-		if (ws !== socket) return;
-		ws = null;
-		// The list the server sends on the next connection is the first one again: what changed meanwhile is not news.
-		useScreen.setState({ downloads: NO_DOWNLOADS });
-		if (holders > 0) retry = setTimeout(open, RECONNECT_MS);
-	};
+	socket.onclose = () => ended(socket);
 }
 
 function received(msg: ScreenServerMessage): void {
@@ -114,6 +158,9 @@ function received(msg: ScreenServerMessage): void {
 			return;
 		case "available":
 			useScreen.setState({ unavailable: null });
+			return;
+		case "pong":
+			// Hearing it is the answer: `onmessage` has noted it.
 			return;
 		case "downloads":
 			if (msg.owner !== lastWatch?.owner) return;
@@ -136,6 +183,10 @@ function received(msg: ScreenServerMessage): void {
 /** A Browser tab is shown: the socket is open while one is. Returns the way to let go. */
 export function holdScreen(): () => void {
 	holders++;
+	if (holders === 1) {
+		looking = setInterval(look, LOOK_MS);
+		document.addEventListener("visibilitychange", onVisible);
+	}
 	if (!ws) open();
 	let held = true;
 	return () => {
@@ -143,6 +194,8 @@ export function holdScreen(): () => void {
 		held = false;
 		holders--;
 		if (holders > 0) return;
+		clearInterval(looking);
+		document.removeEventListener("visibilitychange", onVisible);
 		clearTimeout(retry);
 		lastWatch = null;
 		fits.clear();

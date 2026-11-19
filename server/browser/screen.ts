@@ -502,6 +502,11 @@ export class ScreenClient {
 			return;
 		}
 		if (typeof msg !== "object" || msg === null) return;
+		// Answered at once, not behind the tab's other messages: a slow command must not read as a dead socket.
+		if (msg.t === "ping") {
+			this.socket.sendText(JSON.stringify({ t: "pong" } satisfies ScreenServerMessage));
+			return;
+		}
 		this.enqueue(msg);
 	}
 

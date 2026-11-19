@@ -263,6 +263,7 @@ omp-webui 是 [omp](https://omp.sh) 编程代理的网页界面，也是一个 m
   - **轻量模式（本地服务器）下的项目设置**（#286）：omp 会把文件夹的 `.omp/config.yml` 叠加在代理目录的设置之上，所以一个自己写了 `enabledModels` 和 `modelRoles` 的仓库会让轻量进程在云端模型上启动。现在轻量的 `config.yml` 还会用 `--config` 传入，omp 把这种覆盖层叠加在项目设置之上：模型角色、`enabledModels`、停用的提供方、技能和 `mcp.enableProjectConfig: false` 在每个文件夹里都有效。
   - **浏览器说明里打开第二个页面的写法**（#302）：omp 18.19 把浏览器的 `app` 选项改成了字符串，`target` 移到了顶层，所以说明里的 `browser.open({ name, app: { target } })` 从那以后在每个 omp 上都会失败。现在说明写的是 `browser.open({ name, target: "…" })`（并给出 18.19 之前的旧写法），一个契约测试会在真实的 omp 里对内置浏览器运行这个写法。
   - **omp 的 XDG 布局与 `PI_CONFIG_DIR`**（#303）：服务器按 omp 的方式找它的文件夹（`server/omp/dirs.ts`）：配置根目录是 `~/<PI_CONFIG_DIR，否则 .omp>`；代理目录是默认目录时，已存在的 `$XDG_DATA_HOME/omp` 存放对话，已存在的 `$XDG_STATE_HOME/omp` 存放记忆（`omp config init-xdg`）。侧边栏列出、“记忆”页读取的都是 omp 实际写入的位置；用 `--profile` 开始的对话也会在 `PI_CONFIG_DIR` 和 `$XDG_DATA_HOME/omp/profiles/<名称>` 下查找。
+  - **浏览器标签页的套接字**（#262）：和主套接字一样，10 秒内没有连上就放弃它；20 秒没有收到任何东西时先问它一句（`ping`，服务器立刻回答 `pong`，不排在标签页的命令队列后面），10 秒内没有回答也放弃它；之后重新连接，并告诉服务器标签页在看什么。标签页重新可见时会立刻检查，所以睡眠过的笔记本不必等待就能发现套接字已经失效。以前，一个没有关闭就失效的套接字会让标签页一直停在最后一张图，或“正在等待页面……”，直到把标签页关了再打开。
 
 ## 安装
 

@@ -472,3 +472,41 @@ test("with no browser installed the tab says so, and offers Install only to a pa
 	await expect(page.getByTestId("browser-install")).toHaveCount(0);
 	await expect(page.getByTestId("browser-open-settings")).toBeVisible();
 });
+
+test("a Browser tab socket that goes dead without closing is asked, given up on, and opened again (#262)", async ({
+	page,
+}) => {
+	await page.clock.install();
+	let opened = 0;
+	let pings = 0;
+	/** The socket (by its number) that swallows what either side says, without closing anything. */
+	let dead = 0;
+	await page.routeWebSocket(/\/ws\/browser$/, (ws) => {
+		const mine = ++opened;
+		const server = ws.connectToServer();
+		ws.onMessage((raw) => {
+			if (mine === dead) {
+				if (JSON.parse(String(raw)).t === "ping") pings++;
+				return;
+			}
+			server.send(raw);
+		});
+		server.onMessage((raw) => {
+			if (mine !== dead) ws.send(raw);
+		});
+	});
+	await openTab(page, TITLE_A, bare);
+	await expect(page.getByTestId("browser-not-installed")).toBeVisible({ timeout: 30_000 });
+	expect(opened).toBe(1);
+	dead = 1;
+	// Quiet for QUIET_MS: it is asked something, which nothing answers; PONG_MS later it is given up on and made again.
+	await page.clock.runFor(26_000);
+	await expect.poll(() => pings).toBeGreaterThan(0);
+	expect(opened).toBe(1);
+	await page.clock.runFor(12_000);
+	await expect.poll(() => opened).toBe(2);
+	// The new connection is told what the tab watches: it answers as the first did.
+	await page.clock.runFor(1_000);
+	await expect(page.getByTestId("browser-not-installed")).toBeVisible();
+	expect(opened).toBe(2);
+});
