@@ -1003,10 +1003,13 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 					await socket.rpc(id, { type: "prompt", message: text, images: imgs, streamingBehavior: "followUp" });
 				else {
 					await alignLeaf(id);
+					// To follow up: omp starts a turn with it while it is idle, and queues it behind a turn another page started a
+					// moment before, which a prompt that says nothing of queueing is refused for (#394).
 					const r = await socket.rpc<{ agentInvoked?: boolean } | undefined>(id, {
 						type: "prompt",
 						message: text,
 						images: imgs,
+						streamingBehavior: "followUp",
 					});
 					if (r && r.agentInvoked === false && text.startsWith("/")) void refreshEntries(id);
 				}
