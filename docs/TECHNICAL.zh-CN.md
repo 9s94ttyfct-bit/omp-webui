@@ -453,6 +453,8 @@ bun run start          # http://127.0.0.1:7878
 
 **其他工具的设置**（#253）和 `git config --global` 一样算 `protected`：`npm config set`/`delete`/`edit` 和 `npm set`（`script-shell` 会在每次 `npm run` 时运行，`registry` 会把以后的每次安装都转走）、`pnpm config set`、`yarn config set`、`pip config set`/`unset`/`edit`、`gh config set`（`editor` 是 gh 会启动的程序）。项目自己的设置（`npm config set … --location=project`、`pip config --site`）和读取（`get`、`list`）不算。
 
+**启动文件的“双胞胎”**（#265）也和 `~/.zshrc`、`~/.gitconfig`、`~/Library/LaunchAgents` 一样算 `protected`：git 的 XDG 配置 `~/.config/git/config`、fish 的 `~/.config/fish`（`config.fish`、`conf.d/`、`functions/`）、Linux 的 `~/.config/autostart` 和 `~/.config/systemd/user`，以及在 `PATH` 上排在系统目录前面的程序文件夹（`~/.local/bin`、`~/bin`、`/usr/local/bin`、`/usr/local/sbin`、`/opt/homebrew/bin`、`/opt/homebrew/sbin`）——放进去的 `git` 或 `python3` 会在以后的每个 shell 里顶替真正的那个。所以即使“写入项目以外的位置”设为放行，`cp x ~/.local/bin/git` 也会询问；`cat ~/.config/fish/config.fish`、`ls /usr/local/bin` 不会。
+
 **结束所有进程**（#259）算 `system`：pid 为 `-1` 的 `kill`（`kill -9 -1`、`kill -KILL -1`、`kill -s KILL -1`、`kill -- -1`），以及带 `-u`/`-U` 的 `pkill`/`killall`，它们会结束这个人的每个应用，没保存的工作、本服务器和对话本身都在内。`kill -1 <pid>`（给一个进程发挂断信号）、`kill <pid>` 和 `killall Finder` 不算。
 
 **`discard` 还包括**（#258、#316、#318）：用底层命令删除引用（`git update-ref -d`、`git update-ref --stdin`）、`git tag -d`/`--delete`、`git symbolic-ref -d`；删除、清空或挪走仓库自己的存储，不管它在哪（`rm -rf .git`、`rm -rf .git/objects`、`.git/refs`、`.git/packed-refs`、`.git/index`、`.git/HEAD`、`.git/logs`、`mv .git /tmp/x`、`: > .git/index`、`find . -name .git -exec rm -rf {} +`），这会一次丢掉所有没推送的提交、分支和 stash；以及 `git worktree remove -f`/`--force`，它会连同改动和未跟踪的文件删掉另一份检出，它的文件夹也按删除来读（在项目之外算 `delete_outside`）。

@@ -138,11 +138,11 @@ describe("shell commands that are high-risk", () => {
 			"echo x >> /Users/me/out.txt",
 			"echo x &> /Users/me/out.txt",
 			"cat a | tee /Users/me/out.txt",
-			"cp build.js /Users/me/bin/build.js",
+			"cp build.js /Users/me/tools/build.js",
 			"mv out.txt /Users/me/",
-			"cp -t /usr/local/bin tool",
+			"cp -t /opt/tools tool",
 			"ln -s /work/proj/x /Users/me/x",
-			"install -m 755 tool /usr/local/bin/tool",
+			"install -m 755 tool /opt/tools/tool",
 			"touch /Users/me/x",
 			"mkdir -p /Users/me/stuff",
 			"truncate -s 0 /Users/me/log",
@@ -2551,4 +2551,41 @@ describe("brew services drives launchd, and start/restart write a LaunchAgent (#
 			expect(shell(command)).toEqual([]);
 		},
 	);
+});
+
+describe("the twins of the start-up files and LaunchAgents are protected too (#265)", () => {
+	test.each([
+		"echo x >> ~/.config/fish/config.fish",
+		"echo x > ~/.config/fish/conf.d/x.fish",
+		"echo x > ~/.config/fish/functions/git.fish",
+		"echo x >> ~/.config/git/config",
+		"cp evil ~/.local/bin/git",
+		"ln -s /work/proj/tool ~/bin/git",
+		"cp evil /opt/homebrew/bin/git",
+		"install -m 755 evil /usr/local/bin/python3",
+		"echo x > ~/.config/autostart/x.desktop",
+		"echo x > ~/.config/systemd/user/x.service",
+		"rm ~/.local/bin/tool",
+	])("%s", (command) => {
+		expect(shell(command)).toContain("protected");
+	});
+
+	test("the file tools and isProtectedPath say the same", () => {
+		expect(call("write", { path: "/Users/me/.config/git/config", content: "x" })?.kinds).toEqual(["protected"]);
+		expect(call("write", { path: "/Users/me/.config/systemd/user/x.service", content: "x" })?.kinds).toEqual([
+			"protected",
+		]);
+		expect(isProtectedPath("/Users/me/.config/fish/config.fish", { home: "/Users/me", protect: [] })).toBe(true);
+		expect(isProtectedPath("/opt/homebrew/bin/git", { home: "/Users/me", protect: [] })).toBe(true);
+		expect(isProtectedPath("/Users/me/.config/other/x", { home: "/Users/me", protect: [] })).toBe(false);
+	});
+
+	test.each([
+		["cat ~/.config/fish/config.fish", []],
+		["ls /usr/local/bin ~/.local/bin", []],
+		["echo x > ~/.config/other/x", ["write_outside"]],
+		["cp x ~/binaries/x", ["write_outside"]],
+	])("%s is no more than it was", (command, kinds) => {
+		expect(shell(command)).toEqual(kinds as RiskKind[]);
+	});
 });

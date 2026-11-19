@@ -138,6 +138,21 @@ const LAUNCH_DIR = /\/Library\/Launch(Agents|Daemons)(\/|$)/;
 const LAUNCH_DIR_CASELESS = new RegExp(LAUNCH_DIR.source, "i");
 /** Windows' Startup folders (a user's and every user's): what is put there runs at each login. Compared in the lowercase view. */
 const STARTUP_DIR = /\/(?:appdata\/roaming|programdata)\/microsoft\/windows\/start menu\/programs\/startup(\/|$)/;
+/**
+ * Places under the home folder that make something run later as the person, the twins of the start-up files and the
+ * LaunchAgents (#265): git's XDG config, fish's start-up folder, Linux's autostart entries and user services, and the
+ * program folders put before the system's on `PATH` (a `git` put there replaces the real one in every later shell).
+ */
+const PROTECTED_HOME_PLACES = [
+	".config/git/config",
+	".config/fish",
+	".config/autostart",
+	".config/systemd/user",
+	".local/bin",
+	"bin",
+];
+/** Program folders before the system's on `PATH` that the person can write (Homebrew's, `/usr/local`'s, #265). */
+const PATH_DIRS = ["/usr/local/bin", "/usr/local/sbin", "/opt/homebrew/bin", "/opt/homebrew/sbin"];
 
 /** Programs that only read what they are given: naming a protected place to one of them is not a change. */
 const READING_PROGRAMS = table(
@@ -786,6 +801,8 @@ function isProtected(abs: string, ctx: RiskContext): boolean {
 	)
 		return true;
 	const home = folded(normalize(ctx.home), ctx);
+	if (PROTECTED_HOME_PLACES.some((p) => within(path, `${home}/${folded(p, ctx)}`))) return true;
+	if (!ctx.windows && PATH_DIRS.some((d) => within(path, folded(d, ctx)))) return true;
 	return parentOf(path) === home && listed(PROTECTED_HOME_FILES, path.slice(path.lastIndexOf("/") + 1));
 }
 
