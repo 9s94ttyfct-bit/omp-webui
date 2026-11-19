@@ -143,3 +143,31 @@ test("the folder under the conversation's title is the way to another one too", 
 	expect(readdirSync(from)).toEqual(["keep.txt"]);
 	expect(readdirSync(to)).toEqual(["keep.txt"]);
 });
+
+test("a draft typed in a conversation that is not on screen when the sidebar moves it is there when it is opened again (#240)", async ({
+	page,
+}) => {
+	const from = folder("from-draft");
+	const to = folder("to-draft");
+	const title = writeSession(4, from);
+	const other = writeSession(5, folder("elsewhere"));
+	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
+	await page.goto("/");
+	await openSidebar(page);
+	await expect(sessionRow(page, title)).toHaveCount(1, { timeout: 15_000 });
+	await sessionRow(page, title).click();
+	await expect(page.getByTestId("msg-assistant").filter({ hasText: "Reply 4." })).toBeVisible();
+	await page.getByTestId("composer").fill("a draft I have not sent");
+	// Another conversation is on screen while this one is moved.
+	await sessionRow(page, other).click();
+	await expect(page.getByTestId("msg-assistant").filter({ hasText: "Reply 5." })).toBeVisible();
+	await sessionRow(page, title).hover();
+	await page.getByRole("button", { name: `Actions for ${title}` }).click();
+	await page.getByTestId("session-change-folder").click();
+	await pick(page, to);
+	await expect(page.getByTestId("toast").filter({ hasText: "now works in" })).toBeVisible({ timeout: 30_000 });
+
+	await sessionRow(page, title).click();
+	await expect(statusCwd(page)).toContainText("to-draft");
+	await expect(page.getByTestId("composer")).toHaveValue("a draft I have not sent");
+});

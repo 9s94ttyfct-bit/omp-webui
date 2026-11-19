@@ -97,6 +97,20 @@ export function saveCommandNotes(file: string, notes: CommandNote[], storage: No
 	}
 }
 
+/** The conversation kept under `from` is now `to` (omp's `/move` gave it a new file): its notes follow. */
+export function moveCommandNotes(from: string, to: string, storage: NoteStorage = localStorage): void {
+	if (from === to) return;
+	const rows = read(storage);
+	const mine = rows.find(([f]) => f === from);
+	if (!mine) return;
+	const kept = [...rows.filter(([f]) => f !== from && f !== to), [to, mine[1]] as [string, Saved[]]];
+	try {
+		storage.setItem(KEY, JSON.stringify(kept));
+	} catch {
+		// Full or refused: see `saveCommandNotes`.
+	}
+}
+
 /**
  * Remember the notes of every file in a list the page holds (see `saveCommandNotes`): those of the list, and those of
  * the list it replaces, which may have none left.

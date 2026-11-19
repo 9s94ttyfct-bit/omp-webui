@@ -113,6 +113,46 @@ test.skipIf(!bash)(
 	},
 );
 
+const zsh = Bun.which("zsh");
+
+test.skipIf(!zsh)(
+	"an isolated folder's zsh keeps the person's history file, not one in the wrapper folder (#231)",
+	async () => {
+		const home = realpathSync(mkdtempSync(join(tmpdir(), "ompw-zsh-home-")));
+		try {
+			const { env } = keepPathInFront(zsh as string, "/p");
+			const wrap = env.OMPW_WRAP_ZDOTDIR as string;
+			const historyIn = async (userRc: string | null): Promise<string> => {
+				if (userRc !== null) writeFileSync(join(home, ".zshrc"), userRc);
+				// macOS's /etc/zshrc sets HISTFILE from ZDOTDIR, which is the wrapper folder when it runs: the same value, as the shell's
+				// environment, stands in for it so that the test does not depend on the system's file.
+				const proc = Bun.spawn([zsh as string, "-i", "-c", 'print -r -- "H=$HISTFILE"'], {
+					cwd: home,
+					env: {
+						HOME: home,
+						PATH: "/usr/bin:/bin",
+						...env,
+						OMPW_USER_ZDOTDIR: home,
+						HISTFILE: join(wrap, ".zsh_history"),
+					},
+					stdout: "pipe",
+					stderr: "pipe",
+				});
+				const out = await new Response(proc.stdout).text();
+				await proc.exited;
+				return out;
+			};
+			expect(await historyIn("")).toContain(`H=${join(home, ".zsh_history")}`);
+			// What the person's own .zshrc sets wins, as it does without the wrapper.
+			expect(await historyIn(`HISTFILE="${join(home, "mine_history")}"\n`)).toContain(
+				`H=${join(home, "mine_history")}`,
+			);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	},
+);
+
 test("a shell takes no arguments", () => {
 	const ptys = new PtyManager("/bin/echo");
 	expect(() => ptys.open(watched().owner, ["-c", "id"], undefined, 80, 24, { shell: true })).toThrow("no arguments");

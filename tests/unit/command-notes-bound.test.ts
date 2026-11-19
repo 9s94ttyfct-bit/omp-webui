@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { loadCommandNotes, MAX_TOTAL, type NoteStorage, saveCommandNotes } from "../../web/src/lib/command-notes.ts";
+import {
+	loadCommandNotes,
+	MAX_TOTAL,
+	moveCommandNotes,
+	type NoteStorage,
+	saveCommandNotes,
+} from "../../web/src/lib/command-notes.ts";
 import type { CommandNote } from "../../web/src/lib/notices.ts";
 
 /**
@@ -43,4 +49,20 @@ test("one conversation's notes alone over the total lose their oldest, not the n
 	expect(kept.length).toBeGreaterThan(0);
 	expect(kept.length).toBeLessThan(30);
 	expect(kept.at(-1)?.text.startsWith("/s/a.jsonl#29 ")).toBe(true);
+});
+
+test("the notes of a conversation omp moved to a new file are found under the new file, and no longer under the old (#240)", () => {
+	const s = storage();
+	saveCommandNotes("/s/old.jsonl", notes("/s/old.jsonl", 2, 5), s);
+	saveCommandNotes("/s/other.jsonl", notes("/s/other.jsonl", 1, 5), s);
+	moveCommandNotes("/s/old.jsonl", "/s/new.jsonl", s);
+	expect(loadCommandNotes("/s/new.jsonl", s).map((n) => n.text)).toEqual([
+		"/s/old.jsonl#0 xxxxx",
+		"/s/old.jsonl#1 xxxxx",
+	]);
+	expect(loadCommandNotes("/s/old.jsonl", s)).toEqual([]);
+	expect(loadCommandNotes("/s/other.jsonl", s)).toHaveLength(1);
+	// Nothing kept for the old file: nothing to move, nothing made up.
+	moveCommandNotes("/s/none.jsonl", "/s/none2.jsonl", s);
+	expect(loadCommandNotes("/s/none2.jsonl", s)).toEqual([]);
 });

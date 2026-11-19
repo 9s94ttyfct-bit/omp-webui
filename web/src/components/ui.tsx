@@ -2,7 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import clsx from "clsx";
 import { Loader2, X } from "lucide-react";
-import { type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode, useRef } from "react";
+import { type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode, type Ref, useRef } from "react";
 import { useT } from "../i18n/index.ts";
 
 export const cx = clsx;
@@ -22,7 +22,12 @@ export function Button({
 	className,
 	children,
 	...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: "sm" | "md" }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+	variant?: Variant;
+	size?: "sm" | "md";
+	/** React 19 passes `ref` to a function component as a prop; it goes to the button. */
+	ref?: Ref<HTMLButtonElement>;
+}) {
 	return (
 		<button
 			type="button"

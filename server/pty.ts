@@ -23,8 +23,16 @@ function wrapperZdotdir(): string {
 			`[[ -r "$ZDOTDIR/${name}" ]] && source "$ZDOTDIR/${name}"`,
 			'OMPW_USER_ZDOTDIR="$ZDOTDIR"',
 		].join("\n");
-	for (const name of [".zshenv", ".zprofile", ".zshrc"])
-		writeFileSync(join(dir, name), `${run(name)}\nZDOTDIR="$OMPW_WRAP_ZDOTDIR"\n`);
+	for (const name of [".zshenv", ".zprofile", ".zshrc"]) {
+		// macOS's /etc/zshrc, read before the wrapper's .zshrc while ZDOTDIR is the wrapper folder, sets HISTFILE inside it: the
+		// person's history would be missing in the tab and what they type lost with the folder. The person's own .zshrc may still
+		// set it, as it does without the wrapper.
+		const history =
+			name === ".zshrc"
+				? '[[ "$HISTFILE" == "$OMPW_WRAP_ZDOTDIR/.zsh_history" ]] && HISTFILE="$OMPW_USER_ZDOTDIR/.zsh_history"\n'
+				: "";
+		writeFileSync(join(dir, name), `${history}${run(name)}\nZDOTDIR="$OMPW_WRAP_ZDOTDIR"\n`);
+	}
 	// The last file of a login shell: the person's, then the isolated folders in front again, and the person's ZDOTDIR kept.
 	writeFileSync(
 		join(dir, ".zlogin"),

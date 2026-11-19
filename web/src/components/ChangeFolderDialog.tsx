@@ -1,6 +1,8 @@
 import { useT } from "../i18n/index.ts";
 import { sessionActions } from "../lib/api.ts";
 import { type ChangeFolderAsk, useChangeFolder } from "../lib/change-folder.ts";
+import { moveCommandNotes } from "../lib/command-notes.ts";
+import { moveDraft } from "../lib/drafts.ts";
 import { shortPath } from "../lib/format.ts";
 import { useApp } from "../store/app.ts";
 import { DirBrowser } from "./DirBrowser.tsx";
@@ -37,6 +39,11 @@ async function move(ask: ChangeFolderAsk, folder: string, home: string | undefin
 	const st = useApp.getState();
 	try {
 		const moved = await sessionActions.move({ file: ask.file, liveId: ask.liveId, folder });
+		// What was typed or printed in the conversation is kept by its file, whether or not it is on screen (#240).
+		if (ask.file !== null && moved.file && moved.file !== ask.file) {
+			moveDraft(ask.file, moved.file);
+			moveCommandNotes(ask.file, moved.file);
+		}
 		const view = useApp.getState().view;
 		if (view.kind === "chat" && ask.file !== null && view.file === ask.file && moved.file && moved.file !== ask.file)
 			st.setView({ kind: "chat", file: moved.file, liveId: view.liveId });

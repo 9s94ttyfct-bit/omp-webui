@@ -294,6 +294,8 @@ Every image is generated from the real UI by `bun run screenshots`, in the light
   - **Input-method Enter** (#280): the Enter that confirms a composition (WebKit sends it as `keyCode` 229 after `compositionend`) no longer opens a Settings search result, a file found by the Files filter or saves a guidance name that was being typed (`useImeGuard`).
   - **Drafts that no longer fit** (#395, #399): when the drafts' mirror in session storage cannot be written as a whole, the drafts that are not huge are written without their pictures, and if nothing fits the old mirror is removed, so a reload does not bring back a message that was sent since; the macOS app has the page write the mirror (`window.ompwFlushDrafts`) before it reads it on closing the window, so what was typed in the last 400 ms is carried over.
   - **Keyboard on inline questions** (#266): the questions that replace a button (This session › *Restart*, the isolation's *Restart now*, Semantic search › *Turn off*) take the keyboard on *Cancel*, the safe answer, and give it back to the button when they close (`useConfirmFocus`); Semantic search's question is named for screen readers.
+  - **Change folder keeps what was typed** (#240): the draft and the printed command output of a conversation follow it to its new session file when the sidebar's *Change folder…* moves it, on screen or not (`moveDraft`, `moveCommandNotes`).
+  - **zsh history in isolated folders** (#231): an isolated folder's Terminal tab keeps the person's `~/.zsh_history` (or `$ZDOTDIR/.zsh_history`): macOS's `/etc/zshrc` sets `HISTFILE` inside the wrapper's temporary folder, and the wrapper's `.zshrc` puts it back before the person's own `.zshrc` runs (which can still set its own).
 
 ## Install
 
