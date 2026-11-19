@@ -200,3 +200,29 @@ describe("Remove-Item and Clear-Content with what comes down the pipe (#274)", (
 		expect(shell(command)).toEqual([]);
 	});
 });
+
+describe("a script block is an argument, and $_ in it an expression, not a command put together (#419)", () => {
+	test.each([
+		"powershell -Command 'gci build | ? { $_.Length -gt 0 } | Remove-Item'",
+		"powershell -Command 'gci build | Where-Object { $PSItem.Name -like \"*.log\" } | Remove-Item -Force'",
+		"powershell -Command 'gci build -Recurse | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-7) } | Remove-Item'",
+		"powershell -Command 'gci build | Sort-Object { $_.Length } | Select-Object -First 3'",
+		"powershell -Command 'if ($x) { Get-ChildItem } else { Get-Item . }'",
+	])("%s", (command) => {
+		expect(shell(command)).toEqual([]);
+	});
+
+	test.each<[string, RiskKind]>([
+		["powershell -Command 'gci C:\\Users\\Me\\Documents | ? { $_.Length -gt 0 } | Remove-Item'", "mass_delete"],
+		["powershell -Command 'gci C:\\Users\\Me\\Documents | ? { $_.Length -gt 0 } | Remove-Item'", "delete_outside"],
+		["powershell -Command 'gci build | % { $_.Delete() }'", "dynamic_command"],
+		["powershell -Command 'gci build | ForEach-Object { & $_.FullName }'", "dynamic_command"],
+		["powershell -Command '$r = Remove-Item C:\\Users\\Me\\Documents -Recurse'", "dynamic_command"],
+		[
+			"powershell -Command 'Invoke-Command -ScriptBlock { Remove-Item -Recurse -Force C:\\Users\\Me\\Documents }'",
+			"delete_outside",
+		],
+	])("%s is %s", (command, kind) => {
+		expect(shell(command)).toContain(kind);
+	});
+});

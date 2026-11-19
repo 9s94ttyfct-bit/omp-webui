@@ -472,6 +472,8 @@ bun run start          # http://127.0.0.1:7878
 
 **PowerShell 用管道交给 `Remove-Item`**（#274）。不带路径的 `Remove-Item`（`ri`、`rm`、`del`…）删除管道送来的东西：前面的列举在它的文件夹下找到的一切（`Get-ChildItem <folder>`、`gci`、`ls`、`dir`、`Get-Item`，中间隔着 `Where-Object`、`Sort-Object`、`Select-Object` 也看得穿），和 `find <folder> -delete` 一样，所以 `gci $HOME\Documents | Remove-Item -Recurse` 算 `delete_outside` 和 `mass_delete`；前面是别的东西时（`Get-Content list.txt | Remove-Item`）读不出来，和 `xargs rm` 一样会询问。不带路径的 `Clear-Content`/`Clear-Item` 同样清空管道送来的东西。
 
+**PowerShell 的脚本块和表达式**（#419）。交给命令的脚本块（`? { $_.Length -gt 0 }`、`% { … }`、`-ScriptBlock { … }`）是它的一个参数：脚本块里的脚本照常读，管道在它后面接着走，所以 `gci build | ? { $_.Length -gt 0 } | Remove-Item` 是在项目里删除，不会询问，换成 `gci $HOME\Documents` 就是大批量删除。以变量开头的语句是表达式，不是运行时才拼出来的命令（`$_.Length -gt 0`、`if ($x) { … }`）；调用方法的（`$_.Delete()`）、赋值的（`$r = …`）或用 `&` 调用的（`& $tool`）仍算 `dynamic_command`。
+
 **更多写到文件夹之外的情况**（#264），算 `write_outside`：`bsdtar` 按 `tar` 读（`-C`）；`7z`/`7za`/`7zz` 的 `-o<dir>`，以及 `a`/`u`/`d`/`rn` 改动的归档；`cpio -D`/`--directory`；在文件夹之外的仓库里 `git apply`/`git am`（`git -C ~/other apply p.diff`；`--check`/`--stat` 不算）；`sqlite3` 对文件夹之外的数据库执行会写入的语句（`INSERT`、`UPDATE`、`DELETE`、`DROP`、`CREATE`、`ALTER`、`.restore`、`.import`…，写在参数、`-cmd` 或 here-document 里），或输入来自别处（`< s.sql`；带 `-readonly` 不算）；`plutil -replace`/`-insert`/`-remove`/`-convert`/`-create`（以及 `-o`）；`xattr -w`/`-d`/`-c`。
 
 **会删掉所收内容的归档和压缩程序**（#227）算删除，和 `rsync --remove-source-files` 一样：`tar --remove-files` 的来源（相对 `-C` 的文件夹来读）、`zip -m`/`-rm`/`--move`、`7z a … -sdel`，以及 `gzip`、`gunzip`、`pigz`、`bzip2`、`xz`、`lzma`、`compress`（和它们的 `un…`）用副本替换掉的每个文件，带 `-r` 时是文件夹下的每个文件；`zstd` 只有带 `--rm` 才算。`-k`/`--keep`、`-c`、`-t` 和 `-l` 会保留文件。在项目之外算 `delete_outside`，对象是文件夹时还算 `mass_delete`。

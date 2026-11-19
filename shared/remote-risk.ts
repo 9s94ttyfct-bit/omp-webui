@@ -953,6 +953,10 @@ interface Simple {
 	body: string | null;
 	/** The word of a here-string (`<<< "$(curl …)"`), whose substitutions run before the command does (#417). */
 	here?: Word;
+	/** PowerShell: a statement that starts with a variable, not after `&` or `.` (`$_.Length -gt 0`): an expression (#419). */
+	expression?: true;
+	/** PowerShell: that expression calls a method (`$_.Delete()`), which may do anything. */
+	calls?: true;
 }
 
 const emptyWord = (): Word => ({ text: "", dynamic: false, subs: [] });
@@ -1969,6 +1973,10 @@ const GIT_STORE = /(?:^|\/)\.git(?:\/(?:objects|refs|packed-refs|index|HEAD|logs
 
 // ---------------------------------------------------------------------------------------------------- Windows' shells
 
+/** PowerShell's statements whose block follows a word of theirs (`else {`, `try {`, `function f {`): no argument of a command. */
+const PS_BLOCK_KEYWORD =
+	/^(?:else|do|try|catch|finally|trap|function|filter|workflow|configuration|class|enum|begin|process|end|clean|dynamicparam|data|parallel|sequence|inlinescript)$/i;
+
 /**
  * A PowerShell (`ps`) or `cmd.exe` (`cmd`) script apart into its commands, each a list of words with its redirections, the
  * way `parseScript` takes a POSIX one apart: quotes (`'…'`, `"…"`, PowerShell's `` ` `` and cmd's `^` escapes), variables
@@ -2129,6 +2137,15 @@ function parseWindowsScript(src: string, lang: "ps" | "cmd", vars: Readonly<Reco
 			}
 			i = j + 1;
 		} else if (ps && c === "$") {
+			// A statement that starts with a variable is an expression (`$_.Length -gt 0`), not a command it runs, unless the call
+			// operator (`&`, `.`) is before it (#419).
+			if (
+				cur.words.length === 0 &&
+				word === null &&
+				/[A-Za-z_]/.test(next ?? "") &&
+				!/[&.]\s*$/.test(src.slice(Math.max(0, i - 8), i))
+			)
+				cur.expression = true;
 			i = psVariable(i);
 		} else if (ps && c === "~" && atStart && (next === undefined || /[\s/\\;|)]/.test(next))) {
 			// PowerShell's own `~`: the home folder.
@@ -2171,7 +2188,22 @@ function parseWindowsScript(src: string, lang: "ps" | "cmd", vars: Readonly<Reco
 				endPipeline();
 				i++;
 			}
+		} else if (
+			ps &&
+			c === "{" &&
+			(cur.words.length > 0 || word !== null) &&
+			!PS_BLOCK_KEYWORD.test((cur.words[0] ?? word)?.text ?? "")
+		) {
+			// A script block given to a command (`? { $_.Length -gt 0 }`, `% { … }`, `-ScriptBlock { … }`) is one of its arguments,
+			// read as a script of its own; the pipeline the command is in goes on after it (#419).
+			const inner = readBalanced(src, i + 1, "{", "}");
+			endWord();
+			dynamic(inner.text);
+			endWord();
+			i = inner.end;
 		} else if ((ps && (c === ";" || c === "{" || c === "}")) || c === "(" || c === ")") {
+			// `$_.Delete()`: an expression that calls a method may do anything.
+			if (ps && c === "(" && cur.expression && word !== null && /\w$/.test(word.text)) cur.calls = true;
 			endPipeline();
 			i++;
 		} else if (ps && c === "@" && (next === "(" || next === "{")) {
@@ -4194,7 +4226,10 @@ class Scan {
 		const [head, ...args] = simple.words;
 		if (!head) return cwd;
 		if (head.dynamic) {
-			this.dynamicCommand();
+			// An expression (`$_.Length -gt 0` in a filter's block) runs no command; one that calls a method (`$_.Delete()`) or
+			// assigns (`$x = …`) may, as a variable called with `&` does (#419).
+			const assigns = head.text.includes("=") || /^(?:[-+*/%]|\?\?)?=/.test(args[0]?.text ?? "");
+			if (!simple.expression || simple.calls || assigns) this.dynamicCommand();
 			return cwd;
 		}
 		const name = baseName(head.text);
