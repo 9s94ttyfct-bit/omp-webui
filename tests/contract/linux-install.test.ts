@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import pkg from "../../package.json";
 import { platformId } from "../../server/platform/capabilities.ts";
+import { autostartEntry } from "../../server/platform/linux.ts";
 import { removeScratch } from "../support/scratch.ts";
 
 /**
@@ -167,6 +168,26 @@ describe.skipIf(platformId === "win32")("the Linux package's install.sh", () => 
 		expect(readFileSync(join(dataDir, "settings.json"), "utf8")).toBe("{}\n");
 		expect(refreshes().slice(before)).toEqual([join(h.data, "applications")]);
 		expect(r.out).toContain("omp-webui is uninstalled");
+	});
+
+	test("--uninstall also removes the Start at login entry that starts this program, and one that starts another is left (#292)", () => {
+		const h = home();
+		expect(h.install(pack).code).toBe(0);
+		const file = join(h.dir, ".config", "autostart", "omp-webui.desktop");
+		mkdirSync(join(h.dir, ".config", "autostart"), { recursive: true });
+		// The entry the server writes for the installed program (Settings › Start at login).
+		writeFileSync(file, autostartEntry(join(h.installed, "omp-webui")));
+		expect(h.install(h.installed, ["--uninstall"]).code).toBe(0);
+		expect(existsSync(file)).toBe(false);
+
+		// An entry that runs another copy of omp-webui is not this install's to remove.
+		const other = home();
+		expect(other.install(pack).code).toBe(0);
+		const otherFile = join(other.dir, ".config", "autostart", "omp-webui.desktop");
+		mkdirSync(join(other.dir, ".config", "autostart"), { recursive: true });
+		writeFileSync(otherFile, autostartEntry("/opt/elsewhere/omp-webui"));
+		expect(other.install(other.installed, ["--uninstall"]).code).toBe(0);
+		expect(existsSync(otherFile)).toBe(true);
 	});
 
 	test("unknown arguments are refused with the usage, and nothing is installed", () => {

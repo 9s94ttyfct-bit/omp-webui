@@ -17,8 +17,10 @@
  * closing it stops the server. An error while starting is left on the screen until Enter is pressed, rather than closing
  * the window with it.
  *
- * `BROWSER` names another program to open the page with (it is given the address); it is also how the tests see
- * which page was opened.
+ * The page is opened with the system's own way of opening an address (`xdg-open` on Linux, which reads `BROWSER` itself, list
+ * and `%s` included). On Linux the browser is handed a page of ours in the data folder that sends it on to the signed-in address,
+ * so that the token is in no command line (server/launch-page.ts). `OMPW_TEST_BROWSER` names a program to open it with
+ * instead (tests only): it is how they see which page was opened.
  *
  * `omp-webui --version` prints the version and ends (no server, no page): the updater checks a staged program with it.
  *
@@ -34,6 +36,7 @@ import { isRecord } from "../shared/guards.ts";
 import { Auth } from "./auth.ts";
 import { loadConfig } from "./config.ts";
 import { holdStart, runningServer } from "./instance.ts";
+import { pageTarget } from "./launch-page.ts";
 import { platform } from "./platform/index.ts";
 import { APP_VERSION } from "./version.ts";
 
@@ -59,8 +62,9 @@ function pageOf(dataDir: string, port: number): string {
 	return new Auth(dataDir).link(`http://127.0.0.1:${port}`);
 }
 
-async function openPage(url: string): Promise<void> {
-	const argv = process.env.BROWSER ? [process.env.BROWSER, url] : platform.openUrlArgv(url);
+async function openPage(dataDir: string, url: string): Promise<void> {
+	const target = pageTarget(url, platform.id === "linux", dataDir);
+	const argv = process.env.OMPW_TEST_BROWSER ? [process.env.OMPW_TEST_BROWSER, target] : platform.openUrlArgv(target);
 	try {
 		await Bun.spawn(argv, { stdin: "ignore", stdout: "ignore", stderr: "ignore" }).exited;
 	} catch (e) {
@@ -130,7 +134,7 @@ try {
 			process.exit(0);
 		}
 		console.log(`omp-webui is already running (port ${running.port}): opening its page.`);
-		await openPage(pageOf(dataDir, running.port));
+		await openPage(dataDir, pageOf(dataDir, running.port));
 		process.exit(0);
 	}
 	// The server's modules read their configuration as they load: they are loaded only now that it is set.
@@ -141,7 +145,7 @@ try {
 	if (background) {
 		console.log(`\nomp-webui is running in the background (port ${self.port}). Open omp-webui again to see its page.`);
 	} else {
-		await openPage(pageOf(dataDir, self.port));
+		await openPage(dataDir, pageOf(dataDir, self.port));
 		console.log("\nomp-webui is running and its page is open in your browser. Close this window to stop it.");
 	}
 } catch (e) {

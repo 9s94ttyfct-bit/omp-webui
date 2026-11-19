@@ -8,8 +8,9 @@
 # - An entry in the applications menu starts it in a terminal: that window is the server's console, as the Windows
 #   launcher's is, and closing it stops the server.
 #
-# Installing a newer package the same way updates it. `./install.sh --uninstall` removes all of that again. Neither
-# touches the server's data folder (~/.omp-webui, or OMP_WEBUI_DATA_DIR): what omp-webui keeps there is kept.
+# Installing a newer package the same way updates it. `./install.sh --uninstall` removes all of that again, and the Start at
+# login entry (${XDG_CONFIG_HOME:-~/.config}/autostart/omp-webui.desktop) when it starts this program. Neither touches the
+# server's data folder (~/.omp-webui, or OMP_WEBUI_DATA_DIR): what omp-webui keeps there is kept.
 set -eu
 
 usage() {
@@ -31,6 +32,7 @@ wrapper=$bin_dir/omp-webui
 icon=$data_home/icons/hicolor/256x256/apps/omp-webui.png
 apps=$data_home/applications
 entry=$apps/omp-webui.desktop
+autostart=${XDG_CONFIG_HOME:-$HOME/.config}/autostart/omp-webui.desktop
 
 # The menu reads its entries again when told to; a desktop without the tool reads the folder by itself.
 refresh_menu() {
@@ -40,6 +42,10 @@ refresh_menu() {
 }
 
 if [ "$uninstall" = 1 ]; then
+	# Start at login (Settings) writes an entry that runs this program; one that runs another omp-webui is not ours to remove.
+	if [ -f "$autostart" ] && grep -qF "\"$dest/omp-webui\"" "$autostart"; then
+		rm -f "$autostart"
+	fi
 	rm -rf "$dest"
 	rm -f "$wrapper" "$icon" "$entry"
 	refresh_menu

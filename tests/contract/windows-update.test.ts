@@ -22,7 +22,7 @@ import { removeScratch } from "../support/scratch.ts";
  * install request starts it. The server exits, PowerShell swaps the folders and starts the new program, which says it is up.
  * Then: a zip whose program is another version than the release says is refused and changes nothing, and a new program that
  * does not start is taken out again, the old folder put back and started. The browser is a program of the test's own
- * (`BROWSER`): a launcher opens its page with it.
+ * (`OMPW_TEST_BROWSER`): a launcher opens its page with it.
  */
 
 const exe = process.env.OMPW_LAUNCHER_EXE ?? "";
@@ -98,7 +98,7 @@ async function startInstall(): Promise<Install> {
 		env: {
 			...hostEnv(),
 			...env,
-			BROWSER: browser,
+			OMPW_TEST_BROWSER: browser,
 			OMP_WEBUI_DATA_DIR: data,
 			OMP_WEBUI_AUTO_TITLE: "off",
 			OMP_WEBUI_APP_UPDATE_API: fake.url,

@@ -12,17 +12,28 @@ import { removeScratch } from "../support/scratch.ts";
 /**
  * The launcher (`server/launcher.ts`, built as the Windows launcher's `omp-webui.exe` and the Linux package's
  * `omp-webui`): a double-click starts the server and opens its page in the browser; a second one opens the page of the
- * server that runs. The browser is a program of the test's own (`BROWSER`), which writes down each address it is given.
+ * server that runs. The browser is a program of the test's own (`OMPW_TEST_BROWSER`), which writes down each address it is
+ * given (on Linux it is given a page of the launcher's that sends it on to the address, and the token is in no argument).
  * `OMPW_LAUNCHER_EXE` runs the built program instead of the source (the Windows launcher and Linux package jobs in CI):
  * its page is then the `web` folder beside it.
  */
 
 const root = mkdtempSync(join(tmpdir(), "ompw-launcher-"));
 const opened = join(root, "opened.txt");
+const given = join(root, "given.txt");
+// What it is given is written down as it came (`given`), and the address it leads to (`opened`): the Linux launcher hands it a
+// page of its own that sends it on, so that the token is in no command line.
 const browser = writeBunProgram(
 	root,
 	"browser",
-	`import { appendFileSync } from "node:fs";\nappendFileSync(${JSON.stringify(opened)}, process.argv.at(-1) + "\\n");\n`,
+	[
+		`import { appendFileSync, readFileSync } from "node:fs";`,
+		`const arg = process.argv.at(-1);`,
+		`appendFileSync(${JSON.stringify(given)}, arg + "\\n");`,
+		`const page = arg.endsWith(".html") ? readFileSync(arg, "utf8").match(/url=([^"]+)"/)?.[1].replaceAll("&amp;", "&") : arg;`,
+		`appendFileSync(${JSON.stringify(opened)}, page + "\\n");`,
+		"",
+	].join("\n"),
 );
 const exe = process.env.OMPW_LAUNCHER_EXE;
 const command = exe ? [exe] : ["bun", join(import.meta.dir, "..", "..", "server", "launcher.ts")];
@@ -40,7 +51,7 @@ async function launch(extra: Record<string, string>, args: string[] = []) {
 		env: {
 			...hostEnv(),
 			...env,
-			BROWSER: browser,
+			OMPW_TEST_BROWSER: browser,
 			OMP_WEBUI_UPDATE_CHECK: "off",
 			OMP_WEBUI_AUTO_TITLE: "off",
 			...extra,
@@ -76,6 +87,12 @@ test("a double-click starts the server on the next free port and opens its page,
 		// The address carries this data folder's token, which signs the page in.
 		const token = readFileSync(join(dataDir, "token"), "utf8").trim();
 		expect(url.searchParams.get("token")).toBe(token);
+		// On Linux every user can read every command line: the browser is given a page that sends it on, not the address (#287).
+		if (process.platform === "linux") {
+			const args = readFileSync(given, "utf8");
+			expect(args).not.toContain(token);
+			expect(args).toContain("open-");
+		}
 		const meta = await fetch(`http://127.0.0.1:${port}/api/meta`, {
 			headers: { "x-omp-webui-token": token, "x-omp-webui": "1" },
 		});
