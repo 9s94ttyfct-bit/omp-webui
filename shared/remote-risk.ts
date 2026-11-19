@@ -431,6 +431,11 @@ const TUNNELS = table("cloudflared", "ngrok", "bore", "frpc", "frps", "localtunn
 const NETCATS = table("nc", "ncat", "netcat", "nc.traditional", "nc.openbsd");
 /** A host of a listening address that only this computer reaches. */
 const LOOPBACK_HOST = /^(?:localhost|127(?:\.\d{1,3}){3}|::1|\[::1\])$/i;
+/** What Terminal (or another terminal app) runs when it is opened: a shell script macOS hands to it (#282). */
+const TERMINAL_SCRIPT = /\.(?:command|tool|terminal|sh)$/i;
+/** Terminal apps, by name or path (`-a`) or bundle id (`-b`): a file opened with one of them is run in it (#282). */
+const TERMINAL_APP =
+	/^(?:.*\/)?(?:terminal|iterm2?|warp|kitty|alacritty|wezterm|ghostty|hyper)(?:\.app)?\/?$|^(?:com\.apple\.terminal|com\.googlecode\.iterm2|dev\.warp\.warp-stable|net\.kovidgoyal\.kitty|org\.alacritty|com\.github\.wez\.wezterm|com\.mitchellh\.ghostty)$/i;
 /** Programs that delete what they are given; `trash` (macOS 15's `/usr/bin/trash`, trash-cli's `trash-put`) moves it to the Trash (#257). */
 const DELETERS = table("rm", "unlink", "rmdir", "shred", "srm", "trash", "trash-put");
 const SYSTEM_PROGRAMS = table(
@@ -2626,6 +2631,8 @@ class Scan {
 			// `tell application "Finder" to empty the trash`: everything in it, for good.
 			if (args.some((a) => /empty\s+(?:the\s+)?trash/i.test(a.text))) this.add("mass_delete");
 		}
+		if (name === "open" || name === "automator" || (name === "shortcuts" && operands[0]?.text === "run"))
+			this.runsUnseen(name, args);
 		if (name === "launchctl") this.add("launchctl");
 		// `brew services` drives launchd (#254): `start`/`restart` also write a LaunchAgent (`homebrew.mxcl.<formula>.plist`) that
 		// runs the formula at every login, as a write into `~/Library/LaunchAgents` would.
@@ -3844,6 +3851,30 @@ class Scan {
 		}
 		const served = folder ? resolveWord(folder, cwd, this.ctx) : cwd;
 		if (served === null || !inProject(served, this.ctx)) this.add("tunnel");
+	}
+
+	/**
+	 * What has macOS run a script out of the agent's sight, as `osascript` can (`osascript`, #282): `open` of a `.command`,
+	 * `.tool`, `.terminal` or `.sh` file, or of any file with a terminal app (`-a Terminal`, `-a iTerm`, `-b com.apple.Terminal`),
+	 * which Terminal runs in a window of its own as the person while the call returns at once; `automator <workflow>` and
+	 * `shortcuts run <name>`. `open -R` (show it in the Finder), `-e` and `-t` (a text editor) run nothing.
+	 */
+	private runsUnseen(name: string, args: Word[]): void {
+		if (name !== "open") {
+			this.add("osascript");
+			return;
+		}
+		const end = args.findIndex((a) => a.text === "--args");
+		const own = end < 0 ? args : args.slice(0, end);
+		if (own.some((a) => /^-(?![absu])[A-Za-z]*[Ret]|^--reveal$/.test(a.text))) return;
+		const apps = optionValues(own, ["-a", "-b"], []);
+		const values = [...apps, ...optionValues(own, ["-s", "-u"], ["--env", "--stdin", "--stdout", "--stderr"])];
+		const files = splitArgs(own).operands.filter((o) => !values.includes(o));
+		if (
+			files.some((f) => TERMINAL_SCRIPT.test(f.text)) ||
+			(files.length > 0 && apps.some((a) => TERMINAL_APP.test(a.text)))
+		)
+			this.add("osascript");
 	}
 
 	/**

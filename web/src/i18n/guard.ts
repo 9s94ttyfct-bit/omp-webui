@@ -184,7 +184,7 @@ export const en = {
 	catName_permissions: "Changing permissions",
 	catName_launchctl: "Changing what macOS starts",
 	catName_scheduled: "Scheduled jobs and services",
-	catName_osascript: "AppleScript",
+	catName_osascript: "AppleScript and scripts run out of sight",
 	catName_tunnel: "Opening this computer to the network",
 	catName_global_install: "System-wide installs",
 	catName_system: "Disks and shutdown",

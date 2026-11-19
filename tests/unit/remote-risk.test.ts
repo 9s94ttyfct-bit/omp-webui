@@ -2736,3 +2736,34 @@ describe("a bind shell, or a web server for a folder outside the project on the 
 		expect(shell(command)).toEqual([]);
 	});
 });
+
+describe("open of a script Terminal runs, automator and shortcuts run are asked about as osascript is (#282)", () => {
+	test.each([
+		"printf 'rm -rf ~/Documents\\n' > /tmp/x.command; chmod +x /tmp/x.command; open /tmp/x.command",
+		"open /tmp/x.command",
+		"open -g run.tool",
+		"open x.terminal",
+		"open -a Terminal /tmp/x.command",
+		"open -a Terminal.app /work/proj/run.sh",
+		"open -a /System/Applications/Utilities/Terminal.app run.py",
+		"open -a iTerm x",
+		"open -b com.apple.Terminal x",
+		"automator /tmp/x.workflow",
+		"shortcuts run 'Delete Files'",
+	])("%s", (command) => {
+		expect(shell(command)).toContain("osascript");
+	});
+
+	test.each([
+		"open .",
+		"open README.md",
+		"open -a Safari https://example.com",
+		"open -a Terminal",
+		"open -R /tmp/x.command",
+		"open -e run.sh",
+		"open -a Xcode --args x.command",
+		"shortcuts list",
+	])("%s is not asked about", (command) => {
+		expect(shell(command)).toEqual([]);
+	});
+});
