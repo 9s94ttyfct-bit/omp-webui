@@ -64,6 +64,7 @@
     "tests/contract/settings-help.test.ts": 8808,
     "tests/contract/mcp-switch.test.ts": 8695,
     "tests/unit/pool-approval.test.ts": 8665,
+    "tests/contract/browser-note.test.ts": 8659,
     "tests/contract/preset-agent-isolation.test.ts": 8538,
     "tests/contract/entries-resync.test.ts": 8169,
     "tests/unit/test-server-teardown.test.ts": 7848,
