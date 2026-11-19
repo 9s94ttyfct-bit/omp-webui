@@ -229,6 +229,8 @@ const RIDERS_MAX_MS = 5000;
 const PARK_WAIT_MS = 3000;
 /** The longest `retryNow` waits for omp to say it ended its backoff before it goes on. */
 const RETRY_ABORT_MS = 5000;
+/** The longest the server waits for omp to take the host tools it serves (`serveHostTools`): a hung omp holds nothing up. */
+const HOST_TOOLS_MS = 10_000;
 
 /** What a Stop ends: a turn (with the retry wait and the subagents that keep it going), or a `!command`. */
 export type StopKind = "turn" | "bash";
@@ -434,6 +436,8 @@ export class Live {
 	 * server serves is added to what the page set, and the page's own `set_host_tools` keeps what the server serves.
 	 */
 	private pageHostTools: unknown[] = [];
+	/** The host tools changed while the conversation was paused: omp, frozen, is told when it runs again (#391). */
+	private hostToolsOwed = false;
 	/** The calls of served tools omp has no answer to yet, by call id: aborted when omp gives one up or the process ends. */
 	private readonly serving = new Map<string, AbortController>();
 	/**
@@ -910,6 +914,10 @@ export class Live {
 	/** Run omp and everything it started again: the conversation is not paused any more. */
 	resume(): Promise<void> {
 		return this.shift(() => this.unfreeze()).then(() => {
+			// First, so that a turn the resume lets start has them: the host tools given while it was frozen (#391).
+			void this.tellOwedHostTools().catch((e: unknown) =>
+				console.error(`omp-webui: could not give ${this.info.liveId} its host tools: ${(e as Error).message}`),
+			);
 			this.compactQueue.resumed();
 			// A restart the agent asked for while it was paused was refused: the agent is told now.
 			this.pool.restarts?.resumed(this);
@@ -2398,7 +2406,9 @@ export class Live {
 	 * Give this process host tools the server answers itself, or take them away (null). A tool of the server's is
 	 * served for this one conversation: it lives on its pipe, and nothing is handed to omp to call the server with, so
 	 * the tools' arguments and results (kept in the session file, shown on pages, exported) carry no credential.
-	 * Throws when omp does not accept the tools; nothing is served then.
+	 * Throws when omp does not accept the tools (or does not answer in `HOST_TOOLS_MS`); nothing is served then. A paused
+	 * conversation's omp is frozen and would never answer (#391: a takeover at the server's start waited for ever, and the
+	 * server never listened): it is told when it is resumed, and nothing of the server's runs in it meanwhile.
 	 */
 	async serveHostTools(server: HostToolServer | null): Promise<void> {
 		// A process that serves tools is no new chat to hand to another one.
@@ -2406,10 +2416,22 @@ export class Live {
 		const before = this.hostServer;
 		this.hostServer = server;
 		for (const tool of server?.tools ?? []) this.servedNames.add(tool.name);
-		const set = await this.client.request({ type: "set_host_tools", tools: this.hostTools(this.pageHostTools) });
-		if (!set.success) {
-			this.hostServer = before;
-			throw new Error(set.error ?? "omp did not accept the tools");
+		if (this.info.pausedAt !== null) this.hostToolsOwed = true;
+		else {
+			let set: RpcResponse;
+			try {
+				set = await this.client.request(
+					{ type: "set_host_tools", tools: this.hostTools(this.pageHostTools) },
+					HOST_TOOLS_MS,
+				);
+			} catch (e) {
+				this.hostServer = before;
+				throw e;
+			}
+			if (!set.success) {
+				this.hostServer = before;
+				throw new Error(set.error ?? "omp did not accept the tools");
+			}
 		}
 		// One set of server tools per conversation: one held for something else ("Set up with AI", "Ask agent for help") leaves
 		// no room for `remote_run`, and every page is told so (`LiveInfo.remoteComputersUnavailable`).
@@ -2419,6 +2441,17 @@ export class Live {
 			else delete this.info.remoteComputersUnavailable;
 			this.pool.announce(this);
 		}
+	}
+
+	/** What changed of the host tools while the conversation was paused, told to omp now that it runs (#391). */
+	private async tellOwedHostTools(): Promise<void> {
+		if (!this.hostToolsOwed || this.info.exited) return;
+		this.hostToolsOwed = false;
+		const set = await this.client.request(
+			{ type: "set_host_tools", tools: this.hostTools(this.pageHostTools) },
+			HOST_TOOLS_MS,
+		);
+		if (!set.success) throw new Error(set.error ?? "omp did not accept the tools");
 	}
 
 	/** What serves this process's host tools now (see `serveHostTools`); null while none does. */
