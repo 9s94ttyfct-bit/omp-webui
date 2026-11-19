@@ -1510,6 +1510,9 @@ export class Live {
 			// What omp was told and what it asked before it was frozen is not repeated: it comes from the record.
 			for (const frame of restored.pendingUI) this.pendingUI.set(String(frame.id), frame);
 			this.interviewing = restored.interviewing;
+			// The interview's tool is the page's, and the record does not carry the page's list: a serve of the server's tools
+			// (`remote_run`, given again at the takeover) would otherwise leave it out of what omp holds (#392).
+			if (this.interviewing) this.pageHostTools = [proposeGoalTool()];
 			this.descendants = restored.descendants;
 			this.goal = restored.goal ?? null;
 			// A compact that waited when the conversation was frozen waits as it did, with the messages held behind it.
@@ -3697,12 +3700,21 @@ export class Live {
 			const bash = type === "bash" && typeof command.command === "string" ? this.held.startBash(command.command) : null;
 			if (bash) this.broadcast({ t: "frame", liveId: this.info.liveId, frame: bash });
 			try {
-				// omp's `set_host_tools` replaces its whole set: what the server serves goes along with the page's.
-				const sent =
-					type === "set_host_tools" && Array.isArray(command.tools)
-						? { ...command, tools: this.hostTools(command.tools) }
-						: command;
-				const r = await this.client.request(sent, 0, options.written);
+				// omp's `set_host_tools` replaces its whole set: what the server serves goes along with the page's. The page's list
+				// is the server's copy from the moment it is sent (#392): a serve that crosses this command carries it, and omp,
+				// which applies the two in order, keeps it. It is taken back when omp refuses.
+				const pageTools = type === "set_host_tools" && Array.isArray(command.tools) ? command.tools : null;
+				const pageBefore = this.pageHostTools;
+				const undoPage = () => {
+					if (pageTools && this.pageHostTools === pageTools) this.pageHostTools = pageBefore;
+				};
+				if (pageTools) this.pageHostTools = pageTools;
+				const sent = pageTools ? { ...command, tools: this.hostTools(pageTools) } : command;
+				const r = await this.client.request(sent, 0, options.written).catch((e: unknown) => {
+					undoPage();
+					throw e;
+				});
+				if (!r.success) undoPage();
 				if (r.success) {
 					if (type === "get_state" && isRecord(r.data)) this.lastState = r.data;
 					if (MOVES[type]) {
@@ -3710,7 +3722,6 @@ export class Live {
 						this.compactQueue.moved(type);
 					} else if (SESSION_CHANGING[type]) void this.refreshState().catch(() => {});
 					if (ENDS_RETRY[type]) this.lostWait = this.endLostWait();
-					if (type === "set_host_tools") this.pageHostTools = Array.isArray(command.tools) ? command.tools : [];
 					this.trackInterview(command);
 					this.noteSessionSetting(command, r.data);
 					this.noteSettingChange(command, r.data);

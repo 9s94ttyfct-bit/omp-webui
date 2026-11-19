@@ -188,6 +188,22 @@ test("the tools of the page are kept with the served ones: omp's set_host_tools 
 	expect(JSON.stringify(told)).not.toContain("hijacked");
 });
 
+test("a page's tools sent while the server serves its own at the same moment are kept: omp ends with both (#392)", async () => {
+	const { pool, toolSets, dir } = setup();
+	const { server } = fakeServer(() => ({ text: "ok" }));
+	const live = await pool.openServing(dir, server);
+	// The page starts an interview, and before omp has answered it the server serves its tools again (a computer given).
+	const page = live.rpc({ type: "set_host_tools", tools: [proposeTool] });
+	const served = live.serveHostTools(fakeServer(() => ({ text: "ok" })).server);
+	await Promise.all([page, served]);
+	expect(toolSets().at(-1)).toEqual(["propose_goal", "served_read", "served_write"]);
+	// The interview ends the same way: the served tools that cross it do not bring its tool back.
+	const ended = live.rpc({ type: "set_host_tools", tools: [] });
+	const again = live.serveHostTools(fakeServer(() => ({ text: "ok" })).server);
+	await Promise.all([ended, again]);
+	expect(toolSets().at(-1)).toEqual(["served_read", "served_write"]);
+});
+
 test("a call of a tool the server does not serve still goes to the pages, as the guided goal's does", async () => {
 	const { pool, received, dir } = setup();
 	const { server, calls } = fakeServer(() => ({ text: "ok" }));
