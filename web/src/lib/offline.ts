@@ -65,7 +65,8 @@ function take(next: ModeState): void {
 	useMode.setState((s) => (modeSuperseded(s.state, next) ? s : { state: next }));
 }
 
-export async function loadMode(): Promise<void> {
+/** Read the state; null once it is shown, otherwise why it could not be read (the next (re)connect tries again too). */
+export async function loadMode(): Promise<string | null> {
 	try {
 		const next = await modeApi.state();
 		// While this page's saves are out it shows their change before the server has answered, and the revision of
@@ -73,8 +74,9 @@ export async function loadMode(): Promise<void> {
 		// backend flip back, and what was typed meanwhile is lost). It is read again when the last save is done.
 		if (saving > 0) missed = true;
 		else take(next);
-	} catch {
-		// the next (re)connect tries again
+		return null;
+	} catch (e) {
+		return errorText(e);
 	}
 }
 

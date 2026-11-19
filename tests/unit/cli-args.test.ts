@@ -28,3 +28,12 @@ test("a typed line keeps its backslashes, and quoted parts next to each other ma
 	expect(splitArgs(`'it'"'"'s' "a b" h''i ""`)).toEqual(["it's", "a b", "hi", ""]);
 	expect(splitArgs("  one   two\tthree ")).toEqual(["one", "two", "three"]);
 });
+
+test("a line with a quote that is never closed is not split: nothing is run as if the quote closed at the end", () => {
+	expect(splitArgs('session delete "my chat')).toBeNull();
+	expect(splitArgs("config set x 'a b")).toBeNull();
+	expect(splitArgs("it's")).toBeNull();
+	// Closed quotes, and a quote of the other kind inside one, are fine.
+	expect(splitArgs(`say "it's"`)).toEqual(["say", "it's"]);
+	expect(splitArgs("")).toEqual([]);
+});

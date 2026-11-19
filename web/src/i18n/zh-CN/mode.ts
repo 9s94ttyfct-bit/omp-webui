@@ -51,6 +51,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	modelsServed: "{url} 的 {backend} 提供 {n} 个模型。",
 	modelsServedOne: "{url} 的 {backend} 提供 {n} 个模型。",
 	modelsRetry: "重新检查",
+	loadFailed: "无法读取完整 / 轻量设置",
 	thinkingLabel: "思考强度",
 
 	lightTitle: "轻量模式加载的内容",

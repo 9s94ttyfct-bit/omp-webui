@@ -162,6 +162,14 @@ function Row({
 		end({ kind: "idle" });
 	};
 
+	/** Back to the default key: asked about as a recorded key is when another action has it now (swap, or leave it). */
+	const reset = () => {
+		if (shipped === null) return resetBinding(entry.id);
+		const check = checkBinding(entries, entry.id, shipped);
+		if (check.conflicts.length || check.reserved) return end({ kind: "pending", chord: shipped, check });
+		resetBinding(entry.id);
+	};
+
 	const onRecordKey = (e: KeyboardEvent<HTMLButtonElement>) => {
 		// The keys pressed here are the new binding's: no other handler of the page acts on them.
 		e.preventDefault();
@@ -243,7 +251,7 @@ function Row({
 									className="pointer-coarse:h-9"
 									data-testid="shortcut-reset"
 									aria-label={t("pages.shortcutResetAria", { action: label, keys: keysText(shipped) })}
-									onClick={() => resetBinding(entry.id)}
+									onClick={reset}
 								>
 									{t("pages.shortcutReset")}
 								</Button>

@@ -105,6 +105,21 @@ test("a floor that is not a whole number from 1 to 99 is refused with a message,
 	expect((await floorsOf(page))[PROVIDER]).toBe(40);
 });
 
+test("a floor set in another window is shown when this page is looked at again", async ({ page }) => {
+	await stubUsage(page);
+	await page.goto("/#/settings/models");
+	await expect(row(page).getByTestId("quota-floor-state")).toHaveText("No floor");
+	// Another window (a phone, the Mac app) sets it: this page learns it when it is focused, not only on a reload.
+	await page.request.post("/api/quota-floor", { data: { provider: PROVIDER, floor: 20 }, headers: WRITE });
+	await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+	await expect(row(page).getByTestId("quota-floor-state")).toHaveText("Holds at 20% left");
+	await expect(row(page).getByTestId("quota-floor-input")).toHaveValue("20");
+
+	await page.request.post("/api/quota-floor", { data: { provider: PROVIDER, floor: null }, headers: WRITE });
+	await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+	await expect(row(page).getByTestId("quota-floor-state")).toHaveText("No floor");
+});
+
 test("the server refuses a floor outside 1 to 99 with 422 and keeps the one it has", async ({ page }) => {
 	await page.request.post("/api/quota-floor", { data: { provider: PROVIDER, floor: 30 }, headers: WRITE });
 	for (const floor of [0, 100, 150, 5.5, "20"]) {

@@ -20,6 +20,8 @@ export function CliPage({ command, run: initialRun }: { command?: string; run?: 
 	const [help, setHelp] = useState<CliHelp | null>(null);
 	const [q, setQ] = useState("");
 	const [line, setLine] = useState(() => (initialRun ? commandLine(initialRun) : command ? `${command} ` : ""));
+	// Run was pressed with a quote that never closes: said under the line until it is edited.
+	const [unclosed, setUnclosed] = useState(false);
 	// `attach`: a terminal the macOS app's Run in Background held for this window (see `PtyManager.held`).
 	const [run, setRun] = useState<{ args: string[]; key: number; attach?: string } | null>(() =>
 		initialRun ? { args: initialRun, key: Date.now() } : null,
@@ -228,7 +230,11 @@ export function CliPage({ command, run: initialRun }: { command?: string; run?: 
 						className="flex flex-col gap-2 sm:flex-row"
 						onSubmit={(e) => {
 							e.preventDefault();
-							setRun({ args: splitArgs(line), key: Date.now() });
+							const args = splitArgs(line);
+							// A quote left open is not run as if it closed at the end of the line.
+							if (args === null) return setUnclosed(true);
+							setUnclosed(false);
+							setRun({ args, key: Date.now() });
 						}}
 					>
 						<div className="flex min-w-0 flex-1 items-center rounded-lg border border-border bg-surface px-2.5 font-mono text-sm focus-within:border-faint">
@@ -237,7 +243,12 @@ export function CliPage({ command, run: initialRun }: { command?: string; run?: 
 								aria-label={t("pages.cliLineAria")}
 								data-testid="cli-line"
 								value={line}
-								onChange={(e) => setLine(e.target.value)}
+								onChange={(e) => {
+									setLine(e.target.value);
+									setUnclosed(false);
+								}}
+								aria-invalid={unclosed || undefined}
+								aria-describedby={unclosed ? "cli-line-error" : undefined}
 								className="min-w-0 flex-1 bg-transparent py-1.5 outline-none"
 								placeholder="stats --summary"
 							/>
@@ -246,6 +257,11 @@ export function CliPage({ command, run: initialRun }: { command?: string; run?: 
 							<Play size={14} /> {t("pages.cliRun")}
 						</Button>
 					</form>
+					{unclosed ? (
+						<p id="cli-line-error" role="alert" className="text-xs text-danger" data-testid="cli-line-error">
+							{t("pages.cliUnclosedQuote")}
+						</p>
+					) : null}
 					<div ref={output} className="min-h-80 flex-1" data-testid="cli-output">
 						{run ? <Terminal key={run.key} args={run.args} cwd={meta?.home} attach={run.attach} /> : null}
 					</div>

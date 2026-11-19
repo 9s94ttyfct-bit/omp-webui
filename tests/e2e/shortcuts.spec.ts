@@ -169,3 +169,28 @@ test("a key another action has is a swap, a surface's own key is refused, a type
 	expect(await page.evaluate(() => localStorage.getItem("ompw.shortcuts"))).toBe("{}");
 	await expect(row(page, "goal").getByTestId("shortcut-keys")).toContainText("G");
 });
+
+test("Reset onto a key another action has meanwhile asks, as a recorded key does: swap, or leave both as they are", async ({
+	page,
+}) => {
+	await openCard(page);
+	const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem("ompw.shortcuts") ?? "{}"));
+	// Search moves to ⌘J; New chat then takes the ⌘K that is free now.
+	await row(page, "search").getByTestId("shortcut-change").click();
+	await page.keyboard.press("ControlOrMeta+j");
+	await row(page, "newChat").getByTestId("shortcut-change").click();
+	await page.keyboard.press("ControlOrMeta+k");
+	expect(await stored()).toEqual({ search: "Mod+J", newChat: "Mod+K" });
+
+	// Reset of Search would put ⌘K on both: it asks first and changes nothing until answered.
+	await row(page, "search").getByTestId("shortcut-reset").click();
+	await expect(row(page, "search").getByTestId("shortcut-message")).toContainText("is already “New chat”");
+	expect(await stored()).toEqual({ search: "Mod+J", newChat: "Mod+K" });
+	await row(page, "search").getByTestId("shortcut-cancel").click();
+	expect(await stored()).toEqual({ search: "Mod+J", newChat: "Mod+K" });
+
+	// Swap: Search is back on ⌘K and New chat has the ⌘J Search gave up.
+	await row(page, "search").getByTestId("shortcut-reset").click();
+	await row(page, "search").getByTestId("shortcut-swap").click();
+	expect(await stored()).toEqual({ newChat: "Mod+J" });
+});

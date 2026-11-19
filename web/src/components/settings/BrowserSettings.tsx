@@ -12,6 +12,7 @@ import { reloadPanes } from "../../lib/panel-panes.ts";
 import { onPrefsChanged, setPref } from "../../lib/prefs.ts";
 import { useApp } from "../../store/app.ts";
 import { browserApi, useBrowserState } from "../../store/browser.ts";
+import { LoadError } from "../LoadError.tsx";
 import { Button, CardHeader, cx, Modal, Spinner } from "../ui.tsx";
 
 // This card is a lazy chunk (Settings); the strings are not in the first page, so the card brings its own.
@@ -35,9 +36,16 @@ export function BrowserSettings() {
 	const [on, setOn] = useState(() => localStorage.getItem(PREF.browser) !== "off");
 	const [auto, setAuto] = useState(() => localStorage.getItem(PREF.browserAutoUpdate) !== "off");
 
+	const [loadError, setLoadError] = useState<string | null>(null);
+	const [attempt, setAttempt] = useState(0);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a Try again is a new read
 	useEffect(() => {
-		browserApi.load().catch(() => {});
-	}, []);
+		let live = true;
+		browserApi.load().catch((e: Error) => live && setLoadError(e.message));
+		return () => {
+			live = false;
+		};
+	}, [attempt]);
 	useEffect(
 		() =>
 			onPrefsChanged((keys) => {
@@ -279,6 +287,15 @@ export function BrowserSettings() {
 						</p>
 					)}
 				</>
+			) : loadError ? (
+				<LoadError
+					title={t("browser.loadFailed")}
+					error={loadError}
+					onRetry={() => {
+						setLoadError(null);
+						setAttempt((n) => n + 1);
+					}}
+				/>
 			) : (
 				<p className="flex items-center gap-2 text-sm text-muted">
 					<Spinner size={14} />

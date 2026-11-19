@@ -8,6 +8,7 @@ import { api } from "../lib/api.ts";
 import { bestAccount } from "../lib/quota.ts";
 import { quotaFloorApi } from "../lib/quota-floor-api.ts";
 import { percentLeft } from "../lib/quota-hold.ts";
+import { LoadError } from "./LoadError.tsx";
 import { Button, CardHeader, Spinner } from "./ui.tsx";
 
 const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
@@ -164,12 +165,34 @@ export function QuotaFloorSettings() {
 	const [reports, setReports] = useState<UsageReport[] | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [usageError, setUsageError] = useState<string | null>(null);
+	// Try again after the floors could not be read: the number of the read the floors come from.
+	const [attempt, setAttempt] = useState(0);
+	// `attempt` is only the reason to read again, so it is a dependency the body does not use.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a Try again is a new read
 	useEffect(() => {
 		let live = true;
-		quotaFloorApi.get().then(
-			(s) => live && setFloors(s.floors),
-			(e: unknown) => live && setError(messageOf(e)),
-		);
+		const read = () =>
+			quotaFloorApi.get().then(
+				(s) => {
+					if (!live) return;
+					setFloors(s.floors);
+					setError(null);
+				},
+				(e: unknown) => live && setError(messageOf(e)),
+			);
+		void read();
+		// A floor set, changed or removed in another window is shown once this page is looked at again (#331).
+		const again = () => document.visibilityState === "visible" && void read();
+		document.addEventListener("visibilitychange", again);
+		window.addEventListener("focus", again);
+		return () => {
+			live = false;
+			document.removeEventListener("visibilitychange", again);
+			window.removeEventListener("focus", again);
+		};
+	}, [attempt]);
+	useEffect(() => {
+		let live = true;
 		// The figures take as long as `omp usage` does (it asks every provider); the floors are shown before them.
 		api.usage("").then(
 			(r) => live && setReports(r),
@@ -191,7 +214,16 @@ export function QuotaFloorSettings() {
 		<section className="rounded-2xl border border-border bg-surface p-4" data-testid="quota-floor-settings">
 			<CardHeader title={t("pages.settingsQuotaFloor")} hint={t("pages.settingsQuotaFloorIntro")} />
 			{floors === null ? (
-				error ? null : (
+				error ? (
+					<LoadError
+						title={t("pages.settingsQuotaFloorLoadFailed")}
+						error={error}
+						onRetry={() => {
+							setError(null);
+							setAttempt((n) => n + 1);
+						}}
+					/>
+				) : (
 					<div className="flex justify-center py-6">
 						<Spinner />
 					</div>
@@ -220,11 +252,6 @@ export function QuotaFloorSettings() {
 			{usageError ? (
 				<p className="mt-2 text-xs text-warning" data-testid="quota-floor-usage-error">
 					{t("pages.settingsQuotaFloorUsageFailed", { error: usageError })}
-				</p>
-			) : null}
-			{error ? (
-				<p className="mt-2 text-xs text-danger" role="alert" data-testid="quota-floor-load-error">
-					{t("pages.settingsQuotaFloorFailed", { error })}
 				</p>
 			) : null}
 			<details className="group mt-3" data-testid="quota-floor-how">

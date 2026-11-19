@@ -98,6 +98,7 @@ export const zh: Record<keyof typeof en, string> = {
 	restartNeeded: "重启应用以完成。",
 	failed: "未完成：{error}",
 	requestFailed: "服务器拒绝了：{error}",
+	loadFailed: "无法读取浏览器的状态",
 	cannotManage: "只能在这台电脑上，或在用你的账号登录的页面上安装、更新、清除、卸载和开关浏览器。",
 	enabledTitle: "使用内置浏览器",
 	enabledHint: "关闭后：没有浏览器标签页，对话中的智能体也完全没有浏览器工具，直到你重新打开。",

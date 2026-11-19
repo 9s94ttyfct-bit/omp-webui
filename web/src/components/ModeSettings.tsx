@@ -18,6 +18,7 @@ import { type MessageKey, useT } from "../i18n/index.ts";
 import { codedText, errorText } from "../lib/error-text.ts";
 import { loadMode, modeApi, saveOffline, setLightModels, setMode, useMode } from "../lib/offline.ts";
 import { contextRows, formatTokens, parseList, savingPercent } from "../lib/offline-format.ts";
+import { LoadError } from "./LoadError.tsx";
 import { Select } from "./Select.tsx";
 import { Button, CardHeader, cx, Spinner, WithCode } from "./ui.tsx";
 
@@ -43,13 +44,31 @@ export function ModeSettings() {
 	const t = useT();
 	const state = useMode((s) => s.state);
 	// The MCP servers and the backends' addresses are read from omp's files: look again whenever the page opens.
+	const [loadError, setLoadError] = useState<string | null>(null);
+	const [attempt, setAttempt] = useState(0);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a Try again is a new read
 	useEffect(() => {
-		void loadMode();
-	}, []);
+		let live = true;
+		void loadMode().then((why) => live && setLoadError(why));
+		return () => {
+			live = false;
+		};
+	}, [attempt]);
 	if (!state) {
 		return (
 			<section className="rounded-2xl border border-border bg-surface p-4" data-testid="mode-settings">
-				<Spinner />
+				{loadError ? (
+					<LoadError
+						title={t("mode.loadFailed")}
+						error={loadError}
+						onRetry={() => {
+							setLoadError(null);
+							setAttempt((n) => n + 1);
+						}}
+					/>
+				) : (
+					<Spinner />
+				)}
 			</section>
 		);
 	}

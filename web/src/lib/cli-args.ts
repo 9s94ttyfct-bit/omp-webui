@@ -6,9 +6,10 @@
 
 /**
  * Split a command line: whitespace separates arguments; `'…'` and `"…"` keep everything inside as written, and quoted and
- * unquoted parts next to each other make one argument (`'it'"'"'s'` is `it's`, `''` an empty one).
+ * unquoted parts next to each other make one argument (`'it'"'"'s'` is `it's`, `''` an empty one). A quote that is opened and
+ * never closed is no argument at all: `null`, so that a line cut at a quote is not run as if it closed there.
  */
-export function splitArgs(line: string): string[] {
+export function splitArgs(line: string): string[] | null {
 	const out: string[] = [];
 	let cur = "";
 	let quote: "'" | '"' | null = null;
@@ -30,6 +31,7 @@ export function splitArgs(line: string): string[] {
 			has = true;
 		}
 	}
+	if (quote) return null;
 	if (has) out.push(cur);
 	return out;
 }

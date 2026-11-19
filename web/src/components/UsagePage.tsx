@@ -195,35 +195,45 @@ export function UsagePage() {
 	const alive = useRef(true);
 	// The last load asked: an answer to an earlier one (a range the person has moved on from) is dropped.
 	const asked = useRef(0);
+	// The range of the figures on the page: figures of another range than the one asked for are not left under its button.
+	const shown = useRef<UsageRange | null>(null);
 	useEffect(
 		() => () => {
 			alive.current = false;
 		},
 		[],
 	);
-	const load = async (how: "kept" | "force", r: UsageRange) => {
+	/** Ask for the figures of `r`; true once they are shown (the range is the person's choice from then on). */
+	const load = async (how: "kept" | "force", r: UsageRange): Promise<boolean> => {
 		const mine = ++asked.current;
 		const current = () => alive.current && asked.current === mine;
 		setLoading(true);
 		try {
 			const first = await api.stats(how, r);
-			if (!current()) return;
+			if (!current()) return false;
 			setStats(first.stats);
+			shown.current = r;
 			setFallback(first.fallback);
 			setError(null);
 			setKeptAt(null);
-			if (!first.refreshing) return;
+			if (!first.refreshing) return true;
 			setKeptAt(first.at);
 			const next = await api.stats("wait", r).catch(() => null);
-			if (!current()) return;
+			if (!current()) return true;
 			// A run that failed leaves the kept figures, and says from when they are.
 			if (next) {
 				setStats(next.stats);
 				setFallback(next.fallback);
 				setKeptAt(null);
 			}
+			return true;
 		} catch (e) {
-			if (current()) setError(e instanceof Error ? e.message : String(e));
+			if (current()) {
+				setError(e instanceof Error ? e.message : String(e));
+				// Another range's figures are not shown under this range's button; the same range's stay (a Refresh that failed).
+				if (shown.current !== r) setStats(null);
+			}
+			return false;
 		} finally {
 			if (current()) setLoading(false);
 		}
@@ -233,8 +243,8 @@ export function UsagePage() {
 	const pickRange = (r: UsageRange) => {
 		if (r === range) return;
 		setRange(r);
-		setPref(PREF.usageRange, r);
-		void load("kept", r);
+		// Kept as the range the page opens on only once its figures have come.
+		void load("kept", r).then((ok) => ok && setPref(PREF.usageRange, r));
 	};
 	const daily = useMemo(() => (stats ? dailyByModel(stats) : null), [stats]);
 	const analysis = stats?.analysis;

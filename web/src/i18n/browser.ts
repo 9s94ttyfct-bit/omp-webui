@@ -106,6 +106,7 @@ export const en = {
 	restartNeeded: "Restart the app to finish.",
 	failed: "Did not finish: {error}",
 	requestFailed: "The server refused: {error}",
+	loadFailed: "Could not read the browser's state",
 	cannotManage:
 		"The browser is installed, updated, cleared, uninstalled and turned on or off from this computer, or from a page signed in with your account.",
 	enabledTitle: "Use the built-in browser",

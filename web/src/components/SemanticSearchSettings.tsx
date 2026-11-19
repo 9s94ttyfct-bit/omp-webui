@@ -5,6 +5,7 @@ import { type MessageKey, useT } from "../i18n/index.ts";
 import { fmtMem } from "../lib/host-rows.ts";
 import { semanticApi } from "../lib/semantic-api.ts";
 import { useApp } from "../store/app.ts";
+import { LoadError } from "./LoadError.tsx";
 import { Button, CardHeader, cx, Spinner } from "./ui.tsx";
 
 /** How often the card asks while something moves (a download, the indexing), and while nothing does. */
@@ -32,7 +33,11 @@ export function SemanticSearchSettings() {
 	const [status, setStatus] = useState<SemanticStatus | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [confirming, setConfirming] = useState(false);
+	// Why the state could not be read (until it can be), and the number of the read Try again starts.
+	const [loadError, setLoadError] = useState<string | null>(null);
+	const [attempt, setAttempt] = useState(0);
 	const moving = status?.state === "installing" || (status?.state === "on" && status.index?.running === true);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a Try again is a new read
 	useEffect(() => {
 		let live = true;
 		let timer: ReturnType<typeof setTimeout>;
@@ -41,10 +46,13 @@ export function SemanticSearchSettings() {
 				(s) => {
 					if (!live) return;
 					setStatus(s);
+					setLoadError(null);
 					timer = setTimeout(ask, moving ? BUSY_POLL_MS : IDLE_POLL_MS);
 				},
-				() => {
-					if (live) timer = setTimeout(ask, IDLE_POLL_MS);
+				(e: unknown) => {
+					if (!live) return;
+					setLoadError((e as Error).message);
+					timer = setTimeout(ask, IDLE_POLL_MS);
 				},
 			);
 		void ask();
@@ -52,7 +60,7 @@ export function SemanticSearchSettings() {
 			live = false;
 			clearTimeout(timer);
 		};
-	}, [moving]);
+	}, [moving, attempt]);
 	const set = async (on: boolean) => {
 		setBusy(true);
 		try {
@@ -108,7 +116,18 @@ export function SemanticSearchSettings() {
 		>
 			<CardHeader title={t("pages.settingsSemantic")} hint={t("pages.settingsSemanticHint")} />
 			{status === null ? (
-				<Spinner size={14} />
+				loadError ? (
+					<LoadError
+						title={t("pages.settingsSemanticLoadFailed")}
+						error={loadError}
+						onRetry={() => {
+							setLoadError(null);
+							setAttempt((n) => n + 1);
+						}}
+					/>
+				) : (
+					<Spinner size={14} />
+				)
 			) : !status.supported ? (
 				<p className="text-sm text-muted" data-testid="semantic-unsupported">
 					{t("pages.settingsSemanticUnsupported")}

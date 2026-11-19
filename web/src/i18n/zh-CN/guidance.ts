@@ -26,6 +26,8 @@ export const zh: Record<keyof typeof en, string> = {
 	saveFailed: "无法保存：{error}",
 	deleteFailed: "无法删除：{error}",
 	loadFailed: "无法读取指引：{error}",
+	loadFailedTitle: "无法读取指引",
+	loading: "加载中…",
 	tooLong: "最多 {max} 个字符。",
 	chars: "{n} / {max}",
 	settingsIntro: "可以在新建对话时选用的模板。它们跟应用的设置一起保存，换一台电脑也会带过去。",

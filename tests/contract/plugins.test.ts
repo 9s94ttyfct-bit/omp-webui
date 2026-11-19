@@ -124,7 +124,7 @@ test("arguments that look like flags never reach omp", async () => {
 		["/api/plugins/enable", { id: "--all", enabled: false }],
 		["/api/plugins/features", { name: "local-plugin", features: ["a,b"] }],
 		["/api/plugins/config", { name: "local-plugin", key: "--set", value: "x" }],
-		["/api/plugins/config", { name: "local-plugin", key: "greeting", value: "--json" }],
+		["/api/plugins/config", { name: "local-plugin", key: "greeting", value: "--help" }],
 	];
 	for (const [path, body] of refused) {
 		const res = await post<{ error: string }>(path, body);
@@ -275,6 +275,14 @@ test("a local plugin folder: installed by path, its features and settings change
 	});
 	expect(set.status).toBe(200);
 	expect(set.body.settings.find((x) => x.key === "greeting")).toMatchObject({ set: true, value: "hello there" });
+	// A text that starts with a dash is set as it is: omp 18 takes it after `--`.
+	const dashed = await post<{ settings: PluginSetting[] }>("/api/plugins/config", {
+		name: "local-plugin",
+		key: "greeting",
+		value: "-x  y",
+	});
+	expect(dashed.status).toBe(200);
+	expect(dashed.body.settings.find((x) => x.key === "greeting")).toMatchObject({ set: true, value: "-x  y" });
 	const secret = await post<{ settings: PluginSetting[] }>("/api/plugins/config", {
 		name: "local-plugin",
 		key: "token",

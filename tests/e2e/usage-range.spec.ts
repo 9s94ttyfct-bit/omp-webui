@@ -97,6 +97,29 @@ test("an answer to a range the person has already left is not shown", async ({ p
 	await expect(total(page)).toHaveText("$1.25");
 });
 
+test("a range whose figures cannot be loaded does not keep another range's figures under its button, and is not remembered", async ({
+	page,
+}) => {
+	let failAll = false;
+	await page.route(/\/api\/stats(\?|$)/, (route) => {
+		const range = new URL(route.request().url()).searchParams.get("range") ?? "";
+		if (failAll && range === "all") return route.fulfill({ status: 500, json: { error: "database is locked" } });
+		return route.fulfill({ json: answer(COST[range] ?? 0) });
+	});
+	await page.goto("/#/usage");
+	await expect(total(page)).toHaveText("$5.00");
+	failAll = true;
+	await page.getByTestId("usage-range-all").click();
+	await expect(page.getByTestId("usage-page")).toContainText("database is locked");
+	// The month's $5.00 is not left on the page under All time.
+	await expect(total(page)).toHaveCount(0);
+	// The range that failed is not the one the page opens on next time.
+	failAll = false;
+	await page.reload();
+	await expect(total(page)).toHaveText("$5.00");
+	await expect(page.getByTestId("usage-range-30d")).toHaveAttribute("aria-pressed", "true");
+});
+
 test("when the server could only give omp's 24 hours, the page says so", async ({ page }) => {
 	await stubStats(page, () => true);
 	await page.goto("/#/usage");

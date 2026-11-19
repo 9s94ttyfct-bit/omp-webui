@@ -48,6 +48,7 @@ export const en = {
 	modelsServed: "{backend} at {url} serves {n} models.",
 	modelsServedOne: "{backend} at {url} serves 1 model.",
 	modelsRetry: "Check again",
+	loadFailed: "Could not read Full / Light",
 	thinkingLabel: "Thinking level",
 
 	// Settings: what Light loads

@@ -121,14 +121,15 @@ const CONFIG_KEY = /^[\w][\w.-]{0,199}$/u;
 export const validConfigKey = (v: unknown): v is string => typeof v === "string" && CONFIG_KEY.test(v);
 
 /**
- * Why a setting's value cannot be given to omp, or null when it can. omp's CLI drops an argument that starts with `-`
- * (it reads it as a flag it does not know), so such a value would be set to something else without a word.
+ * Why a setting's value cannot be given to omp, or null when it can. The value is given after `--`, so a negative number or
+ * a text that starts with a dash is taken as it is; the one thing omp still reads there as its own is the help flag, which
+ * prints its usage and sets nothing.
  */
 export function configValueProblem(v: unknown): string | null {
 	if (typeof v !== "string") return "The value must be text";
 	if (v.length > MAX_TEXT) return "The value is too long";
 	if (CONTROL.test(v)) return "The value must be one line";
-	if (v.trimStart().startsWith("-")) return "omp's CLI cannot set a value that starts with “-”";
+	if (v === "-h" || v === "--help") return "omp's CLI reads “-h” and “--help” as its own help flag";
 	return null;
 }
 
@@ -1065,7 +1066,7 @@ async function route(req: Request, url: URL, deps: PluginsDeps): Promise<Respons
 			else {
 				const problem = configValueProblem(value);
 				if (problem || typeof value !== "string") return fail(problem ?? "The value must be text", 400);
-				args = ["plugin", "config", "set", name, body.key, value];
+				args = ["plugin", "config", "set", name, body.key, "--", value];
 			}
 			const reloads = await change(deps, args, cwd);
 			const settings = parseConfig(await cliJson(deps.bin, ["plugin", "config", "list", name, "--json"], cwd));

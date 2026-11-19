@@ -17,6 +17,7 @@ import { templateName, templateSummary } from "../lib/guidance-names.ts";
 import { useGuidanceStrings } from "../lib/guidance-strings.ts";
 import { onPrefsChanged, setPref } from "../lib/prefs.ts";
 import { useApp } from "../store/app.ts";
+import { LoadError } from "./LoadError.tsx";
 import { Button, CardHeader, cx, Modal, Spinner } from "./ui.tsx";
 
 const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
@@ -47,6 +48,9 @@ export function GuidanceSettings() {
 	const [set, setSet] = useState<GuidanceTemplates | null>(null);
 	/** What went wrong that the card says: reading the templates, a restore or a delete (a save is said in its editor). */
 	const [error, setError] = useState<{ key: MessageKey; error: string } | null>(null);
+	/** Why the templates could not be read, with the number of the read that is asked again by Try again. */
+	const [loadError, setLoadError] = useState<string | null>(null);
+	const [attempt, setAttempt] = useState(0);
 	const [draft, setDraft] = useState<Draft | null>(null);
 	/** Why the store refused the editor's last save, said in the editor, which stays open with what was written. */
 	const [saveError, setSaveError] = useState<string | null>(null);
@@ -63,6 +67,7 @@ export function GuidanceSettings() {
 			}),
 		[],
 	);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a Try again is a new read
 	useEffect(() => {
 		let live = true;
 		guidanceApi.templates().then(
@@ -70,13 +75,13 @@ export function GuidanceSettings() {
 				if (live) setSet(answer);
 			},
 			(e: unknown) => {
-				if (live) setError({ key: "guidance.loadFailed", error: messageOf(e) });
+				if (live) setLoadError(messageOf(e));
 			},
 		);
 		return () => {
 			live = false;
 		};
-	}, []);
+	}, [attempt]);
 	if (!ready) return null;
 	/** A change sent to the store: `after` runs once it is made, `failed` is told why it was not. */
 	const apply = (
@@ -176,9 +181,20 @@ export function GuidanceSettings() {
 				</p>
 			) : null}
 			{!set ? (
-				<div className="flex items-center gap-2 py-4 text-xs text-muted">
-					<Spinner size={12} /> {t("guidance.saving")}
-				</div>
+				loadError ? (
+					<LoadError
+						title={t("guidance.loadFailedTitle")}
+						error={loadError}
+						onRetry={() => {
+							setLoadError(null);
+							setAttempt((n) => n + 1);
+						}}
+					/>
+				) : (
+					<div className="flex items-center gap-2 py-4 text-xs text-muted">
+						<Spinner size={12} /> {t("guidance.loading")}
+					</div>
+				)
 			) : templates.length === 0 ? (
 				<p className="text-xs text-faint" data-testid="guidance-settings-empty">
 					{t("guidance.settingsEmpty")}

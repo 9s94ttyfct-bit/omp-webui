@@ -114,6 +114,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	settingsQuotaFloorNone: "未设下限",
 	settingsQuotaFloorInvalid: "请输入 1 到 99 之间的整数。",
 	settingsQuotaFloorFailed: "无法更改下限：{error}",
+	settingsQuotaFloorLoadFailed: "无法读取下限",
 	settingsQuotaFloorUsageFailed: "无法读取用量数据：{error}",
 	settingsQuotaFloorLoading: "加载中…",
 	settingsQuotaFloorEmpty: "还没有提供商报告过用量。omp 能读到某个提供商的额度后，它才会出现在这里。",
@@ -194,6 +195,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	settingsHostDisksData: "存放 omp-webui 的数据",
 	settingsHostDisksAll: "全部勾选时（默认）显示所有磁盘，包括之后插入的磁盘。",
 	settingsSemantic: "语义搜索",
+	settingsSemanticLoadFailed: "无法读取语义搜索的状态",
 	settingsSemanticHint:
 		"按内容的意思找对话，而不只是找你输入的字词：结果列在侧边栏搜索的“语义相关”下。模型在这台电脑上运行，有 GPU 时用 GPU；对话内容不会离开这台电脑。",
 	settingsSemanticWhat:
@@ -384,6 +386,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	cliIntroBefore: "所有 omp CLI 命令都可在此处的真实终端中运行，包括交互式命令。命令列表来自",
 	cliIntroAfter: "，因此 omp 新增的命令会自动出现。",
 	cliLineAria: "命令行",
+	cliUnclosedQuote: "有一个引号打开后没有闭合：补上同样的引号后再运行。",
 	cliRun: "运行",
 
 	// Terminal

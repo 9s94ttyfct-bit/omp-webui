@@ -19,6 +19,7 @@ import { templateName } from "../lib/guidance-names.ts";
 import { useGuidanceStrings } from "../lib/guidance-strings.ts";
 import { onPrefsChanged } from "../lib/prefs.ts";
 import { useApp } from "../store/app.ts";
+import { LoadError } from "./LoadError.tsx";
 import { Select } from "./Select.tsx";
 import { Button, cx, IconButton, Modal, Spinner } from "./ui.tsx";
 
@@ -88,6 +89,9 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 	const [templates, setTemplates] = useState<GuidanceTemplate[] | null>(null);
 	const [text, setText] = useState("");
 	const [error, setError] = useState<string | null>(null);
+	// Why the conversation's guidance could not be read, and the number of the read that Try again asks again.
+	const [loadError, setLoadError] = useState<string | null>(null);
+	const [attempt, setAttempt] = useState(0);
 	const [busy, setBusy] = useState(false);
 	// "Custom" picked while the conversation carries nothing yet: the box is for text of its own, saved with Save.
 	const [customMode, setCustomMode] = useState(false);
@@ -114,10 +118,12 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 	const [templateNote, setTemplateNote] = useState(false);
 	const [checkOn, setCheckOn] = useState(checkWanted);
 	useEffect(() => onPrefsChanged((keys) => keys.includes(PREF.guidanceCheck) && setCheckOn(checkWanted())), []);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: a Try again is a new read
 	useEffect(() => {
 		if (!key) return;
 		let live = true;
 		setError(null);
+		setLoadError(null);
 		setCheck(null);
 		setTemplateNote(false);
 		checkAbort.current?.abort();
@@ -130,14 +136,14 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 				setTemplates(answer.templates.templates);
 			},
 			(e: unknown) => {
-				if (live) setError((e as Error).message);
+				if (live) setLoadError((e as Error).message);
 			},
 		);
 		return () => {
 			live = false;
 			checkAbort.current?.abort();
 		};
-	}, [key, liveId, file]);
+	}, [key, liveId, file, attempt]);
 	const value: LiveGuidance | null = liveId ? (liveGuidance ?? null) : kept;
 	const carried = value?.text ?? "";
 	// The box follows what the conversation carries until the person types something else. Whether they did is a ref, read
@@ -382,7 +388,9 @@ export function GuidanceEditor({ liveId, file }: { liveId: string | null; file: 
 				</p>
 			) : null}
 			{!templates ? (
-				error ? null : (
+				loadError ? (
+					<LoadError title={t("guidance.loadFailedTitle")} error={loadError} onRetry={() => setAttempt((n) => n + 1)} />
+				) : (
 					<div className="flex items-center gap-2 py-4 text-xs text-muted">
 						<Spinner size={12} />
 					</div>

@@ -35,6 +35,8 @@ export const en = {
 	saveFailed: "Could not save: {error}",
 	deleteFailed: "Could not delete: {error}",
 	loadFailed: "Could not read the guidance: {error}",
+	loadFailedTitle: "Could not read the guidance",
+	loading: "Loading…",
 	tooLong: "At most {max} characters.",
 	chars: "{n} / {max}",
 	settingsIntro:

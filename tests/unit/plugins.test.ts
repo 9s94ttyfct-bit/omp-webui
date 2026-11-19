@@ -66,12 +66,14 @@ describe("arguments", () => {
 		for (const bad of ["-k", "", "a b"]) expect(validConfigKey(bad)).toBe(false);
 	});
 
-	test("a setting's value that omp's CLI would drop as a flag is refused, not set to something else", () => {
+	test("a setting's value that starts with a dash is given after --, except omp's own help flag, which is refused", () => {
 		expect(configValueProblem("hello there")).toBeNull();
 		expect(configValueProblem("")).toBeNull();
 		expect(configValueProblem("a-b")).toBeNull();
-		expect(configValueProblem("-1")).not.toBeNull();
-		expect(configValueProblem("  --flag")).not.toBeNull();
+		expect(configValueProblem("-1")).toBeNull();
+		expect(configValueProblem("  --flag")).toBeNull();
+		expect(configValueProblem("-h")).not.toBeNull();
+		expect(configValueProblem("--help")).not.toBeNull();
 		expect(configValueProblem("a\nb")).not.toBeNull();
 		expect(configValueProblem(5)).not.toBeNull();
 	});

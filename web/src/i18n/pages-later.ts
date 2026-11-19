@@ -95,6 +95,7 @@ export const en = {
 	settingsQuotaFloorNone: "No floor",
 	settingsQuotaFloorInvalid: "Enter a whole number from 1 to 99.",
 	settingsQuotaFloorFailed: "Could not change the floor: {error}",
+	settingsQuotaFloorLoadFailed: "Could not read the floors",
 	settingsQuotaFloorUsageFailed: "Could not read the usage figures: {error}",
 	settingsQuotaFloorLoading: "Loading…",
 	settingsQuotaFloorEmpty:
@@ -180,6 +181,7 @@ export const en = {
 	settingsHostDisksData: "holds omp-webui's data",
 	settingsHostDisksAll: "With every box ticked (the default), every disk is shown, including one plugged in later.",
 	settingsSemantic: "Semantic search",
+	settingsSemanticLoadFailed: "Could not read the state of semantic search",
 	settingsSemanticHint:
 		"Finds conversations by what they are about, not only by the words you type: they are listed under Related in the sidebar's search. A model runs on this computer, on its GPU when it has one; what was said never leaves it.",
 	settingsSemanticWhat:
@@ -374,6 +376,7 @@ export const en = {
 		"Every omp CLI command runs here in a real terminal, including interactive ones. The list is discovered from",
 	cliIntroAfter: ", so new omp commands appear automatically.",
 	cliLineAria: "Command line",
+	cliUnclosedQuote: "A quote is opened and never closed: close it with the same quote mark, then run again.",
 	cliRun: "Run",
 
 	// Terminal
