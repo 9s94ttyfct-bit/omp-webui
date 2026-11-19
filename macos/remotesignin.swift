@@ -9,7 +9,13 @@ import WebKit
 //
 // It is handed over when the server is up (and again after it was started again: it kept nothing), when the list of Macs changes
 // (the server's file, `remote-macs.json`, is watched), when a Mac's window has signed in, and when the cookies of a store in use
-// change. What the server holds is known (`handed`), so the same token is not sent twice to one server.
+// change. What the server holds is known (`handed`), so the same token is not sent twice to one server. A hand-over that got no
+// clear answer (the server busy or restarting) is tried again by itself, a little later each time (`signInRetryDelay`): nothing
+// else would send it before the list or a cookie changes, and until then remote_run says the Mac is not signed in.
+
+/// Seconds to wait before the stores are read again after `failures` syncs in a row left a hand-over unsure: 2 s, doubling, at most
+/// 2 minutes.
+func signInRetryDelay(_ failures: Int) -> TimeInterval { min(2 * pow(2, Double(failures - 1)), 120) }
 
 /// What the server was last handed for a Mac.
 enum HandedSignIn: Equatable {
@@ -37,6 +43,9 @@ final class RemoteSignIns: NSObject, WKHTTPCookieStoreObserver {
 	/// Which start of the server the calls are for: an answer from the one before is not what this one holds.
 	private var generation = 0
 	private var pending: DispatchWorkItem?
+	/// The sync that tries an unsure hand-over again, and how many in a row have been needed (reset by an answer and by a new server).
+	private var retry: DispatchWorkItem?
+	private var failures = 0
 	private var watcher: DispatchSourceFileSystemObject?
 	/// The list as it was when the stores were last read.
 	private var known: [RemoteMac] = []
@@ -56,6 +65,9 @@ final class RemoteSignIns: NSObject, WKHTTPCookieStoreObserver {
 	func serverStarted() {
 		generation += 1
 		handed = [:]
+		retry?.cancel()
+		retry = nil
+		failures = 0
 		watch()
 		sync()
 	}
@@ -72,6 +84,18 @@ final class RemoteSignIns: NSObject, WKHTTPCookieStoreObserver {
 	}
 
 	func cookiesDidChange(in cookieStore: WKHTTPCookieStore) { schedule() }
+
+	/// A hand-over ended unsure: read the stores again later. One retry stands for every Mac a sync left unsure.
+	private func retryLater() {
+		guard retry == nil else { return }
+		failures += 1
+		let work = DispatchWorkItem { [weak self] in
+			self?.retry = nil
+			self?.sync()
+		}
+		retry = work
+		DispatchQueue.main.asyncAfter(deadline: .now() + signInRetryDelay(failures), execute: work)
+	}
 
 	private func schedule() {
 		guard server() != nil else { return }
@@ -143,16 +167,23 @@ final class RemoteSignIns: NSObject, WKHTTPCookieStoreObserver {
 		handed[id] = now
 		let generation = self.generation
 		let done: (Result<Void, MacsServerError>) -> Void = { [weak self] result in
-			guard let self, self.generation == generation, case .failure(let error) = result else { return }
+			guard let self, self.generation == generation else { return }
+			guard case .failure(let error) = result else {
+				self.failures = 0
+				return
+			}
 			switch error {
 			case .refused(400, _) where jwt != nil:
 				// Lapsed, or not a token: the server kept nothing, and there is nothing to take back.
 				NSLog("omp-webui: a Mac's sign-in was not taken by the server (HTTP 400)")
+				self.failures = 0
 			case .refused(let status, _):
 				NSLog("omp-webui: a Mac's sign-in could not be handed to the server (HTTP \(status))")
 				if self.handed[id] == now { self.handed[id] = .unsure }
+				self.retryLater()
 			case .unreachable:
 				if self.handed[id] == now { self.handed[id] = .unsure }
+				self.retryLater()
 			}
 		}
 		if let jwt { client.handOver(id: id, jwt: jwt, completion: done) } else { client.takeBack(id: id, completion: done) }

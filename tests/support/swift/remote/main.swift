@@ -1723,6 +1723,7 @@ func notifyRun() -> [String: Any] {
 		"signIn": signIn,
 		"handed": handed,
 		"delays": delays,
+		"signInDelays": [1, 2, 3, 6, 7, 20].map { signInRetryDelay($0) },
 		"request": [
 			"url": request.url!.absoluteString, "cookie": request.value(forHTTPHeaderField: "Cookie") ?? "nil",
 			"token": request.value(forHTTPHeaderField: "x-omp-webui-token") ?? "nil",

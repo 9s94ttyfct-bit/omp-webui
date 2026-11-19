@@ -1494,7 +1494,7 @@ test.skipIf(!mac)(
 test.skipIf(!mac)(
 	"the token handed to this Mac's server is the Mac's own Access cookie that has not run out: never the team's sign-in, a parent domain's or another host's",
 	async () => {
-		const out = JSON.parse(await run(["notify"])) as { handed: Record<string, string> };
+		const out = JSON.parse(await run(["notify"])) as { handed: Record<string, string>; signInDelays: number[] };
 		expect(out.handed).toEqual({
 			host: "mac",
 			// A cookie's domain as written with a leading dot, in any case.
@@ -1511,5 +1511,7 @@ test.skipIf(!mac)(
 			otherName: "nil",
 			none: "nil",
 		});
+		// A hand-over that got no clear answer is tried again by itself (#380): soon at first, then at most every two minutes.
+		expect(out.signInDelays).toEqual([2, 4, 8, 64, 120, 120]);
 	},
 );
