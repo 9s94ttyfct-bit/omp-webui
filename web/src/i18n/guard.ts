@@ -185,7 +185,7 @@ export const en = {
 	catName_launchctl: "Changing what macOS starts",
 	catName_scheduled: "Scheduled jobs and services",
 	catName_osascript: "AppleScript",
-	catName_tunnel: "Opening a tunnel",
+	catName_tunnel: "Opening this computer to the network",
 	catName_global_install: "System-wide installs",
 	catName_system: "Disks and shutdown",
 	catName_unreadable: "A call that could not be checked",

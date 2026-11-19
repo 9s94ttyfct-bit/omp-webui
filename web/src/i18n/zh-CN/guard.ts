@@ -172,7 +172,7 @@ export const zh: Record<keyof typeof en, string> = {
 	catName_launchctl: "更改 macOS 启动的内容",
 	catName_scheduled: "定时任务和系统服务",
 	catName_osascript: "AppleScript",
-	catName_tunnel: "打开隧道",
+	catName_tunnel: "把这台电脑开放到网络",
 	catName_global_install: "安装到整个系统",
 	catName_system: "磁盘和关机",
 	catName_unreadable: "无法检查的调用",

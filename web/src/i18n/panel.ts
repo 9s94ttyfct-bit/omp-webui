@@ -108,7 +108,7 @@ export const en = {
 	reqRisk_launchctl: "it changes what macOS starts (launchctl)",
 	reqRisk_scheduled: "it changes scheduled jobs or system services (crontab, at, systemctl)",
 	reqRisk_osascript: "it runs AppleScript (osascript)",
-	reqRisk_tunnel: "it opens a tunnel to this computer",
+	reqRisk_tunnel: "it opens this computer to the network (a tunnel, a shell for whoever connects, a folder served)",
 	reqRisk_global_install: "it installs software for the whole system",
 	reqRisk_system: "it can erase a disk or stop this computer",
 	reqRisk_remote_tool: "it changes remote access to this app",

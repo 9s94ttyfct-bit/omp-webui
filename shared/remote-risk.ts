@@ -427,6 +427,10 @@ const FETCHERS = table("curl", "wget", "fetch");
 const PRIVILEGE = table("sudo", "sudoedit", "doas", "pkexec", "run0", "su", "runas", "gsudo");
 /** Programs whose job is to carry this computer onto the internet. */
 const TUNNELS = table("cloudflared", "ngrok", "bore", "frpc", "frps", "localtunnel", "serveo");
+/** The netcat family: with an option that runs a program for whoever connects, a shell handed to the network (#255). */
+const NETCATS = table("nc", "ncat", "netcat", "nc.traditional", "nc.openbsd");
+/** A host of a listening address that only this computer reaches. */
+const LOOPBACK_HOST = /^(?:localhost|127(?:\.\d{1,3}){3}|::1|\[::1\])$/i;
 /** Programs that delete what they are given; `trash` (macOS 15's `/usr/bin/trash`, trash-cli's `trash-put`) moves it to the Trash (#257). */
 const DELETERS = table("rm", "unlink", "rmdir", "shred", "srm", "trash", "trash-put");
 const SYSTEM_PROGRAMS = table(
@@ -2639,6 +2643,7 @@ class Scan {
 		if (name === "tailscale" && operands.some((o) => o.text === "serve" || o.text === "funnel")) this.add("tunnel");
 		if ((name === "ssh" || name === "autossh") && args.some((a) => /^-[A-Za-z]*[RD]$|^-[RD][^A-Za-z]/.test(a.text)))
 			this.add("tunnel");
+		this.listener(name, args, opts, operands, cwd);
 		if (listed(SYSTEM_PROGRAMS, name) || name.startsWith("mkfs")) this.add("system");
 		// Every process the person may signal, unsaved work and this server included (#259): `kill … -1`, `pkill`/`killall -u`.
 		if (name === "kill") {
@@ -3786,6 +3791,59 @@ class Scan {
 			this.add("remote_shell");
 			this.script(m[2], this.ctx.home, depth + 1);
 		}
+	}
+
+	/**
+	 * What opens this computer to its network without a tunnel (`tunnel`, #255): a bind or reverse shell (`nc -e /bin/sh`, `nc
+	 * -c …`, `ncat --exec`/`--sh-exec`/`--lua-exec`, `socat` with an `EXEC:`/`SYSTEM:` address and a network one), and a static
+	 * web server for a folder outside the project on an address that is not the loopback: `python -m http.server` (every
+	 * interface unless `--bind`/`-b`), `http-server` (every interface unless `-a`), `serve` (unless `-l`), `php -S <address>`.
+	 * The project's own folder served is let be.
+	 */
+	private listener(name: string, args: Word[], opts: string[], operands: Word[], cwd: string | null): void {
+		if (listed(NETCATS, name)) {
+			if (opts.some((o) => /^-[A-Za-z]*[ec][A-Za-z]*$|^--(?:exec|sh-exec|lua-exec)(?:=|$)/.test(o))) this.add("tunnel");
+			return;
+		}
+		if (name === "socat") {
+			const addresses = operands.map((o) => o.text);
+			const runs = addresses.some((a) => /(?:^|!!)(?:exec|system):/i.test(a));
+			const network = addresses.some((a) => /^(?:tcp|udp|sctp|openssl|ssl|dtls|socks|proxy|vsock|ip)[\w-]*:/i.test(a));
+			if (runs && network) this.add("tunnel");
+			return;
+		}
+		let address: string | undefined;
+		let folder: Word | undefined;
+		if (isInterpreter(name) && name !== "php") {
+			const at = args.findIndex((a) => a.text === "-m");
+			if (at < 0 || !/^(?:http\.server|SimpleHTTPServer)$/.test(args[at + 1]?.text ?? "")) return;
+			const rest = args.slice(at + 2);
+			address = optionValues(rest, ["-b"], ["--bind"]).at(-1)?.text;
+			folder = optionValues(rest, ["-d"], ["--directory"]).at(-1);
+		} else if (name === "php") {
+			address = optionValues(args, ["-S"], []).at(-1)?.text;
+			if (address === undefined) return;
+			folder = optionValues(args, ["-t"], []).at(-1);
+		} else if (name === "http-server" || name === "serve") {
+			const http = name === "http-server";
+			const valued = optionValues(
+				args,
+				http ? ["-a", "-p", "-c", "-e", "-P", "-C", "-K", "-t", "-u"] : ["-l", "-p", "-c"],
+				http
+					? ["--address", "--port", "--proxy", "--cert", "--key", "--username", "--password", "--ext"]
+					: ["--listen", "--config"],
+			);
+			address = optionValues(args, http ? ["-a"] : ["-l"], http ? ["--address"] : ["--listen"]).at(-1)?.text;
+			folder = operands.find((o) => !valued.includes(o));
+		} else return;
+		if (address !== undefined) {
+			let host = address.replace(/^[a-z]+:\/\//i, "");
+			if (host.startsWith("[")) host = host.slice(0, host.indexOf("]") + 1);
+			else if (host.split(":").length === 2) host = host.slice(0, host.indexOf(":"));
+			if (LOOPBACK_HOST.test(host)) return;
+		}
+		const served = folder ? resolveWord(folder, cwd, this.ctx) : cwd;
+		if (served === null || !inProject(served, this.ctx)) this.add("tunnel");
 	}
 
 	/**

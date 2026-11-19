@@ -440,7 +440,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	reqRisk_launchctl: "它更改 macOS 的启动项（launchctl）",
 	reqRisk_scheduled: "它更改定时任务或系统服务（crontab、at、systemctl）",
 	reqRisk_osascript: "它运行 AppleScript（osascript）",
-	reqRisk_tunnel: "它打开通向这台电脑的隧道",
+	reqRisk_tunnel: "它把这台电脑开放到网络上（隧道、交给任何连接者的 shell、对外提供的文件夹）",
 	reqRisk_global_install: "它为整个系统安装软件",
 	reqRisk_system: "它可能抹掉磁盘或关闭这台电脑",
 	reqRisk_remote_tool: "它更改本应用的远程访问",
