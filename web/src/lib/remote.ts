@@ -14,8 +14,8 @@ import { create } from "zustand";
  * actions the card offers.
  *
  * The server owns the settings (`<dataDir>/remote.json`) and the tunnel (`server/remote-tunnel.ts`); this holds
- * what it last said and asks for changes. The routes are local-only: a page that came in through the tunnel is
- * refused them (403), so a remote page never sees the card's actions.
+ * what it last said and asks for changes. The routes are the person's own (`isOwnerRoute`): a page that holds only the
+ * token is refused them (403), so such a page never sees the card's actions.
  */
 
 /** What the server refused, and the code that tells the cases apart. */

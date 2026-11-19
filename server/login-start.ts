@@ -11,7 +11,7 @@ import type { LoginItemOps } from "./platform/types.ts";
  * program to start at login: there the route says it is not available.
  *
  * `GET /api/login-start` → `{ available, on }`; `POST /api/login-start` `{ on: boolean }` → the same, as it is afterwards.
- * Local-only (`isLocalOnlyRoute`): a page that is not on this computer is refused it.
+ * Owner-only (`isOwnerRoute`): a page that holds only the token is refused it; this computer's page and one signed in through Access are not.
  */
 
 export const LOGIN_START_PATH = "/api/login-start";

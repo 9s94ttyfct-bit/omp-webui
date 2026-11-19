@@ -3,7 +3,7 @@ import { createLookup, type Lookup } from "./lookup.ts";
 /**
  * The `webui_docs` tool and the browser note, an omp extension: the web UI starts every conversation's omp with it (`--extension`), so an agent
  * running in omp-webui can look up how omp-webui itself works — its features, every setting with its key, values and
- * default, its API routes and which of them are local-only — instead of guessing. It answers from `docs/agents/`, the
+ * default, its API routes and which of them are owner-only — instead of guessing. It answers from `docs/agents/`, the
  * agent-facing documentation that ships with the app.
  *
  * Read-only by construction:
@@ -66,7 +66,7 @@ export function withBrowserNote(event: BeforeAgentStart, ctx: Context): { system
 }
 
 export const DOCS_TOOL_DESCRIPTION =
-	"Look up omp-webui's own documentation (the web UI and macOS app this conversation runs in): its features, where they are in the UI, every setting with its key, values and default, its API routes and which are local-only. Read-only. Actions: `list` (every topic), `search` (keywords; sections holding all of them), `read` (a topic, or one `section` of it).";
+	"Look up omp-webui's own documentation (the web UI and macOS app this conversation runs in): its features, where they are in the UI, every setting with its key, values and default, its API routes and which are owner-only. Read-only. Actions: `list` (every topic), `search` (keywords; sections holding all of them), `read` (a topic, or one `section` of it).";
 
 const PARAMETERS = {
 	type: "object",

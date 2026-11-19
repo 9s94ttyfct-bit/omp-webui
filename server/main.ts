@@ -1880,7 +1880,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		case "/api/host":
 			return json(host.history());
 		case "/api/shell/background":
-			// The macOS app is about to close its window for Run in Background (local-only: `/api/shell`): the terminals of the page
+			// The macOS app is about to close its window for Run in Background (owner-only: `/api/shell`): the terminals of the page
 			// that closes with it are held for the page of the window that opens again, not killed with its socket. DELETE: the
 			// window was opened again before it closed (or within the 10 s): a browser tab that closes now is not that window.
 			if (req.method === "DELETE") {
@@ -1891,18 +1891,18 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			ptys.expectDetach();
 			return json({ held: true });
 		case LOGIN_START_PATH:
-			// Settings › Start at login (local-only), for the launcher on Windows and Linux (see `LoginStart`).
+			// Settings › Start at login (owner-only), for the launcher on Windows and Linux (see `LoginStart`).
 			return loginStart.handle(req);
 		case "/api/shutdown":
 			// `omp-webui --stop` (server/launcher.ts), on every platform: on Windows a signal ends the process outright, without
-			// the shutdown. Local-only (see `isLocalOnlyRoute`), with the token and the CSRF header as every API POST is.
+			// the shutdown. Owner-only (`isOwnerRoute`), with the token and the CSRF header as every API POST is.
 			if (req.method !== "POST") return fail("POST required", 405);
 			console.log("omp-webui: stopping, as asked through /api/shutdown");
 			// After this answer has gone: the shutdown stops the listener, which would cut it short.
 			setTimeout(() => void shutdown(), 0);
 			return json({ stopping: true }, 202);
 		case "/api/shell/quota": {
-			// The menu bar icon's quota lines (local-only: `/api/shell`), in the saved language, else the app's (`lang`). omp is
+			// The menu bar icon's quota lines (owner-only: `/api/shell`), in the saved language, else the app's (`lang`). omp is
 			// asked through the same cache as the page's quota pills: an icon opened often starts no more `omp usage` than they do.
 			const { providerUsage } = await import("./omp/usage.ts");
 			const { menuQuotaLines } = await import("./menu-quota.ts");
@@ -1916,7 +1916,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		}
 		case "/api/shell/pause-all":
 		case "/api/shell/resume-all": {
-			// The macOS menu bar icon (local-only: `/api/shell`): every conversation whose turn is open is paused (one that
+			// The macOS menu bar icon (owner-only: `/api/shell`): every conversation whose turn is open is paused (one that
 			// works, or waits for an answer), or every paused one is resumed, each with its own Pause / Resume. One that
 			// refuses (it is being closed) is left as it is; the others go on.
 			if (req.method !== "POST") return fail("POST required", 405);
@@ -2005,7 +2005,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		}
 		case "/api/guard/rules":
 			// What the person tuned of the guard: the reviewer's rules, the threshold of each category, their own benchmark
-			// cases. This computer's alone, as the rest of the Guard page is (see `isLocalOnlyRoute`); the shipped defaults come with it.
+			// cases. The person's own page's alone, as the rest of the Guard page is (see `isOwnerRoute`); the shipped defaults come with it.
 			if (req.method === "POST") {
 				const body: unknown = await req.json().catch(() => null);
 				try {
@@ -3424,7 +3424,7 @@ async function route(req: Request, srv: Bun.Server<SocketData>): Promise<Respons
 		if (srv.upgrade(req, { data })) return undefined;
 		return new Response("Upgrade failed", { status: 400 });
 	}
-	// A response that does not end, for the macOS app on this computer (refused to any other page above, see `isLocalOnlyRoute`):
+	// A response that does not end, for the macOS app on this computer (refused to a page that holds only the token above, see `isOwnerRoute`):
 	// not held back to be compressed.
 	if (url.pathname === SHELL_EVENTS_PATH && req.method === "GET") return shellEvents.serve(req);
 	// The same response for the macOS app of another Mac (#656): let in as a window onto this Mac is, with the Access token and

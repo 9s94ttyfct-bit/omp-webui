@@ -15,8 +15,9 @@ import type { LiveInfo } from "../shared/protocol.ts";
 /**
  * What the macOS app is told on its own (#627): the app shows its notifications itself, from here, and keeps a menu bar
  * icon that says what is running, so that it needs no window and no page while it runs in the background. One long
- * response of newline-delimited JSON, `GET /api/shell/events?lang=<en|zh-CN>&epoch=<id>&since=<n>`, for this computer's pages
- * only (the route is `isLocalOnlyRoute`'s: a page that came through the tunnel or over the network is refused it, token or not):
+ * response of newline-delimited JSON, `GET /api/shell/events?lang=<en|zh-CN>&epoch=<id>&since=<n>`, for the person's own
+ * pages only (the route is `isOwnerRoute`'s: this computer's page and one signed in through Access get it, a page that holds
+ * only the token is refused it):
  *
  * - `{ t: "state", epoch, working, asking, paused, menuIcon, questions, unseen }`: how many conversations work, how many wait
  *   for an answer, how many are paused (the menu bar icon offers Resume all for those), whether the menu bar icon is shown while

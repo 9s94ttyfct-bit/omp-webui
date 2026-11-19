@@ -5,7 +5,7 @@ import { asciiLower } from "./remote.ts";
  * The other Macs this one knows (#628, built on #614's list): the name a person gave each and the address its omp-webui is
  * served at through Cloudflare Access. The server keeps the list (`server/saved-macs.ts`, `<data dir>/remote-macs.json`), the
  * pages read it (`/api/meta`) for the sidebar's machine switcher, the macOS app's Macs menu reads and writes the same one, and
- * only a page on this computer changes it (`/api/macs*` is a local-only route).
+ * only the person's own page changes it (`/api/macs*` is an owner-only route: this computer's page, or one signed in through Access).
  *
  * There is no secret in it: a Mac's sign-in lives in the app's own per-Mac web data store, never in this list.
  *
