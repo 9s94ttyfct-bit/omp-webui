@@ -115,10 +115,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 	/// server's (it is the only writer; the app reads its file and asks it for changes). Held as an `AnyObject`: its type does not
 	/// exist before then.
 	var remoteMacs: AnyObject?
-	/// The page's saved language (`ompw.lang`) as the server last said it: nil until asked, or when none is saved.
-	var storedLanguage: String?
+	/// The page's saved language (`ompw.lang`) as the server last said it: nil until asked, or when none is saved. What is worded
+	/// in it and stays on screen (the menu bar icon's menu, the Macs menu's title) is worded again when it changes.
+	var storedLanguage: String? {
+		didSet {
+			if ShellLanguage(stored: oldValue, preferred: Locale.preferredLanguages) != shellLanguage { languageChanged() }
+		}
+	}
 	/// The language of the app's own words: the page's saved language, else the Mac's first (see `ShellLanguage`).
 	var shellLanguage: ShellLanguage { ShellLanguage(stored: storedLanguage, preferred: Locale.preferredLanguages) }
+
+	/// The person changed the page's language (from any page, also while the app was away): what the app shows in it now is
+	/// shown in the new one (#377); a menu that is open shows it at once.
+	func languageChanged() {
+		background?.status.languageChanged()
+		if #available(macOS 14.0, *) { (remoteMacs as? RemoteMacsController)?.languageChanged() }
+	}
 
 	@available(macOS 14.0, *)
 	var remote: RemoteMacsController {
@@ -181,7 +193,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 			status: StatusMenu(
 				language: { [unowned self] in self.shellLanguage }, open: { [unowned self] in self.showWindow() },
 				quit: { NSApp.terminate(nil) }, pauseAll: { [unowned self] in self.pauseAll(false) },
-				resumeAll: { [unowned self] in self.pauseAll(true) }, opening: { [unowned self] in self.readQuota() },
+				resumeAll: { [unowned self] in self.pauseAll(true) },
+				// The language may have been changed since it was read (Settings, from any page): read it again, and the
+				// menu is worded again when it has (#377).
+				opening: { [unowned self] in
+					self.readQuota()
+					self.refreshLanguage()
+				},
 				questions: { [unowned self] in self.showQuestions() }))
 		// Listening from the start: the announcement of a logout comes before any quit.
 		_ = sessionEnd

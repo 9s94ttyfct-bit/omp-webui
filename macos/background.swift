@@ -282,6 +282,11 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 		opening()
 	}
 
+	/// The page's language changed (#377): the menu says what it says in the new one, at once if it is open.
+	func languageChanged() {
+		render()
+	}
+
 	/// What a click on a line does (also what a test does for a click).
 	func choose(_ role: StatusLine.Role) {
 		actions[role]?()

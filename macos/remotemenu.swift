@@ -74,6 +74,16 @@ final class RemoteMacsController: NSObject, NSMenuDelegate, NSMenuItemValidation
 
 	func menuNeedsUpdate(_ menu: NSMenu) {
 		refreshLanguage()
+		render(menu)
+	}
+
+	/// The page's language changed (#377): an open menu (it asks for the language as it opens, and is built before the answer
+	/// comes) is worded in the new one at once, not the next time it opens.
+	func languageChanged() {
+		if !menu.items.isEmpty { render(menu) }
+	}
+
+	private func render(_ menu: NSMenu) {
 		let w = words
 		menu.removeAllItems()
 		let macs = store.list.macs
