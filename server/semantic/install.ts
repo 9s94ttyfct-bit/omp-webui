@@ -116,7 +116,37 @@ export async function install(dir: string, opts: InstallOptions): Promise<Instal
 	}
 	const ready = installed(dir, model, build);
 	if (!ready) throw new SemanticInstallError({ code: "unpack", detail: SERVER_NAME });
+	removeStale(dir, model, build);
 	return ready;
+}
+
+/**
+ * What an install left that nothing uses: the unpacked builds of other versions (`runtime-<other build>/`), an unpack
+ * that was cut short (`runtime-<build>.unpack-<id>/`: the process ended before its `finally`), and model files of other
+ * names. Only those two places are looked at, and only when the current build and model are all there (a folder that
+ * cannot be removed, an exe Windows still runs, is left for the next time) (#210).
+ */
+export function removeStale(dir: string, model: Asset = MODEL, build: string = LLAMA_BUILD): void {
+	if (!installed(dir, model, build)) return;
+	const current = `runtime-${build}`;
+	const sweep = (folder: string, keep: string, only: (name: string) => boolean): void => {
+		let names: string[];
+		try {
+			names = readdirSync(folder);
+		} catch {
+			return;
+		}
+		for (const name of names) {
+			if (name === keep || !only(name)) continue;
+			try {
+				rmSync(join(folder, name), { recursive: true, force: true });
+			} catch {
+				// In use or not ours to remove: left, and looked at again by the next install or start.
+			}
+		}
+	};
+	sweep(dir, current, (name) => name.startsWith("runtime-"));
+	sweep(join(dir, "model"), model.name, () => true);
 }
 
 /** `asset` to `file`, from the first of its addresses that gives all of it as listed. */

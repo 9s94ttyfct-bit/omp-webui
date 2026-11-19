@@ -11,6 +11,7 @@ import {
 	type InstallOptions,
 	install,
 	installed,
+	removeStale,
 	SemanticInstallError,
 } from "./install.ts";
 import { gpuDevice, Runtime, reapOrphan } from "./runtime.ts";
@@ -134,6 +135,8 @@ export class SemanticService {
 		this.failure = undefined;
 		const ready = installed(this.dir);
 		if (ready) {
+			// Files an older build or an install cut short left (#210).
+			removeStale(this.dir);
 			this.startIndex(ready);
 			return;
 		}

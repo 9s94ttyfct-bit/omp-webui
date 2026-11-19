@@ -532,6 +532,7 @@
     "tests/unit/plugins.test.ts": 11,
     "tests/unit/raw-keys.test.ts": 11,
     "tests/unit/segment-names.test.ts": 11,
+    "tests/unit/semantic-stale.test.ts": 11,
     "tests/unit/skill-switches.test.ts": 11,
     "tests/unit/stop-confirm.test.ts": 11,
     "tests/unit/store-bash.test.ts": 11,

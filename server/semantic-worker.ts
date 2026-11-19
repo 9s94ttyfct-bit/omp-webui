@@ -27,6 +27,8 @@ const RETRY_MS = 30_000;
 /** How long one request to the server may take: a batch is a few seconds of work on a processor. */
 const EMBED_MS = 180_000;
 const PROGRESS_MS = 500;
+/** While the stored vectors are read in at start, the garbage of the rows read is collected this often. */
+const ROWS_PER_COLLECTION = 20_000;
 /**
  * Below this cosine a passage is not near the query in any way that reads as related. EmbeddingGemma's scores (512
  * dimensions, one byte each) sit high, and a short query scores lower than a long one: over 18,000 real messages, a query
@@ -129,13 +131,18 @@ function openDatabase(path: string): void {
 			.all())
 			own.set(r.fid, { epoch: r.epoch, seq: r.seq });
 		count = 0;
+		// Row by row into arrays sized up front, and the rows' garbage collected as it grows: reading every row into one
+		// array first held an object and a vector copy of each beside the packed store, and even row by row the collector
+		// lets a few hundred MB of dead rows pile up before it runs, about 4 times the 154 MB 300,000 vectors need (#212).
+		grow(conn.query<{ n: number }, []>("SELECT count(*) AS n FROM vecs").get()?.n ?? 0);
 		const rows = conn
 			.query<{ msg: number; start: number; scale: number; vec: Uint8Array }, []>(
 				"SELECT msg, start, scale, vec FROM vecs ORDER BY msg, chunk",
 			)
-			.all();
-		grow(rows.length);
+			.iterate();
+		let read = 0;
 		for (const r of rows) {
+			if (++read % ROWS_PER_COLLECTION === 0) Bun.gc(true);
 			if (r.vec.byteLength !== DIMENSIONS) continue;
 			keep(r.msg, r.start, new Int8Array(r.vec.buffer, r.vec.byteOffset, DIMENSIONS), r.scale);
 		}
