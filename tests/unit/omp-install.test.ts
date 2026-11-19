@@ -53,10 +53,12 @@ test("versions compare as semver: numbers, not text, and a prerelease is older t
 test("the supported range starts at its minimum and stops before the next major", () => {
 	expect(compatOf(OMP_COMPAT.min)).toBe("supported");
 	expect(compatOf("18.99.0")).toBe("supported");
+	expect(compatOf("19.0.0")).toBe("supported");
+	expect(compatOf("19.9.0")).toBe("supported");
 	expect(compatOf("18.10.9")).toBe("older");
 	expect(compatOf(OMP_COMPAT.below)).toBe("newer");
-	expect(compatOf("19.0.0-canary.1")).toBe("newer");
-	expect(compatOf("20.1.0")).toBe("newer");
+	expect(compatOf("20.0.0-canary.1")).toBe("newer");
+	expect(compatOf("21.1.0")).toBe("newer");
 	expect(compatOf(null)).toBe("unknown");
 	expect(compatOf("not a version")).toBe("unknown");
 });

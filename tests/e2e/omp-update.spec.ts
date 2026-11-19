@@ -274,12 +274,12 @@ test("'Update omp automatically' is off by default and, once on, updates by itse
 });
 
 test("a release outside the supported range asks first, and warns again once installed", async ({ page }) => {
-	const run = await serve("18.12.3", "19.0.0");
+	const run = await serve("18.12.3", "20.0.0");
 	try {
 		await page.goto(run.url);
 		await expect(notice(page)).toHaveAttribute("data-kind", "update-outside");
 		await expect(notice(page)).toContainText(
-			"omp 19.0.0 is available, but this omp-webui is made for omp >=18.12.3 <19.0.0.",
+			"omp 20.0.0 is available, but this omp-webui is made for omp >=18.12.3 <20.0.0.",
 		);
 		await expect(page.getByTestId("omp-update")).toHaveText("Update anyway");
 
@@ -299,7 +299,7 @@ test("a release outside the supported range asks first, and warns again once ins
 		await page.getByTestId("omp-update-done-dismiss").click();
 		await expect(notice(page)).toHaveAttribute("data-kind", "compat");
 		await expect(notice(page)).toContainText(
-			"omp 19.0.0 is newer than this omp-webui is made for (>=18.12.3 <19.0.0).",
+			"omp 20.0.0 is newer than this omp-webui is made for (>=18.12.3 <20.0.0).",
 		);
 		await page.getByTestId("omp-notice-dismiss").click();
 		await expect(notice(page)).toHaveCount(0);
@@ -315,11 +315,11 @@ test("a release outside the supported range asks first, and warns again once ins
 });
 
 test("on start, an installed omp outside the supported range is warned about", async ({ page }) => {
-	const newer = await serve("19.2.0", "19.2.0");
+	const newer = await serve("20.2.0", "20.2.0");
 	try {
 		await page.goto(newer.url);
 		await expect(notice(page)).toHaveAttribute("data-kind", "compat");
-		await expect(notice(page)).toContainText("omp 19.2.0 is newer than this omp-webui is made for");
+		await expect(notice(page)).toContainText("omp 20.2.0 is newer than this omp-webui is made for");
 	} finally {
 		// The page leaves the server before it stops: a page still on it fails the chunks it is loading and loads itself
 		// again (`reloadOnce`), and the error page of that reload would cut short the next `goto`.

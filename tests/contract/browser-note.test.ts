@@ -19,10 +19,17 @@ import { connect, request } from "../support/ws.ts";
 
 const TITLE = "ompw-second-page";
 const ASK = "Open a second page and attach to it";
+/** omp 18.19 moved `app.target` to a top-level `target`; the note gives both, and the omp under test gets its own. */
+const topLevelTarget = (() => {
+	const out = Bun.spawnSync([process.env.OMP_BIN ?? "omp", "--version"]).stdout.toString();
+	const [major = 0, minor = 0] = (/(\d+)\.(\d+)\.\d+/.exec(out)?.slice(1) ?? []).map(Number);
+	return major > 18 || (major === 18 && minor >= 19);
+})();
+const TARGET = topLevelTarget ? `target: "${TITLE}"` : `app: { target: "${TITLE}" }`;
 const CODE = [
 	'const first = await browser.open({ name: "first" });',
 	`await first.run(async ({ browser }) => { const page = await browser.newPage(); await page.goto("data:text/html,<title>${TITLE}</title>"); });`,
-	`const second = await browser.open({ name: "second", target: "${TITLE}" });`,
+	`const second = await browser.open({ name: "second", ${TARGET} });`,
 	"const title = await second.run(({ page }) => page.title());",
 	'return "attached to: " + title;',
 ].join("\n");
@@ -64,6 +71,7 @@ afterAll(async () => {
 test("the note's spelling attaches an agent to a second page of its conversation", async () => {
 	// What the eval below runs is what the note tells the agent.
 	expect(BROWSER_NOTE).toContain('browser.open({ name, target: "<URL or title substring>" })');
+	expect(BROWSER_NOTE).toContain('(omp before 18.19: `app: { target: "…" }`)');
 	const ws = await connect(server);
 	const live = await request<LiveInfo>(ws, { t: "open", target: { kind: "new", cwd: server.work } });
 	const frames = watchFrames(ws, live.liveId);

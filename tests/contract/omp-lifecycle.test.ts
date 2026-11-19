@@ -145,8 +145,8 @@ let registry: FakeRegistry;
 beforeAll(async () => {
 	if (skip) return;
 	updatingWorld = world({ version: "18.12.3", installed: true });
-	updatingWorld.state.setUpdateTo("19.0.0");
-	registry = await startFakeRegistry("19.0.0");
+	updatingWorld.state.setUpdateTo("20.0.0");
+	registry = await startFakeRegistry("20.0.0");
 	registries.push(registry);
 	updating = await startTestServer(0, {
 		PATH: updatingWorld.path,
@@ -163,9 +163,9 @@ test.skipIf(skip)(
 	async () => {
 		expect((await omp(updating)).state.release).toBeNull();
 		const checked = (await (await post(updating, "/api/omp/check")).json()) as OmpSnapshot;
-		expect(checked.state.release).toMatchObject({ latest: "19.0.0", newer: true, compat: "newer", source: "npm" });
+		expect(checked.state.release).toMatchObject({ latest: "20.0.0", newer: true, compat: "newer", source: "npm" });
 		expect(registry.hits).toEqual(["/@oh-my-pi%2fpi-coding-agent/latest"]);
-		expect(checked.state.compat).toEqual({ range: ">=18.12.3 <19.0.0", verdict: "supported" });
+		expect(checked.state.compat).toEqual({ range: ">=18.12.3 <20.0.0", verdict: "supported" });
 
 		const refused = await post(updating, "/api/omp/update", {});
 		expect(refused.status).toBe(409);
@@ -217,9 +217,9 @@ test.skipIf(skip)("an acknowledged update waits for a working conversation, then
 	await pollUntil(async () => (await omp(updating)).state.job?.state === "done", "the update to run once idle", 30_000);
 	const done = (await omp(updating)).state;
 	expect(done.job?.startedAt).toBeGreaterThanOrEqual(released);
-	expect(done).toMatchObject({ version: "19.0.0", compat: { verdict: "newer" } });
+	expect(done).toMatchObject({ version: "20.0.0", compat: { verdict: "newer" } });
 	expect(updatingWorld.state.updateCalls()).toHaveLength(1);
-	expect((await get<{ ompVersion: string }>(updating, "/api/meta")).ompVersion).toBe("19.0.0");
+	expect((await get<{ ompVersion: string }>(updating, "/api/meta")).ompVersion).toBe("20.0.0");
 	await request(ws, { t: "close", liveId: live.liveId });
 	ws.close();
 });
@@ -227,8 +227,8 @@ test.skipIf(skip)("an acknowledged update waits for a working conversation, then
 test.skipIf(skip)(
 	"a paused conversation holds an update: the job says so, and 'update anyway' runs it without waiting for a resume",
 	async () => {
-		updatingWorld.state.setUpdateTo("19.1.0");
-		registry.setLatest("19.1.0");
+		updatingWorld.state.setUpdateTo("20.1.0");
+		registry.setLatest("20.1.0");
 		await post(updating, "/api/omp/check");
 		const ws = await connect(updating);
 		const live = await request<LiveInfo>(ws, { t: "open", target: { kind: "new", cwd: updatingWorld.dir } });
@@ -256,7 +256,7 @@ test.skipIf(skip)(
 		expect(anyway.state.job).toMatchObject({ kind: "update", anyway: true });
 		await pollUntil(async () => (await omp(updating)).state.job?.state === "done", "the update to run", 30_000);
 		expect(updatingWorld.state.updateCalls()).toHaveLength(before + 1);
-		expect((await omp(updating)).state).toMatchObject({ version: "19.1.0" });
+		expect((await omp(updating)).state).toMatchObject({ version: "20.1.0" });
 		// The paused conversation was left as it was: still there, still frozen.
 		expect((await get<LiveListing[]>(updating, "/api/lives")).find((l) => l.liveId === live.liveId)).toMatchObject({
 			holding: "paused",

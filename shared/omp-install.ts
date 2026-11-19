@@ -14,7 +14,7 @@ import type { ErrorInfo } from "./error-info.ts";
  * older releases lack (and the first `omp` of CI's test matrix with it: a unit test holds them equal), and `below`
  * once a newer major release has been checked against it.
  */
-export const OMP_COMPAT = { min: "18.12.3", below: "19.0.0" } as const;
+export const OMP_COMPAT = { min: "18.12.3", below: "20.0.0" } as const;
 
 /**
  * The first omp release with each feature the web UI offers only where omp has it. `OMP_COMPAT.min` is at least every
@@ -99,7 +99,7 @@ export type CompatVerdict = "supported" | "older" | "newer" | "unknown";
 export function compatOf(version: string | null): CompatVerdict {
 	if (!version || !parseVersion(version)) return "unknown";
 	if (compareVersions(version, OMP_COMPAT.min) < 0) return "older";
-	// A prerelease of the next major (`19.0.0-canary.1`) is already outside the range: it is older than 19.0.0 itself.
+	// A prerelease of the next major (`20.0.0-canary.1`) is already outside the range: it is older than 20.0.0 itself.
 	const next = parseVersion(OMP_COMPAT.below);
 	const v = parseVersion(version);
 	if (next && v && v.core[0] === next.core[0] && v.core[1] === next.core[1] && v.core[2] === next.core[2])

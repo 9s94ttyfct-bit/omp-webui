@@ -390,6 +390,7 @@
     "tests/unit/prefs.test.ts": 46,
     "tests/unit/chat-projects.test.ts": 44,
     "tests/unit/omp-floor.test.ts": 42,
+    "tests/unit/omp-dirs.test.ts": 42,
     "tests/unit/omp-settings-write.test.ts": 40,
     "tests/unit/omp-update.test.ts": 40,
     "tests/unit/remote-ai-lazy.test.ts": 40,

@@ -1386,8 +1386,8 @@ test("an update cannot be stopped once it runs", async () => {
 });
 
 test("a release outside the supported range needs the user's say-so, however it is asked for", async () => {
-	const { f, omp, registry } = await installed("18.12.0", "19.0.0");
-	expect(omp.state().release).toMatchObject({ latest: "19.0.0", newer: true, compat: "newer" });
+	const { f, omp, registry } = await installed("18.12.0", "20.0.0");
+	expect(omp.state().release).toMatchObject({ latest: "20.0.0", newer: true, compat: "newer" });
 	expect(() => omp.startUpdate(false)).toThrow("outside the versions this web UI supports");
 	try {
 		omp.startUpdate(false);
@@ -1399,13 +1399,13 @@ test("a release outside the supported range needs the user's say-so, however it 
 	omp.startUpdate(true);
 	await pollUntil(() => f.last().job?.state === "done", "the acknowledged update to end");
 	// After updating, the installed omp is outside the range: the page warns at once.
-	expect(f.last().compat).toEqual({ range: ">=18.12.3 <19.0.0", verdict: "newer" });
+	expect(f.last().compat).toEqual({ range: ">=18.12.3 <20.0.0", verdict: "newer" });
 	await registry.stop();
 });
 
 test("on start, an installed omp outside the range is reported as such", async () => {
-	const newer = fixture("19.2.0");
-	placeBrewOmp(newer.prefix, newer.template, "19.2.0");
+	const newer = fixture("20.2.0");
+	placeBrewOmp(newer.prefix, newer.template, "20.2.0");
 	const a = newer.make();
 	await a.init();
 	expect(a.state().compat.verdict).toBe("newer");
@@ -1497,7 +1497,7 @@ test("nothing updates by itself while the setting is off, or into a version the 
 	await off.registry.stop();
 
 	// On, but the release is a new major: the user decides that one.
-	const major = await installed("18.12.0", "19.0.0");
+	const major = await installed("18.12.0", "20.0.0");
 	major.omp.setAutoUpdate(true);
 	await major.omp.tick();
 	expect(major.f.state.updateCalls()).toEqual([]);
