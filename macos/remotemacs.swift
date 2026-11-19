@@ -171,6 +171,12 @@ struct RemoteMac: Equatable {
 	/// Access sign-in, the session cookie of `<team>.cloudflareaccess.com`, covers them all; a Mac whose team is not known has
 	/// its own, and nothing of it is in another's.
 	var storeIdentifier: UUID { team.map(teamStoreIdentifier) ?? storeId }
+
+	/// The data stores this Mac's sign-in is read from for running commands there and for its notifications, in order (#375): the
+	/// one its next window uses, then its own. They differ once the team of a Mac added without one is kept at its first sign-in:
+	/// the window open then keeps the Mac's own store, where that sign-in is, and the team's store holds none until a window made
+	/// after it signs in there (the newer sign-in, so it is read first).
+	var signInStores: [UUID] { storeIdentifier == storeId ? [storeId] : [storeIdentifier, storeId] }
 }
 
 /// The identifier of the data store the Macs of one Cloudflare team share: the same on every launch with no file of its own, so

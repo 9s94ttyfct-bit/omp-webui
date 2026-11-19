@@ -2,9 +2,10 @@ import Foundation
 import WebKit
 
 // The sign-ins of the other Macs, handed to this Mac's own server so that it can run commands there (`remote_run`, server/remote-run):
-// the Cloudflare Access token (`CF_Authorization`) each Mac's window signed in with, read from that Mac's data store
-// (`RemoteMac.storeIdentifier`, `accessToken`) and posted to the server's local-only `/api/macs/<id>/sign-in`; a `DELETE` there
-// when the store holds none any more (signed out, run out). The server keeps it in memory only, and never shows it to a page.
+// the Cloudflare Access token (`CF_Authorization`) each Mac's window signed in with, read from that Mac's data stores
+// (`RemoteMac.signInStores`: the team's, then its own, which a window open when the team was kept still signs in with; #375;
+// `accessToken`) and posted to the server's local-only `/api/macs/<id>/sign-in`; a `DELETE` there when no store holds one any
+// more (signed out, run out). The server keeps it in memory only, and never shows it to a page.
 // The token is in that request's body and nowhere else: it is never logged, and only a status is.
 //
 // It is handed over when the server is up (and again after it was started again: it kept nothing), when the list of Macs changes
@@ -75,7 +76,7 @@ final class RemoteSignIns: NSObject, WKHTTPCookieStoreObserver {
 	/// Something changed the list or a sign-in (a window signed in, a Mac was signed out of or forgotten): the stores are read again
 	/// in a moment. A store of a Mac that is no longer listed is let go of now, so that it can be deleted.
 	func listChanged() {
-		let wanted = Set(list.list.macs.map(\.storeIdentifier))
+		let wanted = Set(list.list.macs.flatMap(\.signInStores))
 		for (id, store) in stores where !wanted.contains(id) {
 			store.httpCookieStore.remove(self)
 			stores[id] = nil
@@ -136,7 +137,7 @@ final class RemoteSignIns: NSObject, WKHTTPCookieStoreObserver {
 				// The list as it is now: a Mac forgotten meanwhile has a store that is about to be deleted.
 				let macs = self.list.list.macs
 				let present = Set(existing)
-				let wanted = Set(macs.map(\.storeIdentifier)).intersection(present)
+				let wanted = Set(macs.flatMap(\.signInStores)).intersection(present)
 				for (id, store) in self.stores where !wanted.contains(id) {
 					store.httpCookieStore.remove(self)
 					self.stores[id] = nil
@@ -147,14 +148,21 @@ final class RemoteSignIns: NSObject, WKHTTPCookieStoreObserver {
 					self.stores[id] = store
 				}
 				for mac in macs {
-					guard let store = self.stores[mac.storeIdentifier] else {
-						self.hand(nil, to: mac.id)
-						continue
-					}
-					store.httpCookieStore.getAllCookies { [weak self] cookies in
-						DispatchQueue.main.async { self?.hand(accessToken(host: mac.host, cookies: cookies), to: mac.id) }
-					}
+					self.token(of: mac, in: mac.signInStores) { [weak self] jwt in self?.hand(jwt, to: mac.id) }
 				}
+			}
+		}
+	}
+
+	/// The first Access token of `mac` in the stores `ids`, in that order, of those that are held (nil: none holds one).
+	private func token(of mac: RemoteMac, in ids: [UUID], done: @escaping (String?) -> Void) {
+		guard let id = ids.first else { return done(nil) }
+		let rest = Array(ids.dropFirst())
+		guard let store = stores[id] else { return token(of: mac, in: rest, done: done) }
+		store.httpCookieStore.getAllCookies { [weak self] cookies in
+			DispatchQueue.main.async {
+				if let jwt = accessToken(host: mac.host, cookies: cookies) { return done(jwt) }
+				self?.token(of: mac, in: rest, done: done)
 			}
 		}
 	}

@@ -845,7 +845,9 @@ final class RemoteMacSession: NSObject {
 	/// The sign-in's team was seen: kept for the Mac when it had none (the server keeps the first one it is told). This window
 	/// keeps the store it has: the team's store is not switched to in the middle of a session, which would drop the sign-in the
 	/// page is using. The next window of this Mac, opened after the server wrote the team, uses the team's store, which holds no
-	/// sign-in yet unless another Mac of that team made one: the person signs in once more there, once for the whole team.
+	/// sign-in yet unless another Mac of that team made one: the person signs in once more there, once for the whole team. Until
+	/// then the sign-in handed to the server and the one notifications are read with come from this window's store
+	/// (`RemoteMac.signInStores`, #375).
 	func pin(team: String) {
 		guard mac.team == nil, isTeamName(team) else { return }
 		mac.team = team

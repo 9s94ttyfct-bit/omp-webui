@@ -319,6 +319,10 @@ test.skipIf(!mac)(
 		expect(c.forgetLastOfTeam).toEqual(["team:myteam", "own:s1"]);
 		expect(c.forgetNoTeam).toEqual(["own:s4"]);
 		expect(c.forgetOnlyMac).toEqual(["team:otherteam", "own:s3"]);
+		// The sign-in handed to the server and read for notifications (#375): a Mac added before its team was known signs in, in the
+		// window open then, into its own store, which stays read after the team is kept (the team's store holds no sign-in yet).
+		expect(c.signInWithTeam).toEqual(["team:myteam", "own:s1"]);
+		expect(c.signInNoTeam).toEqual(["own:s4"]);
 	},
 );
 

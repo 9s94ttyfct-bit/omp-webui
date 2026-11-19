@@ -124,14 +124,14 @@ final class RemoteNotifier {
 	private let choices: RemoteNotifyChoices
 	private let macs: () -> [RemoteMac]
 	private let language: () -> ShellLanguage
-	/// The cookies of a Mac's data store, the ones its window signed in with.
-	private let cookies: (RemoteMac, @escaping ([HTTPCookie]) -> Void) -> Void
+	/// The cookies of each data store a Mac's windows signed in with that exists (`RemoteMac.signInStores`, in that order).
+	private let cookies: (RemoteMac, @escaping ([[HTTPCookie]]) -> Void) -> Void
 	private let hear: (UUID, ShellMessage) -> Void
 	private var streams: [UUID: ShellEventStream] = [:]
 
 	init(
 		choices: RemoteNotifyChoices, macs: @escaping () -> [RemoteMac], language: @escaping () -> ShellLanguage,
-		cookies: @escaping (RemoteMac, @escaping ([HTTPCookie]) -> Void) -> Void = RemoteNotifier.storedCookies,
+		cookies: @escaping (RemoteMac, @escaping ([[HTTPCookie]]) -> Void) -> Void = RemoteNotifier.storedCookies,
 		hear: @escaping (UUID, ShellMessage) -> Void
 	) {
 		self.choices = choices
@@ -141,13 +141,28 @@ final class RemoteNotifier {
 		self.hear = hear
 	}
 
-	/// The cookies in the data store of `mac`'s window. The store is made for this one read and let go of after it: one kept would stand
-	/// in the way of deleting it when the Mac is forgotten.
-	static func storedCookies(_ mac: RemoteMac, _ done: @escaping ([HTTPCookie]) -> Void) {
-		let store = WKWebsiteDataStore(forIdentifier: mac.storeIdentifier)
-		store.httpCookieStore.getAllCookies { cookies in
-			_ = store
-			done(cookies)
+	/// The cookies of each of `mac`'s sign-in stores (`signInStores`: its team's, then its own, which a window open when the team
+	/// was kept signs in with, #375), in that order. Only stores that exist are opened: opening one makes it. Each is made for this
+	/// one read and let go of after it: one kept would stand in the way of deleting it when the Mac is forgotten.
+	static func storedCookies(_ mac: RemoteMac, _ done: @escaping ([[HTTPCookie]]) -> Void) {
+		WKWebsiteDataStore.fetchAllDataStoreIdentifiers { existing in
+			DispatchQueue.main.async {
+				let ids = mac.signInStores.filter(existing.contains)
+				var lists = [[HTTPCookie]](repeating: [], count: ids.count)
+				let group = DispatchGroup()
+				for (index, id) in ids.enumerated() {
+					group.enter()
+					let store = WKWebsiteDataStore(forIdentifier: id)
+					store.httpCookieStore.getAllCookies { cookies in
+						DispatchQueue.main.async {
+							_ = store
+							lists[index] = cookies
+							group.leave()
+						}
+					}
+				}
+				group.notify(queue: .main) { done(lists) }
+			}
 		}
 	}
 
@@ -179,10 +194,13 @@ final class RemoteNotifier {
 		let id = mac.id
 		let stream = ShellEventStream(
 			makeRequest: { [weak self] origin, language, epoch, since, done in
-				// The Mac as it is now: its team may have been pinned since, which is another data store, and its sign-in is read from there.
+				// The Mac as it is now: its team may have been pinned since, which is another data store, and its sign-in is read from
+				// there, else from the Mac's own store, where the window open when the team was kept signed in.
 				guard let self, let current = self.macs().first(where: { $0.id == id }) else { return done(nil) }
-				self.cookies(current) { cookies in
-					guard let header = remoteSignInHeader(host: current.host, cookies: cookies) else { return done(nil) }
+				self.cookies(current) { lists in
+					guard let header = lists.lazy.compactMap({ remoteSignInHeader(host: current.host, cookies: $0) }).first else {
+						return done(nil)
+					}
 					done(
 						eventsRequest(
 							origin: origin, path: remoteNotifyPath, headers: ["cookie": header], language: language, epoch: epoch,

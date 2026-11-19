@@ -244,6 +244,9 @@ func pure(directory: URL) -> [String: Any] {
 		"forgetLastOfTeam": storesToRemove(forgetting: s1, remaining: [s1, s3, s4]).map(label),
 		"forgetNoTeam": storesToRemove(forgetting: s4, remaining: [s1, s4, s5]).map(label),
 		"forgetOnlyMac": storesToRemove(forgetting: s3, remaining: [s3]).map(label),
+		// Where a sign-in is read from (#375): the team's store, then the Mac's own, where a window open when the team was kept signed in.
+		"signInWithTeam": s1.signInStores.map(label),
+		"signInNoTeam": s4.signInStores.map(label),
 	] as [String: Any]
 	// What forgetting a Mac takes out of a store that stays (`removeOriginData`): the pure rules.
 	let o1 = make("O1", "a.example.com", team: "myteam"), o2 = make("O2", "b.example.com", team: "myteam")
