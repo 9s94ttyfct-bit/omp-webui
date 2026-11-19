@@ -92,12 +92,33 @@ export function latestLeafUnder(idx: TreeIndex, id: string): string {
 }
 
 /**
- * Alternatives for a message: entries sharing its parent with the same role
- * (an edited prompt or a regenerated reply). Sorted by append order.
+ * Entries passed over when telling versions apart: an extension's bookkeeping (`custom`), never sent to the model nor
+ * shown. omp 18.22 writes one before every prompt (`date-cwd-reminder`), so an edited prompt sits under a reminder of its
+ * own, not beside the prompt it replaces (the server passes over the same ones, `server/history.ts` `versions`).
+ */
+const passedOver = (e: SessionEntry): boolean => e.type === "custom";
+
+/**
+ * Alternatives for a message: entries with its role under the same parent, the entries passed over aside (an edited
+ * prompt or a regenerated reply). Sorted by append order.
  */
 export function siblingsOf(idx: TreeIndex, entry: SessionEntry): SessionEntry[] {
 	const r = roleOf(entry);
 	if (!r) return [entry];
-	const sibs = (idx.children.get(entry.parentId ?? null) ?? []).filter((e) => roleOf(e) === r);
-	return sibs.length ? sibs : [entry];
+	// The parent the versions share: the nearest ancestor that is not passed over (bounded like `pathTo`).
+	let parent = entry.parentId ?? null;
+	for (let room = idx.byId.size; parent !== null && room > 0; room--) {
+		const above = idx.byId.get(parent);
+		if (!above || !passedOver(above)) break;
+		parent = above.parentId ?? null;
+	}
+	const sibs: SessionEntry[] = [];
+	const stack = [...(idx.children.get(parent) ?? [])];
+	for (let room = idx.byId.size; stack.length > 0 && room > 0; room--) {
+		const e = stack.shift() as SessionEntry;
+		if (passedOver(e)) stack.push(...(idx.children.get(e.id) ?? []));
+		else if (roleOf(e) === r) sibs.push(e);
+	}
+	sibs.sort((a, b) => (idx.order.get(a.id) ?? 0) - (idx.order.get(b.id) ?? 0));
+	return sibs.some((e) => e.id === entry.id) ? sibs : [entry];
 }

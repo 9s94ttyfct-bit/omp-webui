@@ -632,6 +632,57 @@ test("the other versions of the entries of a window are those that share a paren
 	expect(ask(cache, f.alpha, [f.alpha], { kind: "tail" }).doc.view?.versions).toEqual([]);
 });
 
+test("omp's bookkeeping before a prompt (a `custom` reminder) does not keep an edited prompt from being a version of the old one", () => {
+	const d = dir();
+	const cache = new IndexCache();
+	// omp 18.22 writes a `date-cwd-reminder` before every prompt; editing the first prompt branches up to the old
+	// reminder and writes a new one under it, so the two prompts have different parents.
+	const model = {
+		type: "model_change",
+		id: "m",
+		parentId: null,
+		timestamp: "2026-01-20T10:00:00.000Z",
+		provider: "p",
+		modelId: "x",
+	};
+	const reminder = (id: string, parentId: string, n: number) => ({
+		type: "custom",
+		id,
+		parentId,
+		timestamp: `2026-01-20T10:00:0${n}.000Z`,
+		customType: "date-cwd-reminder",
+		data: {},
+	});
+	const a = writeSession(d, "first", [
+		model,
+		reminder("r1", "m", 1),
+		user("u1", "r1", 2, "France?"),
+		assistant("a1", "u1", 3, { text: "Paris" }),
+	]);
+	const b = writeSession(
+		d,
+		"edited",
+		[
+			model,
+			reminder("r1", "m", 1),
+			reminder("r2", "r1", 4),
+			user("u2", "r2", 5, "Italy?"),
+			assistant("a2", "u2", 6, { text: "Rome" }),
+		],
+		{ parentSession: a },
+	);
+	// From the branch: the old prompt is the other version, under the entry above the reminders.
+	const fromB = ask(cache, b, [a, b], { kind: "tail" }).doc.view?.versions ?? [];
+	expect(fromB.map((g) => g.parent)).toEqual(["m"]);
+	expect(fromB[0]?.entries.map((e) => e.id)).toEqual(["u1"]);
+	expect(Object.keys(fromB[0]?.leads ?? {}).sort()).toEqual(["u1", "u2"]);
+	// From the first conversation: the edited prompt comes with the reminder above it, so the page's tree reaches it.
+	const fromA = ask(cache, a, [a, b], { kind: "tail" }).doc.view?.versions ?? [];
+	expect(fromA.map((g) => g.parent)).toEqual(["m"]);
+	expect(fromA[0]?.entries.map((e) => e.id)).toEqual(["r2", "u2"]);
+	expect(fromA[0]?.leads).toEqual({ u1: { leaf: "a1", files: [a] }, u2: { leaf: "a2", files: [b] } });
+});
+
 test("the roots of a file that holds two are versions of each other, and the entries of a path that is on its own have none", () => {
 	const d = dir();
 	const f = seedFixtures(d);

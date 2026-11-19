@@ -47,6 +47,40 @@ describe("conversation family", () => {
 		expect(pathTo(fam.idx, "a3").map((e) => e.id)).toEqual(["u1", "a1", "u3", "a3"]);
 	});
 
+	test("a prompt under a reminder of its own (omp 18.22's custom entry before a prompt) is a version of the one it replaced", () => {
+		const custom = (id: string, parentId: string | null, t: number): SessionEntry => ({
+			type: "custom",
+			id,
+			parentId,
+			timestamp: new Date(t * 1000).toISOString(),
+		});
+		const first: SessionFileData = {
+			file: "F",
+			header: null,
+			subagents: [],
+			advisors: [],
+			entries: [custom("r1", null, 1), msg("u1", "r1", "user", 2), msg("a1", "u1", "assistant", 3)],
+		};
+		const edited: SessionFileData = {
+			file: "E",
+			header: null,
+			subagents: [],
+			advisors: [],
+			entries: [
+				custom("r1", null, 1),
+				custom("r2", "r1", 4),
+				msg("u2", "r2", "user", 5),
+				msg("a2", "u2", "assistant", 6),
+			],
+		};
+		const fam = buildFamily([first, edited], null, []);
+		for (const id of ["u1", "u2"]) {
+			expect(siblingsOf(fam.idx, fam.idx.byId.get(id) as SessionEntry).map((e) => e.id)).toEqual(["u1", "u2"]);
+		}
+		// The replies stay apart: each is the only one under its prompt.
+		expect(siblingsOf(fam.idx, fam.idx.byId.get("a2") as SessionEntry).map((e) => e.id)).toEqual(["a2"]);
+	});
+
 	test("live entries replace the stale on-disk copy of the live file", () => {
 		const fam = buildFamily([A], "A", [...A.entries, msg("u4", "a2", "user", 7)]);
 		expect(fam.headOf.get("A")).toBe("u4");

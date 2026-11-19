@@ -418,20 +418,45 @@ function pathCarry(path: Path, from: number, withPrompts: boolean): { carry: str
 
 // ------------------------------------------------------------------ the other versions of the window's entries
 
+/**
+ * Entries passed over when telling versions apart: an extension's bookkeeping (`custom`), never sent to the model nor
+ * shown. omp 18.22 writes one before every prompt (`date-cwd-reminder`), so a prompt edited into a new branch sits under a
+ * reminder of its own, not beside the prompt it replaces: the two are versions of each other under the nearest entry that
+ * is not one of these.
+ */
+function passedOver(file: FileIndex, i: number): boolean {
+	return file.types[i] === "custom";
+}
+
 /** The groups of entries that share a parent with an entry of the window, over every file of the family. */
 function versions(viewed: FileIndex, family: FileIndex[], reader: Reader, window: number[]): string[] {
 	const groups: string[] = [];
 	const inWindow = new Set(window.map((i) => viewed.ids[i] as string));
+	const grouped = new Set<string | null>();
 	for (const i of window) {
 		if (groups.length >= MAX_GROUPS) break;
-		const parent = viewed.parents[i] as string | null;
+		if (passedOver(viewed, i)) continue;
+		// The parent the versions share: the nearest ancestor that is not passed over.
+		let parent = viewed.parents[i] as string | null;
+		for (let k = viewed.parentOf(i), steps = 0; k >= 0 && passedOver(viewed, k) && steps <= viewed.length; steps++) {
+			parent = viewed.parents[k] as string | null;
+			k = viewed.parentOf(k);
+		}
+		if (grouped.has(parent)) continue;
+		grouped.add(parent);
 		const own = viewed.ids[i] as string;
-		/** The distinct children of the parent, in the order the family wrote them. */
-		const children = new Map<string, { file: FileIndex; at: number }>();
+		/** The distinct versions under the parent, in the order the family wrote them, each with the entries passed over above it. */
+		const children = new Map<string, { file: FileIndex; at: number; via: number[] }>();
 		for (const file of family) {
-			for (const c of file.children().get(parent) ?? []) {
+			const stack = (file.children().get(parent) ?? []).map((c) => ({ c, via: [] as number[] }));
+			for (let room = file.length; stack.length > 0 && room > 0; room--) {
+				const { c, via } = stack.shift() as { c: number; via: number[] };
+				if (passedOver(file, c)) {
+					for (const k of file.children().get(file.ids[c] as string) ?? []) stack.push({ c: k, via: [...via, c] });
+					continue;
+				}
 				const id = file.ids[c] as string;
-				if (!children.has(id)) children.set(id, { file, at: c });
+				if (!children.has(id)) children.set(id, { file, at: c, via });
 			}
 		}
 		if (children.size < 2) continue;
@@ -441,11 +466,19 @@ function versions(viewed: FileIndex, family: FileIndex[], reader: Reader, window
 			if (!ids.includes(own)) ids[MAX_VERSIONS - 1] = own;
 		}
 		const others: string[] = [];
+		const sent = new Set<string>();
 		for (const id of ids) {
 			if (inWindow.has(id)) continue;
-			const from = children.get(id) as { file: FileIndex; at: number };
-			const text = reader.valid(from.file, from.at);
-			if (text !== null) others.push(text);
+			const from = children.get(id) as { file: FileIndex; at: number; via: number[] };
+			// The entries passed over above a version come with it, so that the page's tree reaches it from the parent.
+			for (const at of [...from.via, from.at]) {
+				const key = from.file.ids[at] as string;
+				if (inWindow.has(key) || sent.has(key)) continue;
+				const text = reader.valid(from.file, at);
+				if (text === null) continue;
+				sent.add(key);
+				others.push(text);
+			}
 		}
 		const leads = ids.map((id) => `${J(id)}:${lead(family, id)}`);
 		groups.push(`{"parent":${J(parent)},"entries":[${others.join(",")}],"leads":{${leads.join(",")}}}`);
