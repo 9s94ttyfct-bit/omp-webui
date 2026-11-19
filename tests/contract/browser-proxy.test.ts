@@ -182,10 +182,14 @@ test("the root discovery answers a token sent as the user name (omp's Puppeteer 
 	expect((await fetch(`${server.url}/json/version`, { headers: basic("z".repeat(43)) })).status).toBe(401);
 	const fromPage = await fetch(`${server.url}/json/version`, { headers: { ...basic(TB), origin: server.url } });
 	expect(fromPage.status).toBe(403);
-	// Without a token it is no endpoint: the app's own page answers there, as before (its HTML, or the note that the web UI
-	// is not built), never the browser's discovery nor a refusal of a token.
+	// Without a token it is no conversation's endpoint, but omp's own wait for it (`waitForCdp`) sends none and looks for a
+	// 2xx: it gets one that says a browser is here, with no address to connect to, whether or not the web UI is built (a
+	// server without its build answers its other paths 404, which made omp give up on the endpoint in CI).
 	const plain = await fetch(`${server.url}/json/version`);
-	expect(plain.status).not.toBe(401);
-	expect(plain.headers.get("content-type")).not.toContain("application/json");
-	expect(await plain.text()).not.toContain("webSocketDebuggerUrl");
+	expect(plain.status).toBe(200);
+	expect(await plain.json()).toEqual({ Browser: "omp-webui", "Protocol-Version": "1.3" });
+	// A page gets none of it, and the other discovery paths stay the conversation's.
+	const page = await fetch(`${server.url}/json/version`, { headers: { origin: server.url } });
+	expect(page.headers.get("content-type") ?? "").not.toContain("application/json");
+	expect((await fetch(`${server.url}/json/list`)).headers.get("content-type") ?? "").not.toContain("application/json");
 });

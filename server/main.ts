@@ -3412,6 +3412,11 @@ async function route(req: Request, srv: Bun.Server<SocketData>): Promise<Respons
 		}
 		return browser.http(owner, cdp.rest, `ws://${req.headers.get("host")}/browser-cdp/${cdp.token}`);
 	}
+	// omp's own wait for the endpoint (`waitForCdp`, a raw GET of `<endpoint>/json/version` that drops the URL's user name, so it
+	// sends no token) looks only for a 2xx. This computer's answer says that a browser is here and nothing else: no address to
+	// connect to, which is for the token. Not the app's page, whose answer there depends on the web UI's build being present.
+	if (url.pathname === "/json/version" && req.method === "GET" && local && !req.headers.has("origin") && !browserOff())
+		return Response.json({ Browser: "omp-webui", "Protocol-Version": "1.3" });
 	// The Mac app's CEF (`OMP_WEBUI_BROWSER_ENGINE=cef`): the app that started this server, on this computer, with the token it
 	// started it with, and no page (a page sends an Origin). Before the cookie check: the app has no cookie.
 	if (url.pathname === "/browser-engine") {
