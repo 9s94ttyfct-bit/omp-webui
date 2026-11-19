@@ -295,16 +295,17 @@ export const useApp = create<AppState>((set, get) => ({
 	},
 	toast(level, text, action) {
 		// The same notice again while it is still up (an extension that fails on every tool call) is that toast once more, with a
-		// count, not another toast behind it: it is the newest again, and its clock starts over.
-		const same = get().toasts.find((o) => o.level === level && o.text === text && o.action?.label === action?.label);
+		// count, not another toast behind it: it is the newest again, and its clock starts over. A toast with an action is never
+		// merged: its action is of its own (the Undo of another conversation just archived), and one would be lost.
+		const same = action ? undefined : get().toasts.find((o) => o.level === level && o.text === text && !o.action);
 		if (same) {
 			const clock = toastClocks.get(same.id);
 			if (clock) {
-				clock.left = action ? 15_000 : level === "error" ? 9000 : 4500;
+				clock.left = level === "error" ? 9000 : 4500;
 				if (!clock.paused) runToastClock(same.id);
 			}
 			set((s) => ({
-				toasts: [...s.toasts.filter((o) => o.id !== same.id), { ...same, count: (same.count ?? 1) + 1, action }],
+				toasts: [...s.toasts.filter((o) => o.id !== same.id), { ...same, count: (same.count ?? 1) + 1 }],
 			}));
 			return;
 		}

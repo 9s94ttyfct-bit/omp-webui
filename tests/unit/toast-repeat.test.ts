@@ -51,3 +51,13 @@ test("a different level, text or button is another toast", () => {
 	toast("error", "same", { label: "Open", run: () => {} });
 	expect(toasts()).toHaveLength(4);
 });
+
+test("toasts with an action are never merged: each keeps its own action (the Undo of each conversation archived)", () => {
+	const { toast } = useApp.getState();
+	const ran: string[] = [];
+	toast("info", "Archived 1 conversation", { label: "Undo", run: () => ran.push("one") });
+	toast("info", "Archived 1 conversation", { label: "Undo", run: () => ran.push("two") });
+	expect(toasts()).toHaveLength(2);
+	for (const t of toasts()) t.action?.run();
+	expect(ran).toEqual(["one", "two"]);
+});

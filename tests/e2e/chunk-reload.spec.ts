@@ -158,7 +158,8 @@ test("a missing feedback form is contained: a toast, not the Reload screen; the 
 
 	// Asking again is a new request, not a dialog that is already "open" and stays silent.
 	await askForFeedback(page);
-	await expect(toasts).toHaveCount(2);
+	await expect(toasts).toHaveCount(1);
+	await expect(toasts.getByTestId("toast-count")).toHaveText("×2");
 	await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
@@ -187,7 +188,8 @@ test("a missing conversation menu is contained: a toast, the row's button closed
 
 	// The next open is a new attempt: said again, and closed again.
 	await trigger.click({ force: true });
-	await expect(toasts).toHaveCount(2);
+	await expect(toasts).toHaveCount(1);
+	await expect(toasts.getByTestId("toast-count")).toHaveText("×2");
 	await expect(trigger).toHaveAttribute("aria-expanded", "false");
 	await expect(page.getByRole("menuitem")).toHaveCount(0);
 });
@@ -214,7 +216,8 @@ test("a missing model list is contained: a toast, the popover gone, and every la
 
 	// The next open is a new attempt: said again, and the popover goes again.
 	await page.getByTestId("model-picker").click();
-	await expect(toasts).toHaveCount(2);
+	await expect(toasts).toHaveCount(1);
+	await expect(toasts.getByTestId("toast-count")).toHaveText("×2");
 	await expect(page.getByRole("dialog", { name: "Choose model" })).toHaveCount(0);
 });
 
