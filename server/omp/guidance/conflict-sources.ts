@@ -60,7 +60,7 @@ async function readText(path: string): Promise<string | null> {
 /** `path` as the page shows it: relative to the conversation's folder `cwd` when it is in it, else `~/…` under the home folder. */
 export function labelOf(path: string, cwd: string, home: string): string {
 	if (within(cwd, path)) return relative(cwd, path);
-	return within(home, path) && path !== home ? `~/${relative(home, path)}` : path;
+	return within(home, path) && path !== home ? `~/${relative(home, path).replaceAll("\\", "/")}` : path;
 }
 
 /**

@@ -327,7 +327,10 @@ describe("the context files of a folder", () => {
 		const files = repoRuleFiles(PROMPT, "/h");
 		expect(files).toEqual([
 			{ path: "/h/.omp/agent/AGENTS.md", text: "USER-NATIVE marker" },
-			{ path: "/h/work/repo/AGENTS.md", text: "REPO-AGENTS marker. Read IMPORTED-TEXT marker: always use tabs" },
+			{
+				path: join("/h", "work", "repo", "AGENTS.md"),
+				text: "REPO-AGENTS marker. Read IMPORTED-TEXT marker: always use tabs",
+			},
 		]);
 		expect(repoRuleFiles(PROMPT.join("\n\n"), "/h")).toEqual(files);
 	});
