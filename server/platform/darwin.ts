@@ -201,6 +201,18 @@ export function createDarwin(deps: SystemDeps): Platform {
 			const mac = await macosVersion();
 			return mac ? `macOS ${mac} (${arch()})` : `darwin ${release()} (${arch()})`;
 		},
+		async computerNames() {
+			const names: string[] = [];
+			for (const key of ["ComputerName", "LocalHostName", "HostName"]) {
+				try {
+					const r = await deps.run(["scutil", "--get", key], { timeoutMs: 10_000 });
+					if (r.code === 0 && r.stdout.trim()) names.push(r.stdout.trim());
+				} catch {
+					// Not set, or no `scutil`: the other names are still taken out.
+				}
+			}
+			return names;
+		},
 		// The app registers itself (`SMAppService`, macos/loginitem.swift): a server has no program of its own to name.
 		loginItem: null,
 		trash: trash(deps, () => proc.uid()),

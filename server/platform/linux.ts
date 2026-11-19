@@ -239,6 +239,7 @@ export function createLinux(deps: SystemDeps): Platform {
 		socketTemp: "/tmp",
 		skipPaths: () => [],
 		describe: async () => `linux ${release()} (${arch()})`,
+		computerNames: async () => [],
 		loginItem: autostart(deps),
 		trash: linuxTrash(deps, () => proc.uid()),
 		metadata: null,

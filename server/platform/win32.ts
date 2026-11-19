@@ -325,6 +325,7 @@ export function createWin32(deps: SystemDeps): Platform {
 		socketTemp: deps.env.TEMP ?? deps.env.TMP ?? ".",
 		skipPaths: (home) => [join(home, "AppData")],
 		describe: async () => `win32 ${release()} (${arch()})`,
+		computerNames: async () => [],
 		loginItem: runKey(deps),
 		trash: null,
 		metadata: null,

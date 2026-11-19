@@ -77,7 +77,7 @@ export function Feedback() {
 					language: lang,
 				})
 			: null;
-		return buildIssue({ kind, summary, fields: values }, diagnostics, meta?.home, meta?.user);
+		return buildIssue({ kind, summary, fields: values }, diagnostics, meta?.home, meta?.user, server?.hosts);
 	}, [kind, summary, values, attach, meta, server, lang]);
 	const link = useMemo(() => issueLink(issue), [issue]);
 

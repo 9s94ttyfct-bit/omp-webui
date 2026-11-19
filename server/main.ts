@@ -2,7 +2,7 @@
 import "./omp/relay-main.ts";
 import { timingSafeEqual } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readSync, realpathSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { type ApprovalMode, approvalModeNeeds, isApprovalMode } from "../shared/approval.ts";
 import { factsOf, noticeLang, working } from "../shared/attention.ts";
@@ -1651,7 +1651,12 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				...(fromOwner(req) ? { settingsHelpFolder: settingsHelp.state().folder } : {}),
 			});
 		case "/api/diagnostics":
-			return json({ os: await platform.describe(), mode: modes.mode });
+			return json({
+				os: await platform.describe(),
+				mode: modes.mode,
+				// The names a report must not carry: this computer's own, and the tunnel's public hostname.
+				hosts: [hostname(), ...(await platform.computerNames()), remoteAuth.hostname()].filter((h): h is string => !!h),
+			});
 		case "/api/repo":
 			return json({ public: await repoVisibility.isPublic() });
 		case "/api/sessions": {

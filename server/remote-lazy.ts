@@ -222,6 +222,15 @@ export class LazyRemote {
 		return chain.auth.verify(req);
 	}
 
+	/** The public hostname the settings hold (off or on), or null when there is none; the chain is not loaded for it. */
+	hostname(): string | null {
+		try {
+			return parseRemoteConfig(JSON.parse(readFileSync(this.file, "utf8"))).hostname || null;
+		} catch {
+			return null;
+		}
+	}
+
 	/**
 	 * The answer of a request for `/api/remote*` (`owner`: from the person's own page; `who`: its Access identity, null for
 	 * this computer's page); null when it is not one.

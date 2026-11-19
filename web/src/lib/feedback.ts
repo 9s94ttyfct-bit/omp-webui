@@ -98,6 +98,14 @@ const DASHED_HOME = /(?<=--)(?:Users|home)-[^-\s/\\]+/g;
 const literal = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** Names that identify no one. */
 const COMMON_USERS: Record<string, true> = { root: true, user: true, users: true, admin: true, home: true };
+/** Host names that identify no one (a machine called `localhost` is every machine). */
+const COMMON_HOSTS: Record<string, true> = { localhost: true, local: true, host: true, computer: true };
+
+/** A private, link-local or unique-local address: an IPv4 of a home or office network, an IPv6 of one link. */
+const LOCAL_ADDRESS =
+	/(?<![\w.:])(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3}|(?:fe80|f[cd][0-9a-f]{2}):[0-9a-f:]*[0-9a-f])(?![\w.]*[\w])/gi;
+/** A `.local` name: how a Mac (named after its owner by default) and other devices are found on a network. */
+const LOCAL_NAME = /(?<![\w.-])[A-Za-z0-9][A-Za-z0-9-]*\.local(?![\w-])/gi;
 
 /**
  * Take what must not leave the machine out of a text: API keys and tokens, `Bearer …` and `Authorization:`
@@ -106,7 +114,7 @@ const COMMON_USERS: Record<string, true> = { root: true, user: true, users: true
  * and the home folder (`/Users/me/work` → `~/work`; `home` is this machine's own, other users' folders are recognised
  * by their shape, spaces in the name included). Running it twice changes nothing more.
  */
-export function sanitize(text: string, home?: string, user?: string): string {
+export function sanitize(text: string, home?: string, user?: string, hosts: readonly string[] = []): string {
 	let out = text.replace(PRIVATE_KEY_BLOCK, REDACTED);
 	if (home && home.length > 1) {
 		const bare = home.replace(/[\\/]+$/, "");
@@ -148,6 +156,16 @@ export function sanitize(text: string, home?: string, user?: string): string {
 		/(?<![\w/.-])(?![0-9a-f]{40}(?![\w-]))(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{40,}(?![\w/.-])/g,
 		REDACTED,
 	);
+	// The computer's names (its host name, the Mac's sharing name, the tunnel's public hostname), whole or by their first
+	// label (`Janes-Laptop.local` is `Janes-Laptop`), then the `.local` names and the local addresses by their shape.
+	for (const host of hosts) {
+		for (const name of new Set([host, host.split(".")[0]])) {
+			if (name.length >= 3 && !COMMON_HOSTS[name.toLowerCase()]) {
+				out = out.replace(new RegExp(`(?<![A-Za-z0-9-])${literal(name)}(?![A-Za-z0-9-])`, "gi"), "[host]");
+			}
+		}
+	}
+	out = out.replace(LOCAL_NAME, "[host]").replace(LOCAL_ADDRESS, "[ip]");
 	// The OS user name wherever it still shows: a shell prompt (`me@host`), a log line, a path that is not the home folder.
 	if (user && user.length >= 3 && !COMMON_USERS[user.toLowerCase()]) {
 		out = out.replace(new RegExp(`(?<![A-Za-z0-9])${literal(user)}(?![A-Za-z0-9])`, "gi"), "[user]");
@@ -204,9 +222,18 @@ export interface Issue {
 /** The longest summary the title can hold after its `Bug: ` / `Feature: ` prefix. */
 export const summaryMax = (kind: FeedbackKind): number => TITLE_MAX - TITLE_PREFIX[kind].length;
 
-/** The sanitized issue for a draft. `home` is this machine's home folder, so it reads `~`; `user` is its user name. */
-export function buildIssue(draft: FeedbackDraft, diagnostics: string | null, home?: string, user?: string): Issue {
-	const clean = (s: string) => sanitize(s, home, user).trim();
+/**
+ * The sanitized issue for a draft. `home` is this machine's home folder, so it reads `~`; `user` is its user name; `hosts`
+ * are the names of this computer and of its tunnel.
+ */
+export function buildIssue(
+	draft: FeedbackDraft,
+	diagnostics: string | null,
+	home?: string,
+	user?: string,
+	hosts: readonly string[] = [],
+): Issue {
+	const clean = (s: string) => sanitize(s, home, user, hosts).trim();
 	const title = cut(`${TITLE_PREFIX[draft.kind]}${clean(draft.summary).replace(/\s+/g, " ")}`, TITLE_MAX).trimEnd();
 	const text = FEEDBACK_FIELDS[draft.kind]
 		.map((f) => ({ heading: f.heading, value: clean(draft.fields[f.key] ?? "") }))
@@ -217,7 +244,7 @@ export function buildIssue(draft: FeedbackDraft, diagnostics: string | null, hom
 		title,
 		labels: [LABELS[draft.kind]],
 		text,
-		diagnostics: diagnostics ? sanitize(diagnostics, home, user).trim() : null,
+		diagnostics: diagnostics ? sanitize(diagnostics, home, user, hosts).trim() : null,
 	};
 }
 

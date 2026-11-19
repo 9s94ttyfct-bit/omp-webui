@@ -230,6 +230,11 @@ export interface Platform {
 	/** The machine as a bug report names it: `macOS 15.1 (arm64)`, `linux 6.8.0 (x64)`. */
 	describe(): Promise<string>;
 	/**
+	 * The names this computer goes by that are not its host name (`os.hostname()`): the Mac's sharing name and its `.local`
+	 * name, which macOS gives after the owner by default. A text that leaves the machine (a bug report) takes them out.
+	 */
+	computerNames(): Promise<string[]>;
+	/**
 	 * Starting the launcher at login, in the background (Settings › App & system › Start at login): an XDG autostart entry on
 	 * Linux, the user's `Run` key on Windows. Null on macOS, where the app registers itself (`SMAppService`).
 	 */

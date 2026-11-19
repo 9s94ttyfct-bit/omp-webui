@@ -283,6 +283,8 @@ export interface PanelConfigState {
 export interface Diagnostics {
 	os: string;
 	mode: string;
+	/** The names of this computer and of its tunnel, which a report takes out of its text. */
+	hosts: string[];
 }
 
 /** A `/api/search` answer: the hits, and how much of the library (or of the one conversation named) they are from. */

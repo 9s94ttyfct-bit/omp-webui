@@ -134,6 +134,39 @@ test("everything typed is sanitized, the title and the diagnostics included", ()
 	expect(issue.diagnostics).toContain("cwd: ~/proj");
 });
 
+test("the computer's names, `.local` names and local addresses are taken out; public addresses and plain words stay", () => {
+	const text = [
+		"ssh janes-macbook.local",
+		"Janes-MacBook-Pro: listening",
+		"Jane's MacBook",
+		"remote at omp.example.net",
+		"lan 192.168.1.20 and 10.0.0.5 and 172.16.3.4 and 169.254.9.9",
+		"link fe80::1c2d:3e4f and fd12:3456:789a::1",
+		"public 8.8.8.8 and 172.32.0.1 and 1.10.0.5",
+		"v1.2.3.4 localhost",
+	].join("\n");
+	const out = sanitize(text, undefined, undefined, ["Janes-MacBook-Pro.local", "Jane's MacBook", "omp.example.net"]);
+	expect(out).not.toMatch(/janes|Jane's|omp\.example|192\.168|10\.0\.0|172\.16|169\.254|fe80|fd12/i);
+	expect(out).toContain("public 8.8.8.8 and 172.32.0.1 and 1.10.0.5");
+	expect(out).toContain("localhost");
+	expect(sanitize(out, undefined, undefined, ["Janes-MacBook-Pro.local"])).toBe(out);
+});
+
+test("a host name too short or too common to mean anyone is left alone", () => {
+	expect(sanitize("a localhost box", undefined, undefined, ["localhost", "ab"])).toBe("a localhost box");
+});
+
+test("buildIssue takes the hosts out of the text and the diagnostics", () => {
+	const issue = buildIssue(
+		{ kind: "bug", summary: "down on Studio-Mac", fields: { happened: "open https://studio-mac.local:3000" } },
+		"cwd on Studio-Mac",
+		undefined,
+		undefined,
+		["Studio-Mac"],
+	);
+	expect(JSON.stringify(issue)).not.toMatch(/studio-mac/i);
+});
+
 test("required fields: the summary and the first guided field", () => {
 	expect(missingField({ kind: "bug", summary: "", fields: {} })).toBe("summary");
 	expect(missingField({ kind: "bug", summary: "x", fields: { happened: "  " } })).toBe("happened");
@@ -201,9 +234,9 @@ const SANITIZE_TABLE: { name: string; text: string; gone: string[]; kept?: strin
 	},
 	{
 		name: "database URL",
-		text: "DATABASE_URL=postgres://admin:hunter2@db.local:5432/app",
+		text: "DATABASE_URL=postgres://admin:hunter2@db.example.org:5432/app",
 		gone: ["admin", "hunter2"],
-		kept: ["@db.local:5432/app"],
+		kept: ["@db.example.org:5432/app"],
 	},
 	{
 		name: "https userinfo",
