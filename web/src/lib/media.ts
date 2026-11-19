@@ -5,6 +5,13 @@ import { flushSync } from "react-dom";
 export const PANEL_SHEET_QUERY = "(width < 64rem)";
 
 /**
+ * A touch screen with no pointing device beside it, so no hardware keyboard to expect: its on-screen keyboard has a Return
+ * key and no Shift+Return, so Return there makes a new line and the Send button sends (#370). An iPad with a trackpad or
+ * a mouse has a fine pointer, and keeps Enter for sending.
+ */
+export const SOFT_KEYBOARD_QUERY = "(pointer: coarse) and (not (any-pointer: fine))";
+
+/**
  * Whether a CSS media query matches right now; re-renders when that changes. A render to a string (a unit test) asks
  * `matchMedia` too: there is no page it could be told differently by.
  */

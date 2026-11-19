@@ -409,6 +409,9 @@ export const en = {
 	termScreenReader: "Screen reader",
 	termScreenReaderTip:
 		"Make the terminal's output readable by a screen reader. Leave it off if you do not use one: it costs work on every line printed.",
+	// A page left open across an update (#273).
+	newBuild: "omp-webui was updated: this page still runs {page}, the server runs {server}. Reload to switch.",
+	newBuildReload: "Reload",
 
 	// Accounts
 	accTitle: "Accounts",

@@ -415,6 +415,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	termInputLabel: "终端输入。Ctrl+F6 离开终端。",
 	termScreenReader: "读屏软件",
 	termScreenReaderTip: "让读屏软件能读出终端的输出。不用读屏软件就保持关闭：每打印一行都要多做一些工作。",
+	newBuild: "omp-webui 已更新：这个页面运行的还是 {page}，服务器是 {server}。重新加载即可使用新版本。",
+	newBuildReload: "重新加载",
 
 	// Accounts
 	accTitle: "账号",

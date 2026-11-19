@@ -23,7 +23,7 @@ import { forgetDraft, keepDraft, prependDraft, readDraft } from "../lib/drafts.t
 import { type DropRequest, pickedFiles, takeDrop } from "../lib/drop-items.ts";
 import { accept, afterEdit, type Ghost, type GhostFeedback, remaining, wantsPrediction } from "../lib/ghost.ts";
 import { useImeGuard } from "../lib/ime.ts";
-import { useCrampedRow } from "../lib/media.ts";
+import { SOFT_KEYBOARD_QUERY, useCrampedRow, useMediaQuery } from "../lib/media.ts";
 import { type Recall, recallDown, recallUp } from "../lib/recall.ts";
 import { matches, useShortcutLabel } from "../lib/shortcuts.ts";
 import { loadedCommands, loadedSlash, unknownSlash } from "../lib/slash.ts";
@@ -348,6 +348,7 @@ export function Composer({
 		ta.current?.focus();
 	}, [draft]);
 
+	const softKeyboard = useMediaQuery(SOFT_KEYBOARD_QUERY);
 	const hint =
 		placeholder ??
 		(paused
@@ -580,7 +581,9 @@ export function Composer({
 				return;
 			}
 		}
-		if (matches("send", e) || matches("steer", e)) {
+		// A phone's Return key has no Shift+Return beside it: there it makes a new line, and the Send button sends (#370).
+		const returnKey = softKeyboard && e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey;
+		if ((matches("send", e) && !returnKey) || matches("steer", e)) {
 			e.preventDefault();
 			void submit(streaming ? (matches("steer", e) ? "steer" : "followUp") : "normal");
 			return;
@@ -771,6 +774,7 @@ export function Composer({
 						aria-controls={suggestions.length ? listId : undefined}
 						aria-activedescendant={suggestions[sel] ? `${listId}-${sel}` : undefined}
 						data-testid="composer"
+						enterKeyHint={softKeyboard ? "enter" : "send"}
 						placeholder={hint}
 						className={cx(
 							"block max-h-80 w-full resize-none bg-transparent outline-none placeholder:text-faint",

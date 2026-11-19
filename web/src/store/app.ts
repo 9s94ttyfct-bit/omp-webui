@@ -25,9 +25,8 @@ import { moveDraft } from "../lib/drafts.ts";
 import { whenFree } from "../lib/leave-guard.ts";
 import { appended } from "../lib/lineage.ts";
 import { noticeToast } from "../lib/notice.ts";
-import { buildDiffers, PAGE_VERSION } from "../lib/page-build.ts";
+import { buildDiffers } from "../lib/page-build.ts";
 import { enterEntry, entryIdOf, entryState, keepReading, newEntryId, type Reading, readingOf } from "../lib/reading.ts";
-import { reloadNow } from "../lib/reload.ts";
 import { onLoginNotice, onRemoteMessage, remoteApi } from "../lib/remote.ts";
 import { noteServerTime, serverOffsetMs } from "../lib/server-clock.ts";
 import { isSettingsPage, type SettingsPageId } from "../lib/settings-pages.ts";
@@ -1500,9 +1499,6 @@ function scheduleSessionsReload(): void {
 	);
 }
 
-/** The server version the page last told of a different build for: told once per version, not at every reconnect. */
-let toldBuild = "";
-
 /** Fold one server message into the store. Exported for the unit tests; the socket is its only caller. */
 export function onServer(msg: ServerMessage): void {
 	switch (msg.t) {
@@ -1510,13 +1506,8 @@ export function onServer(msg: ServerMessage): void {
 			// Times the server stamps (when omp's backoff began) are on its clock, which this page's may be far from.
 			if (typeof msg.time === "number") noteServerTime(msg.time);
 			// A tab left open across an update is the old build against the new server: the person is told, and reloads.
-			if (buildDiffers(msg.serverVersion) && toldBuild !== msg.serverVersion) {
-				toldBuild = msg.serverVersion;
-				useApp.getState().toast("warning", t("shell.newBuild", { page: PAGE_VERSION, server: msg.serverVersion }), {
-					label: t("shell.newBuildReload"),
-					run: () => reloadNow(),
-				});
-			}
+			if (buildDiffers(msg.serverVersion))
+				void import("../components/newBuildNotice.ts").then((m) => m.tellNewBuild(msg.serverVersion));
 			// The server may be another run of it: its browser state's `rev` starts over.
 			browserServerMet();
 			return;

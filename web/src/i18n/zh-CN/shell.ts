@@ -189,8 +189,6 @@ export const zh: Record<keyof typeof en, string> = {
 	sidebarLoadError: "无法加载对话列表",
 
 	storeLoadSessionsFailed: "无法加载对话：{error}",
-	newBuild: "omp-webui 已更新：这个页面运行的还是 {page}，服务器是 {server}。重新加载即可使用新版本。",
-	newBuildReload: "重新加载",
 	storeExtensionError: "扩展错误：{error}",
 	sessionCostWithSubagents: "{cost}（含子代理 {sub}）",
 	sessionCostWithAdvisor: "{cost}（含顾问 {advisor}）",
