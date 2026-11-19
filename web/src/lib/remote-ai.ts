@@ -2,7 +2,7 @@ import type { RemoteSnapshot } from "@shared/remote.ts";
 import "../i18n/later.ts";
 import { type MessageKey, t } from "../i18n/index.ts";
 import { attachLive, useApp } from "../store/app.ts";
-import { remoteApi } from "./remote.ts";
+import { remoteApi } from "./remote-actions.ts";
 import { socket } from "./ws.ts";
 
 /**
