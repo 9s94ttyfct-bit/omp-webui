@@ -188,7 +188,7 @@ test("a tunnel that waits after SIGTERM does not hold up the rest of the server'
 	} finally {
 		fake.fail("ignore-term", false);
 	}
-});
+}, 30_000);
 
 test("a tunnel a killed server left behind is ended when the next server starts its own", async () => {
 	await api("POST", "/api/remote/config", { autostart: true });

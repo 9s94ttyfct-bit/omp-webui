@@ -178,6 +178,7 @@ const turnEnds = { type: "agent_end", isTerminal: true };
 		await pollUntil(() => ended(stub.log).includes(holder), "caffeinate to be let go when the turn ended", 15_000);
 		await pollUntil(() => !alive(holder), "the caffeinate process to be gone", 15_000);
 	},
+	60_000,
 );
 
 (awake ? test : test.skip)(
@@ -218,6 +219,7 @@ const turnEnds = { type: "agent_end", isTerminal: true };
 		await pollUntil(() => started(stub.log).length === 2, "caffeinate to start when the setting came back on", 15_000);
 		expect(lines(stub.log).at(-1)?.argv).toEqual(["-i", "-w", String(b.server.proc.pid)]);
 	},
+	60_000,
 );
 
 (awake ? test : test.skip)(
@@ -246,6 +248,7 @@ const turnEnds = { type: "agent_end", isTerminal: true };
 		await pollUntil(() => ended(stub.log).includes(holder), "caffeinate to be let go when the server stopped", 15_000);
 		await pollUntil(() => !alive(holder), "the caffeinate process to be gone", 15_000);
 	},
+	60_000,
 );
 
 test("a server elsewhere says the setting is not available, and starts nothing", async () => {

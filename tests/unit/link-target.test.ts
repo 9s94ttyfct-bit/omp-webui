@@ -64,6 +64,11 @@ describe("linkTarget", () => {
 			"xmpp:a@example.com",
 			"tel:+15551234567",
 			"vbscript:msgbox(1)",
+			// omp's own addresses (omp 19's `local://3.log` is what `artifact://3` was): only omp can open them.
+			"local://3.log",
+			"artifact://3",
+			"agent://Name",
+			"skill://brainstorming",
 		]) {
 			expect({ href, target: linkTarget(href) }).toEqual({ href, target: { kind: "none" } });
 		}
