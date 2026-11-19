@@ -292,7 +292,10 @@ test("a text file with an @ mention in it is flagged in the choice and on its ch
 	await expect(page.getByTestId("drop-mentions")).toHaveCount(0);
 	await page.keyboard.press("Escape");
 
-	await dropOnComposer(page, [{ name: "ask.md", type: "text/markdown", text: "please read @~/.ssh/config first\n" }]);
+	// A mention by a relative name, the most common kind, which omp reads as it reads `@~/…` (#310).
+	await dropOnComposer(page, [
+		{ name: "ask.md", type: "text/markdown", text: "step 3 failed, see @src/secret.ts and @notes.md\n" },
+	]);
 	await expect(page.getByTestId("drop-mentions")).toContainText("Contains @ mentions");
 	await page.getByTestId("drop-attach").click();
 	await expect(card(page).getByTestId("file-chip")).toContainText("ask.md");

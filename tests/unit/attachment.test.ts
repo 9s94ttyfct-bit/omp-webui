@@ -475,34 +475,44 @@ describe("text files in a message", () => {
 });
 
 describe("hasMention", () => {
-	test("an @ that omp reads as a file mention: at the start or after whitespace, then a quote, ~, / or a dot", () => {
+	test("an @ that omp reads as a mention (#310): at the start or after whitespace or ( [ { < \" ' `, then a quoted name or a word", () => {
 		for (const text of [
 			'@"a b"',
 			'@"a b.txt" is odd',
+			"@'a b.txt'",
 			"@~/x",
 			"@/etc/hosts",
 			"@./a",
 			"@../up/a.ts",
 			"@.env",
+			"@src",
+			"@src/a.ts",
+			"@name",
+			"@README.md",
+			"read @notes.md please",
+			"step 3 failed, see @src/secret.ts and @notes.md",
+			"(@config/db.yml)",
+			"[@a.ts]",
+			"{@a.ts}",
+			"<@a.ts>",
+			'"@a.ts"',
+			"`@a.ts`",
 			"look at @~/notes please",
 			"look at @/etc/hosts",
 			"see\n@./a.ts",
 			"see\t@./a.ts",
 			"see\r\n@/x",
 			"two  @/x",
-			"a @src is not, but @./yes is",
+			"```\n@src/a.ts\n```",
 		]) {
 			expect(hasMention(text), JSON.stringify(text)).toBe(true);
 		}
 	});
 
-	test("what is not one: an address, a bare name, a mention in the middle of a word, an @ alone", () => {
+	test("what is not one: an address, a mention in the middle of a word, an @ alone or with only punctuation", () => {
 		for (const text of [
 			"",
 			"@",
-			"@src",
-			"@src/a.ts",
-			"@name",
 			"@ ./a",
 			"a@b.c",
 			"x@/y",
@@ -513,6 +523,10 @@ describe("hasMention", () => {
 			"@@/a",
 			"price is 5@/unit",
 			'a@"q"',
+			"@.",
+			"(@)",
+			"@!?",
+			'@"  "',
 		]) {
 			expect(hasMention(text), JSON.stringify(text)).toBe(false);
 		}

@@ -273,6 +273,7 @@ omp-webui 是 [omp](https://omp.sh) 编程代理的网页界面，也是一个 m
   - **卸载 Linux 安装包**（#292）：`./install.sh --uninstall` 还会删除“登录时启动”的条目（`${XDG_CONFIG_HOME:-~/.config}/autostart/omp-webui.desktop`），前提是它的 `Exec` 行启动的就是被卸载的程序；启动另一份 omp-webui 的条目保持原样。
   - **Windows 上的 `OMP_BIN`**（#294）：`OMP_BIN` 是绝对路径，或含有 `/` 或 `\` 时就当作路径（`C:/Tools/omp/omp.exe` 以前被当作名字去查找，永远找不到）；不带扩展名的路径（`C:\Tools\omp\omp`）会像 Windows 运行它那样找到旁边的 `.exe`。
   - **API 失败**（#245）：`/api/*` 路由里意外的异常会写入日志（`omp-webui: POST /api/… failed:` 加上错误；绝不写查询串，里面可能有令牌），并以 500 回答；本人的页面能看到它的原话，其他页面只看到“Internal server error”（原话里可能有这台电脑的路径）。POST 的请求体不是 JSON 对象（不是 JSON、`null`、数组、字符串）时，凡是读请求体的路由都回答 400，而不是带着解析器原话的 500；`/api/cli/help` 对不是命令名的参数回答 400；`/api/auth` 收到 `null` 视为没有令牌。
+  - **附加文本里的 @ 提及**（#310）：拖入的文本文件上的“包含 @ 提及”警告按 omp 自己的规则判断（18.22 的 `extractFileMentions`）：`@` 位于开头，或在空白或 ``( [ { < " ' ` `` 之一后面，接着是带引号的名字或一串非空白字符，去掉末尾的标点。现在 `@src/a.ts`、`@notes.md` 和 `(@config/db.yml)` 也会被标出（以前只有 `@"…"`、`@~`、`@/` 和 `@.`），因为 omp 会把每个指向已有文件的提及读进提示里；页面无法知道哪些文件存在，所以出现这样的写法就提醒。
 
 ## 安装
 

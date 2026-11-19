@@ -143,12 +143,33 @@ export function looksLikeText(sample: Uint8Array, whole = false): boolean {
 	}
 }
 
+/** omp's mention (18.22, `utils/file-mentions.ts`): `@` then a quoted name or a run of characters that are not space or `@`. */
+const MENTION = /@(?:"([^"]+)"|'([^']+)'|([^\s@]+))/g;
+
 /**
- * Whether `text` has an `@` that omp would read as the mention of a file (`@src/a.ts`, `@"a b.txt"`, `@~/notes`): at the
- * start or after a space, then a quote, `~`, `/` or `.`. omp reads the files such mentions name into the prompt, wherever the
- * mention is in the message, so one in an attached file is read too. It is told to the person, not removed from the text.
+ * Whether `text` has an `@` that omp would read as the mention of a file or folder (`@src/a.ts`, `@notes.md`, `@"a b.txt"`,
+ * `(@config/db.yml)`), by omp's own rule: the `@` at the start or after whitespace or one of ``( [ { < " ' ` ``, then a quoted
+ * name or a run of non-space, non-`@` characters that is not empty once the punctuation omp trims (`` `"'([{< `` before,
+ * `` )]}>.,;:!?"'` `` after) is taken off. omp reads every one that names an existing path into the prompt, wherever it is in
+ * the message, so one in an attached file is read too. Whether the path exists cannot be known here: the token is enough. It
+ * is told to the person, not removed from the text.
  */
-export const hasMention = (text: string): boolean => /(^|\s)@["~/.]/.test(text);
+export function hasMention(text: string): boolean {
+	for (const m of text.matchAll(MENTION)) {
+		const at = m.index ?? 0;
+		if (at > 0 && !/[\s([{<"'`]/.test(text[at - 1])) continue;
+		const quoted = m[1] ?? m[2];
+		const name =
+			quoted !== undefined
+				? quoted.trim()
+				: m[3]
+						.replace(/^[`"'([{<]+/, "")
+						.replace(/[)\]}>.,;:!?"'`]+$/, "")
+						.trim();
+		if (name) return true;
+	}
+	return false;
+}
 
 // ------------------------------------------------------------------ text files in the message
 
