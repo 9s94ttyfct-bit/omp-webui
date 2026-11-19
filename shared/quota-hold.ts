@@ -174,7 +174,7 @@ export function parseWarmVerdict(text: string | undefined): WarmVerdict | null {
  * own threshold (`$0.05`), so that a saving of a few cents is not chased with a ping every few minutes for hours.
  *
  * `n` follows from the interval between two refreshes, which the decision measures (it is the time since the entry was last
- * touched), and the reset time: `n = ⌈(resumeAt − now) / interval⌉`. Three things end it before the cost does, and the cache
+ * touched), and the reset time: a refresh at `t` keeps the entry until `t + ttl`, so `n = max(1, ⌈(resumeAt − now − ttl) / interval⌉ + 1)`. Three things end it before the cost does, and the cache
  * is let go (`lapse`): the reset time is not known; omp's own limit on refreshing (below) is reached before the reset; the
  * cache has no price difference to save. And one makes it pointless: the entry lasts until the reset (`none`).
  *
@@ -242,7 +242,8 @@ export function warmingPlan(i: WarmingInput): WarmingPlan {
 	// The entry was last touched `delayMs` ago and lives its lifetime from then: it outlives the hold, and nothing is spent.
 	if (i.resumeAt <= i.now - i.delayMs + ttlFromDelayMs(i.delayMs))
 		return { state: "none", pings: 0, warmCost: 0, rebuildCost };
-	const pings = Math.max(1, Math.ceil((i.resumeAt - i.now) / i.delayMs));
+	// A refresh at `t` keeps the entry until `t + ttl`: the fewest that reach the reset, the first one being now (#249).
+	const pings = Math.max(1, Math.ceil((i.resumeAt - i.now - ttlFromDelayMs(i.delayMs)) / i.delayMs) + 1);
 	const cap = i.startedAt + (i.streaming ? WARM_CAP_STREAMING_MS : WARM_CAP_IDLE_MS);
 	// omp stops refreshing at its limit: refreshes that cannot reach the reset keep nothing warm.
 	if (i.now + (pings - 1) * i.delayMs > cap) return lapse("limit", pings);

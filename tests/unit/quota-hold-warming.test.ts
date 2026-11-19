@@ -58,6 +58,17 @@ describe("warmingPlan: keep the cache warm until the reset, or let it lapse", ()
 		expect(plan).toEqual({ state: "on", pings: 7, warmCost: 7 * 0.03, rebuildCost: 1.7 });
 	});
 
+	test("a reset the next refresh's lifetime reaches needs no refresh after it (#249)", () => {
+		// A refresh now keeps the entry for 300 s: a reset 280 s away is reached by this one alone, not by two.
+		expect(warmingPlan(input({ resumeAt: NOW + 280_000 })).pings).toBe(1);
+		// Near omp's limit the extra refresh is what made it give the cache up: one inside the limit keeps it to the reset.
+		const nearLimit = input({ startedAt: NOW - WARM_CAP_STREAMING_MS + 100_000, resumeAt: NOW + 280_000 });
+		expect(warmingPlan(nearLimit).state).toBe("on");
+		// Two refreshes (now and 270 s on) keep it until 570 s; a reset a second later needs a third.
+		expect(warmingPlan(input({ resumeAt: NOW + 570_000 })).pings).toBe(2);
+		expect(warmingPlan(input({ resumeAt: NOW + 571_000 })).pings).toBe(3);
+	});
+
 	test("a refresh that costs as much as a rebuild is not worth making: it lapses, with the cost it avoided", () => {
 		const plan = warmingPlan(input({ warmCost: 0.6 }));
 		expect(plan).toMatchObject({ state: "lapse", why: "cost", pings: 7, rebuildCost: 1.7 });
