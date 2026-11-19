@@ -159,6 +159,37 @@ test("the tunnel ends with the server, and the page's next server finds nothing 
 	expect(after.status).toEqual({ state: "off" });
 });
 
+test("a tunnel that waits after SIGTERM does not hold up the rest of the server's shutdown, which the app cuts off after 5 s (#374)", async () => {
+	// Read by the fake as it starts: it stands for cloudflared waiting for a request still open through it.
+	fake.fail("ignore-term");
+	const url = s.url;
+	try {
+		await api("POST", "/api/remote/start");
+		await pollUntil(
+			async () => (await api("GET", "/api/remote")).body.status.state === "connected",
+			"the tunnel to connect",
+		);
+		const pid = fake.runPid(fake.runs());
+		const asked = Date.now();
+		// SIGTERM, then SIGKILL after 5 s, as the app stops its server; the next server starts once this one is gone.
+		const restarted = s.restart();
+		const listening = () =>
+			fetch(`${url}/`, { signal: AbortSignal.timeout(500) }).then(
+				() => true,
+				() => false,
+			);
+		// Conversations, transfers and the listener are done with while the tunnel still waits; before, they came after it.
+		await pollUntil(async () => !(await listening()), "the server to stop listening", 3000);
+		expect(Date.now() - asked).toBeLessThan(3000);
+		expect(processExists(pid)).toBe(true);
+		await restarted;
+		// Killed: by its server at the server's grace, or by the next server, which ends what an earlier one left.
+		await pollUntil(() => !processExists(pid), "the tunnel to be killed");
+	} finally {
+		fake.fail("ignore-term", false);
+	}
+});
+
 test("a tunnel a killed server left behind is ended when the next server starts its own", async () => {
 	await api("POST", "/api/remote/config", { autostart: true });
 	await api("POST", "/api/remote/start");

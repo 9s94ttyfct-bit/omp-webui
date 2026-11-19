@@ -3854,11 +3854,14 @@ let stopping: Promise<never> | null = null;
 function shutdown(): Promise<never> {
 	stopping ??= (async () => {
 		let code = 0;
+		let tunnelStopped: Promise<unknown> = Promise.resolve(null);
 		try {
 			// An omp install or update keeps going without this server (`OmpLifecycle.execute`): say so, don't end it.
 			const job = omp.runningJob();
 			if (job) console.log(`omp-webui: the omp ${job.kind} (${job.command}) keeps running in the background`);
 			omp.stop();
+			// A plugin change omp is running ends with this server: the next one has no record of it (#321).
+			(await import("./omp/plugins.ts")).stopPluginCommands();
 			host.stop();
 			updater?.stop();
 			ptys.killAll();
@@ -3867,7 +3870,13 @@ function shutdown(): Promise<never> {
 			keepAwake.stop();
 			sleepDetector.stop();
 			await sideQuestions.stop();
-			await remoteAuth.stop();
+			// The tunnel is asked to end now and waited for last (#374): cloudflared waits for a request still open through it
+			// (another Mac's notification stream, a remote page) before it ends, which could use up the whole of the app's
+			// deadline before it kills this server; the steps below, which close those requests too, are not held up by it.
+			tunnelStopped = remoteAuth.stop().then(
+				() => null,
+				(e: unknown) => e,
+			);
 			// Paused conversations stay, frozen, and ones waiting out a usage limit stay, going, in the background; everything
 			// else ends.
 			const kept = await pool.parkKept();
@@ -3885,10 +3894,14 @@ function shutdown(): Promise<never> {
 			server.stop(true);
 			// The databases are closed, and say so: the next start does not look at every page of them.
 			store.close();
+			const tunnelFailed = await tunnelStopped;
+			if (tunnelFailed) throw tunnelFailed;
 			forgetServer(cfg.dataDir);
 		} catch (e) {
 			code = 1;
 			console.error("omp-webui: shutdown failed:", e);
+			// A step that failed does not leave the tunnel running past this server.
+			await tunnelStopped;
 		}
 		process.exit(code);
 	})();

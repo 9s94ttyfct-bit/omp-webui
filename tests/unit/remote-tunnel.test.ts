@@ -463,7 +463,10 @@ describe("starting and the state it reports", () => {
 		expect(w.tunnel.status().state).toBe("starting");
 		await connected(w);
 		expect(w.fake.runs()).toBe(1);
-		expect(w.fake.calls().at(-1)).toBe(`tunnel --no-autoupdate --config ${w.yml} run ${FAKE_TUNNEL_ID}`);
+		// A short `--grace-period`: cloudflared would otherwise wait 30 s for an open request when it is asked to end (#374).
+		expect(w.fake.calls().at(-1)).toBe(
+			`tunnel --no-autoupdate --grace-period 2s --config ${w.yml} run ${FAKE_TUNNEL_ID}`,
+		);
 		expect(w.fake.runConfig(1)).toContain("http://127.0.0.1:4242");
 		expect(w.tunnel.status()).toEqual({ state: "connected" });
 		expect(states(w)).toEqual(expect.arrayContaining(["starting", "connected"]));

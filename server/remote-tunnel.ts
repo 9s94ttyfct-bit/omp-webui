@@ -67,6 +67,9 @@ export const DEFAULT_TIMINGS: TunnelTimings = {
 	stableMs: 30_000,
 };
 
+/** How long cloudflared lets requests still open through it finish once it is asked to end (`--grace-period`). */
+const TUNNEL_GRACE = "2s";
+
 type Env = Record<string, string | undefined>;
 
 export interface TunnelOptions {
@@ -733,7 +736,10 @@ export class Tunnel {
 		this.connections.clear();
 		this.lastError = undefined;
 		let first = true;
-		const child = spawnStreamed([program, "tunnel", "--no-autoupdate", "--config", this.configFile, "run", id], {
+		// `--grace-period`: on SIGTERM cloudflared waits for the requests still open through it, 30 s unless told, and a
+		// notification stream of another Mac is always open; past this it ends them, well within `stopGraceMs` (#374).
+		const argv = [program, "tunnel", "--no-autoupdate", "--grace-period", TUNNEL_GRACE, "--config", this.configFile];
+		const child = spawnStreamed([...argv, "run", id], {
 			env: this.programEnv(),
 			onLine: (line) => {
 				if (first) {

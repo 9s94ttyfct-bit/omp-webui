@@ -9,7 +9,7 @@ import { join } from "node:path";
  * - `tunnel login` prints the URL cloudflared prints and waits until `approveLogin()`, then writes `$HOME/.cloudflared/cert.pem`.
  * - `tunnel create <name>` writes the credentials file and prints the two lines cloudflared prints.
  * - `tunnel route dns <id> <host>` answers like cloudflared does (or refuses: `routeExists`, `fail("route")`).
- * - `tunnel --no-autoupdate --config <file> run <id>` follows a plan (`setPlan`): lines to print on stderr, pauses,
+ * - `tunnel --no-autoupdate --grace-period <d> --config <file> run <id>` follows a plan (`setPlan`): lines to print on stderr, pauses,
  *   an exit, or for ever. By default it logs four "Registered tunnel connection" lines and stays up.
  * - `brew install cloudflared` puts the fake where `OMP_WEBUI_CLOUDFLARED` points.
  */
@@ -69,7 +69,7 @@ case "$2" in
     if [ -z "$name" ] || [ "$name" = "$ename" ]; then echo '[{"id":"'"$eid"'","name":"'"$ename"'","created_at":"2026-10-01T00:00:00Z","deleted_at":"0001-01-01T00:00:00Z","connections":[]}]'; else echo '[]'; fi
     exit 0 ;;
 esac
-# tunnel --no-autoupdate --config FILE run ID
+# tunnel --no-autoupdate --grace-period D --config FILE run ID
 cfg=""; prev=""
 for a in "$@"; do [ "$prev" = --config ] && cfg="$a"; prev="$a"; done
 n=$(( $(cat "$S/run-count" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$S/run-count"
