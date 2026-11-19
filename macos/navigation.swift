@@ -42,3 +42,17 @@ func isPopOutRequest(_ url: URL?, origin: URL?) -> Bool {
 	else { return false }
 	return items.contains { $0.name == "popout" }
 }
+
+/// The same page at the server's new address, when `url` is a page of the UI at `old` and the server came back at another
+/// (`new`: it stopped on its own and the next one took another port, #378); nil for anything else: a page that is at `new`
+/// already, `about:blank`, another site, or a server that came back where it was.
+func movedPageURL(_ url: URL?, from old: URL, to new: URL) -> URL? {
+	guard let url, old.host != new.host || old.port != new.port || old.scheme != new.scheme,
+		url.scheme?.lowercased() == old.scheme?.lowercased(), url.host == old.host, url.port == old.port,
+		var parts = URLComponents(url: url, resolvingAgainstBaseURL: false)
+	else { return nil }
+	parts.scheme = new.scheme
+	parts.host = new.host
+	parts.port = new.port
+	return parts.url
+}

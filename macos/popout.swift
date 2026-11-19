@@ -102,6 +102,17 @@ final class PopOutWindows: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
 		for window in windows { window.close() }
 	}
 
+	/// The server stopped on its own and came back at `new` (another port, the old one still held): each pop-out shows its page
+	/// again there. Its page would go on asking the old address, which nothing answers, ⌘R would reload that, and its bridges
+	/// and navigations would be judged against the new origin as a foreign site's (#378). The cookie it is signed in with is the
+	/// same (the app's token, for the host whatever the port).
+	func serverMoved(from old: URL, to new: URL) {
+		for window in windows {
+			guard let web = windowWebView(window), let moved = movedPageURL(web.url, from: old, to: new) else { continue }
+			web.load(URLRequest(url: moved))
+		}
+	}
+
 	// MARK: Window
 
 	func windowWillClose(_ notification: Notification) {

@@ -586,6 +586,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 			guard let self, !self.stoppingServer else { return }
 			switch event {
 			case .ready(let port):
+				let previous = self.origin
 				self.origin = URL(string: "http://127.0.0.1:\(port)")
 				self.refreshLanguage()
 				// Read at once, also when the restarted server took the same port (#376).
@@ -597,6 +598,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 				// page loads again and signs in with the same token, on whatever port the new server took. (No window: the
 				// next one opens on it, with the view the last page was on, which is only taken for a page that loads.)
 				if let web = self.webView, let url = self.takePageURL() { web.load(URLRequest(url: url)) }
+				// The pop-outs are pages of the old server too: at another port, they follow it (#378).
+				if let previous, let origin = self.origin { self.popOuts.serverMoved(from: previous, to: origin) }
 			case .failed(let title, let detail):
 				self.fail(title, detail)
 			}
