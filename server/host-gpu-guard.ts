@@ -51,13 +51,14 @@ const spawnProbe = (): Worker => new Worker(new URL("./host-gpu-worker.ts", impo
  *
  * - A probe that throws is told once and gives null for that look; CPU and memory are recorded all the same.
  * - A thread that does not answer in time, throws out of its own code, or ends is stopped and given up on for the run: nothing
- *   is asked of it again, it is told once, and the next start leaves the GPU out too (the marker below). A thread blocked in
- *   the driver may stay blocked; it holds nothing the server needs, and it does not keep the server alive.
+ *   is asked of it again, and it is told once. A thread blocked in the driver may stay blocked; it holds nothing the server
+ *   needs, and it does not keep the server alive.
  * - A native fault ends the whole process and is no exception, so a marker file in the data directory says `probing` before
- *   the thread is started and `ok` once its first read has come back (with readings or without), and is set to `probing` again
- *   when the thread is given up on. A start that finds `probing` knows the last one did not get through, says so once, and
- *   leaves the GPU out; `retry` (`OMP_WEBUI_HOST_GPU=1`) tries it again. A marker that cannot be written is no marker: the
- *   thread is not started without one. A fault after the first read is not remembered: the marker says `ok`.
+ *   the thread is started and `ok` once its first read has come back (with readings or without). A start that finds
+ *   `probing` knows an earlier one did not get through its first read (a crash, or a thread given up on there), says so
+ *   once, and leaves the GPU out; it stays so at every start until `retry` (`OMP_WEBUI_HOST_GPU=1`) tries it again. A marker
+ *   that cannot be written is no marker: the thread is not started without one. What fails after the first read is not
+ *   remembered: the marker says `ok`, and the next start asks again (#390).
  */
 export function guardedGpu(options: GpuOptions = {}): GuardedGpu {
 	const marker = options.markerDir === undefined ? null : join(options.markerDir, GPU_MARKER);
@@ -97,19 +98,16 @@ export function guardedGpu(options: GpuOptions = {}): GuardedGpu {
 		for (const answer of waiting.values()) answer(new Error("the GPU thread was stopped"));
 		waiting.clear();
 	};
-	/** Give the thread up for the run and for the next start. */
+	/** Give the thread up for the run (the marker says `probing` still only if its first read never came back). */
 	const giveUp = (why: string): void => {
 		if (state === "off") return;
 		stop();
-		try {
-			mark("probing");
-		} catch {
-			// The marker is only what the next start reads; the run is already without the GPU.
-		}
 		log.failed(
 			"gpu",
 			new Error(
-				`the GPU is left out for the rest of this run and at the next start (${why}; OMP_WEBUI_HOST_GPU=1 tries it again)`,
+				verified
+					? `the GPU is left out for the rest of this run (${why})`
+					: `the GPU is left out for the rest of this run and at later starts (${why}; OMP_WEBUI_HOST_GPU=1 tries it again)`,
 			),
 		);
 	};

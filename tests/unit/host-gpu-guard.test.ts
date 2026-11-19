@@ -10,7 +10,8 @@ import { tempDir } from "../support/temp-dirs.ts";
 
 /**
  * The GPU's reading is isolated from the rest of a look (server/host-gpu-guard.ts): IOKit is asked in a thread of its own,
- * each read is awaited with a deadline, a thread that hangs, throws or ends is given up on for the run and for the next start,
+ * each read is awaited with a deadline, a thread that hangs, throws or ends is given up on for the run (and, before its first
+ * read came back, at later starts),
  * and the GPU can be turned off. The threads here are stand-ins written in the tests (a blob each): one that answers, one that
  * never does, one blocked as a driver call would block it, one that throws, one that ends. Directories are fresh temporary ones.
  *
@@ -214,7 +215,7 @@ describe("a thread that does not answer, fails or ends", () => {
 		}
 	});
 
-	test("one that has answered and then stops answering is given up on too, and the mark goes back to probing", async () => {
+	test("one that has answered and then stops answering is given up on for the run only: the next start asks again (#390)", async () => {
 		const q = quiet();
 		const d = dir();
 		// Answers the first request, then never.
@@ -225,14 +226,22 @@ describe("a thread that does not answer, fails or ends", () => {
 				`let n = 0; self.onmessage = (e) => { if (n++ === 0) postMessage({ id: e.data.id, ok: true, gpus: [{ name: "Fake GPU", cores: 8, util: 3 }] }); };`,
 			),
 		});
+		const next = guardedGpu({ ...FAST, markerDir: d, spawn: thread(WORKERS.answers) });
 		try {
 			expect(await g.read()).toEqual([gpu(3)]);
 			expect(marker(d)).toBe("ok");
 			expect(await g.read()).toBeNull();
-			expect(marker(d)).toBe("probing");
+			expect(await g.read()).toBeNull();
+			// A late read is no crash at start: the marker still says ok.
+			expect(marker(d)).toBe("ok");
+			expect(q.told()).toHaveLength(1);
+			expect(q.told()[0]).toContain("for the rest of this run (no answer in 150 ms)");
+			// The next start (on the same data directory) starts its thread and reads the GPU.
+			expect(await next.read()).toEqual([gpu(10)]);
 			expect(q.told()).toHaveLength(1);
 		} finally {
 			g.close();
+			next.close();
 			q.done();
 		}
 	});
