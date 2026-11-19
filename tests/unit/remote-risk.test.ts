@@ -2517,3 +2517,17 @@ describe("macOS's security switches that need no sudo are system (#256)", () => 
 		expect(shell(command)).toEqual([]);
 	});
 });
+
+describe("sudoedit is privilege, as sudo -e is, and writes the files it edits (#275)", () => {
+	test.each<[string, RiskKind[]]>([
+		["sudoedit /etc/hosts", ["privilege", "write_outside"]],
+		["sudoedit -u root /etc/sudoers.d/x", ["privilege", "write_outside"]],
+		["/usr/bin/sudoedit /etc/paths", ["privilege", "write_outside"]],
+		["sudo -e /etc/hosts", ["privilege", "write_outside"]],
+		["sudo --edit /etc/hosts", ["privilege", "write_outside"]],
+		["sudoedit ~/.zshrc", ["privilege", "protected"]],
+		["sudoedit notes.txt", ["privilege"]],
+	])("%s", (command, kinds) => {
+		expect(shell(command)).toEqual(kinds);
+	});
+});

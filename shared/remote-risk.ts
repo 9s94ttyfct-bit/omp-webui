@@ -401,8 +401,8 @@ const CODE_INTERPRETERS = table(
 /** One of `CODE_INTERPRETERS`, also by a name with its version (`python3.12`, `pypy3.10`, `perl5.36`, `ruby3.3`, #413). */
 const isInterpreter = (name: string): boolean => listed(CODE_INTERPRETERS, name.replace(/(?<=[a-z])[\d.]+$/, ""));
 const FETCHERS = table("curl", "wget", "fetch");
-/** What runs a command with more rights: Windows' `runas`, `gsudo` and its own `sudo` among them. */
-const PRIVILEGE = table("sudo", "doas", "pkexec", "run0", "su", "runas", "gsudo");
+/** What runs a command with more rights: Windows' `runas`, `gsudo` and its own `sudo` among them; `sudoedit` edits files as root. */
+const PRIVILEGE = table("sudo", "sudoedit", "doas", "pkexec", "run0", "su", "runas", "gsudo");
 /** Programs whose job is to carry this computer onto the internet. */
 const TUNNELS = table("cloudflared", "ngrok", "bore", "frpc", "frps", "localtunnel", "serveo");
 /** Programs that delete what they are given; `trash` (macOS 15's `/usr/bin/trash`, trash-cli's `trash-put`) moves it to the Trash (#257). */
@@ -2536,9 +2536,19 @@ class Scan {
 		}
 		if (listed(PRIVILEGE, name)) {
 			this.add("privilege");
+			const rest = afterPrivilegeOptions(args);
+			const own = args.slice(0, args.length - rest.length);
+			// `sudoedit <file>…`, `sudo -e`/`--edit` (#275): the files are written with root's rights, not a command run.
+			if (
+				name === "sudoedit" ||
+				(name === "sudo" && own.some((a) => /^-[A-Za-z]*e/.test(a.text) || a.text === "--edit"))
+			)
+				for (const f of rest) this.write(f, cwd);
 			// What it runs with those rights is looked at too (`sudo rm -rf /x` also deletes outside the project).
-			const inner = name === "su" ? null : commandOf(afterPrivilegeOptions(args));
-			if (inner) this.command(inner, body, cwd, depth + 1);
+			else {
+				const inner = name === "su" ? null : commandOf(rest);
+				if (inner) this.command(inner, body, cwd, depth + 1);
+			}
 		}
 		if (name === "osascript") {
 			this.add("osascript");
