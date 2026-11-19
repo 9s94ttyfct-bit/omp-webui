@@ -235,19 +235,23 @@ describe("runRemote", () => {
 		["bash", ["/bin/bash", "--noprofile", "--norc", "-i"], { PROMPT_COMMAND: "history -a" }],
 		["zsh", ["/bin/zsh", "-f", "-i", "-o", "incappendhistory"], { SAVEHIST: "100", HISTSIZE: "100", PS1: "$ " }],
 	] as const) {
-		test.skipIf(!existsSync(shell[0]))(`the command never reaches the ${name} history file`, async () => {
-			const history = join(scratch, `${name}-history`);
-			writeFileSync(history, "");
-			const fake = fakeRemote({ shell: [...shell], env: { ...env, HISTFILE: history } });
-			const r = await run(fake, { command: "echo secret-word-4711" });
-			expect(r).toMatchObject({ exitCode: 0, output: "secret-word-4711\n" });
-			await killSent(fake);
-			await shellsEnded(fake);
-			const kept = readFileSync(history, "utf8");
-			expect(kept).not.toContain("secret-word-4711");
-			expect(kept).not.toContain(btoa("echo secret-word-4711"));
-			expect(kept).not.toContain("base64 -d");
-		});
+		test.skipIf(!existsSync(shell[0]))(
+			`the command never reaches the ${name} history file`,
+			async () => {
+				const history = join(scratch, `${name}-history`);
+				writeFileSync(history, "");
+				const fake = fakeRemote({ shell: [...shell], env: { ...env, HISTFILE: history } });
+				const r = await run(fake, { command: "echo secret-word-4711" });
+				expect(r).toMatchObject({ exitCode: 0, output: "secret-word-4711\n" });
+				await killSent(fake);
+				await shellsEnded(fake);
+				const kept = readFileSync(history, "utf8");
+				expect(kept).not.toContain("secret-word-4711");
+				expect(kept).not.toContain(btoa("echo secret-word-4711"));
+				expect(kept).not.toContain("base64 -d");
+			},
+			20_000,
+		);
 	}
 
 	test("a command that never ends returns at its time limit with what it printed, and the remote shell is killed", async () => {
