@@ -452,6 +452,8 @@ bun run start          # http://127.0.0.1:7878
 
 **here-string 里的替换**（#417）在命令之前运行，会当作命令来读（`cat <<< "$(rm -rf ~/x)"` 算在文件夹之外删除）。它们打印出的内容是命令的输入，所以用这种方式交给 shell 或解释器的下载内容（`bash <<< "$(curl …)"`、`python3 <<< "$(wget -qO- …)"`）算 `remote_exec`，和 `bash < <(curl …)` 一样；`bash <<< "$CMD"` 仍算 `dynamic_command`。
 
+**here-document 的正文**在结束标记没有加引号时按同样的方式读（#422）：shell 会展开其中的 `$(…)` 和反引号（`cat > f <<EOF` 的正文里有 `$(rm -rf ~/x)` 算在文件夹之外删除；`bash <<EOF` 的正文里有一行 `$(curl …)` 算 `remote_exec`）。结束标记加了引号（`<<'EOF'`、`<<"EOF"`、`<<\EOF`）时正文只是文本，`$` 前面有反斜杠的替换也一样。PowerShell 的点源（`. $x`、`. .\a.ps1`）和 `&` 一样读（#423）；npm 在子命令之前的 `--location global` 是该选项的值，不是子命令：单独的 `npm --location global` 什么也不装，`npm --location global install x` 算 `global_install`（#424）。
+
 **`tar -C <文件夹>`**（#418，也包括 `--directory` 和 `bsdtar`）是放入或读取那些名字的文件夹，不是归档文件：在那里解包（`tar -C ~/x -xzf a.tgz`）算写入它，但创建、列出或追加只从它读取，所以 `tar -C ~ -czf /tmp/x.tgz Documents` 只写 `/tmp/x.tgz`，后面的名字从那个文件夹里读（`tar -C ~ -czf /tmp/x.tgz .` 算 `secret_read`，和 `tar czf /tmp/x.tgz ~` 一样）。
 
 **子命令前面的全局选项**（#420）连同它们的值在读子命令之前会被跳过，所以 `npm --prefix x publish`、`pnpm -C pkg publish`、`yarn --cwd pkg publish` 算 `publish`，`gh -R owner/repo repo delete`、`kubectl -n prod delete …`、`helm -n prod uninstall …`、`docker -H … volume rm …` 算 `remote_delete`，和不带这些选项时一样（`gh`、`npm`、`pnpm`、`yarn`、`bun`、`kubectl`、`helm`、`docker`、`podman`、`gcloud`）。

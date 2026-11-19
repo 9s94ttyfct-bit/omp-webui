@@ -939,6 +939,8 @@ interface Word {
 	named?: string;
 	/** Every shell variable it is made of, by name (`"key: $API_KEY"`): what an `echo` of it prints. */
 	vars?: string[];
+	/** A part of it was quoted (`'EOF'`, `"EOF"`, `\EOF`, `$'EOF'`): the delimiter of a here-document that is, keeps its body from being expanded. */
+	quoted?: true;
 }
 
 interface Redirect {
@@ -1006,6 +1008,26 @@ function readBackticks(src: string, start: number): { text: string; end: number 
 	let i = start;
 	while (i < src.length && src[i] !== "`") i += src[i] === "\\" ? 2 : 1;
 	return { text: src.slice(start, i), end: Math.min(i + 1, src.length) };
+}
+
+/** The commands in the text a shell expands (`$(…)` and backticks), where a backslash keeps one from running: what an unquoted here-document's body holds. */
+function substitutionsOf(text: string): string[] {
+	const found: string[] = [];
+	let i = 0;
+	while (i < text.length) {
+		const c = text[i];
+		if (c === "\\") i += 2;
+		else if (c === "$" && text[i + 1] === "(") {
+			const inner = readBalanced(text, i + 2, "(", ")");
+			found.push(inner.text);
+			i = inner.end;
+		} else if (c === "`") {
+			const inner = readBackticks(text, i + 1);
+			found.push(inner.text);
+			i = inner.end;
+		} else i++;
+	}
+	return found;
 }
 
 const ANSI_C_SIMPLE: Readonly<Record<string, string>> = {
@@ -1108,12 +1130,12 @@ function parseScript(src: string, vars: Readonly<Record<string, string>>): Simpl
 	let word = null as Word | null;
 	let redirect: string | null = null;
 	/** Here-documents waiting for the lines after this one: the command they feed, the delimiter, and whether tabs are stripped. */
-	const heredocs: { into: Simple; delimiter: string; strip: boolean }[] = [];
+	const heredocs: { into: Simple; delimiter: string; strip: boolean; quoted: boolean }[] = [];
 
 	const endWord = (): void => {
 		if (word === null) return;
 		if (redirect === "<<" || redirect === "<<-")
-			heredocs.push({ into: cur, delimiter: word.text, strip: redirect === "<<-" });
+			heredocs.push({ into: cur, delimiter: word.text, strip: redirect === "<<-", quoted: word.quoted === true });
 		else if (redirect === "<<<") {
 			cur.body = word.text;
 			cur.here = word;
@@ -1189,6 +1211,10 @@ function parseScript(src: string, vars: Readonly<Record<string, string>>): Simpl
 				lines.push(line);
 			}
 			doc.into.body = `${doc.into.body === null ? "" : `${doc.into.body}\n`}${lines.join("\n")}`;
+			// An unquoted delimiter lets the shell expand `$(…)` and backticks in the body, as in a here-string (#422).
+			const subs = doc.quoted ? [] : substitutionsOf(lines.join("\n"));
+			if (subs.length > 0)
+				doc.into.here = { text: "", dynamic: false, subs: [...(doc.into.here?.subs ?? []), ...subs] };
 		}
 		return i;
 	};
@@ -1209,15 +1235,17 @@ function parseScript(src: string, vars: Readonly<Record<string, string>>): Simpl
 		} else if (c === "\\") {
 			if (next === "\n") i += 2;
 			else {
+				ensure().quoted = true;
 				ensure().text += next ?? "";
 				i += 2;
 			}
 		} else if (c === "'") {
 			const end = src.indexOf("'", i + 1);
+			ensure().quoted = true;
 			ensure().text += src.slice(i + 1, end < 0 ? src.length : end);
 			i = end < 0 ? src.length : end + 1;
 		} else if (c === '"') {
-			ensure();
+			ensure().quoted = true;
 			i++;
 			while (i < src.length && src[i] !== '"') {
 				const d = src[i];
@@ -1239,6 +1267,7 @@ function parseScript(src: string, vars: Readonly<Record<string, string>>): Simpl
 			i++;
 		} else if (c === "$" && next === "'") {
 			const inner = readAnsiC(src, i + 2);
+			ensure().quoted = true;
 			ensure().text += inner.text;
 			i = inner.end;
 		} else if (c === "$") {
@@ -3599,7 +3628,11 @@ class Scan {
 		this.command(inner, null, cwd, depth + 1);
 	}
 
-	private install(name: string, operands: Word[], opts: string[]): void {
+	private install(name: string, allOperands: Word[], opts: string[]): void {
+		// npm's `--location global` before the verb: the option's value is not the verb (#424).
+		const place = name === "npm" && opts.includes("--location") ? allOperands[0]?.text : undefined;
+		const located = place !== undefined && /^(?:global|user|project)$/.test(place);
+		const operands = located ? allOperands.slice(1) : allOperands;
 		const verb = operands[0]?.text ?? "";
 		const sub = operands[1]?.text ?? "";
 		if (name === "brew" && /^(install|reinstall|uninstall|remove|upgrade|tap|untap|link|unlink|cleanup)$/.test(verb))
@@ -3610,7 +3643,7 @@ class Scan {
 			opts.includes("-g") ||
 			verb === "global" ||
 			opts.includes("--location=global") ||
-			(opts.includes("--location") && sub === "global");
+			(opts.includes("--location") && (sub === "global" || (located && place === "global")));
 		if (
 			(name === "npm" || name === "pnpm" || name === "yarn" || name === "bun") &&
 			global &&
@@ -4223,7 +4256,10 @@ class Scan {
 			if (namesPrivateFile(w, cwd, this.ctx)) this.add("protected");
 			for (const sub of w.subs) this.powershell(sub, cwd, depth + 1);
 		}
-		const [head, ...args] = simple.words;
+		// `. $x`, `. .\script.ps1`: dot-sourcing runs the script in this scope, what `&` does for what it can do (#423).
+		const [first, ...rest] = simple.words;
+		const dotted = first?.text === "." && !first.dynamic && rest.length > 0;
+		const [head, ...args] = dotted ? rest : simple.words;
 		if (!head) return cwd;
 		if (head.dynamic) {
 			// An expression (`$_.Length -gt 0` in a filter's block) runs no command; one that calls a method (`$_.Delete()`) or

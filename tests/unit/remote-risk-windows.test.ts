@@ -226,3 +226,20 @@ describe("a script block is an argument, and $_ in it an expression, not a comma
 		expect(shell(command)).toContain(kind);
 	});
 });
+
+describe("PowerShell dot-sourcing is a call, as & is (#423)", () => {
+	test.each(["powershell -Command '. $x'", "powershell -Command '. \"$a\"'", "powershell -Command '. $(Get-Thing)'"])(
+		"%s is a command put together",
+		(command) => {
+			expect(shell(command)).toContain("dynamic_command");
+		},
+	);
+
+	test("a script file that is dot-sourced is read as one that is called", () => {
+		expect(shell("powershell -Command '. .\\a.ps1'")).toEqual(shell("powershell -Command '& .\\a.ps1'"));
+		expect(shell("powershell -Command '. $env:TEMP\\a.ps1'")).toEqual(
+			shell("powershell -Command '& $env:TEMP\\a.ps1'"),
+		);
+		expect(shell("powershell -Command 'Get-Date'")).toEqual([]);
+	});
+});

