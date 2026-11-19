@@ -92,6 +92,20 @@ jobs:
           fi
           echo "code=$code" | tee -a "$GITHUB_OUTPUT"
 
+  # The locked dependencies against published advisories (#307). It runs every day and by hand, not on a push: an advisory
+  # published today is no fault of the commit that happens to be pushed, and a failing run here says a dependency is to be
+  # upgraded (`bun audit fix`).
+  audit:
+    name: dependency advisories
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - run: bun install --frozen-lockfile
+      - run: bun audit --audit-level=moderate
+
   checks:
     name: typecheck, lint, privacy, build, parity
     # What these check is the code, which the daily run does not change.
