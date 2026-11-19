@@ -5,9 +5,9 @@ import { tapSocket } from "../support/socket-tap.ts";
 import { expect, type Page, test } from "./fixtures.ts";
 
 /**
- * A conversation that is replying cannot be deleted: the dialog says why before anything is sent, and the server
- * refuses (409) a delete the page did not know to be wrong — the conversation is left running, not killed. No model
- * is called: the reply is a pushed frame, the busy server side is a `!command`.
+ * A conversation that is replying, or runs a `!command`, cannot be deleted: the dialog says why before anything is sent.
+ * The server's own refusal (409) of a delete the page did not know to be wrong is a contract test. No model is called:
+ * the reply is a pushed frame.
  */
 
 async function openDeleteDialog(page: Page, title: string) {
@@ -47,7 +47,7 @@ test("the delete dialog of a replying conversation says to stop it first and can
 	}
 });
 
-test("a delete the server refuses because the conversation is busy tells why, and leaves it running", async ({
+test("a conversation that runs a !command says to stop it first and cannot be deleted; Stop ends the command", async ({
 	page,
 }) => {
 	const title = "Delete while command";
@@ -61,14 +61,17 @@ test("a delete the server refuses because the conversation is busy tells why, an
 		await page.getByTestId("composer").press("Enter");
 		await expect(page.getByTestId("pending-command")).toHaveCount(1);
 
-		// The page saw no reply under way, so the dialog is the ordinary one; the server knows better.
+		// A running !command is work (#389): the dialog says so before anything is sent. (The server's own 409 for a delete a
+		// page did not know to be wrong is `tests/contract/delete-busy.test.ts`.)
 		await openDeleteDialog(page, title);
-		await page.getByTestId("confirm-session-action").click();
-		await expect(page.getByTestId("toast").first()).toContainText(/Delete failed:.*stop it first/i);
+		const dialog = page.getByRole("dialog");
+		await expect(dialog).toContainText("Stop it first, then delete it");
+		await expect(page.getByTestId("confirm-session-action")).toBeDisabled();
 		expect(existsSync(file)).toBe(true);
 
 		// The command was not cut off by the attempt: it is still running, and Stop ends it.
 		await page.keyboard.press("Escape");
+		await expect(dialog).toHaveCount(0);
 		await expect(page.getByTestId("pending-command")).toHaveCount(1);
 		await page.getByTestId("stop").click();
 		await expect(page.getByTestId("pending-command")).toHaveCount(0, { timeout: 15_000 });

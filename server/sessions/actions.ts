@@ -196,7 +196,7 @@ export class SessionActions {
 	 */
 	async delete(target: SessionTarget): Promise<string | null> {
 		const { file, cwd } = target;
-		const holding = this.pool.list().find((l) => !l.exited && l.sessionFile === file)?.holding;
+		const holding = this.pool.liveOfFile(file)?.holding;
 		if (holding) throw new SessionBusyError(refusal(holding));
 		await this.refuseWhenHeldElsewhere(
 			target,

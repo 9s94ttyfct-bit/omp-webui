@@ -561,7 +561,7 @@
 		"default-star.spec.ts › fast mode is the default by the tier the configuration has for the model's family: On for a fast tier, Off for any other": 127.3,
 		"default-star.spec.ts › fast mode's star flips as the row is switched, both ways round, with Claude's tier as the default": 20.4,
 		"default-star.spec.ts › the stars are in Chinese, and a filled one is not told by colour alone": 9,
-		"delete-busy.spec.ts › a delete the server refuses because the conversation is busy tells why, and leaves it running": 8,
+		"delete-busy.spec.ts › a conversation that runs a !command says to stop it first and cannot be deleted; Stop ends the command": 8,
 		"delete-busy.spec.ts › the delete dialog of a replying conversation says to stop it first and cannot be confirmed": 7.6,
 		"delete-cleanup.spec.ts › the bulk delete dialog lists every selected conversation, each with its own options": 6,
 		"delete-cleanup.spec.ts › the delete dialog offers the folder and its dependency folders; a ticked dependency folder goes to the Trash": 9,
