@@ -286,6 +286,8 @@ export const en = {
 	controlsCompactAtUnknown: "omp's configuration could not be read, so what Default means is not known.",
 	controlsCompactAtModelThreshold:
 		"omp's configuration sets a compaction point for this model itself ({key}), which applies over the one above: this row has no effect on this conversation until that entry is removed.",
+	controlsCompactAtModelBase:
+		"omp's configuration gives this model a base window of {base} tokens ({key}): the share is taken of that, not of the whole window.",
 	controlsCompactAtSaved: "Compact at: {value}",
 	controlsCompactAtSavedDefault: "Compact at: omp's default",
 	controlsCompactAtFailed: "Could not set where this conversation compacts: {error}",

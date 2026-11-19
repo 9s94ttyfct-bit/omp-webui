@@ -14,6 +14,7 @@ import {
 	compactTrigger,
 	isCompactAt,
 	modelThresholdOf,
+	modelThresholdOverrides,
 	ompTriggerTokens,
 	pointOf,
 	shareOfTokens,
@@ -170,14 +171,76 @@ test("omp's settings are read as omp lists them, with -1 for what is unset", () 
 	expect(pointOf({ percent: -1, tokens: -1 })).toBeNull();
 });
 
-test("a per-model threshold decides over both settings: the exact key first, then the longest wildcard", () => {
-	const record = { "anthropic/claude-opus-5-5": 60, "anthropic/*": 80, "*": 90 };
-	expect(modelThresholdOf(record, "anthropic/claude-opus-5-5")?.key).toBe("anthropic/claude-opus-5-5");
-	expect(modelThresholdOf(record, "anthropic/claude-haiku-5-5")?.key).toBe("anthropic/*");
-	expect(modelThresholdOf(record, "openai/gpt-6-astra")?.key).toBe("*");
+test("a per-model threshold decides for its model: the exact key first, then the longest wildcard", () => {
+	const record = { "anthropic/claude-opus-5-5": 60_000, "anthropic/*": "80%", "openai/*": null, "*": "f90000" };
+	expect(modelThresholdOf(record, "anthropic/claude-opus-5-5")).toEqual({
+		key: "anthropic/claude-opus-5-5",
+		kind: "base",
+		tokens: 60_000,
+	});
+	expect(modelThresholdOf(record, "anthropic/claude-haiku-5-5")).toEqual({
+		key: "anthropic/*",
+		kind: "percent",
+		percent: 80,
+	});
+	// A null value clears an entry: the next match decides.
+	expect(modelThresholdOf(record, "openai/gpt-6-astra")).toEqual({ key: "*", kind: "fixed", tokens: 90_000 });
 	expect(modelThresholdOf(record, "no-provider")).toBeNull();
 	expect(modelThresholdOf({}, "a/b")).toBeNull();
 	expect(modelThresholdOf(null, "a/b")).toBeNull();
+	// What omp refuses is not guessed at: a count as a string, a share over 100, a fraction of a token.
+	for (const value of ["200000", "120%", 1.5, "f0"]) expect(modelThresholdOf({ "a/b": value }, "a/b")).toBeNull();
+});
+
+test("a model entry applies as omp 18.12.3+ applies it: a count is the base window the share is taken of (#299)", () => {
+	const none: CompactSettings = { percent: -1, tokens: -1 };
+	const entry = (value: unknown) =>
+		modelThresholdOf({ "anthropic/claude-opus-4*": value }, "anthropic/claude-opus-4-8");
+	// The issue's table: a 1M window, the row at 80%.
+	expect(compactTrigger({ percent: 80 }, none, 1_000_000, entry(200_000))).toEqual({
+		tokens: 160_000,
+		percent: 16,
+		window: 1_000_000,
+		base: 200_000,
+		source: "conversation",
+	});
+	expect(compactTrigger({ percent: 80 }, none, 1_000_000, entry("70%"))).toMatchObject({
+		tokens: 700_000,
+		source: "model",
+	});
+	expect(compactTrigger({ percent: 80 }, none, 1_000_000, entry("f150000"))).toMatchObject({
+		tokens: 150_000,
+		source: "model",
+	});
+	// A base drops a count (the row's or the configuration's) and keeps omp's reserve on the base: 200k less 15%.
+	expect(compactTrigger({ tokens: 300_000 }, none, 1_000_000, entry(200_000))).toMatchObject({
+		tokens: 170_000,
+		base: 200_000,
+		source: "default",
+	});
+	expect(compactTrigger(null, { percent: 50, tokens: 300_000 }, 1_000_000, entry(200_000))).toMatchObject({
+		tokens: 100_000,
+		source: "config",
+	});
+	// A base at or above the window changes nothing; a fixed point at or above it falls back to omp's reserve.
+	expect(compactTrigger({ percent: 80 }, none, 200_000, entry(400_000))).toEqual({
+		tokens: 160_000,
+		percent: 80,
+		window: 200_000,
+		source: "conversation",
+	});
+	expect(compactTrigger({ percent: 80 }, none, 200_000, entry("f250000"))).toMatchObject({
+		tokens: 170_000,
+		source: "default",
+	});
+
+	// Which entries leave the row without effect: a share or a fixed point always, a base only a count.
+	expect(modelThresholdOverrides({ percent: 80 }, entry(200_000))).toBe(false);
+	expect(modelThresholdOverrides({ tokens: 90_000 }, entry(200_000))).toBe(true);
+	expect(modelThresholdOverrides(null, entry(200_000))).toBe(false);
+	expect(modelThresholdOverrides({ percent: 80 }, entry("70%"))).toBe(true);
+	expect(modelThresholdOverrides(null, entry("f150000"))).toBe(true);
+	expect(modelThresholdOverrides({ percent: 80 }, null)).toBe(false);
 });
 
 test("the overlay says the chosen point and -1 for the other, as YAML numbers omp reads", () => {

@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { type CompactSettings, compactSettingsOf } from "../../shared/compact-at.ts";
+import { type CompactSettings, compactSettingsOf, type ModelThreshold } from "../../shared/compact-at.ts";
 import {
 	CLAUDE_SLOW_KEY,
 	type ClaudeSlowMode,
@@ -75,8 +75,8 @@ export interface PanelConfig {
 /** Where omp compacts as a conversation's configuration has it, and what omp's per-model record says over it. */
 export interface CompactPanel {
 	settings: CompactSettings;
-	/** The `compaction.modelThresholds` key that decides for the conversation's model, if one does (see `decidingModelThreshold`). */
-	modelThreshold: string | null;
+	/** The `compaction.modelThresholds` entry that decides for the conversation's model, if one does (see `decidingModelThreshold`). */
+	modelThreshold: ModelThreshold | null;
 }
 
 /** What the panel shows from omp's configuration for `live`'s process (see `PanelConfig`). */

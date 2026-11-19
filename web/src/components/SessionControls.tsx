@@ -533,7 +533,13 @@ export function SessionControls({
 				at === null
 					? t("panel.controlsCompactAtSavedDefault")
 					: t("panel.controlsCompactAtSaved", {
-							value: compactAtText(t, at, contextWindow, compactPanel?.settings ?? null),
+							value: compactAtText(
+								t,
+								at,
+								contextWindow,
+								compactPanel?.settings ?? null,
+								compactPanel?.modelThreshold ?? null,
+							),
 						}),
 			);
 			void reload();

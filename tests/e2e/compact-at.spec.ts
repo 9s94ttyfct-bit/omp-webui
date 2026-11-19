@@ -133,6 +133,42 @@ test("the row is in Simplified Chinese, says what it does there, and its choice 
 	await only.page.close();
 });
 
+test("omp's count entry for the model is a base window the row's share is taken of; it leaves a count without effect (#299)", async ({
+	page,
+}) => {
+	const original = readFileSync(configFile(), "utf8");
+	try {
+		// The test server's conversations run on anthropic/claude-haiku-5-5: a 50k base under its larger window.
+		expect(original).not.toMatch(/^compaction:/m);
+		writeFileSync(
+			configFile(),
+			`${original.trimEnd()}\ncompaction:\n  modelThresholds:\n    anthropic/claude-haiku-5-5: 50000\n`,
+		);
+		ownSession(0x8d29, "Compact at base");
+		const only = await openPage(page, "Compact at base");
+		await openPanel(only.page, only.tap, "Compact at base", "compact-at-base-up");
+		const row = compactRow(only.page);
+
+		await choose(row.getByTestId("compact-at-mode"), "percent");
+		await choose(row.getByTestId("compact-at-percent"), "70");
+		// 70% of the 50k base, not of the window; the row applies, so nothing says it has no effect.
+		await expect(row.getByTestId("compact-at-effective")).toContainText("35k of");
+		await expect(row.getByTestId("compact-at-model-base")).toContainText("base window of 50k tokens");
+		await expect(row.getByTestId("compact-at-model-threshold")).toHaveCount(0);
+
+		// A count is dropped by such an entry: omp keeps its reserve on the base instead (50k less 16k).
+		await choose(row.getByTestId("compact-at-mode"), "tokens");
+		await row.getByTestId("compact-at-tokens").fill("40k");
+		await row.getByTestId("compact-at-apply").click();
+		await expect(row.getByTestId("compact-at-model-threshold")).toContainText("anthropic/claude-haiku-5-5");
+		await expect(row.getByTestId("compact-at-effective")).toContainText("34k of");
+		await choose(row.getByTestId("compact-at-mode"), "default");
+		await only.page.close();
+	} finally {
+		writeFileSync(configFile(), original);
+	}
+});
+
 test("Settings sets omp's own point in omp's own configuration, keeps it across a load, and Default takes it away", async ({
 	page,
 }) => {

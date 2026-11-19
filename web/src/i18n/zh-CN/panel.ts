@@ -266,6 +266,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	controlsCompactAtUnknown: "无法读取 omp 的配置，所以不知道“默认”指的是什么。",
 	controlsCompactAtModelThreshold:
 		"omp 的配置为这个模型单独设了压缩阈值（{key}），它的优先级高于上面的设置：在删掉那条配置之前，这一行对这个对话不起作用。",
+	controlsCompactAtModelBase:
+		"omp 的配置为这个模型设了 {base} 个 token 的基准窗口（{key}）：上面的百分比按它计算，而不是按整个窗口。",
 	controlsCompactAtSaved: "压缩阈值：{value}",
 	controlsCompactAtSavedDefault: "压缩阈值：omp 的默认值",
 	controlsCompactAtFailed: "无法设置这个对话的压缩阈值：{error}",

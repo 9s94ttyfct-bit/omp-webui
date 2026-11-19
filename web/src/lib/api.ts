@@ -1,6 +1,6 @@
 import type { ApprovalMode } from "@shared/approval.ts";
 import type { ChatProjects } from "@shared/chat-projects.ts";
-import type { CompactAt, CompactSettings } from "@shared/compact-at.ts";
+import type { CompactAt, CompactSettings, ModelThreshold } from "@shared/compact-at.ts";
 import type { DirListing } from "@shared/dirs.ts";
 import type { ErrorParams } from "@shared/error-info.ts";
 import type { IsolationInfo } from "@shared/isolated-env.ts";
@@ -274,7 +274,7 @@ export interface PanelConfigState {
 	claudeSlow: ClaudeSlowMode | null;
 	defaults: Record<string, ConfigValue> | null;
 	/** Where omp compacts as the conversation's configuration has it, and what of its own decides over it; null where unread. */
-	compact: { settings: CompactSettings; modelThreshold: string | null } | null;
+	compact: { settings: CompactSettings; modelThreshold: ModelThreshold | null } | null;
 	/** How many subagents run at once as the conversation's configuration has it (its "Default"); null where unread or in Light. */
 	concurrency: number | null;
 }

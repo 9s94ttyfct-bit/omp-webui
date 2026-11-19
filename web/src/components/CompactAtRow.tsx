@@ -5,6 +5,8 @@ import {
 	type CompactSettings,
 	compactAtOf,
 	compactTrigger,
+	type ModelThreshold,
+	modelThresholdOverrides,
 	pointOf,
 	shareOfTokens,
 } from "@shared/compact-at.ts";
@@ -22,22 +24,27 @@ registerStrings("controlsHelp", helpEn);
 
 /**
  * A point in the page's words: omp's default as the effective value for a window of `window` tokens, a share, or a
- * count. The panel and Settings say it the same way, so "Default" means one thing in both.
+ * count. The panel and Settings say it the same way, so "Default" means one thing in both. `model`: the entry of omp's
+ * `compaction.modelThresholds` that decides for the conversation's model, which omp applies over the point (#299).
  */
 export function compactAtText(
 	t: Translate,
 	at: CompactAt | null,
 	window: number | undefined,
 	settings: CompactSettings | null,
+	model: ModelThreshold | null = null,
 ): string {
-	if (at === null) {
-		const trigger = compactTrigger(null, settings ?? { percent: -1, tokens: -1 }, window);
-		if (!trigger) return t("panel.controlsCompactAtDefaultNoWindow");
-		return t("panel.controlsCompactAtDefaultValue", {
-			percent: String(trigger.percent),
-			tokens: fmtTokens(trigger.tokens),
-			window: fmtTokens(trigger.window),
-		});
+	if (at === null || model) {
+		const trigger = compactTrigger(at, settings ?? { percent: -1, tokens: -1 }, window, model);
+		if (trigger)
+			return t("panel.controlsCompactAtDefaultValue", {
+				percent: String(trigger.percent),
+				tokens: fmtTokens(trigger.tokens),
+				window: fmtTokens(trigger.window),
+			});
+		if (model?.kind === "percent") return t("panel.controlsCompactAtPercentValue", { percent: String(model.percent) });
+		if (model?.kind === "fixed") return t("panel.controlsCompactAtTokensValue", { tokens: fmtTokens(model.tokens) });
+		if (at === null) return t("panel.controlsCompactAtDefaultNoWindow");
 	}
 	if ("percent" in at) return t("panel.controlsCompactAtPercentValue", { percent: String(at.percent) });
 	return t("panel.controlsCompactAtTokensValue", { tokens: fmtTokens(at.tokens) });
@@ -87,8 +94,8 @@ export function CompactAtRow({
 	window: number | undefined;
 	/** omp's configuration's own settings, where they were read (a conversation's own come from the store). */
 	settings: CompactSettings | null;
-	/** The per-model threshold that decides over the settings for this conversation's model, if one does. */
-	modelThreshold?: string | null;
+	/** The `compaction.modelThresholds` entry that decides for this conversation's model, if one does (omp applies it over the point). */
+	modelThreshold?: ModelThreshold | null;
 	disabled?: boolean;
 	/** The chosen point; null: omp's configuration again (in Settings, omp's default). */
 	onChange: (at: CompactAt | null) => void;
@@ -118,7 +125,9 @@ export function CompactAtRow({
 	// The share a first choice starts from: the point omp's configuration names, where it is one, else 85% of the window.
 	const start = base && base.percent > 0 ? offered(base.percent) : 85;
 	const percent = at && "percent" in at ? offered(at.percent) : start;
-	const effective = compactAtText(t, at, window, base);
+	// omp's entry for the conversation's model, which it lays over the point (Settings has no model to apply one to).
+	const model = file === null ? null : (modelThreshold ?? null);
+	const effective = compactAtText(t, at, window, base, model);
 	// What is in force, and where it comes from: a conversation's own point (or omp's configuration it follows), omp's
 	// configuration itself in Settings, or omp's own reserve. Settings shows what new conversations start with, so its
 	// line says so; a conversation's says where it compacts.
@@ -128,9 +137,13 @@ export function CompactAtRow({
 			? configured
 				? t("panel.controlsCompactAtEffectiveConfig", { value: effective })
 				: t("panel.controlsCompactAtEffectiveDefault", { value: effective })
-			: at === null && !configured
+			: at === null && !configured && (model === null || model.kind === "base")
 				? t("panel.controlsCompactAtEffectiveDefault", { value: effective })
 				: t("panel.controlsCompactAtEffective", { value: effective });
+	// A count entry is a base window the share is taken of (#299): it overrides only a count, and otherwise scales the row.
+	const overridden = modelThresholdOverrides(at, model);
+	const scaledBy =
+		model?.kind === "base" && !overridden && (window === undefined || model.tokens < window) ? model : null;
 	const parsed = parseTokenAmount(draft);
 	const typed = mode === "tokens" && draft.trim() !== "" && typeof parsed === "number";
 	const bad = mode === "tokens" && draft.trim() !== "" && parsed === null;
@@ -216,9 +229,13 @@ export function CompactAtRow({
 						? t("panel.controlsCompactAtOverWindow", { window: fmtTokens(window ?? 0) })
 						: effectiveLine}
 			</p>
-			{modelThreshold && file !== null ? (
+			{model && overridden ? (
 				<p className="w-full text-xs text-warning" data-testid={`${testid}-model-threshold`}>
-					{t("panel.controlsCompactAtModelThreshold", { key: modelThreshold })}
+					{t("panel.controlsCompactAtModelThreshold", { key: model.key })}
+				</p>
+			) : scaledBy ? (
+				<p className="w-full text-xs text-muted" data-testid={`${testid}-model-base`}>
+					{t("panel.controlsCompactAtModelBase", { key: scaledBy.key, base: fmtTokens(scaledBy.tokens) })}
 				</p>
 			) : null}
 			{!loaded ? (

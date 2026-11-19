@@ -3,6 +3,7 @@ import {
 	type CompactAt,
 	type CompactSettings,
 	compactSettingsOf,
+	type ModelThreshold,
 	modelThresholdOf,
 } from "../../shared/compact-at.ts";
 import type { Config } from "../config.ts";
@@ -77,14 +78,14 @@ export async function readCompactDefaults(cfg: Config, timeoutMs = QUICK_MS): Pr
 }
 
 /**
- * The key of omp's `compaction.modelThresholds` that decides for a conversation's model, if one does: omp applies such an
- * entry over both settings above (and over `reserveTokens`), so where it decides, the conversation uses that rather than
- * what this page writes. Null when the record is off, or nothing in it matches.
+ * The entry of omp's `compaction.modelThresholds` that decides for a conversation's model, if one does, read as omp reads
+ * it (see `ModelThreshold`): a share or a fixed point applies over both settings above, a count is the base window the
+ * share is taken of. Null when the record is off, or nothing in it matches.
  */
 export function decidingModelThreshold(
 	listed: Readonly<Record<string, unknown>>,
 	selector: string | null | undefined,
-): string | null {
+): ModelThreshold | null {
 	if (listed[COMPACT_KEYS.modelThresholdsEnabled] === false) return null;
-	return modelThresholdOf(listed[COMPACT_KEYS.modelThresholds], selector)?.key ?? null;
+	return modelThresholdOf(listed[COMPACT_KEYS.modelThresholds], selector);
 }
