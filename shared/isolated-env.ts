@@ -19,7 +19,22 @@ export const ISOLATED_ENV_VAR = "OMPW_ISOLATED_ENV";
 export const ISOLATED_NOTE_VAR = "OMPW_ISOLATED_NOTE";
 
 /** What an isolated folder keeps inside itself. `npm-global` is npm's global installs, left out where nvm is installed. */
-export type IsolatedTool = "npm" | "npm-global" | "bun" | "pip" | "uv" | "cargo" | "go" | "playwright" | "huggingface";
+export type IsolatedTool =
+	| "npm"
+	| "npm-global"
+	| "bun"
+	| "pip"
+	| "pipx"
+	| "uv"
+	| "cargo"
+	| "go"
+	| "deno"
+	| "corepack"
+	| "pnpm"
+	| "yarn"
+	| "gem"
+	| "playwright"
+	| "huggingface";
 
 /** What is read of the computer before the variables are worked out. */
 export interface IsolationFacts {
@@ -39,8 +54,8 @@ export interface IsolationInfo {
 
 /**
  * The variables of the isolated folder `root` (no separator at its end), on top of `basePath` (the `PATH` the process
- * would have had), and what they cover. `HF_HOME` (the Hugging Face login) and `RUSTUP_HOME` (Rust's toolchains) are
- * never set.
+ * would have had), and what they cover. `RUSTUP_HOME` (Rust's toolchains) is never set; `HF_HOME` is, and the Hugging Face
+ * login is linked into it (`ensureIsolated`).
  */
 export function isolatedEnv(
 	root: string,
@@ -62,6 +77,21 @@ export function isolatedEnv(
 		CARGO_HOME: `${e}/cargo`,
 		GOPATH: `${e}/go`,
 		GOCACHE: `${e}/cache/go-build`,
+		PIPX_HOME: `${e}/pipx`,
+		PIPX_BIN_DIR: `${e}/pipx/bin`,
+		DENO_DIR: `${e}/cache/deno`,
+		DENO_INSTALL_ROOT: `${e}/deno`,
+		// corepack's downloads of pnpm and yarn; the shims `corepack enable` writes go next to node, which no variable moves.
+		COREPACK_HOME: `${e}/corepack`,
+		// pnpm keeps its global programs and its content store (`store/`) under its home; yarn classic's global folder and
+		// programs (`<prefix>/bin`), and yarn's cache (classic and Berry read the same variables).
+		PNPM_HOME: `${e}/pnpm`,
+		YARN_CACHE_FOLDER: `${e}/cache/yarn`,
+		YARN_GLOBAL_FOLDER: `${e}/yarn/global`,
+		YARN_PREFIX: `${e}/yarn`,
+		GEM_HOME: `${e}/gem`,
+		// RubyGems' index downloads (`gem install` otherwise fills `~/.gem/specs`).
+		GEM_SPEC_CACHE: `${e}/cache/gem-specs`,
 		PLAYWRIGHT_BROWSERS_PATH: `${e}/ms-playwright`,
 		// HF_HOME too: the CLI writes its own files there (update checks), and the token is linked in (`ensureIsolated`).
 		HF_HOME: `${e}/huggingface`,
@@ -69,7 +99,22 @@ export function isolatedEnv(
 		HF_DATASETS_CACHE: `${e}/huggingface/datasets`,
 		HF_XET_CACHE: `${e}/huggingface/xet`,
 	};
-	const covered: IsolatedTool[] = ["npm", "bun", "pip", "uv", "cargo", "go", "playwright", "huggingface"];
+	const covered: IsolatedTool[] = [
+		"npm",
+		"bun",
+		"pip",
+		"pipx",
+		"uv",
+		"cargo",
+		"go",
+		"deno",
+		"corepack",
+		"pnpm",
+		"yarn",
+		"gem",
+		"playwright",
+		"huggingface",
+	];
 	if (!facts.nvm) {
 		env.npm_config_prefix = `${e}/npm`;
 		covered.splice(1, 0, "npm-global");
@@ -82,16 +127,34 @@ export function isolatedEnv(
 /** The folders `isolatedEnv` puts in front of `PATH`, for a shell whose startup files moved them (the Terminal tab). */
 export function isolatedPathPrefix(root: string): string[] {
 	const e = `${root}/${ISOLATED_DIR}`;
-	return ["npm/bin", "bun/bin", "python/bin", "uv/bin", "cargo/bin", "go/bin"].map((b) => `${e}/${b}`);
+	return [
+		"npm/bin",
+		"bun/bin",
+		"python/bin",
+		"pipx/bin",
+		"uv/bin",
+		"cargo/bin",
+		"go/bin",
+		"deno/bin",
+		"pnpm",
+		"yarn/bin",
+		"gem/bin",
+	].map((b) => `${e}/${b}`);
 }
 
 const NAMES: Record<Exclude<IsolatedTool, "npm-global">, string> = {
 	npm: "npm's cache",
 	bun: "bun (global installs and its cache)",
 	pip: "pip (`pip install --user` and its cache)",
+	pipx: "pipx (`pipx install`)",
 	uv: "uv (its cache, `uv tool install`, `uv python install`)",
 	cargo: "cargo (`cargo install`, crates and git dependencies)",
 	go: "go (`go install`, modules, build cache)",
+	deno: "deno (its cache and `deno install`)",
+	corepack: "corepack (the pnpm and yarn it downloads)",
+	pnpm: "pnpm (global installs and its store)",
+	yarn: "yarn (its cache and `yarn global add`)",
+	gem: "RubyGems (`gem install`)",
 	playwright: "Playwright's browsers",
 	huggingface: "Hugging Face models and datasets (the login stays the person's)",
 };
@@ -99,7 +162,7 @@ const NAMES: Record<Exclude<IsolatedTool, "npm-global">, string> = {
 /** The note for the agent's system prompt: what stays in the project, and what would not. */
 export function isolatedNote(root: string, covered: readonly IsolatedTool[]): string {
 	const inside = covered.flatMap((t) => (t === "npm-global" ? ["npm (`npm install -g`)"] : [NAMES[t]]));
-	const outside = ["`brew`", "`sudo`", "system package managers"];
+	const outside = ["`brew`", "`sudo`", "system package managers", "`corepack enable` (its shims go next to node)"];
 	if (!covered.includes("npm-global"))
 		outside.unshift("`npm install -g` (nvm is installed, so npm's global folder is not moved)");
 	return [

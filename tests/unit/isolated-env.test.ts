@@ -29,6 +29,34 @@ test("an isolated folder sends every covered tool's installs and caches into its
 	expect(covered).toContain("npm-global");
 });
 
+test("deno, corepack, pnpm, yarn, RubyGems and pipx install inside the folder too, with their programs on PATH", () => {
+	const { env, covered } = isolatedEnv("/p", { nvm: false }, "/usr/bin");
+	const e = "/p/.ompw-env";
+	expect(covered).toEqual(expect.arrayContaining(["deno", "corepack", "pnpm", "yarn", "gem", "pipx"]));
+	expect(env.DENO_DIR).toBe(`${e}/cache/deno`);
+	expect(env.DENO_INSTALL_ROOT).toBe(`${e}/deno`);
+	expect(env.COREPACK_HOME).toBe(`${e}/corepack`);
+	// pnpm's store is under its home, and its global programs are in it.
+	expect(env.PNPM_HOME).toBe(`${e}/pnpm`);
+	expect(env.YARN_CACHE_FOLDER).toBe(`${e}/cache/yarn`);
+	expect(env.YARN_GLOBAL_FOLDER).toBe(`${e}/yarn/global`);
+	expect(env.YARN_PREFIX).toBe(`${e}/yarn`);
+	expect(env.GEM_HOME).toBe(`${e}/gem`);
+	expect(env.GEM_SPEC_CACHE).toBe(`${e}/cache/gem-specs`);
+	expect(env.PIPX_HOME).toBe(`${e}/pipx`);
+	expect(env.PIPX_BIN_DIR).toBe(`${e}/pipx/bin`);
+	for (const bin of ["deno/bin", "pnpm", "yarn/bin", "gem/bin", "pipx/bin"]) expect(env.PATH).toContain(`${e}/${bin}:`);
+	// Every value is inside the folder, and no `npm_config_` variable npm does not know (it warns about each one).
+	for (const [k, v] of Object.entries(env)) {
+		if (k === "PATH" || k === "OMPW_ISOLATED_ENV") continue;
+		expect(v.startsWith(`${e}/`), k).toBe(true);
+		if (k.startsWith("npm_config_")) expect(["npm_config_cache", "npm_config_prefix"], k).toContain(k);
+	}
+	const note = isolatedNote("/p", covered);
+	for (const named of ["deno", "corepack", "pnpm", "yarn", "RubyGems", "pipx"]) expect(note).toContain(named);
+	expect(note).toContain("`corepack enable` (its shims go next to node)");
+});
+
 test("with nvm installed npm's global installs are left outside, and the agent is told so", () => {
 	const { env, covered } = isolatedEnv("/p", { nvm: true }, "/usr/bin");
 	expect(env.npm_config_prefix).toBeUndefined();
