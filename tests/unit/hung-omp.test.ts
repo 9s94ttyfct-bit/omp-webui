@@ -267,7 +267,7 @@ test("an export that hangs fails, and leaves nothing of the conversation on disk
 	// The export is asked again until the fake omp has recorded it: a limit that ends the command before the fake got
 	// to its first line ends a command that never ran, and says nothing about an export that hangs (#499).
 	await expect(
-		untilRecorded(omp, "--export", () => exportSession(omp.bin, data, join(dir, "s.jsonl"), LIMIT)),
+		untilRecorded(omp, "--export", () => exportSession(omp.bin, data, join(dir, "s.jsonl"), [], LIMIT)),
 	).rejects.toBeInstanceOf(RunTimeout);
 	await pollUntil(() => allGone(omp.pids()), "the hung export to be killed");
 	expect(existsSync(join(data, "exports"))).toBe(true);

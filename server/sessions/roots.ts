@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
+import * as path from "node:path";
 import { basename, dirname, join, resolve } from "node:path";
 import { flagValues } from "../flag-values.ts";
 import { ompDirs } from "../omp/dirs.ts";
@@ -269,6 +270,14 @@ export class SessionRoots {
 	agentDirFor(file: string): string {
 		return this.rootOf(file)?.agentDir ?? this.agentDir;
 	}
+
+	/**
+	 * The `blobs` folders the images of the conversations live in: the server's own agent directory's, and each profile's.
+	 * An image is named by the hash of its bytes, so a hash found in any of them is the right file.
+	 */
+	blobFolders(): string[] {
+		return [...new Set([this.agentDir, ...this.roots.map((r) => r.agentDir)])].map((d) => join(d, "blobs"));
+	}
 }
 
 /** Whether `path` is there and is not a directory. */
@@ -285,10 +294,18 @@ function folderOf(root: SessionRoot): Folder {
 	return { dir: root.dir, flat: root.kind === "session-dir" };
 }
 
-/** Whether `file` is inside `dir` (and not the folder itself), and the path it is at there. */
-function relativeTo(dir: string, file: string): string | null {
-	const rel = file.startsWith(`${dir}/`) ? file.slice(dir.length + 1) : null;
-	return rel && !rel.startsWith("..") ? rel : null;
+/**
+ * Whether `file` is inside `dir` (and not the folder itself), and the path it is at there. With the path rules of the
+ * system (`flavor`), so that `C:\a\b` is in `C:\a` on Windows, where a forward slash is not what separates them.
+ */
+export function relativeTo(
+	dir: string,
+	file: string,
+	flavor: Pick<typeof path, "relative" | "isAbsolute" | "sep"> = path,
+): string | null {
+	const rel = flavor.relative(dir, file);
+	if (!rel || rel === ".." || rel.startsWith(`..${flavor.sep}`) || flavor.isAbsolute(rel)) return null;
+	return rel;
 }
 
 /** Whether a record read from the file is a root. */

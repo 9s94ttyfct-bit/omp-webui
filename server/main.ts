@@ -2923,8 +2923,13 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 	if (p.startsWith("/api/blob/")) {
 		const hash = p.slice("/api/blob/".length);
 		if (!/^[a-f0-9]{64}$/.test(hash)) return fail("Bad blob id");
-		const f = join(cfg.agentDir, "blobs", hash);
-		if (!existsSync(f)) return fail("Not found", 404);
+		// The images of a profile's conversation are in that profile's agent directory, not the server's own: the hash is
+		// of the bytes, so whichever known `blobs` folder has it has the right file.
+		const f = sessionRoots
+			.blobFolders()
+			.map((dir) => join(dir, hash))
+			.find((c) => existsSync(c));
+		if (!f) return fail("Not found", 404);
 		return new Response(Bun.file(f), {
 			headers: { "cache-control": "max-age=31536000, immutable" },
 		});
@@ -2933,7 +2938,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 		const file = store.resolveSessionPath(q.get("file") ?? "");
 		if (!file) return fail("Unknown session file", 404);
 		const { exportSession } = await import("./export.ts");
-		const { name, html } = await exportSession(cfg.ompBin, cfg.dataDir, file);
+		const { name, html } = await exportSession(cfg.ompBin, cfg.dataDir, file, sessionRoots.flagsFor(file));
 		return new Response(html, {
 			headers: {
 				"content-type": "text/html",

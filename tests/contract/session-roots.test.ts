@@ -158,6 +158,21 @@ test("a conversation started with --profile is listed, and reopened with its tra
 	expect(body).toContain("probe-profile");
 }, 120_000);
 
+test("an image of a --profile conversation is served from the profile's own blobs folder", async () => {
+	// The profile is remembered from the conversation above; its images are in its agent directory, not the server's.
+	const hash = "c414cd0e204d3b1c9a0f5e7d8b6a4c2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c";
+	const blobs = join(profileAgentDir("work"), "blobs");
+	mkdirSync(blobs, { recursive: true });
+	writeFileSync(join(blobs, hash), "profile image bytes");
+	const headers = { "x-omp-webui-token": server.accessToken, "x-omp-webui": "1" };
+	const served = await realFetch(`${server.url}/api/blob/${hash}`, { headers });
+	expect(served.status).toBe(200);
+	expect(await served.text()).toBe("profile image bytes");
+	// One no folder has is still a 404.
+	const other = "0".repeat(64);
+	expect((await realFetch(`${server.url}/api/blob/${other}`, { headers })).status).toBe(404);
+}, 60_000);
+
 test("a conversation kept in another folder is reopened with the folder it was started with", async () => {
 	const elsewhere = join(server.root, "reopen-sessions");
 	mkdirSync(elsewhere, { recursive: true });

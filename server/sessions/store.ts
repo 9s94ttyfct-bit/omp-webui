@@ -191,10 +191,10 @@ function openIndex(dbPath: string): {
 		markOpen(db);
 		const schema = db.query<{ value: string }, []>("SELECT value FROM meta WHERE key = 'schema'").get();
 		if (schema?.value !== SCHEMA) {
-			// Version 2 kept its full-text index in this file. Summaries are the same in both versions; the index
-			// now has a database of its own, and what the old one held is dropped (and the file shrunk). Version 4
-			// dates a summary by its newest message, not by the file's modification time (#359): version 3's are made again.
-			if (schema?.value !== "2") db.run("DROP TABLE IF EXISTS sessions");
+			// Version 2 kept its full-text index in this file; it now has a database of its own, and what the old one held is
+			// dropped (and the file shrunk). Version 4 dates a summary by its newest message, not by the file's modification
+			// time (#359): the summaries of every older version are made again, from the files.
+			db.run("DROP TABLE IF EXISTS sessions");
 			db.run("DROP TABLE IF EXISTS fts");
 			db.run("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', ?)", [SCHEMA]);
 			db.run("VACUUM");
