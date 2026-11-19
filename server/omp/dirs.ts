@@ -1,5 +1,7 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
+import type { PlatformId } from "../../shared/platform.ts";
+import { platformId } from "../platform/capabilities.ts";
 
 /** Where omp keeps what the server reads of it, for one agent directory or profile. */
 export interface OmpDirs {
@@ -14,7 +16,7 @@ export interface OmpDirs {
 }
 
 /** The platforms where omp follows the XDG variables (`xdgPlatform` in its `DirResolver`, 18.22 and 19 alike): not Windows. */
-export const XDG_PLATFORMS: readonly NodeJS.Platform[] = ["linux", "darwin"];
+export const XDG_PLATFORMS: readonly PlatformId[] = ["linux", "darwin"];
 
 /**
  * omp's directories as omp 18.x decides them (`DirResolver` in packages/utils/src/dirs.ts): the config root is a folder
@@ -28,7 +30,7 @@ export function ompDirs(
 	env: Readonly<Record<string, string | undefined>>,
 	home: string,
 	profile?: string,
-	platform: NodeJS.Platform = process.platform,
+	platform: PlatformId = platformId,
 ): OmpDirs {
 	const configRoot = join(home, env.PI_CONFIG_DIR || ".omp");
 	const root = profile ? join(configRoot, "profiles", profile) : configRoot;

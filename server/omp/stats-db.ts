@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { existsSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import type { PlatformId } from "../../shared/platform.ts";
 import {
 	TOP_CONVERSATIONS,
 	TOP_ERRORS,
@@ -11,6 +12,7 @@ import {
 	type UsageTool,
 } from "../../shared/usage-analysis.ts";
 import { type UsageRange, usageBucket, usageWindow } from "../../shared/usage-range.ts";
+import { platformId } from "../platform/capabilities.ts";
 import { canonical } from "../sessions/roots.ts";
 import { XDG_PLATFORMS } from "./dirs.ts";
 
@@ -65,7 +67,7 @@ export function statsDbPath(
 	agentDir: string,
 	env: Record<string, string | undefined>,
 	home: string,
-	platform: NodeJS.Platform = process.platform,
+	platform: PlatformId = platformId,
 ): string {
 	const configRoot = join(home, env.PI_CONFIG_DIR || ".omp");
 	const xdg = env.XDG_DATA_HOME && XDG_PLATFORMS.includes(platform) ? join(env.XDG_DATA_HOME, "omp") : null;
