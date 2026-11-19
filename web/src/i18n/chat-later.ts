@@ -324,6 +324,8 @@ export const en = {
 	quotaHoldAgain: "Hold again",
 	quotaHoldFailed: "Could not change the quota hold: {error}",
 	noteJobDone: "Background job completed",
+	noteJobFailed: "Background job failed",
+	noteJobCancelled: "Background job cancelled",
 	noteJobResult: "Result",
 	noteDaemonDone: "Supervised process completed",
 	noteDaemonFailed: "Supervised process failed",

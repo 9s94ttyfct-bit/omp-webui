@@ -109,6 +109,8 @@ export interface JobInfo {
 	label?: string;
 	durationMs?: number;
 	artifactError?: string;
+	/** How the job ended when it did not finish its work: `failed` (also omp's `error`) or `cancelled` (also `aborted`). */
+	ended?: "failed" | "cancelled";
 }
 
 export interface DaemonInfo {
@@ -163,7 +165,15 @@ function jobOf(v: unknown): JobInfo | null {
 		label: str(r.label),
 		durationMs: typeof r.durationMs === "number" ? r.durationMs : undefined,
 		artifactError: str(meta?.artifactError),
+		ended: jobEnd(str(r.status)),
 	};
+}
+
+/** omp's word for how a background job ended (`async-result`'s `status`) as the page tells it: only a job that did not finish its work is marked. */
+function jobEnd(status: string | undefined): JobInfo["ended"] {
+	if (status === "failed" || status === "error") return "failed";
+	if (status === "cancelled" || status === "aborted") return "cancelled";
+	return undefined;
 }
 
 function daemonOf(v: unknown): DaemonInfo | null {

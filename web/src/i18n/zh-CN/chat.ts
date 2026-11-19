@@ -334,6 +334,8 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	quotaHoldAgain: "重新暂缓",
 	quotaHoldFailed: "无法更改额度暂缓：{error}",
 	noteJobDone: "后台任务已完成",
+	noteJobFailed: "后台任务失败",
+	noteJobCancelled: "后台任务已取消",
 	noteJobResult: "结果",
 	noteDaemonDone: "受监管进程已完成",
 	noteDaemonFailed: "受监管进程失败",

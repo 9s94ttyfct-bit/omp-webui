@@ -272,8 +272,16 @@ function JobNote({ jobs, result, live }: { jobs: JobInfo[]; result: string; live
 		<div className="my-1.5 space-y-0.5 px-1 text-xs text-muted" data-testid="job-note" data-live={live || undefined}>
 			{jobs.map((j) => (
 				<div key={j.id}>
-					<StatusLine ok testId="job-line" id={j.id}>
-						<span className="font-medium text-success">{t("chat.noteJobDone")}</span>
+					<StatusLine ok={!j.ended} testId="job-line" id={j.id}>
+						<span className={cx("font-medium", j.ended ? "text-danger" : "text-success")}>
+							{t(
+								j.ended === "failed"
+									? "chat.noteJobFailed"
+									: j.ended === "cancelled"
+										? "chat.noteJobCancelled"
+										: "chat.noteJobDone",
+							)}
+						</span>
 						{j.type ? <span className="text-faint">[{j.type}]</span> : null}
 						<span className="font-mono text-accent">{j.id}</span>
 						{j.durationMs !== undefined ? <span className="text-faint">({fmtDuration(j.durationMs)})</span> : null}

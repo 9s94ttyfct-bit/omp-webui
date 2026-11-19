@@ -123,6 +123,29 @@ describe("typed custom messages", () => {
 		});
 	});
 
+	test("a background job that failed or was cancelled says so; a completed one, or one with no status, does not (#335)", () => {
+		const note = classifyCustom(
+			"async-result",
+			{
+				jobs: [
+					{ jobId: "FailSub", type: "task", status: "failed" },
+					{ jobId: "Stopped", type: "bash", status: "cancelled" },
+					{ jobId: "Fine", type: "task", status: "completed" },
+					{ jobId: "Old", type: "task" },
+				],
+			},
+			"<system-notice>\nx\n</system-notice>",
+		);
+		expect(note).toMatchObject({ kind: "jobs" });
+		const jobs = (note as { jobs: { id: string; ended?: string }[] }).jobs;
+		expect(Object.fromEntries(jobs.map((j) => [j.id, j.ended]))).toEqual({
+			FailSub: "failed",
+			Stopped: "cancelled",
+			Fine: undefined,
+			Old: undefined,
+		});
+	});
+
 	test("a job described by the details themselves is read too; one with no job id is not a job row", () => {
 		expect(classifyCustom("async-result", { jobId: "bg_2", type: "bash" }, "")).toMatchObject({
 			kind: "jobs",
