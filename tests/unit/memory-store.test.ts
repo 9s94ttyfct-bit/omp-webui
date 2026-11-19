@@ -436,7 +436,7 @@ describe("listing", () => {
 					id: "u3",
 					content: "no letters of note",
 					timestamp: "2026-10-10T09:00:00.000Z",
-					metadata: { cwd: "/home/Ärzte", context: "Ärger im Büro" },
+					metadata: { cwd: "/srv/Ärzte", context: "Ärger im Büro" },
 				},
 			],
 		}).close();

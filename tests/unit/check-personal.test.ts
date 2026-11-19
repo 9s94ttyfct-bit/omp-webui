@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { deflateSync, gzipSync } from "node:zlib";
 import { ALLOWED_NAMES } from "../../scripts/check-authors.ts";
 import { scanBytes, wordPattern } from "../../scripts/check-personal.ts";
 import { ZipWriter } from "../../server/migrate/zip.ts";
@@ -339,4 +340,56 @@ test("the hooks `bun run hooks` installs refuse a commit and a push with persona
 	const push = run(["git", "push", "-q", "origin", "main"], id);
 	expect(push.exitCode).not.toBe(0);
 	expect(push.stderr.toString()).toContain(`author ${HANDLE} <mpetrova@example.com>`);
+});
+
+test("a home folder whose user name is not ASCII is caught, and the placeholders still pass (#326)", async () => {
+	for (const text of [
+		u("/Users/§张三/Documents"),
+		u("C:\\Users\\§王伟\\AppData"),
+		u("/Users/§Élodie/x"),
+		u("/home/§山田/x"),
+		u("--Users-§李四-proj--"),
+	]) {
+		expect((await scan(text)).join(), text).toContain("home folder");
+	}
+	for (const text of ["/Users/jdoe/x", "/Users/<name>/x", "/Users/$USER/x", "/Users/*/x", "/home/me/x"]) {
+		expect(await scan(text), text).toEqual([]);
+	}
+});
+
+test("gzip, UTF-16 and the deflated text chunks of a PNG are read as the text they hold (#326)", async () => {
+	const line = u("see /Users/§someone-real/Documents and 192.168.§7.23\n");
+	const named = (found: string[]) => found.join();
+	expect(named(await scanBytes(gzipSync(Buffer.from(line)), "f.gz", null))).toContain("home folder");
+	expect(named(await scanBytes(gzipSync(Buffer.from(line)), "f.gz", null))).toContain("private network address");
+	expect(named(await scanBytes(Buffer.from(line, "utf16le"), "f.reg", null))).toContain("home folder");
+	expect(
+		named(await scanBytes(Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(line, "utf16le")]), "f.reg", null)),
+	).toContain("private network address");
+	const chunk = (type: string, data: Buffer) => {
+		const head = Buffer.alloc(8);
+		head.writeUInt32BE(data.length, 0);
+		head.write(type, 4, "latin1");
+		return Buffer.concat([head, data, Buffer.alloc(4)]);
+	};
+	const png = (...chunks: Buffer[]) =>
+		Buffer.concat([
+			Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+			chunk("IHDR", Buffer.alloc(13)),
+			...chunks,
+		]);
+	const z = png(chunk("zTXt", Buffer.concat([Buffer.from("Comment\0\0"), deflateSync(Buffer.from(line))])));
+	expect(named(await scanBytes(z, "a.png", null))).toContain("a.png:zTXt");
+	const i = png(chunk("iTXt", Buffer.concat([Buffer.from("Comment\0\x01\0\0\0"), deflateSync(Buffer.from(line))])));
+	expect(named(await scanBytes(i, "b.png", null))).toContain("home folder");
+	// A gzip file or a PNG with nothing personal in it, and a plain UTF-16 text, report nothing.
+	expect(await scanBytes(gzipSync(Buffer.from("/Users/jdoe/x\n")), "ok.gz", null)).toEqual([]);
+	expect(
+		await scanBytes(
+			png(chunk("zTXt", Buffer.concat([Buffer.from("k\0\0"), deflateSync(Buffer.from("hello"))]))),
+			"ok.png",
+			null,
+		),
+	).toEqual([]);
+	expect(await scanBytes(Buffer.from("hello world, plain text\n", "utf16le"), "ok.txt", null)).toEqual([]);
 });

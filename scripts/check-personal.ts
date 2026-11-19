@@ -29,6 +29,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { isIPv6 } from "node:net";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
+import { gunzipSync, inflateSync } from "node:zlib";
 import { ZipReader } from "../server/migrate/zip.ts";
 import { ALLOWED } from "./check-authors.ts";
 import { git, publishRange } from "./lib/push-range.ts";
@@ -168,7 +169,7 @@ export const RULES: Rule[] = [
 		name: "home folder",
 		hint: "a placeholder user: jdoe, me, alice, dev, someone",
 		pattern:
-			/(?:\/Users\/|\/home\/|[A-Za-z]:\\{1,2}Users\\{1,2})([A-Za-z0-9._-]+)|(?<![A-Za-z0-9])-Users-([A-Za-z0-9._]+)-/g,
+			/(?:\/Users\/|\/home\/|[A-Za-z]:\\{1,2}Users\\{1,2})([\p{L}\p{N}._-]+)|(?<![A-Za-z0-9])-Users-([\p{L}\p{N}._]+)-/gu,
 		personal: (m) => {
 			const name = (m[1] ?? m[2]).replace(/\.+$/, "").toLowerCase();
 			return !(name.startsWith(".") || name.startsWith("jdoe") || PLACEHOLDER_HOMES[name]);
@@ -283,17 +284,89 @@ export async function scanBytes(bytes: Uint8Array, where: string, words: RegExp 
 			return found;
 		}
 	}
-	if (bytes.includes(0)) {
-		return broken(Buffer.from(bytes).toString("latin1"), words, true).map((rule) => `${where} (binary): ${rule}`);
+	// Compressed content is read as what it holds (#326): a gzip member, and the text chunks of a PNG (`zTXt`, `iTXt`).
+	if (bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
+		try {
+			return await scanBytes(gunzipSync(bytes, { maxOutputLength: 1 << 30 }), `${where}:gz`, words);
+		} catch {
+			// Not gzip after all: read as it is.
+		}
 	}
+	const chunks = isPng(bytes) ? await pngTexts(bytes, where, words) : [];
+	// UTF-16 text (a BOM, or a NUL in every other byte: Windows `.reg` and PowerShell output) is read as the text it is.
+	const wide = utf16Text(bytes);
+	if (wide !== null) return [...chunks, ...scanLines(wide, where, words)];
+	if (bytes.includes(0)) {
+		return [
+			...chunks,
+			...broken(Buffer.from(bytes).toString("latin1"), words, true).map((rule) => `${where} (binary): ${rule}`),
+		];
+	}
+	return [...chunks, ...scanLines(Buffer.from(bytes).toString("utf8"), where, words)];
+}
+
+function scanLines(text: string, where: string, words: RegExp | null): string[] {
 	const found: string[] = [];
-	Buffer.from(bytes)
-		.toString("utf8")
-		.split("\n")
-		.forEach((line, i) => {
-			for (const rule of broken(line, words, false)) found.push(`${where}:${i + 1}: ${rule}`);
-		});
+	text.split("\n").forEach((line, i) => {
+		for (const rule of broken(line, words, false)) found.push(`${where}:${i + 1}: ${rule}`);
+	});
 	return found;
+}
+
+const isPng = (b: Uint8Array) => b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47;
+
+/** The text of the `zTXt` and `iTXt` chunks of a PNG, which are deflated, scanned: a `tEXt` chunk is plain and is read with the bytes. */
+async function pngTexts(bytes: Uint8Array, where: string, words: RegExp | null): Promise<string[]> {
+	const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+	const found: string[] = [];
+	let at = 8;
+	while (at + 12 <= buf.length) {
+		const length = buf.readUInt32BE(at);
+		const type = buf.toString("latin1", at + 4, at + 8);
+		const data = buf.subarray(at + 8, Math.min(buf.length, at + 8 + length));
+		let text: Buffer | null = null;
+		try {
+			if (type === "zTXt") {
+				const nul = data.indexOf(0);
+				if (nul >= 0) text = inflateSync(data.subarray(nul + 2), { maxOutputLength: 1 << 30 });
+			} else if (type === "iTXt") {
+				// keyword NUL, compression flag, method, language NUL, translated keyword NUL, text.
+				const nul = data.indexOf(0);
+				if (nul >= 0) {
+					const compressed = data[nul + 1] === 1;
+					const lang = data.indexOf(0, nul + 3);
+					const translated = lang >= 0 ? data.indexOf(0, lang + 1) : -1;
+					if (translated >= 0) {
+						const body = data.subarray(translated + 1);
+						text = compressed ? inflateSync(body, { maxOutputLength: 1 << 30 }) : body;
+					}
+				}
+			}
+		} catch {
+			text = null;
+		}
+		if (text) found.push(...(await scanBytes(text, `${where}:${type}`, words)));
+		at += 12 + length;
+	}
+	return found;
+}
+
+/** `bytes` as UTF-16 text when they are one (a byte order mark, or a NUL in most second bytes of ASCII-range text), else null. */
+function utf16Text(bytes: Uint8Array): string | null {
+	if (bytes.length < 2) return null;
+	const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+	if (bytes[0] === 0xff && bytes[1] === 0xfe) return buf.subarray(2).toString("utf16le");
+	if (bytes[0] === 0xfe && bytes[1] === 0xff) return Buffer.from(buf.subarray(2)).swap16().toString("utf16le");
+	const pairs = Math.min(bytes.length >> 1, 512);
+	let evenNul = 0;
+	let oddNul = 0;
+	for (let i = 0; i < pairs; i++) {
+		if (bytes[2 * i] === 0) evenNul++;
+		if (bytes[2 * i + 1] === 0) oddNul++;
+	}
+	if (oddNul > pairs * 0.6 && evenNul === 0) return buf.toString("utf16le");
+	if (evenNul > pairs * 0.6 && oddNul === 0) return Buffer.from(buf).swap16().toString("utf16le");
+	return null;
 }
 
 /** The contents of these blobs, by id, read with one `git cat-file --batch`. */
