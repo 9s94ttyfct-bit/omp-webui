@@ -2556,6 +2556,13 @@ class Scan {
 			if (args.some((a) => /empty\s+(?:the\s+)?trash/i.test(a.text))) this.add("mass_delete");
 		}
 		if (name === "launchctl") this.add("launchctl");
+		// `brew services` drives launchd (#254): `start`/`restart` also write a LaunchAgent (`homebrew.mxcl.<formula>.plist`) that
+		// runs the formula at every login, as a write into `~/Library/LaunchAgents` would.
+		if (name === "brew" && operands[0]?.text === "services") {
+			const verb = operands[1]?.text ?? "";
+			if (/^(?:start|restart|run|stop|kill|cleanup)$/.test(verb)) this.add("launchctl");
+			if (verb === "start" || verb === "restart") this.add("protected");
+		}
 		this.scheduled(name, opts, operands);
 		this.credentials(name, opts, operands);
 		this.unfiled(name, args, opts, operands);

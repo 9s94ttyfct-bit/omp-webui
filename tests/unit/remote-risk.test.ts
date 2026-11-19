@@ -2531,3 +2531,24 @@ describe("sudoedit is privilege, as sudo -e is, and writes the files it edits (#
 		expect(shell(command)).toEqual(kinds);
 	});
 });
+
+describe("brew services drives launchd, and start/restart write a LaunchAgent (#254)", () => {
+	test.each<[string, RiskKind[]]>([
+		["brew services start x", ["protected", "launchctl"]],
+		["brew services restart postgresql@16", ["protected", "launchctl"]],
+		["brew services start --all", ["protected", "launchctl"]],
+		["brew services run x", ["launchctl"]],
+		["brew services stop x", ["launchctl"]],
+		["brew services kill x", ["launchctl"]],
+		["brew services cleanup", ["launchctl"]],
+	])("%s", (command, kinds) => {
+		expect(shell(command)).toEqual(kinds);
+	});
+
+	test.each(["brew services", "brew services list", "brew services info x", "brew info x"])(
+		"%s is not asked about",
+		(command) => {
+			expect(shell(command)).toEqual([]);
+		},
+	);
+});
