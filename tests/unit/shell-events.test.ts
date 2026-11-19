@@ -529,14 +529,8 @@ test("notices are numbered, and an app that comes back is sent the ones it misse
 	]);
 	await back.cancel();
 
-	// Up to date, another run of the server, or no word of where it was: nothing is sent again.
-	for (const query of [
-		`?epoch=${epoch}&since=3`,
-		`?epoch=another&since=0`,
-		"",
-		`?epoch=${epoch}`,
-		`?epoch=${epoch}&since=x`,
-	]) {
+	// Up to date, or no word of where it was: nothing is sent again (a reader of another run: the next test).
+	for (const query of [`?epoch=${epoch}&since=3`, "", `?epoch=${epoch}`, `?epoch=${epoch}&since=x`]) {
 		const app = reader(w, query);
 		await app.message();
 		await settle();
@@ -546,6 +540,67 @@ test("notices are numbered, and an app that comes back is sent the ones it misse
 		).toEqual([]);
 		await app.cancel();
 	}
+});
+
+test("an app back from an earlier run of the server is sent the conversations that ask now, which this run noted for nobody (#376)", async () => {
+	const w = world();
+	w.titles.set("/sessions/early.jsonl", { title: "Fix the build" });
+	// The restarted server has nobody reading yet: these are noted as they are, and kept for nobody.
+	w.announce("early", { asking: true });
+	w.announce("paused", { asking: true, pausedAt: 1 });
+	w.announce("busy", { streaming: true });
+	await settle();
+
+	const back = reader(w, "?lang=en&epoch=a-run-before&since=4");
+	expect(await back.message()).toEqual(st(1, 1, 1));
+	expect(await back.message()).toMatchObject({
+		t: "attention",
+		kind: "asking",
+		liveId: "early",
+		title: "Fix the build",
+	});
+	// Numbered in this run, so that the reader's next `since` means something here.
+	expect(back.full.at(-1)).toMatchObject({ t: "attention", seq: 1 });
+	await settle();
+	expect(back.seen.filter((m) => m !== "ping" && m.t === "attention")).toHaveLength(1);
+	const epoch = epochOf(back);
+	await back.cancel();
+
+	// Told already: one of this run, up to date, is not told again; nor is an app that names no run (it has just started).
+	for (const query of [`?epoch=${epoch}&since=1`, ""]) {
+		const app = reader(w, query);
+		await app.message();
+		await settle();
+		expect(
+			app.seen.filter((m) => m !== "ping" && m.t === "attention"),
+			query,
+		).toEqual([]);
+		await app.cancel();
+	}
+
+	// This computer's app with notifications off is told nothing; another Mac's app, which asked, is.
+	w.prefs.notify = false;
+	const mine = reader(w, "?epoch=a-run-before&since=0");
+	await mine.message();
+	await settle();
+	expect(mine.seen.filter((m) => m !== "ping" && m.t === "attention")).toEqual([]);
+	await mine.cancel();
+	const other = reader(w, "?epoch=a-run-before&since=0", later(60_000));
+	await other.message();
+	expect(await other.message()).toMatchObject({ t: "attention", liveId: "early" });
+	await other.cancel();
+
+	// A question answered while its title was looked up is not notified.
+	const title = Promise.withResolvers<{ title: string }>();
+	const slow = world({ named: () => title.promise });
+	slow.announce("q", { asking: true });
+	const late = reader(slow, "?epoch=a-run-before&since=0");
+	await late.message();
+	slow.announce("q", { asking: false });
+	title.resolve({ title: "Late" });
+	await settle();
+	expect(late.seen.filter((m) => m !== "ping" && m.t === "attention")).toEqual([]);
+	await late.cancel();
 });
 
 test("only the last twenty notices are kept, oldest first, and one for a conversation that asked again is a notice of its own", async () => {

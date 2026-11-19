@@ -33,7 +33,10 @@ import type { LiveInfo } from "../shared/protocol.ts";
  *   tool approval or a question; `finished`: its run ended), with the words the page's own notifications have, in the
  *   language the person saved (`ompw.lang`), else the one `lang` names (the Mac's own). Only while Settings has
  *   notifications on. `seq` counts them from 1 in an epoch; the last few are kept, and a reader that says which `epoch` and
- *   `since` which notice it last saw is sent the ones it missed while it was not reading, right after the state.
+ *   `since` which notice it last saw is sent the ones it missed while it was not reading, right after the state. A reader that
+ *   names an earlier epoch (the server restarted while it was away) is sent, instead, one `asking` notice for each conversation
+ *   that waits for an answer now (#376): what this run noted before anybody read was kept for nobody, so a conversation that
+ *   started asking in that gap would otherwise never be notified. A run that ended in the gap is the state's `unseen`.
  * - an empty line every few seconds, so that a reader can tell a response that stalled from one that is quiet.
  *
  * The app of another Mac that has this one in its list reads the same stream from `GET /api/notify/events` (#656), which is not
@@ -246,10 +249,9 @@ export class ShellEvents {
 	serve(req: Request, remote?: { validUntil: number }): Response {
 		const params = new URL(req.url).searchParams;
 		const fallback = params.get("lang");
-		const since =
-			params.get("epoch") === this.epoch && /^\d+$/.test(params.get("since") ?? "")
-				? Number(params.get("since"))
-				: null;
+		const epoch = params.get("epoch");
+		const since = epoch === this.epoch && /^\d+$/.test(params.get("since") ?? "") ? Number(params.get("since")) : null;
+		const earlier = epoch !== null && epoch !== "" && epoch !== this.epoch;
 		let reader: Reader | undefined;
 		const stream = new ReadableStream<Uint8Array>({
 			start: (controller) => {
@@ -260,6 +262,7 @@ export class ShellEvents {
 				if (this.readers.size === 1) this.deps.changed?.();
 				this.send(reader, { t: "state", epoch: this.epoch, ...lastState });
 				if (since !== null) for (const kept of this.recent) if (kept.seq > since) this.sendKept(reader, kept);
+				if (earlier) this.askingNow(reader);
 				if (remote) {
 					const ending = reader;
 					const left = Math.min(Math.max(0, remote.validUntil - Date.now()), MAX_TIMER_MS);
@@ -323,6 +326,24 @@ export class ShellEvents {
 		this.recent.push(kept);
 		if (this.recent.length > KEPT) this.recent.shift();
 		for (const reader of [...this.readers]) if (this.wants(reader)) this.sendKept(reader, kept);
+	}
+
+	/** One `asking` notice to `reader` for each conversation that waits for an answer now (a paused one waits for nobody). */
+	private askingNow(reader: Reader): void {
+		if (!this.wants(reader)) return;
+		for (const info of this.deps.lives()) {
+			if (info.exited || info.pausedAt !== null || !factsOf(info).needsInput) continue;
+			this.queue = this.queue.then(() => this.remind(reader, info)).catch(report);
+		}
+	}
+
+	private async remind(reader: Reader, info: LiveInfo): Promise<void> {
+		const file = info.sessionFile;
+		const named = file ? await within(this.deps.named(file), this.deps.titleWaitMs ?? TITLE_WAIT_MS) : null;
+		// Asked again after the wait: the reader may be gone, Settings changed, or the question answered meanwhile.
+		if (!this.readers.has(reader) || !this.wants(reader) || !this.known.get(info.liveId)?.needsInput) return;
+		// Numbered as any notice, so that the reader's `since` stays this run's; kept for no other reader, which was told already.
+		this.sendKept(reader, { seq: ++this.seq, kind: "asking", liveId: info.liveId, file, named });
 	}
 
 	private sendKept(reader: Reader, kept: Kept): void {
