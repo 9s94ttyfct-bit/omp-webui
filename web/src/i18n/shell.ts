@@ -56,6 +56,7 @@ export const en = {
 	sidebarRangeAll: "All time",
 	sidebarSearchHint: "Match: ↑↓ to move, Enter to open",
 	sidebarSearchCount: "{n} matches",
+	sidebarSearchCountOne: "1 match",
 	sidebarInMessages: "In messages",
 	sidebarRelated: "Related",
 	sidebarAlsoMatching: "Also matching",

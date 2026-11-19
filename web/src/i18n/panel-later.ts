@@ -155,6 +155,7 @@ export const en = {
 	branchesEmptyBody: "Edit a message, regenerate a reply, or use “Branch from here” to explore alternatives.",
 	branchLastPrompt: "Last prompt: {text}",
 	branchEntries: "{n} entries",
+	branchEntriesOne: "1 entry",
 
 	// Session controls
 	controlsTrigger: "Session settings",

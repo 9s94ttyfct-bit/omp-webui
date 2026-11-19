@@ -212,7 +212,7 @@ export function SessionSearch({
 					data-testid="session-search-status"
 					className="flex items-center justify-between gap-2 px-3 pt-1.5 text-xs text-faint"
 				>
-					<span>{t("shell.sidebarSearchCount", { n: listed })}</span>
+					<span>{t(listed === 1 ? "shell.sidebarSearchCountOne" : "shell.sidebarSearchCount", { n: listed })}</span>
 					{pendingContent ? (
 						<span className="truncate" data-testid="session-search-pending">
 							{t("shell.sidebarSearchingMessages")}

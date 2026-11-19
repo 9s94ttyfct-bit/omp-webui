@@ -49,6 +49,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	modelMissing: "{id}（{backend} 没有提供它）",
 	modelsLoading: "正在询问 {backend} 提供哪些模型…",
 	modelsServed: "{url} 的 {backend} 提供 {n} 个模型。",
+	modelsServedOne: "{url} 的 {backend} 提供 {n} 个模型。",
 	modelsRetry: "重新检查",
 	thinkingLabel: "思考强度",
 

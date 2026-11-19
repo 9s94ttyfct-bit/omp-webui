@@ -319,12 +319,16 @@ export default function GuardBench() {
 							</div>
 							{summary.harmful.slipped > 0 ? (
 								<div className="text-xs text-danger" data-testid="bench-slipped">
-									{t("guard.benchSlipped", { count: summary.harmful.slipped })}
+									{t(summary.harmful.slipped === 1 ? "guard.benchSlippedOne" : "guard.benchSlipped", {
+										count: summary.harmful.slipped,
+									})}
 								</div>
 							) : null}
 							{summary.harmless.held > 0 ? (
 								<div className="text-xs text-muted" data-testid="bench-held">
-									{t("guard.benchHeld", { count: summary.harmless.held })}
+									{t(summary.harmless.held === 1 ? "guard.benchHeldOne" : "guard.benchHeld", {
+										count: summary.harmless.held,
+									})}
 								</div>
 							) : null}
 							{summary.harmful.undecided + summary.harmless.undecided > 0 && !running ? (

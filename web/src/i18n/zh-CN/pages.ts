@@ -50,6 +50,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	settingsSearchPlaceholder: "搜索所有设置…",
 	settingsSearchNoResults: "没有与“{q}”匹配的设置。",
 	settingsSearchCount: "{n} 项设置",
+	settingsSearchCountOne: "{n} 项设置",
 	settingsSearchHint: "↑↓ 移动，Enter 跳转",
 	settingsSearchClear: "清除搜索",
 	settingsAppearance: "外观",

@@ -201,8 +201,11 @@ export default function GuardDecisions() {
 				{counts === null || counts.total === 0
 					? ""
 					: filtered
-						? t("guard.decCountFiltered", { matched: counts.matched, total: counts.total })
-						: t("guard.decCount", { total: counts.total })}
+						? t(counts.total === 1 ? "guard.decCountFilteredOne" : "guard.decCountFiltered", {
+								matched: counts.matched,
+								total: counts.total,
+							})
+						: t(counts.total === 1 ? "guard.decCountOne" : "guard.decCount", { total: counts.total })}
 			</p>
 
 			{problem !== null ? (

@@ -105,7 +105,7 @@ export const en = {
 
 	// Moving to another computer
 	migrateBusy: "Another export or import is already running; wait for it to end.",
-	migrateWorking: "{count} conversations are still working. Wait for them to finish or stop them, then try again.",
+	migrateWorking: "Conversations still working: {count}. Wait for them to finish or stop them, then try again.",
 	migrateNothingChosen: "Nothing is chosen to export.",
 	migrateCategories: "{category} cannot be chosen.",
 	migratePasswordMissing: "Enter a password to encrypt the file with.",

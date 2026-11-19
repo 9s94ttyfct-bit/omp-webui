@@ -11,6 +11,7 @@ export const zh: Record<keyof typeof en, string> = {
 	sidebarRangeAll: "全部时间",
 	sidebarSearchHint: "匹配结果：↑↓ 移动，Enter 打开",
 	sidebarSearchCount: "{n} 个结果",
+	sidebarSearchCountOne: "{n} 个结果",
 	sidebarInMessages: "消息中",
 	sidebarRelated: "语义相关",
 	sidebarAlsoMatching: "相近的结果",

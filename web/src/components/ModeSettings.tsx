@@ -316,7 +316,11 @@ function LocalServerOptions({ state }: { state: ModeState }) {
 						</span>
 					) : models ? (
 						<span className="text-muted" data-testid="backend-models">
-							{t("mode.modelsServed", { backend: name, url: models.baseUrl, n: models.models.length })}
+							{t(models.models.length === 1 ? "mode.modelsServedOne" : "mode.modelsServed", {
+								backend: name,
+								url: models.baseUrl,
+								n: models.models.length,
+							})}
 						</span>
 					) : null}
 					{baseUrl && !checking ? (

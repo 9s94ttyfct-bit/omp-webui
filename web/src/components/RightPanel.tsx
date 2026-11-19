@@ -557,7 +557,9 @@ function Branches({
 							</div>
 							<div className="mt-0.5 truncate text-muted">{t("panel.branchLastPrompt", { text: text || "—" })}</div>
 							<div className="mt-0.5 text-faint">
-								{t("panel.branchEntries", { n: f.total ?? f.entries.length })}
+								{t((f.total ?? f.entries.length) === 1 ? "panel.branchEntriesOne" : "panel.branchEntries", {
+									n: f.total ?? f.entries.length,
+								})}
 								{s ? ` · ${fmtRelative(s.modifiedAt)}` : ""}
 							</div>
 						</button>

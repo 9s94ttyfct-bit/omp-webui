@@ -147,6 +147,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	branchesEmptyBody: "编辑消息、重新生成回复，或使用“从此处分支”来探索其他方案。",
 	branchLastPrompt: "最近提示：{text}",
 	branchEntries: "{n} 条记录",
+	branchEntriesOne: "{n} 条记录",
 
 	controlsTrigger: "对话设置",
 	controlsTitle: "当前对话",

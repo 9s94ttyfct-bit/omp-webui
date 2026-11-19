@@ -209,7 +209,9 @@ export function SettingsSearch({ onGo }: { onGo: (entry: SettingHit["entry"]) =>
 								))}
 							</div>
 							<div className="flex items-center justify-between gap-2 border-t border-border px-3 py-1.5 text-xs text-faint">
-								<span data-testid="settings-search-count">{t("pages.settingsSearchCount", { n: count })}</span>
+								<span data-testid="settings-search-count">
+									{t(count === 1 ? "pages.settingsSearchCountOne" : "pages.settingsSearchCount", { n: count })}
+								</span>
 								<span>{t("pages.settingsSearchHint")}</span>
 							</div>
 						</>

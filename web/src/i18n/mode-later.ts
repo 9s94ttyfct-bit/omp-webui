@@ -46,6 +46,7 @@ export const en = {
 	modelMissing: "{id} ({backend} does not serve it)",
 	modelsLoading: "Asking {backend} which models it serves…",
 	modelsServed: "{backend} at {url} serves {n} models.",
+	modelsServedOne: "{backend} at {url} serves 1 model.",
 	modelsRetry: "Check again",
 	thinkingLabel: "Thinking level",
 

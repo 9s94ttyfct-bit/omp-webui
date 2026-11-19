@@ -27,6 +27,7 @@ export const en = {
 	settingsSearchPlaceholder: "Search every setting…",
 	settingsSearchNoResults: "No setting matches “{q}”.",
 	settingsSearchCount: "{n} settings",
+	settingsSearchCountOne: "1 setting",
 	settingsSearchHint: "↑↓ to move, Enter to jump",
 	settingsSearchClear: "Clear the search",
 	settingsAppearance: "Appearance",
