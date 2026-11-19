@@ -123,6 +123,14 @@ function sanitizedAgentDir(agentDir: string): string | null {
 }
 
 /**
+ * Some omp versions refuse to start with no credential at all ("Set an API key environment variable"), and the probe only
+ * asks for a prompt: it calls no model. A placeholder key stands in when neither the environment nor the caller has one.
+ */
+function probeCredential(env?: Record<string, string | undefined>): Record<string, string> {
+	return env?.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY ? {} : { ANTHROPIC_API_KEY: "ompw-context-probe" };
+}
+
+/**
  * The context files omp loads for `cwd`, nearest first as omp lists them. `agentDir` is omp's agent folder, which the probe
  * is given a copy of without its `mcp.json`, so that no MCP server of the person's is started for a question about files.
  * Throws when omp does not start or answer in time (the process is killed): there is then no list, and a guess at one is
@@ -150,7 +158,7 @@ export async function loadedContextFiles(
 			probeOverlay(),
 		],
 		cwd,
-		env: shadow ? { ...env, PI_CODING_AGENT_DIR: shadow } : env,
+		env: { ...probeCredential(env), ...env, ...(shadow ? { PI_CODING_AGENT_DIR: shadow } : {}) },
 		mode: "rpc",
 		onFrame: () => {},
 		onExit: () => {},
