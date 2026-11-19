@@ -1,4 +1,5 @@
 import { REPO_URL } from "@shared/repo.ts";
+import { blankSecretForms, PRIVATE_KEY_BLOCK, TOKEN_SHAPES } from "@shared/secret-forms.ts";
 
 /**
  * The Feedback dialog's text: what leaves the machine is built here, and `sanitize` runs over all of it first.
@@ -60,31 +61,11 @@ const PASSWORD_IS = new RegExp(
 	`(?<![\\w.-])(${PASSWORD_WORD}\\s+(?:is|was|are|were)\\s+)(?!(?:not|no|required|empty|wrong|incorrect|invalid|correct|missing|blank|too|shown|hidden|visible|saved|stored|set|being|never|still|rejected|accepted)(?![\\w-]))("[^"\\n]*"|'[^'\\n]*'|[^\\s,;)"']+)`,
 	"gi",
 );
-/** A PEM / PGP private key, to its END line; a block pasted without one goes to the end of the text. */
-const PRIVATE_KEY_BLOCK =
-	/-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----|$)/g;
 /** The path of a Slack incoming webhook is its credential. */
 const SLACK_WEBHOOK = /(?<![\w.-])(hooks\.slack\.com\/(?:services|workflows|triggers|actions)\/)[A-Za-z0-9/_-]+/g;
 /** `curl -u user:pw`, `--user user:pw`, `--proxy-user=user:pw`: only a value of the `user:password` form (`git push -u origin` stays). */
 const CURL_LOGIN =
 	/(?<![\w-])(-[uU]\s*|--(?:proxy-)?user(?:\s+|=))("[^"\n:]+:[^"\n]*"|'[^'\n:]+:[^'\n]*'|[^\s"':]+:[^\s"']*)/g;
-
-/** Token formats with a recognisable shape, wherever they appear. */
-const TOKEN_SHAPES: RegExp[] = [
-	/\bsk-[A-Za-z0-9_-]{16,}/g,
-	/\b[rsp]k_(?:live|test)_[A-Za-z0-9]{8,}/g,
-	/\bgh[pousr]_[A-Za-z0-9]{20,}/g,
-	/\bgithub_pat_[A-Za-z0-9_]{20,}/g,
-	/\bglpat-[A-Za-z0-9_-]{16,}/g,
-	/\bxox[abprs]-[A-Za-z0-9-]{10,}/g,
-	/\b(?:AKIA|ASIA|AIDA|AROA|AGPA|ANPA|ANVA|AIPA)[0-9A-Z]{16}\b/g,
-	/\bAIza[0-9A-Za-z_-]{30,}/g,
-	/\bnpm_[A-Za-z0-9]{30,}/g,
-	/\bhf_[A-Za-z0-9]{30,}/g,
-	/\bya29\.[A-Za-z0-9_-]{20,}/g,
-	/(?<![\w/.:-])1\/\/[A-Za-z0-9_-]{30,}/g,
-	/\beyJ[\w-]{8,}\.[\w-]{8,}(?:\.[\w-]*)?/g,
-];
 
 /** A path segment (a user name): up to the next separator or punctuation that ends a path in prose. */
 const SEGMENT = String.raw`[^/\\\s"'\`:;,)\]}]+`;
@@ -142,6 +123,9 @@ export function sanitize(text: string, home?: string, user?: string, hosts: read
 	out = out.replace(SECRET_VALUE, (_all, key: string, sep: string, value: string) =>
 		value.startsWith(REDACTED) ? _all : `${key}${sep}${REDACTED}`,
 	);
+	// What the app's other detectors share (a URL's password, `--password x`, `…_secret_access_key = x`), whatever the rules above
+	// missed: one list for the three places that look (#338).
+	out = blankSecretForms(out, REDACTED).text;
 	out = out.replace(
 		/(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g,
 		"[email]",

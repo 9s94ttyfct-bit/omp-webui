@@ -8,6 +8,8 @@
  * consolidation made of the working ones). Words used here: a *bank* is one database, a *store* is one of its two tables.
  */
 
+import { holdsSecretForm } from "./secret-forms.ts";
+
 /** The memories every project recalls, or those of one project. */
 export type MemoryScope = "global" | "project";
 
@@ -276,7 +278,7 @@ const SECRET_PATTERNS: readonly RegExp[] = [
  * model's provider each time.
  */
 export function looksLikeSecret(text: string): boolean {
-	return SECRET_PATTERNS.some((p) => p.test(text));
+	return SECRET_PATTERNS.some((p) => p.test(text)) || holdsSecretForm(text);
 }
 
 /** `text` as a number from 0 to 1 (omp's importance), or null when it is none. */

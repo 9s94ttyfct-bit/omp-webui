@@ -1,4 +1,5 @@
 import { isRecord } from "../../shared/guards.ts";
+import { blankSecretForms } from "../../shared/secret-forms.ts";
 import { serializeDoc, withScalars } from "./merge.ts";
 
 /**
@@ -303,7 +304,11 @@ function blankLoose(text: string): { text: string; count: number } {
 	return { text: rest.text, count: count + rest.count };
 }
 
-/** `NAME=value` lines and the shapes of credentials: all that is looked for in a file written for a person to read. */
+/**
+ * `NAME=value` lines, the shapes of credentials and the forms the app's other detectors share (`shared/secret-forms.ts`: a
+ * URL's password, `--password x`, `password = x`, `aws_secret_access_key = x`): all that is looked for in a file written for
+ * a person to read, where anything less plain would blank what the person wrote (#338).
+ */
 function blankProse(text: string): { text: string; count: number } {
 	let count = 0;
 	const lines = text.split("\n").map((line) => {
@@ -319,7 +324,8 @@ function blankProse(text: string): { text: string; count: number } {
 			return "";
 		});
 	}
-	return { text: out, count };
+	const forms = blankSecretForms(out);
+	return { text: forms.text, count: count + forms.count };
 }
 
 function indentOf(text: string): string | number {
