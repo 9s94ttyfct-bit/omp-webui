@@ -50,7 +50,8 @@ import {
  */
 
 export interface MemoryDeps {
-	agentDir: string;
+	/** omp's memories directory (`ompDirs`), where the store is unless `mnemopi.dbPath` names another place. */
+	memoriesDir: string;
 	dataDir: string;
 	/** omp's settings that locate and scope the store (`config.ts`); a function so that a test needs no omp. */
 	settings: ConfigRead<MemorySettings> | { get(): Promise<MemorySettings | null> };
@@ -107,7 +108,7 @@ export class MemoryService {
 	async #resolved(): Promise<{ settings: MemorySettings; known: boolean; layout: MemoryLayout }> {
 		const read = await this.#deps.settings.get().catch(() => null);
 		const settings = read ?? UNKNOWN_SETTINGS;
-		return { settings, known: read !== null, layout: layoutOf(this.#deps.agentDir, settings.dbPath, settings.bank) };
+		return { settings, known: read !== null, layout: layoutOf(this.#deps.memoriesDir, settings.dbPath, settings.bank) };
 	}
 
 	async handle(req: Request, url: URL): Promise<Response> {

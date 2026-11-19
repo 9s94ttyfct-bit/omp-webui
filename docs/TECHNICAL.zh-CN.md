@@ -262,6 +262,7 @@ omp-webui 是 [omp](https://omp.sh) 编程代理的网页界面，也是一个 m
   - **终端与键盘**（#277、#289、#369、#425）：终端屏幕（终端标签页、“命令与终端”的运行器）在标签页只是被打开时不再抢走键盘；拿到键盘之后，*Ctrl+F6* 把它还给标签页的第一个控件（和浏览器标签页一样），屏幕的标签和获得焦点时的提示都会这么说。在触摸屏上，屏幕下方有一排按键，发送 Esc、Tab、一次性的 Ctrl、方向键（程序要求时用应用光标键）和 Ctrl-C。工具栏里的“读屏软件”打开 xterm.js 的读屏模式（默认关闭：每打印一行都要多做一些工作；选择按设备保存在 `ompw.termScreenReader`）。shell 的 PTY 由 `Bun.spawn` 自己创建，所以 zsh 以它为控制终端，Ctrl-C 能到达它运行的命令。
   - **轻量模式（本地服务器）下的项目设置**（#286）：omp 会把文件夹的 `.omp/config.yml` 叠加在代理目录的设置之上，所以一个自己写了 `enabledModels` 和 `modelRoles` 的仓库会让轻量进程在云端模型上启动。现在轻量的 `config.yml` 还会用 `--config` 传入，omp 把这种覆盖层叠加在项目设置之上：模型角色、`enabledModels`、停用的提供方、技能和 `mcp.enableProjectConfig: false` 在每个文件夹里都有效。
   - **浏览器说明里打开第二个页面的写法**（#302）：omp 18.19 把浏览器的 `app` 选项改成了字符串，`target` 移到了顶层，所以说明里的 `browser.open({ name, app: { target } })` 从那以后在每个 omp 上都会失败。现在说明写的是 `browser.open({ name, target: "…" })`（并给出 18.19 之前的旧写法），一个契约测试会在真实的 omp 里对内置浏览器运行这个写法。
+  - **omp 的 XDG 布局与 `PI_CONFIG_DIR`**（#303）：服务器按 omp 的方式找它的文件夹（`server/omp/dirs.ts`）：配置根目录是 `~/<PI_CONFIG_DIR，否则 .omp>`；代理目录是默认目录时，已存在的 `$XDG_DATA_HOME/omp` 存放对话，已存在的 `$XDG_STATE_HOME/omp` 存放记忆（`omp config init-xdg`）。侧边栏列出、“记忆”页读取的都是 omp 实际写入的位置；用 `--profile` 开始的对话也会在 `PI_CONFIG_DIR` 和 `$XDG_DATA_HOME/omp/profiles/<名称>` 下查找。
 
 ## 安装
 

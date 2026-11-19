@@ -94,9 +94,12 @@ function sharedBankName(configured: string | null): string {
 	return `${prefix}-${hash}`;
 }
 
-/** The layout for omp's agent directory and its `mnemopi.dbPath` / `mnemopi.bank` settings (null: not set). */
-export function layoutOf(agentDir: string, dbPath: string | null, bank: string | null): MemoryLayout {
-	const sharedDb = dbPath ?? join(agentDir, "memories", "mnemopi", DB_FILE);
+/**
+ * The layout for omp's memories directory (`ompDirs`: `<agent dir>/memories`, or `$XDG_STATE_HOME/omp/memories` in the
+ * XDG layout) and its `mnemopi.dbPath` / `mnemopi.bank` settings (null: not set).
+ */
+export function layoutOf(memoriesDir: string, dbPath: string | null, bank: string | null): MemoryLayout {
+	const sharedDb = dbPath ?? join(memoriesDir, "mnemopi", DB_FILE);
 	return { sharedDb, banksDir: join(sharedDb, "..", "banks"), sharedBank: sharedBankName(bank) };
 }
 

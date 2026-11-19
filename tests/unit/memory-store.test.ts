@@ -160,7 +160,7 @@ describe("where the memories are", () => {
 	});
 
 	test("omp's mnemopi.bank names the shared bank as omp sanitizes it; mnemopi.dbPath moves the whole store", () => {
-		expect(layoutOf("/a", null, null)).toEqual({
+		expect(layoutOf("/a/memories", null, null)).toEqual({
 			sharedDb: "/a/memories/mnemopi/mnemopi.db",
 			banksDir: "/a/memories/mnemopi/banks",
 			sharedBank: "default",

@@ -1,12 +1,12 @@
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { ompDirs } from "./omp/dirs.ts";
 import { ensurePrivateDir } from "./private.ts";
 
 /**
- * Runtime configuration. Everything omp-owned is located through omp's own
- * documented environment (`PI_CODING_AGENT_DIR`), so the UI follows whatever
- * agent directory the spawned omp processes use.
+ * Runtime configuration. Everything omp-owned is located the way omp locates it (`ompDirs`: `PI_CODING_AGENT_DIR`,
+ * `PI_CONFIG_DIR` and the XDG layout), so the UI follows whatever directories the spawned omp processes use.
  */
 export interface Config {
 	ompBin: string;
@@ -37,15 +37,16 @@ function canonical(p: string): string {
 
 /** The configuration, from the environment. */
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
-	const agentDir = canonical(env.PI_CODING_AGENT_DIR ?? join(homedir(), ".omp", "agent"));
+	const dirs = ompDirs(env, homedir());
+	const agentDir = canonical(dirs.agentDir);
 	const dataDir = resolve(env.OMP_WEBUI_DATA_DIR ?? join(homedir(), ".omp-webui"));
 	ensurePrivateDir(dataDir);
-	// Loading the configuration creates nothing inside omp's agent dir; a missing sessions dir lists as empty.
-	const sessionsDir = join(agentDir, "sessions");
+	// Loading the configuration creates nothing inside omp's directories; a missing sessions dir lists as empty.
 	return {
 		ompBin: env.OMP_BIN ?? "omp",
 		agentDir,
-		sessionsDir: canonical(sessionsDir),
+		// Its folder followed through links even before omp has made it (a link to the agent directory).
+		sessionsDir: canonical(join(canonical(dirname(dirs.sessionsDir)), "sessions")),
 		dataDir,
 		host: env.OMP_WEBUI_HOST ?? "127.0.0.1",
 		port: Number(env.OMP_WEBUI_PORT ?? 7878),

@@ -48,7 +48,7 @@ const ODD = "odd-4d5e6f";
 const SCRATCH = "ompw-offline-x1";
 
 const dbPath = (bank: string) => {
-	const layout = layoutOf(s.agentDir, null, null);
+	const layout = layoutOf(join(s.agentDir, "memories"), null, null);
 	return bank === "default" ? layout.sharedDb : join(layout.banksDir, bank, "mnemopi.db");
 };
 const dataDir = () => join(s.root, "data");

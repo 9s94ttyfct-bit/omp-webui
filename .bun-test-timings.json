@@ -181,6 +181,7 @@
     "tests/contract/ws-backpressure.test.ts": 2165,
     "tests/unit/folder.test.ts": 2162,
     "tests/unit/guard-classify.test.ts": 2148,
+    "tests/contract/omp-xdg.test.ts": 2101,
     "tests/unit/usage-timeout.test.ts": 2097,
     "tests/unit/search-cancel.test.ts": 2027,
     "tests/contract/approval-old-omp.test.ts": 2019,

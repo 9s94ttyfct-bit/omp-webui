@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileS
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { flagValues } from "../flag-values.ts";
+import { ompDirs } from "../omp/dirs.ts";
 import { dropGroupAndOther } from "../private.ts";
 import { type Folder, holdsConversation } from "./folders.ts";
 
@@ -74,12 +75,18 @@ export function canonical(p: string): string {
 }
 
 /**
- * A profile's own agent directory: a profile keeps its auth, settings, caches and conversations there, apart from
- * the server's own. It is under the *user's* home (omp 18.12.4: `~/.omp/profiles/<name>/agent`), not under the agent
- * directory the process was pointed at: a profile is the user's own, wherever the server runs.
+ * A profile's own directories: a profile keeps its auth, settings, caches and conversations apart from the server's own,
+ * under the *user's* home (omp 18.12.4: `~/<PI_CONFIG_DIR, else .omp>/profiles/<name>/agent`), not under the agent
+ * directory the process was pointed at; its conversations go to `$XDG_DATA_HOME/omp/profiles/<name>/sessions` where
+ * that folder exists (`ompDirs`). A profile is the user's own, wherever the server runs.
  */
-export function profileAgentDir(profile: string, home = homedir()): string {
-	return join(canonical(home), ".omp", "profiles", profile, "agent");
+export function profileDirs(
+	profile: string,
+	home = homedir(),
+	env: Readonly<Record<string, string | undefined>> = process.env,
+): { agentDir: string; sessionsDir: string } {
+	const { agentDir, sessionsDir } = ompDirs(env, canonical(home), profile);
+	return { agentDir, sessionsDir };
 }
 
 /**
@@ -96,6 +103,8 @@ export class SessionRoots {
 		private readonly home: string = homedir(),
 		/** The server's own agent directory: where the conversations of a `--session-dir` root keep their images. */
 		private readonly agentDir: string = join(canonical(home), ".omp", "agent"),
+		/** The environment omp is started with: where a profile's directories are (`profileDirs`). */
+		private readonly env: Readonly<Record<string, string | undefined>> = process.env,
 	) {
 		this.read();
 	}
@@ -211,8 +220,8 @@ export class SessionRoots {
 		}
 		for (const value of flagValues(args, "--profile")) {
 			if (!value) continue;
-			const agent = profileAgentDir(value, this.home);
-			out.push({ dir: join(agent, "sessions"), kind: "profile", name: value, agentDir: agent });
+			const { agentDir, sessionsDir } = profileDirs(value, this.home, this.env);
+			out.push({ dir: sessionsDir, kind: "profile", name: value, agentDir });
 		}
 		return out;
 	}

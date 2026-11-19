@@ -56,7 +56,7 @@ function service(fx: MemoryFixture, settings: Partial<MemorySettings> = {}) {
 		...settings,
 	};
 	return new MemoryService({
-		agentDir: fx.agentDir,
+		memoriesDir: join(fx.agentDir, "memories"),
 		dataDir: fx.dataDir,
 		settings: { get: async () => resolved },
 		clock: () => NOW,
@@ -124,7 +124,7 @@ describe("the overview", () => {
 	test("when omp cannot be asked, the page shows what is there and says it does not know the settings", async () => {
 		const fx = seeded();
 		const svc = new MemoryService({
-			agentDir: fx.agentDir,
+			memoriesDir: join(fx.agentDir, "memories"),
 			dataDir: fx.dataDir,
 			settings: { get: async () => null },
 			clock: () => NOW,
@@ -440,7 +440,7 @@ describe("when omp's settings cannot be read", () => {
 	test("nothing is written (a guess at the store could write to the wrong one), and reading still works", async () => {
 		const fx = seeded();
 		const blind = new MemoryService({
-			agentDir: fx.agentDir,
+			memoriesDir: join(fx.agentDir, "memories"),
 			dataDir: fx.dataDir,
 			settings: { get: async () => null },
 			clock: () => NOW,

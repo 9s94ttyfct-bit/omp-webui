@@ -13,13 +13,13 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { canonical, profileAgentDir, SessionRoots } from "../../server/sessions/roots.ts";
+import { canonical, profileDirs, SessionRoots } from "../../server/sessions/roots.ts";
 import { SessionStore } from "../../server/sessions/store.ts";
 import { writeSimpleSession } from "../support/fixtures.ts";
 import { appendCall, writeTranscript } from "../support/subagent-fixtures.ts";
 
 /** Where a profile's conversations are: its own agent directory's `sessions/` folder. */
-const profileSessionsDir = (profile: string, home: string): string => join(profileAgentDir(profile, home), "sessions");
+const profileSessionsDir = (profile: string, home: string): string => profileDirs(profile, home, {}).sessionsDir;
 
 /**
  * A conversation started with `--session-dir <dir>` or `--profile <name>` keeps its transcript outside omp's own agent
@@ -164,7 +164,7 @@ test("a profile's conversation is resumed with its own profile, and its images a
 	// The flags omp must be started with: the profile, whose auth, settings and images are its own.
 	expect(roots.flagsFor(file)).toEqual(["--profile=work"]);
 	// And the agent directory that belongs to it.
-	expect(roots.agentDirFor(file)).toBe(profileAgentDir("work", w.home));
+	expect(roots.agentDirFor(file)).toBe(profileDirs("work", w.home, {}).agentDir);
 });
 
 test("a conversation in a named session directory is resumed with that directory", () => {

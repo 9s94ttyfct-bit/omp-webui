@@ -45,7 +45,7 @@ export function memoryFixture(sharedBank = "default"): MemoryFixture {
 	const agentDir = join(root, "agent");
 	const dataDir = join(root, "data");
 	mkdirSync(dataDir, { recursive: true });
-	const layout = layoutOf(agentDir, null, sharedBank === "default" ? null : sharedBank);
+	const layout = layoutOf(join(agentDir, "memories"), null, sharedBank === "default" ? null : sharedBank);
 	const pathOf = (bank: string) =>
 		bank === layout.sharedBank ? layout.sharedDb : join(layout.banksDir, bank, "mnemopi.db");
 	return {

@@ -95,6 +95,7 @@ import { configureCompactAt, readCompactDefaults } from "./omp/compact-at.ts";
 import { CompactStepService } from "./omp/compact-step/service.ts";
 import { ConfigRead } from "./omp/config-read.ts";
 import { watchOmpConfig } from "./omp/config-watch.ts";
+import { ompDirs } from "./omp/dirs.ts";
 import { DocsToolService } from "./omp/docs-tool/install.ts";
 import { gatePaths, installGate } from "./omp/gate/install.ts";
 import { GATE_HANDLER_MS } from "./omp/gate/state.ts";
@@ -1361,7 +1362,8 @@ function memoryService(): Promise<MemoryService> {
 			import("./memory/config.ts"),
 		]);
 		return new MemoryService({
-			agentDir: cfg.agentDir,
+			// Where omp keeps its memories: under the agent directory, or `$XDG_STATE_HOME/omp` in the XDG layout (#303).
+			memoriesDir: ompDirs(process.env, homedir()).memoriesDir,
 			dataDir: cfg.dataDir,
 			settings: memorySettings(cfg.ompBin, cfg.agentDir, cfg.dataDir),
 		});
