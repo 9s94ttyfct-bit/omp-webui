@@ -79,6 +79,9 @@ describe("a task card", () => {
 		const alone = card({ command: "make all" });
 		expect(alone).toContain("make all");
 		expect(alone).not.toContain("Arguments");
+		// omp 18 keeps the model's intent in the arguments as `i`; the header says it, so the arguments are still one line (#333).
+		const withIntent = card({ command: "make all", i: "Building everything" });
+		expect(withIntent).not.toContain("Arguments");
 		// A command of several lines is not whole in the header (it shows the first): its arguments show.
 		expect(card({ command: "make all\nmake test" })).toContain("Arguments");
 	});

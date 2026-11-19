@@ -34,6 +34,7 @@ import { useScrolls } from "../lib/scrolls.ts";
 import { serverOffsetMs } from "../lib/server-clock.ts";
 import { taskItemsOf } from "../lib/subagent-assignment.ts";
 import { rememberToolChoice, toolChoice } from "../lib/tool-choice.ts";
+import { argsShownInHeader, headerPath } from "../lib/tool-header.ts";
 import { atEnd, outputTail, toolOpen } from "../lib/tool-open.ts";
 import { timerWanted, toolStartedAt, toolTimer } from "../lib/tool-time.ts";
 import { useToolTimerMode } from "../lib/tool-timer.ts";
@@ -123,19 +124,6 @@ function fileViewOf(name: string, args: unknown, details: unknown): FileView {
 		listing: listingRows(text),
 		content: text,
 	};
-}
-
-/**
- * `path` as short as it is clear: as the call's own `path` argument wrote it when that names the same file relative to
- * something, else relative to the conversation's folder when it is in it, else as it is.
- */
-function headerPath(path: string | undefined, args: unknown, cwd: string | undefined): string | undefined {
-	if (!path) return path;
-	const own = args && typeof args === "object" ? (args as Record<string, unknown>).path : undefined;
-	const rel = typeof own === "string" ? own.trim().replace(/^\.\//, "") : "";
-	if (rel && !rel.startsWith("/") && rel.length < path.length && path.endsWith(`/${rel}`)) return rel;
-	const base = cwd?.replace(/\/+$/, "");
-	return base && path.startsWith(`${base}/`) ? path.slice(base.length + 1) : path;
 }
 
 export interface ToolCardProps {
@@ -239,11 +227,7 @@ export function ToolCard({
 	const counts = hasDiff ? view?.changes.counts : undefined;
 	// Arguments that are one line the header already shows whole (`bash` with only its command, `read` with only its path)
 	// would say it again as JSON above the output; such a card shows the output alone.
-	const argsInHeader = useMemo(() => {
-		if (!shownArgs || typeof shownArgs !== "object") return false;
-		const values = Object.values(shownArgs as Record<string, unknown>);
-		return values.length === 1 && typeof values[0] === "string" && values[0].trim() === summary;
-	}, [shownArgs, summary]);
+	const argsInHeader = useMemo(() => argsShownInHeader(shownArgs, summary), [shownArgs, summary]);
 	// Only a card that shows the raw text builds it: a folded one (or one showing a diff) costs nothing per streamed update.
 	const showsArgs = open && (!(structured || assigned || argsInHeader) || showRaw);
 	const showsOutput = open && (!structured || showRaw);
@@ -465,13 +449,15 @@ function NoteBox({
 /** One file of an edit: its diff, labelled with the path when several files changed or the file was created/deleted/moved. */
 function FileSection({ file, rows, many }: { file: FileChange; rows: DiffRow[]; many: boolean }) {
 	const t = useT();
+	// The header names the file inside the conversation's folder by the path in it; each file's own label does too (#344).
+	const shown = headerPath(file.path, undefined, useContext(MdOpenContext)?.cwd) ?? file.path;
 	const op = opLabel(file);
 	// A Markdown file it wrote or edited opens in the Markdown editor from here (nothing for a file that was deleted).
 	const open = file.op === "delete" ? null : <MdOpenButton path={file.move ?? file.path} />;
 	const label =
 		many || op ? (
 			<span className="flex min-w-0 items-center gap-2 normal-case tracking-normal">
-				<PathLabel path={file.path} />
+				<PathLabel path={shown} title={file.path} />
 				{op ? <span className="shrink-0 text-faint">{op}</span> : null}
 				{open}
 			</span>

@@ -25,7 +25,9 @@ export function PathLabel({ path, title, className }: { path: string; title?: st
 			className={cx("flex min-w-0 items-baseline font-mono text-xs", className)}
 		>
 			{dir ? <span className="min-w-0 truncate text-faint">{dir}</span> : null}
-			<span className="max-w-[75%] shrink-0 truncate font-medium text-fg">{name}</span>
+			{/* With a folder part the name keeps at most three quarters of the label so the folder shows too; alone it is the
+			    whole label and may only be cut by the room the header has (a cap on itself cut every top-level file, #334). */}
+			<span className={cx("truncate font-medium text-fg", dir ? "max-w-[75%] shrink-0" : "min-w-0")}>{name}</span>
 		</span>
 	);
 }

@@ -71,8 +71,9 @@ const TURNS: Turn[] = [
 			diff: "-1|old\n+1|new\n+1|brand new",
 			firstChangedLine: 1,
 			perFileResults: [
-				{ path: "/Users/x/proj/src/alpha.ts", diff: "-1|old\n+1|new", firstChangedLine: 1, op: "update" },
-				{ path: "/Users/x/proj/src/beta.ts", diff: "+1|brand new", firstChangedLine: 1, op: "create" },
+				{ path: `${FIXTURE_CWD}/src/alpha.ts`, diff: "-1|old\n+1|new", firstChangedLine: 1, op: "update" },
+				// At the top of the conversation's folder: a name with no folder part in front of it (#334).
+				{ path: `${FIXTURE_CWD}/beta.ts`, diff: "+1|brand new", firstChangedLine: 1, op: "create" },
 			],
 		},
 	},
@@ -268,15 +269,20 @@ test("a multi-file edit labels each file and adds +N more to the header", async 
 	await openSession(page);
 	const edit = card(page, "alpha.ts");
 	const header = edit.getByRole("button").first();
-	await expect(header.getByTestId("tool-path")).toHaveText("/Users/x/proj/src/alpha.ts");
+	await expect(header.getByTestId("tool-path")).toHaveText("src/alpha.ts");
 	await expect(header).toContainText("+1 more");
 	await expect(header).toContainText("+2");
 	await expect(header).toContainText("−1");
 	await header.click();
 	const views = edit.getByTestId("diff-view");
 	await expect(views).toHaveCount(2);
-	await expect(views.nth(0).getByTestId("tool-path")).toHaveText("/Users/x/proj/src/alpha.ts");
-	await expect(views.nth(1).getByTestId("tool-path")).toHaveText("/Users/x/proj/src/beta.ts");
+	// Each file is named as the header names it: by its path inside the conversation's folder (#344), and a file at the
+	// top of it is not cut to a stub, whatever room the row has (#334).
+	await expect(views.nth(0).getByTestId("tool-path")).toHaveText("src/alpha.ts");
+	await expect(views.nth(1).getByTestId("tool-path")).toHaveText("beta.ts");
+	await expect(views.nth(1).getByTestId("tool-path")).toHaveAttribute("title", `${FIXTURE_CWD}/beta.ts`);
+	const name = views.nth(1).getByTestId("tool-path").locator("span");
+	expect(await name.evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(false);
 	await expect(views.nth(1)).toContainText("new file");
 	await expect(views.nth(0).getByTestId("diff-row")).toHaveCount(2);
 	await expect(views.nth(1).locator('[data-change="add"]')).toHaveCount(1);
