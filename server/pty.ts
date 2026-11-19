@@ -1,10 +1,11 @@
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { isolatedPathPrefix } from "../shared/isolated-env.ts";
 import { childEnv } from "./env.ts";
 import { envFor } from "./isolated-env.ts";
 import type { Subscriber } from "./live.ts";
+import { resumedSessions } from "./omp/resumed.ts";
 import { platform } from "./platform/index.ts";
 
 /** The folder of the zsh startup files `keepPathInFront` gives an isolated folder's Terminal tab; made once, private. */
@@ -421,6 +422,20 @@ export class PtyManager {
 		const out = new Set<number>();
 		for (const s of this.sessions.values()) if (s.exited === undefined) out.add(s.proc.pid);
 		return out;
+	}
+
+	/**
+	 * Whether a terminal's omp that is still running was started on the conversation in `file` (`omp --resume <file>`, what
+	 * *Open in terminal* runs): the web UI does not start a second omp on it (#387), which omp would move to a copy of the
+	 * conversation. A terminal that names it by `-c` or an id prefix is not told apart here.
+	 */
+	resuming(file: string): boolean {
+		const want = resolve(file);
+		for (const s of this.sessions.values()) {
+			if (s.shell || s.exited !== undefined || s.proc.exitCode !== null || s.proc.signalCode !== null) continue;
+			if (resumedSessions(s.args, s.cwd).some((r) => r.by === "file" && resolve(r.file) === want)) return true;
+		}
+		return false;
 	}
 
 	/**

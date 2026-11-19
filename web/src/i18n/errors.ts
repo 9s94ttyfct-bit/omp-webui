@@ -94,6 +94,8 @@ export const en = {
 	// A conversation that cannot be resumed where it ran
 	sessionFolderGone: "This conversation ran in {folder}, which no longer exists.",
 	sessionFolderUnknown: "This conversation's file does not say which folder it ran in.",
+	openInTerminal:
+		"This conversation is open in omp in a terminal of this app. Go on there, or end that omp (/exit or Ctrl+D) first.",
 
 	// A closed conversation's omp that has not ended yet
 	stillFinishing:

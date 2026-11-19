@@ -4108,6 +4108,12 @@ export class LivePool {
 	restarts: RestartCoordinator | null = null;
 
 	/**
+	 * Whether one of the server's own terminals runs omp on the conversation in `file` (`PtyManager.resuming`): it is not
+	 * opened in the web UI meanwhile (#387). Null: no terminal is known.
+	 */
+	terminalHolds: ((file: string) => boolean) | null = null;
+
+	/**
 	 * The built-in browser (docs/agents/browser.md): each conversation's CDP endpoint, and its pages following a conversation
 	 * that moved to another file. Null: omp is given no endpoint (its relay is off all the same).
 	 */
@@ -4878,6 +4884,13 @@ export class LivePool {
 			// omp on it would make the history a branch file of its own. Never raced: waited for, or refused.
 			await this.ended([l]);
 		}
+		// A terminal of this app runs omp on it (*Open in terminal*): a second omp would be moved to a copy of the conversation
+		// by omp, and the history would split into two files (#387).
+		if (this.terminalHolds?.(file))
+			throw new CodedError(
+				"This conversation is open in omp in a terminal of this app. Go on there, or end that omp (/exit or Ctrl+D) first.",
+				"openInTerminal",
+			);
 		const model = target.model ? ["--model", target.model] : [];
 		// The mode the page asks for, else the one the conversation last ran in (kept per session file), else the one new
 		// conversations start in: a conversation reopened later is in the mode it was left in, not in whatever the default is now.

@@ -103,6 +103,21 @@ test("a terminal in another folder, or for another conversation, leaves the web'
 	expect((await c.lives()).map((l) => l.liveId)).toEqual([c.live.liveId]);
 }, 60_000);
 
+test("a conversation a terminal's omp runs is not opened again in the web UI meanwhile (#387)", async () => {
+	const c = await conversation("data-held", { terminalHolds: true });
+	const file = "/nonexistent/fake.jsonl";
+	await c.terminal(["--resume", file]);
+	await pollUntil(() => !processExists(c.pid), "the web's omp to have ended");
+	await pollUntil(() => terminalsOf(c.server.proc).length > 0, "the terminal's omp to run");
+	for (const pid of terminalsOf(c.server.proc)) strays.add(pid);
+	// A second omp on it would be moved to a copy by omp: the conversation would split into two files.
+	const other = await c.open();
+	expect(
+		await rejectionOf(request(other, { t: "open", target: { kind: "resume", sessionFile: file, cwd: work } })),
+	).toThrow("open in omp in a terminal of this app");
+	expect((await c.lives()).filter((l) => !l.exited)).toEqual([]);
+}, 60_000);
+
 test("a terminal that could open a conversation which is working is refused, and the conversation goes on", async () => {
 	// `!command`: omp answers only when it ends, so the conversation is busy meanwhile.
 	const c = await conversation("data-busy", { hold: ["bash"] });

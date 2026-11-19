@@ -774,6 +774,7 @@ const remoteAuth = new LazyRemote(
 	},
 );
 const ptys = new PtyManager(cfg.ompBin);
+pool.terminalHolds = (file) => ptys.resuming(file);
 /**
  * Moving what a deleted conversation left to the Trash (docs/superpowers/specs/2026-11-11-delete-session-folder-design.md):
  * its folder or dependency folders in it, as the delete dialogs offer them. Never the home folder, the system's folders or

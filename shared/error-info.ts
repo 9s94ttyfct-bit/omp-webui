@@ -80,6 +80,8 @@ export const ERROR_CODES = [
 	// A conversation that cannot be resumed where it ran (server/live.ts): `folder` is the one it recorded, `nearest` the closest that exists.
 	"sessionFolderGone",
 	"sessionFolderUnknown",
+	// A conversation one of the server's terminals runs omp on (server/live.ts, #387).
+	"openInTerminal",
 	// A closed conversation's omp that has not ended yet (server/live.ts).
 	"stillFinishing",
 	// Side questions (server/omp/btw-fork.ts): a conversation already has the most the server keeps waiting.

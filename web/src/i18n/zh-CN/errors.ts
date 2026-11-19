@@ -83,6 +83,7 @@ export const zh: Record<keyof typeof en, string> = {
 
 	sessionFolderGone: "这个对话原来所在的文件夹 {folder} 已不存在。",
 	sessionFolderUnknown: "这个对话的文件没有记录它所在的文件夹。",
+	openInTerminal: "这个对话正在本应用的一个终端里由 omp 打开。请在那里继续，或者先结束那个 omp（/exit 或 Ctrl+D）。",
 
 	// A closed conversation's omp that has not ended yet
 	stillFinishing: "这个对话被关闭后，omp 仍在完成手头的工作；请等它结束后再试。",
