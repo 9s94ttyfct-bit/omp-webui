@@ -1121,7 +1121,7 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 	// Esc asks before it stops the reply (`useStopConfirm`): the first one shows the question, a second within a few
 	// seconds stops. It works wherever focus is, as the Stop button's tip says (the composer, and the banner of a paused
 	// conversation, call `escapeStop` themselves). It is not for a text field, nor while a dialog, menu, list or the
-	// sidebar's selection is open: that is what the key closes first. The Stop button stops at once.
+	// sidebar's selection is open: that is what the key closes first (omp's request card is none of those). The Stop button stops at once.
 	const running = Boolean(liveId) && (streaming || bashRunning);
 	const confirmStop = useStopConfirm(running, liveId, stopAll);
 	const pressStop = confirmStop.press;
@@ -1138,9 +1138,12 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 		const onKey = (e: KeyboardEvent) => {
 			if (!matches("stop", e) || e.defaultPrevented || e.repeat) return;
 			if (typingInField(e.target)) return;
+			// A dialog, menu or list takes Esc to close itself. The card in which omp asks for an approval or an answer is a
+			// `role="dialog"` too, but it is no overlay: it closes with its choices, and it is the moment the person most wants to
+			// stop the reply (#278).
 			if (
 				document.querySelector(
-					'[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-testid="selection-bar"]',
+					'[role="dialog"]:not([data-testid="ui-request"]), [role="alertdialog"], [role="menu"], [role="listbox"], [data-testid="selection-bar"]',
 				)
 			)
 				return;

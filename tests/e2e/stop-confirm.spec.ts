@@ -17,7 +17,7 @@ const aborts = (tap: SocketTap) =>
 
 const question = (page: Page) => page.getByTestId("stop-confirm");
 
-async function replying(page: Page, n: number, title: string): Promise<SocketTap> {
+async function replyingLive(page: Page, n: number, title: string): Promise<{ tap: SocketTap; liveId: string }> {
 	ownSession(n, title);
 	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
 	const tap = await tapSocket(page);
@@ -26,8 +26,11 @@ async function replying(page: Page, n: number, title: string): Promise<SocketTap
 	const liveId = await startLive(page, tap, title, `${title.toLowerCase().replaceAll(" ", "-")}-up`);
 	tap.push({ t: "frame", liveId, frame: { type: "agent_start" } });
 	await expect(page.getByTestId("stop")).toBeVisible();
-	return tap;
+	return { tap, liveId };
 }
+
+const replying = (page: Page, n: number, title: string): Promise<SocketTap> =>
+	replyingLive(page, n, title).then((r) => r.tap);
 
 /** Focus off the composer, on the conversation, with nothing else holding Esc. */
 const onTranscript = (page: Page) => page.getByTestId("msg-user").first().click();
@@ -184,6 +187,35 @@ test("Esc in an open dialog only closes it, and a dialog opened over the questio
 	await page.waitForTimeout(400);
 	await expect(question(page)).toHaveCount(0);
 	expect(aborts(tap)).toEqual([]);
+});
+
+test("Esc, Esc stops the reply while omp waits for an approval: its request card does not hold the key (#278)", async ({
+	page,
+}) => {
+	const { tap, liveId } = await replyingLive(page, 0x6b, "Esc approval");
+	tap.push({
+		t: "frame",
+		liveId,
+		frame: {
+			type: "extension_ui_request",
+			id: "ui-278",
+			method: "select",
+			title: "Allow tool: bash\nsleep 600",
+			options: ["Allow once", "Deny"],
+		},
+	});
+	await expect(page.getByTestId("ui-request")).toBeVisible();
+	// Focus is on the transcript, then on the card: either way the first Esc asks and the second stops.
+	await onTranscript(page);
+	await page.keyboard.press("Escape");
+	await expect(question(page)).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect.poll(() => aborts(tap)).toEqual(["abort_and_restore_queue"]);
+	await page.getByTestId("ui-request").focus();
+	await page.keyboard.press("Escape");
+	await expect(question(page)).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect.poll(() => aborts(tap)).toHaveLength(2);
 });
 
 test("the Stop button stops at once, with no question", async ({ page }) => {
