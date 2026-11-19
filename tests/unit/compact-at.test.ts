@@ -16,7 +16,6 @@ import {
 	modelThresholdOf,
 	ompTriggerTokens,
 	pointOf,
-	sameCompactAt,
 	shareOfTokens,
 } from "../../shared/compact-at.ts";
 import { isRecord } from "../../shared/guards.ts";
@@ -169,10 +168,6 @@ test("omp's settings are read as omp lists them, with -1 for what is unset", () 
 	expect(pointOf({ percent: 70, tokens: -1 })).toEqual({ percent: 70 });
 	expect(pointOf({ percent: 70, tokens: 40_000 })).toEqual({ tokens: 40_000 });
 	expect(pointOf({ percent: -1, tokens: -1 })).toBeNull();
-	expect(sameCompactAt({ percent: 70 }, { percent: 70 })).toBe(true);
-	expect(sameCompactAt(null, null)).toBe(true);
-	expect(sameCompactAt({ percent: 70 }, { tokens: 70 })).toBe(false);
-	expect(sameCompactAt({ percent: 70 }, null)).toBe(false);
 });
 
 test("a per-model threshold decides over both settings: the exact key first, then the longest wildcard", () => {

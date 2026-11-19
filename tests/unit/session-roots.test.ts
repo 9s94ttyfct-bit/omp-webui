@@ -13,10 +13,13 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { canonical, profileAgentDir, profileSessionsDir, SessionRoots } from "../../server/sessions/roots.ts";
+import { canonical, profileAgentDir, SessionRoots } from "../../server/sessions/roots.ts";
 import { SessionStore } from "../../server/sessions/store.ts";
 import { writeSimpleSession } from "../support/fixtures.ts";
 import { appendCall, writeTranscript } from "../support/subagent-fixtures.ts";
+
+/** Where a profile's conversations are: its own agent directory's `sessions/` folder. */
+const profileSessionsDir = (profile: string, home: string): string => join(profileAgentDir(profile, home), "sessions");
 
 /**
  * A conversation started with `--session-dir <dir>` or `--profile <name>` keeps its transcript outside omp's own agent

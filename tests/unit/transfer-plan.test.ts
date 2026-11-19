@@ -5,12 +5,10 @@ import {
 	type Conflict,
 	checkBatch,
 	conflictPlan,
-	isFinished,
 	isRetryable,
 	joinPath,
 	nextPiece,
 	parentPath,
-	pieceCount,
 	progressOf,
 	replaceable,
 	retryAfterMs,
@@ -27,14 +25,6 @@ import {
 const MiB = 1024 * 1024;
 
 describe("pieces", () => {
-	test("a file of at most one piece is one request, an empty file too", () => {
-		expect(pieceCount(0)).toBe(1);
-		expect(pieceCount(1)).toBe(1);
-		expect(pieceCount(TRANSFER_LIMITS.pieceBytes)).toBe(1);
-		expect(pieceCount(TRANSFER_LIMITS.pieceBytes + 1)).toBe(2);
-		expect(pieceCount(20 * MiB)).toBe(3);
-	});
-
 	test("the next piece begins where the server stopped and ends at a piece or at the file's end", () => {
 		const size = 20 * MiB;
 		expect(nextPiece(0, size)).toEqual({ offset: 0, end: 8 * MiB });
@@ -178,10 +168,5 @@ describe("how far an upload has got", () => {
 
 	test("no row is nothing", () => {
 		expect(progressOf([])).toEqual({ files: 0, done: 0, failed: 0, bytes: 0, sent: 0 });
-	});
-
-	test("a row is finished once it is done, failed, left out or cancelled", () => {
-		for (const state of ["done", "failed", "skipped", "cancelled"] as const) expect(isFinished(state)).toBe(true);
-		for (const state of ["waiting", "sending", "held"] as const) expect(isFinished(state)).toBe(false);
 	});
 });

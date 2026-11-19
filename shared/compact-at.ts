@@ -158,14 +158,6 @@ export function pointOf(settings: CompactSettings): CompactAt | null {
 	return null;
 }
 
-/** Whether two points are the same one (null being omp's default, which is the same wherever it is compared). */
-export function sameCompactAt(a: CompactAt | null, b: CompactAt | null): boolean {
-	if (a === null || b === null) return a === b;
-	if ("percent" in a && "percent" in b) return a.percent === b.percent;
-	if ("tokens" in a && "tokens" in b) return a.tokens === b.tokens;
-	return false;
-}
-
 /** Where omp will compact, for the page: a count of tokens and the share of the window it is. */
 export interface CompactTrigger {
 	tokens: number;

@@ -22,11 +22,6 @@ export function nextPiece(
 	return { offset, end: Math.min(size, offset + pieceBytes) };
 }
 
-/** How many requests a file of `size` bytes takes when nothing goes wrong. */
-export function pieceCount(size: number, pieceBytes: number = TRANSFER_LIMITS.pieceBytes): number {
-	return Math.max(1, Math.ceil(size / pieceBytes));
-}
-
 /** How long to wait before try number `failures + 1`: 0.5 s, 1 s, 2 s, 4 s…, or what `Retry-After` asked, whichever is longer. */
 export function backoffMs(failures: number, retryAfterMs = 0): number {
 	const own = 500 * 2 ** Math.max(0, failures - 1);
@@ -158,7 +153,3 @@ export function progressOf(rows: readonly Counted[]): Progress {
 	}
 	return out;
 }
-
-/** Whether a row is finished, for one way or another. */
-export const isFinished = (state: Counted["state"]): boolean =>
-	state === "done" || state === "failed" || state === "skipped" || state === "cancelled";

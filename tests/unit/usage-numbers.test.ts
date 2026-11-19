@@ -16,7 +16,6 @@ import {
 	newUsageFold,
 	parseSessionText,
 	summarize,
-	transcriptUsage,
 } from "../../server/sessions/parse.ts";
 import { SessionStore } from "../../server/sessions/store.ts";
 import { SubagentIndex } from "../../server/sessions/subagents.ts";
@@ -28,6 +27,7 @@ import { rowSpend } from "../../web/src/lib/subagents.ts";
 import { conversationTotals, sumEntries, usageByModel } from "../../web/src/lib/totals.ts";
 import { stepStats, TurnTally } from "../../web/src/lib/turn-stats.ts";
 import { removeScratch } from "../support/scratch.ts";
+import { transcriptUsage } from "../support/transcript-usage.ts";
 import { installGlobals, restoreGlobals } from "./browser-globals.ts";
 
 /**

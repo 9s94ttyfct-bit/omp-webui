@@ -150,24 +150,3 @@ export async function prepareImage(file: File, usedBytes: number): Promise<Prepa
 	if (refusal) return refusal;
 	return { name, mimeType: blob.type || file.type, data: await toBase64(blob), bytes: blob.size, resized };
 }
-
-/** `prepareImage` for every image among `files`, in order, each counted against the ones accepted before it. */
-export async function prepareImages(
-	files: Iterable<File>,
-	usedBytes: number,
-): Promise<{ images: PreparedImage[]; refused: ImageRefusal[] }> {
-	const images: PreparedImage[] = [];
-	const refused: ImageRefusal[] = [];
-	let used = usedBytes;
-	for (const file of files) {
-		if (!file.type.startsWith("image/")) continue;
-		const result = await prepareImage(file, used);
-		if ("reason" in result) {
-			refused.push(result);
-		} else {
-			images.push(result);
-			used += result.bytes;
-		}
-	}
-	return { images, refused };
-}

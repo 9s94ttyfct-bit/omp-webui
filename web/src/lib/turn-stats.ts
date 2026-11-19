@@ -203,12 +203,6 @@ export function unsavedSteps(
 	});
 }
 
-/** The saved requests plus the ones that have ended but are not saved yet (see `unsavedSteps`). */
-export function withUnsaved(saved: StepStats[], overlay: OverlayMessage[], since?: number): StepStats[] {
-	const unsaved = unsavedSteps(new Set(saved.map((s) => s.startedAt)), overlay, since);
-	return unsaved.length ? [...saved, ...unsaved] : saved;
-}
-
 /** What `liveTurn` keeps while it goes through the entries. */
 interface LiveTurnState {
 	tally: TurnTally;

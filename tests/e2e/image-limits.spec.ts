@@ -2,16 +2,19 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import type * as DropRun from "../../web/src/lib/drop-run.ts";
 import type * as Images from "../../web/src/lib/images.ts";
 import { expect, test } from "./fixtures.ts";
 
 /**
- * `prepareImage` / `prepareImages` in a real browser: decoding, canvas re-encoding and the limits.
+ * `prepareImage` and the drop's own loop over it (`run` of `drop-run.ts`) in a real browser: decoding, canvas re-encoding
+ * and the limits.
  * The module is bundled with bun and injected into a page (CSP bypassed for that injection only),
  * so the spec does not depend on how the composer wires it. No model call.
  */
 
 declare const __images: typeof Images;
+declare const __dropRun: typeof DropRun.run;
 
 interface Make {
 	/** A PNG file; `noise` makes it incompressible (heavy), otherwise it is a plain gradient (light). */
@@ -67,7 +70,7 @@ test.beforeAll(() => {
 		const source = resolve("web/src/lib/images.ts");
 		writeFileSync(
 			entry,
-			`import * as images from ${JSON.stringify(source)};\nObject.assign(window, { __images: images });\n`,
+			`import * as images from ${JSON.stringify(source)};\nimport { run } from ${JSON.stringify(resolve("web/src/lib/drop-run.ts"))};\nObject.assign(window, { __images: images, __dropRun: run });\n`,
 		);
 		bundle = execFileSync("bun", ["build", entry, "--target=browser"], { encoding: "utf8" });
 	} finally {
@@ -134,20 +137,42 @@ test("a small file the browser cannot decode is still attached as it is", async 
 	expect(out).toMatchObject({ name: "photo.heic", mimeType: "image/heic", resized: false, bytes: 1000 });
 });
 
-test("a message's images are held to the total, counting what is already attached", async ({ page }) => {
+test("a message's images are held to the total, counting what is already attached (the drop's own loop)", async ({
+	page,
+}) => {
 	const r = await page.evaluate(async () => {
 		const png = (n: number) => __make.bytes(7 * 1024 * 1024, "image/png", `img${n}.png`);
-		const files = [__make.bytes(10, "text/plain", "notes.txt"), png(1), png(2), png(3)];
-		const batch = await __images.prepareImages(files, 0);
-		const second = await __images.prepareImages([png(4)], 14 * 1024 * 1024);
-		return {
-			accepted: batch.images.map((i) => i.name),
-			refused: batch.refused,
-			alreadyAttached: second.refused,
-		};
+		const task = (file: File) =>
+			({
+				entry: { file, directory: false, info: { kind: "image" }, path: null, mentions: false },
+				action: "attach",
+			}) as unknown as Parameters<typeof __dropRun>[0][number];
+		const warnings: string[] = [];
+		const deps = (used: number) =>
+			({
+				scope: null,
+				usedImageBytes: used,
+				usedTextBytes: 0,
+				signal: new AbortController().signal,
+				warn: (text: string) => warnings.push(text),
+				notice: () => {},
+				reading: () => {},
+				progress: () => {},
+				prepareImage: __images.prepareImage,
+				readDocument: async () => ({ reason: "failed", name: "", message: "" }),
+				upload: async () => {
+					throw new Error("nothing is uploaded here");
+				},
+			}) as unknown as Parameters<typeof __dropRun>[1];
+		const batch = await __dropRun([png(1), png(2), png(3)].map(task), deps(0));
+		const refused = warnings.splice(0);
+		await __dropRun([png(4)].map(task), deps(14 * 1024 * 1024));
+		return { accepted: batch?.images.map((i) => i.name), refused, alreadyAttached: warnings };
 	});
-	// Seven MB each: two fit under the 20 MB total, the third would make 21; the text file is skipped silently.
+	// Seven MB each: two fit under the 20 MB total, the third would make 21; what is already attached counts too.
 	expect(r.accepted).toEqual(["img1.png", "img2.png"]);
-	expect(r.refused).toEqual([{ reason: "totalTooLarge", name: "img3.png", total: 21 * MB, limit: 20 * MB }]);
-	expect(r.alreadyAttached).toEqual([{ reason: "totalTooLarge", name: "img4.png", total: 21 * MB, limit: 20 * MB }]);
+	expect(r.refused).toHaveLength(1);
+	expect(r.refused[0]).toContain("img3.png");
+	expect(r.alreadyAttached).toHaveLength(1);
+	expect(r.alreadyAttached[0]).toContain("img4.png");
 });

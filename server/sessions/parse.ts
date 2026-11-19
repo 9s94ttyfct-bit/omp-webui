@@ -226,13 +226,6 @@ export function foldUsageLine(fold: UsageFold, line: string): void {
 	if (m.usage) addProvider(fold.providers, m.provider);
 }
 
-/** What one transcript spent (see `foldUsageLine`), from its whole text. */
-export function transcriptUsage(text: string): TranscriptUsage {
-	const fold = newUsageFold();
-	for (const line of text.split("\n")) foldUsageLine(fold, line);
-	return { usage: fold.usage, startedAt: fold.startedAt, providers: fold.providers, activeMs: activeMsOf(fold) };
-}
-
 /**
  * Plain text of a message's content (string or content blocks). A file can hold what omp never wrote, so only a text block
  * whose `text` is a string counts: a number, an object or a list in its place was indexed as `5` or `[object Object]`.

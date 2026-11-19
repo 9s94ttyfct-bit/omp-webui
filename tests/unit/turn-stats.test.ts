@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { OmpFrame, SessionEntry } from "../../shared/protocol.ts";
 import type { AgentMessage } from "../../web/src/lib/messages.ts";
-import { activeMs, savedTurn, stepStats, turnStats, withUnsaved } from "../../web/src/lib/turn-stats.ts";
+import { activeMs, savedTurn, stepStats, turnStats, unsavedSteps } from "../../web/src/lib/turn-stats.ts";
 import type { OverlayMessage } from "../../web/src/store/live.ts";
 
 /**
@@ -180,12 +180,10 @@ describe("the turn in flight", () => {
 			{ messageId: "m3", message: answerStep, ended: true },
 			{ messageId: "m4", message: msg({ timestamp: 1792183760000 }), ended: false },
 		];
-		expect(withUnsaved(saved, overlay, promptAt).map((s) => s.finishedAt)).toEqual([
-			toolStep.completedAt,
-			answerStep.completedAt,
-		]);
-		// With nothing to add, the saved list itself comes back: whatever memoized on it need not run again.
-		expect(withUnsaved(saved, [overlay[0], overlay[2]], promptAt)).toBe(saved);
+		const known = new Set(saved.map((s) => s.startedAt));
+		expect(unsavedSteps(known, overlay, promptAt).map((s) => s.finishedAt)).toEqual([answerStep.completedAt]);
+		// With nothing to add, nothing comes back.
+		expect(unsavedSteps(known, [overlay[0], overlay[2]], promptAt)).toEqual([]);
 	});
 
 	test("a request from before the prompt is an earlier turn's, not this one's", () => {
@@ -195,11 +193,11 @@ describe("the turn in flight", () => {
 			ended: true,
 		};
 		const unsaved: OverlayMessage = { messageId: "m3", message: answerStep, ended: true };
-		expect(withUnsaved([], [earlier, unsaved], 1792183743681).map((s) => s.finishedAt)).toEqual([
+		expect(unsavedSteps(new Set(), [earlier, unsaved], 1792183743681).map((s) => s.finishedAt)).toEqual([
 			answerStep.completedAt,
 		]);
 		// Before the prompt is saved there is no bound to apply.
-		expect(withUnsaved([], [earlier], undefined)).toHaveLength(1);
+		expect(unsavedSteps(new Set(), [earlier], undefined)).toHaveLength(1);
 	});
 
 	test("with no leaf given it follows the last entry; a conversation with no prompt has no start", () => {

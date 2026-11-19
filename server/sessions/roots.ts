@@ -82,11 +82,6 @@ export function profileAgentDir(profile: string, home = homedir()): string {
 	return join(canonical(home), ".omp", "profiles", profile, "agent");
 }
 
-/** Where a profile's conversations are: its own agent directory's `sessions/` folder. */
-export function profileSessionsDir(profile: string, home = homedir()): string {
-	return join(profileAgentDir(profile, home), "sessions");
-}
-
 /**
  * The roots the server remembers, in its data dir. The file is written whole each time a root is added, and read
  * when the server starts: a file that cannot be read is kept aside and a new one is made, so a damaged file never

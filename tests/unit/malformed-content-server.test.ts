@@ -6,9 +6,9 @@ import {
 	parseSessionText,
 	searchableText,
 	summarize,
-	transcriptUsage,
 } from "../../server/sessions/parse.ts";
 import { conversation, SHAPES } from "../support/malformed-content.ts";
+import { transcriptUsage } from "../support/transcript-usage.ts";
 
 /**
  * What the server makes of a session file for the sidebar and for search (the preview, the counts, the text that is
