@@ -79,7 +79,7 @@ test("commands the server says run are listed in the order it said so, each leav
 });
 
 test("a page that did not send the command lists it too, and the one that sent it lists it once, however often the server says it", () => {
-	runBash("L1", "make");
+	runBash("L1", "!make");
 	// Nothing is listed on the sender's say: the server's word is what lists it, for every page alike.
 	expect(commands()).toEqual([]);
 	const run = { id: "bash-1", command: "make", startedAt: Date.now() };
@@ -116,15 +116,25 @@ test("a process that ends takes the commands it was running with it", () => {
 });
 
 test("a command omp answers with a failing exit says so, and one that fails to run says why", async () => {
-	runBash("L1", "false");
+	runBash("L1", "!false");
 	replies.get("false")?.resolve({ exitCode: 1 });
 	await settle();
-	runBash("L1", "boom");
+	runBash("L1", "!boom");
 	replies.get("boom")?.reject(new Error("This conversation is paused; resume it to continue."));
 	await settle();
 	expect(useApp.getState().toasts.map((t) => t.text)).toEqual([
 		"Command exited with 1",
 		"This conversation is paused; resume it to continue.",
+	]);
+});
+
+test("`!` sends the rest as the command; `!!` sends it kept out of the model's context, as omp's terminal does (#305)", () => {
+	runBash("L1", "! git status ");
+	runBash("L1", "!!git log");
+	const sent = rpc.mock.calls.map(([, command]) => command).filter((c) => c.type === "bash");
+	expect(sent.map((c) => [c.command, c.excludeFromContext])).toEqual([
+		["git status", undefined],
+		["git log", true],
 	]);
 });
 

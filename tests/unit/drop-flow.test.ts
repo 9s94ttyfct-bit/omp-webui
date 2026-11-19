@@ -656,11 +656,13 @@ describe("describe: the whole of a file is looked at, and its mentions are notic
 		const entries = await describeEntries(
 			request([
 				new File(["see @~/.ssh/config for it"], "a.txt"),
-				new File(["mail me@example.com or @name"], "b.txt"),
+				new File(["mail me@example.com or email @ home"], "b.txt"),
 				new File(['first line\n@"my notes.md"'], "c.txt"),
+				// omp reads a mention by a relative name too (#310).
+				new File(["step 3 failed, see @src/secret.ts"], "d.txt"),
 			]),
 		);
-		expect(entries.map((e) => e.mentions)).toEqual([true, false, true]);
+		expect(entries.map((e) => e.mentions)).toEqual([true, false, true, true]);
 	});
 
 	test("a mention in a file that cannot be attached is nothing to tell", async () => {
