@@ -126,16 +126,73 @@ export async function sizeOf(path: string, budgetMs: number): Promise<number | n
 	}
 }
 
+/** What git holds at one repository or inside one folder of it that moving it would take away. */
+type Counts = { uncommitted: number | null; unpushed: number | null; stashes: number | null };
+
+/** How deep the search for repositories inside a folder goes, and how many it may find before the answer is "unknown". */
+const REPO_DEPTH = 8;
+const REPO_MAX = 20;
+
 /**
- * What git has under `path` that moving it would take away: changed and untracked files under it, and, where `path` is
- * the top of a repository or a worktree, the commits not pushed (those of a branch without an upstream that no remote
- * has). Null: not in a repository, or nothing at risk. Null counts: git could not be asked (a repository whose
- * configuration names a command is not run in).
+ * The repositories inside `folder` (a folder with its own `.git`, a file in a linked worktree), not looking into `.git`, a
+ * repository found, a dependency folder, or a link. `complete` is false when the search ran into its bound (folders looked
+ * at, repositories found), so that nothing can be said of what it did not see (#235).
  */
-export async function gitRisk(path: string): Promise<GitRisk | null> {
+function nestedRepositories(folder: string): { tops: string[]; complete: boolean } {
+	const tops: string[] = [];
+	let looked = 0;
+	let complete = true;
+	const walk = (dir: string, depth: number): void => {
+		if (!complete) return;
+		if (depth > REPO_DEPTH || looked >= DIRS_MAX) {
+			complete = false;
+			return;
+		}
+		looked++;
+		let entries: Dirent[];
+		try {
+			entries = readdirSync(dir, { withFileTypes: true });
+		} catch {
+			return;
+		}
+		const names = new Set(entries.map((e) => e.name));
+		for (const e of entries) {
+			if (!e.isDirectory() || e.name === ".git") continue;
+			const path = join(dir, e.name);
+			if (
+				dependencyCandidate(
+					e.name,
+					(n) => names.has(n),
+					(n) => existsSync(join(path, n)),
+				)
+			)
+				continue;
+			if (existsSync(join(path, ".git"))) {
+				if (tops.length >= REPO_MAX) complete = false;
+				else tops.push(path);
+				continue;
+			}
+			walk(path, depth + 1);
+		}
+	};
+	walk(folder, 1);
+	return { tops, complete };
+}
+
+/** A count in the output of `git rev-list --count`, null when git could not say. */
+const countOf = (r: { code: number; stdout: string } | null): number | null =>
+	r?.code === 0 && /^\d+$/.test(r.stdout.trim()) ? Number(r.stdout.trim()) : null;
+
+/**
+ * What git has under `path`: changed and untracked files under it, and, where `path` is the top of a repository, the commits
+ * of every local branch (and of a detached HEAD) that no remote has, and the stashes (#355); where it is the top of a
+ * linked worktree, only the commits of its HEAD that no remote has (the branches and the stashes stay in the repository
+ * the worktree belongs to). Null: not in a repository.
+ */
+async function repositoryRisk(path: string): Promise<Counts | null> {
 	const env = gitEnv();
 	const vet = await vetted(path, env);
-	if (!vet.ok) return vet.slow || vet.refused ? { uncommitted: null, unpushed: null } : null;
+	if (!vet.ok) return vet.slow || vet.refused ? { uncommitted: null, unpushed: null, stashes: null } : null;
 	const status = await runGit(
 		safeGit("status", "--porcelain=v2", "--ignore-submodules=all", "--untracked-files=all", "--", "."),
 		path,
@@ -145,22 +202,59 @@ export async function gitRisk(path: string): Promise<GitRisk | null> {
 	const uncommitted =
 		status === null || status.code !== 0 ? null : status.stdout.split("\n").filter((l) => /^[12u?] /.test(l)).length;
 	let unpushed: number | null = 0;
+	let stashes: number | null = 0;
 	const top = await runGit(safeGit("rev-parse", "--show-toplevel"), path, GIT_MS, env);
-	if (top === null) unpushed = null;
-	else if (top.code === 0 && realOf(top.stdout.trim()) === realOf(path)) {
+	if (top === null) {
+		unpushed = null;
+		stashes = null;
+	} else if (top.code === 0 && realOf(top.stdout.trim()) === realOf(path)) {
 		const hasHead = await runGit(safeGit("rev-parse", "--verify", "-q", "HEAD"), path, GIT_MS, env);
+		const linked = await isWorktreeTop(path);
 		if (hasHead === null) unpushed = null;
 		else if (hasHead.code === 0) {
-			const upstream = await runGit(safeGit("rev-list", "--count", "@{u}..HEAD"), path, GIT_MS, env);
-			const counted =
-				upstream?.code === 0
-					? upstream
-					: await runGit(safeGit("rev-list", "--count", "HEAD", "--not", "--remotes"), path, GIT_MS, env);
-			unpushed = counted?.code === 0 && /^\d+$/.test(counted.stdout.trim()) ? Number(counted.stdout.trim()) : null;
+			const args = linked ? ["HEAD"] : ["--branches", "HEAD"];
+			unpushed = countOf(
+				await runGit(safeGit("rev-list", "--count", ...args, "--not", "--remotes"), path, GIT_MS, env),
+			);
+		}
+		if (linked) stashes = 0;
+		else {
+			const list = await runGit(safeGit("stash", "list"), path, GIT_MS, env);
+			stashes = list === null || list.code !== 0 ? null : list.stdout.split("\n").filter((l) => l !== "").length;
 		}
 	}
-	if (uncommitted === 0 && unpushed === 0) return null;
-	return { uncommitted, unpushed };
+	return { uncommitted, unpushed, stashes };
+}
+
+/**
+ * What git has in `path` that moving it would take away, added up over the repository `path` is in and every repository
+ * inside it (#235): see `repositoryRisk`. Null: no repository there, or nothing at risk. Null counts: git could not be
+ * asked (a repository whose configuration names a command is not run in), or the search for repositories inside the folder
+ * ran into its bound.
+ */
+export async function gitRisk(path: string): Promise<GitRisk | null> {
+	const nested = nestedRepositories(path);
+	const parts: Counts[] = [];
+	for (const repo of [path, ...nested.tops]) {
+		const risk = await repositoryRisk(repo);
+		if (risk !== null) parts.push(risk);
+	}
+	if (parts.length === 0 && nested.complete) return null;
+	const sum = (pick: (c: Counts) => number | null): number | null => {
+		let total = 0;
+		for (const c of parts) {
+			const n = pick(c);
+			if (n === null) return null;
+			total += n;
+		}
+		return nested.complete ? total : null;
+	};
+	const risk = {
+		uncommitted: sum((c) => c.uncommitted),
+		unpushed: sum((c) => c.unpushed),
+		stashes: sum((c) => c.stashes),
+	};
+	return risk.uncommitted === 0 && risk.unpushed === 0 && risk.stashes === 0 ? null : risk;
 }
 
 /** Whether `path` is the top of a linked git worktree (its git folder is not the repository's own). */
@@ -188,5 +282,7 @@ export function moreAtRisk(now: GitRisk | null, then: GitRisk | null): boolean {
 		if (b === null) return false;
 		return a === null || a > (b ?? 0);
 	};
-	return more(now.uncommitted, then?.uncommitted) || more(now.unpushed, then?.unpushed);
+	return (
+		more(now.uncommitted, then?.uncommitted) || more(now.unpushed, then?.unpushed) || more(now.stashes, then?.stashes)
+	);
 }

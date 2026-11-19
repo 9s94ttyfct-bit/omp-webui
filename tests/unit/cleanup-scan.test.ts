@@ -60,23 +60,76 @@ describe("gitRisk", () => {
 		file(join(sub, "new.txt"));
 		file(join(repo, "elsewhere.txt"));
 		// No remote: the branch's one commit is on no remote.
-		expect(await gitRisk(repo)).toEqual({ uncommitted: 2, unpushed: 1 });
-		expect(await gitRisk(sub)).toEqual({ uncommitted: 1, unpushed: 0 });
+		expect(await gitRisk(repo)).toEqual({ uncommitted: 2, unpushed: 1, stashes: 0 });
+		expect(await gitRisk(sub)).toEqual({ uncommitted: 1, unpushed: 0, stashes: 0 });
 	});
 
 	test("a folder outside any repository is no risk", async () => {
 		expect(await gitRisk(dir("plain"))).toBeNull();
 	});
+
+	// #355
+	test("commits of a branch that is not checked out, and stashes, count when no remote has them", async () => {
+		const repo = dir("branches");
+		git(repo, "init", "-q", "-b", "main");
+		git(repo, "commit", "-q", "--allow-empty", "-m", "one");
+		git(repo, "remote", "add", "origin", repo);
+		git(repo, "fetch", "-q", "origin");
+		expect(await gitRisk(repo)).toBeNull();
+		git(repo, "checkout", "-q", "-b", "feature");
+		git(repo, "commit", "-q", "--allow-empty", "-m", "two");
+		git(repo, "commit", "-q", "--allow-empty", "-m", "three");
+		git(repo, "checkout", "-q", "main");
+		file(join(repo, "a.txt"));
+		git(repo, "add", "a.txt");
+		git(repo, "stash", "-q");
+		// main is on the remote and its tree is clean: the two commits of `feature` and the stash are all that is at risk.
+		expect(await gitRisk(repo)).toEqual({ uncommitted: 0, unpushed: 2, stashes: 1 });
+	});
+
+	// #235
+	test("repositories inside a folder that is none are added up; a folder holding none is no risk", async () => {
+		const ws = dir("ws");
+		expect(await gitRisk(ws)).toBeNull();
+		const app = dir("ws", "front", "app");
+		git(app, "init", "-q");
+		git(app, "commit", "-q", "--allow-empty", "-m", "local only");
+		file(join(app, "new.txt"));
+		const lib = dir("ws", "lib");
+		git(lib, "init", "-q");
+		file(join(lib, "x.txt"));
+		expect(await gitRisk(ws)).toEqual({ uncommitted: 2, unpushed: 1, stashes: 0 });
+	});
+
+	test("a dependency folder is not searched for repositories", async () => {
+		const app = dir("deps-git", "app");
+		const pkg = dir("deps-git", "app", "node_modules", "left-pad");
+		git(pkg, "init", "-q");
+		file(join(pkg, "x.txt"));
+		expect(await gitRisk(app)).toBeNull();
+	});
 });
 
 describe("moreAtRisk", () => {
 	test("more work than the dialog showed, or a count that can no longer be read, stops the move", () => {
-		expect(moreAtRisk({ uncommitted: 2, unpushed: 0 }, { uncommitted: 2, unpushed: 0 })).toBe(false);
-		expect(moreAtRisk({ uncommitted: 3, unpushed: 0 }, { uncommitted: 2, unpushed: 0 })).toBe(true);
-		expect(moreAtRisk({ uncommitted: 1, unpushed: 0 }, null)).toBe(true);
-		expect(moreAtRisk({ uncommitted: null, unpushed: 0 }, null)).toBe(true);
-		expect(moreAtRisk({ uncommitted: null, unpushed: null }, { uncommitted: null, unpushed: null })).toBe(false);
-		expect(moreAtRisk(null, { uncommitted: 4, unpushed: 1 })).toBe(false);
+		expect(moreAtRisk({ uncommitted: 2, unpushed: 0, stashes: 0 }, { uncommitted: 2, unpushed: 0, stashes: 0 })).toBe(
+			false,
+		);
+		expect(moreAtRisk({ uncommitted: 3, unpushed: 0, stashes: 0 }, { uncommitted: 2, unpushed: 0, stashes: 0 })).toBe(
+			true,
+		);
+		expect(moreAtRisk({ uncommitted: 2, unpushed: 0, stashes: 1 }, { uncommitted: 2, unpushed: 0, stashes: 0 })).toBe(
+			true,
+		);
+		expect(moreAtRisk({ uncommitted: 1, unpushed: 0, stashes: 0 }, null)).toBe(true);
+		expect(moreAtRisk({ uncommitted: null, unpushed: 0, stashes: 0 }, null)).toBe(true);
+		expect(
+			moreAtRisk(
+				{ uncommitted: null, unpushed: null, stashes: null },
+				{ uncommitted: null, unpushed: null, stashes: null },
+			),
+		).toBe(false);
+		expect(moreAtRisk(null, { uncommitted: 4, unpushed: 1, stashes: 0 })).toBe(false);
 	});
 });
 

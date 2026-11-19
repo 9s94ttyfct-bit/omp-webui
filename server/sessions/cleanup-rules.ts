@@ -33,8 +33,30 @@ const SYSTEM_EXACT = new Set([
 	"/private/var/folders",
 ]);
 
-/** Folders neither offered nor anything inside them. */
-const SYSTEM_TREES = ["/System", "/Library", "/Applications", "/usr", "/bin", "/sbin", "/private/etc", "/dev"];
+/**
+ * Folders neither offered nor anything inside them: the system's, and the package managers' prefixes outside `/usr`, which
+ * the person owns on a Mac (`/opt/homebrew` on Apple Silicon, MacPorts' `/opt/local`, `/nix`): one box would take the tools
+ * with it (#356).
+ */
+const SYSTEM_TREES = [
+	"/System",
+	"/Library",
+	"/Applications",
+	"/usr",
+	"/bin",
+	"/sbin",
+	"/private/etc",
+	"/dev",
+	"/opt/homebrew",
+	"/opt/local",
+	"/nix",
+];
+
+/** The home folder's own standard folders: the person's files, not a project (#236). Only the folder itself, not what is in it. */
+const HOME_STANDARD = ["Desktop", "Documents", "Downloads", "Movies", "Music", "Pictures", "Public", "Applications"];
+
+/** Dot-folders of the home folder that hold keys or the tools' installs: neither offered nor anything inside them (#236 #356). */
+const HOME_TOOL_TREES = [".ssh", ".gnupg", ".cargo", ".rustup", ".nvm", ".bun", ".npm", ".pyenv", ".rbenv", ".asdf"];
 
 /** A volume's root (`/Volumes/Backup`), or the per-user temporary folder or one above it (`/private/var/folders/xy/…/T`). */
 const SYSTEM_SHAPES = [/^\/Volumes\/[^/]+$/, /^\/private\/var\/folders(?:\/[^/]+){1,3}$/];
@@ -59,6 +81,12 @@ export function protectedReason(real: string, p: Protected): "home" | "system" |
 	// The home's own system folders (its Library, its Trash) and what is in them.
 	if (["Library", ".Trash"].some((name) => isWithin(real, posix.join(p.home, name)))) return "system";
 	if (p.data.some((d) => isWithin(real, d) || isWithin(d, real))) return "data";
+	if (HOME_TOOL_TREES.some((name) => isWithin(real, posix.join(p.home, name)))) return "home";
+	// A folder directly in the home folder that is the person's own (`~/Documents`) or a dot-folder (`~/.config`): not a project.
+	if (posix.dirname(real) === p.home) {
+		const name = posix.basename(real);
+		if (HOME_STANDARD.includes(name) || name.startsWith(".")) return "home";
+	}
 	return null;
 }
 

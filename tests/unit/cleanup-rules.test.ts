@@ -43,6 +43,39 @@ describe("protectedReason", () => {
 		expect(protectedReason("/Users/me/.omp/agent/sessions", p)).toBe("data");
 		expect(protectedReason("/Users/me/code/app", p)).toBeNull();
 	});
+
+	// #236
+	test("the home folder's standard folders and its dot-folders are not project folders; a folder inside one is", () => {
+		for (const name of [
+			"Documents",
+			"Desktop",
+			"Downloads",
+			"Pictures",
+			"Movies",
+			"Music",
+			"Public",
+			".config",
+			".zsh",
+		])
+			expect(protectedReason(`/Users/me/${name}`, p)).toBe("home");
+		expect(protectedReason("/Users/me/Documents/project", p)).toBeNull();
+		expect(protectedReason("/Users/me/.config/nvim", p)).toBeNull();
+		expect(protectedReason("/Users/me/Dropbox", p)).toBeNull();
+		// The projects folder, which New chat fills, stays a folder of its own.
+		expect(protectedReason("/Users/me/omp", p)).toBeNull();
+	});
+
+	test("keys and the tools' own installs in the home folder are refused with everything inside them", () => {
+		for (const dir of [".ssh", ".ssh/keys", ".cargo/registry", ".nvm/versions/node", ".rustup/toolchains/x"])
+			expect(protectedReason(`/Users/me/${dir}`, p)).toBe("home");
+	});
+
+	// #356
+	test("a package manager's prefix and what is in it are never offered", () => {
+		for (const dir of ["/opt/homebrew", "/opt/homebrew/lib", "/opt/local", "/nix/store"])
+			expect(protectedReason(dir, p)).toBe("system");
+		expect(protectedReason("/opt/myapp", p)).toBeNull();
+	});
 });
 
 describe("folderUse", () => {

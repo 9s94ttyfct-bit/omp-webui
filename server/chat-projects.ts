@@ -5,9 +5,11 @@ import {
 	type ChatProject,
 	type ChatProjects,
 	type ChatProjectsAnswer,
+	keptThroughDelete,
 	newProjectId,
 	PROJECT_LIMIT,
 	PROJECT_SESSIONS_MAX,
+	type ProjectMember,
 	type ProjectNameProblem,
 	parseChatProjects,
 	parseProjectFolder,
@@ -160,6 +162,16 @@ export class ChatProjectStore {
 			if (project !== null) this.at(loaded, project);
 			return this.placed(loaded, this.ids(sessions), project);
 		});
+	}
+
+	/**
+	 * Before the conversations `going` (by file) are deleted: those of `sessions` that are in a project only through one of them
+	 * (a fork or a branch of it) are put in that project by their own ids, so that they stay in it (#360).
+	 */
+	async keepThroughDelete(sessions: readonly ProjectMember[], going: ReadonlySet<string>): Promise<void> {
+		const { projects, excluded } = await this.list();
+		for (const [project, ids] of keptThroughDelete(sessions, projects, excluded, going))
+			await this.assign(ids, project);
 	}
 
 	/** Remove a project. Its conversations are in no project again (back in the sidebar's list by date); none is touched. */

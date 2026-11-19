@@ -148,6 +148,31 @@ test("a branch, a fork or a copy is in the project of the conversation it came f
 	expect(out.get("/s/root.jsonl")?.project).toBe("p");
 });
 
+test("a fork whose parent is deleted stays in the project: it is put there by its own id first (#360)", async () => {
+	const sessions = [
+		{ file: "/s/root.jsonl", id: "root", parentSession: null },
+		{ file: "/s/fork.jsonl", id: "fork", parentSession: "/s/root.jsonl" },
+		{ file: "/s/grand.jsonl", id: "grand", parentSession: "/s/fork.jsonl" },
+		{ file: "/s/own.jsonl", id: "own", parentSession: "/s/root.jsonl" },
+		{ file: "/s/other.jsonl", id: "other", parentSession: null },
+	];
+	const s = store();
+	const made = (await s.create("Work", null, ["root", "own"])).project?.id;
+	expect(made).toBeDefined();
+	const going = new Set(["/s/root.jsonl"]);
+	const left = sessions.filter((x) => !going.has(x.file));
+	// Without the step the fork and what came from it leave the project with the parent.
+	const before = await s.list();
+	expect(projectsOf(left, before.projects, before.excluded).has("/s/fork.jsonl")).toBe(false);
+	await s.keepThroughDelete(sessions, going);
+	const after = await s.list();
+	const m = projectsOf(left, after.projects, after.excluded);
+	expect(m.get("/s/fork.jsonl")?.project).toBe(made);
+	expect(m.get("/s/grand.jsonl")?.project).toBe(made);
+	expect(m.get("/s/own.jsonl")?.project).toBe(made);
+	expect(m.has("/s/other.jsonl")).toBe(false);
+});
+
 test("a chain that loops ends where it loops", () => {
 	const sessions = [
 		{ file: "/s/a.jsonl", id: "a", parentSession: "b" },

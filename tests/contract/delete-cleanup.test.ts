@@ -207,7 +207,7 @@ test("git work added after the preview stops the move", async () => {
 	git("add", ".");
 	git("commit", "-q", "-m", "init");
 	const [p] = (await preview([file])).body.previews;
-	expect(p.folder?.git).toEqual({ uncommitted: 0, unpushed: 1 });
+	expect(p.folder?.git).toEqual({ uncommitted: 0, unpushed: 1, stashes: 0 });
 	writeFileSync(join(folder, "new.txt"), "work");
 	const done = await remove(file, [pickOf(p.folder as TrashPick)]);
 	expect(done.body.trashed?.notMoved).toMatchObject([{ path: folder, error: expect.stringContaining("Git") }]);

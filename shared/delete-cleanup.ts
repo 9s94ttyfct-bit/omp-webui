@@ -28,12 +28,18 @@ export interface UsedBy {
 	pid?: number;
 }
 
-/** Work git has that moving the folder would take away. Null counts: git could not be asked. */
+/**
+ * Work git has that moving the folder would take away, added up over the repository the folder is in and every repository
+ * inside it (#235). Null counts: git could not be asked (a repository whose configuration names a command is not run in; the
+ * search for repositories inside the folder ran into its bound).
+ */
 export interface GitRisk {
 	/** Changed or untracked files under the folder. */
 	uncommitted: number | null;
-	/** Commits of the branch not pushed (a branch without an upstream: those no remote has); counted at a repository's top only. */
+	/** Commits of any local branch that no remote has (#355); counted at a repository's top only. */
 	unpushed: number | null;
+	/** Stashes (#355); counted at a repository's top only. */
+	stashes: number | null;
 }
 
 interface CleanupPath {
@@ -97,7 +103,10 @@ function trashPickOf(value: unknown): TrashPick | null {
 	if (typeof v.path !== "string" || typeof v.real !== "string") return null;
 	const count = (n: unknown): number | null => (typeof n === "number" && Number.isInteger(n) && n >= 0 ? n : null);
 	const g = v.git as Record<string, unknown> | null | undefined;
-	const git = g && typeof g === "object" ? { uncommitted: count(g.uncommitted), unpushed: count(g.unpushed) } : null;
+	const git =
+		g && typeof g === "object"
+			? { uncommitted: count(g.uncommitted), unpushed: count(g.unpushed), stashes: count(g.stashes) }
+			: null;
 	return { path: v.path, real: v.real, git };
 }
 

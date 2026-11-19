@@ -405,6 +405,21 @@ export class QuestionStore {
 	}
 
 	/**
+	 * Every open question of the conversations `sessions` (by file), dismissed: they were deleted, and a question of one cannot
+	 * be answered any more (#234). The number dismissed.
+	 */
+	dismissOf(sessions: ReadonlySet<string>): number {
+		this.fresh();
+		let dismissed = 0;
+		for (const q of [...this.questions]) {
+			if (q.state !== "open" || !sessions.has(q.session)) continue;
+			this.settle(q.id, "dismissed");
+			dismissed++;
+		}
+		return dismissed;
+	}
+
+	/**
 	 * A settle that cannot be written is taken back, as a question that cannot be filed is: the question stays open here as it
 	 * is in the file, and the write's error is thrown.
 	 */

@@ -352,6 +352,31 @@ describe("the question store", () => {
 		expect(() => store.answer(undefined, { options: [], text: "x" })).toThrow(QuestionError);
 	});
 
+	// #234
+	test("the open questions of deleted conversations are dismissed, the others stay open and every page is told", () => {
+		const store = new QuestionStore(dir(), clock());
+		const other = { session: "/sessions/b.jsonl", cwd: "/work/b", title: "Beta" };
+		store.file(from, "tool", draft("A?"), "1");
+		store.file(from, "ask", draft("B?"), "2");
+		store.file(other, "tool", draft("C?"), "3");
+		store.file(from, "tool", draft("D?"), "4");
+		const d = store.list().questions.find((q) => q.question === "D?");
+		store.answer(d?.id, { options: [], text: "x" });
+		const told: number[] = [];
+		store.onChange((c) => told.push(c.open));
+		expect(store.dismissOf(new Set([from.session, "/sessions/none.jsonl"]))).toBe(2);
+		expect(
+			store
+				.list()
+				.questions.filter((q) => q.state === "open")
+				.map((q) => q.question),
+		).toEqual(["C?"]);
+		expect(store.list().questions.find((q) => q.question === "D?")?.state).toBe("answered");
+		expect(store.counts()).toMatchObject({ open: 1, byConversation: { "/sessions/b.jsonl": 1 } });
+		expect(told.at(-1)).toBe(1);
+		expect(store.dismissOf(new Set([from.session]))).toBe(0);
+	});
+
 	test("every change is told to the listeners, with the counts as they are then", () => {
 		const store = new QuestionStore(dir(), clock());
 		const told: number[] = [];

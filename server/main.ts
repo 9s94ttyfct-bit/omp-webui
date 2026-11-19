@@ -1206,6 +1206,28 @@ async function closeBrowserOf(key: string): Promise<void> {
 		console.error(`omp-webui: could not close the browser pages of ${key}: ${(e as Error).message}`);
 	});
 }
+/**
+ * Before conversations are deleted (by file, while their forks can still name them): a fork or a branch that is in a sidebar
+ * project only through a parent that goes is put in the project by its own id, so that it stays in it (#360).
+ */
+async function keepProjectsOfForks(files: readonly string[]): Promise<void> {
+	try {
+		const sessions = (await store.list()).map((s) => ({ file: s.file, id: s.id, parentSession: s.parentSession }));
+		await chatProjects.keepThroughDelete(sessions, new Set(files));
+	} catch (e) {
+		console.warn(
+			`omp-webui: the forks of a deleted conversation were not kept in its project: ${(e as Error).message}`,
+		);
+	}
+}
+/** The open unattended questions of deleted conversations (their files, and the ones omp started instead) cannot be answered: dismissed (#234). */
+function dismissQuestionsOf(files: readonly (string | null)[]): void {
+	try {
+		unattendedMode.questions.dismissOf(new Set(files.filter((f): f is string => f !== null)));
+	} catch (e) {
+		console.warn(`omp-webui: the questions of a deleted conversation were not dismissed: ${(e as Error).message}`);
+	}
+}
 favoriteModels.onChange((models) => broadcastAll({ t: "favorite_models", models }));
 void pins
 	.adoptLegacy()
@@ -2608,8 +2630,10 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 					await actions.rename(target, title);
 				} else {
 					const key = sessionKey(file);
+					await keepProjectsOfForks([file]);
 					startedInstead = await actions.delete(target);
 					archived.set([file], false);
+					dismissQuestionsOf([file, startedInstead]);
 					await closeBrowserOf(key);
 				}
 			} catch (e) {
@@ -2698,6 +2722,9 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				if (file && listed.length) picks.set(file, listed);
 			}
 			if (picks.size && !mayTrash(req)) return fail(TRASH_REFUSED, 403);
+			await keepProjectsOfForks(
+				(body.files as string[]).flatMap((requested) => store.resolveSessionPath(requested) ?? []),
+			);
 			for (const requested of body.files as string[]) {
 				const file = store.resolveSessionPath(requested);
 				if (!file) {
@@ -2710,6 +2737,7 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 					const startedInstead = await actions.delete(target);
 					deleted.push(file);
 					gone.push({ file, cwd: target.cwd, startedInstead });
+					dismissQuestionsOf([file, startedInstead]);
 					await closeBrowserOf(key);
 				} catch (e) {
 					failed.push({ file, error: (e as Error).message });

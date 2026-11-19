@@ -285,6 +285,29 @@ export function projectsOf(
 }
 
 /**
+ * The conversations that are in a project only through a parent that is about to be deleted (`going`, by file), by project:
+ * once the parent is gone the chain up `parentSession` ends and they would leave the project with no word (#360). Put in it
+ * by their ids first, they stay.
+ */
+export function keptThroughDelete(
+	sessions: readonly ProjectMember[],
+	projects: readonly ChatProject[],
+	excluded: readonly string[],
+	going: ReadonlySet<string>,
+): Map<string, string[]> {
+	const before = projectsOf(sessions, projects, excluded);
+	const left = sessions.filter((s) => !going.has(s.file));
+	const after = projectsOf(left, projects, excluded);
+	const out = new Map<string, string[]>();
+	for (const s of left) {
+		const was = before.get(s.file);
+		if (!was || after.get(s.file)?.project === was.project) continue;
+		out.set(was.project, [...(out.get(was.project) ?? []), s.id]);
+	}
+	return out;
+}
+
+/**
  * The Files panel of a project (its folder button) names the project where a conversation's names its session file: the
  * server finds the folder in its own list of projects (`chatProjectOfScope`), so a page never names a folder to be listed.
  */

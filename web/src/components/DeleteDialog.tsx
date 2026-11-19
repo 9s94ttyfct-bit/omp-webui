@@ -392,10 +392,12 @@ function refusalText(folder: CleanupFolder, t: TFunction): string | null {
 }
 
 function gitText(git: GitRisk, t: TFunction): string {
-	if (git.uncommitted === null || git.unpushed === null) return t("deleteDialog.cleanupGitUnknown");
+	if (git.uncommitted === null || git.unpushed === null || git.stashes === null)
+		return t("deleteDialog.cleanupGitUnknown");
 	const parts: string[] = [];
 	if (git.uncommitted) parts.push(t("deleteDialog.cleanupGitUncommitted", { n: git.uncommitted }));
 	if (git.unpushed) parts.push(t("deleteDialog.cleanupGitUnpushed", { n: git.unpushed }));
+	if (git.stashes) parts.push(t("deleteDialog.cleanupGitStashes", { n: git.stashes }));
 	return parts.join(" · ");
 }
 
