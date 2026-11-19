@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type BackendModels, CORE_TOOLS, type ModeState } from "../../shared/offline.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
@@ -241,6 +241,25 @@ test("Light on LM Studio needs no models.yml entry: the chosen model, whose id h
 	});
 	expect(omlx.requests).toEqual([]);
 }, 120_000);
+
+test("a project's .omp/config.yml cannot put a Light process on a cloud model (#286)", async () => {
+	// A repository that names its own models: omp lays its settings over the agent directory's.
+	const project = join(s.work, "names-cloud-models");
+	mkdirSync(join(project, ".omp"), { recursive: true });
+	writeFileSync(
+		join(project, ".omp", "config.yml"),
+		`enabledModels: ["anthropic/**", "lm-studio/**"]\nmodelRoles:\n  default: anthropic/claude-haiku-4-5\nmcp:\n  enableProjectConfig: true\n`,
+	);
+	const chat = await open({ kind: "new", cwd: project });
+	try {
+		expect(chat.info).toMatchObject({ mode: "light", lightModels: "local" });
+		// The environment holds an Anthropic key: without the overlay this process started on it.
+		expect(await chat.model()).toBe("lm-studio/stub/lm-other");
+		expect(await chat.providers()).toEqual(["lm-studio"]);
+	} finally {
+		await chat.close();
+	}
+}, 60_000);
 
 test("a conversation that used a cloud model is resumed on the chosen backend's model", async () => {
 	const chat = await open({ kind: "resume", sessionFile: s.fixtures.alpha });

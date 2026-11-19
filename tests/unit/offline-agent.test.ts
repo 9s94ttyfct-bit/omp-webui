@@ -888,7 +888,7 @@ describe("oMLX", () => {
 			expect(plan).toEqual({
 				mode: "light",
 				lightModels: "local",
-				args: ["--tools", "read,bash"],
+				args: ["--tools", "read,bash", "--config", join(agentDir, "config.yml")],
 				env: { PI_CODING_AGENT_DIR: agentDir },
 			});
 			expect(dirname(agentDir)).toBe(join(cfg.dataDir, "offline-agent"));
@@ -965,9 +965,13 @@ describe("oMLX", () => {
 				svc.update({ mode: "light", lightModels: "local" });
 				return svc.plan({ resume: "/s/x.jsonl", args });
 			};
-			expect((await resume(["anthropic/claude-haiku-5-5"])).args).toEqual([
+			const cloud = await resume(["anthropic/claude-haiku-5-5"]);
+			expect(cloud.args).toEqual([
 				"--tools",
 				"read,bash,edit,write,grep,glob,todo",
+				// The Light settings again as an overlay, laid over a project's `.omp/config.yml` (#286).
+				"--config",
+				join(cloud.env.PI_CODING_AGENT_DIR, "config.yml"),
 				"--model",
 				"omlx/m1",
 			]);

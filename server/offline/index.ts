@@ -333,7 +333,10 @@ export class ModeService implements Launcher {
 			user,
 			modelsYaml: yaml,
 		});
-		const args = ["--tools", settings.tools.join(",")];
+		// The same settings again as a `--config` overlay: omp lays a project's `.omp/config.yml` over the agent directory's
+		// config.yml, and one that names its own `enabledModels` and `modelRoles` would otherwise start this process on a
+		// cloud model (#286). An overlay is laid over the project's settings.
+		const args = ["--tools", settings.tools.join(","), "--config", join(dir, "config.yml")];
 		// omp restores a session's own model, and a model of another provider is one a Light process on a local server must
 		// not use: it would do so whenever that provider has credentials in the environment.
 		if (req.resume && !selectsModel(req.args)) {

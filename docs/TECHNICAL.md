@@ -297,6 +297,7 @@ Every image is generated from the real UI by `bun run screenshots`, in the light
   - **Change folder keeps what was typed** (#240): the draft and the printed command output of a conversation follow it to its new session file when the sidebar's *Change folder…* moves it, on screen or not (`moveDraft`, `moveCommandNotes`).
   - **zsh history in isolated folders** (#231): an isolated folder's Terminal tab keeps the person's `~/.zsh_history` (or `$ZDOTDIR/.zsh_history`): macOS's `/etc/zshrc` sets `HISTFILE` inside the wrapper's temporary folder, and the wrapper's `.zshrc` puts it back before the person's own `.zshrc` runs (which can still set its own).
   - **Model roles edited in two places** (#329): while Settings › Model roles holds unsaved edits, the roles you did not touch (and the default thinking level, if you did not touch it) still follow the config, so a *Save* does not put back what another window or the terminal changed meanwhile; a preset's *Edit* sends the preset as it opened and the server refuses (409, “changed elsewhere”) when it is not that any more.
+  - **A project's settings in Light on a local server** (#286): omp lays a folder's `.omp/config.yml` over the agent directory's settings, so a repository that names its own `enabledModels` and `modelRoles` started a Light process on a cloud model. The Light `config.yml` is now also passed with `--config`, an overlay omp lays over the project's settings: the model roles, `enabledModels`, disabled providers, skills and `mcp.enableProjectConfig: false` hold in every folder.
 
 ## Install
 
