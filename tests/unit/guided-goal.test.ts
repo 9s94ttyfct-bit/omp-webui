@@ -78,6 +78,8 @@ test("the interview starts from the user's words, or asks what they want, in the
 	expect(withIdea).toContain("`ask` tool");
 	expect(withIdea).toContain(`\`${PROPOSE_GOAL_TOOL}\``);
 	expect(withIdea).toContain("Do not start the work");
+	// After a rollover this is the latest user message; it says by itself that a goal already active ends the setup (#339).
+	expect(withIdea).toContain("If a goal is already active (check with `goal get`), this setup is finished");
 	expect(withIdea).toContain("use English");
 
 	const without = interviewPrompt("   ", "Simplified Chinese");

@@ -115,6 +115,9 @@ export function interviewPrompt(rough: string, language: string): string {
 		idea ? `${IDEA_PREFIX}${idea}` : NO_IDEA,
 		"",
 		SETUP_LINE,
+		// The goal's confirmation is a tool result many turns away, and a context rollover keeps this message as the latest
+		// one: it must say by itself when it no longer applies (#339).
+		"- If a goal is already active (check with `goal get`), this setup is finished: continue that goal, do not interview me again and do not look for the tool below.",
 		"- Ask one focused question at a time and wait for my answer before the next one.",
 		"- When my answer is a choice between options, use the `ask` tool and mark the option you recommend. Ask open questions as plain text.",
 		"- Find out what you can from the project yourself (read files, search) instead of asking me.",
