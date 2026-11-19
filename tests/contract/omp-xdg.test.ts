@@ -51,20 +51,25 @@ const listedFiles = async (): Promise<string[]> => {
 	return ((await res.json()) as { file: string }[]).map((x) => x.file);
 };
 
-test("a conversation omp writes under $XDG_DATA_HOME/omp is listed, also after a restart", async () => {
-	const ws = await connect(s);
-	const opened = await request<LiveInfo>(ws, { t: "open", target: { kind: "new", cwd: s.work } });
-	const frames = watchFrames(ws, opened.liveId);
-	const settled = frames.after("session_settled");
-	await request(ws, { t: "rpc", liveId: opened.liveId, command: { type: "prompt", message: "Say hello" } });
-	await settled;
-	const file = opened.sessionFile as string;
-	expect(file.startsWith(join(xdg, "omp", "sessions"))).toBe(true);
-	await pollUntil(() => existsSync(file), "omp to write the session file", 30_000);
-	await pollUntil(async () => (await listedFiles()).includes(file), "the server to list the conversation", 30_000);
-	await request(ws, { t: "close", liveId: opened.liveId });
-	ws.close();
+// omp follows the XDG variables on Linux and macOS only (`xdgPlatform` in its `DirResolver`); `tests/unit/omp-dirs.test.ts` holds the Windows rule.
+test.skipIf(process.platform === "win32")(
+	"a conversation omp writes under $XDG_DATA_HOME/omp is listed, also after a restart",
+	async () => {
+		const ws = await connect(s);
+		const opened = await request<LiveInfo>(ws, { t: "open", target: { kind: "new", cwd: s.work } });
+		const frames = watchFrames(ws, opened.liveId);
+		const settled = frames.after("session_settled");
+		await request(ws, { t: "rpc", liveId: opened.liveId, command: { type: "prompt", message: "Say hello" } });
+		await settled;
+		const file = opened.sessionFile as string;
+		expect(file.startsWith(join(xdg, "omp", "sessions"))).toBe(true);
+		await pollUntil(() => existsSync(file), "omp to write the session file", 30_000);
+		await pollUntil(async () => (await listedFiles()).includes(file), "the server to list the conversation", 30_000);
+		await request(ws, { t: "close", liveId: opened.liveId });
+		ws.close();
 
-	await s.restart();
-	await pollUntil(async () => (await listedFiles()).includes(file), "the restarted server to list it", 30_000);
-}, 120_000);
+		await s.restart();
+		await pollUntil(async () => (await listedFiles()).includes(file), "the restarted server to list it", 30_000);
+	},
+	120_000,
+);

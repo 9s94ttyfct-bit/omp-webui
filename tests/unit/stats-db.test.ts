@@ -277,7 +277,16 @@ test("the database is the one omp keeps for the agent folder", () => {
 	expect(statsDbPath("/elsewhere/agent", {}, home)).toBe(join(home, ".omp", "stats.db"));
 	const xdg = join(root, "xdg");
 	mkdirSync(join(xdg, "omp"), { recursive: true });
-	expect(statsDbPath(join(home, ".omp", "agent"), { XDG_DATA_HOME: xdg }, home)).toBe(join(xdg, "omp", "stats.db"));
+	expect(statsDbPath(join(home, ".omp", "agent"), { XDG_DATA_HOME: xdg }, home, "linux")).toBe(
+		join(xdg, "omp", "stats.db"),
+	);
+	expect(statsDbPath(join(home, ".omp", "agent"), { XDG_DATA_HOME: xdg }, home, "darwin")).toBe(
+		join(xdg, "omp", "stats.db"),
+	);
+	// omp does not follow the XDG variables on Windows (`xdgPlatform` in its `DirResolver`).
+	expect(statsDbPath(join(home, ".omp", "agent"), { XDG_DATA_HOME: xdg }, home, "win32")).toBe(
+		join(home, ".omp", "stats.db"),
+	);
 	// An XDG data folder omp has not made is not used.
 	expect(statsDbPath(join(home, ".omp", "agent"), { XDG_DATA_HOME: join(root, "none") }, home)).toBe(
 		join(home, ".omp", "stats.db"),
@@ -293,7 +302,7 @@ test("PI_CONFIG_DIR is a folder of the home, as omp joins it, even when absolute
 	// The XDG data folder takes over only for the default agent folder of that config root.
 	const xdg = join(root, "xdg-alt");
 	mkdirSync(join(xdg, "omp"), { recursive: true });
-	expect(statsDbPath(join(home, ".omp-alt", "agent"), { PI_CONFIG_DIR: ".omp-alt", XDG_DATA_HOME: xdg }, home)).toBe(
-		join(xdg, "omp", "stats.db"),
-	);
+	expect(
+		statsDbPath(join(home, ".omp-alt", "agent"), { PI_CONFIG_DIR: ".omp-alt", XDG_DATA_HOME: xdg }, home, "linux"),
+	).toBe(join(xdg, "omp", "stats.db"));
 });

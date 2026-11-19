@@ -12,6 +12,7 @@ import {
 } from "../../shared/usage-analysis.ts";
 import { type UsageRange, usageBucket, usageWindow } from "../../shared/usage-range.ts";
 import { canonical } from "../sessions/roots.ts";
+import { XDG_PLATFORMS } from "./dirs.ts";
 
 /**
  * Usage & cost for any range, from omp's own statistics database (#714). `omp stats --json` answers only a rolling 24
@@ -60,9 +61,14 @@ const COLUMNS = [
  * profiles are not followed: the server's own omp runs without one. A wrong guess is caught by `holdsLatest`, never shown
  * as figures.
  */
-export function statsDbPath(agentDir: string, env: Record<string, string | undefined>, home: string): string {
+export function statsDbPath(
+	agentDir: string,
+	env: Record<string, string | undefined>,
+	home: string,
+	platform: NodeJS.Platform = process.platform,
+): string {
 	const configRoot = join(home, env.PI_CONFIG_DIR || ".omp");
-	const xdg = env.XDG_DATA_HOME ? join(env.XDG_DATA_HOME, "omp") : null;
+	const xdg = env.XDG_DATA_HOME && XDG_PLATFORMS.includes(platform) ? join(env.XDG_DATA_HOME, "omp") : null;
 	if (xdg && resolve(agentDir) === resolve(configRoot, "agent") && existsSync(xdg)) return join(xdg, "stats.db");
 	return join(configRoot, "stats.db");
 }

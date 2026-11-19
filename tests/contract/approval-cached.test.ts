@@ -3,6 +3,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { watchFrames } from "../support/frames.ts";
+import { has } from "../support/needs.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import { type ScriptedTurn, type StubScripted, startScriptedStub } from "../support/stub-scripted.ts";
 import { connect, request } from "../support/ws.ts";
@@ -100,43 +101,47 @@ test("Ask and remember puts omp in the mode that asks before a file read; Ask ev
 	ws.close();
 }, 120_000);
 
-test("a mode chosen while the conversation is paused is in force for the first turn after Resume (#407)", async () => {
-	const ws = await connect(server);
-	const live = await request<LiveInfo>(ws, {
-		t: "open",
-		target: { kind: "new", cwd: server.work, approvalMode: "yolo" },
-	});
-	const frames = watchFrames(ws, live.liveId);
-	const asked: string[] = [];
-	ws.addEventListener("message", (ev) => {
-		const m = JSON.parse(String(ev.data));
-		const f = m.t === "frame" && m.liveId === live.liveId ? m.frame : null;
-		if (f?.type !== "extension_ui_request" || f.method !== "select") return;
-		asked.push(String(f.title));
-		const value = (f.options as string[]).find((o) => o === "Approve Once") ?? "Approve";
-		ws.send(JSON.stringify({ t: "ui_response", liveId: live.liveId, response: { id: f.id, value } }));
-	});
-	const run = async () => {
-		const settled = frames.after("agent_end");
-		await request(ws, { t: "rpc", liveId: live.liveId, command: { type: "prompt", message: "Run the probe" } });
-		await settled;
-	};
-	await run();
-	expect(asked).toEqual([]);
+test.skipIf(!has.pauseResume)(
+	"a mode chosen while the conversation is paused is in force for the first turn after Resume (#407)",
+	async () => {
+		const ws = await connect(server);
+		const live = await request<LiveInfo>(ws, {
+			t: "open",
+			target: { kind: "new", cwd: server.work, approvalMode: "yolo" },
+		});
+		const frames = watchFrames(ws, live.liveId);
+		const asked: string[] = [];
+		ws.addEventListener("message", (ev) => {
+			const m = JSON.parse(String(ev.data));
+			const f = m.t === "frame" && m.liveId === live.liveId ? m.frame : null;
+			if (f?.type !== "extension_ui_request" || f.method !== "select") return;
+			asked.push(String(f.title));
+			const value = (f.options as string[]).find((o) => o === "Approve Once") ?? "Approve";
+			ws.send(JSON.stringify({ t: "ui_response", liveId: live.liveId, response: { id: f.id, value } }));
+		});
+		const run = async () => {
+			const settled = frames.after("agent_end");
+			await request(ws, { t: "rpc", liveId: live.liveId, command: { type: "prompt", message: "Run the probe" } });
+			await settled;
+		};
+		await run();
+		expect(asked).toEqual([]);
 
-	await request(ws, { t: "pause", liveId: live.liveId });
-	await request(ws, { t: "approval_mode", liveId: live.liveId, mode: "always-ask" });
-	// A real wait, as a person's: omp's reload of the file it was told of before it froze is due well before the resume,
-	// which is when a resume that does not give it its moment again loses the change.
-	await Bun.sleep(2000);
-	// Resumed and sent at once, as the composer does.
-	await request(ws, { t: "resume", liveId: live.liveId });
-	await run();
-	expect(asked).toHaveLength(1);
+		await request(ws, { t: "pause", liveId: live.liveId });
+		await request(ws, { t: "approval_mode", liveId: live.liveId, mode: "always-ask" });
+		// A real wait, as a person's: omp's reload of the file it was told of before it froze is due well before the resume,
+		// which is when a resume that does not give it its moment again loses the change.
+		await Bun.sleep(2000);
+		// Resumed and sent at once, as the composer does.
+		await request(ws, { t: "resume", liveId: live.liveId });
+		await run();
+		expect(asked).toHaveLength(1);
 
-	await request(ws, { t: "close", liveId: live.liveId });
-	ws.close();
-}, 120_000);
+		await request(ws, { t: "close", liveId: live.liveId });
+		ws.close();
+	},
+	120_000,
+);
 
 test("a conversation started with omp's own setting on Ask and remember reports it", async () => {
 	const ws = await connect(server);
