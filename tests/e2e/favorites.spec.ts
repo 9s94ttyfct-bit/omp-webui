@@ -18,6 +18,7 @@ test("loving a model pins it to the top of the picker without switching to it", 
 	const before = await picker.textContent();
 	await openPicker(page);
 	const options = modelOptions(page);
+	test.skip(Boolean(process.env.OMPW_E2E_OFFLINE), "omp lists the models of the providers it is signed in to");
 	test.skip((await options.count()) < 3, "omp lists too few models without provider credentials");
 
 	// Love the last model in the list (far from the top).

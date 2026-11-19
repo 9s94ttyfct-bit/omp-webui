@@ -1,7 +1,8 @@
 /**
  * The end-to-end tests CI cannot run (`bun run test:live:e2e`, which the release runs after `test:live`): CI has no model
  * login and sets `OMPW_E2E_OFFLINE`, and these skip there because omp needs the login for what they test (the models of
- * the providers it is signed in to, a Full start). They are found by that skip, so a new one is never left to no gate.
+ * the providers it is signed in to, a Full start, a real turn). They are found by that skip (either spelling, #214), so a
+ * new one is never left to no gate.
  */
 import { spawn } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
@@ -10,14 +11,16 @@ import { join } from "node:path";
 import { killTree, onShutdown } from "./lib/shutdown.ts";
 
 const ROOT = join(import.meta.dirname, "..");
-const OFFLINE_SKIP = /\btest\.skip\(\s*Boolean\(\s*process\.env\.OMPW_E2E_OFFLINE\s*\)/;
+/** The two ways a spec skips without a login: CI's `OMPW_E2E_OFFLINE`, and a machine with no token (`OMPW_E2E_HAS_TOKEN`, set by `tests/e2e/global-setup.ts` only when a model can be called). */
+const LOGIN_SKIP =
+	/\btest\.skip\(\s*(?:Boolean\(\s*process\.env\.OMPW_E2E_OFFLINE\s*\)|!\s*process\.env\.OMPW_E2E_HAS_TOKEN)/;
 
 /** The e2e specs under `root` with a test that skips without a login, relative to the checkout, sorted. */
 export function liveE2e(root = ROOT): string[] {
 	return readdirSync(join(root, "tests", "e2e"))
 		.filter((name) => name.endsWith(".spec.ts"))
 		.map((name) => `tests/e2e/${name}`)
-		.filter((file) => OFFLINE_SKIP.test(readFileSync(join(root, file), "utf8")))
+		.filter((file) => LOGIN_SKIP.test(readFileSync(join(root, file), "utf8")))
 		.sort();
 }
 

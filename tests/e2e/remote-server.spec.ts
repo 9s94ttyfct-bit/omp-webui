@@ -114,8 +114,8 @@ test("the card talks to the server's own routes: it keeps what the server keeps,
 	const run = await serve();
 	try {
 		const answer = await snapshot(run);
-		// Without the tunnel slice's routes there is nothing to talk to: the spec says so and stops.
-		test.skip(answer.status === 404, "the server has no /api/remote routes (the tunnel slice is not merged)");
+		// A server without these routes fails the card's only browser test: it must not skip it (#215).
+		expect(answer.status).toBe(200);
 
 		const page = await openCard(browser, run);
 		const card = page.getByTestId("remote-settings");

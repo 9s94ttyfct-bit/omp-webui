@@ -976,7 +976,7 @@ bun run test:all        # unit + contract in one pool, then latency probes (test
 bun run test:release    # unit + contract in one pool, no tests/performance, half the cores (scripts/gate-test.ts)
 bun run test:mac        # macOS only: the unit and contract files with cases CI's Linux skips (scripts/mac-tests.ts); needs swiftc; half the cores; run by the release
 bun run test:live       # only the tests that call a real model (Haiku); needs this machine's Anthropic login, refuses to run without it; half the cores; run by the release
-bun run test:live:e2e   # the e2e specs CI skips without a login (scripts/live-e2e.ts, found by their OMPW_E2E_OFFLINE skip); needs the login; run by the release
+bun run test:live:e2e   # the e2e specs CI skips without a login (scripts/live-e2e.ts, found by their OMPW_E2E_OFFLINE or OMPW_E2E_HAS_TOKEN skip, #214); needs the login; run by the release
 bun run test:gui        # macOS only, opt-in: the tests that open real windows (OMPW_GUI_TESTS=1), one file after the other; not part of the gate
 bun run test:e2e        # Playwright, one isolated server per worker; builds the web app once per run (scripts/e2e.ts)
 bun run parity          # CLI-feature coverage report

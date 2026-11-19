@@ -682,10 +682,32 @@ test("a flag it does not know, the quiet-machine wait's included (CI runs the ti
 
 test("the end-to-end tests that skip without a login (as CI runs them) are the release's to run with it", () => {
 	expect(liveE2e()).toEqual([
+		"tests/e2e/approval.spec.ts",
+		"tests/e2e/branch.spec.ts",
+		"tests/e2e/browser-agent.spec.ts",
+		"tests/e2e/controls.spec.ts",
+		"tests/e2e/dialogs.spec.ts",
+		"tests/e2e/favorites.spec.ts",
+		"tests/e2e/ghost.spec.ts",
+		"tests/e2e/goal.spec.ts",
+		"tests/e2e/images.spec.ts",
+		"tests/e2e/live.spec.ts",
+		"tests/e2e/mentions.spec.ts",
 		"tests/e2e/new-chat-picks.spec.ts",
 		"tests/e2e/new-chat-retry.spec.ts",
+		"tests/e2e/pause.spec.ts",
+		"tests/e2e/queue.spec.ts",
+		"tests/e2e/restart.spec.ts",
 		"tests/e2e/settings-model-catalog.spec.ts",
+		"tests/e2e/subagents-real.spec.ts",
 	]);
+	// A spec that needs the login in either spelling is in the list: none is left to run in no gate (#214).
+	const dir = join(import.meta.dir, "..", "e2e");
+	const needing = readdirSync(dir)
+		.filter((name) => name.endsWith(".spec.ts"))
+		.filter((name) => /process\.env\.OMPW_E2E_(?:OFFLINE|HAS_TOKEN)/.test(readFileSync(join(dir, name), "utf8")))
+		.map((name) => `tests/e2e/${name}`);
+	expect(liveE2e()).toEqual(needing.sort());
 	const pkg = JSON.parse(readFileSync(join(import.meta.dir, "..", "..", "package.json"), "utf8")) as {
 		scripts: Record<string, string>;
 	};
