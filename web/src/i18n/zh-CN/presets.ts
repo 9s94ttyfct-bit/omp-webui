@@ -108,6 +108,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	roleAdvisor: "顾问",
 	roleTiny: "轻量任务",
 	roleMemory: "记忆",
+	roleWidget: "任务小组件",
 	roleWeb: "网页搜索",
 	roleImage: "图像生成",
 	roleSpeech: "语音合成",

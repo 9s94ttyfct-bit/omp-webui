@@ -74,6 +74,7 @@ export const en = {
 	roleAdvisor: "Advisor",
 	roleTiny: "Tiny tasks",
 	roleMemory: "Memory",
+	roleWidget: "Job widgets",
 	roleWeb: "Web search",
 	roleImage: "Image generation",
 	roleSpeech: "Speech",

@@ -12,32 +12,13 @@ import { useEffect, useId, useRef, useState } from "react";
 import "../i18n/later.ts";
 import { type MessageKey, useT } from "../i18n/index.ts";
 import { describeSelector, modelConfig } from "../lib/model-config.ts";
+import { ROLE_ORDER, ROLES } from "../lib/model-roles.ts";
 import { levelName } from "../lib/thinking-levels.ts";
 import { useApp } from "../store/app.ts";
 import type { ModelInfo } from "../store/live.ts";
 import { ModelSelect } from "./ModelSelect.tsx";
 import { Select } from "./Select.tsx";
 import { Badge, Button, CardHeader, IconButton } from "./ui.tsx";
-
-/** The roles omp knows, in the order they are listed, with their names. Others are listed after them by id. */
-const ROLES: Record<string, MessageKey> = {
-	default: "presets.roleDefault",
-	smol: "presets.roleSmol",
-	slow: "presets.roleSlow",
-	plan: "presets.rolePlan",
-	task: "presets.roleTask",
-	commit: "presets.roleCommit",
-	vision: "presets.roleVision",
-	advisor: "presets.roleAdvisor",
-	tiny: "presets.roleTiny",
-	memory: "presets.roleMemory",
-	web: "presets.roleWeb",
-	image: "presets.roleImage",
-	speech: "presets.roleSpeech",
-	dictation: "presets.roleDictation",
-	judge: "presets.roleJudge",
-};
-const ROLE_ORDER = Object.keys(ROLES);
 
 /** A role as a person reads it: omp's own roles by their name, any other by its id. */
 export function roleLabel(role: string, t: (key: MessageKey) => string): string {

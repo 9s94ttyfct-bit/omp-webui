@@ -33,8 +33,24 @@ import { type BackendProvider, OfflineError } from "./backend.ts";
  * model roles and logins, with only what Light loads restricted).
  */
 
-/** omp's chat model roles. The others (image, web, speech, dictation, judge) take models of other kinds. */
-export const CHAT_ROLES = ["default", "smol", "slow", "vision", "plan", "commit", "tiny", "memory", "task", "advisor"];
+/**
+ * omp's chat model roles (18.22: `widget`, which writes the live widget of each background job, joined them). The others
+ * (image, web, speech, dictation, judge) take models of other kinds. `tests/unit/model-roles.test.ts` keeps this list and the
+ * roles editor's the same.
+ */
+export const CHAT_ROLES = [
+	"default",
+	"smol",
+	"slow",
+	"vision",
+	"plan",
+	"commit",
+	"tiny",
+	"memory",
+	"task",
+	"advisor",
+	"widget",
+];
 
 /**
  * Plugin sources in omp's one `disabledProviders` namespace: plugins add MCP servers, hooks, commands and skills of their
