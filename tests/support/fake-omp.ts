@@ -104,7 +104,12 @@ if (!process.argv.includes("--mode")) {
     process.exit(0);
   }
   console.log("fake-omp 0.0.0");
-  if (options.terminalHolds && process.argv.some((a) => ["--resume", "-r", "-c", "--continue"].includes(a))) await Promise.withResolvers().promise;
+  // Held until it is killed, as omp's screen is. One whose terminal is gone (its parent ended) ends by itself: three of these once
+  // ran at a full core for fourteen hours after a test that failed.
+  if (options.terminalHolds && process.argv.some((a) => ["--resume", "-r", "-c", "--continue"].includes(a))) {
+    const parent = process.ppid;
+    await new Promise(() => setInterval(() => { if (process.ppid !== parent) process.exit(0); }, 500));
+  }
   process.exit(0);
 }
 const failing = (options.failWhenArgs ?? []).find((a) => process.argv.includes(a));
