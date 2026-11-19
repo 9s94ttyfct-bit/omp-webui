@@ -420,6 +420,33 @@ export class QuestionStore {
 	}
 
 	/**
+	 * The conversation of the session file `from` is in `to` now, in the folder `cwd` (it was moved, #233): its questions follow
+	 * it, the settled ones too, so that an answer opens the file that is there. The number moved. A move that cannot be written
+	 * is taken back, as a settle is.
+	 */
+	moveSession(from: string, to: string, cwd: string): number {
+		this.fresh();
+		const was = this.questions;
+		let moved = 0;
+		const now = was.map((q) => {
+			if (q.session !== from) return q;
+			moved++;
+			return { ...q, session: to, cwd };
+		});
+		if (moved === 0) return 0;
+		const rev = this.rev;
+		this.questions = now;
+		try {
+			this.changed();
+		} catch (e) {
+			this.questions = was;
+			this.rev = rev;
+			throw e;
+		}
+		return moved;
+	}
+
+	/**
 	 * A settle that cannot be written is taken back, as a question that cannot be filed is: the question stays open here as it
 	 * is in the file, and the write's error is thrown.
 	 */

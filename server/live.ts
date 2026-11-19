@@ -1744,6 +1744,7 @@ export class Live {
 			followed?.();
 			if (this.interviewing) this.pool.noteInterview(to, true);
 			if (from && to) await this.followFolder();
+			if (from && to) this.pool.carryQuestions(from, to, this.info.cwd);
 			this.pool.announce(this);
 		}
 		this.noteWork();
@@ -4411,12 +4412,26 @@ export class LivePool {
 		}
 	}
 
-	/** The conversation moved from one session file to another: unattended mode goes along (its questions stay where they were asked). */
+	/** The conversation moved from one session file to another: unattended mode goes along (its questions follow when the old file is gone: `carryQuestions`). */
 	carryUnattended(from: string, to: string): void {
 		try {
 			this.unattended?.carry(sessionKey(from), sessionKey(to));
 		} catch (e) {
 			console.error(`omp-webui: could not keep unattended mode for ${to}: ${(e as Error).message}`);
+		}
+	}
+
+	/**
+	 * The conversation was moved to another folder: its session file is under the new one and the old path is gone. Its questions
+	 * go along (#233), so that an answer opens the file that is there and the conversation is told those that still wait. A
+	 * branch or a fork leaves the old file in place, and the questions stay with it.
+	 */
+	carryQuestions(from: string, to: string, cwd: string): void {
+		if (existsSync(from)) return;
+		try {
+			this.unattended?.questions.moveSession(from, to, cwd);
+		} catch (e) {
+			console.error(`omp-webui: could not move the questions of ${from} to ${to}: ${(e as Error).message}`);
 		}
 	}
 

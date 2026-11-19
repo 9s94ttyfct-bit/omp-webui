@@ -377,6 +377,30 @@ describe("the question store", () => {
 		expect(store.dismissOf(new Set([from.session]))).toBe(0);
 	});
 
+	test("a conversation that was moved takes its questions along, in the new folder, and the counts follow it (#233)", () => {
+		const data = dir();
+		const store = new QuestionStore(data, clock());
+		store.file(from, "tool", draft("A?"), "1");
+		store.file(from, "tool", draft("B?"), "2");
+		store.file({ ...from, session: "/sessions/b.jsonl" }, "tool", draft("C?"), "3");
+		store.dismiss(store.list().questions.find((q) => q.question === "B?")?.id);
+		const told: Record<string, number>[] = [];
+		store.onChange((c) => told.push(c.byConversation));
+		expect(store.moveSession(from.session, "/moved/a.jsonl", "/moved")).toBe(2);
+		const q = store.list().questions;
+		expect(q.filter((x) => x.session === "/moved/a.jsonl").map((x) => [x.question, x.cwd])).toEqual(
+			expect.arrayContaining([
+				["A?", "/moved"],
+				["B?", "/moved"],
+			]),
+		);
+		expect(q.find((x) => x.question === "C?")?.session).toBe("/sessions/b.jsonl");
+		expect(told.at(-1)).toEqual({ "/moved/a.jsonl": 1, "/sessions/b.jsonl": 1 });
+		// What is kept is what a restart reads, and a conversation with no questions moves nothing.
+		expect(new QuestionStore(data).counts().byConversation).toEqual({ "/moved/a.jsonl": 1, "/sessions/b.jsonl": 1 });
+		expect(store.moveSession("/nowhere.jsonl", "/else.jsonl", "/x")).toBe(0);
+	});
+
 	test("every change is told to the listeners, with the counts as they are then", () => {
 		const store = new QuestionStore(dir(), clock());
 		const told: number[] = [];

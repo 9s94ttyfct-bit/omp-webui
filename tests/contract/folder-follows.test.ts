@@ -162,6 +162,40 @@ test("Change folder rescues a conversation whose folder is gone: it moves to the
 	ws.close();
 }, 90_000);
 
+test("Change folder takes the conversation's unattended questions along, so that they can still be answered (#233)", async () => {
+	const file = writeSimpleSession(s.agentDir, 0xc9, "Has a question", undefined, s.work);
+	const there = project("with-questions");
+	const store = join(s.root, "data", "questions.json");
+	const asked = {
+		id: "q-233",
+		session: realpathSync(file),
+		title: "",
+		source: "tool",
+		question: "Which database?",
+		context: "",
+		options: [],
+		askedAt: Date.now(),
+		state: "open",
+		cwd: s.work,
+	};
+	writeFileSync(store, JSON.stringify({ rev: 900, questions: [asked] }), { mode: 0o600 });
+	const headers = { "x-omp-webui-token": s.accessToken, "x-omp-webui": "1" };
+	const questions = async () =>
+		(
+			(await (await fetch(`${s.url}/api/questions`, { headers })).json()) as {
+				questions: { id: string; session: string; cwd?: string }[];
+			}
+		).questions;
+
+	const r = await move({ file, folder: there });
+	expect(r.status).toBe(200);
+	expect(existsSync(file)).toBe(false);
+	const [q] = await questions();
+	expect(q.id).toBe("q-233");
+	expect(q.session).toBe(r.body.file as string);
+	expect(q.cwd).toBe(there);
+}, 90_000);
+
 test("Change folder moves a running conversation and a new chat with no file yet; a folder that is not there is refused", async () => {
 	const ws = await connect(s);
 	// A name with spaces is one folder to `/move` (it takes the rest of the line).
