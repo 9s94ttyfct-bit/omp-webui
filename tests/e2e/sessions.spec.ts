@@ -17,6 +17,8 @@ const own = (n: number, title: string) => {
 		n,
 		title,
 		cwd: process.env.OMPW_E2E_WORK as string,
+		// Dated by the newest message (#359): written now, so that the conversation is today's.
+		start: Date.now(),
 		turns: [{ prompt: `${title}?`, reply: `${title}.` }],
 	});
 	files.push(file);

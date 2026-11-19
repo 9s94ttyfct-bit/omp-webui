@@ -1,4 +1,4 @@
-import { rmSync, utimesSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { writeSimpleSession } from "../support/fixtures.ts";
 import { newChatIn } from "../support/new-chat.ts";
 import { choose } from "../support/select.ts";
@@ -111,11 +111,10 @@ test.describe("conversations", () => {
 
 	test("the date range narrows the list, in Chinese too", async ({ page }) => {
 		await page.addInitScript(() => localStorage.setItem("ompw.lang", "zh-CN"));
-		// A conversation the spec dates itself: the fixtures are written "now", so one of them is always in today.
+		// A conversation the spec dates itself: the others are written now, so one of them is always in today.
 		const agentDir = process.env.OMPW_E2E_AGENT_DIR as string;
-		const old = writeSimpleSession(agentDir, 0xb7, "Old heron notes");
 		const past = Date.now() / 1000 - 60 * 86_400;
-		utimesSync(old, past, past);
+		const old = writeSimpleSession(agentDir, 0xb7, "Old heron notes", undefined, undefined, past);
 		try {
 			await page.goto("/");
 			await expect(page.getByTestId("session-list")).toBeVisible({ timeout: 30_000 });

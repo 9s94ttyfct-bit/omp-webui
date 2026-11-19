@@ -34,6 +34,9 @@ async function narrowest(page: Page) {
 async function withAnArchived(page: Page, n: number, title: string, archive: string) {
 	const agentDir = process.env.OMPW_E2E_AGENT_DIR as string;
 	const file = writeSimpleSession(agentDir, n, title);
+	// Conversations are dated by their newest message (#359): the fixtures are old, so with this one archived the list
+	// would have no "Today" group. A second, recent one keeps it, as the list is for a person who used the app today.
+	writeSimpleSession(agentDir, n + 0x40, `${title} kept`);
 	await page.goto("/");
 	const item = sessionRow(page, title);
 	await expect(item).toHaveCount(1, { timeout: 15_000 });

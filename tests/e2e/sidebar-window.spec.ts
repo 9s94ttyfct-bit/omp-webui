@@ -26,7 +26,8 @@ test.beforeAll(() => {
 	const now = Date.now() / 1000;
 	for (let n = 1; n <= COUNT; n++) {
 		const id = `01a00000-0000-7000-8000-${n.toString(16).padStart(12, "0")}`;
-		const stamp = new Date(Date.UTC(2026, 0, 7, 0, 0, n)).toISOString();
+		// Dated by the newest message (#359), so the message times are the ones the list is ordered by.
+		const stamp = new Date((now + AHEAD + n) * 1000).toISOString();
 		const lines = [
 			{ type: "session", version: 3, id, timestamp: stamp, cwd: FIXTURE_CWD },
 			{ type: "title_change", id: `t${n}`, parentId: null, timestamp: stamp, title: title(n) },

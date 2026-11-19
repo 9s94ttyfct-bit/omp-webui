@@ -50,7 +50,9 @@ function usage(u: FixtureUsage) {
 	};
 }
 
-const ts = (min: number) => new Date(Date.UTC(2026, 0, 5, 10, min)).toISOString();
+/** A time in the fixtures' fixed day (minutes after 10:00 on 5 January 2026), or an ISO time given as it is. */
+const ts = (min: number | string) =>
+	typeof min === "string" ? min : new Date(Date.UTC(2026, 0, 5, 10, min)).toISOString();
 
 /** omp's fixed-width title slot: one JSON line padded to exactly 256 bytes including the newline. */
 function titleSlot(title: string): string {
@@ -64,7 +66,7 @@ function write(file: string, header: Record<string, unknown>, entries: Record<st
 	writeFileSync(file, title ? titleSlot(title) + body : body);
 }
 
-const user = (id: string, parentId: string | null, min: number, text: string) => ({
+const user = (id: string, parentId: string | null, min: number | string, text: string) => ({
 	type: "message",
 	id,
 	parentId,
@@ -72,7 +74,7 @@ const user = (id: string, parentId: string | null, min: number, text: string) =>
 	message: { role: "user", content: [{ type: "text", text }], attribution: "user", timestamp: Date.parse(ts(min)) },
 });
 
-const assistant = (id: string, parentId: string, min: number, content: unknown[], u: FixtureUsage) => ({
+const assistant = (id: string, parentId: string, min: number | string, content: unknown[], u: FixtureUsage) => ({
 	type: "message",
 	id,
 	parentId,
@@ -114,7 +116,8 @@ export const FIXTURE_FILES = {
  * that delete or otherwise consume sessions without touching the shared fixtures.
  * `n` (0–255) makes the file name and session id unique, and orders the sidebar: it lists by
  * mtime, so each file is stamped `now + n` seconds (writes in one tick would otherwise tie).
- * Returns the file path. `cwd`: the folder the conversation worked in (the fixture project by default).
+ * Returns the file path. `cwd`: the folder the conversation worked in (the fixture project by default). `when`: the
+ * conversation's time in seconds since the epoch (default: now plus `n`); the sidebar dates a conversation by its newest message.
  */
 export function writeSimpleSession(
 	agentDir: string,
@@ -122,23 +125,27 @@ export function writeSimpleSession(
 	title: string,
 	cost?: number,
 	cwd: string = FIXTURE_CWD,
+	when?: number,
 ): string {
 	const hex = n.toString(16).padStart(2, "0");
 	const id = `01a00000-0000-7000-8000-0000000099${hex}`;
 	const file = join(agentDir, "sessions", FIXTURE_BUCKET, `2026-01-07T00-${hex}-00-000Z_${id}.jsonl`);
+	// The conversation is dated by its newest message (#359) and ordered by it, so its messages are stamped `now + n`
+	// seconds: a conversation just written is today's, and files written in one tick do not tie.
+	const at = when ?? Date.now() / 1000 + n;
+	const stamp = new Date(at * 1000).toISOString();
 	write(
 		file,
-		{ type: "session", version: 3, id, timestamp: ts(300 + n), cwd },
+		{ type: "session", version: 3, id, timestamp: stamp, cwd },
 		[
-			user(`s${hex}000001`, null, 300 + n, `${title}?`),
-			assistant(`s${hex}000002`, `s${hex}000001`, 300 + n, [{ type: "text", text: `${title}.` }], {
+			user(`s${hex}000001`, null, stamp, `${title}?`),
+			assistant(`s${hex}000002`, `s${hex}000001`, stamp, [{ type: "text", text: `${title}.` }], {
 				...USAGE_A1,
 				cost: cost ?? USAGE_A1.cost,
 			}),
 		],
 		title,
 	);
-	const at = Date.now() / 1000 + n;
 	utimesSync(file, at, at);
 	return file;
 }
