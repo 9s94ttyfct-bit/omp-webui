@@ -35,6 +35,7 @@ import { api, ownerPage, sessionActions } from "../lib/api.ts";
 import { setArchived } from "../lib/archive.ts";
 import { dateGroup } from "../lib/format.ts";
 import { lazyChunk } from "../lib/lazy-chunk.ts";
+import { versionNamed } from "../lib/page-build.ts";
 import { useLayout } from "../lib/panel-widths.ts";
 import { askProject, moveToProject } from "../lib/project-actions.ts";
 import {
@@ -789,7 +790,7 @@ export function Sidebar() {
 								<NavGroup variant="rows" surface="sidebar" group="bottom" notOwner={notOwner} />
 								<div className="flex items-center gap-1 pl-2.5">
 									<div className="min-w-0 flex-1 truncate text-xs text-faint" data-testid="app-versions">
-										{meta ? `omp ${meta.ompVersion} · webui ${meta.serverVersion}` : null}
+										{meta ? `omp ${meta.ompVersion} · webui ${versionNamed(meta.serverVersion)}` : null}
 									</div>
 									<IconButton
 										label={t("shell.navFold")}

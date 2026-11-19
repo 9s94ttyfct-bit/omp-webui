@@ -315,6 +315,7 @@
     "tests/unit/config-watch.test.ts": 214,
     "tests/unit/step-cost.test.ts": 210,
     "tests/unit/remote-run.test.ts": 200,
+    "tests/unit/i18n-first-load.test.ts": 195,
     "tests/unit/store-memory.test.ts": 175,
     "tests/unit/overlay-keep.test.ts": 166,
     "tests/unit/transcript-cost.test.ts": 165,
@@ -323,7 +324,6 @@
     "tests/unit/session-prune.test.ts": 161,
     "tests/unit/push-hub.test.ts": 156,
     "tests/unit/panel-config.test.ts": 153,
-    "tests/unit/i18n-first-load.test.ts": 152,
     "tests/unit/pty.test.ts": 151,
     "tests/unit/session-pins.test.ts": 151,
     "tests/unit/dirs.test.ts": 150,
@@ -654,6 +654,7 @@
     "tests/unit/user-message.test.ts": 5,
     "tests/unit/web-url.test.ts": 5,
     "tests/unit/issue-prompt.test.ts": 4,
+    "tests/unit/page-build.test.ts": 2,
     "tests/unit/ask-checks.test.ts": 1
   }
 }

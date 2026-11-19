@@ -207,6 +207,8 @@ export const en = {
 
 	// Store toasts
 	storeLoadSessionsFailed: "Could not load sessions: {error}",
+	newBuild: "omp-webui was updated: this page still runs {page}, the server runs {server}. Reload to switch.",
+	newBuildReload: "Reload",
 	storeExtensionError: "Extension error: {error}",
 	sessionCostWithSubagents: "{cost} (incl. {sub} by subagents)",
 	sessionCostWithAdvisor: "{cost} (incl. {advisor} by the advisor)",

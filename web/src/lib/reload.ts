@@ -47,6 +47,12 @@ export function reloadOnce({
 	return true;
 }
 
+/** Reload at the person's word (the update notice's button): what the page holds unsent is written out first. */
+export function reloadNow(flush: () => void = flushDrafts, reload: () => void = () => location.reload()): void {
+	flush();
+	reload();
+}
+
 /** How many fetches nobody has asked for yet (see `quietly`) are on their way. */
 let quiet = 0;
 

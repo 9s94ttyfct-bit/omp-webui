@@ -14,6 +14,7 @@ import {
 	missingField,
 	summaryMax,
 } from "../lib/feedback.ts";
+import { versionNamed } from "../lib/page-build.ts";
 import { useScrolls } from "../lib/scrolls.ts";
 import { useApp } from "../store/app.ts";
 import { Button, cx, Modal } from "./ui.tsx";
@@ -68,7 +69,7 @@ export function Feedback() {
 	const issue = useMemo(() => {
 		const diagnostics = attach
 			? diagnosticsText({
-					webui: meta?.serverVersion ?? "unknown",
+					webui: meta ? versionNamed(meta.serverVersion) : "unknown",
 					omp: meta?.ompVersion ?? "unknown",
 					os: server?.os,
 					mode: server?.mode,

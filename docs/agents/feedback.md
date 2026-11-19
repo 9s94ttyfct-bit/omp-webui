@@ -36,6 +36,8 @@ Before anything is shown, tokens, keys (private keys included), passwords, cooki
 
 The dialog's diagnostics come from `/api/diagnostics` (see the server-and-security topic).
 
+The web UI version in the diagnostics is the server's, and the page's own beside it while they differ (`0.27.0 (page 0.26.0)`): a tab left open across an update still runs the old page code, and the page tells its person so with a *Reload* button.
+
 ## Limits and caveats
 
 - Sending needs a GitHub account and a browser that can open github.com; the app itself files nothing.

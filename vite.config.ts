@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import pkg from "./package.json";
 import { chunkModules } from "./scripts/lib/chunk-modules.ts";
 import { pdfjsAssets } from "./scripts/lib/pdfjs-assets.ts";
 
@@ -17,6 +18,8 @@ const UI_PACKAGES =
 
 export default defineConfig({
 	root: "web",
+	// The version this page's code is built as (`web/src/lib/page-build.ts`): a tab left open across an update compares it.
+	define: { __APP_VERSION__: JSON.stringify(pkg.version) },
 	plugins: [
 		react(),
 		tailwindcss(),
