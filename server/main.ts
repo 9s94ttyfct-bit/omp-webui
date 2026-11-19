@@ -1654,8 +1654,11 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			return json({
 				os: await platform.describe(),
 				mode: modes.mode,
-				// The names a report must not carry: this computer's own, and the tunnel's public hostname.
-				hosts: [hostname(), ...(await platform.computerNames()), remoteAuth.hostname()].filter((h): h is string => !!h),
+				// The names a report must not carry: this computer's own and the tunnel's public hostname, for the person's own
+				// page; any other page (a signed-in one through the tunnel, or on the network) is not told this computer's names.
+				hosts: fromOwner(req)
+					? [hostname(), ...(await platform.computerNames()), remoteAuth.hostname()].filter((h): h is string => !!h)
+					: [],
 			});
 		case "/api/repo":
 			return json({ public: await repoVisibility.isPublic() });

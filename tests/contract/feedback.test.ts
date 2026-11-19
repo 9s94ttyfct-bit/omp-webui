@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { userInfo } from "node:os";
+import { hostname, userInfo } from "node:os";
 import { startTestServer, type TestServer } from "../support/server.ts";
 
 /** `/api/diagnostics` (for a bug report) and `/api/repo` (the star prompt's gate), against a stand-in for GitHub's API. */
@@ -26,8 +26,8 @@ afterAll(async () => {
 	github?.stop(true);
 });
 
-const get = (path: string) =>
-	fetch(`${s.url}${path}`, { headers: { "x-omp-webui-token": s.accessToken, Origin: s.url } });
+const get = (path: string, extra: Record<string, string> = {}) =>
+	fetch(`${s.url}${path}`, { headers: { "x-omp-webui-token": s.accessToken, Origin: s.url, ...extra } });
 
 test("/api/meta names the OS user, for the report to leave out", async () => {
 	const m: { user: string; home: string } = await (await get("/api/meta")).json();
@@ -41,6 +41,14 @@ test("/api/diagnostics names the machine and the mode", async () => {
 	const d: { os: string; mode: string } = await r.json();
 	expect(d.os).toMatch(/^(macOS \d+(\.\d+)*|\w+ \S+) \(\w+\)$/);
 	expect(d.mode).toBe("full");
+});
+
+test("/api/diagnostics names this computer to the person's own page only", async () => {
+	const own: { hosts: string[] } = await (await get("/api/diagnostics")).json();
+	expect(own.hosts).toContain(hostname());
+	const elsewhere = await get("/api/diagnostics", { "x-forwarded-for": "203.0.113.7" });
+	expect(elsewhere.status).toBe(200);
+	expect(((await elsewhere.json()) as { hosts: string[] }).hosts).toEqual([]);
 });
 
 test("/api/repo is false while GitHub hides the repository, asked anonymously, and the answer is kept", async () => {
