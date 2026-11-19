@@ -57,7 +57,7 @@ export async function startLive(page: Page, tap: SocketTap, title: string, probe
 	}).toPass({ timeout: 30_000 });
 	const composer = page.getByTestId("composer");
 	await composer.fill(`!echo ${probe}`);
-	await composer.press("Enter");
+	await page.getByTestId("send").click();
 	await expect(page.getByText(probe, { exact: true })).toBeVisible({ timeout: 30_000 });
 	const bash = tap.sent.findLast((m) => m.t === "rpc" && m.command?.type === "bash");
 	if (typeof bash?.liveId !== "string") throw new Error("the page did not run the command");

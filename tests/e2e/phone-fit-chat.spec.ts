@@ -71,7 +71,7 @@ test("the paused banner gives its text the width and puts its buttons under it",
 	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
 	const composer = page.getByTestId("composer");
 	await composer.fill("!/bin/sleep 4 && echo phone-paused-$((1+1))");
-	await composer.press("Enter");
+	await page.getByTestId("send").click();
 	await page.getByTestId("pause").click();
 	const banner = page.getByTestId("paused-banner");
 	await expect(banner).toBeVisible();

@@ -93,7 +93,7 @@ async function open(use: Use, win: Win, look: Look = {}): Promise<Chat> {
 	const composer = page.getByTestId("composer");
 	for (const i of [1, 2]) {
 		await composer.fill(`!seq 1 100; echo long-${i}`);
-		await composer.press("Enter");
+		await page.getByTestId("send").click();
 		await expect(page.getByTestId("transcript")).toContainText(`long-${i}`);
 	}
 	return {

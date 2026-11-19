@@ -522,7 +522,7 @@ test.describe("iPhone 15 on its side, a command running", () => {
 			const { page } = phone;
 			const composer = page.getByTestId("composer");
 			await composer.fill("!sleep 25");
-			await composer.press("Enter");
+			await page.getByTestId("send").click();
 			const stop = page.getByTestId("pending-stop");
 			await expect(stop).toBeVisible();
 			bashApproval(phone);

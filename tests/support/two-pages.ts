@@ -53,7 +53,7 @@ export async function runningTurn(world: World, browser: Browser, n: number, tit
 	await show(pages.local, title);
 	await show(pages.remote, title);
 	await pages[starter].getByTestId("composer").fill(`Begin ${title}`);
-	await pages[starter].getByTestId("composer").press("Enter");
+	await pages[starter].getByTestId("send").click();
 	const liveId = await world.turnOf(file);
 	for (const side of SIDES) await expect(pages[side].getByText(`Begin ${title}`)).toBeVisible();
 	return { pages, liveId, file };
