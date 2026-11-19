@@ -42,8 +42,9 @@ import { TunnelError } from "./remote-tunnel.ts";
  *   - who is looking: a conversation that a page which is not the person's own (one that holds only the token: on the
  *     network, or behind a proxy without Access) has been on is refused, since that page could answer omp's approval prompt.
  *
- * The agent cannot reach the switch, `enabled` or `autostart` through them, and no Cloudflare API
- * token is asked for or kept: the dashboard steps stay the person's.
+ * The agent cannot reach the AI-help switch, `autostart` or the shell, file transfer and confirm switches through them. It
+ * does start and stop the tunnel (`start` and `stop` set `enabled`, as the card's buttons do), each call through omp's
+ * approval. No Cloudflare API token is asked for or kept: the dashboard steps stay the person's.
  */
 
 /** What the server must do for this: start a conversation that serves the tools, and know who is on one. */
