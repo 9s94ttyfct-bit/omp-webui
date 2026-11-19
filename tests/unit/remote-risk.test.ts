@@ -2665,3 +2665,33 @@ describe("tar -C is the folder the names are read from or put in, not the archiv
 		expect(shell(command)).toEqual(kinds);
 	});
 });
+
+describe("a global option before the subcommand does not hide it (#420)", () => {
+	test.each<[string, RiskKind]>([
+		["npm --prefix x publish", "publish"],
+		["npm -w packages/a publish", "publish"],
+		["pnpm -C packages/a publish", "publish"],
+		["pnpm --filter a publish", "publish"],
+		["yarn --cwd packages/a publish", "publish"],
+		["npm --prefix x unpublish x@1.0.0", "remote_delete"],
+		["gh -R owner/repo repo delete --yes", "remote_delete"],
+		["gh --repo owner/repo release create v1", "publish"],
+		["kubectl -n prod delete pod x", "remote_delete"],
+		["kubectl --context prod delete ns x", "remote_delete"],
+		["helm -n prod uninstall x", "remote_delete"],
+		["docker -H ssh://h volume rm v", "remote_delete"],
+		["docker --context prod push img", "publish"],
+	])("%s", (command, kind) => {
+		expect(shell(command)).toEqual([kind]);
+	});
+
+	test.each([
+		"npm --prefix x install",
+		"npm --registry https://r.example view x",
+		"gh -R owner/repo issue list",
+		"kubectl -n prod get pods",
+		"docker -H ssh://h ps",
+	])("%s is not asked about", (command) => {
+		expect(shell(command)).toEqual([]);
+	});
+});

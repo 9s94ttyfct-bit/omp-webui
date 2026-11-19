@@ -1502,6 +1502,32 @@ function afterPrivilegeOptions(args: readonly Word[]): Word[] {
 	return args.slice(args[i]?.text === "--" ? i + 1 : i);
 }
 
+/**
+ * The options a tool takes before its subcommand that take a value, for the subcommand to be read where it is (`gh -R o/r
+ * repo delete`, `npm --prefix x publish`, `kubectl -n ns delete …`, #420).
+ */
+const GLOBAL_VALUES: Readonly<Record<string, Table>> = {
+	gh: table("-R", "--repo", "--hostname"),
+	npm: table("-C", "--prefix", "-w", "--workspace", "--userconfig", "--registry", "--cache", "--loglevel"),
+	pnpm: table("-C", "--dir", "-F", "--filter", "--prefix", "--registry", "--loglevel", "--reporter"),
+	yarn: table("--cwd", "--registry"),
+	bun: table("--cwd", "-c", "--config"),
+	kubectl: table("-n", "--namespace", "--context", "--kubeconfig", "--cluster", "--user", "-s", "--server", "--token"),
+	helm: table("-n", "--namespace", "--kube-context", "--kubeconfig"),
+	docker: table("-H", "--host", "-c", "--context", "--config", "-l", "--log-level"),
+	podman: table("-c", "--connection", "--url", "--root", "--runroot", "--log-level"),
+	gcloud: table("--project", "--account", "--configuration"),
+};
+
+/** The operands of `args` once the tool's global options before its subcommand, and their values, are left out (#420). */
+function subcommandOperands(name: string, args: readonly Word[]): Word[] {
+	const valued = GLOBAL_VALUES[name];
+	let i = 0;
+	while (i < args.length && args[i].text.startsWith("-") && args[i].text !== "--")
+		i += listed(valued, args[i].text) ? 2 : 1;
+	return splitArgs(args.slice(i)).operands;
+}
+
 /** Whether `stage` reads a script from its input and runs it: a shell with no script, an interpreter with no program. */
 function readsStdinAsCode(stage: Command): boolean {
 	const { name } = stage;
@@ -2564,7 +2590,9 @@ class Scan {
 			return cwd;
 		}
 		const { name, args } = cmd;
-		const { opts, operands } = splitArgs(args);
+		const split = splitArgs(args);
+		const { opts } = split;
+		const operands = Object.hasOwn(GLOBAL_VALUES, name) ? subcommandOperands(name, args) : split.operands;
 		// `for f in a b c`: the variable stands for those words in the commands that follow.
 		if (name === "for" && args.length >= 2 && args[1].text === "in") this.loops.set(args[0].text, args.slice(2));
 
