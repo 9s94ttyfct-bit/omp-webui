@@ -181,6 +181,7 @@ export const en = {
 	paletteMessages: "Messages",
 	paletteMoreOne: "{n} more in this conversation",
 	paletteMore: "{n} more in this conversation",
+	paletteMoreCapped: "Not listed: {n} more. Narrow the search to see them.",
 	paletteArchived: "Archived",
 	paletteUntitled: "Untitled",
 	paletteRoleUser: "You:",

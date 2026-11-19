@@ -94,6 +94,11 @@ function ToastItem({ toast, crowded }: { toast: Toast; crowded: boolean }) {
 						{toast.text}
 					</div>
 				)}
+				{toast.count && toast.count > 1 ? (
+					<span className="text-xs text-faint" data-testid="toast-count">
+						×{toast.count}
+					</span>
+				) : null}
 				{toast.action ? (
 					<button
 						type="button"

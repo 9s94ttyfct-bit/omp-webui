@@ -17,7 +17,7 @@ import { useShallow } from "zustand/react/shallow";
 import "../i18n/later.ts";
 import { type MessageKey, useT } from "../i18n/index.ts";
 import { api, type OmpStats, type StatsBucket } from "../lib/api.ts";
-import { costColumn, fmtCost, fmtCostExact, fmtDuration, fmtTime, fmtTokens } from "../lib/format.ts";
+import { costColumn, fmtCost, fmtCostExact, fmtDuration, fmtInt, fmtTime, fmtTokens } from "../lib/format.ts";
 import { setPref } from "../lib/prefs.ts";
 import { projectLabels } from "../lib/usage-projects.ts";
 import { dailyByModel, localDate, OTHER_MODELS, paddedDays, seriesColor } from "../lib/usage-series.ts";
@@ -141,7 +141,7 @@ function BucketTable({
 								<td className="max-w-64 truncate px-4 py-2 @max-xl:max-w-36" title={titleOf(b)}>
 									{labelOf(b)}
 								</td>
-								<td className="px-2 py-2 text-right tabular-nums">{b.totalRequests.toLocaleString()}</td>
+								<td className="px-2 py-2 text-right tabular-nums">{fmtInt(b.totalRequests)}</td>
 								<td className="px-2 py-2 text-right tabular-nums">{fmtTokens(b.totalInputTokens)}</td>
 								<td className="px-2 py-2 text-right tabular-nums @max-xl:hidden">{fmtTokens(b.totalOutputTokens)}</td>
 								<td className="px-2 py-2 text-right tabular-nums @max-xl:hidden">
@@ -352,7 +352,7 @@ export function UsagePage() {
 							<Stat
 								id="Requests"
 								label={t("pages.usageRequests")}
-								value={o.totalRequests.toLocaleString()}
+								value={fmtInt(o.totalRequests)}
 								sub={t("pages.usageErrors", { pct: (o.errorRate * 100).toFixed(1) })}
 							/>
 							<Stat

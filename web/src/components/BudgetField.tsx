@@ -1,5 +1,6 @@
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
+import { fmtInt } from "../lib/format.ts";
 import { parseTokenAmount } from "../lib/token-amount.ts";
 import { cx } from "./ui.tsx";
 
@@ -47,9 +48,7 @@ export function BudgetField({
 					role="status"
 					className={cx("mt-1 text-xs", amount === null ? "text-danger" : "text-muted tabular-nums")}
 				>
-					{amount === null
-						? t("panel.goalBudgetInvalid")
-						: t("panel.goalBudgetParsed", { tokens: amount.toLocaleString() })}
+					{amount === null ? t("panel.goalBudgetInvalid") : t("panel.goalBudgetParsed", { tokens: fmtInt(amount) })}
 				</p>
 			)}
 		</>

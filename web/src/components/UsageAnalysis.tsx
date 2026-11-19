@@ -5,7 +5,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import "../i18n/later.ts";
 import { type MessageKey, useT } from "../i18n/index.ts";
 import type { StatsBucket } from "../lib/api.ts";
-import { costColumn, fmtClock, fmtCost, fmtCostExact, fmtDuration, fmtTokens } from "../lib/format.ts";
+import { costColumn, fmtClock, fmtCost, fmtCostExact, fmtDuration, fmtInt, fmtTokens } from "../lib/format.ts";
 import type { ProjectLabel } from "../lib/usage-projects.ts";
 import { ScrollPane } from "./ScrollPane.tsx";
 import { cx } from "./ui.tsx";
@@ -93,7 +93,7 @@ export function RangeConversations({
 								className="hidden text-right text-xs tabular-nums text-muted sm:block"
 								data-testid="usage-session-requests"
 							>
-								{r.requests.toLocaleString()}
+								{fmtInt(r.requests)}
 							</span>
 							<span className="text-right text-xs tabular-nums text-muted" data-testid="usage-session-tokens">
 								{fmtTokens(r.tokens)}
@@ -152,7 +152,7 @@ const COLUMNS: Column[] = [
 		id: "requests",
 		label: "pages.usageColRequests",
 		value: (b) => b.totalRequests,
-		format: (v) => v.toLocaleString(),
+		format: (v) => fmtInt(v),
 		first: "desc",
 	},
 	{
@@ -311,8 +311,8 @@ export function ToolsTable({ rows }: { rows: UsageTool[] }) {
 									<td className="max-w-48 truncate px-4 py-2" title={r.tool}>
 										{r.tool}
 									</td>
-									<td className="px-2 py-2 text-right tabular-nums">{r.calls.toLocaleString()}</td>
-									<td className="px-2 py-2 text-right tabular-nums">{r.errors.toLocaleString()}</td>
+									<td className="px-2 py-2 text-right tabular-nums">{fmtInt(r.calls)}</td>
+									<td className="px-2 py-2 text-right tabular-nums">{fmtInt(r.errors)}</td>
 									<td className="px-2 py-2 text-right tabular-nums">
 										{r.errorRate === null ? "–" : `${(r.errorRate * 100).toFixed(1)}%`}
 									</td>
@@ -361,7 +361,7 @@ export function ErrorsTable({ rows }: { rows: UsageError[] }) {
 											{r.model}
 										</span>
 									</td>
-									<td className="px-2 py-2 text-right tabular-nums">{r.count.toLocaleString()}</td>
+									<td className="px-2 py-2 text-right tabular-nums">{fmtInt(r.count)}</td>
 									<td className="px-4 py-2 text-right text-xs tabular-nums text-muted">{fmtClock(r.lastTimestamp)}</td>
 								</tr>
 							))}
@@ -431,7 +431,7 @@ export function TimeOfDay({ hours, timeZone }: { hours: UsageHour[]; timeZone: s
 		t("pages.usageHourCell", {
 			from: clock(h.hour),
 			to: clock(h.hour + 1),
-			requests: h.requests.toLocaleString(),
+			requests: fmtInt(h.requests),
 			cost: fmtCost(h.cost),
 		});
 	return (

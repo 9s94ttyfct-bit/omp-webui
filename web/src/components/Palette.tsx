@@ -436,6 +436,11 @@ export function Palette() {
 													{t(h.more === 1 ? "shell.paletteMoreOne" : "shell.paletteMore", { n: h.more })}
 												</Command.Item>
 											) : null}
+											{h.more && expanded.has(h.file) ? (
+												<div className="py-1.5 pl-9 text-xs text-faint" data-testid="search-more-capped">
+													{t("shell.paletteMoreCapped", { n: h.more })}
+												</div>
+											) : null}
 										</Fragment>
 									))}
 								</Command.Group>

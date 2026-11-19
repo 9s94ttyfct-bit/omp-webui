@@ -14,6 +14,7 @@ import {
 	Wrench,
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { fmtInt } from "../lib/format.ts";
 import "../i18n/later.ts";
 import { t, useT } from "../i18n/index.ts";
 import {
@@ -574,7 +575,7 @@ function Section({
 					className="inline-flex min-h-6 items-center text-xs text-accent hover:underline"
 					onClick={() => setFull((f) => !f)}
 				>
-					{full ? t("chat.toolShowLess") : t("chat.toolShowAll", { n: text.length.toLocaleString() })}
+					{full ? t("chat.toolShowLess") : t("chat.toolShowAll", { n: fmtInt(text.length) })}
 				</button>
 			) : null}
 		</div>

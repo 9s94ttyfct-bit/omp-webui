@@ -3,6 +3,7 @@ import { ExternalLink, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import "../i18n/later.ts";
 import { type MessageKey, useT } from "../i18n/index.ts";
+import { fmtClock } from "../lib/format.ts";
 import { describeHolds, needsYou } from "../lib/omp-holds.ts";
 import { useApp } from "../store/app.ts";
 import { ompApi, useOmp } from "../store/omp.ts";
@@ -105,7 +106,7 @@ export function OmpSettings() {
 					)}
 					{release ? (
 						<span className="block text-xs text-muted">
-							{t("omp.settingsCheckedAt", { when: new Date(release.checkedAt).toLocaleTimeString() })}
+							{t("omp.settingsCheckedAt", { when: fmtClock(release.checkedAt) })}
 						</span>
 					) : null}
 					{state.releaseError ? (

@@ -3,7 +3,7 @@ import { Archive, ArchiveRestore, ArrowLeft, CircleAlert, Copy, Pencil, Trash2 }
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useT } from "../i18n/index.ts";
 import { copyText } from "../lib/clipboard.ts";
-import { fmtRelative, fmtTime, shortPath } from "../lib/format.ts";
+import { fmtInt, fmtRelative, fmtTime, shortPath } from "../lib/format.ts";
 import { isGone, isStale, memoryApi, memoryErrorText } from "../lib/memory-api.ts";
 import {
 	changeOf,
@@ -405,8 +405,8 @@ export function MemoryDetail({
 					</label>
 					<div className={tooLong ? "text-xs text-danger" : "text-xs text-faint"} data-testid="memory-count">
 						{t("memory.characters", {
-							n: edit.content.length.toLocaleString(),
-							max: MEMORY_CONTENT_MAX.toLocaleString(),
+							n: fmtInt(edit.content.length),
+							max: fmtInt(MEMORY_CONTENT_MAX),
 						})}
 					</div>
 					{secret ? (

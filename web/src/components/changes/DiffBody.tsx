@@ -3,6 +3,7 @@ import { FileMinus, FileQuestion } from "lucide-react";
 import { memo, useEffect, useMemo, useState } from "react";
 import { useT } from "../../i18n/index.ts";
 import { linesOfHighlighted, sideIndex, sideText, splitRows } from "../../lib/changes-rows.ts";
+import { fmtInt } from "../../lib/format.ts";
 import { highlight, highlighted } from "../../lib/highlight.ts";
 import { cx, Empty } from "../ui.tsx";
 
@@ -208,12 +209,12 @@ export const DiffBody = memo(function DiffBody({
 					data-testid="changes-show-all"
 					onClick={() => setAll((a) => !a)}
 				>
-					{all ? t("files.diffShowLess") : t("files.diffShowAll", { n: total.toLocaleString() })}
+					{all ? t("files.diffShowLess") : t("files.diffShowAll", { n: fmtInt(total) })}
 				</button>
 			) : null}
 			{diff.truncated ? (
 				<div className="px-3 py-2 text-xs text-faint" data-testid="changes-truncated">
-					{t("files.diffTruncated", { n: total.toLocaleString() })}
+					{t("files.diffTruncated", { n: fmtInt(total) })}
 				</div>
 			) : null}
 		</div>

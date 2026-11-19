@@ -62,6 +62,53 @@ test("the Overview says the plugin list could not be read, and Retry reads it ag
 	await expect(panel.getByTestId("plugins-stat-installed")).not.toContainText("–");
 });
 
+test("a plugin setting the server refuses says why in its dialog; a dash value is set; Reset shows the default again", async ({
+	page,
+	e2eServer,
+}) => {
+	const folder = join(e2eServer.root, "e2e-settings-plugin");
+	mkdirSync(folder, { recursive: true });
+	writeFileSync(
+		join(folder, "package.json"),
+		JSON.stringify({
+			name: "e2e-settings-plugin",
+			version: "0.1.0",
+			omp: { settings: { greeting: { type: "string", default: "hi" } } },
+		}),
+	);
+	await page.goto("/#/plugins");
+	await page.getByTestId("plugins-tab-discover").click();
+	await page.getByTestId("manual-spec").fill(folder);
+	await page.getByTestId("manual-install").click();
+	await expect(page.getByTestId("plugins-outcome")).toHaveAttribute("data-state", "done", { timeout: 60_000 });
+	await page.getByTestId("plugins-tab-installed").click();
+	const card = page.locator('[data-testid="plugin-card"][data-plugin="e2e-settings-plugin"]');
+	await card.getByTestId("plugin-settings").click();
+	const row = page.locator('[data-testid="plugin-setting"][data-key="greeting"]');
+	const field = row.getByTestId("plugin-setting-input");
+	await expect(field).toHaveValue("hi");
+
+	// Refused (omp reads -h as its help flag): said in the dialog, beside the field, which keeps what was typed.
+	await field.fill("-h");
+	await row.getByTestId("plugin-setting-save").click();
+	await expect(row.getByTestId("plugin-setting-error")).toContainText("help flag");
+	await expect(field).toHaveValue("-h");
+
+	// A text that starts with a dash is set as it is; and Reset puts the default in the field, not the removed value.
+	await field.fill("-x  y");
+	await row.getByTestId("plugin-setting-save").click();
+	await expect(row.getByTestId("plugin-setting-error")).toHaveCount(0);
+	await expect(row.getByTestId("plugin-setting-reset")).toBeVisible();
+	await row.getByTestId("plugin-setting-reset").click();
+	await expect(row.getByTestId("plugin-setting-reset")).toHaveCount(0);
+	await expect(field).toHaveValue("hi");
+
+	await page.keyboard.press("Escape");
+	await card.getByTestId("plugin-uninstall").click();
+	await page.getByTestId("plugin-uninstall-confirm").click();
+	await expect(card).toHaveCount(0, { timeout: 60_000 });
+});
+
 test("a scope of Project goes back to User when the page's folder becomes Home, where no project is", async ({
 	page,
 }) => {

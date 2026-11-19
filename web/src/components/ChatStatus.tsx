@@ -5,7 +5,7 @@ import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
 import { askChangeFolder } from "../lib/change-folder.ts";
 import { contextLevel } from "../lib/context-usage.ts";
-import { fmtCost, fmtCostExact, shortPath } from "../lib/format.ts";
+import { fmtCost, fmtCostExact, fmtInt, shortPath } from "../lib/format.ts";
 import { useFitSteps } from "../lib/media.ts";
 import { useStartConfig } from "../lib/model-config.ts";
 import { useNow } from "../lib/now.ts";
@@ -287,8 +287,8 @@ export function ChatStatus({
 				<span
 					className={cx(ITEM, "shrink-0")}
 					title={t("chat.contextTip", {
-						tokens: ctx.tokens.toLocaleString(),
-						window: ctx.contextWindow.toLocaleString(),
+						tokens: fmtInt(ctx.tokens),
+						window: fmtInt(ctx.contextWindow),
 					})}
 					data-testid="status-context"
 					data-percent={Math.round(ctx.percent)}

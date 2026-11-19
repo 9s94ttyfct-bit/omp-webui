@@ -2,7 +2,7 @@ import type { SessionEntry } from "@shared/protocol.ts";
 import { useMemo, useRef } from "react";
 import "../i18n/later.ts";
 import { useLang, useT } from "../i18n/index.ts";
-import { fmtCost, fmtCostExact, fmtDuration, fmtTime, fmtTokens } from "../lib/format.ts";
+import { fmtCost, fmtCostExact, fmtDuration, fmtInt, fmtTime, fmtTokens } from "../lib/format.ts";
 import { useLiveMotion, useOnBeat } from "../lib/live-motion.ts";
 import type { AgentMessage } from "../lib/messages.ts";
 import { useModelCatalog } from "../lib/model-config.ts";
@@ -76,10 +76,10 @@ function TurnDetail({ stats }: { stats: TurnStats }) {
 			<div>
 				{t("chat.usageSummary", {
 					requests: t(stats.requests === 1 ? "chat.usageRequest" : "chat.usageRequests", { n: stats.requests }),
-					input: stats.input.toLocaleString(),
-					output: stats.output.toLocaleString(),
-					cacheRead: stats.cacheRead.toLocaleString(),
-					cacheWrite: stats.cacheWrite.toLocaleString(),
+					input: fmtInt(stats.input),
+					output: fmtInt(stats.output),
+					cacheRead: fmtInt(stats.cacheRead),
+					cacheWrite: fmtInt(stats.cacheWrite),
 					cost: fmtCostExact(stats.cost),
 				})}
 			</div>
@@ -89,10 +89,10 @@ function TurnDetail({ stats }: { stats: TurnStats }) {
 						<div key={i} className="text-faint">
 							{t("chat.usageStep", {
 								n: i + 1,
-								input: s.input.toLocaleString(),
-								output: s.output.toLocaleString(),
-								cacheRead: s.cacheRead.toLocaleString(),
-								cacheWrite: s.cacheWrite.toLocaleString(),
+								input: fmtInt(s.input),
+								output: fmtInt(s.output),
+								cacheRead: fmtInt(s.cacheRead),
+								cacheWrite: fmtInt(s.cacheWrite),
 								cost: fmtCostExact(s.cost),
 							})}
 							{/* How long the request took, when its first token came and its speed: whatever omp recorded of them. */}

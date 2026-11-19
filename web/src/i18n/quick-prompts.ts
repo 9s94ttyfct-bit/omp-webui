@@ -28,6 +28,8 @@ export const en = {
 	cardAdd: "Add a quick prompt",
 	cardRestore: "Restore the defaults",
 	cardRestoreDone: "The built-ins are back as shipped: Save to keep them",
+	cardRestoreFull:
+		"There is no room for the built-ins: remove at least {n} of your own prompts first (the list holds at most 20).",
 	cardEmpty: "No quick prompts.",
 	fieldName: "Name",
 	fieldText: "Message",

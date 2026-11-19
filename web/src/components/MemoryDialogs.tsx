@@ -2,6 +2,7 @@ import { looksLikeSecret, MEMORY_CONTENT_MAX, type MemoryDetail, type MemoryOver
 import { CircleAlert } from "lucide-react";
 import { useState } from "react";
 import { useT } from "../i18n/index.ts";
+import { fmtInt } from "../lib/format.ts";
 import { memoryApi, memoryErrorText } from "../lib/memory-api.ts";
 import { addableProjects, importanceOf, projectNames } from "../lib/memory-view.ts";
 import { useApp } from "../store/app.ts";
@@ -226,7 +227,7 @@ function AddForm({
 				/>
 			</label>
 			<div className={tooLong ? "text-xs text-danger" : "text-xs text-faint"}>
-				{t("memory.characters", { n: content.length.toLocaleString(), max: MEMORY_CONTENT_MAX.toLocaleString() })}
+				{t("memory.characters", { n: fmtInt(content.length), max: fmtInt(MEMORY_CONTENT_MAX) })}
 			</div>
 			{secret ? (
 				<div role="status" className="space-y-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">

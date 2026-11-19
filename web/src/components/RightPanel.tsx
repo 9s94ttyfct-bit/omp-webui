@@ -25,7 +25,7 @@ import { useT } from "../i18n/index.ts";
 import { useCiBadge } from "../lib/ci-runs.ts";
 import { fmtElapsed } from "../lib/clock.ts";
 import type { Family } from "../lib/family.ts";
-import { fmtCost, fmtCostExact, fmtRelative, fmtTokens } from "../lib/format.ts";
+import { fmtCost, fmtCostExact, fmtInt, fmtRelative, fmtTokens } from "../lib/format.ts";
 import { PANEL_SHEET_QUERY, useMediaQuery } from "../lib/media.ts";
 import { blocks, messageOf } from "../lib/messages.ts";
 import { useNow } from "../lib/now.ts";
@@ -462,10 +462,10 @@ function SessionInfo({
 	} else if (summary) rows.push(["Messages", t("panel.statMessages"), String(summary.messageCount)]);
 	const { usage, subagents, advisor } = totals;
 	if (stats || summary || usage.cost > 0) {
-		rows.push(["Input tokens", t("panel.statInputTokens"), usage.input.toLocaleString()]);
-		rows.push(["Output tokens", t("panel.statOutputTokens"), usage.output.toLocaleString()]);
-		rows.push(["Cache read", t("panel.statCacheRead"), usage.cacheRead.toLocaleString()]);
-		rows.push(["Cache write", t("panel.statCacheWrite"), usage.cacheWrite.toLocaleString()]);
+		rows.push(["Input tokens", t("panel.statInputTokens"), fmtInt(usage.input)]);
+		rows.push(["Output tokens", t("panel.statOutputTokens"), fmtInt(usage.output)]);
+		rows.push(["Cache read", t("panel.statCacheRead"), fmtInt(usage.cacheRead)]);
+		rows.push(["Cache write", t("panel.statCacheWrite"), fmtInt(usage.cacheWrite)]);
 		rows.push(["Total cost", t("panel.statTotalCost"), fmtCostExact(totals.total.cost)]);
 		if (subagents.count > 0) rows.push(["Subagent cost", t("panel.statSubagentCost"), fmtCostExact(subagents.cost)]);
 		if (advisor.requests > 0) rows.push(["Advisor cost", t("panel.statAdvisorCost"), fmtCostExact(advisor.cost)]);

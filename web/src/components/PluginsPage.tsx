@@ -187,7 +187,7 @@ export function PluginsPage() {
 	);
 	/** A change that answers at once; the list is read again after it, failed or not. */
 	const quick = useCallback(
-		(key: string, work: () => Promise<{ reloads: PluginReload[] }>) => {
+		(key: string, work: () => Promise<{ reloads: PluginReload[] }>, onFailed?: (message: string) => void) => {
 			setPending(key);
 			return work()
 				.then((r) => {
@@ -195,7 +195,9 @@ export function PluginsPage() {
 					return true;
 				})
 				.catch((e: Error) => {
-					setOutcome({ error: e.message });
+					// A dialog that asked says why itself, beside what it asked: the page's panel is behind its backdrop.
+					if (onFailed) onFailed(e.message);
+					else setOutcome({ error: e.message });
 					return false;
 				})
 				.finally(() => {
@@ -883,10 +885,15 @@ function FeaturesDialog({
 	plugin: InstalledPlugin;
 	cwd: string | null;
 	onClose: () => void;
-	quick: (key: string, work: () => Promise<{ reloads: PluginReload[] }>) => Promise<boolean>;
+	quick: (
+		key: string,
+		work: () => Promise<{ reloads: PluginReload[] }>,
+		onFailed?: (message: string) => void,
+	) => Promise<boolean>;
 	busy: boolean;
 }) {
 	const t = useT();
+	const [failure, setFailure] = useState<string | null>(null);
 	const [on, setOn] = useState(() => new Set(plugin.features.filter((f) => f.enabled).map((f) => f.name)));
 	return (
 		<Modal
@@ -898,7 +905,8 @@ function FeaturesDialog({
 			<form
 				onSubmit={(e) => {
 					e.preventDefault();
-					void quick(`features:${plugin.id}`, () => pluginsApi.setFeatures(plugin.name, [...on], cwd)).then(
+					setFailure(null);
+					void quick(`features:${plugin.id}`, () => pluginsApi.setFeatures(plugin.name, [...on], cwd), setFailure).then(
 						(ok) => ok && onClose(),
 					);
 				}}
@@ -930,6 +938,11 @@ function FeaturesDialog({
 						</label>
 					))}
 				</fieldset>
+				{failure ? (
+					<p className="mt-3 break-words text-sm text-danger" role="alert" data-testid="plugin-features-error">
+						{failure}
+					</p>
+				) : null}
 				<div className="mt-4 flex justify-end gap-2">
 					<Button onClick={onClose}>{t("common.cancel")}</Button>
 					<Button type="submit" variant="primary" disabled={busy} data-testid="plugin-features-save">
@@ -950,11 +963,17 @@ function SettingsDialog({
 	plugin: InstalledPlugin;
 	cwd: string | null;
 	onClose: () => void;
-	quick: (key: string, work: () => Promise<{ reloads: PluginReload[] }>) => Promise<boolean>;
+	quick: (
+		key: string,
+		work: () => Promise<{ reloads: PluginReload[] }>,
+		onFailed?: (message: string) => void,
+	) => Promise<boolean>;
 }) {
 	const t = useT();
 	const [settings, setSettings] = useState<PluginSetting[] | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	// The setting whose save was refused, and why: said in its row, where the value was typed.
+	const [failure, setFailure] = useState<{ key: string; message: string } | null>(null);
 	const read = useCallback(() => {
 		setError(null);
 		pluginsApi
@@ -963,12 +982,18 @@ function SettingsDialog({
 			.catch((e: Error) => setError(e.message));
 	}, [plugin.name, cwd]);
 	useEffect(read, [read]);
-	const save = (key: string, value: string | null) =>
-		quick(`config:${plugin.id}:${key}`, async () => {
-			const r = await pluginsApi.setConfig(plugin.name, key, value, cwd);
-			setSettings(r.settings);
-			return r;
-		});
+	const save = (key: string, value: string | null) => {
+		setFailure(null);
+		return quick(
+			`config:${plugin.id}:${key}`,
+			async () => {
+				const r = await pluginsApi.setConfig(plugin.name, key, value, cwd);
+				setSettings(r.settings);
+				return r;
+			},
+			(message) => setFailure({ key, message }),
+		);
+	};
 	return (
 		<Modal open onOpenChange={(o) => !o && onClose()} title={t("plugins.settingsTitle", { name: plugin.name })} wide>
 			{error ? (
@@ -979,7 +1004,12 @@ function SettingsDialog({
 			{settings && settings.length > 0 ? (
 				<ul className="flex flex-col gap-3">
 					{settings.map((s) => (
-						<SettingRow key={s.key} setting={s} onSave={save} />
+						<SettingRow
+							key={s.key}
+							setting={s}
+							onSave={save}
+							failure={failure?.key === s.key ? failure.message : null}
+						/>
 					))}
 				</ul>
 			) : null}
@@ -990,12 +1020,23 @@ function SettingsDialog({
 function SettingRow({
 	setting,
 	onSave,
+	failure,
 }: {
 	setting: PluginSetting;
 	onSave: (key: string, value: string | null) => Promise<boolean>;
+	failure: string | null;
 }) {
 	const t = useT();
 	const [value, setValue] = useState(setting.secret ? "" : (setting.value ?? ""));
+	const [busy, setBusy] = useState(false);
+	// What omp stores is what the field shows: after a save, and after Reset to default (which removes the value).
+	useEffect(() => {
+		setValue(setting.secret ? "" : (setting.value ?? ""));
+	}, [setting.value, setting.secret]);
+	const run = (v: string | null) => {
+		setBusy(true);
+		return onSave(setting.key, v).finally(() => setBusy(false));
+	};
 	const shown = setting.secret
 		? setting.set
 			? t("plugins.settingsSecretSet")
@@ -1007,7 +1048,7 @@ function SettingRow({
 				: t("plugins.settingsDefault");
 	const submit = (e: FormEvent) => {
 		e.preventDefault();
-		void onSave(setting.key, value).then((ok) => ok && setting.secret && setValue(""));
+		void run(value).then((ok) => ok && setting.secret && setValue(""));
 	};
 	return (
 		<li className="rounded-xl border border-border p-3" data-testid="plugin-setting" data-key={setting.key}>
@@ -1032,15 +1073,20 @@ function SettingRow({
 						className="min-w-0 flex-1 basis-48 rounded-lg border border-border bg-bg-soft px-2.5 py-1.5 text-sm outline-none focus:border-faint"
 						data-testid="plugin-setting-input"
 					/>
-					<Button size="sm" type="submit" variant="primary" data-testid="plugin-setting-save">
+					<Button size="sm" type="submit" variant="primary" disabled={busy} data-testid="plugin-setting-save">
 						{t("plugins.save")}
 					</Button>
 					{setting.set ? (
-						<Button size="sm" onClick={() => void onSave(setting.key, null)} data-testid="plugin-setting-reset">
+						<Button size="sm" disabled={busy} onClick={() => void run(null)} data-testid="plugin-setting-reset">
 							{t("plugins.settingsReset")}
 						</Button>
 					) : null}
 				</div>
+				{failure ? (
+					<p className="break-words text-xs text-danger" role="alert" data-testid="plugin-setting-error">
+						{failure}
+					</p>
+				) : null}
 			</form>
 		</li>
 	);

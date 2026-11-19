@@ -150,10 +150,15 @@ export function parseQuickPrompts(value: string | null, seen: string | null = nu
 	return out;
 }
 
-/** The list *Restore the defaults* makes of `list`: the built-ins as shipped, then the person's own prompts. */
-export function restoredQuickPrompts(list: readonly QuickPrompt[]): QuickPrompt[] {
+/**
+ * The list *Restore the defaults* makes of `list`: the built-ins as shipped, then the person's own prompts. The list holds at
+ * most `QUICK_PROMPTS_MAX`, and none of the person's own is ever cut to make room: when they do not all fit, `over` says how
+ * many of them must be removed first.
+ */
+export function restoredQuickPrompts(list: readonly QuickPrompt[]): QuickPrompt[] | { over: number } {
 	const own = list.filter((p) => !BUILT_IN_IDS.includes(p.id));
-	return [...DEFAULT_QUICK_PROMPTS.map((p) => ({ ...p })), ...own.map((p) => ({ ...p }))].slice(0, QUICK_PROMPTS_MAX);
+	const all = [...DEFAULT_QUICK_PROMPTS.map((p) => ({ ...p })), ...own.map((p) => ({ ...p }))];
+	return all.length > QUICK_PROMPTS_MAX ? { over: all.length - QUICK_PROMPTS_MAX } : all;
 }
 
 /** The value kept for a list: null (nothing kept) when it is the defaults as shipped. */

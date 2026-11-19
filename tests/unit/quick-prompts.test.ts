@@ -63,6 +63,14 @@ test("Restore puts the built-ins back as shipped and keeps the person's own prom
 	expect(restoredQuickPrompts(list)).toEqual([...DEFAULT_QUICK_PROMPTS, ask]);
 });
 
+test("Restore cuts none of the person's own prompts to make room: it says how many must go first", () => {
+	const own = Array.from({ length: QUICK_PROMPTS_MAX }, (_, i) => ({ ...ask, id: `own${i}` }));
+	expect(restoredQuickPrompts(own)).toEqual({ over: DEFAULT_QUICK_PROMPTS.length });
+	// Exactly full is room enough.
+	const fits = own.slice(0, QUICK_PROMPTS_MAX - DEFAULT_QUICK_PROMPTS.length);
+	expect(restoredQuickPrompts(fits)).toHaveLength(QUICK_PROMPTS_MAX);
+});
+
 test("the list is cut at the most kept", () => {
 	const many = Array.from({ length: QUICK_PROMPTS_MAX + 5 }, (_, i) => ({ ...ask, id: `p${i}` }));
 	expect(parseQuickPrompts(JSON.stringify(many), ALL_SEEN)).toHaveLength(QUICK_PROMPTS_MAX);

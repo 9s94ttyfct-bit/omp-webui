@@ -1,5 +1,6 @@
 import { type MessageKey, t as translate, type Vars } from "../i18n/index.ts";
 import type { RpcState } from "../store/live.ts";
+import { fmtTimeOfDay, fmtWeekdayTime } from "./format.ts";
 
 /** What the status line says of an account past its usage limit (`usageLimit` of `get_state`), as omp's own status line does. */
 
@@ -10,10 +11,8 @@ const DAY_MS = 20 * 3600 * 1000;
 
 /** `02:30 PM`, or `Fri 02:30 PM` when it is not today: the time of an epoch-seconds reset on this machine's clock. */
 export function resetTime(sec: number, now = Date.now()): string {
-	const at = new Date(sec * 1000);
-	return at.getTime() - now > DAY_MS
-		? at.toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })
-		: at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+	const at = sec * 1000;
+	return at - now > DAY_MS ? fmtWeekdayTime(at) : fmtTimeOfDay(at);
 }
 
 /**

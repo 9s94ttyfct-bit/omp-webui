@@ -24,6 +24,7 @@ export const zh: Record<keyof typeof en, string> = {
 	cardAdd: "添加快速指令",
 	cardRestore: "恢复默认",
 	cardRestoreDone: "内置指令已恢复为默认：点“保存”即可保留",
+	cardRestoreFull: "放不下内置指令：请先至少删除 {n} 条你自己的指令（最多只能保留 20 条）。",
 	cardEmpty: "没有快速指令。",
 	fieldName: "名称",
 	fieldText: "消息",

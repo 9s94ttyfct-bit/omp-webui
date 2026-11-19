@@ -73,7 +73,10 @@ export function QuickPromptsSettings() {
 		}
 	};
 	const restore = () => {
-		setDraft((list) => restoredQuickPrompts(list));
+		const restored = restoredQuickPrompts(draft);
+		// None of the person's own prompts is dropped to make room for the built-ins: they say how many to remove first.
+		if ("over" in restored) return toast("error", t("quickPrompts.cardRestoreFull", { n: restored.over }));
+		setDraft(restored);
 		setTried(false);
 		toast("success", t("quickPrompts.cardRestoreDone"));
 	};

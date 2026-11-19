@@ -167,6 +167,7 @@ export const zh: Record<keyof typeof en, string> = {
 	paletteMessages: "消息",
 	paletteMoreOne: "此对话中还有 {n} 条",
 	paletteMore: "此对话中还有 {n} 条",
+	paletteMoreCapped: "还有 {n} 条未列出：缩小搜索范围再看。",
 	paletteArchived: "已归档",
 	paletteUntitled: "未命名",
 	paletteRoleUser: "你：",

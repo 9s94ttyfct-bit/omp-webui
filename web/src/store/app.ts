@@ -109,6 +109,8 @@ export interface Toast {
 	text: string;
 	/** A button on the toast, e.g. to open the conversation it is about. */
 	action?: ToastAction;
+	/** How many times this same notice came while it was up (absent: once). */
+	count?: number;
 }
 
 /** A user `!command` omp is running. */
@@ -291,6 +293,20 @@ export const useApp = create<AppState>((set, get) => ({
 		}
 	},
 	toast(level, text, action) {
+		// The same notice again while it is still up (an extension that fails on every tool call) is that toast once more, with a
+		// count, not another toast behind it: it is the newest again, and its clock starts over.
+		const same = get().toasts.find((o) => o.level === level && o.text === text && o.action?.label === action?.label);
+		if (same) {
+			const clock = toastClocks.get(same.id);
+			if (clock) {
+				clock.left = action ? 15_000 : level === "error" ? 9000 : 4500;
+				if (!clock.paused) runToastClock(same.id);
+			}
+			set((s) => ({
+				toasts: [...s.toasts.filter((o) => o.id !== same.id), { ...same, count: (same.count ?? 1) + 1, action }],
+			}));
+			return;
+		}
 		const id = Date.now() + Math.random();
 		// The stack keeps five: beyond that the oldest toast that is not an error goes (its countdown too). An error is
 		// never pushed out, as it may not have been shown yet (two are on the screen, the rest wait): it waits its turn.

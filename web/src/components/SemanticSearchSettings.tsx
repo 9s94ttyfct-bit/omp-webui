@@ -2,6 +2,7 @@ import type { SemanticFailure, SemanticStatus } from "@shared/semantic.ts";
 import { useEffect, useState } from "react";
 import "../i18n/later.ts";
 import { type MessageKey, useT } from "../i18n/index.ts";
+import { fmtInt } from "../lib/format.ts";
 import { fmtMem } from "../lib/host-rows.ts";
 import { semanticApi } from "../lib/semantic-api.ts";
 import { useApp } from "../store/app.ts";
@@ -157,8 +158,8 @@ export function SemanticSearchSettings() {
 						status.index.running && status.index.indexed < status.index.total ? (
 							<Progress
 								label={t("pages.settingsSemanticIndexing", {
-									done: status.index.indexed.toLocaleString(),
-									total: status.index.total.toLocaleString(),
+									done: fmtInt(status.index.indexed),
+									total: fmtInt(status.index.total),
 								})}
 								value={status.index.indexed}
 								max={status.index.total}
@@ -166,7 +167,7 @@ export function SemanticSearchSettings() {
 							/>
 						) : (
 							<p data-testid="semantic-indexed">
-								{t("pages.settingsSemanticIndexed", { total: status.index.indexed.toLocaleString() })}
+								{t("pages.settingsSemanticIndexed", { total: fmtInt(status.index.indexed) })}
 							</p>
 						)
 					) : null}

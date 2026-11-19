@@ -40,7 +40,7 @@ import { prependDraft } from "../lib/drafts.ts";
 import { errorText } from "../lib/error-text.ts";
 import { destinationFor, FamilyBuilder, familySignature, unwrittenOwnFile } from "../lib/family.ts";
 import { glideToEnd, useFollowEnd } from "../lib/follow-end.ts";
-import { fmtCost, fmtCostExact, fmtTokens, shortPath } from "../lib/format.ts";
+import { fmtCost, fmtCostExact, fmtInt, fmtTokens, shortPath } from "../lib/format.ts";
 import {
 	createGoal,
 	goalWait,
@@ -194,10 +194,10 @@ function UsageBreakdown({ usage, className, exactCost }: { usage: Usage; classNa
 	const t = useT();
 	return (
 		<div className={cx("font-mono", className)}>
-			<div>{t("chat.usageInput", { n: usage.input.toLocaleString() })}</div>
-			<div>{t("chat.usageOutput", { n: usage.output.toLocaleString() })}</div>
-			<div>{t("chat.usageCacheRead", { n: usage.cacheRead.toLocaleString() })}</div>
-			<div>{t("chat.usageCacheWrite", { n: usage.cacheWrite.toLocaleString() })}</div>
+			<div>{t("chat.usageInput", { n: fmtInt(usage.input) })}</div>
+			<div>{t("chat.usageOutput", { n: fmtInt(usage.output) })}</div>
+			<div>{t("chat.usageCacheRead", { n: fmtInt(usage.cacheRead) })}</div>
+			<div>{t("chat.usageCacheWrite", { n: fmtInt(usage.cacheWrite) })}</div>
 			<div title={exactCost ? undefined : fmtCostExact(usage.cost)}>
 				{t("chat.usageCost", { cost: exactCost ? fmtCostExact(usage.cost) : fmtCost(usage.cost) })}
 			</div>

@@ -1,5 +1,21 @@
 import { type Lang, t, useLang } from "../i18n/index.ts";
 
+const nfs: Partial<Record<Lang, Intl.NumberFormat>> = {};
+
+/**
+ * A whole number with the thousands separators of the page's language (Settings), not of the browser's: a German browser with
+ * the page in English would read `1.234.567` among English words. One formatter per language, as the dates have.
+ */
+export function fmtInt(n: number): string {
+	const lang = useLang.getState().lang;
+	let f = nfs[lang];
+	if (!f) {
+		f = new Intl.NumberFormat(lang);
+		nfs[lang] = f;
+	}
+	return f.format(n);
+}
+
 export function fmtTokens(n: number | undefined | null): string {
 	const v = n ?? 0;
 	if (v < 1000) return String(Math.round(v));
@@ -13,7 +29,7 @@ export function fmtCost(n: number | undefined | null): string {
 	if (v === 0) return "$0";
 	if (v < 0.01) return `$${v.toFixed(4)}`;
 	if (v < 100) return `$${v.toFixed(2)}`;
-	return `$${Math.round(v).toLocaleString()}`;
+	return `$${fmtInt(Math.round(v))}`;
 }
 
 /**
@@ -24,7 +40,7 @@ export function costColumn(values: number[]): (n: number) => string {
 	const digits = values.some((v) => v > 0 && v < 0.01) ? 4 : 2;
 	return (n) => {
 		const [whole, fraction] = n.toFixed(digits).split(".");
-		return `$${Number(whole).toLocaleString()}.${fraction}`;
+		return `$${fmtInt(Number(whole))}.${fraction}`;
 	};
 }
 
@@ -82,6 +98,8 @@ const DATE_SHAPES = {
 	day: { month: "short", day: "numeric" },
 	dayYear: { month: "short", day: "numeric", year: "numeric" },
 	month: { year: "numeric", month: "long" },
+	timeOfDay: { hour: "2-digit", minute: "2-digit" },
+	weekdayTime: { weekday: "short", hour: "2-digit", minute: "2-digit" },
 } as const satisfies Record<string, Intl.DateTimeFormatOptions>;
 const dtfs = new Map<string, Intl.DateTimeFormat>();
 
@@ -98,6 +116,16 @@ function dateFormat(lang: Lang, shape: keyof typeof DATE_SHAPES): Intl.DateTimeF
 export function fmtTime(ts: number | string): string {
 	const t = typeof ts === "string" ? Date.parse(ts) : ts;
 	return dateFormat(useLang.getState().lang, "full").format(t);
+}
+
+/** `02:30 PM` / `14:30`: a time of day, as the page's language writes it. */
+export function fmtTimeOfDay(ts: number): string {
+	return dateFormat(useLang.getState().lang, "timeOfDay").format(ts);
+}
+
+/** `Fri 02:30 PM` / `周五 14:30`: a time of day with its weekday. */
+export function fmtWeekdayTime(ts: number): string {
+	return dateFormat(useLang.getState().lang, "weekdayTime").format(ts);
 }
 
 /**

@@ -2,6 +2,7 @@ import { type ReactNode, useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
 import { type DiffRow, splitPath } from "../lib/diff.ts";
+import { fmtInt } from "../lib/format.ts";
 import { useScrolls } from "../lib/scrolls.ts";
 import { CopyButton } from "./Markdown.tsx";
 import { cx } from "./ui.tsx";
@@ -108,7 +109,7 @@ export function DiffView({ rows, copyText, title, label }: DiffViewProps) {
 					className="inline-flex min-h-6 items-center text-xs text-accent hover:underline"
 					onClick={() => setFull((f) => !f)}
 				>
-					{full ? t("chat.toolShowLess") : t("chat.toolShowAllLines", { n: rows.length.toLocaleString() })}
+					{full ? t("chat.toolShowLess") : t("chat.toolShowAllLines", { n: fmtInt(rows.length) })}
 				</button>
 			) : null}
 		</div>

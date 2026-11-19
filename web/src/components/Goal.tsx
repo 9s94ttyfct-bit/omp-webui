@@ -3,7 +3,7 @@ import { ChevronDown, Pause, Play, Target, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
-import { fmtDuration, fmtTokens } from "../lib/format.ts";
+import { fmtDuration, fmtInt, fmtTokens } from "../lib/format.ts";
 import { type GoalOp, type GoalWait, goalOp } from "../lib/goal.ts";
 import { parseTokenAmount } from "../lib/token-amount.ts";
 import { useApp } from "../store/app.ts";
@@ -152,9 +152,9 @@ export function GoalBar({
 						<dd data-testid="goal-detail-budget">
 							{goal.tokenBudget
 								? t("panel.goalTokens", {
-										used: `${(goal.tokensUsed ?? 0).toLocaleString()} / ${goal.tokenBudget.toLocaleString()} (${Math.round(pct ?? 0)}%)`,
+										used: `${fmtInt(goal.tokensUsed ?? 0)} / ${fmtInt(goal.tokenBudget)} (${Math.round(pct ?? 0)}%)`,
 									})
-								: t("panel.goalDetailNoBudget", { used: (goal.tokensUsed ?? 0).toLocaleString() })}
+								: t("panel.goalDetailNoBudget", { used: fmtInt(goal.tokensUsed ?? 0) })}
 						</dd>
 						<dt className="text-muted">{t("panel.goalDetailTime")}</dt>
 						<dd data-testid="goal-detail-time">

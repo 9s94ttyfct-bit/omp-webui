@@ -1,6 +1,7 @@
 import "../i18n/later.ts";
 import { useT } from "../i18n/index.ts";
 import { type ContextUsage, contextLevel } from "../lib/context-usage.ts";
+import { fmtInt } from "../lib/format.ts";
 import { cx } from "./ui.tsx";
 
 /** The colour of a context figure by how full it is, as the status line's meter has it. */
@@ -19,8 +20,8 @@ export function ContextPercent({ ctx, className }: { ctx: ContextUsage | undefin
 		<span
 			className={cx("whitespace-nowrap tabular-nums", LEVEL_TEXT[level], className)}
 			title={t("chat.contextTip", {
-				tokens: ctx.tokens.toLocaleString(),
-				window: ctx.contextWindow.toLocaleString(),
+				tokens: fmtInt(ctx.tokens),
+				window: fmtInt(ctx.contextWindow),
 			})}
 			data-testid="subagent-context"
 			data-percent={percent}

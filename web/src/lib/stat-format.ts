@@ -1,5 +1,5 @@
 import { type Lang, t } from "../i18n/index.ts";
-import { fmtDuration } from "./format.ts";
+import { fmtDuration, fmtInt } from "./format.ts";
 
 /** How the turn stats line and the status line write their figures. */
 
@@ -14,7 +14,7 @@ export function fmtElapsed(ms: number): string {
 
 /** Tokens a second: a decimal while it is slow, whole numbers from 10 up. */
 export function fmtRate(tokensPerSecond: number): string {
-	return tokensPerSecond < 9.95 ? tokensPerSecond.toFixed(1) : Math.round(tokensPerSecond).toLocaleString("en-US");
+	return tokensPerSecond < 9.95 ? tokensPerSecond.toFixed(1) : fmtInt(Math.round(tokensPerSecond));
 }
 
 const UNITS = [

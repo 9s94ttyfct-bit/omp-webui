@@ -3,6 +3,7 @@ import type { SessionSummary } from "@shared/protocol.ts";
 import { ChevronRight } from "lucide-react";
 import { useId, useState } from "react";
 import { useT } from "../i18n/index.ts";
+import { fmtTime } from "../lib/format.ts";
 import { BY_TEXT, CHIP_TEXT, CHIP_TONE, money, secondsOf, tokens, verdictKind } from "../lib/guard-format.ts";
 import { RISK_KIND_LABEL } from "../lib/risk-kinds.ts";
 import { useApp } from "../store/app.ts";
@@ -52,7 +53,7 @@ export function DecisionRow({ d, session }: { d: GuardDecision; session: Session
 					{d.subagent ? d.agent : t("guard.logAgentMain")}
 				</span>
 				<time className="ml-auto text-xs text-faint" dateTime={new Date(d.at).toISOString()}>
-					{new Date(d.at).toLocaleString()}
+					{fmtTime(d.at)}
 				</time>
 			</div>
 			<p className="mt-1 line-clamp-2 whitespace-pre-wrap break-all font-mono text-xs" data-testid="guard-log-command">

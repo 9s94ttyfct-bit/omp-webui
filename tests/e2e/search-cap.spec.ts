@@ -134,3 +134,25 @@ test("hits and title matches of an archived conversation carry an Archived tag; 
 		rmSync(active, { force: true });
 	}
 });
+
+test("a conversation with more hits than one request returns says how many are not listed (#357)", async ({ page }) => {
+	// The server returns at most 200 hits of one conversation: 230 match, so 30 cannot be listed.
+	const long = writeConversation(
+		0xed,
+		Array.from({ length: 230 }, (_, i) => `${WORD} marathon step ${i}`),
+	);
+	try {
+		await openPalette(page, WORD);
+		const hits = page.getByTestId("search-hit");
+		await expect(hits.filter({ hasText: "marathon step" })).toHaveCount(3, { timeout: 15_000 });
+		await expect(page.getByTestId("search-more")).toHaveText("227 more in this conversation");
+		await page.getByTestId("search-more").click();
+		await expect(hits.filter({ hasText: "marathon step" })).toHaveCount(200);
+		await expect(page.getByTestId("search-more")).toHaveCount(0);
+		await expect(page.getByTestId("search-more-capped")).toHaveText(
+			"Not listed: 30 more. Narrow the search to see them.",
+		);
+	} finally {
+		rmSync(long, { force: true });
+	}
+});
