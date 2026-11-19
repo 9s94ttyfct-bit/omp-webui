@@ -5,7 +5,7 @@ import { dropGroupAndOther } from "./private.ts";
 import { ROWS_PER_FILE } from "./search-index.ts";
 import { DIMENSIONS, DOCUMENT_PROMPT, MODEL, QUERY_PROMPT } from "./semantic/assets.ts";
 import type { Endpoint } from "./semantic/runtime.ts";
-import { passages, quantize, score, shorten } from "./semantic/vectors.ts";
+import { EmbedRejected, embedSkippingRejected, passages, quantize, score, shorten } from "./semantic/vectors.ts";
 import type { RawSemanticHit, SemanticJob, SemanticProgress, SemanticReply } from "./semantic-index.ts";
 
 /**
@@ -207,7 +207,10 @@ async function embed(endpoint: Endpoint, texts: string[]): Promise<(Float32Array
 		body: JSON.stringify({ input: texts, model: "embeddinggemma" }),
 		signal: AbortSignal.timeout(EMBED_MS),
 	});
-	if (!res.ok) throw new Error(`llama-server answered ${res.status}: ${(await res.text()).slice(0, 200)}`);
+	if (!res.ok) {
+		const why = `llama-server answered ${res.status}: ${(await res.text()).slice(0, 200)}`;
+		throw [400, 413, 422].includes(res.status) ? new EmbedRejected(why) : new Error(why);
+	}
 	const body = (await res.json()) as { data?: { index?: number; embedding?: (number | null)[] }[] };
 	const out: (Float32Array | null)[] = texts.map(() => null);
 	for (const [k, d] of (body.data ?? []).entries()) {
@@ -340,19 +343,14 @@ async function syncOnce(): Promise<void> {
 				);
 				let vectors: (Float32Array | null)[] = [];
 				if (items.length) {
+					const texts = items.map((i) => DOCUMENT_PROMPT + i.text);
 					try {
-						vectors = await embed(
-							endpoint,
-							items.map((i) => DOCUMENT_PROMPT + i.text),
-						);
+						vectors = await embedSkippingRejected((t) => embed(endpoint, t), texts);
 					} catch {
 						// The server may have been stopped and started again (another port): asked for once more.
 						try {
 							endpoint = await need();
-							vectors = await embed(
-								endpoint,
-								items.map((i) => DOCUMENT_PROMPT + i.text),
-							);
+							vectors = await embedSkippingRejected((t) => embed(endpoint, t), texts);
 						} catch (e) {
 							trouble(e);
 							return;

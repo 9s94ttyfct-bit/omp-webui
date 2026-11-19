@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { DIMENSIONS } from "../../server/semantic/assets.ts";
 import {
+	EmbedRejected,
+	embedSkippingRejected,
 	MAX_PASSAGES,
 	PASSAGE_CHARS,
 	passages,
@@ -15,6 +17,44 @@ import {
 test("a message too short to say anything has no passage", () => {
 	expect(passages("ok")).toEqual([]);
 	expect(passages("   继续   ")).toEqual([]);
+});
+
+test("a passage never ends inside an emoji, so the request to the model is valid JSON text (#208)", () => {
+	const text = `x${"😀".repeat(700)}`;
+	const cut = passages(text);
+	expect(cut.length).toBeGreaterThan(1);
+	for (const p of cut) {
+		expect(/\p{Surrogate}/u.test(p.text), `passage at ${p.start}`).toBe(false);
+		expect(JSON.parse(JSON.stringify(p.text))).toBe(p.text);
+	}
+	// Nothing is lost or repeated: they put the message back together.
+	expect(cut.map((p) => p.text).join("")).toBe(text);
+});
+
+test("a lone surrogate the message holds itself is replaced, offsets unchanged", () => {
+	const text = `${"a".repeat(30)}\ud83d${"b".repeat(30)}`;
+	const [p] = passages(text);
+	expect(/\p{Surrogate}/u.test(p?.text ?? "")).toBe(false);
+	expect(p?.text.length).toBe(text.length);
+});
+
+test("a request the server refuses is made passage by passage, and the passage it still refuses is skipped (#208)", async () => {
+	const ok = new Float32Array([1]);
+	const calls: string[][] = [];
+	const embed = async (texts: string[]) => {
+		calls.push(texts);
+		if (texts.some((t) => t === "bad")) throw new EmbedRejected("400");
+		return texts.map(() => ok);
+	};
+	expect(await embedSkippingRejected(embed, ["a", "bad", "c"])).toEqual([ok, null, ok]);
+	expect(calls).toEqual([["a", "bad", "c"], ["a"], ["bad"], ["c"]]);
+});
+
+test("a failure that is not a refusal of the input is not hidden", async () => {
+	const down = async (): Promise<null[]> => {
+		throw new Error("llama-server answered 503");
+	};
+	await expect(embedSkippingRejected(down, ["a", "b"])).rejects.toThrow("503");
 });
 
 test("passages cover the message in order, each where it starts, ending at a break near the limit", () => {
