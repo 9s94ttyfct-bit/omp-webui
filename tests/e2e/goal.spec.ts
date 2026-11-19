@@ -92,32 +92,55 @@ test("Pause goal lets the agent finish its current step, then no more turns; Res
 });
 
 /**
- * Answer omp's questions the way a user would, until it proposes the goal: a question form is submitted with its
- * recommended answers, and a question asked in plain text gets a short reply.
+ * Answer omp's questions the way a user would, until it proposes the goal: a question form is answered with its
+ * recommended answers, and a question asked in plain text gets a short reply. omp 18.19 and later ask a form one field
+ * at a time (`select` for radios and checkboxes, `input` for text); before it, the whole form came as one `ask`.
  */
 async function answerUntilProposal(page: Page): Promise<void> {
-	const dialog = page.getByTestId("ui-request");
+	const dialog = page.getByTestId("ui-request").first();
+	const method = () => dialog.getAttribute("data-method", { timeout: 1 }).catch(() => null);
 	const state = async () => {
-		const method = await dialog
-			.first()
-			.getAttribute("data-method", { timeout: 1 })
-			.catch(() => null);
-		if (method === "propose_goal" || method === "ask") return method;
-		if (method) return "other";
+		const m = await method();
+		if (m) return m;
 		// Between turns: omp is waiting for the user's words.
 		const idle =
 			(await page.getByTestId("stop").count()) === 0 && (await page.getByTestId("msg-assistant").count()) > 0;
 		return idle ? "idle" : "working";
 	};
-	for (let round = 0; round < 8; round++) {
-		await expect.poll(state, { timeout: 120_000 }).not.toBe("working");
-		const now = await state();
+	/** What is on screen now, to tell when an answer has been taken. */
+	const shown = async () => `${await state()} ${(await dialog.count()) ? await dialog.innerText() : ""}`;
+	// Checkbox questions already ticked: asked again, they are ended with "Done selecting".
+	const ticked = new Set<string>();
+	for (let round = 0; round < 16; round++) {
+		let now = "working";
+		await expect.poll(async () => (now = await state()), { timeout: 120_000 }).not.toBe("working");
+		// Between two fields of a form no request is open for a moment: only an idle that lasts is omp waiting for words.
+		if (now === "idle") {
+			await page.waitForTimeout(2000);
+			now = await state();
+			if (now === "working") continue;
+		}
 		if (now === "propose_goal") return;
+		const before = await shown();
 		if (now === "ask") await dialog.getByRole("button", { name: "Submit answers" }).click();
-		else if (now === "idle") {
+		else if (now === "select") {
+			const id = await dialog.getAttribute("aria-labelledby");
+			const title = id ? await page.locator(`[id="${id}"]`).innerText() : "";
+			const done = dialog.getByRole("button", { name: /Done selecting/ });
+			const recommended = dialog.getByRole("button", { name: /recommended/ });
+			if ((await done.count()) > 0 && ticked.has(title)) await done.click();
+			else {
+				ticked.add(title);
+				await ((await recommended.count()) > 0 ? recommended.first() : dialog.getByRole("button").first()).click();
+			}
+		} else if (now === "input" || now === "editor") {
+			await dialog.getByRole("textbox").first().fill("Whatever you think best.");
+			await dialog.getByRole("button", { name: "Submit" }).click();
+		} else if (now === "idle") {
 			await page.getByTestId("composer").fill("That is everything. Please propose the goal now.");
 			await page.getByTestId("send").click();
-		}
+		} else throw new Error(`unexpected request from omp: ${now}`);
+		await expect.poll(shown, { timeout: 30_000 }).not.toBe(before);
 	}
 	throw new Error("omp never proposed a goal");
 }
