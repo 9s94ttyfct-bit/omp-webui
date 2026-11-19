@@ -12,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pageTarget, redirectPage, sweepPages } from "../../server/launch-page.ts";
+import { has } from "../support/needs.ts";
 
 /**
  * The launcher on Linux hands the browser a page that sends it on to the signed-in address, so that the data folder's
@@ -30,7 +31,7 @@ test("on Linux the browser is given a file that leads to the address, readable b
 		expect(html).toContain(
 			'<meta http-equiv="refresh" content="0;url=http://127.0.0.1:7878/?token=SECRET-TOKEN&amp;x=1">',
 		);
-		expect(statSync(target).mode & 0o077).toBe(0);
+		if (has.posixModes) expect(statSync(target).mode & 0o077).toBe(0);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}

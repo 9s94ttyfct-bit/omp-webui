@@ -201,21 +201,32 @@ test("a question the agent files through a write to xd://file_question or a tool
 	c.ws.close();
 }, 180_000);
 
-test("the form of an ask written to xd://ask is filed as questions for the person (#309)", async () => {
-	const c = await conversation();
-	plan.call = {
-		name: "write",
-		args: {
-			path: "xd://ask",
-			content: JSON.stringify({
-				html: '<form><fieldset><legend>Which region for 309?</legend><label><input type="radio" name="region" value="eu"> eu</label><label><input type="radio" name="region" value="us"> us</label></fieldset></form>',
-			}),
-		},
-	};
-	await turn(c, `FORM-309-${++seq}`);
-	expect((await list()).questions.some((q) => q.question.includes("Which region for 309?"))).toBe(true);
-	c.ws.close();
-}, 120_000);
+/** omp 18.22 mounts the tools as `xd://<tool>` devices a `write` can call; the omp before it knows no such path. */
+const mountsDevices = (() => {
+	const out = Bun.spawnSync([process.env.OMP_BIN ?? "omp", "--version"]).stdout.toString();
+	const [major = 0, minor = 0] = (/(\d+)\.(\d+)\.\d+/.exec(out)?.slice(1) ?? []).map(Number);
+	return major > 18 || (major === 18 && minor >= 22);
+})();
+
+test.skipIf(!mountsDevices)(
+	"the form of an ask written to xd://ask is filed as questions for the person (#309)",
+	async () => {
+		const c = await conversation();
+		plan.call = {
+			name: "write",
+			args: {
+				path: "xd://ask",
+				content: JSON.stringify({
+					html: '<form><fieldset><legend>Which region for 309?</legend><label><input type="radio" name="region" value="eu"> eu</label><label><input type="radio" name="region" value="us"> us</label></fieldset></form>',
+				}),
+			},
+		};
+		await turn(c, `FORM-309-${++seq}`);
+		expect((await list()).questions.some((q) => q.question.includes("Which region for 309?"))).toBe(true);
+		c.ws.close();
+	},
+	120_000,
+);
 
 test("an answer to a conversation that is working is queued behind its turn", async () => {
 	const c = await conversation();
