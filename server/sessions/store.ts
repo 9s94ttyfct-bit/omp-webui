@@ -55,7 +55,7 @@ const SEARCH_WAIT_MS = 300;
 /** Where a session's header is looked for when only the end of its file is read again. */
 const HEAD_BYTES = 16 * 1024;
 /** The layout of the tables below: a different one starts them afresh. */
-const SCHEMA = "3";
+const SCHEMA = "4";
 /** Removals the list's change log remembers: a client that missed more than this many is sent the whole list. */
 const MAX_REMEMBERED_REMOVALS = 5000;
 /** Where files cannot be watched, the directory is read again this often (and a change that scan finds is announced). */
@@ -171,6 +171,8 @@ function readHead(
 function openIndex(dbPath: string): {
 	db: Database;
 	summaries: Map<string, SessionSummary>;
+	/** The modification time of each session file as it was when its summary was made (`modifiedAt` is the last message's). */
+	mtimes: Map<string, number>;
 	tails: Map<string, TailState>;
 	index: SubagentIndex;
 } {
@@ -190,7 +192,8 @@ function openIndex(dbPath: string): {
 		const schema = db.query<{ value: string }, []>("SELECT value FROM meta WHERE key = 'schema'").get();
 		if (schema?.value !== SCHEMA) {
 			// Version 2 kept its full-text index in this file. Summaries are the same in both versions; the index
-			// now has a database of its own, and what the old one held is dropped (and the file shrunk).
+			// now has a database of its own, and what the old one held is dropped (and the file shrunk). Version 4
+			// dates a summary by its newest message, not by the file's modification time (#359): version 3's are made again.
 			if (schema?.value !== "2") db.run("DROP TABLE IF EXISTS sessions");
 			db.run("DROP TABLE IF EXISTS fts");
 			db.run("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', ?)", [SCHEMA]);
@@ -201,13 +204,17 @@ function openIndex(dbPath: string): {
 			"CREATE TABLE IF NOT EXISTS session_state (file TEXT PRIMARY KEY, upto INTEGER NOT NULL, tail TEXT NOT NULL, head TEXT NOT NULL, entry_title TEXT)",
 		);
 		const summaries = new Map<string, SessionSummary>();
+		const mtimes = new Map<string, number>();
 		const unsound: string[] = [];
-		for (const row of db.query<{ summary: string }, []>("SELECT summary FROM sessions").all()) {
+		for (const row of db.query<{ mtime: number; summary: string }, []>("SELECT mtime, summary FROM sessions").all()) {
 			const s: SessionSummary = JSON.parse(row.summary);
 			// Totals an older version summed from malformed usage (`"0a"`, `NaN`) went on growing from there each time the
 			// file did: such a file is summarized again from its first line.
 			if (!isSoundUsage(s.usage) || !isSoundUsage(s.subagentUsage)) unsound.push(s.file);
-			else summaries.set(s.file, s);
+			else {
+				summaries.set(s.file, s);
+				mtimes.set(s.file, row.mtime);
+			}
 		}
 		for (const file of unsound) {
 			db.run("DELETE FROM sessions WHERE file = ?", [file]);
@@ -221,7 +228,7 @@ function openIndex(dbPath: string): {
 			.all()) {
 			tails.set(r.file, { upto: r.upto, tail: r.tail, head: r.head, entryTitle: r.entry_title });
 		}
-		return { db, summaries, tails, index: new SubagentIndex(db) };
+		return { db, summaries, mtimes, tails, index: new SubagentIndex(db) };
 	} catch (e) {
 		try {
 			db.close();
@@ -240,6 +247,7 @@ function openIndex(dbPath: string): {
 export class SessionStore {
 	private db: Database;
 	private summaries = new Map<string, SessionSummary>();
+	private mtimes = new Map<string, number>();
 	/** How far into each session file its summary reads (see `TailState`). */
 	private tails = new Map<string, TailState>();
 	/**
@@ -302,6 +310,7 @@ export class SessionStore {
 		const opened = openRebuildable(dbPath, () => openIndex(dbPath));
 		this.db = opened.db;
 		this.summaries = opened.summaries;
+		this.mtimes = opened.mtimes;
 		this.tails = opened.tails;
 		this.index = opened.index;
 		this.searchDbPath = dbPath.replace(/(\.db)?$/, ".search.db");
@@ -483,6 +492,7 @@ export class SessionStore {
 		const opened = openRebuildable(this.dbPath, () => openIndex(this.dbPath));
 		this.db = opened.db;
 		this.summaries = opened.summaries;
+		this.mtimes = opened.mtimes;
 		this.tails = opened.tails;
 		this.index = opened.index;
 		this.dependents.clear();
@@ -657,7 +667,7 @@ export class SessionStore {
 		const { subagents, advisors } = await this.index.scan(file);
 		this.dependents.set(file, { subagents: sumSubagents(subagents), advisor: sumAdvisors(advisors) });
 		const cached = this.summaries.get(file);
-		if (!(cached && cached.modifiedAt === st.mtimeMs && cached.size === st.size)) {
+		if (!(cached && this.mtimes.get(file) === st.mtimeMs && cached.size === st.size)) {
 			await this.summarizeFile(file, subagents.length);
 		}
 	}
@@ -675,6 +685,7 @@ export class SessionStore {
 		this.db.transaction(() => {
 			for (const f of known) {
 				this.summaries.delete(f);
+				this.mtimes.delete(f);
 				this.tails.delete(f);
 				delSummary.run(f);
 				delState.run(f);
@@ -745,7 +756,7 @@ export class SessionStore {
 		const out: { file: string; size: number; mtime: number }[] = [];
 		for (const f of files) {
 			const s = this.summaries.get(f);
-			if (s) out.push({ file: s.file, size: s.size, mtime: s.modifiedAt });
+			if (s) out.push({ file: s.file, size: s.size, mtime: this.mtimes.get(f) ?? s.modifiedAt });
 		}
 		return out;
 	}
@@ -810,6 +821,7 @@ export class SessionStore {
 				entryTitle: acc.entryTitle,
 			};
 			this.summaries.set(file, summary);
+			this.mtimes.set(file, st.mtimeMs);
 			this.tails.set(file, state);
 			this.db.transaction(() => {
 				this.db.run("INSERT OR REPLACE INTO sessions (file, mtime, size, summary) VALUES (?, ?, ?, ?)", [
@@ -838,8 +850,11 @@ export class SessionStore {
 		return this.all();
 	}
 
+	/** Newest activity first; conversations active at the same moment (a message's time is a millisecond) by file name, so the order does not depend on which was read first. */
 	private all(): SessionSummary[] {
-		return [...this.summaries.values()].map((s) => this.withTotals(s)).sort((a, b) => b.modifiedAt - a.modifiedAt);
+		return [...this.summaries.values()]
+			.map((s) => this.withTotals(s))
+			.sort((a, b) => b.modifiedAt - a.modifiedAt || (a.file < b.file ? 1 : a.file > b.file ? -1 : 0));
 	}
 
 	/**

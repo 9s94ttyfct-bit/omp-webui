@@ -416,6 +416,7 @@
     "tests/unit/remote-copy.test.ts": 28,
     "tests/unit/model-config.test.ts": 27,
     "tests/unit/socket-liveness.test.ts": 27,
+    "tests/unit/store-activity.test.ts": 27,
     "tests/unit/panel-widths.test.ts": 26,
     "tests/unit/advisor.test.ts": 25,
     "tests/unit/mentioned-files.test.ts": 25,

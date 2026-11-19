@@ -281,6 +281,8 @@ export interface SummaryAcc {
 	preview: string;
 	/** The first title a `title_change` entry gave: the title when the header has none. */
 	entryTitle: string | null;
+	/** The newest `timestamp` of a message (ms; 0 when there is none): what the conversation was last active at. */
+	lastMessageAt: number;
 }
 
 export function newAcc(): SummaryAcc {
@@ -291,6 +293,7 @@ export function newAcc(): SummaryAcc {
 		userMessageCount: 0,
 		preview: "",
 		entryTitle: null,
+		lastMessageAt: 0,
 	};
 }
 
@@ -303,6 +306,7 @@ export function accFromSummary(s: SessionSummary, entryTitle: string | null): Su
 		userMessageCount: s.userMessageCount,
 		preview: s.preview,
 		entryTitle,
+		lastMessageAt: s.modifiedAt,
 	};
 }
 
@@ -316,6 +320,8 @@ export function foldEntry(acc: SummaryAcc, e: SessionEntry): void {
 	}
 	const m = messageOf(e);
 	if (!m) return;
+	const at = Date.parse(e.timestamp);
+	if (Number.isFinite(at) && at > acc.lastMessageAt) acc.lastMessageAt = at;
 	acc.messageCount++;
 	if (m.role === "user" && m.attribution !== "agent") {
 		acc.userMessageCount++;
@@ -351,6 +357,9 @@ export function withTitleSlot(
  * A session file's summary with only its own requests in `usage`: its subagents and advisors write files of their
  * own. `withDependents` adds them, which is the shape clients get. The summary shares nothing with `acc`, which goes
  * on folding the entries that follow.
+ *
+ * `modifiedAt` is when the conversation was last active: its newest message (the header's time when it has none), not
+ * the file's modification time, which a rename, a change of folder or omp closing the file also move (#359).
  */
 export function buildSummary(
 	file: string,
@@ -362,6 +371,8 @@ export function buildSummary(
 	if (!h || typeof h.id !== "string") return null;
 	const headerTitle = typeof h.title === "string" && h.title.trim() ? h.title.trim() : null;
 	const cwd = typeof h.cwd === "string" ? h.cwd : "";
+	const createdAt = typeof h.timestamp === "string" ? h.timestamp : new Date(stat.mtimeMs).toISOString();
+	const createdMs = Date.parse(createdAt);
 	return {
 		file,
 		id: h.id,
@@ -369,8 +380,8 @@ export function buildSummary(
 		preview: acc.preview,
 		cwd,
 		project: cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd,
-		createdAt: typeof h.timestamp === "string" ? h.timestamp : new Date(stat.mtimeMs).toISOString(),
-		modifiedAt: stat.mtimeMs,
+		createdAt,
+		modifiedAt: acc.lastMessageAt > 0 ? acc.lastMessageAt : Number.isFinite(createdMs) ? createdMs : stat.mtimeMs,
 		size: stat.size,
 		messageCount: acc.messageCount,
 		userMessageCount: acc.userMessageCount,
