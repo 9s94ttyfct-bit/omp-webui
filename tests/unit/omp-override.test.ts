@@ -69,3 +69,44 @@ test("a refused change leaves alone a newer word of the server about the same th
 	await expect(change).rejects.toThrow("refused");
 	expect(store.getState().omp).toBe(true);
 });
+
+test("a read asked before a change does not put back what the change replaced (#386)", async () => {
+	const reads: { held: Answer; release: () => void }[] = [];
+	let server: Answer = { omp: false, session: null };
+	const setting = ompOverride<boolean, boolean, boolean>({
+		// The server answers a read by asking omp: it holds what it had when asked, and answers late.
+		get: (file) => {
+			const answer = Promise.withResolvers<Answer>();
+			const held = { ...server, session: file === null ? null : server.session };
+			reads.push({ held, release: () => answer.resolve(held) });
+			return answer.promise;
+		},
+		setDefault: async (enabled) => {
+			server = { ...server, omp: enabled };
+			return server;
+		},
+		setSession: async (_file, value) => {
+			server = { ...server, session: value };
+			return server;
+		},
+		shownDefault: (enabled) => enabled,
+	});
+	const store = made.at(-1) as StoreApi<{ omp: boolean | null | undefined; sessions: Record<string, boolean | null> }>;
+
+	const unwatch = setting.watch("a.jsonl");
+	await setting.setConversation("a.jsonl", true);
+	await setting.setDefault(true);
+	expect(store.getState()).toEqual({ omp: true, sessions: { "a.jsonl": true } });
+	for (const read of reads) read.release();
+	await Bun.sleep(0);
+	expect(store.getState()).toEqual({ omp: true, sessions: { "a.jsonl": true } });
+
+	// A read asked after the change is the server's word, and is shown.
+	reads.length = 0;
+	server = { omp: false, session: false };
+	unwatch();
+	setting.watch("a.jsonl");
+	for (const read of reads) read.release();
+	await Bun.sleep(0);
+	expect(store.getState()).toEqual({ omp: false, sessions: { "a.jsonl": false } });
+});

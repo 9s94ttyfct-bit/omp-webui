@@ -69,6 +69,18 @@ export function ompOverride<O, S, D>(server: {
 	const shown = new Map<string, number>();
 	/** The latest change shown and not answered yet, by what it changed (null: omp's value; else the file's choice). */
 	const unanswered = new Map<string | null, object>();
+	/**
+	 * The changes of each thing (null: omp's value; else the file's choice): how many were started and how many are on
+	 * their way. A read answers with what the server had when it asked omp, which a change sent meanwhile replaced (#386).
+	 */
+	const changes = new Map<string | null, { started: number; open: number }>();
+	const changesOf = (key: string | null) => {
+		const known = changes.get(key);
+		if (known) return known;
+		const c = { started: 0, open: 0 };
+		changes.set(key, c);
+		return c;
+	};
 
 	/** The server's word: omp's value, and `file`'s choice. It is newer than any change shown before it of either. */
 	const take = (file: string | null, r: OverrideAnswer<O, S>) => {
@@ -79,10 +91,27 @@ export function ompOverride<O, S, D>(server: {
 			sessions: file === null ? s.sessions : { ...s.sessions, [file]: r.session },
 		}));
 	};
+	/**
+	 * Read omp's value and `file`'s choice. Each part of the answer is kept only if no change of it was started since the
+	 * read was asked, nor is on its way: those are newer than what the read found.
+	 */
 	const load = (file: string | null): void => {
+		const ompAsked = changesOf(null).started;
+		const fileAsked = file === null ? 0 : changesOf(file).started;
+		const fresh = (key: string | null, asked: number) => {
+			const c = changesOf(key);
+			return c.open === 0 && c.started === asked;
+		};
 		void server
 			.get(file)
-			.then((r) => take(file, r))
+			.then((r) => {
+				const omp = fresh(null, ompAsked);
+				const session = file !== null && fresh(file, fileAsked);
+				useStore.setState((s) => ({
+					omp: omp ? r.omp : s.omp,
+					sessions: session ? { ...s.sessions, [file]: r.session } : s.sessions,
+				}));
+			})
 			.catch(() => {});
 	};
 	const reload = (): void => {
@@ -102,6 +131,9 @@ export function ompOverride<O, S, D>(server: {
 		ask: () => Promise<OverrideAnswer<O, S>>,
 	): Promise<void> {
 		const mine = {};
+		const mark = changesOf(file);
+		mark.started++;
+		mark.open++;
 		const undo = show();
 		if (undo) unanswered.set(file, mine);
 		try {
@@ -112,6 +144,8 @@ export function ompOverride<O, S, D>(server: {
 				undo();
 			}
 			throw e;
+		} finally {
+			mark.open--;
 		}
 	}
 
