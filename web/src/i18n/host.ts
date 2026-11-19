@@ -22,6 +22,8 @@ export const en = {
 	chipDisk: "{name} {v} free",
 	chipAria: "Host load: {figures}. Memory pressure: {pressure}.",
 	chipAriaNoPressure: "Host load: {figures}.",
+	// The line's own name: its title, then what it shows word for word (Label in Name).
+	chipLineAria: "Host load: {figures}",
 	chipOffline: "Not connected: these are the last figures received.",
 	// Memory pressure, as the system says it.
 	pressureName: "Memory pressure",

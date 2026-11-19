@@ -98,6 +98,10 @@ export default function HostIndicator({ variant }: { variant: "line" | "rail" })
 		? t("host.chipAria", { figures: told.join(", "), pressure: said })
 		: t("host.chipAriaNoPressure", { figures: told.join(", ") });
 	const aria = connected ? spoken : `${spoken} ${t("host.chipOffline")}`;
+	// The line's name is what it shows, word for word after its title (WCAG 2.5.3 Label in Name): someone who drives the page
+	// by voice says "CPU 32 percent", not the words of a longer sentence. The rail's icon has no text, so it is told in words.
+	const lineName = t("host.chipLineAria", { figures: shown.join(" · ") });
+	const lineAria = connected ? lineName : `${lineName} ${t("host.chipOffline")}`;
 	const dot = PRESSURE_DOT[level ?? "none"];
 	const bars = [latest?.cpu ?? null, ...(showGpu ? [latest?.gpu ?? null] : []), latest?.mem ?? null];
 
@@ -141,7 +145,7 @@ export default function HostIndicator({ variant }: { variant: "line" | "rail" })
 			) : (
 				<button
 					type="button"
-					aria-label={aria}
+					aria-label={lineAria}
 					title={connected ? t("host.chipTitle") : t("host.chipOffline")}
 					data-testid="host-chip"
 					data-variant="line"

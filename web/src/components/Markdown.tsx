@@ -26,6 +26,7 @@ import { linkTarget } from "../lib/link-target.ts";
 import { useOnBeat } from "../lib/live-motion.ts";
 import { type Nesting, nestsTooDeep, scanNesting } from "../lib/markdown-depth.ts";
 import { linkedMarkdown, MdOpenContext, openLinked } from "../lib/md-open.ts";
+import { useScrolls } from "../lib/scrolls.ts";
 import { findSection } from "../lib/slug.ts";
 import { useApp } from "../store/app.ts";
 import { type Block, type Blocks, type Group, splitBlocks } from "./markdown-blocks.ts";
@@ -220,9 +221,24 @@ function TaskBox({ checked }: { checked: boolean }) {
 	);
 }
 
+/**
+ * A table wider than the column scrolls sideways (`.prose-omp table`); while it does it is a stop of the Tab key, named, so
+ * the keyboard can reach and scroll it in Safari and the macOS app, which do not make a scroller focusable on their own.
+ */
+function ScrollTable({ children }: { children?: ReactNode }) {
+	const t = useT();
+	const [ref, scrolls] = useScrolls<HTMLTableElement>();
+	return (
+		<table ref={ref} tabIndex={scrolls ? 0 : undefined} aria-label={scrolls ? t("chat.tableScrolls") : undefined}>
+			{children}
+		</table>
+	);
+}
+
 /** How the conversation's Markdown draws its elements: the Markdown editor's preview draws a file with the same ones. */
 export const markdownComponents: Components = {
 	pre: ({ children }) => <>{children}</>,
+	table: ScrollTable,
 	code({ className, children }) {
 		const text = String(children ?? "");
 		const m = /language-([\w+#.-]+)/.exec(className ?? "");
@@ -366,7 +382,7 @@ const extractTbody = extract("tbody");
 
 /** In a chunk of rows the table is only what its body holds. */
 function ExtractTable({ node, children }: Pick<HostProps, "node" | "children">) {
-	if (!node?.properties.dataMdHost) return <table>{children}</table>;
+	if (!node?.properties.dataMdHost) return <ScrollTable>{children}</ScrollTable>;
 	return <>{Children.toArray(children).find((child) => isValidElement(child) && child.type === extractTbody)}</>;
 }
 
@@ -375,7 +391,7 @@ const hostComponents: Components = {
 	ul: host("ul"),
 	ol: host("ol"),
 	blockquote: host("blockquote"),
-	table: ({ children }) => <table>{children}</table>,
+	table: ScrollTable,
 	tbody: host("tbody"),
 };
 

@@ -83,3 +83,30 @@ test("on a wide screen the same table fits and words stay whole", async ({ page 
 	expect(await brokenWords(table)).toEqual([]);
 	expect(await table.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
 });
+
+test("a table that fits is no stop of the Tab key (#268)", async ({ page }) => {
+	await openWithMarkdown(page, TABLE);
+	const table = page.locator(".prose-omp table").first();
+	await expect(table).toBeVisible();
+	await expect(table).not.toHaveAttribute("tabindex", /.*/);
+	await expect(table).not.toHaveAttribute("aria-label", /.*/);
+});
+
+test.describe("phone, keyboard", () => {
+	test.use({ viewport: { width: 390, height: 844 } });
+
+	test("a table that scrolls sideways is a stop of the Tab key, named, and the arrow keys scroll it (#268)", async ({
+		page,
+	}) => {
+		await openWithMarkdown(page, TABLE, { drawer: true });
+		const table = page.locator(".prose-omp table").first();
+		await expect(table).toBeVisible();
+		await expect(table).toHaveAttribute("tabindex", "0");
+		await expect(table).toHaveAttribute("aria-label", "Table, scrolls sideways");
+		await table.focus();
+		await expect(table).toBeFocused();
+		await page.keyboard.press("ArrowRight");
+		await page.keyboard.press("ArrowRight");
+		await expect.poll(() => table.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+	});
+});

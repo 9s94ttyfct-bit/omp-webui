@@ -48,6 +48,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	toolOpMove: "已移至 {path}",
 
 	copyCode: "复制代码",
+	tableScrolls: "表格，可左右滚动",
 	mdOpenLink: "在 Markdown 编辑器中打开 {path}",
 	mdOpenFile: "在 Markdown 编辑器中打开",
 	mdOpenOutside: "{path} 不在此对话的文件夹中，不在这里打开。",

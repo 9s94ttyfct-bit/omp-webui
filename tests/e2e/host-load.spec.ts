@@ -45,9 +45,12 @@ test.describe("with figures the spec chose", () => {
 		);
 		await expect(chip(page)).toHaveAttribute("data-level", "0");
 		await expect(page.getByTestId("host-dot")).toHaveClass(/bg-success/);
+		// Named by what it shows, word for word (WCAG 2.5.3 Label in Name; #272): voice control says "CPU 32 percent".
+		const shown = (await page.getByTestId("host-figures").textContent()) ?? "";
+		await expect(chip(page)).toHaveAttribute("aria-label", `Host load: ${shown}`);
 		await expect(chip(page)).toHaveAttribute(
 			"aria-label",
-			/Host load: CPU \d+%, GPU \d+%, MEM \d+%, power \d+\.\d W, received [^,]+, sent [^,]+, Macintosh HD \d+ GB free\. Memory pressure: Normal\./,
+			/^Host load: CPU \d+% · GPU \d+% · MEM \d+% · Pressure Normal · /,
 		);
 
 		await host.push({
@@ -68,7 +71,7 @@ test.describe("with figures the spec chose", () => {
 
 		await host.push({ cpu: 100, gpu: 99, mem: 97, pressure: 2 });
 		await expect(page.getByTestId("host-dot")).toHaveClass(/bg-danger/);
-		await expect(chip(page)).toHaveAttribute("aria-label", /Memory pressure: Critical\./);
+		await expect(chip(page)).toHaveAttribute("aria-label", /Pressure Critical/);
 	});
 
 	test("a computer with no GPU to read has none on the line, nor a tile, nor a graph", async ({ page }) => {
@@ -197,8 +200,9 @@ test.describe("with figures the spec chose", () => {
 		await expect(page.getByTestId("host-figures")).not.toContainText("Pressure");
 		await expect(chip(page)).toHaveAttribute(
 			"aria-label",
-			/^Host load: CPU \d+%, GPU \d+%, MEM \d+%, power \d+\.\d W, received [^,]+, sent [^,]+, Macintosh HD \d+ GB free\.$/,
+			/^Host load: CPU \d+% · GPU \d+% · MEM \d+% · \d+\.\d W · ↓/,
 		);
+		await expect(chip(page)).not.toHaveAttribute("aria-label", /Pressure/);
 		await chip(page).click();
 		await expect(page.getByTestId("host-pressure")).toHaveCount(0);
 	});
@@ -398,7 +402,7 @@ test.describe("with figures the spec chose", () => {
 		// Told apart in the faint ink, and still 4.5:1 (faded to half opacity it was 2.2:1).
 		const { violations } = await new AxeBuilder({ page })
 			.include('[data-testid="host-chip"]')
-			.withRules(["color-contrast"])
+			.withRules(["color-contrast", "label-content-name-mismatch"])
 			.analyze();
 		expect(violations.flatMap((v) => v.nodes.map((n) => n.target.join(" ")))).toEqual([]);
 		await expect(chip(page)).toHaveAttribute("aria-label", /Not connected: these are the last figures received\.$/);
@@ -466,9 +470,10 @@ test.describe("in Chinese", () => {
 		await expect(page.getByTestId("host-figures")).toHaveText(
 			/^CPU \d+% · GPU \d+% · 内存 \d+% · 压力 正常 · \d+\.\d W · ↓\d+(\.\d)? [KM]B\/s ↑\d+(\.\d)? KB\/s · 可用 \d+ GB$/,
 		);
+		// Named by what it shows, in Chinese too.
 		await expect(chip(page)).toHaveAttribute(
 			"aria-label",
-			/本机负载：CPU \d+%, GPU \d+%, 内存 \d+%, 功耗 \d+\.\d W, 接收 [^,]+，发送 [^,]+, Macintosh HD 可用 \d+ GB。内存压力：正常。/,
+			/^本机负载：CPU \d+% · GPU \d+% · 内存 \d+% · 压力 正常 · \d+\.\d W · ↓/,
 		);
 		await chip(page).click();
 		await expect(popover(page).getByRole("heading", { name: "本机负载" })).toBeVisible();
@@ -523,7 +528,7 @@ for (const theme of ["light", "dark"] as const) {
 			await open(page, historyAt(Date.now()));
 			const { violations } = await new AxeBuilder({ page })
 				.include('[data-testid="host-chip"]')
-				.withRules(["color-contrast"])
+				.withRules(["color-contrast", "label-content-name-mismatch"])
 				.analyze();
 			expect(violations.flatMap((v) => v.nodes.map((n) => n.target.join(" ")))).toEqual([]);
 		});

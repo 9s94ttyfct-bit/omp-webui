@@ -13,6 +13,7 @@ export const zh: Record<keyof typeof en, string> = {
 	chipDisk: "{name} 可用 {v}",
 	chipAria: "本机负载：{figures}。内存压力：{pressure}。",
 	chipAriaNoPressure: "本机负载：{figures}。",
+	chipLineAria: "本机负载：{figures}",
 	chipOffline: "未连接：显示的是最后收到的数据。",
 	pressureName: "内存压力",
 	pressureNormal: "正常",

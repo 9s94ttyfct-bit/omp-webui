@@ -56,6 +56,8 @@ export const en = {
 
 	// Markdown
 	copyCode: "Copy code",
+	// A table in a reply that is wider than the column, which scrolls sideways and takes the keyboard.
+	tableScrolls: "Table, scrolls sideways",
 	// A Markdown file a message or a rendered file links to, and the button that opens it in the Markdown editor.
 	mdOpenLink: "Open {path} in the Markdown editor",
 	mdOpenFile: "Open in the Markdown editor",
