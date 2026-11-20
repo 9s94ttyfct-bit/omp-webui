@@ -39,7 +39,7 @@ settings: projects-folder
 ## Where it is
 
 - **New chat** › the folder button's menu › *Choose an existing folder…* (the folder picker), with **New project folder** (*Made in <projects folder>*).
-- **New chat** › the settings bar › *Isolated environment* (the package icon before the advisor's switch); a conversation's header › *Isolated* / *Restart to apply*.
+- **New chat** › the settings bar › *Isolated environment* (the package icon before the advisor's switch); a running conversation's header › the same package-icon switch beside the guard's (in the header's ⋯ menu when the header is narrow), and *Isolated* / *Restart to apply* beside the title.
 - **Settings › Conversations & files › Projects folder** (`#/settings/chats`): the path, *Choose…*, *Save*, *Use default*. On a page that holds only the access token (not this computer's, not signed in through Cloudflare Access) it is read-only ("Change the projects folder on the computer omp-webui runs on, or from a page signed in through Cloudflare Access. From here you can still make a project folder in it.").
 - Sidebar: the **Projects** section above the list by date; a conversation's ⋯ menu › *Move to project*; *Select* › *Move to project*; a project's page `#/project/<id>`. The search bar's funnel is the **Folder** filter: a flat list of folders with their counts (it keeps the conversations of one working folder).
 - A conversation: the status line (git), side panel tabs **Worktrees**, **Issues** and **CI** (bottom pane by default).

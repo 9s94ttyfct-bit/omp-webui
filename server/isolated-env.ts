@@ -16,11 +16,11 @@ import { isWithin, type Protected, protectedReason } from "./sessions/cleanup-ru
 import { realOf } from "./sessions/cleanup-scan.ts";
 
 /**
- * Whether this computer offers isolated environments: not Windows, whose `PATH` and the tools' folders the variables are
- * not made for. Where it is not offered, no folder is isolated, whatever marker it holds (one made on another computer):
- * a process gets no variables there, and New chat shows no switch (`GET /api/isolation`).
+ * Whether this computer offers isolated environments (`Capabilities.isolatedEnvironment`: not Windows). Where it is not
+ * offered, no folder is isolated, whatever marker it holds (one made on another computer): a process gets no variables
+ * there, and neither New chat nor a conversation's header shows the switch (`GET /api/isolation`, `/api/meta`).
  */
-export const ISOLATION_SUPPORTED = platform.id !== "win32";
+export const ISOLATION_SUPPORTED = platform.capabilities.isolatedEnvironment;
 
 /**
  * A project folder's isolated environment, the server's part (docs/superpowers/specs/2026-11-14-isolated-project-env-design.md):

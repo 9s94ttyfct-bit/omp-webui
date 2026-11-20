@@ -69,7 +69,7 @@ test("New chat's switch makes the folder isolated, its conversation is marked, a
 	await expect(page.getByTestId("isolated-badge")).toHaveCount(0);
 });
 
-test("a running conversation switches its folder from This session, restarts when the person says, and is isolated then; the header's Restart to apply switches back", async ({
+test("a running conversation switches its folder from the header, restarts when the person says, and is isolated then; switched back the same way", async ({
 	page,
 }) => {
 	const { folder, real } = freshFolder("iso-later");
@@ -84,39 +84,51 @@ test("a running conversation switches its folder from This session, restarts whe
 	await expect(page.getByText("before:.", { exact: true })).toBeVisible({ timeout: 30_000 });
 	await expect(page.getByTestId("isolated-badge")).toHaveCount(0);
 
-	// This session's switch (under Advanced): the folder is switched at once, and the process, idle, is offered a restart now.
-	await page.getByTestId("session-controls").click();
-	const advanced = page.getByTestId("session-controls-advanced");
-	if ((await advanced.getAttribute("aria-expanded")) !== "true") await advanced.click();
-	const section = page.getByTestId("session-isolation");
-	const toggle = section.getByTestId("isolation-toggle");
+	// The header's switch, beside the guard's: the folder is switched at once, and the title says a restart applies it.
+	const toggle = page.getByTestId("header-isolation").getByTestId("isolation-toggle");
 	await expect(toggle).toHaveAttribute("aria-checked", "false");
 	await toggle.click();
 	await expect(toggle).toHaveAttribute("aria-checked", "true");
 	expect(existsSync(join(real, ISOLATED_DIR, "ompw-env.json"))).toBe(true);
-	await expect(page.getByTestId("isolated-stale")).toBeVisible();
-	await section.getByTestId("session-isolation-restart").click();
-	// It asks once: a restart ends what the conversation started.
-	await section.getByTestId("session-isolation-restart-yes").click();
+	await page.getByTestId("isolated-stale").click();
+	await page.getByTestId("isolated-stale-restart").click();
 	await expect(page.getByTestId("isolated-badge")).toBeVisible({ timeout: 30_000 });
 	await expect(page.getByTestId("isolated-stale")).toHaveCount(0);
-	await page.keyboard.press("Escape");
 	await echo("after");
 	await expect(page.getByText(`after:${join(real, ISOLATED_DIR)}.`, { exact: true })).toBeVisible({ timeout: 30_000 });
 
-	// Switched off again: the header says a restart applies it, and restarts when asked.
-	await page.getByTestId("session-controls").click();
-	// The fold stays as it was left.
-	await expect(advanced).toHaveAttribute("aria-expanded", "true");
+	// Switched off again, the same way.
 	await toggle.click();
 	await expect(toggle).toHaveAttribute("aria-checked", "false");
-	await page.keyboard.press("Escape");
 	await page.getByTestId("isolated-stale").click();
 	await page.getByTestId("isolated-stale-restart").click();
 	await expect(page.getByTestId("isolated-stale")).toHaveCount(0, { timeout: 30_000 });
 	await expect(page.getByTestId("isolated-badge")).toHaveCount(0);
 	await echo("off");
 	await expect(page.getByText("off:.", { exact: true })).toBeVisible({ timeout: 30_000 });
+});
+
+test("a narrow header puts the isolation switch in its menu, where it switches the folder too", async ({ page }) => {
+	const { folder, real } = freshFolder("iso-narrow");
+	await page.goto(newChatIn(folder));
+	await expect(page.getByTestId("model-picker")).toBeVisible({ timeout: 60_000 });
+	const composer = page.getByTestId("composer");
+	await composer.fill('!echo "started"');
+	await composer.press("Enter");
+	await expect(page.getByText("started", { exact: true })).toBeVisible({ timeout: 30_000 });
+	await expect(page.getByTestId("header-isolation")).toBeVisible();
+	// The narrowest phone's header: the switch gives way to the menu (before This session does).
+	await page.setViewportSize({ width: 320, height: 800 });
+	await expect(page.getByTestId("header-isolation")).toHaveCount(0);
+	// The sidebar comes over the conversation on a phone: it is put away first.
+	await page.keyboard.press("Escape");
+	await page.getByTestId("chat-more").click();
+	const row = page.getByTestId("header-isolation-row");
+	await expect(row).toContainText("Off");
+	await row.getByTestId("isolation-toggle").click();
+	await expect(row.getByTestId("isolation-toggle")).toHaveAttribute("aria-checked", "true");
+	await expect(row).toContainText("On");
+	expect(existsSync(join(real, ISOLATED_DIR, "ompw-env.json"))).toBe(true);
 });
 
 test("New chat's switch cannot turn the home folder isolated, and says why", async ({ page }) => {

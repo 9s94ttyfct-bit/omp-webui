@@ -117,10 +117,11 @@ export function statusFolds(steps: readonly StatusStep[], taken: number): Status
 
 /**
  * What the chat's header gives way with when the room beside its title is short, the first first (see `useFitSteps`):
- * Rename, Export, the Loaded list, the cost and Goal go to its menu, then This session (its gear is in the menu then,
- * and the guard's switch moves beside the menu), and last the quota is written shorter: the conversation's own
- * provider's without its meter, the providers' names left out, and then each one's figure alone. The title keeps its
- * room until nothing else can give way; the side panel's button, the guard's switch and the quota always stay.
+ * Rename, Export, the Loaded list, the cost, Goal and the isolated environment's switch go to its menu, then This session
+ * (its gear is in the menu then, and the guard's switch moves beside the menu), and last the quota is written shorter:
+ * the conversation's own provider's without its meter, the providers' names left out, and then each one's figure alone.
+ * The title keeps its room until nothing else can give way; the side panel's button, the guard's switch and the quota
+ * always stay.
  */
 export const HEADER_STEPS = [
 	"rename",
@@ -128,24 +129,29 @@ export const HEADER_STEPS = [
 	"loaded",
 	"cost",
 	"goal",
+	"isolation",
 	"session",
 	"quota-short",
 	"quota-terse",
 ] as const;
 export type HeaderStep = (typeof HEADER_STEPS)[number];
 
-/** The header's steps for what it has: Rename and Export need a saved file, This session omp or a file to start it from. */
+/**
+ * The header's steps for what it has: Rename and Export need a saved file, This session omp or a file to start it from,
+ * the isolated environment's switch a running process.
+ */
 export function headerSteps(has: {
 	rename: boolean;
 	export: boolean;
 	session: boolean;
+	isolation: boolean;
 	/** The quota has a long form: its own provider's meter, or the names of more than one provider. */
 	quotaShort: boolean;
 	/** More than one provider's quota, which each say their figure alone in the tersest form. */
 	quotaTerse: boolean;
 }): HeaderStep[] {
 	return HEADER_STEPS.filter((step) => {
-		if (step === "rename" || step === "export" || step === "session") return has[step];
+		if (step === "rename" || step === "export" || step === "session" || step === "isolation") return has[step];
 		if (step === "quota-short") return has.quotaShort;
 		if (step === "quota-terse") return has.quotaTerse;
 		return true;

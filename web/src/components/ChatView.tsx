@@ -149,6 +149,8 @@ const BigView = lazy(() => import("./BigView.tsx"));
 const MdEditor = lazy(() => import("./md/MdEditor.tsx"));
 // The switch for unattended mode (#646) and the chip with the number of questions waiting: a chunk of its own, with its strings.
 const UnattendedToggle = lazy(() => import("./UnattendedToggle.tsx"));
+// The isolated environment's switch, in the header (`ChatHeader`) or its menu.
+const HeaderIsolation = lazy(() => import("./HeaderIsolation.tsx"));
 // Quick prompts (#659) and the built-in Soft stop (#658): a chunk of its own with its strings, edited in Settings.
 const QuickPromptMenu = lazy(() => import("./QuickPromptMenu.tsx"));
 
@@ -257,9 +259,10 @@ function SessionCost({ usage, tip }: { usage: Usage; tip: boolean }) {
 
 /**
  * What the header has no room for, behind one button: the readouts and buttons that sit beside the title when the chat
- * column has room for them (`HEADER_STEPS`: Rename, Export, Loaded, the cost, Goal, This session), and what the status
- * line under the composer has put here (`status`, `StatusMenuRows`). It lists exactly those: what is still on the header
- * or the line is not repeated here. The context share is never among them: the status line keeps it (#454).
+ * column has room for them (`HEADER_STEPS`: Rename, Export, Loaded, the cost, Goal, the isolated environment's switch,
+ * This session), and what the status line under the composer has put here (`status`, `StatusMenuRows`). It lists exactly
+ * those: what is still on the header or the line is not repeated here. The context share is never among them: the status
+ * line keeps it (#454).
  */
 function HeaderMenu({
 	folded,
@@ -270,6 +273,7 @@ function HeaderMenu({
 	onGoal,
 	hasGoal,
 	onLoaded,
+	isolation,
 	status,
 }: {
 	/** What the header has put in the menu. */
@@ -283,6 +287,8 @@ function HeaderMenu({
 	/** A goal exists: the row shows it instead of offering to set one. */
 	hasGoal: boolean;
 	onLoaded: () => void;
+	/** The isolated environment's switch as a row, when the header has put it here. */
+	isolation: ReactNode;
 	/** The status line's items it has put in the menu, or nothing. */
 	status: ReactNode;
 }) {
@@ -306,7 +312,7 @@ function HeaderMenu({
 	const rename = folded.has("rename") ? onRename : undefined;
 	const exportHtml = folded.has("export") ? onExport : undefined;
 	const figures = folded.has("cost") || session !== undefined || status !== null;
-	const actions = rename || exportHtml || folded.has("goal") || folded.has("loaded");
+	const actions = rename || exportHtml || folded.has("goal") || folded.has("loaded") || isolation;
 	return (
 		<Popover.Root open={open} onOpenChange={setOpen}>
 			<span ref={button} className="inline-flex shrink-0">
@@ -389,6 +395,7 @@ function HeaderMenu({
 									<Layers size={15} /> {t("loaded.title")}
 								</button>
 							) : null}
+							{isolation}
 						</div>
 					) : null}
 				</Popover.Content>
@@ -421,6 +428,7 @@ function ChatHeader({
 	goal,
 	onLoaded,
 	panelToggle,
+	isolation,
 	status,
 	statusInMenu,
 	holds,
@@ -438,6 +446,8 @@ function ChatHeader({
 	guard: ReactNode;
 	goal: { held: boolean; expanded: boolean; toggle: () => void; open: () => void };
 	onLoaded: () => void;
+	/** The conversation's running process, whose folder's isolated environment the header switches. */
+	isolation: LiveState | undefined;
 	panelToggle: ReactNode;
 	/** The status line's items in the menu (`StatusMenuRows`), and whether there are any. */
 	status: ReactNode;
@@ -450,6 +460,7 @@ function ChatHeader({
 		rename: onRename !== undefined,
 		export: onExport !== undefined,
 		session: controls !== undefined,
+		isolation: isolation !== undefined,
 		quotaShort: quotaForms.short,
 		quotaTerse: quotaForms.terse,
 	});
@@ -472,6 +483,12 @@ function ChatHeader({
 					<IconButton label={t("chat.exportHtml")} data-testid="export-html" onClick={onExport}>
 						<Download size={16} />
 					</IconButton>
+				) : null}
+				{/* The isolated environment's switch before the guard's, which stays beside This session. */}
+				{isolation && !off.has("isolation") ? (
+					<Suspense fallback={null}>
+						<HeaderIsolation live={isolation} />
+					</Suspense>
 				) : null}
 				{off.has("session") ? null : (guard ?? guardSlot)}
 				{sessionShown ? <SessionControls live={controls.live} start={controls.start} /> : null}
@@ -503,6 +520,13 @@ function ChatHeader({
 						onGoal={goal.open}
 						hasGoal={goal.held}
 						onLoaded={onLoaded}
+						isolation={
+							isolation && off.has("isolation") ? (
+								<Suspense fallback={null}>
+									<HeaderIsolation live={isolation} inMenu />
+								</Suspense>
+							) : null
+						}
 						status={statusInMenu ? status : null}
 					/>
 				) : null}
@@ -1639,6 +1663,9 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 							onExport={currentFile ? exportHtml : undefined}
 							controls={canAct ? { live, start: startLive } : undefined}
 							guard={guardToggle}
+							isolation={
+								canAct && live && !live.info.exited && meta?.capabilities?.isolatedEnvironment ? live : undefined
+							}
 							goal={{ held: goalOpenNow, expanded: goalExpanded, toggle: toggleGoal, open: () => openGoal() }}
 							onLoaded={openLoaded}
 							panelToggle={panelToggle}

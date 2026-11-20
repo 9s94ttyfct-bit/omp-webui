@@ -17,6 +17,7 @@ const CAPABILITIES: Record<PlatformId, Capabilities> = {
 		jobSurvivesServer: true,
 		appUpdate: true,
 		appShell: true,
+		isolatedEnvironment: true,
 	},
 	linux: {
 		processTreeKill: true,
@@ -30,6 +31,7 @@ const CAPABILITIES: Record<PlatformId, Capabilities> = {
 		jobSurvivesServer: true,
 		appUpdate: false,
 		appShell: false,
+		isolatedEnvironment: true,
 	},
 	win32: {
 		processTreeKill: true,
@@ -43,6 +45,7 @@ const CAPABILITIES: Record<PlatformId, Capabilities> = {
 		jobSurvivesServer: false,
 		appUpdate: true,
 		appShell: false,
+		isolatedEnvironment: false,
 	},
 };
 
@@ -81,4 +84,5 @@ export const UNAVAILABLE: Record<Capability, string> = {
 	jobSurvivesServer: "An install that was running when the server ended cannot be followed on this system",
 	appUpdate: "The in-app update is only available in the macOS app and the Windows launcher",
 	appShell: "The native app shell is only available on macOS",
+	isolatedEnvironment: "A project's isolated environment is offered on macOS and Linux only",
 };

@@ -172,19 +172,21 @@ describe("what gives way where the room is short", () => {
 	});
 
 	test("the header puts its buttons in its menu before This session, and shortens the quota last", () => {
-		const every = { rename: true, export: true, session: true, quotaShort: true, quotaTerse: true };
+		const every = { rename: true, export: true, session: true, isolation: true, quotaShort: true, quotaTerse: true };
 		expect(headerSteps(every)).toEqual([
 			"rename",
 			"export",
 			"loaded",
 			"cost",
 			"goal",
+			"isolation",
 			"session",
 			"quota-short",
 			"quota-terse",
 		]);
-		// A conversation not saved yet has nothing to rename or export; one provider has no tersest form.
-		expect(headerSteps({ ...every, rename: false, export: false, quotaTerse: false })).toEqual([
+		// A conversation not saved yet has nothing to rename or export, nor one with no process an isolation switch; one
+		// provider has no tersest form.
+		expect(headerSteps({ ...every, rename: false, export: false, isolation: false, quotaTerse: false })).toEqual([
 			"loaded",
 			"cost",
 			"goal",

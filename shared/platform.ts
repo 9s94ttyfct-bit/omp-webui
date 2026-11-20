@@ -30,6 +30,11 @@ export interface Capabilities {
 	appUpdate: boolean;
 	/** The native app shell (Swift): its window, native notifications, file drops, pop-outs, the menu bar's background mode. */
 	appShell: boolean;
+	/**
+	 * A project's isolated environment (`shared/isolated-env.ts`): not Windows, whose `PATH` and the tools' folders the
+	 * variables are not made for.
+	 */
+	isolatedEnvironment: boolean;
 }
 
 /** The capabilities, by name. */
