@@ -6,6 +6,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	symlinkSync,
 	writeFileSync,
@@ -24,9 +25,10 @@ import {
 
 /**
  * Who holds a session's write lease. omp 18.14.1 says whether it is held (`omp session lease --json`), played here by a
- * fake omp; older omp, and the attribution to a process, read it from the system as omp takes it on Linux: no file, an
- * abstract Unix socket named from the lock's path, bound by the process that holds it. Read here from a `/proc` laid out
- * as Linux's is, so that it is checked on any system; tests/contract/open-elsewhere.test.ts is the real omp.
+ * fake omp; older omp, and the attribution to a process, read it from the system as omp takes it on Linux: before omp
+ * 19.0.1 no file, an abstract Unix socket named from the lock's path, bound by the process that holds it; from 19.0.1 a
+ * lock on the lock file itself, which the kernel lists in the holder's `fdinfo`. Read here from a `/proc` laid out as
+ * Linux's is, so that it is checked on any system; tests/contract/open-elsewhere.test.ts is the real omp.
  */
 
 const root = mkdtempSync(join(tmpdir(), "ompw-lease-"));
@@ -106,6 +108,31 @@ test("the lease is looked for where omp keeps it: under PI_CONFIG_DIR when it is
 	expect(await leaseHolders(ID, linux(proc, { PI_CONFIG_DIR: ".omp-alt" }))).toEqual([100]);
 	// Without it the lease is the default config root's, which nobody holds here.
 	expect(await leaseHolders(ID, linux(proc))).toEqual([]);
+});
+
+test("on Linux from omp 19.0.1 the holder is the process whose descriptor holds a lock on the lock file, and only that one", async () => {
+	// A home that exists: the lock is a file now, and a descriptor's link is that file's real path.
+	const home = join(root, "home-ofd");
+	const system = { env: { PATH: process.env.PATH ?? "/usr/bin:/bin" }, home, platform: "linux" as const };
+	const lock = leaseLockPath(ID, system);
+	mkdirSync(join(home, ".omp", "run", "session-owners"), { recursive: true });
+	writeFileSync(lock, "");
+	// What the kernel's link names: the file's real path (the temporary folder may be behind a symbolic link).
+	const file = realpathSync(lock);
+	const proc = fakeProc("ofd", {}, { "100": ["/dev/null", file], "200": [file], "300": null, "400": ["/dev/null"] });
+	// The kernel's `lock:` line for the holder's descriptor (an OFD lock names no pid); 200 only has the file open, as
+	// omp's own `isHeld` probe does.
+	mkdirSync(join(proc, "100", "fdinfo"));
+	writeFileSync(join(proc, "100", "fdinfo", "0"), "pos:\t0\nflags:\t02100000\n");
+	writeFileSync(
+		join(proc, "100", "fdinfo", "1"),
+		"pos:\t0\nflags:\t02100002\nmnt_id:\t29\nino:\t1234\nlock:\t1: OFDLCK  ADVISORY  WRITE -1 08:01:1234 0 EOF\n",
+	);
+	mkdirSync(join(proc, "200", "fdinfo"));
+	writeFileSync(join(proc, "200", "fdinfo", "0"), "pos:\t0\nflags:\t02100000\nmnt_id:\t29\nino:\t1234\n");
+	expect(await leaseHolders(ID, { ...system, proc })).toEqual([100]);
+	// Another session's lock file is not this one.
+	expect(await leaseHolders("01937f2a-5c1d-7e00-8000-000000000062", { ...system, proc })).toEqual([]);
 });
 
 test("the lease directory follows omp's rules: XDG_STATE_HOME once omp has a folder there, on Linux and macOS", () => {

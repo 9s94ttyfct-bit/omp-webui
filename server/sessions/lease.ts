@@ -21,8 +21,9 @@ import { platform, platformFor } from "../platform/index.ts";
  *   on Linux and macOS when `$XDG_STATE_HOME/omp` exists (pi-utils' `getSessionOwnersDir`, the same since omp 18.12.3);
  * - the lock is `<that directory>/<session id>.lock` (an id that is not a plain token is named by its hash);
  * - on macOS (and other Unix systems but Linux) it is a `flock` on that file, held by the processes that have it open; on
- *   Linux no file is made: it is an abstract Unix socket named from that path (omp's native `FileLock`), held by the
- *   process that has it bound.
+ *   Linux, from omp 19.0.1, an open-file-description lock on that file, held by the process whose descriptor has it, and
+ *   before 19.0.1 no file at all: an abstract Unix socket named from that path (omp's native `FileLock`), held by the
+ *   process that has it bound (`Platform.locks` looks for both).
  */
 
 /** The first omp with `omp session lease` (and RPC `get_session_lease`). */
