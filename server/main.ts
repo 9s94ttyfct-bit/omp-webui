@@ -150,6 +150,7 @@ import { SettingsHelp } from "./settings-help/service.ts";
 import { NOTIFY_EVENTS_PATH, SHELL_EVENTS_PATH, ShellEvents } from "./shell-events.ts";
 import { KeepAwake, SleepDetector, spawnCaffeinate, workingIds } from "./sleep.ts";
 import { isOwnerPage, isOwnerRoute, isThisComputer } from "./this-computer.ts";
+import { inlineTouchIcon } from "./touch-icon.ts";
 import type { TransferEnv } from "./transfer-core.ts";
 import type { AppUpdater, InstallTarget } from "./update/service.ts";
 import { APP_VERSION } from "./version.ts";
@@ -3376,7 +3377,9 @@ async function handle(ws: Bun.ServerWebSocket<WsData>, msg: ClientMessage): Prom
  */
 async function serveIndex(req: Request, file: string): Promise<Response> {
 	if (!auth.allowed(req) && !givesCookie(req)) return serveStatic(req, file, false);
-	const html = uiPrefs.inject(await Bun.file(file).text(), onThisComputer.has(req));
+	let html = uiPrefs.inject(await Bun.file(file).text(), onThisComputer.has(req));
+	// Safari fetches a Home Screen app's icon without the page's cookies, which Cloudflare Access turns away (see `inlineTouchIcon`).
+	if (remoteOf.has(req)) html = inlineTouchIcon(html, cfg.distDir);
 	return compressResponse(
 		req,
 		new Response(html, { headers: { "content-type": "text/html;charset=utf-8", "cache-control": "no-store" } }),

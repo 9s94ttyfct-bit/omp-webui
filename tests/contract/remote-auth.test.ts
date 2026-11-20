@@ -42,6 +42,8 @@ const setSettings = (over: Record<string, unknown> = {}) =>
 	writeFileSync(settingsFile, JSON.stringify({ ...GOOD, ...over }));
 const now = () => Math.floor(Date.now() / 1000);
 const goodJwt = (over: Record<string, unknown> = {}) => sign(key, claims(now(), over));
+/** Any bytes: the server never decodes the icon, it only carries them. */
+const TOUCH_ICON = Buffer.from("touch icon bytes");
 
 beforeAll(async () => {
 	key = await makeKey("kid-1");
@@ -50,8 +52,9 @@ beforeAll(async () => {
 	mkdirSync(join(dist, "assets"), { recursive: true });
 	writeFileSync(
 		join(dist, "index.html"),
-		'<!doctype html>\n<html><head></head><body><div id="root"></div></body></html>\n',
+		'<!doctype html>\n<html><head><link rel="apple-touch-icon" href="/apple-touch-icon.png" /></head><body><div id="root"></div></body></html>\n',
 	);
+	writeFileSync(join(dist, "apple-touch-icon.png"), TOUCH_ICON);
 	setSettings();
 	s = await startTestServer(
 		0,
@@ -165,6 +168,14 @@ describe("a remote request with a valid Access token", () => {
 		expect(csp).toContain("default-src 'self'");
 		expect(csp).toContain(`connect-src 'self' ws://${HOSTNAME} wss://${HOSTNAME}`);
 		expect(csp).not.toContain("*");
+	});
+
+	test("is given the Apple touch icon inside the page: Safari fetches it without the Access cookie (a local page keeps the link)", async () => {
+		const page = await (await remote("/")).text();
+		expect(page).toContain(
+			`<link rel="apple-touch-icon" href="data:image/png;base64,${TOUCH_ICON.toString("base64")}" />`,
+		);
+		expect(await (await local("/")).text()).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png" />');
 	});
 
 	test("is not given it again once it has it, nor on the API", async () => {

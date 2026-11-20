@@ -443,6 +443,7 @@
     "tests/contract/windows-update.test.ts": 21,
     "tests/unit/list-pref.test.ts": 21,
     "tests/unit/remote-risk-windows.test.ts": 21,
+    "tests/unit/touch-icon.test.ts": 21,
     "tests/unit/browser-registry.test.ts": 20,
     "tests/unit/gh-runs.test.ts": 20,
     "tests/unit/host-parse.test.ts": 20,
