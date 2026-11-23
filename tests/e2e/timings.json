@@ -184,6 +184,7 @@
 		"ask-form-context.spec.ts › a choice of an ask form shows the option the form preselects, and the form's words once": 3,
 		"ask-form-context.spec.ts › a field of an ask form is shown with what the form says around it, as text, and nothing of it runs": 7.7,
 		"ask-form-whole.spec.ts › Skip cancels a whole ask form": 2.2,
+		"ask-form-whole.spec.ts › a control named __proto__ is sent as a key like any other": 2.2,
 		"ask-form-whole.spec.ts › a whole ask form is drawn, checked on Submit, and answered with its data": 3.2,
 		"ask-stepper.spec.ts › Safari zoomed › in a window this short (Safari zoomed in) the app's frame never scrolls, asking or answered": 8.9,
 		"ask-stepper.spec.ts › desktop 1400×900 › a page that was scrolled anyway is back at the top when the request ends": 5.9,

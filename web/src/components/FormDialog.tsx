@@ -160,7 +160,8 @@ export default function FormBody({ req, liveId, onCancel }: { req: UIRequest; li
 
 	const submit = (e: { preventDefault(): void }) => {
 		e.preventDefault();
-		const data: HtmlFormData = {};
+		// No prototype, as omp's own: a control named `__proto__` is a key like any other.
+		const data: HtmlFormData = Object.create(null);
 		const found = new Map<number, FieldProblem>();
 		form.fields.forEach((field, i) => {
 			// omp reads only named controls: an unnamed one is shown, and neither sent nor checked.

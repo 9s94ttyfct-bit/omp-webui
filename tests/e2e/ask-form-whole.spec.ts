@@ -96,3 +96,27 @@ test("Skip cancels a whole ask form", async ({ page }) => {
 	await expect(request).toHaveCount(0);
 	expect(sentResponses(tap.sent)).toEqual([{ id: "f-2", cancelled: true }]);
 });
+
+test("a control named __proto__ is sent as a key like any other", async ({ page }) => {
+	ownSession(0x5f22, "Ask form proto");
+	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
+	const tap = await tapSocket(page);
+	await page.goto("/");
+	const liveId = await startLive(page, tap, "Ask form proto", "ask-form-whole-3");
+	tap.push({
+		t: "frame",
+		liveId,
+		frame: {
+			type: "extension_ui_request",
+			id: "f-3",
+			method: "form",
+			html: '<form><label>Odd name <input name="__proto__" value="kept"></label></form>',
+		},
+	});
+	const request = page.getByTestId("ui-request");
+	await request.getByRole("button", { name: "Submit answers" }).click();
+	await expect(request).toHaveCount(0);
+	const sent = tap.sent.map((m) => JSON.stringify(m)).filter((m) => m.includes('"ui_response"'));
+	expect(sent).toHaveLength(1);
+	expect(sent[0]).toContain('"data":{"__proto__":"kept"}');
+});
