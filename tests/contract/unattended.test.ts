@@ -259,9 +259,12 @@ test("a question the list cannot keep is said in the conversation, and the model
 	c.ws.close();
 }, 180_000);
 
-/** A dialog of an `ask`: the one `ask` dialog of omp before 18.18.3, or one of the dialogs a form's fields are asked with. */
+/**
+ * A dialog of an `ask`: the one `ask` dialog of omp before 18.18.3, one of the dialogs a form's fields are asked with, or
+ * the whole form (`form`, omp 19.1.0 and later).
+ */
 const isAskDialog = (f: Frame) =>
-	f.type === "extension_ui_request" && ["ask", "select", "input", "editor"].includes(String(f.method));
+	f.type === "extension_ui_request" && ["ask", "form", "select", "input", "editor"].includes(String(f.method));
 
 test("an ask of an unattended conversation is answered for the person and filed; the turn goes on", async () => {
 	const c = await conversation(true);
@@ -303,8 +306,14 @@ test("an ask of a conversation that is not unattended is still a dialog for the 
 	const response =
 		frame.method === "ask"
 			? { id: frame.id, answers: [{ id: "q", selectedOptions: ["Redis"] }] }
-			: { id: frame.id, value: "Redis" };
-	expect(frame.method === "ask" || frame.title === "Which cache, really?").toBe(true);
+			: frame.method === "form"
+				? { id: frame.id, data: { q: "Redis" } }
+				: { id: frame.id, value: "Redis" };
+	expect(
+		frame.method === "ask" ||
+			(frame.method === "form" && String(frame.html).includes("Which cache, really?")) ||
+			frame.title === "Which cache, really?",
+	).toBe(true);
 	c.ws.send(JSON.stringify({ t: "ui_response", liveId: c.live.liveId, response }));
 	await ended;
 	c.ws.close();

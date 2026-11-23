@@ -39,6 +39,8 @@ import { Badge, Button, cx } from "./ui.tsx";
 const Markdown = lazy(() => import("./Markdown.tsx").then((m) => ({ default: m.Markdown })));
 // The goal omp proposes: only asked for when omp sends one, so its form is a chunk of its own.
 const ProposalBody = lazy(() => import("./GuidedGoal.tsx").then((m) => ({ default: m.ProposalBody })));
+// omp's `ask` form sent whole (omp 19.1.0 and later): its reader and its fields are a chunk of their own.
+const FormBody = lazy(() => import("./FormDialog.tsx"));
 
 /**
  * A finger needs 44 px to hit (Apple's guideline; WCAG 2.2 asks 24 at least): the choices of a request are that tall on a
@@ -281,7 +283,8 @@ export function UIRequests({
 				? t("panel.reqRiskTitle", { tool: risk.tool })
 				: approval
 					? head
-					: (req.title ?? (req.method === "ask" ? t("panel.reqHasQuestion") : t("panel.reqInputRequested")));
+					: (req.title ??
+						(req.method === "ask" || req.method === "form" ? t("panel.reqHasQuestion") : t("panel.reqInputRequested")));
 	// Always in the page, so that a request added to it is announced the moment it arrives, whatever has the focus.
 	const announcement = (
 		<div className="sr-only" role="alert" aria-live="assertive" data-testid="ui-request-announcement" data-keep>
@@ -414,7 +417,13 @@ function Countdown({ req, approval }: { req: UIRequest; approval: boolean }) {
 	const now = useNow(req.deadline === undefined ? null : 250);
 	if (req.deadline === undefined) return null;
 	const key =
-		req.method === "ask" ? "panel.reqCountdownAsk" : approval ? "panel.reqCountdownApproval" : "panel.reqCountdown";
+		req.method === "ask"
+			? "panel.reqCountdownAsk"
+			: req.method === "form"
+				? "panel.reqCountdownForm"
+				: approval
+					? "panel.reqCountdownApproval"
+					: "panel.reqCountdown";
 	return (
 		<p className="mb-3 text-xs text-muted tabular-nums" data-testid="ui-request-countdown">
 			{t(key, { time: fmtCountdown(req.deadline - now) })}
@@ -561,6 +570,12 @@ function Body({
 			);
 		case "ask":
 			return <AskBody req={req} liveId={liveId} onCancel={cancel} />;
+		case "form":
+			return (
+				<Suspense fallback={null}>
+					<FormBody req={req} liveId={liveId} onCancel={cancel} />
+				</Suspense>
+			);
 		case "propose_goal":
 			return (
 				<Suspense fallback={null}>

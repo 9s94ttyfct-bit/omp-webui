@@ -455,7 +455,15 @@ export function leaveSession(s: LiveState): LiveState {
 	};
 }
 
-const DIALOG_METHODS: Record<string, true> = { select: true, confirm: true, input: true, editor: true, ask: true };
+/** The dialogs omp waits on; `form` is the `ask` tool's whole HTML form (omp 19.1.0 and later). */
+const DIALOG_METHODS: Record<string, true> = {
+	select: true,
+	confirm: true,
+	input: true,
+	editor: true,
+	ask: true,
+	form: true,
+};
 
 /** Replace the pending dialogs; `needsInput` follows, so the two can never disagree. */
 export function withUiRequests(s: LiveState, uiRequests: UIRequest[]): LiveState {

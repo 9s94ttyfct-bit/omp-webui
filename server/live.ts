@@ -170,8 +170,15 @@ export interface Subscriber {
 	send(msg: unknown): void;
 }
 
-/** extension_ui_request methods that block omp until answered. */
-const DIALOG_METHODS: Record<string, true> = { select: true, confirm: true, input: true, editor: true, ask: true };
+/** extension_ui_request methods that block omp until answered; `form` is the `ask` tool's whole HTML form (omp 19.1.0). */
+const DIALOG_METHODS: Record<string, true> = {
+	select: true,
+	confirm: true,
+	input: true,
+	editor: true,
+	ask: true,
+	form: true,
+};
 
 /**
  * What a call that names no question is filed as (#650): the store refuses it as `empty`, and the conversation is told that

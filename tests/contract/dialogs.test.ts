@@ -17,7 +17,8 @@ import { connect, request } from "../support/ws.ts";
  * What omp does with the dialogs it waits on, against the real omp and the real server, the model a scripted provider (no
  * model call): an `ask` whose timeout (`ask.timeout`) runs out is answered by omp itself and the server says so in the
  * frame that closes it; a message sent while a tool approval waits is delivered once the approval is denied, and not before.
- * omp before 18.18.3 asks an `ask` as one `ask` dialog; a later one asks its form's one field as a `select`.
+ * omp before 18.18.3 asks an `ask` as one `ask` dialog; a later one asks its form's one field as a `select`, and 19.1.0 and
+ * later send the form whole (`form`), answered with its data by the controls' names.
  */
 
 const ASK_TIMEOUT_S = 2;
@@ -73,8 +74,9 @@ afterAll(async () => {
 });
 
 const isRequest = (f: Frame, method: string) => f.type === "extension_ui_request" && f.method === method;
-/** The dialog an `ask` is: its own (`ask`), or its one field's (`select`). */
-const isAsk = (f: Frame) => isRequest(f, "ask") || (isRequest(f, "select") && f.title === "Which colour?");
+/** The dialog an `ask` is: its own (`ask`), its one field's (`select`), or its whole form (`form`). */
+const isAsk = (f: Frame) =>
+	isRequest(f, "ask") || isRequest(f, "form") || (isRequest(f, "select") && f.title === "Which colour?");
 const isCancel = (f: Frame, target: unknown) =>
 	f.type === "extension_ui_request" && f.method === "cancel" && f.targetId === target;
 
@@ -120,11 +122,15 @@ test("an ask answered in time is closed without the timeout mark", async () => {
 	const response =
 		ask.method === "ask"
 			? { id: ask.id, answers: [{ id: "colour", selectedOptions: ["Red"] }] }
-			: { id: ask.id, value: "Red" };
+			: ask.method === "form"
+				? { id: ask.id, data: { colour: "Red" } }
+				: { id: ask.id, value: "Red" };
 	ws.send(JSON.stringify({ t: "ui_response", liveId: live.liveId, response }));
 	const closed = await frames.next((f) => isCancel(f, ask.id));
 	expect(closed.timedOut).toBeUndefined();
 	await frames.next((f) => f.type === "agent_end");
+	// omp took the answer: it is what went to the model.
+	expect(backend.requests.at(-1)?.text).toMatch(/Red/);
 	await request(ws, { t: "close", liveId: live.liveId });
 	ws.close();
 }, 120_000);

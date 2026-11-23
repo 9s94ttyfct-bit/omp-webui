@@ -458,4 +458,18 @@ export const en = {
 		"One # heading per phase and one line per task: [ ] pending, [/] in progress, [x] done, [!] blocked (end the line with <!-- blocker: reason -->), [-] abandoned. omp reads it as /todo import does.",
 	todoMarkdownLabel: "Todo list as Markdown",
 	todoMarkdownApply: "Apply",
+
+	// omp's `ask` form, sent whole (omp 19.1): why a field is not taken, by the rules omp checks the answers by
+	formRequired: "Required",
+	formSelectOne: "Select at least one",
+	formNumber: "Enter a number",
+	formEmail: "Enter an email address",
+	formUrl: "Enter a full URL",
+	formMin: "Must be at least {n}",
+	formMax: "Must be at most {n}",
+	formMinLength: "Needs at least {n} characters",
+	formMaxLength: "At most {n} characters",
+	formPattern: "Must match {pattern}",
+	/** Under the form, after Submit found fields it cannot send. */
+	formFix: "Fix the marked fields to submit ({n}).",
 };

@@ -397,6 +397,7 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 	reqCountdown: "{time}后 omp 将不等回答继续运行",
 	reqCountdownAsk: "{time}后 omp 将选用它推荐的答案",
 	reqCountdownApproval: "{time}后 omp 将不再等待此次批准",
+	reqCountdownForm: "{time}后 omp 将按表单的初始内容提交",
 	reqDenyOnSend: "发送消息会拒绝此次批准并把消息发出去。",
 
 	reqRiskTitle: "确认高风险调用：{tool}",
@@ -537,4 +538,15 @@ export const zh: Record<keyof typeof en | keyof typeof later, string> = {
 		"每个阶段一个 # 标题，每个任务一行：[ ] 待处理，[/] 进行中，[x] 已完成，[!] 受阻（行尾加 <!-- blocker: 原因 -->），[-] 已放弃。omp 按 /todo import 的方式读取。",
 	todoMarkdownLabel: "Markdown 格式的待办列表",
 	todoMarkdownApply: "应用",
+	formRequired: "必填",
+	formSelectOne: "至少选一项",
+	formNumber: "请输入数字",
+	formEmail: "请输入邮箱地址",
+	formUrl: "请输入完整的网址",
+	formMin: "不能小于 {n}",
+	formMax: "不能大于 {n}",
+	formMinLength: "至少 {n} 个字符",
+	formMaxLength: "最多 {n} 个字符",
+	formPattern: "须符合 {pattern}",
+	formFix: "有 {n} 处标出的内容需要修改，改好后才能提交。",
 };

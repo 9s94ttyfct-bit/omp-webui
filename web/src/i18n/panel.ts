@@ -65,6 +65,8 @@ export const en = {
 	reqCountdown: "omp goes on without an answer in {time}",
 	reqCountdownAsk: "omp picks its recommended answer in {time}",
 	reqCountdownApproval: "omp stops waiting for this approval in {time}",
+	/** omp's `ask` form, sent whole (omp 19.1): unanswered in time, omp submits it as it was filled in to begin with. */
+	reqCountdownForm: "omp submits the form as first filled in, in {time}",
 	reqDenyOnSend: "Sending a message denies this and sends the message.",
 
 	// The gate's confirmation of a risky call: "Confirm risky commands from remote pages" (Settings › Remote access) or
