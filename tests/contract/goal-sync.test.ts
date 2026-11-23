@@ -98,7 +98,9 @@ interface Conversation {
 	 * settle after the last change of a subagent counts: omp 19.1 runs a `task` call's subagents detached, so a run can
 	 * settle before its subagent starts, and the subagent's result starts another run.
 	 */
-	settled(): Promise<void>;
+	settled(after?: number): Promise<void>;
+	/** How many settles `settled` has counted so far: `settled(settles())` waits for the next one. */
+	settles(): number;
 }
 
 /** A conversation the page has open, the way it opens one (`openLive`). */
@@ -152,7 +154,8 @@ async function conversation(): Promise<Conversation> {
 				.filter(Boolean)
 				.map((line) => JSON.parse(line) as SessionEntry)
 				.filter((r) => typeof r.id === "string"),
-		settled: () => pollUntil(() => settledFrames > 0, "omp to settle", 30_000),
+		settled: (after = 0) => pollUntil(() => settledFrames > after, "omp to settle", 30_000),
+		settles: () => settledFrames,
 	};
 }
 
@@ -425,11 +428,12 @@ test("a /new in the same process leaves the goal behind for the page too: it sho
 	expect(c.shown()).toBeNull();
 	expect(goalWait(c.live())).toBeNull();
 
-	// And a goal set in the new session is the page's goal.
+	// And a goal set in the new session is the page's goal. Its run changes what omp holds of it (its usage) as it goes,
+	// so the two are compared once that run has settled.
+	const settles = c.settles();
 	await createGoal(liveId, "A second goal", undefined);
 	await pollUntil(() => c.shown()?.objective === "A second goal", "the page to show the new goal");
-	// The goal's run goes on after the page first shows it, and changes what omp holds of it (its usage) as it goes.
-	await pollUntil(async () => Bun.deepEquals(c.shown(), await c.goal()), "the page to show the goal omp holds", 60_000);
+	await c.settled(settles);
 	expect(c.shown()).toEqual(await c.goal());
 }, 90_000);
 
