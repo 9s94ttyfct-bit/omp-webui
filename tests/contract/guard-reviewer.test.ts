@@ -90,17 +90,22 @@ describe("omp -p, as the benchmark asks its reviewer", () => {
 		const args = reviewerArgs(MODEL, "THE-REVIEWER-SYSTEM-PROMPT", "Review this.", work, "unused").filter(
 			(a) => !a.startsWith("--config="),
 		);
+		// The server never answers, so omp waits the whole timeout for it: long enough for a loaded runner to start the script.
 		const proc = Bun.spawn(["omp", ...args], {
-			env: { ...process.env, ...env, OMP_MCP_TIMEOUT_MS: "1500" },
+			env: { ...process.env, ...env, OMP_MCP_TIMEOUT_MS: "5000" },
 			stdin: "ignore",
 			stdout: "pipe",
 			stderr: "pipe",
 		});
-		await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+		const [, stderr] = await Promise.all([
+			new Response(proc.stdout).text(),
+			new Response(proc.stderr).text(),
+			proc.exited,
+		]);
 		const sent = stub.requests.slice(before);
 		expect(sent).toHaveLength(1);
 		expect(sent[0].text).toContain(CANARY);
 		expect(sent[0].tools.length).toBeGreaterThan(0);
-		expect(existsSync(mcpMarker)).toBe(true);
+		expect(existsSync(mcpMarker), `the MCP server's marker; omp's stderr: ${stderr}`).toBe(true);
 	}, 90_000);
 });
