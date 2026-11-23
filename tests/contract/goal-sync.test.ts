@@ -93,7 +93,11 @@ interface Conversation {
 	shown(): Goal | null;
 	/** The records of the conversation's saved file. */
 	records(): SessionEntry[];
-	/** Until omp has said the session is done (`session_settled`): a goal run's end, one frame after its last turn. */
+	/**
+	 * Until omp has said the session is done (`session_settled`): a goal run's end, one frame after its last turn. Only a
+	 * settle after the last change of a subagent counts: omp 19.1 runs a `task` call's subagents detached, so a run can
+	 * settle before its subagent starts, and the subagent's result starts another run.
+	 */
 	settled(): Promise<void>;
 }
 
@@ -116,7 +120,9 @@ async function conversation(): Promise<Conversation> {
 	let settledFrames = 0;
 	const onFrame = (ev: MessageEvent) => {
 		const m = JSON.parse(String(ev.data)) as { t?: string; liveId?: string; frame?: { type?: string } };
-		if (m.t === "frame" && m.liveId === liveId && m.frame?.type === "session_settled") settledFrames++;
+		if (m.t !== "frame" || m.liveId !== liveId) return;
+		if (m.frame?.type === "session_settled") settledFrames++;
+		else if (m.frame?.type === "subagent_lifecycle") settledFrames = 0;
 	};
 	ws.addEventListener("message", onFrame);
 	stopWatching = () => {
@@ -437,6 +443,8 @@ test("a /new in the same process leaves the subagents behind for the page too", 
 			: { text: "The subagent reported." };
 	const c = await conversation();
 	await c.rpc({ type: "prompt", message: "Send a scout" });
+	// omp 19.1 starts the subagent after the run that called `task` ended; the run its result starts settles after it.
+	await pollUntil(() => c.live().subagents.Echo?.status === "completed", "the page to show the subagent done");
 	await c.settled();
 	expect(Object.keys(c.live().subagents)).toEqual(["Echo"]);
 	const before = c.live().info.sessionFile;
