@@ -9,6 +9,7 @@ import {
 	type FormField,
 	type FormSpan,
 	fieldProblem,
+	fieldQuestions,
 	type HtmlFormData,
 	type HtmlFormValue,
 	isArrayChoice,
@@ -115,6 +116,7 @@ export default function FormBody({ req, liveId, onCancel }: { req: UIRequest; li
 	const ime = useImeGuard();
 	const base = useId();
 	const index = useMemo(() => new Map(form.fields.map((f, i) => [f, i])), [form]);
+	const questions = useMemo(() => fieldQuestions(form), [form]);
 	/** The run of a group that draws its last option draws its Other too. */
 	const lastRun = useMemo(() => {
 		const runs = new Map<FormField, OptionRun>();
@@ -252,7 +254,7 @@ export default function FormBody({ req, liveId, onCancel }: { req: UIRequest; li
 				{rows}
 				{withOther ? (
 					<input
-						aria-label={t("panel.reqOtherAria", { question: spansText(field.label) || field.name })}
+						aria-label={t("panel.reqOtherAria", { question: questions.get(field) ?? field.name })}
 						placeholder={t("panel.reqOther")}
 						className={INPUT}
 						value={answer.other}
@@ -307,10 +309,11 @@ export default function FormBody({ req, liveId, onCancel }: { req: UIRequest; li
 		// Radios, checkboxes and a multiple select (drawn as checkboxes): the run's options, and Other after the last.
 		const head = run.kind === "field";
 		return (
-			<div
-				className="space-y-1.5"
+			// A group of the question's name (a radio group's options split by text between them are each such a group).
+			<fieldset
+				className="min-w-0 space-y-1.5"
 				data-field={head ? field.name : undefined}
-				role={head && !field.multi ? "radiogroup" : undefined}
+				aria-label={questions.get(field)}
 			>
 				{head && field.label.length > 0 ? (
 					<p className="text-sm font-medium">
@@ -319,7 +322,7 @@ export default function FormBody({ req, liveId, onCancel }: { req: UIRequest; li
 				) : null}
 				{optionRows(field, i, run)}
 				{lastRun.get(field) === run ? errorOf(i) : null}
-			</div>
+			</fieldset>
 		);
 	};
 

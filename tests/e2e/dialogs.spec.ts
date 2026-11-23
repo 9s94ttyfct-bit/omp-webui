@@ -51,19 +51,36 @@ test("the ask tool shows a question form and the model receives the answers", as
 		);
 	await page.getByTestId("send").click();
 	const dialog = page.getByTestId("ui-request");
-	// omp 18.19 and later ask an `ask` form one field at a time: a `select` for a choice (with "Other (type your own)", which
-	// asks an `input`), the same `select` again after each pick of a checkbox until "Done selecting".
-	await expect(dialog).toHaveAttribute("data-method", "select", { timeout: 90_000 });
+	// omp 19.1 and later send the form whole (`form`); omp 18.19 to 19.0 ask it one field at a time: a `select` for a choice
+	// (with "Other (type your own)", which asks an `input`), the same `select` again after each pick of a checkbox until
+	// "Done selecting".
+	await expect(dialog).toHaveAttribute("data-method", /^(select|form)$/, { timeout: 90_000 });
 	// Reloading while omp waits must bring the dialog back: the server replays pending dialogs.
 	await page.reload();
-	await expect(dialog).toHaveAttribute("data-method", "select", { timeout: 30_000 });
+	await expect(dialog).toHaveAttribute("data-method", /^(select|form)$/, { timeout: 30_000 });
 	await expect(dialog).toHaveCount(1);
+	const reply = page.getByTestId("msg-assistant").last();
+	if ((await dialog.getAttribute("data-method")) === "form") {
+		const form = dialog.getByTestId("ask-form");
+		// The colour's own answer goes in its group's Other; the pets are ticked.
+		await form
+			.locator("[data-field]")
+			.filter({ has: page.getByRole("radio", { name: "Red" }) })
+			.getByTestId("form-other")
+			.fill("Green");
+		for (const pet of ["Cat", "Fish"]) await form.getByRole("checkbox", { name: pet }).check();
+		await form.getByRole("button", { name: "Submit answers" }).click();
+		await expect(dialog).toHaveCount(0);
+		await expect(reply).toContainText(/COLOR=Green/i, { timeout: 90_000 });
+		await expect(reply).toContainText(/Cat/);
+		await expect(reply).toContainText(/Fish/);
+		return;
+	}
 	const option = (name: string | RegExp) => dialog.getByRole("button", { name });
 	const picked = new Set<string>();
 	/** What the open request is, to tell when the next one (or none) took its place. */
 	const now = async () =>
 		(await dialog.count()) ? `${await dialog.getAttribute("data-method")} ${await dialog.innerText()}` : "";
-	const reply = page.getByTestId("msg-assistant").last();
 	const answered = async () => /COLOR=/i.test(await reply.innerText().catch(() => ""));
 	// The model chooses the order of the two fields; each step answers whichever is asked. Between two fields no request
 	// is open for a moment, so the next one (or the reply) is waited for, not taken for the end.

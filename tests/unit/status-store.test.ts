@@ -56,6 +56,7 @@ test("info notices are shown like warnings and errors, worded with their source 
 
 test("omp's list of the tools it mounted is not a toast, an empty notice is none, and an unknown level reads as info", () => {
 	frame({ type: "notice", level: "info", message: "xd://: mounted mcp__a_x, mcp__a_y", source: "xdev" });
+	frame({ type: "notice", level: "info", message: "Tool commands: added mcp__a_x, mcp__a_y", source: "toolCommands" });
 	frame({ type: "notice", level: "info", message: "   " });
 	frame({ type: "notice", level: "info" });
 	expect(toasts()).toEqual([]);

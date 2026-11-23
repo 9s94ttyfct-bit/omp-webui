@@ -7,6 +7,7 @@ import { DEFAULT_INSTRUCTION, type Question, type QuestionList, UNATTENDED_TOOL 
 import { type AccessKey, type Jwks, makeKey, startJwks } from "../support/access-jwt.ts";
 import { type Frame, messageWhere, watchFrames } from "../support/frames.ts";
 import { expectMode } from "../support/modes.ts";
+import { ompAtLeast, runsToolCommands } from "../support/omp-version.ts";
 import { pollUntil } from "../support/poll.ts";
 import { proxiedClient, type RemoteClient, remoteClient, remoteSettings } from "../support/remote-client.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
@@ -175,52 +176,55 @@ test("an answer to an idle conversation is a message that starts its next turn; 
 	c.ws.close();
 }, 120_000);
 
-test("a question the agent files through a write to xd://file_question or a tool call in an eval cell is filed, once (#309)", async () => {
+/**
+ * Before omp 19.1.0 a tool can be called through a `write` to its `xd://` device (an `ask` from 18.22). 19.1.0 has no devices:
+ * a tool it does not give the model at the top level is a command in `bash`, and `ask` and `file_question` are given at the
+ * top level, so they are only ever called straight (or from an `eval` cell).
+ */
+const hasDevices = !runsToolCommands();
+const mountsAsk = ompAtLeast("18.22.0") && hasDevices;
+const throughDevice = (tool: string, args: unknown) => ({
+	name: "write",
+	args: { path: `xd://${tool}`, content: JSON.stringify(args) },
+});
+
+test("a question the agent files through a write to its device, a tool call in an eval cell or straight is filed, once (#309)", async () => {
 	const c = await conversation();
-	const titles = ["Which queue?", "Which cache?", "Which broker?"];
 	const calls = [
-		{
-			name: "write",
-			args: { path: `xd://${UNATTENDED_TOOL}`, content: JSON.stringify({ title: titles[0], context: "c" }) },
-		},
+		...(hasDevices ? [throughDevice(UNATTENDED_TOOL, { title: "Which queue?", context: "c" })] : []),
 		{
 			name: "eval",
-			args: {
-				language: "js",
-				code: `return await tool.${UNATTENDED_TOOL}({ title: ${JSON.stringify(titles[1])}, context: "c" })`,
-			},
+			args: { language: "js", code: `return await tool.${UNATTENDED_TOOL}({ title: "Which cache?", context: "c" })` },
 		},
-		{ name: UNATTENDED_TOOL, args: { title: titles[2], context: "c" } },
+		{ name: UNATTENDED_TOOL, args: { title: "Which broker?", context: "c" } },
 	];
+	const titles = [...(hasDevices ? ["Which queue?"] : []), "Which cache?", "Which broker?"];
 	for (const call of calls) {
 		plan.call = call;
 		await turn(c, `DISPATCHED-309-${++seq}`);
 	}
 	const filedTitles = (await list()).questions.map((q) => q.question);
-	for (const title of titles) expect(filedTitles.filter((t) => t === title)).toEqual([title]);
+	for (const title of titles)
+		expect(
+			filedTitles.filter((t) => t === title),
+			title,
+		).toEqual([title]);
 	c.ws.close();
 }, 180_000);
 
-/** omp 18.22 mounts the tools as `xd://<tool>` devices a `write` can call; the omp before it knows no such path. */
-const mountsDevices = (() => {
-	const out = Bun.spawnSync([process.env.OMP_BIN ?? "omp", "--version"]).stdout.toString();
-	const [major = 0, minor = 0] = (/(\d+)\.(\d+)\.\d+/.exec(out)?.slice(1) ?? []).map(Number);
-	return major > 18 || (major === 18 && minor >= 22);
-})();
+const FORM_309 =
+	'<form><fieldset><legend>Which region for 309?</legend><label><input type="radio" name="region" value="eu"> eu</label><label><input type="radio" name="region" value="us"> us</label></fieldset></form>';
 
-test.skipIf(!mountsDevices)(
-	"the form of an ask written to xd://ask is filed as questions for the person (#309)",
+test.skipIf(!mountsAsk && hasDevices)(
+	"the form of an ask made from another tool (its xd://ask device, or an eval cell from omp 19.1) is filed as questions for the person (#309)",
 	async () => {
 		const c = await conversation();
-		plan.call = {
-			name: "write",
-			args: {
-				path: "xd://ask",
-				content: JSON.stringify({
-					html: '<form><fieldset><legend>Which region for 309?</legend><label><input type="radio" name="region" value="eu"> eu</label><label><input type="radio" name="region" value="us"> us</label></fieldset></form>',
-				}),
-			},
-		};
+		plan.call = hasDevices
+			? throughDevice("ask", { html: FORM_309 })
+			: {
+					name: "eval",
+					args: { language: "js", code: `return await tool.ask({ html: ${JSON.stringify(FORM_309)} })` },
+				};
 		await turn(c, `FORM-309-${++seq}`);
 		expect((await list()).questions.some((q) => q.question.includes("Which region for 309?"))).toBe(true);
 		c.ws.close();
@@ -406,15 +410,21 @@ test("a remote page reads the list and answers under the rules of every remote m
 	expect(t.live.unattended).toEqual({ live: false, skipped: "trustedExtension" });
 	const question = { id: "a", question: "Which topic?", options: ["x", "y"] };
 	if (agent.requests.at(-1)?.askForm) {
-		// omp 18.18.3 and later asks a form field by field, in dialogs the server cannot tell from an approval's; only the
-		// extension stops such an `ask`, so without it the person is shown the dialog and nothing is filed.
+		// omp 18.18.3 and later asks a form field by field (19.1.0: whole, as one `form`), in dialogs the server does not
+		// answer; only the extension stops such an `ask`, so without it the person is shown the dialog and nothing is filed.
 		plan.call = { name: "ask", args: askArgs({ askForm: true }, [question]) };
-		const dialog = fresh(t, (f) => f.type === "extension_ui_request" && f.title === "Which topic?");
+		const dialog = fresh(
+			t,
+			(f) =>
+				f.type === "extension_ui_request" &&
+				(f.title === "Which topic?" || (f.method === "form" && String(f.html).includes("Which topic?"))),
+		);
 		const ended = fresh(t, (f) => f.type === "agent_end");
 		await request(t.ws, { t: "rpc", liveId: t.live.liveId, command: { type: "prompt", message: "ASK-TRUSTED-646" } });
 		const shown = await dialog;
 		expect((await list()).questions.some((x) => x.question === "Which topic?")).toBe(false);
-		t.ws.send(JSON.stringify({ t: "ui_response", liveId: t.live.liveId, response: { id: shown.id, value: "y" } }));
+		const response = shown.method === "form" ? { id: shown.id, data: { a: "y" } } : { id: shown.id, value: "y" };
+		t.ws.send(JSON.stringify({ t: "ui_response", liveId: t.live.liveId, response }));
 		await ended;
 		setRemote();
 		t.ws.close();

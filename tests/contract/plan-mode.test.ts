@@ -6,6 +6,7 @@ import type { SessionEntry } from "../../shared/protocol.ts";
 import { socket } from "../../web/src/lib/ws.ts";
 import { openLive, useApp } from "../../web/src/store/app.ts";
 import type { RpcState } from "../../web/src/store/live.ts";
+import { mountedCall, runsToolCommands } from "../support/omp-version.ts";
 import { type PageStore, pageStore, viewLive } from "../support/page-store.ts";
 import { pollUntil } from "../support/poll.ts";
 import { rejectionOf } from "../support/rejection.ts";
@@ -47,12 +48,19 @@ const records = (): SessionEntry[] =>
 		.map((line) => JSON.parse(line) as SessionEntry);
 const hidden = (type: string) => (e: SessionEntry) => e.type === "custom_message" && e.customType === type;
 
-/** The model writes its plan, then proposes it: the call that plan-yolo approves. */
+/**
+ * The model writes its plan, then proposes it: the call that plan-yolo approves. Before omp 19.1.0 a `write` of its title to
+ * `xd://propose`; from it the `propose` command in `bash`.
+ */
 const planAndPropose = (n: number): ScriptedTurn =>
 	n === 1
 		? { call: { name: "write", args: { path: "local://probe-plan.md", content: "# Plan\n1. Say hello\n" } } }
 		: n === 2
-			? { call: { name: "write", args: { path: "xd://propose", content: "probe" } } }
+			? {
+					call: runsToolCommands()
+						? mountedCall("propose", { title: "probe" })
+						: { name: "write", args: { path: "xd://propose", content: "probe" } },
+				}
 			: { text: "Implemented." };
 
 async function start(args: string[]): Promise<void> {

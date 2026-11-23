@@ -551,6 +551,31 @@ export function isArrayChoice(field: ChoiceField): boolean {
 }
 
 /**
+ * The question each field answers, as omp words it: its own label, else the text right before it (`<p>Which database?</p>`
+ * over a radio group), else its section's title, else a lone option's label (one checkbox), else its name.
+ */
+export function fieldQuestions(form: HtmlForm): Map<FormField, string> {
+	const questions = new Map<FormField, string>();
+	const oneLine = (text: string) => text.replace(/\s+/g, " ").trim();
+	for (const section of form.sections) {
+		const title = spansText(section.title);
+		let caption = "";
+		for (const block of section.blocks) {
+			if (block.kind === "options") continue;
+			if (block.kind === "field") {
+				const field = block.field;
+				const lone = field.kind === "choice" && field.options.length === 1 ? spansText(field.options[0].label) : "";
+				questions.set(field, oneLine(spansText(field.label) || caption || title || lone || field.name));
+				caption = "";
+				continue;
+			}
+			caption = block.kind === "text" ? spansText(block.spans) : "";
+		}
+	}
+	return questions;
+}
+
+/**
  * What a choice submits, given the options checked and the text typed in its "Other": the text stands in for a radio's
  * value, or joins a checkbox group's array. Undefined when it submits nothing; blank Other text is no answer.
  */

@@ -67,8 +67,9 @@ test("a whole ask form is drawn, checked on Submit, and answered with its data",
 	await expect(form.getByTestId("form-field-error")).toHaveCount(0);
 	await form.getByRole("radio", { name: "SQLite: one file" }).check();
 	await form.getByRole("checkbox", { name: "Network" }).check();
-	// The group's Other: its words join the checked values.
-	await form.getByTestId("form-other").nth(1).fill("Disk I/O");
+	// The group's Other, named by the question before it: its words join the checked values.
+	await expect(form.getByRole("group", { name: "Session store" }).getByRole("radio")).toHaveCount(2);
+	await form.getByRole("textbox", { name: "Other answer for: What to watch" }).fill("Disk I/O");
 	await form.getByRole("spinbutton", { name: "Lifetime (days)" }).fill("7");
 	await form.getByRole("button", { name: "Submit answers" }).click();
 	await expect(request).toHaveCount(0);

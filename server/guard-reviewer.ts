@@ -20,7 +20,8 @@ import { platform } from "./platform/index.ts";
  * sent (tests/contract/guard-reviewer.test.ts keeps it found): with only `--no-tools --no-skills --no-rules` the request
  * still carried the user's AGENTS.md, memory and auto-learn guidance and two tools (`manage_skill`, `learn`); every MCP
  * server of the user's configuration was started, and the run waited up to 30 s for each. The overlay turns off the memory,
- * the auto-learn, and every discovery source that contributes context files or MCP servers.
+ * the auto-learn, and every discovery source that contributes context files or MCP servers. omp 19.1 also offers Auto-QA's
+ * `report_issue` to a run with `--no-tools` (it sends what it is given to omp's QA endpoint): `dev.autoqa: false` turns it off.
  */
 
 /** The settings of the run that make it a plain request: no memory, no context files, no MCP servers, no skills. */
@@ -38,6 +39,8 @@ export const QUIET_OVERLAY = [
 	"  extra: []",
 	"mcp:",
 	"  enableProjectConfig: false",
+	"dev:",
+	"  autoqa: false",
 	"",
 ].join("\n");
 

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { BROWSER_NOTE } from "../../server/omp/docs-tool/extension.ts";
 import type { LiveInfo } from "../../shared/protocol.ts";
 import { type Frame, watchFrames } from "../support/frames.ts";
+import { mountedCall } from "../support/omp-version.ts";
 import { pollUntil } from "../support/poll.ts";
 import { startTestServer, type TestServer } from "../support/server.ts";
 import {
@@ -18,11 +19,11 @@ import { connect, request } from "../support/ws.ts";
  * The `webui_docs` tool against the real omp and the real server. The agent is a scripted provider: no model is called.
  *
  * What is measured: a conversation the app starts has omp loaded with the docs extension (`--extension` of the installed copy
- * under the data folder); the main agent's request offers `webui_docs` (mounted at `xd://webui_docs`, omp's discoverable
- * tools); a call of it through that device reads the bundled docs, and a topic that is a path is refused as the tool's error.
+ * under the data folder); the main agent's request offers `webui_docs` (one of omp's discoverable tools: mounted at
+ * `xd://webui_docs` before omp 19.1.0, a `bash` command from it); a call of it that way reads the bundled docs, and a topic
+ * that is a path is refused as the tool's error.
  */
 
-const DEVICE = "xd://webui_docs";
 /** What omp's prompt for a task subagent says (its request is told apart by it). */
 const SUBAGENT = "You are operating on a piece of work assigned to you by the main agent";
 
@@ -112,11 +113,8 @@ async function mainRequestFor(m: string): Promise<ScriptedRequest> {
 
 const mark = (what: string) => `PROMPT-DOCS-${what}-${++seq}`;
 
-/** A call of the tool through omp's device for it: `write` its arguments to `xd://webui_docs`. */
-const docsCall = (args: Record<string, unknown>): Call => ({
-	name: "write",
-	args: { path: DEVICE, content: JSON.stringify(args) },
-});
+/** A call of the tool the way omp mounts it: a `write` to `xd://webui_docs`, or (omp 19.1.0) a `webui_docs` command in `bash`. */
+const docsCall = (args: Record<string, unknown>): Call => mountedCall("webui_docs", args);
 
 test("the app starts omp with the docs extension, and the main agent is offered webui_docs", async () => {
 	const c = await conversation();
@@ -132,8 +130,9 @@ test("the app starts omp with the docs extension, and the main agent is offered 
 	await turn(c, m);
 	const req = await mainRequestFor(m);
 	// Mounted among omp's discoverable tools, with its summary: the schema is read on demand. omp up to 18.18 lists the
-	// device as `- xd://webui_docs — …`; 18.19 drops the scheme (`- webui_docs — …`, read through `xd://<tool>`).
-	expect(req.text).toMatch(/- (xd:\/\/)?webui_docs — Look up omp-webui's own documentation/);
+	// device as `- xd://webui_docs — …`; 18.19 drops the scheme (`- webui_docs — …`, read through `xd://<tool>`); 19.1.0
+	// lists it as a command (`- \`webui_docs\` — …`).
+	expect(req.text).toMatch(/- (xd:\/\/|`)?webui_docs`? — Look up omp-webui's own documentation/);
 	// And told to look at pages in the built-in browser, never in a window on the person's desktop.
 	expect(req.text).toContain(BROWSER_NOTE.split("\n")[1]);
 	c.ws.close();

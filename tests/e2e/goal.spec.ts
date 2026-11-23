@@ -123,7 +123,20 @@ async function answerUntilProposal(page: Page): Promise<void> {
 		if (now === "propose_goal") return;
 		const before = await shown();
 		if (now === "ask") await dialog.getByRole("button", { name: "Submit answers" }).click();
-		else if (now === "select") {
+		else if (now === "form") {
+			// omp 19.1's whole form: every empty text field gets words, every radio group with nothing chosen its first choice.
+			const form = dialog.getByTestId("ask-form");
+			for (const box of await form
+				.locator('input:not([type]):not([data-testid="form-other"]), input[type="text"], textarea')
+				.all())
+				if (!(await box.inputValue())) await box.fill("Whatever you think best.");
+			for (const group of await form
+				.locator("fieldset[data-field]")
+				.filter({ has: page.getByRole("radio") })
+				.all())
+				if ((await group.locator("input:checked").count()) === 0) await group.getByRole("radio").first().check();
+			await form.getByRole("button", { name: "Submit answers" }).click();
+		} else if (now === "select") {
 			const id = await dialog.getAttribute("aria-labelledby");
 			const title = id ? await page.locator(`[id="${id}"]`).innerText() : "";
 			const done = dialog.getByRole("button", { name: /Done selecting/ });

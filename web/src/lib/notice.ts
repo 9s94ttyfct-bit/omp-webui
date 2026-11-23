@@ -10,14 +10,14 @@ export interface NoticeToast {
 /**
  * The toast for a notice, worded as the TUI's status line words it: `source: message`. Info notices ("Claude session
  * limit reset") are shown like the others. The one kind left out is omp's bookkeeping of the tools it mounted (source
- * `xdev`, `xd://: mounted mcp__…`): it lists every tool of every MCP server each time a conversation starts, and the
- * Context tab lists them anyway.
+ * `xdev`, `xd://: mounted mcp__…`; from omp 19.1.0 source `toolCommands`, `Tool commands: added mcp__…`): it lists every
+ * tool of every MCP server each time a conversation starts, and the Context tab lists them anyway.
  */
 export function noticeToast(frame: OmpFrame): NoticeToast | null {
 	const message = typeof frame.message === "string" ? frame.message.trim() : "";
 	if (!message) return null;
 	const level = frame.level === "error" ? "error" : frame.level === "warning" ? "warning" : "info";
 	const source = typeof frame.source === "string" ? frame.source.trim() : "";
-	if (level === "info" && source === "xdev") return null;
+	if (level === "info" && (source === "xdev" || source === "toolCommands")) return null;
 	return { level, text: source ? `${source}: ${message}` : message };
 }
