@@ -428,6 +428,8 @@ test("a /new in the same process leaves the goal behind for the page too: it sho
 	// And a goal set in the new session is the page's goal.
 	await createGoal(liveId, "A second goal", undefined);
 	await pollUntil(() => c.shown()?.objective === "A second goal", "the page to show the new goal");
+	// The goal's run goes on after the page first shows it, and changes what omp holds of it (its usage) as it goes.
+	await pollUntil(async () => Bun.deepEquals(c.shown(), await c.goal()), "the page to show the goal omp holds", 60_000);
 	expect(c.shown()).toEqual(await c.goal());
 }, 90_000);
 
@@ -442,9 +444,20 @@ test("a /new in the same process leaves the subagents behind for the page too", 
 				}
 			: { text: "The subagent reported." };
 	const c = await conversation();
+	const requested = backend.requests.length;
 	await c.rpc({ type: "prompt", message: "Send a scout" });
 	// omp 19.1 starts the subagent after the run that called `task` ended; the run its result starts settles after it.
-	await pollUntil(() => c.live().subagents.Echo?.status === "completed", "the page to show the subagent done");
+	// On a loaded Windows runner that has taken longer than pollUntil's 15 s; the failure says how far it got.
+	await pollUntil(
+		() => c.live().subagents.Echo?.status === "completed",
+		"the page to show the subagent done",
+		60_000,
+	).catch((e: Error) => {
+		const sent = backend.requests.slice(requested);
+		throw new Error(
+			`${e.message}; the page holds ${JSON.stringify(c.live().subagents.Echo ?? null)}; the model was asked ${sent.length} times, ${sent.filter((r) => r.text.includes(SUBAGENT_PROMPT)).length} of them by the subagent`,
+		);
+	});
 	await c.settled();
 	expect(Object.keys(c.live().subagents)).toEqual(["Echo"]);
 	const before = c.live().info.sessionFile;
