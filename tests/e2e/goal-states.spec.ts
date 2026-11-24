@@ -70,6 +70,24 @@ test("a goal whose budget is spent stays on screen as such: its figures and Drop
 	await expect(page.getByTestId("status-goal")).toHaveCount(0);
 });
 
+test("Drop takes away a goal omp says it no longer holds, though no frame says so", async ({ page }) => {
+	ownSession(0x94, "Goal gone probe");
+	await page.addInitScript(() => localStorage.setItem("ompw.autoTitle", "off"));
+	const tap = await tapSocket(page);
+	// omp has no goal by now (it completed it, or it was dropped elsewhere): `drop` answers that, and no frame follows.
+	tap.answer("goal", (c) => (c.op === "drop" ? { ok: true, data: { goal: null, state: null } } : undefined));
+	await page.goto("/");
+	const liveId = await startLive(page, tap, "Goal gone probe", "goal-gone-probe");
+	tap.push({ t: "frame", liveId, frame: { type: "goal_updated", goal: goal("paused") } });
+	const bar = page.getByTestId("goal-bar");
+	await expect(bar).toHaveAttribute("data-status", "paused");
+
+	await bar.getByRole("button", { name: "Drop goal" }).click();
+	await page.getByRole("dialog").getByRole("button", { name: "Drop goal" }).click();
+	await expect.poll(() => tap.commands("goal").filter((c) => c.op === "drop").length).toBe(1);
+	await expect(bar).toHaveCount(0);
+});
+
 test("a goal whose budget was spent in the terminal shows as spent when the conversation is opened", async ({
 	page,
 }) => {

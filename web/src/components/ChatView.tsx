@@ -757,9 +757,11 @@ export function ChatView({ file, liveId: liveIdProp, initialLeaf, focus, focusAt
 	// What the controls show of the conversation (the goal, the model, the thinking level) is what the path ends with: a stretch
 	// that stops short of its leaf says so by what the server says the path leaves (`end`), not by its own last entries.
 	const endCarry = hist.later ? (hist.held?.end?.carry ?? null) : null;
-	// The running omp's goal; before omp runs here (a goal set in the terminal), the one the transcript leaves.
+	// The running omp's goal, none included: a transcript read short of its end (a window, a stretch) can still show a goal omp
+	// completed or dropped since, which nothing could then drop. Before omp runs here (a goal set in the terminal), the one the
+	// transcript leaves.
 	const fromFile = useMemo(() => savedGoal(endCarry ?? wholePath), [endCarry, wholePath]);
-	const goalHere = (liveId ? live?.goal : null) ?? fromFile;
+	const goalHere = liveId ? (live?.goal ?? null) : fromFile;
 	const goalOpenNow = goalHeld(goalHere);
 	// Where a goal exists the Goal control shows it (the bar, opened in place) instead of offering to create one.
 	heldGoalId.current = goalOpenNow && goalHere ? goalHere.id : null;

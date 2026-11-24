@@ -54,13 +54,14 @@ export type GoalOp = "pause" | "resume" | "drop";
 
 /**
  * Pause, resume or drop the goal for the user's click (a paused conversation answers it). The goal changes by a
- * `goal_updated` frame, except where nothing changes: `resume` on a goal that is already active sends none, and the
- * answer is what omp holds, which is shown.
+ * `goal_updated` frame, except where nothing changes: `resume` on a goal that is already active, or any op on a goal
+ * omp no longer holds, sends none, and the answer is what omp holds, which is shown.
  */
 export async function goalOp(liveId: string, op: GoalOp): Promise<void> {
 	const answer = await socket.act<{ goal?: Goal | null }>(liveId, { type: "goal", op });
-	const held = answer?.goal;
-	if (goalHeld(held)) noteGoal(liveId, held);
+	if (!answer || !("goal" in answer)) return;
+	const held = answer.goal ?? null;
+	noteGoal(liveId, goalHeld(held) ? held : null);
 }
 
 /**

@@ -1,4 +1,4 @@
-import { sessionRow } from "../support/live.ts";
+import { sessionRow, startLive } from "../support/live.ts";
 import { Chain, writeRenderSession } from "../support/render-fixtures.ts";
 import { tapSocket } from "../support/socket-tap.ts";
 import { expect, test } from "./fixtures.ts";
@@ -57,4 +57,22 @@ test("a goal the transcript ended (dropped or completed) shows no goal bar", asy
 	await sessionRow(page, "Ended goal probe").click();
 	await expect(page.getByText("Done.")).toBeVisible({ timeout: 15_000 });
 	await expect(page.getByTestId("goal-bar")).toHaveCount(0);
+});
+
+test("a conversation whose omp holds no goal shows none, whatever goal its transcript was last seen with", async ({
+	page,
+}) => {
+	const c = new Chain("gn");
+	c.user("Goal no longer held probe");
+	c.assistant([{ type: "text", text: "Still on it." }]);
+	c.modeChange("goal", goal("active"));
+	writeRenderSession(process.env.OMPW_E2E_AGENT_DIR as string, "01a00000-0000-7000-8000-0000000060a3", c.entries);
+	const tap = await tapSocket(page);
+	// omp answers that it holds no goal (it completed it): what the page read of the transcript does not bring one back.
+	tap.answer("goal", (cmd) => (cmd.op === "get" ? { ok: true, data: { goal: null } } : undefined));
+	await page.goto("/");
+	const liveId = await startLive(page, tap, "Goal no longer held probe", "goal-no-longer-held-probe");
+	tap.push({ t: "frame", liveId, frame: { type: "goal_updated", goal: null } });
+	await expect(page.getByTestId("goal-bar")).toHaveCount(0);
+	await expect(page.getByTestId("status-goal")).toHaveCount(0);
 });

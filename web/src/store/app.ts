@@ -785,10 +785,12 @@ async function readState(liveId: string, user: boolean): Promise<RpcState | null
 }
 
 /**
- * Show the goal omp answered a `goal` request with. Most requests change the goal, and omp says so in a `goal_updated`
- * frame; `resume` on a goal that is already active changes nothing and sends none, so the answer is all there is.
+ * Show the goal omp answered a `goal` request with, none included. Most requests change the goal, and omp says so in a
+ * `goal_updated` frame; `resume` on a goal that is already active changes nothing and sends none, and neither does one
+ * on a goal omp no longer holds (completed, or dropped elsewhere), which it answers with `goal: null`: the answer is all
+ * there is.
  */
-export function noteGoal(liveId: string, goal: Goal): void {
+export function noteGoal(liveId: string, goal: Goal | null): void {
 	patchLive(liveId, (s) => ({ ...s, goal }));
 }
 
@@ -871,7 +873,7 @@ async function hydrate(
 		return everything && known.revision !== null ? { ...known, revision: null } : known;
 	});
 	// A paused omp is frozen and answers none of the reads below, so what the server last heard of its goal is what the
-	// page shows until it can read it (see `LiveAttached`): without it the transcript's goal is shown, which says paused.
+	// page shows until it can read it (see `LiveAttached`): with a process attached the page shows its goal, not the transcript's.
 	if (goal !== undefined) patchLive(id, (s) => ({ ...s, goal }));
 	// Nor does it answer `get_subagents`: the registry the server took before omp was frozen is what the Agents tab shows
 	// of the subagents that were running, which a page that was not there when it was paused has no other way to know
