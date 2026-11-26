@@ -27,6 +27,8 @@ import { ompScreen, useOmp } from "./store/omp.ts";
 // terminal (commands) and cmdk (search) load only when first needed.
 const ChatView = lazy(() => import("./components/ChatView.tsx").then((m) => ({ default: m.ChatView })));
 const UsagePage = lazy(() => import("./components/UsagePage.tsx").then((m) => ({ default: m.UsagePage })));
+// The Disk space page: its strings, its requests and its cleanup dialog wait for the page to be opened.
+const DiskSpacePage = lazy(() => import("./components/DiskSpacePage.tsx").then((m) => ({ default: m.DiskSpacePage })));
 // omp's long-term memory: its strings, its requests and its editor wait for the page to be opened.
 const MemoryPage = lazy(() => import("./components/MemoryPage.tsx").then((m) => ({ default: m.MemoryPage })));
 // The guard's own page (decisions, policy, benchmark): its strings, its requests and its tabs wait for the page to be opened.
@@ -329,6 +331,7 @@ export function App() {
 								) : null}
 								{view.kind === "project" ? <ProjectPage key={view.id} id={view.id} /> : null}
 								{view.kind === "usage" ? <UsagePage /> : null}
+								{view.kind === "disk" ? <DiskSpacePage /> : null}
 								{view.kind === "memory" ? <MemoryPage /> : null}
 								{view.kind === "guard" ? <GuardPage /> : null}
 								{view.kind === "agents" ? <AgentGraphPage /> : null}

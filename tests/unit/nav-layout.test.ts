@@ -55,7 +55,7 @@ test("the defaults offer every page once per bar, with no page in two groups, an
 		expect(bottom).toContain("guard");
 	}
 	// The shipped order of the pages is kept, the agent graph (#719) first and the guard last.
-	expect(layout.sidebar.bottom).toEqual(["agents", "usage", "plugins", "settings", "guard"]);
+	expect(layout.sidebar.bottom).toEqual(["agents", "usage", "disk", "plugins", "settings", "guard"]);
 	// A default is a copy: changing it does not change the next one.
 	layout.sidebar.top.push("usage");
 	expect(defaultNavLayout().sidebar.top).toEqual([]);
@@ -100,7 +100,7 @@ test("the Questions page an older copy names is left out wherever it was: it is 
 	const layout = parseNavLayout(raw);
 	expect(layout.sidebar.top).toEqual([]);
 	// The agent graph, which the copy does not name, comes in after what is there.
-	expect(layout.rail.bottom).toEqual(["usage", "plugins", "settings", "guard", "agents"]);
+	expect(layout.rail.bottom).toEqual(["usage", "plugins", "settings", "guard", "agents", "disk"]);
 	expectWhole(layout);
 });
 
@@ -112,7 +112,7 @@ test("Commands & terminal an older copy names becomes Plugins in its place, neve
 	});
 	const layout = parseNavLayout(raw);
 	expect(layout.sidebar.top).toEqual(["plugins"]);
-	expect(layout.sidebar.bottom).toEqual(["agents", "usage", "settings", "guard"]);
+	expect(layout.sidebar.bottom).toEqual(["agents", "usage", "settings", "guard", "disk"]);
 	expect(layout.rail.hidden).toEqual(["plugins", "settings"]);
 	expectWhole(layout);
 	// A copy that names both (written by this version after an older one): the first place wins, there is one item.
@@ -137,8 +137,8 @@ test("an item the stored copy does not name (a page added since) comes in at its
 	});
 	const layout = parseNavLayout(raw);
 	expect(layout.sidebar.top).toEqual(["settings"]);
-	expect(layout.sidebar.bottom).toEqual(["usage", "plugins", "agents", "guard"]);
-	expect(layout.rail.bottom).toEqual(["usage", "plugins", "settings", "agents", "guard"]);
+	expect(layout.sidebar.bottom).toEqual(["usage", "plugins", "agents", "disk", "guard"]);
+	expect(layout.rail.bottom).toEqual(["usage", "plugins", "settings", "agents", "disk", "guard"]);
 	expectWhole(layout);
 });
 
@@ -164,10 +164,11 @@ test("a surface or a group of the wrong shape falls back to its default", () => 
 test("a hidden item is not drawn, and a page that is not the person's own gets no guard", () => {
 	const layout = withNavItemMoved(defaultNavLayout(), "sidebar", "usage", { group: "hidden" });
 	const drawn = navItemsIn(layout, "sidebar", "bottom", { notOwner: false }).map((i) => i.id);
-	expect(drawn).toEqual(["agents", "plugins", "settings", "guard"]);
+	expect(drawn).toEqual(["agents", "disk", "plugins", "settings", "guard"]);
 	expect(navItemsIn(layout, "sidebar", "hidden", { notOwner: false }).map((i) => i.id)).toEqual(["usage"]);
 	expect(navItemsIn(layout, "sidebar", "bottom", { notOwner: true }).map((i) => i.id)).toEqual([
 		"agents",
+		"disk",
 		"plugins",
 		"settings",
 	]);
@@ -179,13 +180,13 @@ test("moving an item puts it in the group at the place, without repeating it, an
 	const start = defaultNavLayout();
 	const up = withNavItemMoved(start, "sidebar", "settings", { group: "top", index: 0 });
 	expect(up.sidebar.top).toEqual(["settings"]);
-	expect(up.sidebar.bottom).toEqual(["agents", "usage", "plugins", "guard"]);
+	expect(up.sidebar.bottom).toEqual(["agents", "usage", "disk", "plugins", "guard"]);
 	expect(up.rail).toBe(start.rail);
 	expectWhole(up);
 
 	// Within a group the place is counted without the item itself.
 	const within = withNavItemMoved(start, "sidebar", "usage", { group: "bottom", index: 2 });
-	expect(within.sidebar.bottom).toEqual(["agents", "plugins", "usage", "settings", "guard"]);
+	expect(within.sidebar.bottom).toEqual(["agents", "disk", "usage", "plugins", "settings", "guard"]);
 
 	// No place, or one past the end: last. One before the start: first.
 	expect(withNavItemMoved(start, "rail", "usage", { group: "hidden" }).rail.hidden).toEqual(["usage"]);
@@ -198,8 +199,8 @@ test("moving an item puts it in the group at the place, without repeating it, an
 test("findNavItem says where an item is", () => {
 	const layout = withNavItemMoved(defaultNavLayout(), "sidebar", "plugins", { group: "top" });
 	expect(findNavItem(layout, "sidebar", "plugins")).toEqual({ group: "top", index: 0 });
-	expect(findNavItem(layout, "sidebar", "guard")).toEqual({ group: "bottom", index: 3 });
-	expect(findNavItem(layout, "rail", "plugins")).toEqual({ group: "bottom", index: 2 });
+	expect(findNavItem(layout, "sidebar", "guard")).toEqual({ group: "bottom", index: 4 });
+	expect(findNavItem(layout, "rail", "plugins")).toEqual({ group: "bottom", index: 3 });
 });
 
 test("the layout in force is remembered on this device, read again by the next page, and each bar apart", () => {

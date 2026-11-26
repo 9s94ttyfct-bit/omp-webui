@@ -14,6 +14,7 @@
  */
 
 import { parseBrowserSize } from "./browser-protocol.ts";
+import { isDiskSort } from "./disk-space.ts";
 import { STATUS_FILTERS, TIME_FILTERS } from "./graph-filter.ts";
 import { GUIDANCE_ID_MAX, GUIDANCE_MAX } from "./model-guidance.ts";
 import { parsePanes } from "./panes.ts";
@@ -119,6 +120,8 @@ export const PREF = {
 	navFolded: "ompw.navFolded",
 	/** How far back Usage & cost looks (#714): `24h`, `7d`, `30d` (the default) or `all`; see `shared/usage-range.ts`. */
 	usageRange: "ompw.usageRange",
+	/** How the Disk space page sorts its rows: `{ by, desc }` as JSON (`shared/disk-space.ts`); total, biggest first, by default. */
+	diskSort: "ompw.diskSort",
 	/** Whether the session panel's Advanced settings are unfolded (#716): `on` or `off` (the default). */
 	controlsAdvanced: "ompw.controlsAdvanced",
 	/**
@@ -279,6 +282,7 @@ const VALID: Partial<Record<PrefKey, (value: string) => boolean>> = {
 	[PREF.navFolded]: switchValue,
 	[PREF.devicePrefs]: switchValue,
 	[PREF.usageRange]: oneOf(USAGE_RANGES),
+	[PREF.diskSort]: json(isDiskSort),
 	[PREF.controlsAdvanced]: switchValue,
 	[PREF.graphGrid]: switchValue,
 	[PREF.graphFocus]: switchValue,

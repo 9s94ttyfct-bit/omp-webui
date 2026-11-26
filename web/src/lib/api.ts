@@ -45,7 +45,7 @@ async function fail(res: Response): Promise<never> {
 	throw new ApiError(body.error ?? httpText(res), res.status, body.code, body.params);
 }
 
-async function get<T>(path: string): Promise<T> {
+export async function get<T>(path: string): Promise<T> {
 	const res = await fetch(path);
 	if (!res.ok) return fail(res);
 	return res.json();

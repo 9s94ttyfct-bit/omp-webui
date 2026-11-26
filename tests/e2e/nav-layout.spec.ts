@@ -11,7 +11,7 @@ import { expect, type Locator, type Page, test } from "./fixtures.ts";
  */
 
 const KEY = "ompw.navLayout";
-const ALL = ["agents", "usage", "plugins", "settings", "guard"];
+const ALL = ["agents", "usage", "disk", "plugins", "settings", "guard"];
 const sidebar = (page: Page) => page.getByRole("complementary", { name: "Conversations" });
 const rail = (page: Page) => page.getByRole("navigation", { name: "Shortcuts of the hidden sidebar" });
 
@@ -142,12 +142,12 @@ test.describe("at 1400 px", () => {
 		await asRemote(page, 2);
 		await page.goto("/");
 		await expect(page.getByTestId("nav-settings")).toBeVisible();
-		await expectRows(page, "bottom", ["agents", "usage", "plugins", "settings"]);
+		await expectRows(page, "bottom", ["agents", "usage", "disk", "plugins", "settings"]);
 		await expect(page.getByTestId("nav-questions-count")).toHaveCount(0);
 
 		await page.getByRole("button", { name: "Hide sidebar" }).click();
 		await expect(rail(page)).toBeVisible();
-		await expectIcons(page, "bottom", ["agents", "usage", "plugins", "settings"]);
+		await expectIcons(page, "bottom", ["agents", "usage", "disk", "plugins", "settings"]);
 
 		await page.keyboard.press("ControlOrMeta+k");
 		await expect(page.getByTestId("palette-go-settings")).toBeVisible();
@@ -179,7 +179,7 @@ test.describe("at 1400 px", () => {
 		await page.addInitScript(
 			([key]) => {
 				// Every page hidden from both bars: the palette is still the way to each.
-				const hidden = { top: [], bottom: [], hidden: ["agents", "usage", "plugins", "settings", "guard"] };
+				const hidden = { top: [], bottom: [], hidden: ["agents", "usage", "disk", "plugins", "settings", "guard"] };
 				localStorage.setItem(key, JSON.stringify({ v: 1, sidebar: hidden, rail: hidden }));
 			},
 			[KEY],
@@ -242,7 +242,7 @@ test.describe("at 1400 px", () => {
 		await expect(page.getByTestId("nav-settings")).toBeVisible();
 		// Settings onto the upper half of Usage: just ahead of it (the Agent graph stays first).
 		await drag(page, page.getByTestId("nav-settings"), () => at(page.getByTestId("nav-usage"), "top"));
-		const order = ["agents", "settings", "usage", "plugins", "guard"];
+		const order = ["agents", "settings", "usage", "disk", "plugins", "guard"];
 		await expectRows(page, "bottom", order);
 		// The click a drag ends with did not open the page.
 		await expect(page.getByTestId("settings-page")).toHaveCount(0);
@@ -273,13 +273,13 @@ test.describe("at 1400 px", () => {
 			return at(page.getByTestId("nav-group-sidebar-top"));
 		});
 		await expectRows(page, "top", ["plugins"]);
-		await expectRows(page, "bottom", ["agents", "usage", "settings", "guard"]);
+		await expectRows(page, "bottom", ["agents", "usage", "disk", "settings", "guard"]);
 
 		await drag(page, page.getByTestId("nav-usage"), () => at(page.getByTestId("nav-hide-sidebar")));
-		await expectRows(page, "bottom", ["agents", "settings", "guard"]);
+		await expectRows(page, "bottom", ["agents", "disk", "settings", "guard"]);
 		expect((await stored(page))?.sidebar).toEqual({
 			top: ["plugins"],
-			bottom: ["agents", "settings", "guard"],
+			bottom: ["agents", "disk", "settings", "guard"],
 			hidden: ["usage"],
 		});
 		// The place to drop on is gone again, and the rail was not touched.
@@ -295,7 +295,7 @@ test.describe("at 1400 px", () => {
 		});
 		await expectIcons(page, "top", ["guard"]);
 		await rail(page).getByTestId("show-sidebar").click();
-		await expectRows(page, "bottom", ["agents", "settings", "guard"]);
+		await expectRows(page, "bottom", ["agents", "disk", "settings", "guard"]);
 	});
 
 	test("Esc while dragging puts the item back", async ({ page }) => {
@@ -328,10 +328,10 @@ test.describe("at 1400 px", () => {
 		const up = page.getByRole("button", { name: "Move Settings up in the Sidebar" });
 		await up.focus();
 		await page.keyboard.press("Enter");
-		await expectRows(page, "bottom", ["agents", "usage", "settings", "plugins", "guard"]);
+		await expectRows(page, "bottom", ["agents", "usage", "disk", "settings", "plugins", "guard"]);
 		await expect(up).toBeFocused();
 		await page.keyboard.press("Enter");
-		await expectRows(page, "bottom", ["agents", "settings", "usage", "plugins", "guard"]);
+		await expectRows(page, "bottom", ["agents", "usage", "settings", "disk", "plugins", "guard"]);
 		// The first of a group has nothing above it.
 		await expect(page.getByRole("button", { name: "Move Agent graph up in the Sidebar" })).toBeDisabled();
 
@@ -355,7 +355,7 @@ test.describe("at 1400 px", () => {
 		await page.getByRole("button", { name: "Hide sidebar" }).click();
 		await expectIcons(page, "top", ["guard"]);
 		await page.getByRole("button", { name: "Show sidebar" }).click();
-		await expectRows(page, "bottom", ["agents", "settings", "guard"]);
+		await expectRows(page, "bottom", ["agents", "settings", "disk", "guard"]);
 
 		await page.keyboard.press("ControlOrMeta+k");
 		await expect(page.getByTestId("palette-go-plugins")).toBeVisible();
@@ -393,7 +393,7 @@ test.describe("at 1400 px", () => {
 		// The Agent graph and the Guard, which the stored copy does not name, come in at their default group, after what is there.
 		// `cli` (Commands & terminal, now a page of Settings) is read as the Plugins page that took its place; `memory` (Memory,
 		// a page of Settings too) is left out.
-		await expectRows(page, "bottom", ["usage", "plugins", "agents", "guard"]);
+		await expectRows(page, "bottom", ["usage", "plugins", "agents", "disk", "guard"]);
 		await page.getByRole("button", { name: "Hide sidebar" }).click();
 		await expectIcons(page, "bottom", ALL);
 	});
@@ -436,7 +436,7 @@ test.describe("on a phone (390 px, touch)", () => {
 			});
 		}
 		await touch("touchEnd");
-		const order = ["agents", "plugins", "usage", "settings", "guard"];
+		const order = ["agents", "disk", "plugins", "usage", "settings", "guard"];
 		await expectRows(page, "bottom", order);
 		expect((await stored(page))?.sidebar.bottom).toEqual(order);
 		await expect(page.getByTestId("usage-page")).toHaveCount(0);

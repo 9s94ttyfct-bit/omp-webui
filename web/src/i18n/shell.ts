@@ -106,6 +106,7 @@ export const en = {
 	sidebarByName: "By name",
 	sidebarNavAgents: "Agent graph",
 	sidebarNavUsage: "Usage & cost",
+	sidebarNavDisk: "Disk space",
 	sidebarNavCli: "Commands & terminal",
 	sidebarNavPlugins: "Plugins",
 	sidebarNavMemory: "Memory",

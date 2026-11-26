@@ -97,6 +97,7 @@ export const zh: Record<keyof typeof en, string> = {
 	sidebarByName: "按名称",
 	sidebarNavAgents: "代理关系图",
 	sidebarNavUsage: "用量与费用",
+	sidebarNavDisk: "磁盘空间",
 	sidebarNavCli: "命令与终端",
 	sidebarNavPlugins: "插件",
 	sidebarNavMemory: "记忆",

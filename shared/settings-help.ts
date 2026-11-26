@@ -83,6 +83,7 @@ export const PREF_CLASS: Readonly<Record<PrefKey, SettingClass>> = {
 	[PREF.navFolded]: "normal",
 	[PREF.devicePrefs]: "normal",
 	[PREF.usageRange]: "normal",
+	[PREF.diskSort]: "normal",
 	[PREF.controlsAdvanced]: "normal",
 	[PREF.graphGrid]: "normal",
 	[PREF.graphFocus]: "normal",

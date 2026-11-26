@@ -6,6 +6,7 @@ export * as ci from "./ci.ts";
 export * as common from "./common.ts";
 export * as controlsHelp from "./controls-help.ts";
 export * as deleteDialog from "./delete-dialog.ts";
+export * as diskSpace from "./disk-space.ts";
 export * as drop from "./drop.ts";
 export * as errors from "./errors.ts";
 export * as feedback from "./feedback.ts";

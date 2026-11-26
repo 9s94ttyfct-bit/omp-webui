@@ -1,4 +1,4 @@
-import { BarChart3, type LucideIcon, Network, Puzzle, ScanEye, Settings } from "lucide-react";
+import { BarChart3, HardDrive, type LucideIcon, Network, Puzzle, ScanEye, Settings } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import type { MessageKey } from "../i18n/index.ts";
 
@@ -18,7 +18,7 @@ import type { MessageKey } from "../i18n/index.ts";
  * Memory: it is a page of Settings too, and a stored layout that names it is read without it.
  */
 
-export const NAV_ITEM_IDS = ["agents", "usage", "plugins", "settings", "guard"] as const;
+export const NAV_ITEM_IDS = ["agents", "usage", "disk", "plugins", "settings", "guard"] as const;
 /** An item is named as the page it opens (`View.kind`). */
 export type NavItemId = (typeof NAV_ITEM_IDS)[number];
 
@@ -35,6 +35,7 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
 	{ id: "agents", labelKey: "shell.sidebarNavAgents", icon: Network },
 	{ id: "usage", labelKey: "shell.sidebarNavUsage", icon: BarChart3 },
+	{ id: "disk", labelKey: "shell.sidebarNavDisk", icon: HardDrive },
 	{ id: "plugins", labelKey: "shell.sidebarNavPlugins", icon: Puzzle },
 	{ id: "settings", labelKey: "shell.sidebarNavSettings", icon: Settings },
 	// The guard's own sign is an eye (a reviewer looking at each call): the shields are the permission modes (C1).
@@ -65,7 +66,7 @@ export interface NavLayout {
 function defaults(): NavLayout {
 	const surface = (): NavSurfaceLayout => ({
 		top: [],
-		bottom: ["agents", "usage", "plugins", "settings", "guard"],
+		bottom: ["agents", "usage", "disk", "plugins", "settings", "guard"],
 		hidden: [],
 	});
 	return { sidebar: surface(), rail: surface() };

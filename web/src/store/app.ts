@@ -85,6 +85,8 @@ export type View =
 	/** A sidebar project's own page (`#/project/<id>`): its conversations, New chat in it, and its folder in the Files panel. */
 	| { kind: "project"; id: string }
 	| { kind: "usage" }
+	/** What each project folder and its conversations take on disk, and their cleanup (`#/disk`). */
+	| { kind: "disk" }
 	/** omp's memory, a page of Settings (`#/settings/memory`; the old `#/memory` address opens it too). */
 	| { kind: "memory" }
 	| { kind: "guard" }
@@ -362,7 +364,7 @@ export function hashOf(v: View): string {
 	if (v.kind === "agents") return v.file ? `#/agents/${encodeURIComponent(v.file)}` : "#/agents";
 	if (v.kind === "memory") return "#/settings/memory";
 	if (v.kind === "questions" && v.file) return `#/questions/${encodeURIComponent(v.file)}`;
-	if (["usage", "guard", "questions", "settings", "plugins"].includes(v.kind)) return `#/${v.kind}`;
+	if (["usage", "disk", "guard", "questions", "settings", "plugins"].includes(v.kind)) return `#/${v.kind}`;
 	if (v.kind === "cli") return v.command ? `#/settings/cli/${encodeURIComponent(v.command)}` : "#/settings/cli";
 	if (v.kind === "project") return `#/project/${encodeURIComponent(v.id)}`;
 	if (v.kind === "new" && (v.cwd || v.project)) {
@@ -416,7 +418,8 @@ export function viewFromHash(): View {
 			const { target, ...full } = splitFull(h.slice(6));
 			return { kind: "chat", file: null, liveId: target, ...full };
 		}
-		if (["/usage", "/guard", "/questions", "/settings", "/plugins"].includes(h)) return { kind: h.slice(1) } as View;
+		if (["/usage", "/disk", "/guard", "/questions", "/settings", "/plugins"].includes(h))
+			return { kind: h.slice(1) } as View;
 		// Memory: under Settings, and at its old address as before.
 		if (h === "/settings/memory" || h === "/memory") return { kind: "memory" };
 		// Commands & terminal: under Settings, and at its old address (a bookmark, a link in a note) as before.
