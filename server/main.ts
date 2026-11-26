@@ -3,7 +3,7 @@ import "./bun-floor.ts";
 // `omp-webui-server --ompw-relay …` is a relay (see omp/relay.ts), not a server: it never gets past this import.
 import "./omp/relay-main.ts";
 import { timingSafeEqual } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, openSync, readSync, realpathSync, statSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readSync, realpathSync, statfsSync, statSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { type ApprovalMode, approvalModeNeeds, isApprovalMode } from "../shared/approval.ts";
@@ -55,6 +55,8 @@ import { compressResponse, serveStatic } from "./compress.ts";
 import { loadConfig } from "./config.ts";
 import { guardAgainstStrayErrors } from "./crash-guard.ts";
 import { contentSecurityPolicy, indexScriptHashes } from "./csp.ts";
+import { buildRows, projectSubfolders, type RowPlan } from "./disk-space/rows.ts";
+import { DiskSpace } from "./disk-space/scan.ts";
 import { FamilyCache } from "./family.ts";
 import { osUser, RepoVisibility } from "./feedback.ts";
 import { LazyFolder, reserveFromEnv } from "./folder-lazy.ts";
@@ -140,7 +142,8 @@ import {
 	type SessionTarget,
 } from "./sessions/actions.ts";
 import { type CleanupTarget, DeleteCleanup } from "./sessions/cleanup.ts";
-import { realOf } from "./sessions/cleanup-scan.ts";
+import { protectedReason } from "./sessions/cleanup-rules.ts";
+import { realOf, sizeOf } from "./sessions/cleanup-scan.ts";
 import { SessionPins } from "./sessions/pins.ts";
 import { SessionRoots } from "./sessions/roots.ts";
 import { SessionStore } from "./sessions/store.ts";
@@ -792,11 +795,12 @@ pool.terminalHolds = (file) => ptys.resuming(file);
  * its folder or dependency folders in it, as the delete dialogs offer them. Never the home folder, the system's folders or
  * omp's and omp-webui's data; never a folder anything else works in.
  */
+const cleanupProtect = {
+	home: realOf(homedir()) ?? homedir(),
+	data: [cfg.dataDir, dirname(cfg.agentDir), ...knownDataDirs()].map((d) => realOf(d) ?? d),
+};
 const deleteCleanup = new DeleteCleanup({
-	protect: {
-		home: realOf(homedir()) ?? homedir(),
-		data: [cfg.dataDir, dirname(cfg.agentDir), ...knownDataDirs()].map((d) => realOf(d) ?? d),
-	},
+	protect: cleanupProtect,
 	trash: platform.trash,
 	conversations: async () =>
 		(await store.list()).map((s) => ({ file: s.file, cwd: s.cwd, title: s.title ?? (s.preview.slice(0, 60) || s.id) })),
@@ -810,6 +814,68 @@ const deleteCleanup = new DeleteCleanup({
 		(await chatProjects.list()).projects.flatMap((p) => (p.folder ? [{ name: p.name, folder: p.folder }] : [])),
 	terminalPids: () => ptys.pids(),
 	ownPids: () => new Set([process.pid, ...pool.pids().relay]),
+});
+/** The projects folder as the setting has it now (`projects.ts` is loaded on the first use, #585). */
+const projectsFolderNow = async (): Promise<string> =>
+	new (await import("./projects.ts")).ProjectsFolder(cfg.dataDir, homedir()).info().folder;
+/** The Disk space page's rows (`server/disk-space/rows.ts`), from the projects folder and the store's conversations. */
+let diskFolder: string | null = null;
+async function diskPlan(): Promise<{
+	rows: RowPlan[];
+	conversations: Map<string, { title: string; modifiedAt: number; size: number }>;
+}> {
+	const projectsFolder = await projectsFolderNow();
+	diskFolder = projectsFolder;
+	const sessions = await store.list();
+	const titleOf = (s: (typeof sessions)[number]) => s.title ?? (s.preview.slice(0, 60) || s.id);
+	const rows = buildRows({
+		projectsFolder,
+		subfolders: projectSubfolders(projectsFolder),
+		conversations: sessions.map((s) => ({ file: s.file, cwd: s.cwd, title: titleOf(s), modifiedAt: s.modifiedAt })),
+		realOf,
+		isProtected: (real) => protectedReason(real, cleanupProtect) !== null,
+	});
+	return {
+		rows,
+		conversations: new Map(
+			sessions.map((s) => [s.file, { title: titleOf(s), modifiedAt: s.modifiedAt, size: s.size }]),
+		),
+	};
+}
+/** The other rows' folders, real: a folder holding one of them is not moved from the Disk space page. */
+const otherRows = (rows: RowPlan[], row: RowPlan): string[] =>
+	rows.flatMap((r) => (r !== row && r.real !== null ? [r.real] : []));
+/**
+ * What the Disk space page shows (docs/superpowers/specs/2026-11-26-disk-space-page-design.md): one background scan at a
+ * time, `du` at a lower priority, what it measured kept in the data folder.
+ */
+const diskSpace = new DiskSpace(join(cfg.dataDir, "disk-space.json"), {
+	plan: diskPlan,
+	du: async (path, budgetMs) => (existsSync(path) ? sizeOf(path, budgetMs, { nice: true }) : null),
+	fileBytes: (file) => {
+		try {
+			return statSync(file).size;
+		} catch {
+			return 0;
+		}
+	},
+	folderMtime: (real) => {
+		try {
+			return statSync(real).mtimeMs;
+		} catch {
+			return null;
+		}
+	},
+	now: () => Date.now(),
+	// The disk the projects folder is on (the folder above it while it is not made yet).
+	free: () => {
+		for (const path of diskFolder ? [diskFolder, dirname(diskFolder)] : [])
+			try {
+				const f = statfsSync(path);
+				return { free: f.bavail * f.bsize, total: f.blocks * f.bsize };
+			} catch {}
+		return null;
+	},
 });
 /**
  * The load of this computer (#613): looked at every few seconds while a page shows the graphs of it and every ten while
@@ -1592,6 +1658,40 @@ function conversationKey(file: string): string | null {
 async function sessionTarget(file: string): Promise<SessionTarget> {
 	const known = await store.get(file);
 	return { file, id: known?.id ?? "", cwd: known?.cwd ?? cfg.sessionsDir };
+}
+
+/**
+ * Deletes conversations through omp, one at a time (`SessionActions.delete`), as the bulk delete and the Disk space page
+ * do: `files` as the page named them; each one omp refused or that is not a conversation is reported, the others are gone.
+ */
+async function deleteFiles(
+	files: readonly string[],
+): Promise<{ deleted: string[]; failed: { file: string; error: string }[]; gone: CleanupTarget[] }> {
+	const deleted: string[] = [];
+	const failed: { file: string; error: string }[] = [];
+	const gone: CleanupTarget[] = [];
+	await keepProjectsOfForks(files.flatMap((requested) => store.resolveSessionPath(requested) ?? []));
+	for (const requested of files) {
+		const file = store.resolveSessionPath(requested);
+		if (!file) {
+			failed.push({ file: requested, error: "Unknown session file" });
+			continue;
+		}
+		try {
+			const key = sessionKey(file);
+			const target = await sessionTarget(file);
+			const startedInstead = await actions.delete(target);
+			deleted.push(file);
+			gone.push({ file, cwd: target.cwd, startedInstead });
+			dismissQuestionsOf([file, startedInstead]);
+			await closeBrowserOf(key);
+		} catch (e) {
+			failed.push({ file, error: (e as Error).message });
+		}
+	}
+	archived.set(deleted, false);
+	await store.refresh(true);
+	return { deleted, failed, gone };
 }
 
 /**
@@ -2744,9 +2844,6 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 			const trashBody = (body.trash ?? {}) as Record<string, unknown>;
 			if (typeof trashBody !== "object" || trashBody === null || Array.isArray(trashBody))
 				return fail("trash must be an object");
-			const deleted: string[] = [];
-			const failed: { file: string; error: string }[] = [];
-			const gone: CleanupTarget[] = [];
 			const picks = new Map<string, TrashPick[]>();
 			for (const requested of body.files as string[]) {
 				const listed = trashPicksOf(trashBody[requested]);
@@ -2755,30 +2852,61 @@ async function api(req: Request, url: URL, peer: string | undefined): Promise<Re
 				if (file && listed.length) picks.set(file, listed);
 			}
 			if (picks.size && !mayTrash(req)) return fail(TRASH_REFUSED, 403);
-			await keepProjectsOfForks(
-				(body.files as string[]).flatMap((requested) => store.resolveSessionPath(requested) ?? []),
-			);
-			for (const requested of body.files as string[]) {
-				const file = store.resolveSessionPath(requested);
-				if (!file) {
-					failed.push({ file: requested, error: "Unknown session file" });
-					continue;
-				}
-				try {
-					const key = sessionKey(file);
-					const target = await sessionTarget(file);
-					const startedInstead = await actions.delete(target);
-					deleted.push(file);
-					gone.push({ file, cwd: target.cwd, startedInstead });
-					dismissQuestionsOf([file, startedInstead]);
-					await closeBrowserOf(key);
-				} catch (e) {
-					failed.push({ file, error: (e as Error).message });
-				}
-			}
-			archived.set(deleted, false);
-			await store.refresh(true);
+			const { deleted, failed, gone } = await deleteFiles(body.files as string[]);
 			const trashed = picks.size ? await deleteCleanup.moveAfter(gone, picks) : {};
+			return json({ deleted, failed, trashed });
+		}
+		case "/api/disk-space": {
+			// The Disk space page's rows; opening it starts a scan when the last is old.
+			if (req.method !== "GET") return fail("GET required", 405);
+			diskSpace.scanIfStale();
+			return json(await diskSpace.answer());
+		}
+		case "/api/disk-space/scan": {
+			if (req.method !== "POST") return fail("POST required", 405);
+			return json({ started: diskSpace.scan() });
+		}
+		case "/api/disk-space/preview":
+		case "/api/disk-space/clean": {
+			// The Disk space page's cleanup of one row: its conversations, and what its folder offers to the Trash
+			// (`DeleteCleanup.previewFolder`, with the page's rule). Clean deletes the ticked conversations first, then moves
+			// the ticked paths, each checked again (`moveFolder`).
+			if (req.method !== "POST") return fail("POST required", 405);
+			const body = await bodyObject<{ folder?: unknown; files?: unknown; leaving?: unknown; trash?: unknown }>(req);
+			const { rows } = await diskPlan();
+			const row = rows.find((r) => r.folder === body.folder);
+			if (!row) return fail("Not a folder of the Disk space page", 404);
+			const cleanable = row.kind !== "protected" && row.real !== null;
+			if (p === "/api/disk-space/preview") {
+				const leaving = Array.isArray(body.leaving) ? body.leaving.filter((f) => typeof f === "string") : [];
+				const conversations = (await diskSpace.conversationsOf(row.folder)).map((c) => ({
+					...c,
+					busy: Boolean(pool.liveOfFile(c.file)?.holding),
+				}));
+				const allowed = mayTrash(req);
+				const cleanup =
+					allowed && cleanable ? await deleteCleanup.previewFolder(row.folder, leaving, otherRows(rows, row)) : null;
+				return json({
+					folder: row.folder,
+					conversations,
+					mayTrash: allowed,
+					trash: cleanup?.trash ?? false,
+					cleanup: cleanup?.trash ? { folder: cleanup.folder, deps: cleanup.deps } : null,
+				});
+			}
+			if (!Array.isArray(body.files) || !body.files.every((f) => typeof f === "string")) return fail("files required");
+			const picks = trashPicksOf(body.trash);
+			if (picks === null) return fail("trash must be a list of the paths the preview gave");
+			const own = new Set(row.files);
+			const files = (body.files as string[]).map((f) => store.resolveSessionPath(f));
+			if (files.some((f) => f === null || !own.has(f))) return fail("A conversation is not this folder's", 400);
+			if (picks.length && !mayTrash(req)) return fail(TRASH_REFUSED, 403);
+			if (picks.length && !cleanable) return fail("This folder may not be cleaned up", 400);
+			const { deleted, failed, gone } = await deleteFiles(files as string[]);
+			const trashed = picks.length
+				? await deleteCleanup.moveFolder(row.folder, picks, gone, otherRows(rows, row))
+				: { moved: [], notMoved: [] };
+			diskSpace.forget([...(row.real ? [row.real] : []), ...deleted]);
 			return json({ deleted, failed, trashed });
 		}
 		case "/api/archive":
