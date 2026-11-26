@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { ADVISOR_APPLIED_SUFFIX, ADVISOR_KEY, advisorOf } from "../../shared/advisor.ts";
 import { type ApprovalMode, isApprovalMode } from "../../shared/approval.ts";
+import { APPROVAL_APPLIED_SUFFIX } from "../../shared/approval-applied.ts";
 import { type CompactAt, compactAtOf, compactAtWrites } from "../../shared/compact-at.ts";
 import { COMPACT_STEP_LOADED_SUFFIX, COMPACT_STEP_SUFFIX } from "../../shared/compact-step.ts";
 import {
@@ -389,13 +390,17 @@ export class ProcessOverlay {
 	}
 
 	/**
-	 * Say `mode` from now on (null: say nothing, and omp's own settings decide). The file changes at once; omp reloads
-	 * it a moment later, and the promise resolves once it has had that moment.
+	 * Say `mode` from now on (null: say nothing, and omp's own settings decide). The file changes at once; the promise
+	 * resolves once the process says the mode is in force (`APPROVAL_APPLIED_SUFFIX`), as `setAdvisor` waits for its value:
+	 * on a slow machine omp's reload takes longer than `reloadMs`, and a turn sent before it would run in the mode the person
+	 * just left. `running` false (a frozen omp, which reloads nothing until it is resumed: see `caughtUp`) gets `reloadMs`.
 	 */
-	set(mode: ApprovalMode | null): Promise<void> {
+	set(mode: ApprovalMode | null, running = true): Promise<void> {
 		this.mode = mode;
 		this.write();
-		return Bun.sleep(this.reloadMs);
+		return mode === null || !running
+			? Bun.sleep(this.reloadMs)
+			: this.applied(APPROVAL_APPLIED_SUFFIX, mode, `the permission mode is ${mode}`);
 	}
 
 	/** Say `on` for `retry.waitForUsageReset` from now on (null: omp's own setting again); resolves as `set` does. */
@@ -453,27 +458,34 @@ export class ProcessOverlay {
 	 * Whether the advisor reviews this conversation becomes `on` (null: omp's configuration again). It resolves once the
 	 * process says the value is in force (`ADVISOR_APPLIED_SUFFIX`, which its gate keeps): omp's reload of the file takes
 	 * longer than `reloadMs` on a slow machine, and a turn sent before it would be reviewed by the advisor the person just
-	 * turned off. A process that says nothing of it (no gate, an omp without what the gate reads, `on` null: the value then
-	 * is the configuration's) gets `reloadMs`, as every other setting does; one that does not say it in `APPLY_MAX_MS`, that
-	 * long, and the server log says so (the file is written and omp may still take it; the switch is not undone).
+	 * turned off. With `on` null (the value then is the configuration's) it gets `reloadMs`, as every other setting does.
 	 */
-	async setAdvisor(on: boolean | null): Promise<void> {
+	setAdvisor(on: boolean | null): Promise<void> {
 		this.advisor = on;
 		this.write();
-		const echo = `${this.file}${ADVISOR_APPLIED_SUFFIX}`;
-		if (on === null || !existsSync(echo)) return Bun.sleep(this.reloadMs);
+		return on === null
+			? Bun.sleep(this.reloadMs)
+			: this.applied(ADVISOR_APPLIED_SUFFIX, String(on), `the advisor is ${on ? "on" : "off"}`);
+	}
+
+	/**
+	 * Resolves once the gate's echo file `<overlay><suffix>` says `value`. A process that keeps no such file (no gate, an omp
+	 * without what the gate reads) gets `reloadMs`; one that does not say it in `APPLY_MAX_MS` gets that long, and the server
+	 * log says so (the file is written and omp may still take it; the switch is not undone).
+	 */
+	private async applied(suffix: string, value: string, what: string): Promise<void> {
+		const echo = `${this.file}${suffix}`;
+		if (!existsSync(echo)) return Bun.sleep(this.reloadMs);
 		const until = Date.now() + APPLY_MAX_MS;
 		while (Date.now() < until) {
 			try {
-				if (readFileSync(echo, "utf8") === String(on)) return;
+				if (readFileSync(echo, "utf8") === value) return;
 			} catch {
 				// Gone meanwhile (the overlay's folder was swept): the loop ends at its limit.
 			}
 			await Bun.sleep(APPLY_POLL_MS);
 		}
-		console.warn(
-			`omp-webui: omp did not say within ${APPLY_MAX_MS} ms that the advisor is ${on ? "on" : "off"} (${this.file})`,
-		);
+		console.warn(`omp-webui: omp did not say within ${APPLY_MAX_MS} ms that ${what} (${this.file})`);
 	}
 
 	/** The conversation's browser endpoint becomes `cdpUrl` (null: none; false: the browser is off); resolves as `set` does. */
@@ -577,6 +589,8 @@ export function removeOverlayFiles(file: string): void {
 		`${file}${COMPACT_STEP_SUFFIX}${COMPACT_STEP_LOADED_SUFFIX}`,
 		// And what the gate says of the advisor in force (`ProcessOverlay.setAdvisor`): a process after this one must not read it as its own.
 		`${file}${ADVISOR_APPLIED_SUFFIX}`,
+		// And what it says of the permission mode in force (`ProcessOverlay.set`).
+		`${file}${APPROVAL_APPLIED_SUFFIX}`,
 	])
 		rmSync(f, { force: true });
 	try {

@@ -2598,7 +2598,7 @@ export class Live {
 		if (!this.overlay) throw new Error("This process does not take permission modes");
 		if (this.info.exited || this.client.closing) throw new Error("This conversation is not running");
 		if (this.overlay.mode === mode) return;
-		const reloaded = this.overlay.set(mode);
+		const reloaded = this.overlay.set(mode, this.info.pausedAt === null);
 		// The user's choice is kept now, whatever becomes of the process while omp reloads: the conversation resumes in it.
 		if (remember) this.pool.rememberApproval(this, mode);
 		await reloaded;
