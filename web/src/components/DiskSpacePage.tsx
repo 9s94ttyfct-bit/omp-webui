@@ -213,7 +213,7 @@ function Row({ row, home, t, onClean }: { row: DiskRow; home: string | undefined
 					{row.name}
 				</div>
 				<div className="truncate text-xs text-faint">
-					{row.kind === "other"
+					{row.kind === "other" && row.real !== null
 						? t("diskSpace.kindOther")
 						: row.kind === "protected"
 							? t("diskSpace.kindProtected")
