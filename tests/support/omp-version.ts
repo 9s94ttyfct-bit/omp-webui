@@ -31,3 +31,15 @@ export function mountedCall(tool: string, args: unknown): { name: string; args: 
 		? { name: "bash", args: { command: `${tool} -j '${json.replaceAll("'", "'\\''")}'` } }
 		: { name: "write", args: { path: `xd://${tool}`, content: json } };
 }
+
+/**
+ * Before omp 19.2.0 plan mode's context ("Plan mode active") is a hidden `plan-mode-context` entry of the session file; from
+ * it omp builds that context for each request of plan mode and saves no entry.
+ */
+export const savesPlanModeContext = (): boolean => !ompAtLeast("19.2.0");
+
+/**
+ * omp 19.2.0's `--no-tools` leaves out every tool (memory, auto-learn and MCP ones too), the memory and the MCP servers,
+ * which are not started; the context files (AGENTS.md) stay. Before it, `--no-tools` left out only the built-in tools.
+ */
+export const noToolsLeavesOutMcp = (): boolean => ompAtLeast("19.2.0");

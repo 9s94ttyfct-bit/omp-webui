@@ -22,6 +22,8 @@ import { platform } from "./platform/index.ts";
  * server of the user's configuration was started, and the run waited up to 30 s for each. The overlay turns off the memory,
  * the auto-learn, and every discovery source that contributes context files or MCP servers. omp 19.1 also offers Auto-QA's
  * `report_issue` to a run with `--no-tools` (it sends what it is given to omp's QA endpoint): `dev.autoqa: false` turns it off.
+ * From omp 19.2.0 `--no-tools` itself leaves out every tool, the memory and the MCP servers, but the user's AGENTS.md still
+ * comes: the overlay is still what keeps it out.
  */
 
 /** The settings of the run that make it a plain request: no memory, no context files, no MCP servers, no skills. */

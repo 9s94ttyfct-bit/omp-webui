@@ -6,7 +6,7 @@ import type { SessionEntry } from "../../shared/protocol.ts";
 import { socket } from "../../web/src/lib/ws.ts";
 import { openLive, useApp } from "../../web/src/store/app.ts";
 import type { RpcState } from "../../web/src/store/live.ts";
-import { mountedCall, runsToolCommands } from "../support/omp-version.ts";
+import { mountedCall, runsToolCommands, savesPlanModeContext } from "../support/omp-version.ts";
 import { type PageStore, pageStore, viewLive } from "../support/page-store.ts";
 import { pollUntil } from "../support/poll.ts";
 import { rejectionOf } from "../support/rejection.ts";
@@ -16,12 +16,16 @@ import { connect, request } from "../support/ws.ts";
 import { installGlobals, restoreGlobals } from "../unit/browser-globals.ts";
 
 /**
- * Read-only plan mode (`--plan-yolo`) against the real omp and the page's own store. omp 18.12 tells an RPC client nothing
- * of plan mode: `get_state` has no field for it, no command enters or leaves it, and `/plan` is not in its catalog. The page
- * infers it (`LiveState.planMode`): on from the start for a process started with the flag, off once omp writes its hidden
- * `plan-yolo-handoff` entry because the plan was approved. These tests pin what that inference rests on; when one fails
- * after an omp update, omp has started to say it itself and the page should read that instead. No model call: a scripted
- * provider plays the model (it writes the plan and proposes it).
+ * Read-only plan mode (`--plan-yolo`) against the real omp and the page's own store. omp (18.12 to 19.2 at least) tells an
+ * RPC client nothing of plan mode: `get_state` has no field for it, no command enters or leaves it, and `/plan` is not in
+ * its catalog. The page infers it (`LiveState.planMode`): on from the start for a process started with the flag, off once
+ * omp writes its hidden `plan-yolo-handoff` entry because the plan was approved. These tests pin what that inference rests
+ * on; when one fails after an omp update, omp has started to say it itself and the page should read that instead. No model
+ * call: a scripted provider plays the model (it writes the plan and proposes it).
+ *
+ * What omp itself is told of plan mode is its context ("Plan mode active") in each request. Before omp 19.2.0 a hidden
+ * `plan-mode-context` entry of the session file carried it; from it omp builds it for each request and saves none
+ * (`savesPlanModeContext`). The page never read that entry, so it reads plan mode the same way on both.
  */
 
 let server: TestServer;
@@ -136,16 +140,21 @@ test("a --plan-yolo conversation is in plan mode until omp's handoff entry, whic
 	await socket.rpc(liveId, { type: "prompt", message: "Plan a greeting" });
 	await pollUntil(() => planMode() === false, "the page to see the plan approved", 30_000);
 
-	// The two model requests that come before the approval were made in plan mode, as far as the page knew.
+	// The two model requests that come before the approval were made in plan mode, as far as the page knew, and as omp told
+	// the model.
 	expect(planAtRequest.slice(0, 2)).toEqual([true, true]);
-	// What it read it from: the hidden entry that carries the plan mode in, then the one that ends it, nothing else.
+	expect(ompPlanAtRequest.slice(0, 2)).toEqual([true, true]);
+	// What it read it from: the hidden entry that ends it, nothing else. Before omp 19.2.0 a hidden entry also carried the
+	// plan mode in, ahead of the first message; from it omp saves no such entry.
 	const saved = records();
 	const entered = saved.findIndex(hidden("plan-mode-context"));
 	const handoff = saved.findIndex(hidden("plan-yolo-handoff"));
 	const firstMessage = saved.findIndex((e) => e.type === "message");
-	expect(entered).toBeGreaterThanOrEqual(0);
-	expect(entered).toBeLessThan(firstMessage);
-	expect(handoff).toBeGreaterThan(entered);
+	if (savesPlanModeContext()) {
+		expect(entered).toBeGreaterThanOrEqual(0);
+		expect(entered).toBeLessThan(firstMessage);
+	} else expect(entered).toBe(-1);
+	expect(handoff).toBeGreaterThan(Math.max(entered, firstMessage));
 	expect(saved.filter((e) => e.type === "mode_change")).toEqual([]);
 	// omp's own words for it, which the page shows as a toast.
 	expect(notices.some((n) => n.startsWith("plan-yolo: Plan-yolo: plan approved"))).toBe(true);
@@ -172,6 +181,7 @@ test("a conversation resumed from a plan-mode transcript is not in plan mode: om
 	// Resumed the way the page does it, without the flag.
 	plan = () => ({ text: "Hello." });
 	modelRequests = 0;
+	ompPlanAtRequest = [];
 	liveId = await openLive({ kind: "resume", sessionFile: file });
 	expect(useApp.getState().lives[liveId]?.planMode).toBe(false);
 	const before = records().filter(hidden("plan-mode-context")).length;
@@ -181,8 +191,10 @@ test("a conversation resumed from a plan-mode transcript is not in plan mode: om
 		"the turn to end",
 		30_000,
 	);
-	// omp enters plan mode by injecting its context: it did not do it again.
+	// omp enters plan mode by injecting its context: it did not do it again. From omp 19.2.0, which keeps no such context in
+	// the transcript, no request of the resumed conversation carries it.
 	expect(records().filter(hidden("plan-mode-context")).length).toBe(before);
+	if (!savesPlanModeContext()) expect(ompPlanAtRequest.some(Boolean)).toBe(false);
 }, 90_000);
 
 /** omp's `/new` as the page sends it; resolves once the page has been told the process moved to the new session file. */
@@ -217,7 +229,7 @@ test("/new before the plan is approved: omp is still in plan mode in the new ses
 	expect(ompPlanAtRequest[inFirst]).toBe(true);
 	expect(planAtRequest[inFirst]).toBe(true);
 	expect(planMode()).toBe(true);
-	expect(records().some(hidden("plan-mode-context"))).toBe(true);
+	expect(records().some(hidden("plan-mode-context"))).toBe(savesPlanModeContext());
 }, 90_000);
 
 test("/new after the plan is approved: omp is out of plan mode in the new session, and so is the page", async () => {

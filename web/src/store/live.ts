@@ -315,12 +315,12 @@ export interface LiveState {
 	 */
 	continuing: boolean;
 	/**
-	 * omp is in the read-only plan mode `--plan-yolo` starts it in. omp 18.12 tells RPC clients nothing of plan mode (no
-	 * `get_state` field, no command to enter or leave it), so this is inferred: true from the start for a process started
-	 * with that flag, false once the page has read the hidden `plan-yolo-handoff` entry omp writes when the plan is approved
-	 * (see `pullEntries`). It is the process's, not the session's: omp 18.12 is still in plan mode after `/new` or a fork
-	 * until the plan is approved (the new session's first request again carries "Plan mode active"), so `leaveSession`
-	 * leaves it alone.
+	 * omp is in the read-only plan mode `--plan-yolo` starts it in. omp (18.12 to 19.2) tells RPC clients nothing of plan
+	 * mode (no `get_state` field, no command to enter or leave it), so this is inferred: true from the start for a process
+	 * started with that flag, false once the page has read the hidden `plan-yolo-handoff` entry omp writes when the plan is
+	 * approved (see `pullEntries`). It is the process's, not the session's: omp (18.12 to 19.2) is still in plan mode after
+	 * `/new` or a fork until the plan is approved (the new session's first request again carries "Plan mode active"), so
+	 * `leaveSession` leaves it alone.
 	 */
 	planMode: boolean;
 	/**

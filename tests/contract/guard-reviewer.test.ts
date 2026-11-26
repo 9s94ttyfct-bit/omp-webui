@@ -4,15 +4,16 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } 
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { ompAsk, removeQuietOverlay, reviewerArgs } from "../../server/guard-reviewer.ts";
+import { noToolsLeavesOutMcp } from "../support/omp-version.ts";
 import { type StubScripted, startScriptedStub } from "../support/stub-scripted.ts";
 
 /**
  * What the benchmark's reviewer request is, with the real omp and a stub provider that keeps what it was sent: the
  * reviewer's prompt and nothing else of the user's. Found by reading the requests (the stub's), not by reading omp's
- * documentation: with only `--no-tools --no-skills --no-rules` omp still sends the user's AGENTS.md, the memory and
- * auto-learn guidance and two tools, and starts every MCP server of the user's configuration, waiting for each. The
- * quiet overlay (`server/guard-reviewer.ts`, `QUIET_OVERLAY`) is what removes them. The home folder, the agent folder and
- * the models are this test's own; no real model, key or MCP server is involved.
+ * documentation: with only `--no-tools --no-skills --no-rules` omp still sends the user's AGENTS.md, and before omp 19.2.0
+ * also the memory and auto-learn guidance and two tools, and starts every MCP server of the user's configuration, waiting
+ * for each. The quiet overlay (`server/guard-reviewer.ts`, `QUIET_OVERLAY`) is what removes them. The home folder, the
+ * agent folder and the models are this test's own; no real model, key or MCP server is involved.
  */
 
 const root = mkdtempSync(join(tmpdir(), "ompw-guard-reviewer-"));
@@ -85,7 +86,7 @@ describe("omp -p, as the benchmark asks its reviewer", () => {
 		expect(Date.now() - started).toBeLessThan(25_000);
 	}, 90_000);
 
-	test("and the control shows why: without the overlay the same request carries the user's context and starts their MCP server", async () => {
+	test("and the control shows why: without the overlay the same request carries the user's context, and before omp 19.2 their tools and MCP server", async () => {
 		const before = stub.requests.length;
 		const args = reviewerArgs(MODEL, "THE-REVIEWER-SYSTEM-PROMPT", "Review this.", work, "unused").filter(
 			(a) => !a.startsWith("--config="),
@@ -105,7 +106,13 @@ describe("omp -p, as the benchmark asks its reviewer", () => {
 		const sent = stub.requests.slice(before);
 		expect(sent).toHaveLength(1);
 		expect(sent[0].text).toContain(CANARY);
-		expect(sent[0].tools.length).toBeGreaterThan(0);
-		expect(existsSync(mcpMarker), `the MCP server's marker; omp's stderr: ${stderr}`).toBe(true);
+		if (noToolsLeavesOutMcp()) {
+			// omp 19.2.0's `--no-tools` leaves out the tools and the MCP servers itself; the user's AGENTS.md still comes.
+			expect(sent[0].tools).toEqual([]);
+			expect(existsSync(mcpMarker), `the MCP server's marker; omp's stderr: ${stderr}`).toBe(false);
+		} else {
+			expect(sent[0].tools.length).toBeGreaterThan(0);
+			expect(existsSync(mcpMarker), `the MCP server's marker; omp's stderr: ${stderr}`).toBe(true);
+		}
 	}, 90_000);
 });
