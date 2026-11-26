@@ -82,8 +82,10 @@ Built from the projects folder's subfolders and every conversation's `cwd` (arch
 ### What is measured
 
 - **Folder**: allocated size, `du -sk` (what removing it frees, roughly; APFS clones and hard links make it approximate,
-  which the page does not try to correct). Measured on the server, one folder at a time, in the background, with a
-  per-folder budget of 60 s; one over budget shows "over N GB" (what it reached) or "unknown".
+  which the page does not try to correct). Measured on the server, one folder at a time, in the background. One folder
+  may take 30 s (a slow network mount, a huge tree); over that it shows "unknown" and the scan goes on. A whole scan
+  stops after 5 minutes: folders it did not reach keep their last size, marked with its age, and the next scan starts
+  with them.
 - **Conversations**: each conversation's transcript plus its artifacts folder (same path without `.jsonl`), summed per
   row, with the count. Subagent transcripts are inside the artifacts folder and so count with their parent.
 - **Transcripts inside a project folder** (a `--session-dir` root the server started omp with, `server/sessions/roots.ts`,
