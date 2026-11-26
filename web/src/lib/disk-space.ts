@@ -32,16 +32,18 @@ export const diskApi = {
 /** What a row takes in all: its folder (when measured) and its conversations. */
 export const rowTotal = (r: DiskRow): number => (r.folderBytes ?? 0) + r.conversationBytes;
 
-/** The rows in the order `sort` asks for: ties by name; a row never used comes last whichever way. */
+/** The rows in the order `sort` asks for: ties by name; a row whose folder size or last use is not known comes last whichever way. */
 export function sortRows(rows: readonly DiskRow[], sort: DiskSort): DiskRow[] {
 	const dir = sort.desc ? -1 : 1;
 	const byName = (a: DiskRow, b: DiskRow) => a.name.localeCompare(b.name) || a.folder.localeCompare(b.folder);
+	const known = (r: DiskRow): number | null =>
+		sort.by === "folder" ? r.folderBytes : sort.by === "lastUsed" ? r.lastUsed : 0;
 	const key = (a: DiskRow, b: DiskRow): number => {
 		switch (sort.by) {
 			case "name":
 				return a.name.localeCompare(b.name);
 			case "folder":
-				return a.folder.localeCompare(b.folder);
+				return (a.folderBytes ?? 0) - (b.folderBytes ?? 0);
 			case "conversations":
 				return a.conversations - b.conversations;
 			case "total":
@@ -51,7 +53,7 @@ export function sortRows(rows: readonly DiskRow[], sort: DiskSort): DiskRow[] {
 		}
 	};
 	return [...rows].sort((a, b) => {
-		if (sort.by === "lastUsed" && (a.lastUsed === null) !== (b.lastUsed === null)) return a.lastUsed === null ? 1 : -1;
+		if ((known(a) === null) !== (known(b) === null)) return known(a) === null ? 1 : -1;
 		return dir * key(a, b) || byName(a, b);
 	});
 }

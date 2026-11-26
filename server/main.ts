@@ -851,7 +851,7 @@ const otherRows = (rows: RowPlan[], row: RowPlan): string[] =>
  */
 const diskSpace = new DiskSpace(join(cfg.dataDir, "disk-space.json"), {
 	plan: diskPlan,
-	du: async (path, budgetMs) => (existsSync(path) ? sizeOf(path, budgetMs, { nice: true }) : null),
+	du: async (path, budgetMs) => (existsSync(path) ? sizeOf(path, budgetMs, { nice: true }) : 0),
 	fileBytes: (file) => {
 		try {
 			return statSync(file).size;

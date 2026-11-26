@@ -86,7 +86,7 @@ export function DiskCleanupDialog({ row, onClose }: { row: DiskRow; onClose: (ch
 	const frees =
 		conversations.filter((c) => files.has(c.file)).reduce((n, c) => n + c.bytes, 0) +
 		(folderPick
-			? (cleanup?.folder?.bytes ?? 0)
+			? (cleanup?.folder?.bytes ?? row.folderBytes ?? 0)
 			: (cleanup?.deps ?? []).filter((d) => picks[d.real]).reduce((n, d) => n + (d.bytes ?? 0), 0));
 	const kept = conversations.length - files.size;
 

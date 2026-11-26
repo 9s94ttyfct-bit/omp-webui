@@ -41,7 +41,7 @@ const storedSort = (): DiskSort => {
 
 const COLUMNS: { key: DiskSortKey; label: MessageKey; className?: string; numeric?: boolean }[] = [
 	{ key: "name", label: "diskSpace.colName" },
-	{ key: "folder", label: "diskSpace.colFolder", className: "@max-2xl:hidden" },
+	{ key: "folder", label: "diskSpace.colFolder", className: "@max-xl:hidden", numeric: true },
 	{ key: "conversations", label: "diskSpace.colConversations", className: "@max-xl:hidden", numeric: true },
 	{ key: "total", label: "diskSpace.colTotal", numeric: true },
 	{ key: "lastUsed", label: "diskSpace.colLastUsed", className: "@max-xl:hidden", numeric: true },
@@ -86,7 +86,7 @@ export function DiskSpacePage() {
 		await load();
 	};
 	const pickSort = (by: DiskSortKey) => {
-		const next: DiskSort = sort.by === by ? { by, desc: !sort.desc } : { by, desc: by !== "name" && by !== "folder" };
+		const next: DiskSort = sort.by === by ? { by, desc: !sort.desc } : { by, desc: by !== "name" };
 		setSort(next);
 		setPref(PREF.diskSort, JSON.stringify(next));
 	};
@@ -206,22 +206,34 @@ function Row({ row, home, t, onClean }: { row: DiskRow; home: string | undefined
 						? t("diskSpace.folderGone")
 						: t("diskSpace.folderNotMeasured");
 	const folderText = row.folderBytes === null ? "—" : formatBytes(row.folderBytes);
+	const kindNote =
+		row.kind === "other" && row.real !== null
+			? t("diskSpace.kindOther")
+			: row.kind === "protected"
+				? t("diskSpace.kindProtected")
+				: null;
 	return (
 		<tr className="group hover:bg-hover/50" data-testid="disk-row" data-folder={row.folder}>
-			<td className="max-w-64 px-3 py-2 pl-4">
+			<td className="max-w-80 px-3 py-2 pl-4 @max-xl:max-w-36">
 				<div className="truncate font-medium" data-testid="disk-row-name">
 					{row.name}
 				</div>
-				<div className="truncate text-xs text-faint">
-					{row.kind === "other" && row.real !== null
-						? t("diskSpace.kindOther")
-						: row.kind === "protected"
-							? t("diskSpace.kindProtected")
-							: null}
+				<div className="truncate text-xs text-faint" title={row.folder}>
+					{shortPath(row.folder, home)}
+					{kindNote ? ` · ${kindNote}` : ""}
 				</div>
 			</td>
-			<td className="max-w-80 truncate px-3 py-2 text-xs text-muted @max-2xl:hidden" title={row.folder}>
-				{shortPath(row.folder, home)}
+			<td className="px-3 py-2 text-right tabular-nums @max-xl:hidden" data-testid="disk-row-folder">
+				{row.folderState === "pending" ? (
+					<span className="inline-flex items-center gap-1 text-xs text-faint">
+						<Spinner size={11} /> {state}
+					</span>
+				) : (
+					<>
+						<div>{folderText}</div>
+						{state ? <div className="text-xs text-faint">{state}</div> : null}
+					</>
+				)}
 			</td>
 			<td className="px-3 py-2 text-right tabular-nums @max-xl:hidden">
 				<div>{row.conversations}</div>
@@ -234,7 +246,7 @@ function Row({ row, home, t, onClean }: { row: DiskRow; home: string | undefined
 				<div className="font-medium" data-testid="disk-row-total">
 					{formatBytes(rowTotal(row))}
 				</div>
-				{state ? <div className="text-xs text-faint">{state}</div> : null}
+				{row.folderBytes === null ? <div className="text-xs text-faint">{t("diskSpace.totalNoFolder")}</div> : null}
 			</td>
 			<td className="px-3 py-2 text-right text-xs text-muted @max-xl:hidden">
 				{row.lastUsed === null ? "—" : fmtRelative(row.lastUsed)}

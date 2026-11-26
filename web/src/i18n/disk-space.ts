@@ -20,6 +20,7 @@ export const en = {
 	sortBy: "Sort by {column}",
 	folderMeasuring: "measuring…",
 	folderUnknown: "too slow to measure",
+	totalNoFolder: "folder not counted",
 	folderNotMeasured: "not measured",
 	folderGone: "folder gone",
 	totalParts: "folder {folder} · conversations {conversations}",

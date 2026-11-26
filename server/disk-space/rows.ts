@@ -1,8 +1,8 @@
 import { readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import type { DiskRowKind } from "../../shared/disk-space.ts";
 import { isWithin } from "../sessions/cleanup-rules.ts";
-import { realOf } from "../sessions/cleanup-scan.ts";
+import { isFolder, realOf } from "../sessions/cleanup-scan.ts";
 
 /**
  * Which rows the Disk space page has, and whose conversations each holds (docs/superpowers/specs/2026-11-26-disk-space-page-design.md,
@@ -39,19 +39,27 @@ export function buildRows(input: {
 }): RowPlan[] {
 	const pf = input.projectsFolder === null ? null : (input.realOf(input.projectsFolder) ?? input.projectsFolder);
 	const rows = new Map<string, RowPlan>();
-	const projects: RowPlan[] = input.subfolders.map((s) => ({ folder: s, real: s, kind: "project", files: [] }));
-	for (const p of projects) rows.set(`r:${p.real}`, p);
 	const sheltered = (real: string) => input.isProtected(real) || (pf !== null && isWithin(pf, real));
+	// A subfolder that is a link to a protected folder (the home folder, the projects folder) is no project.
+	const projects: RowPlan[] = input.subfolders
+		.filter((s) => !sheltered(s))
+		.map((s) => ({ folder: s, real: s, kind: "project", files: [] }));
+	for (const p of projects) rows.set(`r:${p.real}`, p);
+	const projectOf = (real: string) => projects.find((p) => p.real !== null && isWithin(real, p.real));
 	// The other folders, real: a folder inside another of them is that one's.
 	const others = new Set<string>();
 	const placed: { file: string; key: string | null; real: string | null; cwd: string }[] = [];
 	for (const c of input.conversations) {
 		const real = input.realOf(c.cwd);
 		if (real === null) {
-			placed.push({ file: c.file, key: `g:${c.cwd}`, real, cwd: c.cwd });
+			// A folder that is gone, inside a project that is not: the project's.
+			const where = nearestThere(c.cwd, input.realOf);
+			const project = where === null ? undefined : projectOf(where);
+			if (project) placed.push({ file: c.file, key: `r:${project.real}`, real: null, cwd: c.cwd });
+			else placed.push({ file: c.file, key: `g:${c.cwd}`, real, cwd: c.cwd });
 			continue;
 		}
-		const project = projects.find((p) => p.real !== null && isWithin(real, p.real));
+		const project = projectOf(real);
 		if (project) placed.push({ file: c.file, key: `r:${project.real}`, real, cwd: c.cwd });
 		else if (sheltered(real)) placed.push({ file: c.file, key: `p:${real}`, real, cwd: c.cwd });
 		else {
@@ -83,6 +91,19 @@ export function buildRows(input: {
 	return [...rows.values()].sort((a, b) => (a.folder < b.folder ? -1 : a.folder > b.folder ? 1 : 0));
 }
 
+/** Where `path` would be, by the real path of the nearest folder above it that is there; null when none is. */
+function nearestThere(path: string, realOf: (path: string) => string | null): string | null {
+	const rest: string[] = [];
+	for (let at = path; ; ) {
+		const up = posix.dirname(at);
+		if (up === at) return null;
+		rest.unshift(posix.basename(at));
+		at = up;
+		const real = realOf(at);
+		if (real !== null) return posix.join(real, ...rest);
+	}
+}
+
 /** The folders directly in the projects folder (hidden ones left out, as the folder picker leaves them), real; none when it is missing. */
 export function projectSubfolders(projectsFolder: string): string[] {
 	let names: string[];
@@ -96,7 +117,8 @@ export function projectSubfolders(projectsFolder: string): string[] {
 	const out: string[] = [];
 	for (const name of names) {
 		const real = realOf(join(projectsFolder, name));
-		if (real && !out.includes(real)) out.push(real);
+		// A link to a file is no folder.
+		if (real && isFolder(real) && !out.includes(real)) out.push(real);
 	}
 	return out;
 }

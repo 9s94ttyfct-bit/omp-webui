@@ -94,6 +94,23 @@ describe("buildRows", () => {
 		]);
 	});
 
+	test("a gone folder inside a project is the project's", () => {
+		const r = rows([`${PF}/a`], [["c1", `${PF}/a/removed/deep`]], {
+			[`${PF}/a/removed/deep`]: null,
+			[`${PF}/a/removed`]: null,
+		});
+		expect(r).toEqual([{ folder: `${PF}/a`, real: `${PF}/a`, kind: "project", files: ["c1"] }]);
+	});
+
+	test("a subfolder that is a link to a protected folder or the projects folder is no project", () => {
+		// What `projectSubfolders` gives is real: `~/omp/home-link -> ~` is the home folder, `~/omp/self -> ~/omp` the projects folder.
+		const r = rows([HOME, PF, `${PF}/a`], [["c1", `${HOME}/code`]]);
+		expect(r).toEqual([
+			{ folder: `${HOME}/code`, real: `${HOME}/code`, kind: "other", files: ["c1"] },
+			{ folder: `${PF}/a`, real: `${PF}/a`, kind: "project", files: [] },
+		]);
+	});
+
 	test("each conversation is in exactly one row", () => {
 		const input: [string, string][] = [
 			["a1", `${PF}/a`],

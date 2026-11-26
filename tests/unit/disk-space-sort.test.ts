@@ -32,19 +32,27 @@ test("total is folder plus conversations, an unmeasured folder counting as nothi
 
 test("each key sorts both ways", () => {
 	const rows = [
-		row("beta", { folder: "/z/beta", conversations: 3, lastUsed: 30 }),
-		row("Alpha", { folder: "/y/Alpha", conversations: 1, lastUsed: 10 }),
-		row("gamma", { folder: "/x/gamma", conversations: 2, lastUsed: 20 }),
+		row("beta", { folderBytes: 5, conversations: 3, lastUsed: 30 }),
+		row("Alpha", { folderBytes: 9, conversations: 1, lastUsed: 10 }),
+		row("gamma", { folderBytes: 1, conversations: 2, lastUsed: 20 }),
 	];
 	expect(names(sortRows(rows, { by: "name", desc: false }))).toEqual(["Alpha", "beta", "gamma"]);
 	expect(names(sortRows(rows, { by: "name", desc: true }))).toEqual(["gamma", "beta", "Alpha"]);
-	expect(names(sortRows(rows, { by: "folder", desc: false }))).toEqual(["gamma", "Alpha", "beta"]);
+	expect(names(sortRows(rows, { by: "folder", desc: true }))).toEqual(["Alpha", "beta", "gamma"]);
+	expect(names(sortRows(rows, { by: "folder", desc: false }))).toEqual(["gamma", "beta", "Alpha"]);
 	expect(names(sortRows(rows, { by: "conversations", desc: true }))).toEqual(["beta", "gamma", "Alpha"]);
 	expect(names(sortRows(rows, { by: "lastUsed", desc: false }))).toEqual(["Alpha", "gamma", "beta"]);
 });
 
-test("a row never used comes last whichever way", () => {
+test("a row never used, or whose folder size is not known, comes last whichever way", () => {
 	const rows = [row("never", { lastUsed: null }), row("old", { lastUsed: 1 }), row("new", { lastUsed: 9 })];
 	expect(names(sortRows(rows, { by: "lastUsed", desc: true }))).toEqual(["new", "old", "never"]);
 	expect(names(sortRows(rows, { by: "lastUsed", desc: false }))).toEqual(["old", "new", "never"]);
+	const sized = [
+		row("slow", { folderBytes: null, folderState: "unknown" }),
+		row("small", { folderBytes: 1 }),
+		row("big", { folderBytes: 9 }),
+	];
+	expect(names(sortRows(sized, { by: "folder", desc: true }))).toEqual(["big", "small", "slow"]);
+	expect(names(sortRows(sized, { by: "folder", desc: false }))).toEqual(["small", "big", "slow"]);
 });

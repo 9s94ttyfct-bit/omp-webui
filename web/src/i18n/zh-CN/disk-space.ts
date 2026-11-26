@@ -20,6 +20,7 @@ export const zh: Record<keyof typeof en, string> = {
 	folderUnknown: "测量超时",
 	folderNotMeasured: "不测量",
 	folderGone: "文件夹已不存在",
+	totalNoFolder: "未计入文件夹",
 	totalParts: "文件夹 {folder} · 对话 {conversations}",
 	kindOther: "不在项目文件夹中",
 	kindProtected: "主目录、系统目录或项目文件夹：只统计它自己的对话",

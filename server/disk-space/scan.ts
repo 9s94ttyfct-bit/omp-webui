@@ -33,7 +33,7 @@ export interface PlannedConversation {
 export interface DiskSpaceDeps {
 	/** The rows as they are now, and the conversations they name. */
 	plan(): Promise<{ rows: RowPlan[]; conversations: Map<string, PlannedConversation> }>;
-	/** Allocated bytes at `path`; null when not measured within `budgetMs` (or not there). */
+	/** Allocated bytes at `path` (0 when nothing is there); null when not measured within `budgetMs`. */
 	du(path: string, budgetMs: number): Promise<number | null>;
 	/** A transcript's size now. */
 	fileBytes(file: string): number;
@@ -63,6 +63,8 @@ export class DiskSpace {
 	private cache: Cache;
 	private running: Promise<void> | null = null;
 	private progress: DiskScanState = { running: false, startedAt: null, finishedAt: null, done: 0, total: 0 };
+	/** While a scan runs, the paths forgotten (cleaned up) since it started. */
+	private forgottenDuring: string[] | null = null;
 
 	constructor(
 		private readonly cacheFile: string,
@@ -100,6 +102,7 @@ export class DiskSpace {
 			done: 0,
 			total: 0,
 		};
+		this.forgottenDuring = [];
 		this.running = this.run()
 			.catch(() => {})
 			.finally(() => {
@@ -108,6 +111,10 @@ export class DiskSpace {
 				this.cache.finishedAt = at;
 				this.save();
 				this.running = null;
+				// Something was cleaned up while it ran: what it measured there may be from before, so it is measured again.
+				const again = (this.forgottenDuring?.length ?? 0) > 0;
+				this.forgottenDuring = null;
+				if (again) this.scan();
 			});
 		return true;
 	}
@@ -120,6 +127,7 @@ export class DiskSpace {
 
 	/** Forget what was measured at these paths (and of conversations in them): they are measured again. */
 	forget(paths: string[]): void {
+		this.forgottenDuring?.push(...paths);
 		for (const p of paths) {
 			for (const k of Object.keys(this.cache.folders)) if (isWithin(k, p)) delete this.cache.folders[k];
 			for (const k of Object.keys(this.cache.conversations))
@@ -184,24 +192,33 @@ export class DiskSpace {
 		const at = (r: { real: string }) => this.cache.folders[r.real]?.at ?? Number.NEGATIVE_INFINITY;
 		folders.sort((a, b) => at(a) - at(b) || (a.real < b.real ? -1 : 1));
 		this.progress.total = folders.length;
-		const order = [...folders, ...rows.filter((r) => !measurable(r))];
-		for (const r of order) {
-			// Its conversations, those changed since they were measured.
+		// Every row's conversations first, those changed since they were measured: a folder's size leaves out the transcripts
+		// kept in it, whichever row they are of.
+		for (const r of [...folders, ...rows.filter((r) => !measurable(r))]) {
 			for (const file of r.files) {
 				const c = conversations.get(file);
 				if (!c) continue;
 				const m = this.cache.conversations[file];
 				if (m && m.mtime === c.modifiedAt) continue;
-				if (left() <= 0) return;
-				const artifacts = await this.deps.du(artifactsOf(file), Math.min(CONVERSATION_MS, left()));
-				this.cache.conversations[file] = { mtime: c.modifiedAt, bytes: this.deps.fileBytes(file) + (artifacts ?? 0) };
+				const budget = Math.min(CONVERSATION_MS, left());
+				if (budget <= 0) return;
+				const artifacts = await this.deps.du(artifactsOf(file), budget);
+				// Not measured in time: it is measured again by the next scan (one with no artifacts folder measures 0).
+				if (artifacts === null) {
+					if (budget < CONVERSATION_MS) return;
+					continue;
+				}
+				this.cache.conversations[file] = { mtime: c.modifiedAt, bytes: this.deps.fileBytes(file) + artifacts };
 			}
-			if (!measurable(r)) continue;
+		}
+		for (const r of folders) {
 			const budget = Math.min(FOLDER_MS, left());
 			if (budget <= 0) return;
 			const bytes = await this.deps.du(r.real, budget);
 			// Cut by the scan's end, not by its own time: it keeps what it had.
 			if (bytes === null && budget < FOLDER_MS) return;
+			// Cleaned up while it was measured: the size is from before (the scan after this one measures it again).
+			if (this.forgottenDuring?.some((p) => isWithin(p, r.real) || isWithin(r.real, p))) continue;
 			this.cache.folders[r.real] = {
 				bytes: bytes === null ? null : this.ownBytes(r.real, bytes, conversations),
 				at: this.deps.now(),

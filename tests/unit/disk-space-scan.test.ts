@@ -215,4 +215,28 @@ describe("DiskSpace", () => {
 		w.space.forget(["/p/a"]);
 		expect((await w.space.answer()).rows[0].folderState).toBe("pending");
 	});
+
+	test("a folder cleaned up while a scan runs is not given its old size, and another scan measures it", async () => {
+		const w = world({ rows: [project("/p/a")], convs: {}, du: { "/p/a": 7 } });
+		w.space.scan();
+		w.space.forget(["/p/a"]);
+		await w.space.done();
+		await w.space.done();
+		expect(w.calls.filter((c) => c === "/p/a")).toHaveLength(2);
+		expect((await w.space.answer()).rows[0]).toMatchObject({ folderState: "measured", folderBytes: 7 });
+	});
+
+	test("an artifacts folder not measured in time is measured again by the next scan", async () => {
+		const cache = join(dir, "artifacts.json");
+		const rows = [project("/p/a", ["/s/1.jsonl"])];
+		const convs = { "/s/1.jsonl": { size: 100 } };
+		const slow = world({ rows, convs, du: { "/p/a": 1, "/s/1": 900 }, duMs: { "/s/1": 10_001 } }, cache);
+		slow.space.scan();
+		await slow.space.done();
+		expect((await slow.space.answer()).rows[0].conversationBytes).toBe(100);
+		const next = world({ rows, convs, du: { "/p/a": 1, "/s/1": 900 } }, cache);
+		next.space.scan();
+		await next.space.done();
+		expect((await next.space.answer()).rows[0].conversationBytes).toBe(1000);
+	});
 });
