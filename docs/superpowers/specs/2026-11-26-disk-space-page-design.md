@@ -98,8 +98,8 @@ Built from the projects folder's subfolders and every conversation's `cwd` (arch
 Results are kept in the data folder (`disk-space.json`: per row, the sizes and when each was measured) so the page shows
 the last numbers at once, marked with their age; a scan starts when the page opens if the last one is older than 10
 minutes, or by the page's Refresh. One scan at a time for the server; pages see it progress (rows update as each folder
-is measured; the answer streams or the page polls, the builder's choice). Conversation sizes are cheap (`stat`) and
-are always current.
+is measured; the page polls while a scan runs). A conversation's size is measured in the scan too (its artifacts
+folder needs `du`) and kept by file; one changed or new since is shown with its transcript's size until the next scan.
 
 ### The page
 
