@@ -142,6 +142,34 @@ export function depUse(folder: string, active: readonly FolderUser[]): UsedBy[] 
 	return usedBy;
 }
 
+/**
+ * Whether the folder `real` may be moved from the Disk space page (docs/superpowers/specs/2026-11-26-disk-space-page-design.md,
+ * "The one rule that differs"): the person decides about the folder itself, so only what is alive blocks it. `active` (a
+ * live omp, a Terminal tab, a process) or a sidebar project in it or inside it makes it `inUse`; another row's folder
+ * inside it `containsOther`; a conversation's file kept in it `holdsConversations` (the move would take it along).
+ */
+export function folderUseAlive(
+	real: string,
+	users: {
+		active: readonly FolderUser[];
+		projects: readonly FolderUser[];
+		/** The other rows' folders, real. */
+		rows: readonly string[];
+		/** The conversations' files that stay, real. */
+		files: readonly string[];
+	},
+): { refused: "inUse" | "containsOther" | "holdsConversations" | null; usedBy: UsedBy[] } {
+	const inUse: UsedBy[] = [];
+	for (const u of [...users.active, ...users.projects]) if (isWithin(u.real, real)) addOnce(inUse, u.who);
+	if (inUse.length) return { refused: "inUse", usedBy: inUse };
+	const others: UsedBy[] = [];
+	for (const r of users.rows)
+		if (r !== real && isWithin(r, real)) addOnce(others, { kind: "project", name: posix.basename(r) });
+	if (others.length) return { refused: "containsOther", usedBy: others };
+	if (users.files.some((f) => isWithin(f, real))) return { refused: "holdsConversations", usedBy: [] };
+	return { refused: null, usedBy: [] };
+}
+
 /** What a folder's name and surroundings say about it: a dependency folder, and whether git must ignore it to count. */
 export interface DependencyCandidate {
 	kind: string;

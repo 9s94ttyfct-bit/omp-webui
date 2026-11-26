@@ -388,6 +388,8 @@ function refusalText(folder: CleanupFolder, t: TFunction): string | null {
 			return t("deleteDialog.cleanupRefusedInUse", { who: whoText(folder.usedBy, t) });
 		case "containsOther":
 			return t("deleteDialog.cleanupRefusedContains", { who: whoText(folder.usedBy, t) });
+		case "holdsConversations":
+			return t("deleteDialog.cleanupRefusedHoldsConversations");
 	}
 }
 

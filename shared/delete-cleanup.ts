@@ -17,6 +17,8 @@ export type FolderRefusal =
 	| "inUse"
 	/** A folder inside it is another conversation's, a project's or a running process's. */
 	| "containsOther"
+	/** A conversation's file is kept in it (the Disk space page: the move would take it along). */
+	| "holdsConversations"
 	/** Which processes work in it could not be found out. */
 	| "unchecked";
 

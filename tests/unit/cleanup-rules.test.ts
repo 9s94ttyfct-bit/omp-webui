@@ -4,6 +4,7 @@ import {
 	depUse,
 	type FolderUser,
 	folderUse,
+	folderUseAlive,
 	isWithin,
 	type Protected,
 	protectedReason,
@@ -136,6 +137,63 @@ describe("folderUse", () => {
 	test("a sibling folder that shares a prefix is not inside", () => {
 		expect(isWithin("/Users/me/code/app-2", "/Users/me/code/app")).toBe(false);
 		expect(folderUse("/Users/me/code/app", [user("/Users/me/code/app-2", "conversation")], p).refused).toBeNull();
+	});
+});
+
+describe("folderUseAlive", () => {
+	const at = (real: string, who: UsedBy): FolderUser => ({ real, who });
+	const none = { active: [], projects: [], rows: [], files: [] };
+	const app = "/Users/me/code/app";
+
+	test("a stopped conversation in the folder does not block it", () => {
+		// Stopped conversations are not among `active`: nothing is passed for them.
+		expect(folderUseAlive(app, none)).toEqual({ refused: null, usedBy: [] });
+	});
+
+	test("a live omp, a Terminal tab or a process in it or inside it blocks it", () => {
+		for (const who of [
+			{ kind: "conversation", name: "Fix CI" },
+			{ kind: "terminal", name: "" },
+			{ kind: "process", name: "node", pid: 7 },
+		] as UsedBy[]) {
+			expect(folderUseAlive(app, { ...none, active: [at(app, who)] })).toEqual({ refused: "inUse", usedBy: [who] });
+			expect(folderUseAlive(app, { ...none, active: [at(`${app}/web`, who)] }).refused).toBe("inUse");
+		}
+	});
+
+	test("what runs in a folder that holds it does not block it", () => {
+		const active = [
+			at("/Users/me/code", { kind: "conversation", name: "x" }),
+			at("/", { kind: "process", name: "y", pid: 1 }),
+		];
+		expect(folderUseAlive(app, { ...none, active }).refused).toBeNull();
+	});
+
+	test("a sidebar project whose folder is it or inside it blocks it; one holding it does not", () => {
+		const project = (real: string) => at(real, { kind: "project", name: "P" });
+		expect(folderUseAlive(app, { ...none, projects: [project(app)] }).refused).toBe("inUse");
+		expect(folderUseAlive(app, { ...none, projects: [project(`${app}/sub`)] }).refused).toBe("inUse");
+		expect(folderUseAlive(app, { ...none, projects: [project("/Users/me/code")] }).refused).toBeNull();
+	});
+
+	test("another row's folder inside it is containsOther; the folder itself is not another row", () => {
+		expect(folderUseAlive(app, { ...none, rows: [`${app}/nested`] })).toEqual({
+			refused: "containsOther",
+			usedBy: [{ kind: "project", name: "nested" }],
+		});
+		expect(folderUseAlive(app, { ...none, rows: [app, "/Users/me/code/app-2"] }).refused).toBeNull();
+	});
+
+	test("a conversation file kept inside it is holdsConversations; in use wins over the others", () => {
+		expect(folderUseAlive(app, { ...none, files: [`${app}/.sessions/1.jsonl`] }).refused).toBe("holdsConversations");
+		expect(
+			folderUseAlive(app, {
+				...none,
+				files: [`${app}/.sessions/1.jsonl`],
+				rows: [`${app}/nested`],
+				active: [at(app, { kind: "terminal", name: "" })],
+			}).refused,
+		).toBe("inUse");
 	});
 });
 

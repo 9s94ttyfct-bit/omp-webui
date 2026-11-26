@@ -28,6 +28,7 @@ export const zh: Record<keyof typeof en, string> = {
 	cleanupRefusedData: "里面有 omp 或 omp-webui 自己的数据：永远不会移走。",
 	cleanupRefusedInUse: "{who} 正在使用它。",
 	cleanupRefusedContains: "它里面的一个文件夹正被 {who} 使用。",
+	cleanupRefusedHoldsConversations: "里面存着对话记录：移走它会把对话一起带走。",
 	cleanupRefusedUnchecked: "无法检查正在运行的进程：不会移走任何内容。",
 	cleanupDepRunning: "{who} 正在这个文件夹里运行。",
 	cleanupWhoConversation: "“{name}”",

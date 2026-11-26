@@ -10,7 +10,15 @@ import type {
 } from "../../shared/delete-cleanup.ts";
 import { run } from "../omp/run.ts";
 import type { TrashOps } from "../platform/types.ts";
-import { depUse, type FolderUser, folderUse, isWithin, type Protected, protectedReason } from "./cleanup-rules.ts";
+import {
+	depUse,
+	type FolderUser,
+	folderUse,
+	folderUseAlive,
+	isWithin,
+	type Protected,
+	protectedReason,
+} from "./cleanup-rules.ts";
 import { gitRisk, isFolder, isWorktreeTop, listDependencies, moreAtRisk, realOf, sizeOf } from "./cleanup-scan.ts";
 
 /**
@@ -70,6 +78,14 @@ interface Users {
 	/** The rules of what is never offered, with the projects folder as it is now. */
 	protect: Protected;
 }
+
+/**
+ * Which rule decides whether a folder may move: the delete dialogs' (`folderUse`: any other conversation in it keeps it), or
+ * the Disk space page's (`folderUseAlive`: only what runs; `rows` the other rows' folders, `files` the conversations' files
+ * that stay, both real).
+ */
+type Rule = { kind: "delete" } | { kind: "alive"; rows: string[]; files: string[] };
+const DELETE: Rule = { kind: "delete" };
 
 export class DeleteCleanup {
 	constructor(private readonly world: CleanupWorld) {}
@@ -174,16 +190,69 @@ export class DeleteCleanup {
 		const users = await this.users(new Set(targets.map((t) => t.file)));
 		const offered = new Set<string>();
 		const previews: DeletePreview[] = [];
-		for (const t of targets) previews.push(await this.previewOne(t, users, offered));
+		for (const t of targets) previews.push(await this.previewOne(t, users, offered, DELETE));
 		return { trash: true, previews };
 	}
 
-	private async previewOne(t: CleanupTarget, users: Users, offered: Set<string>): Promise<DeletePreview> {
+	/**
+	 * What the Disk space page offers for `folder` (its folder and dependency folders), with its rule: `leaving` the files
+	 * ticked for deletion (deleted first: their omp ends), `rows` the page's other rows' folders, real.
+	 */
+	async previewFolder(
+		folder: string,
+		leaving: string[],
+		rows: string[],
+	): Promise<{ trash: boolean; folder: CleanupFolder | null; deps: CleanupDep[] }> {
+		if (!this.available) return { trash: false, folder: null, deps: [] };
+		const gone = new Set(leaving);
+		const users = await this.users(gone);
+		const rule = await this.aliveRule(gone, rows);
+		const p = await this.previewOne({ file: "", cwd: folder }, users, new Set(), rule);
+		return { trash: true, folder: p.folder, deps: p.deps };
+	}
+
+	/**
+	 * Moves the Disk space page's ticked paths of `folder`, each checked again now with that page's rule, after the
+	 * conversations of `deleted` were deleted.
+	 */
+	async moveFolder(folder: string, picks: TrashPick[], deleted: CleanupTarget[], rows: string[]): Promise<TrashResult> {
+		if (picks.length === 0) return { moved: [], notMoved: [] };
+		const leaving = new Set([
+			...deleted.map((t) => t.file),
+			...deleted.flatMap((t) => (t.startedInstead ? [t.startedInstead] : [])),
+		]);
+		const users = await this.settled(leaving, [folder]);
+		const rule = await this.aliveRule(leaving, rows);
+		return this.moveOne({ file: "", cwd: folder }, picks, users, this.world.trash?.command() ?? null, rule);
+	}
+
+	/** The Disk space page's rule: the conversations' files that stay, real, and the other rows' folders. */
+	private async aliveRule(leaving: Set<string>, rows: string[]): Promise<Rule> {
+		const files: string[] = [];
+		for (const c of await this.world.conversations()) if (!leaving.has(c.file)) files.push(realOf(c.file) ?? c.file);
+		return { kind: "alive", rows, files };
+	}
+
+	/**
+	 * Who works where once what a deleted conversation's omp started (its MCP servers) has ended: a process alone in one of
+	 * `cwds` is waited for, a while. One still there then (a dev server) is in use, and the folder stays.
+	 */
+	private async settled(leaving: Set<string>, cwds: string[]): Promise<Users> {
+		const folders = cwds.map((c) => realOf(c)).filter((f): f is string => f !== null);
+		let users = await this.users(leaving);
+		for (let waited = 0; waited < SETTLE_MS && onlyProcessesIn(folders, users); waited += SETTLE_STEP_MS) {
+			await Bun.sleep(SETTLE_STEP_MS);
+			users = await this.users(leaving);
+		}
+		return users;
+	}
+
+	private async previewOne(t: CleanupTarget, users: Users, offered: Set<string>, rule: Rule): Promise<DeletePreview> {
 		const real = realOf(t.cwd);
 		if (real === null || !isFolder(real) || offered.has(real)) return { file: t.file, folder: null, deps: [] };
 		offered.add(real);
 		const guarded = protectedReason(real, this.world.protect);
-		const use = folderUse(real, users.all, users.protect);
+		const use = this.use(real, users, rule);
 		const refused = guarded ?? (users.checked ? use.refused : "unchecked");
 		const [bytes, git, worktree] = guarded
 			? [null, null, false]
@@ -244,16 +313,23 @@ export class DeleteCleanup {
 		// The empty sessions omp went on with after the deletes are the deleted conversations', not someone else's.
 		const started = deleted.flatMap((t) => (t.startedInstead ? [t.startedInstead] : []));
 		const leaving = new Set([...gone, ...started]);
-		// What a deleted conversation's omp started (its MCP servers) ends a moment after it: a process alone in a picked
-		// folder is waited for, a while. One still there then (a dev server) is in use, and the folder stays.
-		const folders = todo.map((t) => realOf(t.cwd)).filter((f): f is string => f !== null);
-		let users = await this.users(leaving);
-		for (let waited = 0; waited < SETTLE_MS && onlyProcessesIn(folders, users); waited += SETTLE_STEP_MS) {
-			await Bun.sleep(SETTLE_STEP_MS);
-			users = await this.users(leaving);
-		}
-		for (const t of todo) out[t.file] = await this.moveOne(t, picks.get(t.file) ?? [], users, command);
+		const users = await this.settled(
+			leaving,
+			todo.map((t) => t.cwd),
+		);
+		for (const t of todo) out[t.file] = await this.moveOne(t, picks.get(t.file) ?? [], users, command, DELETE);
 		return out;
+	}
+
+	/** Who keeps the folder `real` from moving, by `rule`. */
+	private use(
+		real: string,
+		users: Users,
+		rule: Rule,
+	): { refused: "inUse" | "containsOther" | "holdsConversations" | null; usedBy: UsedBy[] } {
+		if (rule.kind === "delete") return folderUse(real, users.all, users.protect);
+		const projects = users.all.filter((u) => u.who.kind === "project");
+		return folderUseAlive(real, { active: users.active, projects, rows: rule.rows, files: rule.files });
 	}
 
 	private async moveOne(
@@ -261,6 +337,7 @@ export class DeleteCleanup {
 		picks: TrashPick[],
 		users: Users,
 		command: string | null,
+		rule: Rule,
 	): Promise<TrashResult> {
 		const result: TrashResult = { moved: [], notMoved: [] };
 		const refuse = (p: TrashPick, error: string) => result.notMoved.push({ path: p.path, error });
@@ -281,7 +358,12 @@ export class DeleteCleanup {
 				continue;
 			}
 			if (folder === null || protectedReason(folder, this.world.protect)) {
-				refuse(p, "The conversation's folder may not be cleaned up.");
+				refuse(
+					p,
+					rule.kind === "delete"
+						? "The conversation's folder may not be cleaned up."
+						: "This folder may not be cleaned up.",
+				);
 				continue;
 			}
 			if (!users.checked) {
@@ -289,7 +371,11 @@ export class DeleteCleanup {
 				continue;
 			}
 			if (now === folder) {
-				const use = folderUse(now, users.all, users.protect);
+				const use = this.use(now, users, rule);
+				if (use.refused === "holdsConversations") {
+					refuse(p, "Conversations are kept in it.");
+					continue;
+				}
 				if (use.refused) {
 					refuse(p, `It is in use: ${use.usedBy.map(describe).join(", ")}.`);
 					continue;

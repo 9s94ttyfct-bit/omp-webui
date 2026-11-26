@@ -31,6 +31,7 @@ export const en = {
 	cleanupRefusedData: "Holds omp's or omp-webui's own data: never moved.",
 	cleanupRefusedInUse: "In use by {who}.",
 	cleanupRefusedContains: "A folder in it is in use by {who}.",
+	cleanupRefusedHoldsConversations: "Conversations are kept in it: moving it would take them along.",
 	cleanupRefusedUnchecked: "The running processes could not be checked: nothing is moved.",
 	cleanupDepRunning: "{who} runs in the folder.",
 	cleanupWhoConversation: "“{name}”",
