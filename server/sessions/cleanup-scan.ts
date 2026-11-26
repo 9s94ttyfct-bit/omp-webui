@@ -115,10 +115,14 @@ export async function listDependencies(folder: string): Promise<{ path: string; 
 	return found.filter((f) => !f.needsIgnored || ignored.has(f.path)).map(({ path, kind }) => ({ path, kind }));
 }
 
-/** The size of what is at `path` in bytes (`du -sk`); null when it was not measured within `budgetMs`. */
-export async function sizeOf(path: string, budgetMs: number): Promise<number | null> {
+/**
+ * The size of what is at `path` in bytes (`du -sk`); null when it was not measured within `budgetMs`. `nice`: `du` runs at a
+ * lower priority (a background scan, not a dialog someone waits on).
+ */
+export async function sizeOf(path: string, budgetMs: number, opts: { nice?: boolean } = {}): Promise<number | null> {
 	try {
-		const r = await run(["du", "-sk", path], { timeoutMs: budgetMs });
+		const du = ["du", "-sk", path];
+		const r = await run(opts.nice ? ["nice", "-n", "10", ...du] : du, { timeoutMs: budgetMs });
 		const kb = Number(r.stdout.trim().split(/\s+/)[0]);
 		return Number.isFinite(kb) && r.stdout.trim() ? kb * 1024 : null;
 	} catch {
